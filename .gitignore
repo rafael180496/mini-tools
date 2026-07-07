@@ -240,7 +240,7 @@ modules.xml
 .LSOverride
 
 # Icon must end with two \r
-Icon
+Icon
 
 # Thumbnails
 ._*
@@ -628,4 +628,9 @@ pip-selfcheck.json
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,macos,dotenv,goland,goland+all,goland+iml,node,react,reactnative,virtualenv
 
 # Custom rules (everything added below won't be overriden by 'Generate .gitignore File' if you use 'Update' option)
+
+# mini-tools: salida de build de Wails (app empaquetada) y binario suelto de `go build`
+/build/bin/
+/mini-tools
+frontend/dist/
 
