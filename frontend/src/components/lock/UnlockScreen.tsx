@@ -9,7 +9,7 @@ interface UnlockScreenProps {
     onToggleTheme: () => void
     onInitialize: (password: string) => Promise<void>
     onUnlock: (password: string) => Promise<void>
-    onRestore: () => Promise<void>
+    onRestore: (password: string) => Promise<void>
 }
 
 export default function UnlockScreen({isInitialized, theme, onToggleTheme, onInitialize, onUnlock, onRestore}: UnlockScreenProps) {
@@ -41,11 +41,22 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
         }
     }
 
+    // Reuses the same password field above rather than opening a separate
+    // prompt — the field's meaning is just "the master password for
+    // whichever action you click": Crear vault for a brand-new one, or
+    // Restaurar for the one embedded in the backup file you're about to
+    // pick. RestoreVaultBackup verifies it against the backup itself
+    // (backend/vault/backup.go's VerifyBackupPassword) before touching
+    // anything on disk, so a wrong password here just fails cleanly.
     async function restore() {
         setError('')
+        if (!password) {
+            setError('Escribí la clave maestra del backup arriba antes de restaurar')
+            return
+        }
         setBusy(true)
         try {
-            await onRestore()
+            await onRestore(password)
         } catch (err) {
             setError(String(err))
         } finally {
@@ -112,7 +123,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                         type="button"
                         onClick={() => void restore()}
                         disabled={busy}
-                        title="Reemplaza el vault actual con un archivo de backup que hayas generado antes (botón Backup vault en la app)"
+                        title="Escribí arriba la clave maestra con la que se generó el backup, después hacé click acá y elegí el archivo .mtbackup — se verifica la clave contra el backup antes de restaurar nada"
                         className="text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-50"
                     >
                         Restaurar desde backup…

@@ -18,6 +18,10 @@ interface ConnectionTreeProps {
     onConfigureSchemas: (conn: vault.ConnectionSummary) => void
     collapsed: boolean
     onToggleCollapsed: () => void
+    // True while GetSchemaMetadata is in flight for the selected connection
+    // — without this, the table list under a freshly-selected connection
+    // just looks empty/broken until the fetch resolves.
+    metadataLoading: boolean
 }
 
 // Conexiones → tablas (spec: "árbol conexiones → schemas → tablas/vistas").
@@ -38,6 +42,7 @@ export default function ConnectionTree({
     onConfigureSchemas,
     collapsed,
     onToggleCollapsed,
+    metadataLoading,
 }: ConnectionTreeProps) {
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
     const [filter, setFilter] = useState('')
@@ -47,6 +52,10 @@ export default function ConnectionTree({
     // different connection is selected, so selecting always shows its
     // tables by default.
     const [collapsedId, setCollapsedId] = useState<string | null>(null)
+    // Filters the expanded connection's table list by name or schema — only
+    // one connection can be expanded at a time, so a single shared piece of
+    // state is enough (no need to key it per-connection).
+    const [tableFilter, setTableFilter] = useState('')
 
     useEffect(() => {
         ListConnections().then(setConnections)
@@ -55,7 +64,10 @@ export default function ConnectionTree({
     const filtered = connections.filter((c) => c.name.toLowerCase().includes(filter.toLowerCase()))
 
     function selectConnection(c: vault.ConnectionSummary) {
-        if (c.id !== selectedId) setCollapsedId(null)
+        if (c.id !== selectedId) {
+            setCollapsedId(null)
+            setTableFilter('')
+        }
         onSelect(c)
     }
 
@@ -194,35 +206,65 @@ export default function ConnectionTree({
                                 </div>
                             )}
 
-                            {isExpanded && metadata && (
+                            {isExpanded && metadataLoading && (
+                                <div className="flex items-center gap-2 py-2 pl-7 text-xs text-on-surface-variant">
+                                    <span
+                                        aria-hidden
+                                        className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
+                                    />
+                                    Cargando tablas…
+                                </div>
+                            )}
+
+                            {isExpanded && !metadataLoading && metadata && (
                                 <div className="pb-1 pl-7 pr-2">
-                                    {metadata.tables.length === 0 && (
-                                        <p className="px-2 py-1 text-xs text-on-surface-variant/60">Sin tablas.</p>
+                                    {metadata.tables.length > 4 && (
+                                        <input
+                                            value={tableFilter}
+                                            onChange={(e) => setTableFilter(e.target.value)}
+                                            placeholder="Filtrar tablas o esquema..."
+                                            title="Filtra la lista de tablas de esta conexión por nombre o esquema"
+                                            className="mb-1 w-full rounded border-none bg-surface-container-highest px-2 py-1 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
+                                        />
                                     )}
-                                    {metadata.tables.map((t) => (
-                                        <div
-                                            key={`${t.schema ?? ''}.${t.name}`}
-                                            onDoubleClick={() => onOpenTable(t.name, t.schema)}
-                                            title="Doble click: SELECT * LIMIT 100"
-                                            className="group/table flex items-center gap-2 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                                        >
-                                            <Icon name="table_chart" size={14} className="shrink-0 opacity-60" />
-                                            <span className="truncate">
-                                                {t.schema ? `${t.schema}.${t.name}` : t.name}
-                                            </span>
-                                            <div className="flex-1" />
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    onExportTableDDL(t.name, t.schema)
-                                                }}
-                                                title="Exportar DDL de la tabla"
-                                                className="hidden shrink-0 opacity-70 hover:opacity-100 group-hover/table:block"
+                                    {(() => {
+                                        const q = tableFilter.trim().toLowerCase()
+                                        const visible = q
+                                            ? metadata.tables.filter(
+                                                  (t) => t.name.toLowerCase().includes(q) || (t.schema ?? '').toLowerCase().includes(q),
+                                              )
+                                            : metadata.tables
+                                        if (metadata.tables.length === 0) {
+                                            return <p className="px-2 py-1 text-xs text-on-surface-variant/60">Sin tablas.</p>
+                                        }
+                                        if (visible.length === 0) {
+                                            return <p className="px-2 py-1 text-xs text-on-surface-variant/60">Sin coincidencias para "{tableFilter}".</p>
+                                        }
+                                        return visible.map((t) => (
+                                            <div
+                                                key={`${t.schema ?? ''}.${t.name}`}
+                                                onDoubleClick={() => onOpenTable(t.name, t.schema)}
+                                                title="Doble click: SELECT * LIMIT 100"
+                                                className="group/table flex items-center gap-2 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                             >
-                                                <Icon name="code" size={14} />
-                                            </button>
-                                        </div>
-                                    ))}
+                                                <Icon name="table_chart" size={14} className="shrink-0 opacity-60" />
+                                                <span className="truncate">
+                                                    {t.schema ? `${t.schema}.${t.name}` : t.name}
+                                                </span>
+                                                <div className="flex-1" />
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        onExportTableDDL(t.name, t.schema)
+                                                    }}
+                                                    title="Exportar DDL de la tabla"
+                                                    className="hidden shrink-0 opacity-70 hover:opacity-100 group-hover/table:block"
+                                                >
+                                                    <Icon name="code" size={14} />
+                                                </button>
+                                            </div>
+                                        ))
+                                    })()}
                                 </div>
                             )}
                         </div>

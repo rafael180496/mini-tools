@@ -86,6 +86,28 @@ func ListSchemas(ctx context.Context, pool *sql.DB, dbType DBType) ([]string, er
 	return schemas, rows.Err()
 }
 
+// ListSchemasForDSN is ListSchemas for a connection that isn't saved/pooled
+// yet — opens a short-lived connection (same pattern as Ping), lists
+// schemas, closes. Used by the "which schemas should I scan" picker shown
+// in the new-connection dialog right after a successful Test Connection,
+// before the connection has a connID to look up a pool for.
+func ListSchemasForDSN(ctx context.Context, dbType DBType, dsn string) ([]string, error) {
+	if dbType != DBTypePostgres {
+		return nil, nil
+	}
+
+	conn, err := sql.Open(dbType.DriverName(), dsn)
+	if err != nil {
+		return nil, fmt.Errorf("db: abriendo para listar esquemas: %w", err)
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, defaultPingTimeout)
+	defer cancel()
+
+	return ListSchemas(ctx, conn, dbType)
+}
+
 func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, error) {
 	rows, err := pool.QueryContext(ctx, `
 		SELECT name FROM sqlite_master

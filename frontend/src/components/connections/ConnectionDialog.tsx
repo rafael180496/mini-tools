@@ -1,5 +1,12 @@
 import {FormEvent, useEffect, useState} from 'react'
-import {GetConnectionForEdit, SaveConnection, TestConnection, UpdateConnection} from '../../../wailsjs/go/main/App'
+import {
+    GetConnectionForEdit,
+    ListSchemasForNewConnection,
+    SaveConnection,
+    SetConnectionSchemas,
+    TestConnection,
+    UpdateConnection,
+} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
 import {parseConnectionString} from '../../lib/connStringParser'
 import Icon from '../Icon'
@@ -47,6 +54,15 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
     const [pasteInput, setPasteInput] = useState('')
     const [pasteHint, setPasteHint] = useState('')
 
+    // Postgres-only, offered right after a successful Test Connection —
+    // "which schemas should autocomplete/the sidebar tree scan", same
+    // question SchemaPickerDialog asks later from the sidebar, but here at
+    // creation time so it's not a separate step. null = not fetched yet
+    // (or not applicable), [] = fetched but no schemas found.
+    const [availableSchemas, setAvailableSchemas] = useState<string[] | null>(null)
+    const [selectedSchemas, setSelectedSchemas] = useState<Set<string>>(new Set())
+    const [schemasLoading, setSchemasLoading] = useState(false)
+
     // Pre-fill from the saved connection when editing. Password never comes
     // back from GetConnectionForEdit (see its doc comment) — the field
     // stays blank, meaning "keep the existing one" on save, not "clear it".
@@ -74,6 +90,17 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
         setDbType(next)
         setParams({})
         setPingStatus('idle')
+        setAvailableSchemas(null)
+        setSelectedSchemas(new Set())
+    }
+
+    function toggleSchema(schema: string) {
+        setSelectedSchemas((prev) => {
+            const next = new Set(prev)
+            if (next.has(schema)) next.delete(schema)
+            else next.add(schema)
+            return next
+        })
     }
 
     // Copy-paste a connection string (from a .env, psql URL, JDBC URL,
@@ -116,9 +143,33 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
     async function testConnection() {
         setPingStatus('testing')
         setError('')
+        setAvailableSchemas(null)
+        setSelectedSchemas(new Set())
         try {
             await TestConnection(cfg())
             setPingStatus('ok')
+
+            // Only new Postgres connections get the inline picker —
+            // editing an existing one already has this via the sidebar's
+            // "esq" button (SchemaPickerDialog), and Oracle/SQLite have
+            // nothing to restrict (see backend/db/metadata.go's
+            // ListSchemas doc comment).
+            if (!editingId && dbType === 'postgres') {
+                setSchemasLoading(true)
+                try {
+                    const schemas = await ListSchemasForNewConnection(cfg())
+                    setAvailableSchemas(schemas ?? [])
+                    setSelectedSchemas(new Set(schemas ?? []))
+                } catch {
+                    // Best-effort: if listing schemas fails for some reason,
+                    // just skip the picker — the connection can still be
+                    // saved and scanned unrestricted, same as before this
+                    // feature existed.
+                    setAvailableSchemas(null)
+                } finally {
+                    setSchemasLoading(false)
+                }
+            }
         } catch (err) {
             setPingStatus('failed')
             setError(String(err))
@@ -132,7 +183,13 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
             if (editingId) {
                 await UpdateConnection(editingId, cfg(), force)
             } else {
-                await SaveConnection(cfg(), force)
+                const saved = await SaveConnection(cfg(), force)
+                // Everything checked == no restriction, same convention as
+                // SchemaPickerDialog — only persist a restriction if the
+                // user actually unchecked something.
+                if (saved && availableSchemas && availableSchemas.length > 0 && selectedSchemas.size < availableSchemas.length) {
+                    await SetConnectionSchemas(saved.id, Array.from(selectedSchemas))
+                }
             }
             onSaved()
         } catch (err) {
@@ -396,6 +453,43 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                         <span className="text-xs text-on-surface-variant">Password sin cambios — se prueba al guardar</span>
                     )}
                 </div>
+
+                {schemasLoading && (
+                    <p className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                        <span
+                            aria-hidden
+                            className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
+                        />
+                        Buscando esquemas…
+                    </p>
+                )}
+
+                {availableSchemas && availableSchemas.length > 0 && (
+                    <div className={labelClass}>
+                        <span className="flex items-center gap-1.5">
+                            <Icon name="schema" size={14} />
+                            Esquemas a escanear ({selectedSchemas.size}/{availableSchemas.length})
+                        </span>
+                        <div className="max-h-32 overflow-y-auto rounded-lg border border-outline-variant bg-surface p-2">
+                            {availableSchemas.map((s) => (
+                                <label key={s} className="flex items-center gap-2 py-0.5 text-sm text-on-surface">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedSchemas.has(s)}
+                                        onChange={() => toggleSchema(s)}
+                                        className="accent-primary"
+                                    />
+                                    {s}
+                                </label>
+                            ))}
+                        </div>
+                        <span className="text-[11px] text-on-surface-variant">
+                            Dejá todos marcados para escanear sin restricción, o desmarcá los que no te interesan — útil si esta
+                            base tiene muchos esquemas y el escaneo completo es lento. Se puede cambiar después desde el ícono
+                            "esq" en la lista de conexiones.
+                        </span>
+                    </div>
+                )}
 
                 {error && <p className="text-xs text-error">{error}</p>}
 

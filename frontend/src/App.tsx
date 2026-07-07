@@ -15,7 +15,7 @@ function App() {
 
     if (isInitialized === null) {
         return (
-            <div className="flex h-screen w-screen items-center justify-center bg-neutral-50 dark:bg-neutral-950 text-sm text-neutral-500">
+            <div className="flex h-screen w-screen items-center justify-center bg-background font-sans text-sm text-on-surface-variant">
                 Cargando…
             </div>
         )
@@ -35,8 +35,8 @@ function App() {
                     await UnlockVault(password)
                     setUnlocked(true)
                 }}
-                onRestore={async () => {
-                    await RestoreVaultBackup()
+                onRestore={async (password) => {
+                    await RestoreVaultBackup(password)
                     setIsInitialized(await IsVaultInitialized())
                 }}
             />

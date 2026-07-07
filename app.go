@@ -191,6 +191,32 @@ func (a *App) TestConnection(cfg ConnectionInput) error {
 	return db.Ping(dbType, dsn)
 }
 
+// ListSchemasForNewConnection builds a DSN from cfg (same as TestConnection)
+// and lists its visible schemas without saving the connection or requiring
+// a connID — lets ConnectionDialog.tsx offer the "which schemas should
+// autocomplete scan" picker right after a successful Test Connection, at
+// creation time, instead of only after the connection is already saved
+// (see ListSchemas for that path). Postgres-only, same as ListSchemas —
+// nil for SQLite/Oracle, which have nothing to restrict.
+func (a *App) ListSchemasForNewConnection(cfg ConnectionInput) ([]string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+
+	dbType := db.DBType(cfg.DBType)
+	connector, err := db.ConnectorFor(dbType)
+	if err != nil {
+		return nil, err
+	}
+
+	dsn, err := connector.BuildDSN(cfg.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	return db.ListSchemasForDSN(a.ctx, dbType, dsn)
+}
+
 // SaveConnection builds a DSN from cfg, encrypts it, and persists it. Unless
 // force is true, it first pings the DSN and fails without saving if the
 // ping fails — matching the spec's "sin ping ok → warning, guarda igual si
@@ -482,10 +508,16 @@ func (a *App) ListQueryHistory(connID string, limit int) ([]vault.HistoryEntry, 
 }
 
 // BackupVault prompts for a destination and writes a full vault backup
-// (encrypted connections + salt) there. Returns "" without an error if the
-// user cancels the save dialog.
-func (a *App) BackupVault() (string, error) {
+// (encrypted connections + salt) there. Requires re-entering the master
+// password even though the vault is already unlocked — a backup file is
+// meant to travel (another machine, a USB drive, cloud storage), so this is
+// a deliberate re-confirmation step, not a redundant unlock check. Returns
+// "" without an error if the user cancels the save dialog.
+func (a *App) BackupVault(password string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	if err := a.vault.VerifyPassword(password); err != nil {
 		return "", err
 	}
 
@@ -514,8 +546,12 @@ func (a *App) BackupVault() (string, error) {
 // initialized yet — restoring over an existing vault would silently
 // discard its connections, so that has to be a deliberate separate step
 // (delete/rename the vault first), not implicit in a restore click.
-// Returns without an error if the user cancels the open dialog.
-func (a *App) RestoreVaultBackup() error {
+// password must match the master password the backup was made under —
+// checked against the backup file itself (see vault.VerifyBackupPassword)
+// before anything on disk is touched, so a wrong password fails cleanly
+// instead of leaving an inaccessible vault behind. Returns without an
+// error if the user cancels the open dialog.
+func (a *App) RestoreVaultBackup(password string) error {
 	initialized, err := a.vault.IsInitialized()
 	if err != nil {
 		return err
@@ -535,6 +571,10 @@ func (a *App) RestoreVaultBackup() error {
 	}
 	if src == "" {
 		return nil
+	}
+
+	if err := vault.VerifyBackupPassword(src, password); err != nil {
+		return err
 	}
 
 	if err := a.vault.Close(); err != nil {

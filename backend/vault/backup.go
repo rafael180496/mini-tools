@@ -2,12 +2,14 @@ package vault
 
 import (
 	"archive/zip"
+	"database/sql"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"mini-tools/backend/appdata"
+	mtcrypto "mini-tools/backend/crypto"
 )
 
 // Backup creates a self-contained, restorable snapshot of the vault at
@@ -72,11 +74,85 @@ func addFileToZip(zw *zip.Writer, name, srcPath string) error {
 	return nil
 }
 
+// VerifyBackupPassword checks password against backupPath's own embedded
+// vault_meta.verifier — the same master password that was unlocked when the
+// backup was made, not necessarily this machine's current one (a backup can
+// travel to a different install). Extracts vault.db/salt.bin to a scratch
+// temp dir to check, never touches this install's real vault.db/salt.bin —
+// RestoreBackup only runs after this succeeds, so a wrong password (or a
+// backup made under a different master password) fails loudly here instead
+// of leaving the caller with a restored-but-inaccessible vault, and instead
+// of silently exposing whatever the backup's DSNs decrypt to under the
+// wrong assumption that "restored = same password as before".
+func VerifyBackupPassword(backupPath, password string) error {
+	r, err := zip.OpenReader(backupPath)
+	if err != nil {
+		return fmt.Errorf("vault: abriendo archivo de backup: %w", err)
+	}
+	defer r.Close()
+
+	var dbFile, saltFile *zip.File
+	for _, f := range r.File {
+		switch f.Name {
+		case "vault.db":
+			dbFile = f
+		case "salt.bin":
+			saltFile = f
+		}
+	}
+	if dbFile == nil || saltFile == nil {
+		return fmt.Errorf("vault: backup inválido (falta vault.db o salt.bin)")
+	}
+
+	tmpDir, err := os.MkdirTemp("", "mini-tools-restore-check-*")
+	if err != nil {
+		return fmt.Errorf("vault: creando directorio temporal: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tmpDBPath := filepath.Join(tmpDir, "vault.db")
+	tmpSaltPath := filepath.Join(tmpDir, "salt.bin")
+	if err := extractZipFile(dbFile, tmpDBPath); err != nil {
+		return err
+	}
+	if err := extractZipFile(saltFile, tmpSaltPath); err != nil {
+		return err
+	}
+
+	salt, err := os.ReadFile(tmpSaltPath)
+	if err != nil {
+		return fmt.Errorf("vault: leyendo salt del backup: %w", err)
+	}
+
+	db, err := sql.Open("sqlite", tmpDBPath)
+	if err != nil {
+		return fmt.Errorf("vault: abriendo backup para verificar: %w", err)
+	}
+	defer db.Close()
+
+	var ciphertext, nonce []byte
+	if err := db.QueryRow(`SELECT verifier, verifier_nonce FROM vault_meta WHERE id = 1`).Scan(&ciphertext, &nonce); err != nil {
+		return fmt.Errorf("vault: el backup no tiene un verificador válido: %w", err)
+	}
+
+	passwordBytes := []byte(password)
+	key := mtcrypto.DeriveKey(passwordBytes, salt)
+	mtcrypto.Zero(passwordBytes)
+	defer mtcrypto.Zero(key)
+
+	if _, err := mtcrypto.Decrypt(key, ciphertext, nonce); err != nil {
+		return ErrWrongPassword
+	}
+	return nil
+}
+
 // RestoreBackup extracts a backup created by Backup, overwriting this
 // install's vault.db and salt.bin. The caller must Close any Store that has
 // vault.db open before calling this, and is responsible for deciding whether
 // it's safe to restore over an existing vault (this function doesn't check
-// that — see App.RestoreVaultBackup for that guard).
+// that — see App.RestoreVaultBackup for that guard). Callers should run
+// VerifyBackupPassword first — this function trusts the caller already
+// confirmed the password, it doesn't check again.
 func RestoreBackup(backupPath string) error {
 	r, err := zip.OpenReader(backupPath)
 	if err != nil {

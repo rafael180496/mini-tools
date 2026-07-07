@@ -5,7 +5,7 @@ import {main} from '../models';
 import {db} from '../models';
 import {vault} from '../models';
 
-export function BackupVault():Promise<string>;
+export function BackupVault(arg1:string):Promise<string>;
 
 export function BeginTransaction(arg1:string):Promise<void>;
 
@@ -55,13 +55,15 @@ export function ListRecentFiles():Promise<Array<vault.RecentFile>>;
 
 export function ListSchemas(arg1:string):Promise<Array<string>>;
 
+export function ListSchemasForNewConnection(arg1:main.ConnectionInput):Promise<Array<string>>;
+
 export function OpenSQLFileDialog():Promise<main.FileContent>;
 
 export function OpenSQLFilePath(arg1:string):Promise<main.FileContent>;
 
 export function RegenerateProjectDocs(arg1:string,arg2:string,arg3:string):Promise<void>;
 
-export function RestoreVaultBackup():Promise<void>;
+export function RestoreVaultBackup(arg1:string):Promise<void>;
 
 export function RollbackTransaction(arg1:string):Promise<void>;
 

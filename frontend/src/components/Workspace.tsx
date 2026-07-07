@@ -1,6 +1,7 @@
 import {lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
 import Icon from './Icon'
+import PasswordConfirmDialog from './PasswordConfirmDialog'
 import ResultGrid from './results/ResultGrid'
 import ResultTabs from './results/ResultTabs'
 import ExportMenu from './results/ExportMenu'
@@ -137,6 +138,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [schemaPickerConn, setSchemaPickerConn] = useState<vault.ConnectionSummary | null>(null)
     const [reloadToken, setReloadToken] = useState(0)
     const [metadata, setMetadata] = useState<db.SchemaMetadata | null>(null)
+    const [metadataLoading, setMetadataLoading] = useState(false)
     const [activeSchema, setActiveSchema] = useState<string | null>(null)
     // Auto-commit off for `selected` — while true, Commit/Rollback are the
     // only way back to auto-commit (see backend Executor.BeginTransaction's
@@ -155,6 +157,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [resultSets, setResultSets] = useState<ResultSet[]>([])
     const [activeResultTab, setActiveResultTab] = useState(0)
     const [backupMessage, setBackupMessage] = useState('')
+    const [showBackupPasswordDialog, setShowBackupPasswordDialog] = useState(false)
     const [statusMessage, setStatusMessage] = useState('')
     const [regeneratingDocs, setRegeneratingDocs] = useState(false)
 
@@ -293,14 +296,14 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [openTabPathsKey])
 
-    async function backupVault() {
-        setBackupMessage('Guardando backup…')
-        try {
-            const dest = await BackupVault()
-            setBackupMessage(dest ? `Backup guardado en ${dest}` : '')
-        } catch (err) {
-            setBackupMessage(`Error: ${String(err)}`)
-        }
+    // BackupVault re-verifies the master password server-side before
+    // writing anything — see backend/vault/store.go's VerifyPassword doc
+    // comment. showBackupPasswordDialog gates the confirm modal that
+    // collects it; the actual file-save dialog only opens after that
+    // succeeds (inside BackupVault itself).
+    async function backupVault(password: string) {
+        const dest = await BackupVault(password)
+        setBackupMessage(dest ? `Backup guardado en ${dest}` : '')
     }
 
     // Fetch (and cache) schema metadata whenever the selected connection
@@ -309,11 +312,15 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     useEffect(() => {
         if (!selected) {
             setMetadata(null)
+            setMetadataLoading(false)
             return
         }
+        setMetadataLoading(true)
+        setMetadata(null)
         GetSchemaMetadata(selected.id, false)
             .then((meta) => setMetadata(meta))
             .catch((err) => setStatusMessage(String(err)))
+            .finally(() => setMetadataLoading(false))
     }, [selected])
 
     // Re-sync the auto-commit UI with the backend's actual state — the
@@ -373,6 +380,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
 
     function refreshMetadata() {
         if (!selected) return
+        setMetadataLoading(true)
         setStatusMessage('Actualizando metadata…')
         GetSchemaMetadata(selected.id, true)
             .then((meta) => {
@@ -380,6 +388,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 setStatusMessage('Metadata actualizada')
             })
             .catch((err) => setStatusMessage(String(err)))
+            .finally(() => setMetadataLoading(false))
     }
 
     // Postgres connections span multiple schemas (table.schema is populated
@@ -784,6 +793,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 onEditConnection={(conn) => setConnectionDialog(conn.id)}
                 reloadToken={reloadToken}
                 metadata={filteredMetadata}
+                metadataLoading={metadataLoading}
                 onOpenTable={openTableQuery}
                 onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
                 onExportTableDDL={(table, schema) => void exportTableDDL(table, schema)}
@@ -851,7 +861,17 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
                         </span>
 
-                        {schemas.length > 0 && (
+                        {selected && metadataLoading && (
+                            <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
+                                <span
+                                    aria-hidden
+                                    className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
+                                />
+                                Cargando esquema…
+                            </span>
+                        )}
+
+                        {!metadataLoading && schemas.length > 0 && (
                             <label className="flex items-center gap-1 text-xs text-on-surface-variant">
                                 Schema:
                                 <select
@@ -1027,8 +1047,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             DDL schema
                         </button>
                         <button
-                            onClick={() => void backupVault()}
-                            title="Copia el archivo del vault (donde se guardan tus conexiones cifradas) a otra ubicación, por si necesitás restaurarlo después"
+                            onClick={() => setShowBackupPasswordDialog(true)}
+                            title="Copia el archivo del vault (donde se guardan tus conexiones cifradas) a otra ubicación, por si necesitás restaurarlo después — pide tu clave maestra para confirmar, porque el archivo puede terminar en otra máquina"
                             className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
                         >
                             <Icon name="backup" size={16} />
@@ -1080,6 +1100,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     sortColumn={activeResult?.sortColumn}
                     sortDirection={activeResult?.sortDirection}
                     onSort={sortActiveResult}
+                    tableNameHint={selected?.name}
                 />
 
                 {activeResult && activeResult.dbmsOutput.length > 0 && (
@@ -1132,6 +1153,16 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         }}
                     />
                 </Suspense>
+            )}
+
+            {showBackupPasswordDialog && (
+                <PasswordConfirmDialog
+                    title="Confirmar backup del vault"
+                    description="El backup incluye tus conexiones cifradas y puede terminar en otra máquina — reingresá tu clave maestra para confirmar. Sin ella, el backup no sirve de nada aunque alguien lo copie."
+                    confirmLabel="Guardar backup"
+                    onConfirm={backupVault}
+                    onClose={() => setShowBackupPasswordDialog(false)}
+                />
             )}
         </div>
     )

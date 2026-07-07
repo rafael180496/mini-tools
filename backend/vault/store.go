@@ -208,6 +208,37 @@ func (s *Store) Unlock(password string) error {
 	return nil
 }
 
+// VerifyPassword checks password against the stored verifier without
+// touching the gate — used to re-confirm identity before a sensitive action
+// on an already-unlocked vault (e.g. generating a backup), where the point
+// isn't to unlock anything (it already is) but to make sure whoever's
+// sitting at the keyboard right now actually knows the master password.
+func (s *Store) VerifyPassword(password string) error {
+	salt, err := vaultgate.LoadOrCreateSalt()
+	if err != nil {
+		return err
+	}
+
+	var ciphertext, nonce []byte
+	err = s.db.QueryRow(`SELECT verifier, verifier_nonce FROM vault_meta WHERE id = 1`).Scan(&ciphertext, &nonce)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errors.New("vault: not initialized")
+	}
+	if err != nil {
+		return fmt.Errorf("vault: reading verifier: %w", err)
+	}
+
+	passwordBytes := []byte(password)
+	key := mtcrypto.DeriveKey(passwordBytes, salt)
+	mtcrypto.Zero(passwordBytes)
+	defer mtcrypto.Zero(key)
+
+	if _, err := mtcrypto.Decrypt(key, ciphertext, nonce); err != nil {
+		return ErrWrongPassword
+	}
+	return nil
+}
+
 // Close closes the underlying database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
