@@ -14,17 +14,28 @@ Ver [readme.md](readme.md) para el spec funcional completo y [.claude/specs/go-r
 
 ## Comandos
 
+Wrappers en [scripts/](scripts/) (ver [scripts/README.md](scripts/README.md) para el detalle de cada uno):
+
 ```bash
-wails dev              # backend + frontend con hot reload
-wails build             # build de producción (build/bin/mini-tools.app en macOS)
-wails build -clean      # limpia build/bin antes de compilar
+./scripts/install.sh      # toolchain (Wails CLI) + deps de Go y frontend
+./scripts/start-dev.sh    # wails dev — hot reload
+./scripts/build.sh        # wails build -clean — build de producción
+./scripts/start.sh        # correr el binario ya compilado en build/bin/
+./scripts/clean.sh        # borrar build/bin + frontend/dist (--all también node_modules y cache de Go)
+```
 
-cd frontend && pnpm install   # instalar deps del frontend (pnpm SIEMPRE, nunca npm/yarn)
-cd frontend && pnpm build     # build del frontend solo (tsc && vite build)
-cd frontend && pnpm dev       # servidor Vite solo (normalmente no hace falta, wails dev ya lo levanta)
+Equivalentes directos, por si hace falta correrlos sin los wrappers:
 
-go build ./...          # compilar el backend Go
-go vet ./...            # vet del backend Go
+```bash
+wails dev
+wails build -clean
+
+cd frontend && pnpm install   # pnpm SIEMPRE, nunca npm/yarn
+cd frontend && pnpm build
+
+go build ./...
+go vet ./...
+go test ./...
 ```
 
 ## Estructura de carpetas
