@@ -1,4 +1,6 @@
-# mini-tools
+# mini-tools — spec funcional completo
+
+> Este es el spec funcional original del proyecto (features, arquitectura, reglas de código). El `README.md` en la raíz es la presentación pública del repo (instalación, uso); este documento es la fuente de verdad detallada que sigue Claude Code fase a fase — ver [CLAUDE.md](../CLAUDE.md) y [.claude/specs/go-react-contract.md](../.claude/specs/go-react-contract.md).
 
 App escritorio. Go + Wails + React + Tailwind. Sin Electron.
 

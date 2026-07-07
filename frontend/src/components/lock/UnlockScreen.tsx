@@ -4,9 +4,10 @@ interface UnlockScreenProps {
     isInitialized: boolean
     onInitialize: (password: string) => Promise<void>
     onUnlock: (password: string) => Promise<void>
+    onRestore: () => Promise<void>
 }
 
-export default function UnlockScreen({isInitialized, onInitialize, onUnlock}: UnlockScreenProps) {
+export default function UnlockScreen({isInitialized, onInitialize, onUnlock, onRestore}: UnlockScreenProps) {
     const [password, setPassword] = useState('')
     const [confirm, setConfirm] = useState('')
     const [error, setError] = useState('')
@@ -30,6 +31,18 @@ export default function UnlockScreen({isInitialized, onInitialize, onUnlock}: Un
             }
         } catch (err) {
             setError(isInitialized ? 'Clave maestra incorrecta' : String(err))
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    async function restore() {
+        setError('')
+        setBusy(true)
+        try {
+            await onRestore()
+        } catch (err) {
+            setError(String(err))
         } finally {
             setBusy(false)
         }
@@ -71,6 +84,16 @@ export default function UnlockScreen({isInitialized, onInitialize, onUnlock}: Un
                 >
                     {isInitialized ? 'Desbloquear' : 'Crear vault'}
                 </button>
+                {!isInitialized && (
+                    <button
+                        type="button"
+                        onClick={() => void restore()}
+                        disabled={busy}
+                        className="text-xs text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
+                    >
+                        Restaurar desde backup…
+                    </button>
+                )}
             </form>
         </div>
     )

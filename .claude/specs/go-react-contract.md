@@ -7,6 +7,7 @@ Superficie de binding del struct `App` (`app.go`). Regla general: el frontend nu
 | Área | Métodos | Fase que lo introduce |
 |---|---|---|
 | Ciclo de vida del vault | `IsVaultInitialized()`, `InitializeVault(password)`, `UnlockVault(password)` | Fase 2 |
+| Backup/restore del vault | `BackupVault()`, `RestoreVaultBackup()` | agregado fuera de fase (a pedido), antes de Fase 5 |
 | Conexiones | `TestConnection(cfg)`, `SaveConnection(cfg, force bool)`, `ListConnections()`, `DeleteConnection(id)` | Fase 3 (`ExportConnectionConfig(id)` queda para Fase 7, junto al resto de export) |
 | Metadata | `GetSchemaMetadata(connID, forceRefresh bool)` | Fase 6 |
 | Ejecución de queries | `ExecuteQuery(connID, queryID, sqlText)`, `CancelQuery(queryID)` | Fase 3 (mínimo, un solo statement) → se completa en Fase 5 (PL/SQL, multi-statement) |
@@ -19,6 +20,8 @@ Superficie de binding del struct `App` (`app.go`). Regla general: el frontend nu
 Estado actual (Fase 4 — completa): además del ciclo de vida del vault, `app.go` implementa `TestConnection`, `SaveConnection`, `ListConnections`, `DeleteConnection`, `ExecuteQuery` y `CancelQuery`, todos detrás de `requireUnlocked()` (falla con `vaultgate.ErrLocked` si el vault está bloqueado — el "no bypass" del gate ya se ejerce de verdad, no solo con los métodos de ciclo de vida). Los 3 conectores están implementados (`backend/db/{sqlite,postgres,oracle}.go`) — `db.ConnectorFor` ya no devuelve error para ningún `db_type` válido. El executor (`backend/query/executor.go`) sigue siendo mínimo: clasifica SELECT-like vs todo lo demás con un heurístico simple (sin detectar bloques PL/SQL ni dividir multi-statement todavía — eso es Fase 5).
 
 **Nota de tamaño de binario:** añadir Postgres+Oracle llevó el binario de ~12MB a ~31MB (Oracle solo agrega ~15MB por `crypto/tls`/FIPS 140-3, no opcional en `go-ora`). El target de <20MB del spec original se revisó a <35MB — ver [.claude/rules/technical.md](../rules/technical.md) punto 8.
+
+**Backup/restore del vault:** `BackupVault()` pide destino con `runtime.SaveFileDialog` y llama `vault.Store.Backup` (usa `VACUUM INTO` para un snapshot consistente de `vault.db` + copia de `salt.bin`, empaquetados en un zip `.mtbackup`) — requiere `requireUnlocked()`. `RestoreVaultBackup()` pide origen con `runtime.OpenFileDialog`, solo permitido si `IsInitialized()` es `false` (nunca pisa un vault existente sin que el usuario borre/respalde el actual primero); cierra el `*vault.Store` actual, llama `vault.RestoreBackup` (extrae ambos archivos, limpia `-wal`/`-shm` viejos), y reabre un `Store` nuevo. Verificado manualmente con un script efímero: backup → borrar vault.db/salt.bin reales → restore → `Unlock` con la clave original tiene éxito → la conexión guardada sigue ahí y su DSN desencripta igual.
 
 ## Eventos (streaming)
 

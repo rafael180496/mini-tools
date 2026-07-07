@@ -3,6 +3,8 @@
 import {vault} from '../models';
 import {main} from '../models';
 
+export function BackupVault():Promise<string>;
+
 export function CancelQuery(arg1:string):Promise<void>;
 
 export function DeleteConnection(arg1:string):Promise<void>;
@@ -14,6 +16,8 @@ export function InitializeVault(arg1:string):Promise<void>;
 export function IsVaultInitialized():Promise<boolean>;
 
 export function ListConnections():Promise<Array<vault.ConnectionSummary>>;
+
+export function RestoreVaultBackup():Promise<void>;
 
 export function SaveConnection(arg1:main.ConnectionInput,arg2:boolean):Promise<vault.ConnectionSummary>;
 

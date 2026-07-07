@@ -2,7 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
 import ConnectionDialog from './connections/ConnectionDialog'
 import ResultGrid from './results/ResultGrid'
-import {CancelQuery, ExecuteQuery} from '../../wailsjs/go/main/App'
+import {BackupVault, CancelQuery, ExecuteQuery} from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
 import {vault} from '../../wailsjs/go/models'
 
@@ -33,8 +33,19 @@ export default function Workspace() {
     const [rows, setRows] = useState<unknown[][]>([])
     const [status, setStatus] = useState<{rowsAffected: number; durationMs: number} | null>(null)
     const [error, setError] = useState('')
+    const [backupMessage, setBackupMessage] = useState('')
 
     const queryIdRef = useRef<string | null>(null)
+
+    async function backupVault() {
+        setBackupMessage('Guardando backup…')
+        try {
+            const dest = await BackupVault()
+            setBackupMessage(dest ? `Backup guardado en ${dest}` : '')
+        } catch (err) {
+            setBackupMessage(`Error: ${String(err)}`)
+        }
+    }
 
     const runQuery = useCallback(() => {
         if (!selected || running) return
@@ -111,7 +122,14 @@ export default function Workspace() {
                     <span className="text-xs text-neutral-500">
                         {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
                     </span>
+                    {backupMessage && <span className="text-xs text-neutral-500">{backupMessage}</span>}
                     <div className="flex-1" />
+                    <button
+                        onClick={() => void backupVault()}
+                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700"
+                    >
+                        Backup vault
+                    </button>
                     <button
                         onClick={runQuery}
                         disabled={!selected || running}

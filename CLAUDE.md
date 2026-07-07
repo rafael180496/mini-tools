@@ -2,7 +2,7 @@
 
 App de escritorio tipo DataGrip para Oracle/PostgreSQL/SQLite. Go + Wails v2 + React + Tailwind. Sin Electron. Filosofía: simple, minimalista, sin feature bloat.
 
-Ver [readme.md](readme.md) para el spec funcional completo y [.claude/specs/go-react-contract.md](.claude/specs/go-react-contract.md) para el contrato de bindings.
+Ver [docs/SPEC.md](docs/SPEC.md) para el spec funcional completo y [.claude/specs/go-react-contract.md](.claude/specs/go-react-contract.md) para el contrato de bindings. `README.md` (raíz) es la presentación pública del repo.
 
 ## Stack
 

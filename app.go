@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -193,5 +194,81 @@ func (a *App) CancelQuery(queryID string) error {
 		return err
 	}
 	a.executor.Cancel(queryID)
+	return nil
+}
+
+// BackupVault prompts for a destination and writes a full vault backup
+// (encrypted connections + salt) there. Returns "" without an error if the
+// user cancels the save dialog.
+func (a *App) BackupVault() (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+
+	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Guardar backup del vault",
+		DefaultFilename: fmt.Sprintf("mini-tools-vault-backup-%s.mtbackup", time.Now().Format("2006-01-02")),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "mini-tools backup (*.mtbackup)", Pattern: "*.mtbackup"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+	}
+	if dest == "" {
+		return "", nil
+	}
+
+	if err := a.vault.Backup(dest); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// RestoreVaultBackup prompts for a backup file and restores it, replacing
+// this install's vault.db/salt.bin. Only allowed when no vault has been
+// initialized yet — restoring over an existing vault would silently
+// discard its connections, so that has to be a deliberate separate step
+// (delete/rename the vault first), not implicit in a restore click.
+// Returns without an error if the user cancels the open dialog.
+func (a *App) RestoreVaultBackup() error {
+	initialized, err := a.vault.IsInitialized()
+	if err != nil {
+		return err
+	}
+	if initialized {
+		return fmt.Errorf("app: ya existe un vault inicializado; no se puede restaurar encima (hacé backup o eliminá el vault actual primero)")
+	}
+
+	src, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Seleccionar backup del vault",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "mini-tools backup (*.mtbackup)", Pattern: "*.mtbackup"},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("app: abriendo diálogo de selección: %w", err)
+	}
+	if src == "" {
+		return nil
+	}
+
+	if err := a.vault.Close(); err != nil {
+		return fmt.Errorf("app: cerrando vault actual: %w", err)
+	}
+
+	if err := vault.RestoreBackup(src); err != nil {
+		// Reopen whatever was there before so the app isn't left with a.vault nil.
+		if store, openErr := vault.Open(a.gate); openErr == nil {
+			a.vault = store
+		}
+		return err
+	}
+
+	store, err := vault.Open(a.gate)
+	if err != nil {
+		return fmt.Errorf("app: reabriendo vault restaurado: %w", err)
+	}
+	a.vault = store
 	return nil
 }
