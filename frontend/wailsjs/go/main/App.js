@@ -30,6 +30,10 @@ export function ListConnections() {
   return window['go']['main']['App']['ListConnections']();
 }
 
+export function ListQueryHistory(arg1, arg2) {
+  return window['go']['main']['App']['ListQueryHistory'](arg1, arg2);
+}
+
 export function RestoreVaultBackup() {
   return window['go']['main']['App']['RestoreVaultBackup']();
 }

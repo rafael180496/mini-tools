@@ -37,7 +37,7 @@ func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string) (*Conn
 		return nil, fmt.Errorf("vault: encrypting dsn: %w", err)
 	}
 
-	id, err := newConnectionID()
+	id, err := newID()
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (s *Store) ConnectionDSN(id string) (db.DBType, string, error) {
 	return db.DBType(dbType), string(plaintext), nil
 }
 
-func newConnectionID() (string, error) {
+func newID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("vault: generating id: %w", err)

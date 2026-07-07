@@ -36,7 +36,7 @@ func newTestExecutor(t *testing.T) (*Executor, chan Event) {
 			t.Fatalf("unexpected emitted payload type %T", data)
 		}
 		events <- e
-	})
+	}, nil)
 
 	return exec, events
 }

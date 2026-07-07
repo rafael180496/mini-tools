@@ -14,13 +14,20 @@ import (
 // the query's ID. Bindings themselves are request/response only, so
 // results stream this way instead of as ExecuteQuery's return value — see
 // .claude/skills/mini-tools-patterns/SKILL.md.
+//
+// A script can contain several statements (see splitter.go); each gets its
+// own columns/rows/done-or-error sequence tagged with StatementIndex, so
+// the frontend can render one result-tab per statement.
 type Event struct {
-	Type         string          `json:"type"` // "columns" | "rows" | "done" | "cancelled" | "error"
-	Columns      []string        `json:"columns,omitempty"`
-	Rows         [][]interface{} `json:"rows,omitempty"`
-	RowsAffected int64           `json:"rowsAffected,omitempty"`
-	DurationMs   int64           `json:"durationMs,omitempty"`
-	Error        string          `json:"error,omitempty"`
+	Type            string          `json:"type"` // "columns" | "rows" | "done" | "cancelled" | "error"
+	StatementIndex  int             `json:"statementIndex"`
+	TotalStatements int             `json:"totalStatements"`
+	Columns         []string        `json:"columns,omitempty"`
+	Rows            [][]interface{} `json:"rows,omitempty"`
+	RowsAffected    int64           `json:"rowsAffected,omitempty"`
+	DurationMs      int64           `json:"durationMs,omitempty"`
+	Error           string          `json:"error,omitempty"`
+	DBMSOutput      []string        `json:"dbmsOutput,omitempty"`
 }
 
 const rowsPerChunk = 200
@@ -31,15 +38,21 @@ const rowsPerChunk = 200
 // context and otherwise kills the process.
 type EmitFunc func(event string, data interface{})
 
-// Executor runs queries against pooled connections and streams the results
-// back as Events. Statement classification here is a minimal heuristic
-// (SELECT-shaped vs everything else); PL/SQL block detection and
-// multi-statement splitting land in Fase 5 (see backend/query/detect.go,
-// splitter.go once they exist).
+// HistorySink records the terminal outcome of one statement's execution.
+// Kept separate from EmitFunc (and free of any vault import) so the query
+// package stays decoupled from persistence — the caller (app.go) is the one
+// that knows how to store it.
+type HistorySink func(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string)
+
+// Executor runs (possibly multi-statement) scripts against pooled
+// connections and streams the results back as Events, one statement at a
+// time. See detect.go/splitter.go for how statements are classified and
+// split, and dbmsoutput.go for Oracle PL/SQL block handling.
 type Executor struct {
 	parentCtx context.Context
 	pools     *db.PoolManager
 	emit      EmitFunc
+	history   HistorySink
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
@@ -47,22 +60,24 @@ type Executor struct {
 
 // NewExecutor builds an Executor. parentCtx is only used to derive each
 // query's cancellable context (context.Background() is fine in tests);
-// emit is how results actually reach the frontend.
-func NewExecutor(parentCtx context.Context, pools *db.PoolManager, emit EmitFunc) *Executor {
-	return &Executor{parentCtx: parentCtx, pools: pools, emit: emit, cancels: make(map[string]context.CancelFunc)}
+// emit is how results actually reach the frontend; history records each
+// statement's terminal outcome (pass a no-op func if not needed).
+func NewExecutor(parentCtx context.Context, pools *db.PoolManager, emit EmitFunc, history HistorySink) *Executor {
+	return &Executor{parentCtx: parentCtx, pools: pools, emit: emit, history: history, cancels: make(map[string]context.CancelFunc)}
 }
 
-// Execute runs sqlText against connID and streams Events under queryID. The
-// frontend must call EventsOn(queryID, ...) before invoking the ExecuteQuery
-// binding that calls this — queryID is client-generated precisely so there
-// is no race with the first emitted event.
+// Execute splits sqlText into statements and runs them in order against
+// connID, streaming Events under queryID. The frontend must call
+// EventsOn(queryID, ...) before invoking the ExecuteQuery binding that
+// calls this — queryID is client-generated precisely so there is no race
+// with the first emitted event.
 func (e *Executor) Execute(connID, queryID, sqlText string) {
 	go e.run(connID, queryID, sqlText)
 }
 
-// Cancel cancels the in-flight query registered under queryID, if any. The
-// pool itself is left open and healthy — only the in-flight statement is
-// interrupted.
+// Cancel cancels the in-flight script registered under queryID, if any —
+// stops before running any further statements, and interrupts the
+// statement currently in flight. The pool itself is left open and healthy.
 func (e *Executor) Cancel(queryID string) {
 	e.mu.Lock()
 	cancel, ok := e.cancels[queryID]
@@ -73,24 +88,47 @@ func (e *Executor) Cancel(queryID string) {
 }
 
 func (e *Executor) run(connID, queryID, sqlText string) {
-	start := time.Now()
+	pool, err := e.pools.Get(connID)
+	if err != nil {
+		e.emit(queryID, Event{Type: "error", Error: err.Error()})
+		return
+	}
+	dbType, _ := e.pools.Type(connID)
+
+	statements := SplitStatements(sqlText)
+	if len(statements) == 0 {
+		e.emit(queryID, Event{Type: "error", Error: "query: no hay ninguna sentencia para ejecutar"})
+		return
+	}
+	total := len(statements)
 
 	ctx, cancel := context.WithCancel(e.parentCtx)
 	e.registerCancel(queryID, cancel)
 	defer e.clearCancel(queryID)
 	defer cancel()
 
-	pool, err := e.pools.Get(connID)
-	if err != nil {
-		e.emitError(queryID, err)
-		return
-	}
+	for idx, stmt := range statements {
+		if ctx.Err() != nil {
+			// The script was cancelled while an earlier statement was
+			// running — that statement already emitted its own "cancelled"
+			// event via emitTerminal. Remaining statements never started,
+			// so there's nothing further to emit or record for them.
+			break
+		}
 
-	if isSelectLike(sqlText) {
-		e.runQuery(ctx, pool, queryID, sqlText, start)
-		return
+		start := time.Now()
+
+		if stmt.Kind == KindPLSQLBlock && dbType == db.DBTypeOracle {
+			e.runPLSQLBlock(ctx, pool, connID, queryID, stmt.Text, idx, total, start)
+			continue
+		}
+
+		if isSelectLike(stmt.Text) {
+			e.runQuery(ctx, pool, connID, queryID, stmt.Text, idx, total, start)
+		} else {
+			e.runExec(ctx, pool, connID, queryID, stmt.Text, idx, total, start)
+		}
 	}
-	e.runExec(ctx, pool, queryID, sqlText, start)
 }
 
 func isSelectLike(sqlText string) bool {
@@ -103,20 +141,20 @@ func isSelectLike(sqlText string) bool {
 	return false
 }
 
-func (e *Executor) runQuery(ctx context.Context, pool *sql.DB, queryID, sqlText string, start time.Time) {
+func (e *Executor) runQuery(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time) {
 	rows, err := pool.QueryContext(ctx, sqlText)
 	if err != nil {
-		e.emitTerminal(ctx, queryID, err)
+		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		e.emitError(queryID, err)
+		e.emitError(connID, queryID, sqlText, err, idx, total)
 		return
 	}
-	e.emit(queryID, Event{Type: "columns", Columns: columns})
+	e.emit(queryID, Event{Type: "columns", StatementIndex: idx, TotalStatements: total, Columns: columns})
 
 	values := make([]interface{}, len(columns))
 	scanArgs := make([]interface{}, len(columns))
@@ -125,19 +163,19 @@ func (e *Executor) runQuery(ctx context.Context, pool *sql.DB, queryID, sqlText 
 	}
 
 	var batch [][]interface{}
-	var total int64
+	var rowCount int64
 
 	flush := func() {
 		if len(batch) == 0 {
 			return
 		}
-		e.emit(queryID, Event{Type: "rows", Rows: batch})
+		e.emit(queryID, Event{Type: "rows", StatementIndex: idx, TotalStatements: total, Rows: batch})
 		batch = nil
 	}
 
 	for rows.Next() {
 		if err := rows.Scan(scanArgs...); err != nil {
-			e.emitError(queryID, err)
+			e.emitError(connID, queryID, sqlText, err, idx, total)
 			return
 		}
 
@@ -146,7 +184,7 @@ func (e *Executor) runQuery(ctx context.Context, pool *sql.DB, queryID, sqlText 
 			row[i] = normalizeValue(v)
 		}
 		batch = append(batch, row)
-		total++
+		rowCount++
 
 		if len(batch) >= rowsPerChunk {
 			flush()
@@ -155,44 +193,65 @@ func (e *Executor) runQuery(ctx context.Context, pool *sql.DB, queryID, sqlText 
 	flush()
 
 	if err := rows.Err(); err != nil {
-		e.emitTerminal(ctx, queryID, err)
+		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
 	}
 
-	e.emit(queryID, Event{
-		Type:         "done",
-		RowsAffected: total,
-		DurationMs:   time.Since(start).Milliseconds(),
-	})
+	durationMs := time.Since(start).Milliseconds()
+	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: rowCount, DurationMs: durationMs})
+	e.recordHistory(connID, sqlText, "done", rowCount, durationMs, "")
 }
 
-func (e *Executor) runExec(ctx context.Context, pool *sql.DB, queryID, sqlText string, start time.Time) {
+func (e *Executor) runExec(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time) {
 	result, err := pool.ExecContext(ctx, sqlText)
 	if err != nil {
-		e.emitTerminal(ctx, queryID, err)
+		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
 	}
 
 	affected, _ := result.RowsAffected()
+	durationMs := time.Since(start).Milliseconds()
+	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: affected, DurationMs: durationMs})
+	e.recordHistory(connID, sqlText, "done", affected, durationMs, "")
+}
+
+func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time) {
+	result, dbmsOutput, err := runOraclePLSQLBlock(ctx, pool, sqlText)
+	if err != nil {
+		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
+		return
+	}
+
+	affected, _ := result.RowsAffected()
+	durationMs := time.Since(start).Milliseconds()
 	e.emit(queryID, Event{
-		Type:         "done",
-		RowsAffected: affected,
-		DurationMs:   time.Since(start).Milliseconds(),
+		Type: "done", StatementIndex: idx, TotalStatements: total,
+		RowsAffected: affected, DurationMs: durationMs, DBMSOutput: dbmsOutput,
 	})
+	e.recordHistory(connID, sqlText, "done", affected, durationMs, "")
 }
 
 // emitTerminal distinguishes a cancellation (ctx was cancelled) from a real
-// query error, so the frontend can render "cancelada" instead of an error.
-func (e *Executor) emitTerminal(ctx context.Context, queryID string, err error) {
+// error, so the frontend can render "cancelada" instead of an error.
+func (e *Executor) emitTerminal(ctx context.Context, connID, queryID, sqlText string, err error, idx, total int) {
 	if ctx.Err() != nil {
-		e.emit(queryID, Event{Type: "cancelled"})
+		e.emit(queryID, Event{Type: "cancelled", StatementIndex: idx, TotalStatements: total})
+		e.recordHistory(connID, sqlText, "cancelled", 0, 0, "")
 		return
 	}
-	e.emitError(queryID, err)
+	e.emitError(connID, queryID, sqlText, err, idx, total)
 }
 
-func (e *Executor) emitError(queryID string, err error) {
-	e.emit(queryID, Event{Type: "error", Error: err.Error()})
+func (e *Executor) emitError(connID, queryID, sqlText string, err error, idx, total int) {
+	e.emit(queryID, Event{Type: "error", StatementIndex: idx, TotalStatements: total, Error: err.Error()})
+	e.recordHistory(connID, sqlText, "error", 0, 0, err.Error())
+}
+
+func (e *Executor) recordHistory(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string) {
+	if e.history == nil {
+		return
+	}
+	e.history(connID, sqlText, status, rowsAffected, durationMs, errMsg)
 }
 
 func (e *Executor) registerCancel(queryID string, cancel context.CancelFunc) {

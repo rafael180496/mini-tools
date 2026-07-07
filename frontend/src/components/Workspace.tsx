@@ -2,17 +2,35 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
 import ConnectionDialog from './connections/ConnectionDialog'
 import ResultGrid from './results/ResultGrid'
+import ResultTabs from './results/ResultTabs'
 import {BackupVault, CancelQuery, ExecuteQuery} from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
 import {vault} from '../../wailsjs/go/models'
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'done' | 'cancelled' | 'error'
+    statementIndex: number
+    totalStatements: number
     columns?: string[]
     rows?: unknown[][]
     rowsAffected?: number
     durationMs?: number
     error?: string
+    dbmsOutput?: string[]
+}
+
+interface ResultSet {
+    columns: string[]
+    rows: unknown[][]
+    status: 'running' | 'done' | 'error' | 'cancelled'
+    rowsAffected: number
+    durationMs: number
+    error: string
+    dbmsOutput: string[]
+}
+
+function emptyResultSet(): ResultSet {
+    return {columns: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: []}
 }
 
 // queryID is generated client-side and subscribed to before ExecuteQuery is
@@ -29,10 +47,8 @@ export default function Workspace() {
 
     const [sqlText, setSqlText] = useState('SELECT 1')
     const [running, setRunning] = useState(false)
-    const [columns, setColumns] = useState<string[]>([])
-    const [rows, setRows] = useState<unknown[][]>([])
-    const [status, setStatus] = useState<{rowsAffected: number; durationMs: number} | null>(null)
-    const [error, setError] = useState('')
+    const [resultSets, setResultSets] = useState<ResultSet[]>([])
+    const [activeTab, setActiveTab] = useState(0)
     const [backupMessage, setBackupMessage] = useState('')
 
     const queryIdRef = useRef<string | null>(null)
@@ -53,39 +69,54 @@ export default function Workspace() {
         const queryId = newQueryId()
         queryIdRef.current = queryId
         setRunning(true)
-        setColumns([])
-        setRows([])
-        setStatus(null)
-        setError('')
+        setResultSets([])
+        setActiveTab(0)
 
         const unsubscribe = EventsOn(queryId, (event: QueryEvent) => {
-            switch (event.type) {
-                case 'columns':
-                    setColumns(event.columns ?? [])
-                    break
-                case 'rows':
-                    setRows((prev) => [...prev, ...(event.rows ?? [])])
-                    break
-                case 'done':
-                    setStatus({rowsAffected: event.rowsAffected ?? 0, durationMs: event.durationMs ?? 0})
-                    setRunning(false)
-                    unsubscribe()
-                    break
-                case 'cancelled':
-                    setError('Query cancelada')
-                    setRunning(false)
-                    unsubscribe()
-                    break
-                case 'error':
-                    setError(event.error ?? 'Error desconocido')
-                    setRunning(false)
-                    unsubscribe()
-                    break
+            setResultSets((prev) => {
+                const next = [...prev]
+                while (next.length <= event.statementIndex) {
+                    next.push(emptyResultSet())
+                }
+                const cur = {...next[event.statementIndex]}
+
+                switch (event.type) {
+                    case 'columns':
+                        cur.columns = event.columns ?? []
+                        break
+                    case 'rows':
+                        cur.rows = [...cur.rows, ...(event.rows ?? [])]
+                        break
+                    case 'done':
+                        cur.status = 'done'
+                        cur.rowsAffected = event.rowsAffected ?? 0
+                        cur.durationMs = event.durationMs ?? 0
+                        cur.dbmsOutput = event.dbmsOutput ?? []
+                        break
+                    case 'cancelled':
+                        cur.status = 'cancelled'
+                        break
+                    case 'error':
+                        cur.status = 'error'
+                        cur.error = event.error ?? 'Error desconocido'
+                        break
+                }
+
+                next[event.statementIndex] = cur
+                return next
+            })
+
+            // A cancellation stops the whole script immediately (no further
+            // statements run); otherwise the script is done once the last
+            // statement reaches a terminal state.
+            if (event.type === 'cancelled' || ((event.type === 'done' || event.type === 'error') && event.statementIndex === event.totalStatements - 1)) {
+                setRunning(false)
+                unsubscribe()
             }
         })
 
         ExecuteQuery(selected.id, queryId, sqlText).catch((err) => {
-            setError(String(err))
+            setResultSets([{...emptyResultSet(), status: 'error', error: String(err)}])
             setRunning(false)
             unsubscribe()
         })
@@ -107,6 +138,8 @@ export default function Workspace() {
         window.addEventListener('keydown', onKeyDown)
         return () => window.removeEventListener('keydown', onKeyDown)
     }, [runQuery])
+
+    const active = resultSets[activeTab]
 
     return (
         <div className="flex h-screen w-screen bg-neutral-950 text-neutral-100">
@@ -153,16 +186,30 @@ export default function Workspace() {
                     className="h-40 resize-none border-b border-neutral-800 bg-neutral-950 p-3 font-mono text-sm text-neutral-100 outline-none"
                 />
 
-                <ResultGrid columns={columns} rows={rows} />
+                <ResultTabs
+                    count={resultSets.length}
+                    active={activeTab}
+                    onSelect={setActiveTab}
+                    statuses={resultSets.map((r) => r.status)}
+                />
+
+                <ResultGrid columns={active?.columns ?? []} rows={active?.rows ?? []} />
+
+                {active && active.dbmsOutput.length > 0 && (
+                    <pre className="max-h-32 overflow-y-auto border-t border-neutral-800 bg-neutral-950 p-2 text-xs text-neutral-400">
+                        {active.dbmsOutput.join('\n')}
+                    </pre>
+                )}
 
                 <div className="flex items-center gap-4 border-t border-neutral-800 px-3 py-1 text-xs text-neutral-500">
                     {running && <span>Ejecutando…</span>}
-                    {status && (
+                    {active?.status === 'done' && (
                         <span>
-                            {status.rowsAffected} filas · {status.durationMs}ms
+                            {active.rowsAffected} filas · {active.durationMs}ms
                         </span>
                     )}
-                    {error && <span className="text-red-400">{error}</span>}
+                    {active?.status === 'cancelled' && <span className="text-amber-400">Cancelada</span>}
+                    {active?.status === 'error' && <span className="text-red-400">{active.error}</span>}
                 </div>
             </div>
 

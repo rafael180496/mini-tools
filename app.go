@@ -55,9 +55,17 @@ func (a *App) startup(ctx context.Context) {
 		panic(fmt.Errorf("app: opening vault: %w", err))
 	}
 	a.vault = store
-	a.executor = query.NewExecutor(ctx, a.pools, func(event string, data interface{}) {
-		runtime.EventsEmit(ctx, event, data)
-	})
+	a.executor = query.NewExecutor(
+		ctx, a.pools,
+		func(event string, data interface{}) {
+			runtime.EventsEmit(ctx, event, data)
+		},
+		func(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string) {
+			// Best-effort: a failure to persist history shouldn't affect the
+			// query result the user already saw.
+			_ = a.vault.RecordQueryHistory(connID, sqlText, status, rowsAffected, durationMs, errMsg)
+		},
+	)
 }
 
 // shutdown closes every open connection pool cleanly.
@@ -195,6 +203,15 @@ func (a *App) CancelQuery(queryID string) error {
 	}
 	a.executor.Cancel(queryID)
 	return nil
+}
+
+// ListQueryHistory returns the most recent statements run against connID,
+// newest first.
+func (a *App) ListQueryHistory(connID string, limit int) ([]vault.HistoryEntry, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListQueryHistory(connID, limit)
 }
 
 // BackupVault prompts for a destination and writes a full vault backup

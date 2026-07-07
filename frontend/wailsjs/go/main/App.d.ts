@@ -17,6 +17,8 @@ export function IsVaultInitialized():Promise<boolean>;
 
 export function ListConnections():Promise<Array<vault.ConnectionSummary>>;
 
+export function ListQueryHistory(arg1:string,arg2:number):Promise<Array<vault.HistoryEntry>>;
+
 export function RestoreVaultBackup():Promise<void>;
 
 export function SaveConnection(arg1:main.ConnectionInput,arg2:boolean):Promise<vault.ConnectionSummary>;

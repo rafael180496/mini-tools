@@ -15,17 +15,22 @@ const (
 	defaultPingTimeout     = 5 * time.Second
 )
 
-// PoolManager holds one *sql.DB per active connection ID. A pool is opened
-// once and reused for every query against that connection — never reopened
-// per query — and closed explicitly via Close when the connection changes
-// or is deleted.
+type pooledConn struct {
+	db     *sql.DB
+	dbType DBType
+}
+
+// PoolManager holds one *sql.DB (plus its engine type) per active
+// connection ID. A pool is opened once and reused for every query against
+// that connection — never reopened per query — and closed explicitly via
+// Close when the connection changes or is deleted.
 type PoolManager struct {
 	mu    sync.Mutex
-	pools map[string]*sql.DB
+	pools map[string]pooledConn
 }
 
 func NewPoolManager() *PoolManager {
-	return &PoolManager{pools: make(map[string]*sql.DB)}
+	return &PoolManager{pools: make(map[string]pooledConn)}
 }
 
 // Get returns the already-open pool for connID, or an error if Open hasn't
@@ -34,11 +39,23 @@ func (m *PoolManager) Get(connID string) (*sql.DB, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	pool, ok := m.pools[connID]
+	pc, ok := m.pools[connID]
 	if !ok {
 		return nil, fmt.Errorf("db: no hay un pool abierto para la conexión %q", connID)
 	}
-	return pool, nil
+	return pc.db, nil
+}
+
+// Type returns the engine type for connID's open pool, if any.
+func (m *PoolManager) Type(connID string) (DBType, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	pc, ok := m.pools[connID]
+	if !ok {
+		return "", false
+	}
+	return pc.dbType, true
 }
 
 // Open opens (or returns the already-open) pool for connID against the
@@ -47,8 +64,8 @@ func (m *PoolManager) Open(connID string, dbType DBType, dsn string) (*sql.DB, e
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if pool, ok := m.pools[connID]; ok {
-		return pool, nil
+	if pc, ok := m.pools[connID]; ok {
+		return pc.db, nil
 	}
 
 	pool, err := sql.Open(dbType.DriverName(), dsn)
@@ -68,7 +85,7 @@ func (m *PoolManager) Open(connID string, dbType DBType, dsn string) (*sql.DB, e
 		return nil, fmt.Errorf("db: haciendo ping al pool %s: %w", dbType, err)
 	}
 
-	m.pools[connID] = pool
+	m.pools[connID] = pooledConn{db: pool, dbType: dbType}
 	return pool, nil
 }
 
@@ -78,12 +95,12 @@ func (m *PoolManager) Close(connID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	pool, ok := m.pools[connID]
+	pc, ok := m.pools[connID]
 	if !ok {
 		return nil
 	}
 	delete(m.pools, connID)
-	return pool.Close()
+	return pc.db.Close()
 }
 
 // CloseAll closes every open pool — used on app shutdown.
@@ -91,8 +108,8 @@ func (m *PoolManager) CloseAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for id, pool := range m.pools {
-		pool.Close()
+	for id, pc := range m.pools {
+		pc.db.Close()
 		delete(m.pools, id)
 	}
 }
