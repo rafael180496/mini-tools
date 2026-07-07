@@ -73,9 +73,10 @@ Ver el plan completo de fases en `.claude/specs/` y en el historial de planning 
 - **`database/sql` como única capa de acceso a datos.** Nunca `sqlx` ni acceso directo por paquete de driver — los tres motores se registran como drivers `database/sql` para compartir una sola interfaz `Connector`, un solo pool manager y un solo executor.
 - **El frontend nunca ve un DSN ni un password**, solo IDs de conexión opacos. Ningún método bindeado en `App` debe aceptar ni devolver un DSN crudo.
 - **Nunca loguear un DSN ni resultados de queries**, ni siquiera en modo debug.
-- **Binario de producción objetivo <20MB.** Verificar con `wails build` + `ls -lh build/bin/*` antes de dar por cerrada una fase que añade dependencias grandes (Monaco, XLSX, etc.).
+- **Binario de producción objetivo <35MB** (revisado en Fase 4: <20MB no es alcanzable con Oracle+Postgres+SQLite nativos en un solo binario — ver detalle en [.claude/rules/technical.md](.claude/rules/technical.md) punto 8). Verificar con `wails build` + `ls -lh build/bin/*` antes de dar por cerrada una fase que añade dependencias grandes (Monaco, XLSX, etc.).
 - **El gate del vault se aplica en Go, server-side** (cada método bindeado revisa un flag `unlocked`), nunca solo en la UI.
 - **CodeGraph.** Este repo tiene `.codegraph/` (índice de símbolos/edges). Cada vez que se agregue o elimine un archivo de código, correr `codegraph sync` para mantener el índice al día antes de seguir trabajando.
+- **No escribir tests nuevos** (ni backend `_test.go` ni frontend), para ahorrar tokens — verificar cada fase manualmente (build + `wails build` + correr la app). Los tests de Fases 1-3 ya existentes se dejan como están.
 - Ver reglas técnicas detalladas y no negociables en [.claude/rules/technical.md](.claude/rules/technical.md), y convenciones generales en [.claude/rules/conventions.md](.claude/rules/conventions.md).
 
 ## Skill del proyecto

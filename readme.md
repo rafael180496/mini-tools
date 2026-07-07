@@ -20,7 +20,7 @@ Filosofía: simple, minimalista, fácil uso, rápido. No feature bloat.
 
 ## Performance / Peso
 
-- Binario final target <20MB
+- Binario final target <35MB (revisado en Fase 4: el conector Oracle vía `go-ora` obliga a `crypto/tls`, que desde Go 1.24 arrastra el módulo FIPS 140-3 completo — ~15MB extra inevitables sin renunciar a soporte Oracle nativo. <20MB no es alcanzable con los 3 motores nativos linkeados en un solo binario)
 - Sin librerías pesadas (no ag-grid enterprise, no lodash completo, tree-shake todo)
 - Monaco: cargar solo lenguaje SQL, no bundle completo
 - Lazy load componentes no críticos (settings, export dialogs)

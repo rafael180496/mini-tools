@@ -17,6 +17,11 @@
 - El cliente de Wails se envuelve en `src/lib/wailsClient.ts`; los componentes no importan `../wailsjs/go/main/App` directamente salvo casos triviales de scaffold/smoke-test.
 - Tailwind: usar la clase `dark` en `<html>` como fuente de verdad del tema (ver `@custom-variant dark` en `globals.css`), nunca depender de `prefers-color-scheme` como estado real de la app.
 
+## Testing
+
+- **No escribir tests, ni en backend (`_test.go`) ni en frontend**, para ahorrar tokens. Verificar cada fase manualmente: `go build ./...`, `go vet ./...`, `wails build`, y correr la app (`scripts/start.sh` o `wails dev`) para probar el flujo real.
+- Los tests de las Fases 1-3 (`backend/**/*_test.go`) ya existen y se dejan como están — no se borran retroactivamente — pero no se agregan tests nuevos a partir de esta regla en adelante.
+
 ## Commits / PRs
 
 - Cada fase del plan (`.claude/specs/`, ver historial de planning) es idealmente un commit o PR separado, con su propio criterio de "listo" verificado antes de pasar a la siguiente.

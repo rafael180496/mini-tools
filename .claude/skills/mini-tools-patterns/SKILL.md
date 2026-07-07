@@ -13,14 +13,16 @@ Los 3 motores (Oracle, PostgreSQL, SQLite) se registran como drivers de `databas
 | PostgreSQL | `github.com/jackc/pgx/v5/stdlib` | `"pgx"` |
 | SQLite | `modernc.org/sqlite` | `"sqlite"` |
 
-Esto permite que `backend/db/connector.go` defina una única interfaz `Connector` y que `pool_manager.go` (`PoolManager`) mantenga un solo `map[connID]*sql.DB` sin importar el motor. Solo SQLite está implementado hoy (`backend/db/sqlite.go`); `ConnectorFor` devuelve error explícito para Postgres/Oracle hasta Fase 4. Cada archivo de conector debe blank-importar su propio driver (`_ "modernc.org/sqlite"`, etc.) — no asumir que otro paquete ya lo registró, o los tests de ese paquete en aislamiento fallan con "unknown driver". Al añadir un motor nuevo:
+Esto permite que `backend/db/connector.go` defina una única interfaz `Connector` y que `pool_manager.go` (`PoolManager`) mantenga un solo `map[connID]*sql.DB` sin importar el motor. Los 3 conectores están implementados (`sqlite.go`, `postgres.go`, `oracle.go`) — `ConnectorFor` ya no devuelve error para ningún `db_type` válido. Cada archivo de conector blank-importa su propio driver (`_ "modernc.org/sqlite"`, `_ "github.com/jackc/pgx/v5/stdlib"`) — Oracle es la excepción porque `go_ora.BuildUrl` (no un blank import) es lo que se usa para construir el DSN, pero el driver igual se registra al importar el paquete. No asumir que otro paquete ya registró un driver — cada uno se registra a sí mismo, o los tests de ese paquete en aislamiento fallan con "unknown driver". Al añadir un motor nuevo:
 
 1. Implementar `Connector` en `backend/db/<motor>.go` (builder de DSN a partir de la config de conexión, nunca aceptando un DSN crudo desde el frontend).
 2. Registrar el pool en `pool_manager.go` — un pool por conexión activa, nunca reabrir por query.
 3. Añadir las queries de metadata (`backend/db/metadata.go`) para poblar el árbol del sidebar y el autocomplete de Monaco.
 4. Cerrar el pool explícitamente al eliminar o cambiar la conexión.
 
-SQLite siempre en modo WAL al abrir (`PRAGMA journal_mode=WAL`). Postgres soporta el set completo de `sslmode` vía `pgx.ParseConfig`. Oracle soporta TNS, Easy Connect, SID y Service Name en el DSN builder.
+SQLite siempre en modo WAL al abrir (`PRAGMA journal_mode=WAL`). Postgres soporta el set completo de `sslmode` (disable/allow/prefer/require/verify-ca/verify-full) armando una URL `postgres://user:pass@host:port/db?sslmode=X` que pgx parsea. Oracle soporta los 4 modos de conexión del spec vía `params["mode"]`: `service_name`/`easy_connect` (misma forma DSN — Easy Connect ES literalmente `host:port/service`), `sid` (`go_ora.BuildUrl` con `service=""` + opción `SID=`), y `tns` (descriptor completo pegado de tnsnames.ora, pasado como opción `connStr=` — go-ora lo parsea y sus valores de host/protocolo/servicio pisan a los del DSN base). Ver `backend/db/oracle.go` para el detalle de cada modo.
+
+**Costo de tamaño de binario de Oracle:** `go-ora` usa `crypto/tls` en su código core (soporte TCPS, no opcional, no excluible con build tags), y desde Go 1.24 eso arrastra el módulo FIPS 140-3 completo — agrega ~15MB al binario final. Esto ya forzó revisar el target de tamaño de <20MB a <35MB (ver [.claude/rules/technical.md](../../rules/technical.md) punto 8) — tenerlo en cuenta antes de añadir otra dependencia grande.
 
 # Patrones de ejecución de queries
 

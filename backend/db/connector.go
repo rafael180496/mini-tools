@@ -42,9 +42,9 @@ func ConnectorFor(t DBType) (Connector, error) {
 	case DBTypeSQLite:
 		return sqliteConnector{}, nil
 	case DBTypePostgres:
-		return nil, fmt.Errorf("db: conector postgres aún no implementado (Fase 4)")
+		return postgresConnector{}, nil
 	case DBTypeOracle:
-		return nil, fmt.Errorf("db: conector oracle aún no implementado (Fase 4)")
+		return oracleConnector{}, nil
 	default:
 		return nil, fmt.Errorf("db: db_type desconocido %q", t)
 	}

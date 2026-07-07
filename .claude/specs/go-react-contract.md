@@ -16,7 +16,9 @@ Superficie de binding del struct `App` (`app.go`). Regla general: el frontend nu
 | Settings | `GetSettings()`, `SetTheme(themeName)` | Fase 10 |
 | CLAUDE.md | `GenerateProjectDocs(projectRootPath)`, `RegenerateProjectDocs(projectRootPath)` | Fase 9 |
 
-Estado actual (Fase 3 — completa): además del ciclo de vida del vault, `app.go` implementa `TestConnection`, `SaveConnection`, `ListConnections`, `DeleteConnection`, `ExecuteQuery` y `CancelQuery`, todos detrás de `requireUnlocked()` (falla con `vaultgate.ErrLocked` si el vault está bloqueado — el "no bypass" del gate ya se ejerce de verdad, no solo con los métodos de ciclo de vida). Solo el conector SQLite existe (`backend/db/sqlite.go`); Postgres/Oracle devuelven error explícito "aún no implementado" desde `db.ConnectorFor` hasta Fase 4. El executor (`backend/query/executor.go`) es mínimo: clasifica SELECT-like vs todo lo demás con un heurístico simple (sin detectar bloques PL/SQL ni dividir multi-statement todavía — eso es Fase 5).
+Estado actual (Fase 4 — completa): además del ciclo de vida del vault, `app.go` implementa `TestConnection`, `SaveConnection`, `ListConnections`, `DeleteConnection`, `ExecuteQuery` y `CancelQuery`, todos detrás de `requireUnlocked()` (falla con `vaultgate.ErrLocked` si el vault está bloqueado — el "no bypass" del gate ya se ejerce de verdad, no solo con los métodos de ciclo de vida). Los 3 conectores están implementados (`backend/db/{sqlite,postgres,oracle}.go`) — `db.ConnectorFor` ya no devuelve error para ningún `db_type` válido. El executor (`backend/query/executor.go`) sigue siendo mínimo: clasifica SELECT-like vs todo lo demás con un heurístico simple (sin detectar bloques PL/SQL ni dividir multi-statement todavía — eso es Fase 5).
+
+**Nota de tamaño de binario:** añadir Postgres+Oracle llevó el binario de ~12MB a ~31MB (Oracle solo agrega ~15MB por `crypto/tls`/FIPS 140-3, no opcional en `go-ora`). El target de <20MB del spec original se revisó a <35MB — ver [.claude/rules/technical.md](../rules/technical.md) punto 8.
 
 ## Eventos (streaming)
 

@@ -634,3 +634,11 @@ pip-selfcheck.json
 /mini-tools
 frontend/dist/
 
+# mini-tools: config local de Claude Code / MCP que pueda traer permisos o tokens propios de la máquina
+.claude/settings.local.json
+.mcp.json
+
+# mini-tools: por si algún día el vault termina apuntando a una ruta dentro del repo por error
+vault.db
+salt.bin
+
