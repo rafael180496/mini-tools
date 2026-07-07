@@ -14,6 +14,10 @@ func renderClaudeMD(info ProjectInfo) string {
 	b.WriteString("> Generado automáticamente por [mini-tools](https://github.com/rafael180496/mini-tools) — no editar a mano, se puede regenerar desde la app sin perder cambios manuales porque no los tiene.\n\n")
 	fmt.Fprintf(&b, "Este proyecto trabaja contra la conexión **%s** (%s). El detalle completo del schema está en [.claude/specs/database-schema.md](.claude/specs/database-schema.md).\n\n", info.ConnectionName, info.DBType)
 
+	if info.Schema != "" {
+		fmt.Fprintf(&b, "> **Alcance:** este documento solo cubre el esquema `%s` — el que estaba seleccionado en la app al generarlo. Otros esquemas de la misma conexión no están documentados acá; para incluirlos, seleccioná \"todos\" y regenerá.\n\n", info.Schema)
+	}
+
 	if info.Metadata != nil && len(info.Metadata.Tables) > 0 {
 		b.WriteString("## Tablas\n\n")
 		for _, t := range info.Metadata.Tables {
@@ -33,6 +37,10 @@ func renderSchemaSpec(info ProjectInfo) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Schema de %s (%s)\n\n", info.ConnectionName, info.DBType)
 	b.WriteString("> Generado automáticamente por mini-tools desde la metadata de la conexión (tablas, columnas, nullable, primary keys, foreign keys).\n\n")
+
+	if info.Schema != "" {
+		fmt.Fprintf(&b, "**Esquema:** `%s` (solo estas tablas — ver nota de alcance en CLAUDE.md).\n\n", info.Schema)
+	}
 
 	if info.Metadata == nil || len(info.Metadata.Tables) == 0 {
 		b.WriteString("Sin tablas detectadas.\n")
@@ -95,6 +103,9 @@ func renderSkill(info ProjectInfo) string {
 	fmt.Fprintf(&b, "name: mini-tools-database\ndescription: Contexto de la base de datos conectada (%s, motor %s), generado por mini-tools. Consultar antes de escribir queries contra este proyecto.\n", info.ConnectionName, info.DBType)
 	b.WriteString("---\n\n")
 	fmt.Fprintf(&b, "Este proyecto trabaja contra la conexión **%s** (%s).\n\n", info.ConnectionName, info.DBType)
+	if info.Schema != "" {
+		fmt.Fprintf(&b, "Documentación limitada al esquema `%s`.\n\n", info.Schema)
+	}
 	b.WriteString("- Schema completo: [.claude/specs/database-schema.md](../../specs/database-schema.md)\n")
 	b.WriteString("- Convenciones de SQL del motor: [.claude/rules/sql-conventions.md](../../rules/sql-conventions.md)\n\n")
 	b.WriteString("Antes de escribir una query nueva, revisar las foreign keys documentadas en el schema para armar los JOINs correctos.\n")

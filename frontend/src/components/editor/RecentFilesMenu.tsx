@@ -22,6 +22,7 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
         <div className="relative">
             <button
                 onClick={() => setOpen((v) => !v)}
+                title="Muestra los últimos archivos .sql que abriste, para reabrirlos rápido"
                 className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
             >
                 Recientes
@@ -47,6 +48,7 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
                             onClick={() => {
                                 void ClearRecentFiles().then(() => setFiles([]))
                             }}
+                            title="Borra la lista de archivos recientes (no borra los archivos, solo el historial)"
                             className="mt-1 block w-full rounded px-2 py-1 text-left text-xs text-neutral-400 dark:text-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-neutral-600 dark:hover:text-neutral-400"
                         >
                             Limpiar historial

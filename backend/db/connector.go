@@ -33,6 +33,13 @@ func (t DBType) DriverName() string {
 type Connector interface {
 	Type() DBType
 	BuildDSN(params map[string]string) (string, error)
+	// ParseDSN reverses BuildDSN, for pre-filling an "edit connection" form
+	// from an already-saved (decrypted) DSN. Returns every param BuildDSN
+	// would need, INCLUDING password — callers at the App/binding boundary
+	// are responsible for stripping it before anything reaches the
+	// frontend (see app.go's GetConnectionForEdit); this function itself
+	// has no way to know which caller needs which, so it stays complete.
+	ParseDSN(dsn string) (map[string]string, error)
 }
 
 // ConnectorFor returns the Connector implementation for t. See

@@ -138,6 +138,17 @@ func (a *App) SetTheme(theme string) error {
 	return a.vault.SetTheme(theme)
 }
 
+// SetOpenTabs persists which editor tabs (by file path) are currently open,
+// so Workspace.tsx can restore them on the next launch. Gated behind
+// requireUnlocked — unlike GetSettings/SetTheme, this is only ever called
+// during active use (after unlock), never from the lock screen.
+func (a *App) SetOpenTabs(paths []string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetOpenTabs(paths)
+}
+
 // TestConnection builds a DSN from cfg and pings it, without saving
 // anything. Used by the "Test Connection" button before a connection is
 // persisted.
@@ -187,6 +198,119 @@ func (a *App) SaveConnection(cfg ConnectionInput, force bool) (*vault.Connection
 	}
 
 	return a.vault.SaveConnection(cfg.Name, dbType, dsn)
+}
+
+// ConnectionEditInfo pre-fills the "editar conexión" form. Params never
+// includes "password" — see .claude/rules/technical.md point 9 — so the
+// dialog shows it blank; leaving it blank on save means "keep the existing
+// password" (see UpdateConnection), not "set an empty password".
+type ConnectionEditInfo struct {
+	Name   string            `json:"name"`
+	DBType string            `json:"dbType"`
+	Params map[string]string `json:"params"`
+}
+
+// GetConnectionForEdit decrypts id's saved DSN and parses it back into the
+// same params shape ConnectionDialog.tsx already builds for
+// TestConnection/SaveConnection, minus the password.
+func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+
+	conns, err := a.vault.ListConnections()
+	if err != nil {
+		return nil, err
+	}
+	var name string
+	found := false
+	for _, c := range conns {
+		if c.ID == id {
+			name = c.Name
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("app: conexión %q no encontrada", id)
+	}
+
+	dbType, dsn, err := a.vault.ConnectionDSN(id)
+	if err != nil {
+		return nil, err
+	}
+	connector, err := db.ConnectorFor(dbType)
+	if err != nil {
+		return nil, err
+	}
+	params, err := connector.ParseDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	delete(params, "password")
+
+	return &ConnectionEditInfo{Name: name, DBType: string(dbType), Params: params}, nil
+}
+
+// UpdateConnection rebuilds id's DSN from cfg and overwrites the saved
+// connection in place. A blank cfg.Params["password"] means "keep the
+// existing password" — the frontend never had the real one to resubmit in
+// the first place (see GetConnectionForEdit) — so it's filled in here from
+// the connection's current DSN before rebuilding. Closes any open pool and
+// drops cached metadata for id afterward, since the target this connID
+// points at may have changed.
+func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vault.ConnectionSummary, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+
+	dbType := db.DBType(cfg.DBType)
+	connector, err := db.ConnectorFor(dbType)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.Params["password"] == "" {
+		if _, existingDSN, err := a.vault.ConnectionDSN(id); err == nil {
+			if existingParams, err := connector.ParseDSN(existingDSN); err == nil {
+				cfg.Params["password"] = existingParams["password"]
+			}
+		}
+	}
+
+	dsn, err := connector.BuildDSN(cfg.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	if !force {
+		if err := db.Ping(dbType, dsn); err != nil {
+			return nil, fmt.Errorf("ping falló (guarda con force=true para omitir): %w", err)
+		}
+	}
+
+	if err := a.vault.UpdateConnection(id, cfg.Name, dbType, dsn); err != nil {
+		return nil, err
+	}
+
+	a.rollbackIfOpen(id)
+	if err := a.pools.Close(id); err != nil {
+		return nil, err
+	}
+	a.metadataMu.Lock()
+	delete(a.metadataCache, id)
+	a.metadataMu.Unlock()
+
+	conns, err := a.vault.ListConnections()
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range conns {
+		if c.ID == id {
+			return &c, nil
+		}
+	}
+	return nil, fmt.Errorf("app: conexión %q no encontrada después de actualizar", id)
 }
 
 // ListConnections returns every saved connection, without DSNs, for the
@@ -840,11 +964,16 @@ func (a *App) ListExplainHistory(connID string, limit int) ([]vault.ExplainHisto
 // (GenerateProjectDocs(projectRootPath)): App has no server-side notion of
 // "the current connection" — that is frontend-only state in Workspace.tsx —
 // so the frontend must pass connID explicitly.
-func (a *App) GenerateProjectDocs(projectRootPath, connID string) (bool, error) {
+// GenerateProjectDocs writes CLAUDE.md + .claude/{specs,rules,skills} into
+// projectRootPath unless one already exists there. schema optionally scopes
+// the documented tables to just that schema (matches whatever's selected in
+// the toolbar's schema dropdown) — empty string means "use the connection's
+// full configured metadata", same as before this param existed.
+func (a *App) GenerateProjectDocs(projectRootPath, connID, schema string) (bool, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return false, err
 	}
-	info, err := a.buildClaudeMDInfo(connID)
+	info, err := a.buildClaudeMDInfo(connID, schema)
 	if err != nil {
 		return false, err
 	}
@@ -853,12 +982,12 @@ func (a *App) GenerateProjectDocs(projectRootPath, connID string) (bool, error) 
 
 // RegenerateProjectDocs always overwrites CLAUDE.md + .claude/{specs,rules,
 // skills} in projectRootPath with connID's current schema — the explicit
-// "Regenerar" action.
-func (a *App) RegenerateProjectDocs(projectRootPath, connID string) error {
+// "Regenerar" action. See GenerateProjectDocs for what schema does.
+func (a *App) RegenerateProjectDocs(projectRootPath, connID, schema string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	info, err := a.buildClaudeMDInfo(connID)
+	info, err := a.buildClaudeMDInfo(connID, schema)
 	if err != nil {
 		return err
 	}
@@ -866,8 +995,11 @@ func (a *App) RegenerateProjectDocs(projectRootPath, connID string) error {
 }
 
 // buildClaudeMDInfo looks up connID's display name and current schema
-// metadata for the claudemd templates. Never touches the DSN.
-func (a *App) buildClaudeMDInfo(connID string) (claudemd.ProjectInfo, error) {
+// metadata for the claudemd templates. Never touches the DSN. When schema
+// is non-empty, only that schema's tables are included — the generated
+// docs end up describing exactly what the user was looking at, not every
+// schema the connection happens to have access to.
+func (a *App) buildClaudeMDInfo(connID, schema string) (claudemd.ProjectInfo, error) {
 	conns, err := a.vault.ListConnections()
 	if err != nil {
 		return claudemd.ProjectInfo{}, err
@@ -892,9 +1024,20 @@ func (a *App) buildClaudeMDInfo(connID string) (claudemd.ProjectInfo, error) {
 		return claudemd.ProjectInfo{}, err
 	}
 
+	if schema != "" && meta != nil {
+		filtered := make([]db.Table, 0, len(meta.Tables))
+		for _, t := range meta.Tables {
+			if t.Schema == schema {
+				filtered = append(filtered, t)
+			}
+		}
+		meta = &db.SchemaMetadata{Tables: filtered}
+	}
+
 	return claudemd.ProjectInfo{
 		ConnectionName: name,
 		DBType:         dbType,
+		Schema:         schema,
 		Metadata:       meta,
 	}, nil
 }

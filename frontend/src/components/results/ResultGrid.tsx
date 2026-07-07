@@ -71,6 +71,7 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                                 >
                                     <button
                                         onClick={() => onSort?.(header.column.id)}
+                                        title="Ordenar por esta columna — click de nuevo para invertir el orden"
                                         className="flex w-full items-center gap-1 truncate text-left hover:text-neutral-800 dark:hover:text-neutral-200"
                                     >
                                         <span className="truncate">{flexRender(header.column.columnDef.header, header.getContext())}</span>

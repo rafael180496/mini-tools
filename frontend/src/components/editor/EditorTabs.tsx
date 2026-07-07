@@ -37,13 +37,18 @@ export default function EditorTabs({tabs, activeId, onSelect, onClose, onNew}: E
                             e.stopPropagation()
                             onClose(t.id)
                         }}
+                        title={t.dirty ? 'Cerrar pestaña (hay cambios sin guardar)' : 'Cerrar pestaña'}
                         className="text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300"
                     >
                         ×
                     </button>
                 </div>
             ))}
-            <button onClick={onNew} className="px-2 py-1 text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">
+            <button
+                onClick={onNew}
+                title="Abre una pestaña nueva en blanco para escribir un query sin guardarlo todavía"
+                className="px-2 py-1 text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+            >
                 + Nueva
             </button>
         </div>

@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -49,4 +50,30 @@ func (postgresConnector) BuildDSN(params map[string]string) (string, error) {
 	u.RawQuery = q.Encode()
 
 	return u.String(), nil
+}
+
+// ParseDSN reverses BuildDSN. Includes password — see the Connector
+// interface doc comment for why that's the caller's responsibility to
+// strip, not this function's.
+func (postgresConnector) ParseDSN(dsn string) (map[string]string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: parseando DSN: %w", err)
+	}
+
+	params := map[string]string{
+		"host":   u.Hostname(),
+		"port":   u.Port(),
+		"dbname": strings.TrimPrefix(u.Path, "/"),
+	}
+	if u.User != nil {
+		params["user"] = u.User.Username()
+		if pw, ok := u.User.Password(); ok {
+			params["password"] = pw
+		}
+	}
+	if sslmode := u.Query().Get("sslmode"); sslmode != "" {
+		params["sslmode"] = sslmode
+	}
+	return params, nil
 }

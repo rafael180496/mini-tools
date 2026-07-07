@@ -1,9 +1,11 @@
-import {FormEvent, useState} from 'react'
-import {SaveConnection, TestConnection} from '../../../wailsjs/go/main/App'
+import {FormEvent, useEffect, useState} from 'react'
+import {GetConnectionForEdit, SaveConnection, TestConnection, UpdateConnection} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
 import {parseConnectionString} from '../../lib/connStringParser'
 
 interface ConnectionDialogProps {
+    // null = creating a new connection; a connection id = editing that one.
+    editingId: string | null
     onClose: () => void
     onSaved: () => void
 }
@@ -31,7 +33,7 @@ function requiredFields(dbType: DBType, oracleMode: OracleMode): string[] {
     }
 }
 
-export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogProps) {
+export default function ConnectionDialog({editingId, onClose, onSaved}: ConnectionDialogProps) {
     const [name, setName] = useState('')
     const [dbType, setDbType] = useState<DBType>('sqlite')
     const [oracleMode, setOracleMode] = useState<OracleMode>('service_name')
@@ -39,9 +41,29 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
     const [pingStatus, setPingStatus] = useState<'idle' | 'testing' | 'ok' | 'failed'>('idle')
     const [error, setError] = useState('')
     const [busy, setBusy] = useState(false)
+    const [loadingEdit, setLoadingEdit] = useState(!!editingId)
 
     const [pasteInput, setPasteInput] = useState('')
     const [pasteHint, setPasteHint] = useState('')
+
+    // Pre-fill from the saved connection when editing. Password never comes
+    // back from GetConnectionForEdit (see its doc comment) — the field
+    // stays blank, meaning "keep the existing one" on save, not "clear it".
+    useEffect(() => {
+        if (!editingId) return
+        setLoadingEdit(true)
+        GetConnectionForEdit(editingId)
+            .then((info) => {
+                setName(info.name)
+                setDbType(info.dbType as DBType)
+                const {mode, ...rest} = info.params
+                if (mode) setOracleMode(mode as OracleMode)
+                setParams(rest)
+            })
+            .catch((err) => setError(String(err)))
+            .finally(() => setLoadingEdit(false))
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editingId])
 
     function setParam(key: string, value: string) {
         setParams((prev) => ({...prev, [key]: value}))
@@ -82,7 +104,13 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
     }
 
     const missing = requiredFields(dbType, oracleMode).filter((f) => !(params[f] ?? '').trim())
-    const canSubmit = name.trim() !== '' && missing.length === 0 && !busy
+    const canSubmit = name.trim() !== '' && missing.length === 0 && !busy && !loadingEdit
+    // Editing with a blank password means "keep the existing one" on save
+    // (UpdateConnection merges it server-side) — but Test Connection has no
+    // such merge, so it would falsely fail against an empty password.
+    // Simplest fix: just don't offer it in that state, push toward Guardar
+    // instead (which pings for real, with the real password, before it commits).
+    const passwordUnknownWhileEditing = !!editingId && dbType !== 'sqlite' && !(params.password ?? '').trim()
 
     async function testConnection() {
         setPingStatus('testing')
@@ -100,7 +128,11 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
         setBusy(true)
         setError('')
         try {
-            await SaveConnection(cfg(), force)
+            if (editingId) {
+                await UpdateConnection(editingId, cfg(), force)
+            } else {
+                await SaveConnection(cfg(), force)
+            }
             onSaved()
         } catch (err) {
             setError(String(err))
@@ -124,7 +156,8 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                 onSubmit={handleSubmit}
                 className="flex max-h-[90vh] w-104 flex-col gap-3 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-6 text-neutral-900 dark:text-neutral-100"
             >
-                <h2 className="text-lg font-semibold">Nueva conexión</h2>
+                <h2 className="text-lg font-semibold">{editingId ? 'Editar conexión' : 'Nueva conexión'}</h2>
+                {loadingEdit && <p className="text-xs text-neutral-500">Cargando conexión…</p>}
 
                 <label className={labelClass}>
                     Nombre
@@ -153,7 +186,9 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                     <select
                         value={dbType}
                         onChange={(e) => changeDbType(e.target.value as DBType)}
-                        className={inputClass}
+                        disabled={!!editingId}
+                        title={editingId ? 'No se puede cambiar el motor de una conexión existente — creá una nueva' : undefined}
+                        className={`${inputClass} disabled:opacity-50`}
                     >
                         <option value="sqlite">SQLite</option>
                         <option value="postgres">PostgreSQL</option>
@@ -209,6 +244,7 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                                 type="password"
                                 value={params.password ?? ''}
                                 onChange={(e) => setParam('password', e.target.value)}
+                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
                                 className={inputClass}
                             />
                         </label>
@@ -273,6 +309,7 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                                 type="password"
                                 value={params.password ?? ''}
                                 onChange={(e) => setParam('password', e.target.value)}
+                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
                                 className={inputClass}
                             />
                         </label>
@@ -331,13 +368,21 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                     <button
                         type="button"
                         onClick={testConnection}
-                        disabled={missing.length > 0 || pingStatus === 'testing'}
+                        disabled={missing.length > 0 || pingStatus === 'testing' || passwordUnknownWhileEditing}
+                        title={
+                            passwordUnknownWhileEditing
+                                ? 'Ingresá el password para probar, o guardá directo (se prueba con el password actual antes de guardar)'
+                                : 'Intenta conectar con estos datos ahora mismo, sin guardar la conexión — para confirmar que host/usuario/password son correctos'
+                        }
                         className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
                         Test Connection
                     </button>
                     {pingStatus === 'ok' && <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ conexión ok</span>}
                     {pingStatus === 'failed' && <span className="text-xs text-red-600 dark:text-red-400">✗ falló</span>}
+                    {passwordUnknownWhileEditing && pingStatus === 'idle' && (
+                        <span className="text-xs text-neutral-500">Password sin cambios — se prueba al guardar</span>
+                    )}
                 </div>
 
                 {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
@@ -346,6 +391,7 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                     <button
                         type="button"
                         onClick={onClose}
+                        title="Cierra este formulario sin guardar cambios"
                         className="rounded px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
                     >
                         Cancelar
@@ -355,6 +401,7 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                             type="button"
                             disabled={!canSubmit}
                             onClick={() => void doSave(true)}
+                            title="Guarda la conexión aunque la prueba haya fallado — útil si el servidor está apagado ahora pero vas a usarlo más tarde"
                             className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-neutral-50 dark:text-neutral-950 disabled:opacity-50"
                         >
                             Guardar de todos modos
@@ -363,9 +410,10 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                     <button
                         type="submit"
                         disabled={!canSubmit}
+                        title={editingId ? 'Guarda los cambios de esta conexión' : 'Guarda esta conexión nueva en el vault cifrado'}
                         className="rounded bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-100 dark:text-neutral-900 disabled:opacity-50"
                     >
-                        Guardar
+                        {editingId ? 'Guardar cambios' : 'Guardar'}
                     </button>
                 </div>
             </form>

@@ -54,8 +54,12 @@ export function ExportTableDDL(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportTableDDL'](arg1, arg2, arg3);
 }
 
-export function GenerateProjectDocs(arg1, arg2) {
-  return window['go']['main']['App']['GenerateProjectDocs'](arg1, arg2);
+export function GenerateProjectDocs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GenerateProjectDocs'](arg1, arg2, arg3);
+}
+
+export function GetConnectionForEdit(arg1) {
+  return window['go']['main']['App']['GetConnectionForEdit'](arg1);
 }
 
 export function GetSchemaMetadata(arg1, arg2) {
@@ -106,8 +110,8 @@ export function OpenSQLFilePath(arg1) {
   return window['go']['main']['App']['OpenSQLFilePath'](arg1);
 }
 
-export function RegenerateProjectDocs(arg1, arg2) {
-  return window['go']['main']['App']['RegenerateProjectDocs'](arg1, arg2);
+export function RegenerateProjectDocs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RegenerateProjectDocs'](arg1, arg2, arg3);
 }
 
 export function RestoreVaultBackup() {
@@ -134,6 +138,10 @@ export function SetConnectionSchemas(arg1, arg2) {
   return window['go']['main']['App']['SetConnectionSchemas'](arg1, arg2);
 }
 
+export function SetOpenTabs(arg1) {
+  return window['go']['main']['App']['SetOpenTabs'](arg1);
+}
+
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
 }
@@ -144,4 +152,8 @@ export function TestConnection(arg1) {
 
 export function UnlockVault(arg1) {
   return window['go']['main']['App']['UnlockVault'](arg1);
+}
+
+export function UpdateConnection(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateConnection'](arg1, arg2, arg3);
 }

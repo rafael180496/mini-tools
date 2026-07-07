@@ -19,6 +19,7 @@ import {
     ExportTableDDL,
     GenerateProjectDocs,
     GetSchemaMetadata,
+    GetSettings,
     HasOpenTransaction,
     OpenSQLFileDialog,
     OpenSQLFilePath,
@@ -26,6 +27,7 @@ import {
     RollbackTransaction,
     SaveSQLFile,
     SaveSQLFileAs,
+    SetOpenTabs,
 } from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
 import {db, explain, vault} from '../../wailsjs/go/models'
@@ -96,6 +98,13 @@ function dirName(path: string) {
     return idx === -1 ? path : path.slice(0, idx)
 }
 
+// Vertical separator between button clusters in the toolbar — purely
+// visual, no state, so it lives outside the component like the other
+// helpers here.
+function Divider() {
+    return <div className="mx-0.5 h-4 w-px shrink-0 bg-neutral-200 dark:bg-neutral-800" />
+}
+
 function newScratchTab(): EditorTab {
     return {id: newTabId(), title: 'Query sin título', path: null, content: 'SELECT 1', dirty: false}
 }
@@ -119,7 +128,9 @@ interface WorkspaceProps {
 
 export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [selected, setSelected] = useState<vault.ConnectionSummary | null>(null)
-    const [showDialog, setShowDialog] = useState(false)
+    // 'new' opens the dialog empty (create); any other string is a
+    // connection id to edit; null keeps it closed.
+    const [connectionDialog, setConnectionDialog] = useState<'new' | string | null>(null)
     const [schemaPickerConn, setSchemaPickerConn] = useState<vault.ConnectionSummary | null>(null)
     const [reloadToken, setReloadToken] = useState(0)
     const [metadata, setMetadata] = useState<db.SchemaMetadata | null>(null)
@@ -142,6 +153,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [activeResultTab, setActiveResultTab] = useState(0)
     const [backupMessage, setBackupMessage] = useState('')
     const [statusMessage, setStatusMessage] = useState('')
+    const [regeneratingDocs, setRegeneratingDocs] = useState(false)
 
     const [showExplain, setShowExplain] = useState(false)
     const [explainPlan, setExplainPlan] = useState<explain.Plan | null>(null)
@@ -161,6 +173,70 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     function updateActiveTabContent(content: string) {
         setTabs((prev) => prev.map((t) => (t.id === activeTabIdRef.current ? {...t, content, dirty: true} : t)))
     }
+
+    // Session restore: reopen whatever tabs were open last time, and warn
+    // (once) about any that were deleted from disk since. Guards against
+    // the persist-effect below firing with the initial scratch tab BEFORE
+    // this has had a chance to run — see hasRestoredRef.
+    const [deletedPaths, setDeletedPaths] = useState<string[]>([])
+    const hasRestoredRef = useRef(false)
+
+    useEffect(() => {
+        let cancelled = false
+
+        GetSettings()
+            .then(async (settings) => {
+                const paths = settings.openTabs ?? []
+                if (paths.length === 0) return
+
+                const restored: EditorTab[] = []
+                const deleted: string[] = []
+                for (const path of paths) {
+                    try {
+                        const file = await OpenSQLFilePath(path)
+                        if (file) {
+                            restored.push({id: newTabId(), title: fileTitle(file.path), path: file.path, content: file.content, dirty: false})
+                        }
+                    } catch {
+                        deleted.push(path)
+                    }
+                }
+                if (cancelled) return
+
+                if (restored.length > 0) {
+                    setTabs(restored)
+                    setActiveTabId(restored[0].id)
+                }
+                if (deleted.length > 0) {
+                    setDeletedPaths(deleted)
+                    // Persist the cleaned-up list right away so these
+                    // don't get flagged again next launch.
+                    void SetOpenTabs(restored.map((t) => t.path).filter((p): p is string => !!p))
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) hasRestoredRef.current = true
+            })
+
+        return () => {
+            cancelled = true
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Persist the current set of open tab paths whenever it changes (open,
+    // close, or a tab gains a path via Save/Save As) — but NOT on every
+    // keystroke, which would also change `tabs`' reference via
+    // updateActiveTabContent. Keying on just the ordered path list (not the
+    // whole tabs array) keeps this from firing on content-only changes.
+    const openTabPathsKey = tabs.map((t) => t.path ?? '').join(' ')
+    useEffect(() => {
+        if (!hasRestoredRef.current) return
+        const paths = tabs.map((t) => t.path).filter((p): p is string => !!p)
+        void SetOpenTabs(paths)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [openTabPathsKey])
 
     async function backupVault() {
         setBackupMessage('Guardando backup…')
@@ -504,20 +580,44 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // opening/saving a file, so errors are swallowed here.
     function generateProjectDocsFor(path: string) {
         if (!selected) return
-        GenerateProjectDocs(dirName(path), selected.id)
+        const dir = dirName(path)
+        GenerateProjectDocs(dir, selected.id, activeSchema ?? '')
             .then((wrote) => {
-                if (wrote) setStatusMessage('CLAUDE.md generado para el proyecto')
+                if (wrote) {
+                    setStatusMessage(
+                        activeSchema
+                            ? `CLAUDE.md generado en ${dir} (esquema ${activeSchema})`
+                            : `CLAUDE.md generado en ${dir}`,
+                    )
+                }
             })
             .catch(() => {})
     }
 
+    // Explicit "Regenerar" action — always overwrites, so it asks for
+    // confirmation first since it's destructive to any manual edits the
+    // user might have made to the previously generated files.
     async function regenerateProjectDocs() {
         if (!selected || !activeTabData?.path) return
+        const dir = dirName(activeTabData.path)
+        const scopeDesc = activeSchema ? `el esquema "${activeSchema}"` : 'todos los esquemas configurados'
+        const confirmed = window.confirm(
+            `Esto sobrescribe CLAUDE.md y .claude/ en ${dir} con la metadata de "${selected.name}" (${scopeDesc}). ¿Continuar?`,
+        )
+        if (!confirmed) return
+
+        setRegeneratingDocs(true)
         try {
-            await RegenerateProjectDocs(dirName(activeTabData.path), selected.id)
-            setStatusMessage('CLAUDE.md regenerado')
+            await RegenerateProjectDocs(dir, selected.id, activeSchema ?? '')
+            setStatusMessage(
+                activeSchema
+                    ? `CLAUDE.md regenerado en ${dir} (esquema ${activeSchema})`
+                    : `CLAUDE.md regenerado en ${dir}`,
+            )
         } catch (err) {
             setStatusMessage(String(err))
+        } finally {
+            setRegeneratingDocs(false)
         }
     }
 
@@ -625,7 +725,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             <ConnectionTree
                 selectedId={selected?.id ?? null}
                 onSelect={setSelected}
-                onNewConnection={() => setShowDialog(true)}
+                onNewConnection={() => setConnectionDialog('new')}
+                onEditConnection={(conn) => setConnectionDialog(conn.id)}
                 reloadToken={reloadToken}
                 metadata={filteredMetadata}
                 onOpenTable={openTableQuery}
@@ -650,141 +751,214 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 </Suspense>
             )}
 
+            {deletedPaths.length > 0 && (
+                <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
+                    <div className="flex w-96 flex-col gap-3 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-6 text-neutral-900 dark:text-neutral-100">
+                        <h2 className="text-lg font-semibold">Archivos no encontrados</h2>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                            Estos archivos estaban abiertos la última vez pero ya no existen en disco — no se van a volver a
+                            abrir automáticamente:
+                        </p>
+                        <ul className="max-h-40 overflow-y-auto rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 p-2 text-xs text-neutral-600 dark:text-neutral-400">
+                            {deletedPaths.map((p) => (
+                                <li key={p} className="truncate font-mono">
+                                    {p}
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="mt-2 flex justify-end">
+                            <button
+                                onClick={() => setDeletedPaths([])}
+                                title="Cierra este aviso — las pestañas de archivos que ya no existen en disco quedan como pestañas sin guardar"
+                                className="rounded bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-100 dark:text-neutral-900"
+                            >
+                                Entendido
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-1 flex-col">
-                <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 p-2">
-                    <span className="text-xs text-neutral-500">
-                        {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
-                    </span>
-                    {schemas.length > 0 && (
-                        <label className="flex items-center gap-1 text-xs text-neutral-500">
-                            Schema:
-                            <select
-                                value={activeSchema ?? ''}
-                                onChange={(e) => setActiveSchema(e.target.value)}
-                                className="rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-1 py-0.5 text-xs text-neutral-800 dark:text-neutral-200 outline-none"
-                            >
-                                {schemas.map((s) => (
-                                    <option key={s} value={s}>
-                                        {s}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                    )}
-                    {selected && !txOpen && (
-                        <button
-                            onClick={() => void beginTransaction()}
-                            disabled={txBusy}
-                            title="Desactivar auto-commit: los statements quedan pendientes hasta Commit/Rollback"
-                            className="rounded border border-neutral-200 dark:border-neutral-800 px-2 py-0.5 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 disabled:opacity-50"
-                        >
-                            Auto-commit: ON
-                        </button>
-                    )}
-                    {selected && txOpen && (
-                        <span className="flex items-center gap-2 rounded border border-amber-600/60 bg-amber-100 dark:bg-amber-950/40 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-400">
-                            Transacción abierta
-                            <button
-                                onClick={() => void commitTransaction()}
-                                disabled={txBusy}
-                                className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-medium text-neutral-50 hover:bg-emerald-600 disabled:opacity-50"
-                            >
-                                Commit
-                            </button>
-                            <button
-                                onClick={() => void rollbackTransaction()}
-                                disabled={txBusy}
-                                className="rounded bg-red-800 px-2 py-0.5 text-xs font-medium text-neutral-50 hover:bg-red-700 disabled:opacity-50"
-                            >
-                                Rollback
-                            </button>
+                <div className="flex flex-col border-b border-neutral-200 dark:border-neutral-800">
+                    {/* Context row: which connection/schema/transaction state
+                        this workspace is currently pointed at. Kept
+                        separate from the actions row below so neither
+                        crowds the other. */}
+                    <div className="flex flex-wrap items-center gap-3 px-2 py-1.5">
+                        <span className="whitespace-nowrap text-xs text-neutral-500">
+                            {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
                         </span>
-                    )}
-                    {statusMessage && <span className="text-xs text-neutral-500">{statusMessage}</span>}
-                    {backupMessage && <span className="text-xs text-neutral-500">{backupMessage}</span>}
-                    <div className="flex-1" />
-                    <button
-                        onClick={() => void openFileDialog()}
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
-                    >
-                        Abrir
-                    </button>
-                    <RecentFilesMenu onOpen={(path) => void openRecentFile(path)} />
-                    <button
-                        onClick={() => void saveActiveTab()}
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
-                    >
-                        Guardar (Ctrl+S)
-                    </button>
-                    <button
-                        onClick={refreshMetadata}
-                        disabled={!selected}
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
-                    >
-                        Refrescar (F5)
-                    </button>
-                    <button
-                        onClick={() => void exportSchemaDDL()}
-                        disabled={!selected}
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
-                    >
-                        DDL schema
-                    </button>
-                    <button
-                        onClick={() => void backupVault()}
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
-                    >
-                        Backup vault
-                    </button>
-                    <button
-                        onClick={() => void regenerateProjectDocs()}
-                        disabled={!selected || !activeTabData?.path}
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
-                    >
-                        Regenerar CLAUDE.md
-                    </button>
-                    <button
-                        onClick={runSelectionOrLine}
-                        disabled={!selected || running}
-                        className="rounded bg-emerald-700 px-3 py-1 text-xs font-medium hover:bg-emerald-600 disabled:opacity-50"
-                    >
-                        Ejecutar (Ctrl+Enter)
-                    </button>
-                    <button
-                        onClick={runFullScript}
-                        disabled={!selected || running}
-                        className="rounded bg-emerald-800 px-3 py-1 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                        Bloque (Ctrl+Shift+Enter)
-                    </button>
-                    <button
-                        onClick={cancelQuery}
-                        disabled={!running}
-                        className="rounded bg-red-800 px-3 py-1 text-xs font-medium hover:bg-red-700 disabled:opacity-50"
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        onClick={() => void runExplain(false)}
-                        disabled={!selected}
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
-                    >
-                        Explain
-                    </button>
-                    <button
-                        onClick={() => void runExplain(true)}
-                        disabled={!selected}
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
-                    >
-                        Explain Analyze
-                    </button>
-                    <button
-                        onClick={onToggleTheme}
-                        title="Cambiar tema"
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
-                    >
-                        {theme === 'dark' ? '☀' : '🌙'}
-                    </button>
+
+                        {schemas.length > 0 && (
+                            <label className="flex items-center gap-1 text-xs text-neutral-500">
+                                Schema:
+                                <select
+                                    value={activeSchema ?? ''}
+                                    onChange={(e) => setActiveSchema(e.target.value)}
+                                    className="rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-1 py-0.5 text-xs text-neutral-800 dark:text-neutral-200 outline-none"
+                                >
+                                    {schemas.map((s) => (
+                                        <option key={s} value={s}>
+                                            {s}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        )}
+
+                        {selected && (
+                            <>
+                                <Divider />
+                                <label
+                                    className="flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400"
+                                    title="Desactivar: los statements quedan pendientes hasta Commit/Rollback en vez de aplicarse solos"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={!txOpen}
+                                        disabled={txBusy || txOpen}
+                                        onChange={() => void beginTransaction()}
+                                    />
+                                    Auto-commit
+                                </label>
+                                <button
+                                    onClick={() => void commitTransaction()}
+                                    disabled={!txOpen || txBusy}
+                                    title="Confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción actual"
+                                    className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-medium text-neutral-50 hover:bg-emerald-600 disabled:opacity-40"
+                                >
+                                    Commit
+                                </button>
+                                <button
+                                    onClick={() => void rollbackTransaction()}
+                                    disabled={!txOpen || txBusy}
+                                    title="Descarta todos los cambios pendientes de la transacción actual y vuelve al estado antes de abrirla"
+                                    className="rounded bg-red-800 px-2 py-0.5 text-xs font-medium text-neutral-50 hover:bg-red-700 disabled:opacity-40"
+                                >
+                                    Rollback
+                                </button>
+                                {txOpen && (
+                                    <span className="whitespace-nowrap text-xs text-amber-600 dark:text-amber-400">
+                                        Transacción abierta
+                                    </span>
+                                )}
+                            </>
+                        )}
+
+                        {(statusMessage || backupMessage) && (
+                            <span className="truncate text-xs text-neutral-500">{statusMessage || backupMessage}</span>
+                        )}
+
+                        <div className="flex-1" />
+
+                        <button
+                            onClick={onToggleTheme}
+                            title="Cambiar tema"
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-2 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                        >
+                            {theme === 'dark' ? '☀' : '🌙'}
+                        </button>
+                    </div>
+
+                    {/* Actions row: file ops, then query ops, then
+                        schema/vault utilities — grouped with dividers so
+                        the eye can parse clusters instead of one long run
+                        of same-looking buttons. */}
+                    <div className="flex flex-wrap items-center gap-1.5 border-t border-neutral-200 dark:border-neutral-800 px-2 py-1.5">
+                        <button
+                            onClick={() => void openFileDialog()}
+                            title="Abre un archivo .sql desde tu disco en una nueva pestaña del editor"
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                        >
+                            Abrir
+                        </button>
+                        <RecentFilesMenu onOpen={(path) => void openRecentFile(path)} />
+                        <button
+                            onClick={() => void saveActiveTab()}
+                            title="Guarda el contenido de la pestaña activa en disco (atajo: Ctrl+S). Si es una pestaña nueva, te pide dónde guardarla"
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                        >
+                            Guardar (Ctrl+S)
+                        </button>
+                        <button
+                            onClick={() => void regenerateProjectDocs()}
+                            disabled={!selected || !activeTabData?.path || regeneratingDocs}
+                            title="Sobrescribe CLAUDE.md y .claude/ en la carpeta del archivo abierto con el schema y las tablas de la conexión actual (o solo el esquema seleccionado arriba, si hay uno). Útil si la base de datos cambió desde la última vez."
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                        >
+                            {regeneratingDocs ? 'Regenerando…' : 'Regenerar CLAUDE.md'}
+                        </button>
+
+                        <Divider />
+
+                        <button
+                            onClick={runSelectionOrLine}
+                            disabled={!selected || running}
+                            title="Ejecuta el texto seleccionado, o si no hay selección, la línea donde está el cursor (atajo: Ctrl+Enter)"
+                            className="rounded bg-emerald-700 px-3 py-1 text-xs font-medium hover:bg-emerald-600 disabled:opacity-50"
+                        >
+                            Ejecutar (Ctrl+Enter)
+                        </button>
+                        <button
+                            onClick={runFullScript}
+                            disabled={!selected || running}
+                            title="Ejecuta todos los statements del editor en orden, uno por uno (atajo: Ctrl+Shift+Enter)"
+                            className="rounded bg-emerald-800 px-3 py-1 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                            Bloque (Ctrl+Shift+Enter)
+                        </button>
+                        <button
+                            onClick={cancelQuery}
+                            disabled={!running}
+                            title="Interrumpe la consulta que está corriendo ahora mismo"
+                            className="rounded bg-red-800 px-3 py-1 text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={() => void runExplain(false)}
+                            disabled={!selected}
+                            title="Muestra el plan de ejecución del query (EXPLAIN) sin correrlo — útil para diagnosticar lentitud sin afectar datos"
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                        >
+                            Explain
+                        </button>
+                        <button
+                            onClick={() => void runExplain(true)}
+                            disabled={!selected}
+                            title="Ejecuta el query de verdad y muestra el plan con tiempos reales (EXPLAIN ANALYZE) — a diferencia de Explain, sí corre el query"
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                        >
+                            Explain Analyze
+                        </button>
+
+                        <Divider />
+
+                        <button
+                            onClick={refreshMetadata}
+                            disabled={!selected}
+                            title="Vuelve a leer las tablas y columnas de la base de datos (atajo: F5) — usalo si acabás de crear/alterar una tabla"
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                        >
+                            Refrescar (F5)
+                        </button>
+                        <button
+                            onClick={() => void exportSchemaDDL()}
+                            disabled={!selected}
+                            title="Exporta a un archivo el DDL (CREATE TABLE, etc.) del schema actual"
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                        >
+                            DDL schema
+                        </button>
+                        <button
+                            onClick={() => void backupVault()}
+                            title="Copia el archivo del vault (donde se guardan tus conexiones cifradas) a otra ubicación, por si necesitás restaurarlo después"
+                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                        >
+                            Backup vault
+                        </button>
+                    </div>
                 </div>
 
                 <EditorTabs tabs={tabs} activeId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} onNew={newTab} />
@@ -861,12 +1035,13 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 </div>
             </div>
 
-            {showDialog && (
+            {connectionDialog && (
                 <Suspense fallback={null}>
                     <ConnectionDialog
-                        onClose={() => setShowDialog(false)}
+                        editingId={connectionDialog === 'new' ? null : connectionDialog}
+                        onClose={() => setConnectionDialog(null)}
                         onSaved={() => {
-                            setShowDialog(false)
+                            setConnectionDialog(null)
                             setReloadToken((n) => n + 1)
                         }}
                     />

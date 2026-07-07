@@ -17,6 +17,7 @@ export default function ResultTabs({count, active, onSelect, statuses}: ResultTa
                 <button
                     key={i}
                     onClick={() => onSelect(i)}
+                    title={`Ver el resultado del statement ${i + 1} de ${count} — cada statement de un bloque tiene su propia pestaña de resultados`}
                     className={`rounded-t px-3 py-1 text-xs ${
                         i === active
                             ? 'bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100'

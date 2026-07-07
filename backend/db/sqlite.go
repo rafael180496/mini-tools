@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -28,4 +29,17 @@ func (sqliteConnector) BuildDSN(params map[string]string) (string, error) {
 	}
 
 	return fmt.Sprintf("file://%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)", abs), nil
+}
+
+// ParseDSN reverses BuildDSN — no password to worry about, path is the only
+// param SQLite ever has.
+func (sqliteConnector) ParseDSN(dsn string) (map[string]string, error) {
+	path := strings.TrimPrefix(dsn, "file://")
+	if idx := strings.IndexByte(path, '?'); idx != -1 {
+		path = path[:idx]
+	}
+	if path == "" {
+		return nil, fmt.Errorf("sqlite: no se pudo interpretar el DSN")
+	}
+	return map[string]string{"path": path}, nil
 }

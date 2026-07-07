@@ -7,6 +7,7 @@ interface ConnectionTreeProps {
     selectedId: string | null
     onSelect: (conn: vault.ConnectionSummary) => void
     onNewConnection: () => void
+    onEditConnection: (conn: vault.ConnectionSummary) => void
     reloadToken: number
     metadata: db.SchemaMetadata | null
     onOpenTable: (table: string, schema?: string) => void
@@ -24,6 +25,7 @@ export default function ConnectionTree({
     selectedId,
     onSelect,
     onNewConnection,
+    onEditConnection,
     reloadToken,
     metadata,
     onOpenTable,
@@ -70,6 +72,7 @@ export default function ConnectionTree({
                 <span className="text-xs font-semibold uppercase text-neutral-500">Conexiones</span>
                 <button
                     onClick={onNewConnection}
+                    title="Crea una nueva conexión a una base de datos (PostgreSQL, Oracle o SQLite)"
                     className="rounded bg-neutral-200 dark:bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-300 dark:hover:bg-neutral-700"
                 >
                     + Nueva
@@ -100,9 +103,23 @@ export default function ConnectionTree({
                                 >
                                     {isExpanded ? '▾' : '▸'}
                                 </button>
-                                <button onClick={() => selectConnection(c)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                                <button
+                                    onClick={() => selectConnection(c)}
+                                    title={`Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`}
+                                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                >
                                     <span className="text-xs text-neutral-400 dark:text-neutral-600">{c.dbType}</span>
                                     <span className="truncate">{c.name}</span>
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        onEditConnection(c)
+                                    }}
+                                    title="Editar conexión"
+                                    className="hidden shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300 group-hover:block"
+                                >
+                                    editar
                                 </button>
                                 <button
                                     onClick={() => onExportConnectionConfig(c.id)}

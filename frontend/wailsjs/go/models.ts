@@ -188,6 +188,22 @@ export namespace explain {
 
 export namespace main {
 	
+	export class ConnectionEditInfo {
+	    name: string;
+	    dbType: string;
+	    params: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConnectionEditInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.dbType = source["dbType"];
+	        this.params = source["params"];
+	    }
+	}
 	export class ConnectionInput {
 	    name: string;
 	    dbType: string;
@@ -325,6 +341,7 @@ export namespace vault {
 	}
 	export class Settings {
 	    theme: string;
+	    openTabs: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -333,6 +350,7 @@ export namespace vault {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.theme = source["theme"];
+	        this.openTabs = source["openTabs"];
 	    }
 	}
 

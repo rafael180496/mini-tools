@@ -34,6 +34,14 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 3,
+		desc:    "agrega settings.open_tabs para restaurar las pestañas abiertas al reiniciar la app",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN open_tabs TEXT`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

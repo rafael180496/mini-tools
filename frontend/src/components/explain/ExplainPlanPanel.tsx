@@ -51,7 +51,11 @@ export default function ExplainPlanPanel({plan, loading, error, onClose}: Explai
                 <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">
                     EXPLAIN PLAN{plan?.durationMs ? ` · ${plan.durationMs.toFixed(3)}ms` : ''}
                 </span>
-                <button onClick={onClose} className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">
+                <button
+                    onClick={onClose}
+                    title="Cierra este panel del plan de ejecución"
+                    className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                >
                     Cerrar
                 </button>
             </div>

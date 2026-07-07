@@ -66,6 +66,38 @@ func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string) (*Conn
 	return &ConnectionSummary{ID: id, Name: name, DBType: string(dbType), CreatedAt: createdAt}, nil
 }
 
+// UpdateConnection re-encrypts dsn under the vault key and overwrites id's
+// name/db_type/encrypted_dsn in place — same "dsn must already be built"
+// contract as SaveConnection. Does NOT touch metadata_schemas (that's
+// SetConnectionSchemas' job) or created_at. Fails if id doesn't exist.
+func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string) error {
+	key, err := s.gate.Key()
+	if err != nil {
+		return err
+	}
+
+	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(dsn))
+	if err != nil {
+		return fmt.Errorf("vault: encrypting dsn: %w", err)
+	}
+
+	res, err := s.db.Exec(
+		`UPDATE connections SET name = ?, db_type = ?, encrypted_dsn = ?, nonce = ? WHERE id = ?`,
+		name, string(dbType), ciphertext, nonce, id,
+	)
+	if err != nil {
+		return fmt.Errorf("vault: updating connection: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("vault: updating connection: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("vault: conexión %q no encontrada", id)
+	}
+	return nil
+}
+
 // ListConnections returns every saved connection, without DSNs, ordered by
 // name for the sidebar tree.
 func (s *Store) ListConnections() ([]ConnectionSummary, error) {

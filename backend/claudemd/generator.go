@@ -15,7 +15,12 @@ import (
 type ProjectInfo struct {
 	ConnectionName string
 	DBType         db.DBType
-	Metadata       *db.SchemaMetadata
+	// Schema is the specific schema Metadata was scoped to when non-empty
+	// (matches the toolbar's schema dropdown) — templates surface it so a
+	// regenerated CLAUDE.md is honest about what it does and doesn't cover,
+	// instead of silently documenting only part of the connection.
+	Schema   string
+	Metadata *db.SchemaMetadata
 }
 
 // Generate writes CLAUDE.md + .claude/{specs,rules,skills} into dir,

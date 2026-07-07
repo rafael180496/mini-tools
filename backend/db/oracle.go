@@ -2,7 +2,9 @@ package db
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
 
 	go_ora "github.com/sijms/go-ora/v2"
 )
@@ -68,4 +70,44 @@ func (oracleConnector) BuildDSN(params map[string]string) (string, error) {
 	default:
 		return "", fmt.Errorf("oracle: modo de conexión desconocido %q (usar service_name, easy_connect, sid o tns)", params["mode"])
 	}
+}
+
+// ParseDSN reverses BuildDSN. go_ora.BuildUrl always produces a standard
+// oracle://user:pass@host:port/service?KEY=val URL (see connection_string.go
+// in the go-ora module), so net/url.Parse handles it directly — mode isn't
+// stored anywhere explicit, it's inferred back from which query param is
+// present (SID vs connStr vs neither). Includes password — see the
+// Connector interface doc comment for why that's the caller's
+// responsibility to strip, not this function's. Not verified against a
+// real Oracle instance — see .claude/skills/mini-tools-patterns/SKILL.md.
+func (oracleConnector) ParseDSN(dsn string) (map[string]string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("oracle: parseando DSN: %w", err)
+	}
+
+	params := map[string]string{
+		"host": u.Hostname(),
+		"port": u.Port(),
+	}
+	if u.User != nil {
+		params["user"] = u.User.Username()
+		if pw, ok := u.User.Password(); ok {
+			params["password"] = pw
+		}
+	}
+
+	q := u.Query()
+	switch {
+	case q.Get("SID") != "":
+		params["mode"] = "sid"
+		params["sid"] = q.Get("SID")
+	case q.Get("connStr") != "":
+		params["mode"] = "tns"
+		params["connectDescriptor"] = q.Get("connStr")
+	default:
+		params["mode"] = "service_name"
+		params["service"] = strings.TrimPrefix(u.Path, "/")
+	}
+	return params, nil
 }

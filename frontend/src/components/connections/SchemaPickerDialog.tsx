@@ -87,6 +87,7 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                     <button
                         type="button"
                         onClick={onClose}
+                        title="Cierra sin cambiar qué esquemas se escanean"
                         className="rounded px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
                     >
                         Cancelar
@@ -95,6 +96,7 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                         type="button"
                         onClick={() => void save()}
                         disabled={!allSchemas || busy}
+                        title="Guarda la selección — solo los esquemas marcados se escanean para autocompletado y el árbol de tablas (útil en bases con muchos esquemas para evitar escaneos lentos)"
                         className="rounded bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-100 dark:text-neutral-900 disabled:opacity-50"
                     >
                         Guardar
