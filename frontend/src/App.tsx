@@ -1,25 +1,44 @@
-import {useState} from 'react';
-import {Greet} from "../wailsjs/go/main/App";
+import {useEffect, useState} from 'react'
+import UnlockScreen from './components/lock/UnlockScreen'
+import {IsVaultInitialized, InitializeVault, UnlockVault} from '../wailsjs/go/main/App'
 
 function App() {
-    const [resultText, setResultText] = useState('');
+    const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
+    const [unlocked, setUnlocked] = useState(false)
 
-    function ping() {
-        Greet('mini-tools').then(setResultText);
+    useEffect(() => {
+        IsVaultInitialized().then(setIsInitialized)
+    }, [])
+
+    if (isInitialized === null) {
+        return (
+            <div className="flex h-screen w-screen items-center justify-center bg-neutral-950 text-sm text-neutral-500">
+                Cargando…
+            </div>
+        )
+    }
+
+    if (!unlocked) {
+        return (
+            <UnlockScreen
+                isInitialized={isInitialized}
+                onInitialize={async (password) => {
+                    await InitializeVault(password)
+                    setUnlocked(true)
+                }}
+                onUnlock={async (password) => {
+                    await UnlockVault(password)
+                    setUnlocked(true)
+                }}
+            />
+        )
     }
 
     return (
         <div className="flex h-screen w-screen items-center justify-center bg-neutral-950 text-neutral-100">
-            <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-col items-center gap-2">
                 <h1 className="text-2xl font-semibold">mini-tools</h1>
-                <p className="text-sm text-neutral-400">scaffold: Wails + React + Tailwind (dark by default)</p>
-                <button
-                    className="rounded bg-neutral-800 px-4 py-2 text-sm hover:bg-neutral-700"
-                    onClick={ping}
-                >
-                    Ping backend
-                </button>
-                {resultText && <p className="text-sm text-emerald-400">{resultText}</p>}
+                <p className="text-sm text-emerald-400">Vault desbloqueado</p>
             </div>
         </div>
     )

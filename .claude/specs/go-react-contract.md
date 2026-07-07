@@ -16,7 +16,7 @@ Superficie de binding del struct `App` (`app.go`). Regla general: el frontend nu
 | Settings | `GetSettings()`, `SetTheme(themeName)` | Fase 10 |
 | CLAUDE.md | `GenerateProjectDocs(projectRootPath)`, `RegenerateProjectDocs(projectRootPath)` | Fase 9 |
 
-Estado actual (Fase 1 — scaffold): solo existe el `Greet(name string) string` de demo generado por `wails init`, pendiente de reemplazo en Fase 2 por `IsVaultInitialized`/`InitializeVault`/`UnlockVault`.
+Estado actual (Fase 2 — completa): `IsVaultInitialized()`, `InitializeVault(password)` y `UnlockVault(password)` implementados en `app.go` sobre `backend/vault.Store` + `backend/vaultgate.Gate`. El `Greet` de demo fue eliminado. Ningún método más existe todavía, así que el "no bypass" real del gate se prueba a partir de Fase 3, cuando aparezcan los primeros métodos que deban revisar `a.gate`/`a.vault` antes de tocar datos de conexión.
 
 ## Eventos (streaming)
 

@@ -9,7 +9,7 @@ Estas restricciones son no negociables; cualquier cambio que las viole necesita 
 5. **Gate del vault aplicado server-side.** Cada método bindeado en `App` que toque datos de conexión o del vault debe verificar el flag `unlocked` de `vaultgate` — la UI puede reforzarlo mostrando la pantalla de unlock, pero la verificación real vive en Go.
 6. **Monaco recortado a SQL, sin CDN.** Importar solo `monaco-editor/esm/vs/editor/editor.api` + `basic-languages/sql/sql.contribution`; el worker de Vite se cablea a mano. Nunca usar el loader por defecto de `@monaco-editor/react` que descarga desde CDN — la app debe funcionar offline.
 7. **Sin librería de parsing SQL.** La detección de PL/SQL, el split de statements y el linter básico son hechos a mano (`backend/query/detect.go`, `splitter.go`, `frontend/src/lib/linter.ts`). Librerías tipo vitess sqlparser / pg_query_go / gramáticas ANTLR quedan descartadas por peso y por no cubrir Oracle+Postgres+SQLite a la vez.
-8. **Binario de producción <20MB.** Verificar con `wails build` + `ls -lh build/bin/*` (macOS) en cada fase que añade una dependencia grande (Monaco, `excelize`, etc.). Estado actual del scaffold (Fase 1): ~7.6MB.
+8. **Binario de producción <20MB.** Verificar con `wails build` + `ls -lh build/bin/*` (macOS) en cada fase que añade una dependencia grande (Monaco, `excelize`, etc.). Fase 1 (scaffold): ~7.6MB. Fase 2 (+ `modernc.org/sqlite` + `golang.org/x/crypto/argon2`): ~12MB — vigilar de cerca en Fase 4 (pgx + go-ora) y Fase 6 (Monaco).
 9. **El frontend nunca ve un DSN ni un password.** Solo IDs de conexión opacos cruzan el binding Go↔React.
 10. **Nunca loguear un DSN ni resultados de queries**, tampoco en modo debug.
 11. **pnpm únicamente** para el frontend; sin Node como runtime en producción.
