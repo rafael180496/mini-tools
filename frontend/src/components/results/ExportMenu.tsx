@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import {ExportResult} from '../../../wailsjs/go/main/App'
 import {generateInsertStatements} from '../../lib/sqlGenerate'
+import Icon from '../Icon'
 
 interface ExportMenuProps {
     columns: string[]
@@ -40,39 +41,44 @@ export default function ExportMenu({columns, rows, tableNameHint}: ExportMenuPro
                 onClick={() => setOpen((v) => !v)}
                 disabled={disabled}
                 title="Exporta las filas del resultado actual a un archivo, o cópialas como sentencias SQL"
-                className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
             >
+                <Icon name="download" size={16} />
                 Exportar
             </button>
-            {status && <span className="text-xs text-neutral-500">{status}</span>}
+            {status && <span className="text-xs text-on-surface-variant">{status}</span>}
             {open && (
-                <div className="absolute left-0 top-full z-10 mt-1 w-48 rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-1 shadow-lg">
+                <div className="absolute left-0 top-full z-10 mt-1 w-48 rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg">
                     <button
                         onClick={() => void exportAs('csv')}
                         title="Guarda el resultado como archivo .csv (valores separados por coma)"
-                        className="block w-full rounded px-2 py-1 text-left text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-on-surface hover:bg-surface-variant"
                     >
+                        <Icon name="grid_on" size={15} />
                         CSV
                     </button>
                     <button
                         onClick={() => void exportAs('json')}
                         title="Guarda el resultado como archivo .json (un array de objetos, una fila por objeto)"
-                        className="block w-full rounded px-2 py-1 text-left text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-on-surface hover:bg-surface-variant"
                     >
+                        <Icon name="data_object" size={15} />
                         JSON
                     </button>
                     <button
                         onClick={() => void exportAs('xlsx')}
                         title="Guarda el resultado como archivo Excel (.xlsx)"
-                        className="block w-full rounded px-2 py-1 text-left text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-on-surface hover:bg-surface-variant"
                     >
+                        <Icon name="table_view" size={15} />
                         Excel (.xlsx)
                     </button>
                     <button
                         onClick={() => void copyAsInsert()}
                         title="Copia el resultado al portapapeles como sentencias INSERT listas para pegar en otro editor SQL"
-                        className="block w-full rounded px-2 py-1 text-left text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-on-surface hover:bg-surface-variant"
                     >
+                        <Icon name="content_copy" size={15} />
                         Copiar como INSERT
                     </button>
                 </div>

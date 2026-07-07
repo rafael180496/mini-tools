@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react'
 import {ListConnections} from '../../../wailsjs/go/main/App'
 import {vault, db} from '../../../wailsjs/go/models'
 import logo from '../../assets/logo.png'
+import Icon from '../Icon'
 
 interface ConnectionTreeProps {
     selectedId: string | null
@@ -15,6 +16,8 @@ interface ConnectionTreeProps {
     onExportTableDDL: (table: string, schema?: string) => void
     onDisconnect: (connId: string) => void
     onConfigureSchemas: (conn: vault.ConnectionSummary) => void
+    collapsed: boolean
+    onToggleCollapsed: () => void
 }
 
 // Conexiones → tablas (spec: "árbol conexiones → schemas → tablas/vistas").
@@ -33,6 +36,8 @@ export default function ConnectionTree({
     onExportTableDDL,
     onDisconnect,
     onConfigureSchemas,
+    collapsed,
+    onToggleCollapsed,
 }: ConnectionTreeProps) {
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
     const [filter, setFilter] = useState('')
@@ -63,107 +68,145 @@ export default function ConnectionTree({
     }
 
     return (
-        <div className="flex h-full w-64 flex-col border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
-            <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 p-2">
-                <img src={logo} alt="mini-tools" className="h-5 w-5" />
-                <span className="text-sm font-semibold">mini-tools</span>
+        <aside
+            className={`flex h-full shrink-0 flex-col border-r border-outline-variant bg-surface-container-low text-on-surface transition-[width] duration-150 ${
+                collapsed ? 'w-14' : 'w-64'
+            }`}
+        >
+            <div className={`flex items-center border-b border-outline-variant p-3 ${collapsed ? 'justify-center' : 'gap-2'}`}>
+                {!collapsed && (
+                    <>
+                        <img src={logo} alt="mini-tools" className="h-7 w-7 object-contain" />
+                        <span className="flex-1 text-sm font-bold text-primary">mini-tools</span>
+                    </>
+                )}
+                <button
+                    onClick={onToggleCollapsed}
+                    title={collapsed ? 'Expandir la barra de conexiones' : 'Minimizar la barra de conexiones (queda solo con íconos)'}
+                    className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant"
+                >
+                    <Icon name={collapsed ? 'menu' : 'menu_open'} size={18} />
+                </button>
             </div>
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 p-2">
-                <span className="text-xs font-semibold uppercase text-neutral-500">Conexiones</span>
+            <div className={`flex items-center p-3 pb-2 ${collapsed ? 'justify-center' : 'justify-between'}`}>
+                {!collapsed && (
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Conexiones</span>
+                )}
                 <button
                     onClick={onNewConnection}
                     title="Crea una nueva conexión a una base de datos (PostgreSQL, Oracle o SQLite)"
-                    className="rounded bg-neutral-200 dark:bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                    className="rounded p-1 text-primary hover:bg-surface-variant"
                 >
-                    + Nueva
+                    <Icon name="add" size={18} />
                 </button>
             </div>
-            <input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Buscar..."
-                className="mx-2 mt-2 rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-2 py-1 text-xs outline-none focus:border-neutral-400 dark:focus:border-neutral-600"
-            />
-            <div className="mt-2 flex-1 overflow-y-auto">
-                {filtered.length === 0 && <p className="p-3 text-xs text-neutral-400 dark:text-neutral-600">Sin conexiones todavía.</p>}
+            {!collapsed && (
+                <div className="px-3">
+                    <input
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        placeholder="Buscar..."
+                        className="w-full rounded-lg border-none bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
+                    />
+                </div>
+            )}
+            <div className="mt-2 flex-1 overflow-y-auto py-1">
+                {filtered.length === 0 && !collapsed && <p className="p-3 text-xs text-on-surface-variant/60">Sin conexiones todavía.</p>}
                 {filtered.map((c) => {
                     const isSelected = c.id === selectedId
-                    const isExpanded = isSelected && collapsedId !== c.id
+                    const isExpanded = !collapsed && isSelected && collapsedId !== c.id
                     return (
-                        <div key={c.id}>
-                            <div
-                                className={`group flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-900 ${
-                                    isSelected ? 'bg-neutral-100 dark:bg-neutral-900 text-emerald-600 dark:text-emerald-400' : 'text-neutral-700 dark:text-neutral-300'
-                                }`}
-                            >
-                                <button
-                                    onClick={() => toggleExpand(c)}
-                                    title={isExpanded ? 'Contraer' : 'Expandir'}
-                                    className="shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300"
-                                >
-                                    {isExpanded ? '▾' : '▸'}
-                                </button>
+                        <div key={c.id} className="mb-0.5">
+                            {collapsed ? (
                                 <button
                                     onClick={() => selectConnection(c)}
-                                    title={`Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`}
-                                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                    title={`${c.name} (${c.dbType}) — conectar y trabajar con esta conexión`}
+                                    className={`flex w-full items-center justify-center py-2 transition-colors ${
+                                        isSelected
+                                            ? 'bg-primary-container text-on-primary-container'
+                                            : 'text-on-surface-variant hover:bg-surface-variant'
+                                    }`}
                                 >
-                                    <span className="text-xs text-neutral-400 dark:text-neutral-600">{c.dbType}</span>
-                                    <span className="truncate">{c.name}</span>
+                                    <Icon name="storage" size={18} />
                                 </button>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        onEditConnection(c)
-                                    }}
-                                    title="Editar conexión"
-                                    className="hidden shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300 group-hover:block"
+                            ) : (
+                                <div
+                                    className={`group flex w-full items-center gap-1 py-1.5 pl-2 pr-3 text-left text-sm transition-colors ${
+                                        isSelected
+                                            ? 'bg-primary-container text-on-primary-container'
+                                            : 'text-on-surface-variant hover:bg-surface-variant'
+                                    }`}
                                 >
-                                    editar
-                                </button>
-                                <button
-                                    onClick={() => onExportConnectionConfig(c.id)}
-                                    title="Exportar configuración (sin password)"
-                                    className="hidden shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300 group-hover:block"
-                                >
-                                    cfg
-                                </button>
-                                {c.dbType === 'postgres' && (
+                                    <button
+                                        onClick={() => toggleExpand(c)}
+                                        title={isExpanded ? 'Contraer' : 'Expandir'}
+                                        className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100"
+                                    >
+                                        <Icon name={isExpanded ? 'expand_more' : 'chevron_right'} size={18} />
+                                    </button>
+                                    <button
+                                        onClick={() => selectConnection(c)}
+                                        title={`Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`}
+                                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                    >
+                                        <Icon name="storage" size={16} className="shrink-0 opacity-70" />
+                                        <span className="truncate font-medium">{c.name}</span>
+                                    </button>
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation()
-                                            onConfigureSchemas(c)
+                                            onEditConnection(c)
                                         }}
-                                        title="Elegir qué esquemas escanear"
-                                        className="hidden shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300 group-hover:block"
+                                        title="Editar conexión"
+                                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
                                     >
-                                        esq
+                                        <Icon name="edit" size={15} />
                                     </button>
-                                )}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        onDisconnect(c.id)
-                                    }}
-                                    title="Desconectar (mantiene la conexión guardada)"
-                                    className="hidden shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-red-600 dark:hover:text-red-400 group-hover:block"
-                                >
-                                    ⏻
-                                </button>
-                            </div>
+                                    <button
+                                        onClick={() => onExportConnectionConfig(c.id)}
+                                        title="Exportar configuración (sin password)"
+                                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                                    >
+                                        <Icon name="output" size={15} />
+                                    </button>
+                                    {c.dbType === 'postgres' && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                onConfigureSchemas(c)
+                                            }}
+                                            title="Elegir qué esquemas escanear"
+                                            className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                                        >
+                                            <Icon name="schema" size={15} />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            onDisconnect(c.id)
+                                        }}
+                                        title="Desconectar (mantiene la conexión guardada)"
+                                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:text-error hover:opacity-100 group-hover:block"
+                                    >
+                                        <Icon name="power_settings_new" size={15} />
+                                    </button>
+                                </div>
+                            )}
 
                             {isExpanded && metadata && (
-                                <div className="pb-1 pl-6">
+                                <div className="pb-1 pl-7 pr-2">
                                     {metadata.tables.length === 0 && (
-                                        <p className="px-2 py-1 text-xs text-neutral-400 dark:text-neutral-600">Sin tablas.</p>
+                                        <p className="px-2 py-1 text-xs text-on-surface-variant/60">Sin tablas.</p>
                                     )}
                                     {metadata.tables.map((t) => (
                                         <div
                                             key={`${t.schema ?? ''}.${t.name}`}
                                             onDoubleClick={() => onOpenTable(t.name, t.schema)}
                                             title="Doble click: SELECT * LIMIT 100"
-                                            className="group/table flex items-center gap-2 rounded px-2 py-1 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-neutral-800 dark:hover:text-neutral-200"
+                                            className="group/table flex items-center gap-2 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                         >
+                                            <Icon name="table_chart" size={14} className="shrink-0 opacity-60" />
                                             <span className="truncate">
                                                 {t.schema ? `${t.schema}.${t.name}` : t.name}
                                             </span>
@@ -174,9 +217,9 @@ export default function ConnectionTree({
                                                     onExportTableDDL(t.name, t.schema)
                                                 }}
                                                 title="Exportar DDL de la tabla"
-                                                className="hidden shrink-0 text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300 group-hover/table:block"
+                                                className="hidden shrink-0 opacity-70 hover:opacity-100 group-hover/table:block"
                                             >
-                                                DDL
+                                                <Icon name="code" size={14} />
                                             </button>
                                         </div>
                                     ))}
@@ -186,6 +229,6 @@ export default function ConnectionTree({
                     )
                 })}
             </div>
-        </div>
+        </aside>
     )
 }

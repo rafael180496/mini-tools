@@ -1,5 +1,6 @@
-import {lazy, Suspense, useCallback, useEffect, useRef, useState} from 'react'
+import {lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
+import Icon from './Icon'
 import ResultGrid from './results/ResultGrid'
 import ResultTabs from './results/ResultTabs'
 import ExportMenu from './results/ExportMenu'
@@ -27,7 +28,9 @@ import {
     RollbackTransaction,
     SaveSQLFile,
     SaveSQLFileAs,
+    SetEditorHeight,
     SetOpenTabs,
+    SetSidebarCollapsed,
 } from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
 import {db, explain, vault} from '../../wailsjs/go/models'
@@ -102,7 +105,7 @@ function dirName(path: string) {
 // visual, no state, so it lives outside the component like the other
 // helpers here.
 function Divider() {
-    return <div className="mx-0.5 h-4 w-px shrink-0 bg-neutral-200 dark:bg-neutral-800" />
+    return <div className="mx-0.5 h-4 w-px shrink-0 bg-outline-variant" />
 }
 
 function newScratchTab(): EditorTab {
@@ -181,11 +184,28 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [deletedPaths, setDeletedPaths] = useState<string[]>([])
     const hasRestoredRef = useRef(false)
 
+    // Workspace layout — sidebar icon-only rail toggle and the editor
+    // pane's height, both persisted to the vault (SetSidebarCollapsed/
+    // SetEditorHeight) so they survive a relaunch, same idea as open tabs
+    // above. EDITOR_HEIGHT_DEFAULT matches the old fixed h-64 Tailwind
+    // class (256px) and backend/vault/settings_repo.go's column default.
+    const EDITOR_HEIGHT_DEFAULT = 256
+    const EDITOR_HEIGHT_MIN = 120
+    const EDITOR_HEIGHT_MAX = 900
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [editorHeight, setEditorHeightState] = useState(EDITOR_HEIGHT_DEFAULT)
+
     useEffect(() => {
         let cancelled = false
 
         GetSettings()
             .then(async (settings) => {
+                if (cancelled) return
+                setSidebarCollapsed(!!settings.sidebarCollapsed)
+                if (settings.editorHeight) {
+                    setEditorHeightState(Math.min(EDITOR_HEIGHT_MAX, Math.max(EDITOR_HEIGHT_MIN, settings.editorHeight)))
+                }
+
                 const paths = settings.openTabs ?? []
                 if (paths.length === 0) return
 
@@ -224,6 +244,41 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    function toggleSidebarCollapsed() {
+        setSidebarCollapsed((prev) => {
+            const next = !prev
+            void SetSidebarCollapsed(next)
+            return next
+        })
+    }
+
+    // Drag-to-resize the editor pane against the results grid below it.
+    // Only persists once on mouseup (not on every mousemove) — dragging can
+    // fire dozens of events per second, and the vault write doesn't need to
+    // keep up with the pointer, just reflect where it ended up.
+    const resizingRef = useRef(false)
+    function startEditorResize(e: ReactMouseEvent) {
+        e.preventDefault()
+        resizingRef.current = true
+        const startY = e.clientY
+        const startHeight = editorHeight
+
+        function onMove(moveEvent: MouseEvent) {
+            if (!resizingRef.current) return
+            const next = Math.min(EDITOR_HEIGHT_MAX, Math.max(EDITOR_HEIGHT_MIN, startHeight + (moveEvent.clientY - startY)))
+            setEditorHeightState(next)
+        }
+        function onUp(upEvent: MouseEvent) {
+            resizingRef.current = false
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            const finalHeight = Math.min(EDITOR_HEIGHT_MAX, Math.max(EDITOR_HEIGHT_MIN, startHeight + (upEvent.clientY - startY)))
+            void SetEditorHeight(finalHeight)
+        }
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+    }
 
     // Persist the current set of open tab paths whenever it changes (open,
     // close, or a tab gains a path via Save/Save As) — but NOT on every
@@ -721,7 +776,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const activeResult = resultSets[activeResultTab]
 
     return (
-        <div className="flex h-screen w-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
+        <div className="flex h-screen w-screen bg-background font-sans text-on-background">
             <ConnectionTree
                 selectedId={selected?.id ?? null}
                 onSelect={setSelected}
@@ -734,6 +789,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 onExportTableDDL={(table, schema) => void exportTableDDL(table, schema)}
                 onDisconnect={(connId) => void disconnectConnection(connId)}
                 onConfigureSchemas={setSchemaPickerConn}
+                collapsed={sidebarCollapsed}
+                onToggleCollapsed={toggleSidebarCollapsed}
             />
 
             {schemaPickerConn && (
@@ -753,15 +810,18 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
 
             {deletedPaths.length > 0 && (
                 <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
-                    <div className="flex w-96 flex-col gap-3 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-6 text-neutral-900 dark:text-neutral-100">
-                        <h2 className="text-lg font-semibold">Archivos no encontrados</h2>
-                        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                    <div className="flex w-96 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg">
+                        <h2 className="flex items-center gap-2 text-lg font-semibold">
+                            <Icon name="warning" className="text-tertiary" />
+                            Archivos no encontrados
+                        </h2>
+                        <p className="text-xs text-on-surface-variant">
                             Estos archivos estaban abiertos la última vez pero ya no existen en disco — no se van a volver a
                             abrir automáticamente:
                         </p>
-                        <ul className="max-h-40 overflow-y-auto rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 p-2 text-xs text-neutral-600 dark:text-neutral-400">
+                        <ul className="max-h-40 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-lowest p-2 font-mono text-xs text-on-surface-variant">
                             {deletedPaths.map((p) => (
-                                <li key={p} className="truncate font-mono">
+                                <li key={p} className="truncate">
                                     {p}
                                 </li>
                             ))}
@@ -770,7 +830,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             <button
                                 onClick={() => setDeletedPaths([])}
                                 title="Cierra este aviso — las pestañas de archivos que ya no existen en disco quedan como pestañas sin guardar"
-                                className="rounded bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-100 dark:text-neutral-900"
+                                className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90"
                             >
                                 Entendido
                             </button>
@@ -780,23 +840,24 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             )}
 
             <div className="flex flex-1 flex-col">
-                <div className="flex flex-col border-b border-neutral-200 dark:border-neutral-800">
+                <div className="flex flex-col border-b border-outline-variant bg-surface">
                     {/* Context row: which connection/schema/transaction state
                         this workspace is currently pointed at. Kept
                         separate from the actions row below so neither
                         crowds the other. */}
-                    <div className="flex flex-wrap items-center gap-3 px-2 py-1.5">
-                        <span className="whitespace-nowrap text-xs text-neutral-500">
+                    <div className="flex flex-wrap items-center gap-3 px-3 py-1.5">
+                        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
+                            <span className={`h-2 w-2 rounded-full ${selected ? 'bg-secondary' : 'bg-outline'}`} />
                             {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
                         </span>
 
                         {schemas.length > 0 && (
-                            <label className="flex items-center gap-1 text-xs text-neutral-500">
+                            <label className="flex items-center gap-1 text-xs text-on-surface-variant">
                                 Schema:
                                 <select
                                     value={activeSchema ?? ''}
                                     onChange={(e) => setActiveSchema(e.target.value)}
-                                    className="rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-1 py-0.5 text-xs text-neutral-800 dark:text-neutral-200 outline-none"
+                                    className="rounded border-none bg-surface-container-highest px-1.5 py-0.5 text-xs text-on-surface outline-none"
                                 >
                                     {schemas.map((s) => (
                                         <option key={s} value={s}>
@@ -811,7 +872,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             <>
                                 <Divider />
                                 <label
-                                    className="flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400"
+                                    className="flex items-center gap-1.5 text-xs text-on-surface-variant"
                                     title="Desactivar: los statements quedan pendientes hasta Commit/Rollback en vez de aplicarse solos"
                                 >
                                     <input
@@ -819,6 +880,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                         checked={!txOpen}
                                         disabled={txBusy || txOpen}
                                         onChange={() => void beginTransaction()}
+                                        className="accent-primary"
                                     />
                                     Auto-commit
                                 </label>
@@ -826,20 +888,23 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                     onClick={() => void commitTransaction()}
                                     disabled={!txOpen || txBusy}
                                     title="Confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción actual"
-                                    className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-medium text-neutral-50 hover:bg-emerald-600 disabled:opacity-40"
+                                    className="flex items-center gap-1 rounded bg-secondary-container px-2 py-0.5 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-40"
                                 >
+                                    <Icon name="check_circle" size={14} />
                                     Commit
                                 </button>
                                 <button
                                     onClick={() => void rollbackTransaction()}
                                     disabled={!txOpen || txBusy}
                                     title="Descarta todos los cambios pendientes de la transacción actual y vuelve al estado antes de abrirla"
-                                    className="rounded bg-red-800 px-2 py-0.5 text-xs font-medium text-neutral-50 hover:bg-red-700 disabled:opacity-40"
+                                    className="flex items-center gap-1 rounded bg-error-container px-2 py-0.5 text-xs font-medium text-on-error-container hover:opacity-90 disabled:opacity-40"
                                 >
+                                    <Icon name="undo" size={14} />
                                     Rollback
                                 </button>
                                 {txOpen && (
-                                    <span className="whitespace-nowrap text-xs text-amber-600 dark:text-amber-400">
+                                    <span className="flex items-center gap-1 whitespace-nowrap text-xs text-tertiary">
+                                        <Icon name="warning" size={14} />
                                         Transacción abierta
                                     </span>
                                 )}
@@ -847,7 +912,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         )}
 
                         {(statusMessage || backupMessage) && (
-                            <span className="truncate text-xs text-neutral-500">{statusMessage || backupMessage}</span>
+                            <span className="truncate text-xs text-on-surface-variant">{statusMessage || backupMessage}</span>
                         )}
 
                         <div className="flex-1" />
@@ -855,9 +920,9 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         <button
                             onClick={onToggleTheme}
                             title="Cambiar tema"
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-2 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                            className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant"
                         >
-                            {theme === 'dark' ? '☀' : '🌙'}
+                            <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} size={18} />
                         </button>
                     </div>
 
@@ -865,28 +930,31 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         schema/vault utilities — grouped with dividers so
                         the eye can parse clusters instead of one long run
                         of same-looking buttons. */}
-                    <div className="flex flex-wrap items-center gap-1.5 border-t border-neutral-200 dark:border-neutral-800 px-2 py-1.5">
+                    <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-1.5">
                         <button
                             onClick={() => void openFileDialog()}
                             title="Abre un archivo .sql desde tu disco en una nueva pestaña del editor"
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
                         >
+                            <Icon name="folder_open" size={16} />
                             Abrir
                         </button>
                         <RecentFilesMenu onOpen={(path) => void openRecentFile(path)} />
                         <button
                             onClick={() => void saveActiveTab()}
                             title="Guarda el contenido de la pestaña activa en disco (atajo: Ctrl+S). Si es una pestaña nueva, te pide dónde guardarla"
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
                         >
+                            <Icon name="save" size={16} />
                             Guardar (Ctrl+S)
                         </button>
                         <button
                             onClick={() => void regenerateProjectDocs()}
                             disabled={!selected || !activeTabData?.path || regeneratingDocs}
                             title="Sobrescribe CLAUDE.md y .claude/ en la carpeta del archivo abierto con el schema y las tablas de la conexión actual (o solo el esquema seleccionado arriba, si hay uno). Útil si la base de datos cambió desde la última vez."
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
                         >
+                            <Icon name="auto_awesome" size={16} />
                             {regeneratingDocs ? 'Regenerando…' : 'Regenerar CLAUDE.md'}
                         </button>
 
@@ -896,40 +964,45 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             onClick={runSelectionOrLine}
                             disabled={!selected || running}
                             title="Ejecuta el texto seleccionado, o si no hay selección, la línea donde está el cursor (atajo: Ctrl+Enter)"
-                            className="rounded bg-emerald-700 px-3 py-1 text-xs font-medium hover:bg-emerald-600 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded bg-secondary-container px-3 py-1 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-50"
                         >
+                            <Icon name="play_arrow" size={16} filled />
                             Ejecutar (Ctrl+Enter)
                         </button>
                         <button
                             onClick={runFullScript}
                             disabled={!selected || running}
                             title="Ejecuta todos los statements del editor en orden, uno por uno (atajo: Ctrl+Shift+Enter)"
-                            className="rounded bg-emerald-800 px-3 py-1 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded bg-secondary-container px-3 py-1 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-50"
                         >
+                            <Icon name="playlist_play" size={16} />
                             Bloque (Ctrl+Shift+Enter)
                         </button>
                         <button
                             onClick={cancelQuery}
                             disabled={!running}
                             title="Interrumpe la consulta que está corriendo ahora mismo"
-                            className="rounded bg-red-800 px-3 py-1 text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded bg-error-container px-3 py-1 text-xs font-medium text-on-error-container hover:opacity-90 disabled:opacity-50"
                         >
+                            <Icon name="stop" size={16} filled />
                             Cancelar
                         </button>
                         <button
                             onClick={() => void runExplain(false)}
                             disabled={!selected}
                             title="Muestra el plan de ejecución del query (EXPLAIN) sin correrlo — útil para diagnosticar lentitud sin afectar datos"
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
                         >
+                            <Icon name="query_stats" size={16} />
                             Explain
                         </button>
                         <button
                             onClick={() => void runExplain(true)}
                             disabled={!selected}
                             title="Ejecuta el query de verdad y muestra el plan con tiempos reales (EXPLAIN ANALYZE) — a diferencia de Explain, sí corre el query"
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
                         >
+                            <Icon name="analytics" size={16} />
                             Explain Analyze
                         </button>
 
@@ -939,23 +1012,26 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             onClick={refreshMetadata}
                             disabled={!selected}
                             title="Vuelve a leer las tablas y columnas de la base de datos (atajo: F5) — usalo si acabás de crear/alterar una tabla"
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
                         >
+                            <Icon name="refresh" size={16} />
                             Refrescar (F5)
                         </button>
                         <button
                             onClick={() => void exportSchemaDDL()}
                             disabled={!selected}
                             title="Exporta a un archivo el DDL (CREATE TABLE, etc.) del schema actual"
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
                         >
+                            <Icon name="code" size={16} />
                             DDL schema
                         </button>
                         <button
                             onClick={() => void backupVault()}
                             title="Copia el archivo del vault (donde se guardan tus conexiones cifradas) a otra ubicación, por si necesitás restaurarlo después"
-                            className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
                         >
+                            <Icon name="backup" size={16} />
                             Backup vault
                         </button>
                     </div>
@@ -963,7 +1039,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
 
                 <EditorTabs tabs={tabs} activeId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} onNew={newTab} />
 
-                <div className="h-64 border-b border-neutral-200 dark:border-neutral-800">
+                <div className="border-b border-outline-variant" style={{height: editorHeight}}>
                     <MonacoSQLEditor
                         value={activeTabData?.content ?? ''}
                         onChange={updateActiveTabContent}
@@ -973,6 +1049,16 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     />
                 </div>
 
+                {/* Drag handle: resizes the editor pane against the results
+                    grid below. Persisted on mouseup, see startEditorResize. */}
+                <div
+                    onMouseDown={startEditorResize}
+                    title="Arrastrar para cambiar el alto del editor — el tamaño queda guardado"
+                    className="group flex h-1.5 shrink-0 cursor-row-resize items-center justify-center bg-surface-container-low hover:bg-primary/30"
+                >
+                    <div className="h-0.5 w-8 rounded-full bg-outline-variant group-hover:bg-primary" />
+                </div>
+
                 <ResultTabs
                     count={resultSets.length}
                     active={activeResultTab}
@@ -980,7 +1066,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     statuses={resultSets.map((r) => r.status)}
                 />
 
-                <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 px-2 py-1">
+                <div className="flex items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
                     <ExportMenu
                         columns={activeResult?.columns ?? []}
                         rows={activeResult?.rows ?? []}
@@ -997,7 +1083,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 />
 
                 {activeResult && activeResult.dbmsOutput.length > 0 && (
-                    <pre className="max-h-32 overflow-y-auto border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 p-2 text-xs text-neutral-600 dark:text-neutral-400">
+                    <pre className="max-h-32 overflow-y-auto border-t border-outline-variant bg-surface-container-lowest p-2 font-mono text-xs text-on-surface-variant">
                         {activeResult.dbmsOutput.join('\n')}
                     </pre>
                 )}
@@ -1013,12 +1099,12 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     </Suspense>
                 )}
 
-                <div className="flex items-center gap-4 border-t border-neutral-200 dark:border-neutral-800 px-3 py-1 text-xs text-neutral-500">
+                <div className="flex items-center gap-4 border-t border-outline-variant bg-surface-container-low px-3 py-1 text-xs text-on-surface-variant">
                     {running && (
                         <span className="flex items-center gap-2">
                             <span
                                 aria-hidden
-                                className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-neutral-400 dark:border-neutral-600"
+                                className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
                             />
                             {runProgress && runProgress.total > 1
                                 ? `Ejecutando ${runProgress.current}/${runProgress.total}…`
@@ -1030,8 +1116,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             {activeResult.rowsAffected} filas · {activeResult.durationMs}ms
                         </span>
                     )}
-                    {activeResult?.status === 'cancelled' && <span className="text-amber-600 dark:text-amber-400">Cancelada</span>}
-                    {activeResult?.status === 'error' && <span className="text-red-600 dark:text-red-400">{activeResult.error}</span>}
+                    {activeResult?.status === 'cancelled' && <span className="text-tertiary">Cancelada</span>}
+                    {activeResult?.status === 'error' && <span className="text-error">{activeResult.error}</span>}
                 </div>
             </div>
 

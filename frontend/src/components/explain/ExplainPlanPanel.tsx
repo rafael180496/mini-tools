@@ -1,4 +1,5 @@
 import {explain} from '../../../wailsjs/go/models'
+import Icon from '../Icon'
 
 interface PlanNodeViewProps {
     node: explain.PlanNode
@@ -15,17 +16,22 @@ function PlanNodeView({node, depth}: PlanNodeViewProps) {
     return (
         <div>
             <div
-                className={`flex flex-wrap items-center gap-2 rounded px-2 py-1 text-xs ${
-                    node.isFullScan ? 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300' : 'text-neutral-700 dark:text-neutral-300'
+                className={`flex flex-wrap items-center gap-2 rounded px-2 py-1 font-mono text-xs ${
+                    node.isFullScan ? 'bg-error-container text-on-error-container' : 'text-on-surface'
                 }`}
                 style={{paddingLeft: `${depth * 16 + 8}px`}}
             >
                 <span className="font-medium">{node.operation}</span>
-                {node.objectName && <span className="text-neutral-500">{node.objectName}</span>}
-                {!!node.rows && <span className="text-neutral-400 dark:text-neutral-600">~{node.rows} filas</span>}
-                {!!node.cost && <span className="text-neutral-400 dark:text-neutral-600">cost {node.cost.toFixed(2)}</span>}
-                {!!node.actualTimeMs && <span className="text-neutral-400 dark:text-neutral-600">{node.actualTimeMs.toFixed(3)}ms</span>}
-                {node.isFullScan && <span className="text-red-600 dark:text-red-400">⚠ full scan</span>}
+                {node.objectName && <span className="text-on-surface-variant">{node.objectName}</span>}
+                {!!node.rows && <span className="text-on-surface-variant/70">~{node.rows} filas</span>}
+                {!!node.cost && <span className="text-on-surface-variant/70">cost {node.cost.toFixed(2)}</span>}
+                {!!node.actualTimeMs && <span className="text-on-surface-variant/70">{node.actualTimeMs.toFixed(3)}ms</span>}
+                {node.isFullScan && (
+                    <span className="flex items-center gap-1 font-sans font-medium">
+                        <Icon name="warning" size={13} filled />
+                        full scan
+                    </span>
+                )}
             </div>
             {node.children?.map((child, i) => (
                 <PlanNodeView key={i} node={child} depth={depth + 1} />
@@ -46,24 +52,25 @@ interface ExplainPlanPanelProps {
 // (filas, tiempo)".
 export default function ExplainPlanPanel({plan, loading, error, onClose}: ExplainPlanPanelProps) {
     return (
-        <div className="flex h-64 flex-col border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 px-3 py-1">
-                <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">
+        <div className="flex h-64 flex-col border-t border-outline-variant bg-surface-container-low">
+            <div className="flex items-center justify-between border-b border-outline-variant px-3 py-1">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-on-surface-variant">
+                    <Icon name="query_stats" size={15} />
                     EXPLAIN PLAN{plan?.durationMs ? ` · ${plan.durationMs.toFixed(3)}ms` : ''}
                 </span>
                 <button
                     onClick={onClose}
                     title="Cierra este panel del plan de ejecución"
-                    className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                    className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
-                    Cerrar
+                    <Icon name="close" size={16} />
                 </button>
             </div>
             <div className="flex-1 overflow-auto p-2">
-                {loading && <p className="text-xs text-neutral-400 dark:text-neutral-600">Generando plan…</p>}
-                {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+                {loading && <p className="text-xs text-on-surface-variant">Generando plan…</p>}
+                {error && <p className="text-xs text-error">{error}</p>}
                 {!loading && !error && plan?.root && <PlanNodeView node={plan.root} depth={0} />}
-                {!loading && !error && !plan?.root && <p className="text-xs text-neutral-400 dark:text-neutral-600">Sin plan.</p>}
+                {!loading && !error && !plan?.root && <p className="text-xs text-on-surface-variant">Sin plan.</p>}
             </div>
         </div>
     )

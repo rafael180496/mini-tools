@@ -56,6 +56,7 @@ export default function MonacoSQLEditor({value, onChange, onMount}: MonacoSQLEdi
             automaticLayout: true,
             minimap: {enabled: true},
             fontSize: 13,
+            fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
         })
         editorRef.current = editor
         applyLintMarkers(editor)

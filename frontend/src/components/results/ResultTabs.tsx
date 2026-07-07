@@ -1,3 +1,5 @@
+import Icon from '../Icon'
+
 interface ResultTabsProps {
     count: number
     active: number
@@ -12,21 +14,21 @@ export default function ResultTabs({count, active, onSelect, statuses}: ResultTa
     if (count <= 1) return null
 
     return (
-        <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-2 pt-1">
+        <div className="flex gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
             {Array.from({length: count}).map((_, i) => (
                 <button
                     key={i}
                     onClick={() => onSelect(i)}
                     title={`Ver el resultado del statement ${i + 1} de ${count} — cada statement de un bloque tiene su propia pestaña de resultados`}
-                    className={`rounded-t px-3 py-1 text-xs ${
+                    className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
                         i === active
-                            ? 'bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100'
-                            : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
+                            ? 'bg-surface text-on-surface'
+                            : 'text-on-surface-variant hover:text-on-surface'
                     }`}
                 >
                     Resultado {i + 1}
-                    {statuses[i] === 'error' && ' ⚠'}
-                    {statuses[i] === 'cancelled' && ' ⊘'}
+                    {statuses[i] === 'error' && <Icon name="error" size={14} className="text-error" filled />}
+                    {statuses[i] === 'cancelled' && <Icon name="block" size={14} className="text-tertiary" />}
                 </button>
             ))}
         </div>

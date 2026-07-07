@@ -16,13 +16,24 @@ type Settings struct {
 	// order, so the workspace can restore them on the next launch — see
 	// SetOpenTabs.
 	OpenTabs []string `json:"openTabs"`
+	// SidebarCollapsed persists the connection tree's icon-only rail mode
+	// (toggled in the sidebar header) — see SetSidebarCollapsed.
+	SidebarCollapsed bool `json:"sidebarCollapsed"`
+	// EditorHeight is the SQL editor pane's height in pixels, dragged via
+	// the resize handle between the editor and the results grid — see
+	// SetEditorHeight. Defaults to 256 (the old fixed h-64 Tailwind class).
+	EditorHeight int `json:"editorHeight"`
 }
 
 // GetSettings returns the single settings row, seeded with defaults by Open.
 func (s *Store) GetSettings() (Settings, error) {
 	var theme string
 	var openTabsJSON sql.NullString
-	if err := s.db.QueryRow(`SELECT theme, open_tabs FROM settings WHERE id = 1`).Scan(&theme, &openTabsJSON); err != nil {
+	var sidebarCollapsed bool
+	var editorHeight int
+	if err := s.db.QueryRow(
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height FROM settings WHERE id = 1`,
+	).Scan(&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
 
@@ -33,7 +44,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		}
 	}
 
-	return Settings{Theme: theme, OpenTabs: openTabs}, nil
+	return Settings{Theme: theme, OpenTabs: openTabs, SidebarCollapsed: sidebarCollapsed, EditorHeight: editorHeight}, nil
 }
 
 // SetTheme persists the theme preference ("dark" or "light").
@@ -58,6 +69,25 @@ func (s *Store) SetOpenTabs(paths []string) error {
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET open_tabs = ? WHERE id = 1`, string(encoded)); err != nil {
 		return fmt.Errorf("vault: guardando open_tabs: %w", err)
+	}
+	return nil
+}
+
+// SetSidebarCollapsed persists whether the connection tree is showing as a
+// full sidebar or an icon-only rail.
+func (s *Store) SetSidebarCollapsed(collapsed bool) error {
+	if _, err := s.db.Exec(`UPDATE settings SET sidebar_collapsed = ? WHERE id = 1`, collapsed); err != nil {
+		return fmt.Errorf("vault: guardando sidebar_collapsed: %w", err)
+	}
+	return nil
+}
+
+// SetEditorHeight persists the SQL editor pane's height in pixels. The
+// frontend clamps the value while dragging (see Workspace.tsx) — this is
+// just storage, no range validation here.
+func (s *Store) SetEditorHeight(height int) error {
+	if _, err := s.db.Exec(`UPDATE settings SET editor_height = ? WHERE id = 1`, height); err != nil {
+		return fmt.Errorf("vault: guardando editor_height: %w", err)
 	}
 	return nil
 }

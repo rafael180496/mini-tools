@@ -342,6 +342,8 @@ export namespace vault {
 	export class Settings {
 	    theme: string;
 	    openTabs: string[];
+	    sidebarCollapsed: boolean;
+	    editorHeight: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -351,6 +353,8 @@ export namespace vault {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.theme = source["theme"];
 	        this.openTabs = source["openTabs"];
+	        this.sidebarCollapsed = source["sidebarCollapsed"];
+	        this.editorHeight = source["editorHeight"];
 	    }
 	}
 

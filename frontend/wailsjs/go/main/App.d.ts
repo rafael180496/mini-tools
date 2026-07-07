@@ -73,7 +73,11 @@ export function SaveSQLFileAs(arg1:string,arg2:string):Promise<string>;
 
 export function SetConnectionSchemas(arg1:string,arg2:Array<string>):Promise<void>;
 
+export function SetEditorHeight(arg1:number):Promise<void>;
+
 export function SetOpenTabs(arg1:Array<string>):Promise<void>;
+
+export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
 

@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react'
 import {ClearRecentFiles, ListRecentFiles} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
+import Icon from '../Icon'
 
 interface RecentFilesMenuProps {
     onOpen: (path: string) => void
@@ -23,13 +24,14 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
             <button
                 onClick={() => setOpen((v) => !v)}
                 title="Muestra los últimos archivos .sql que abriste, para reabrirlos rápido"
-                className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
             >
+                <Icon name="history" size={16} />
                 Recientes
             </button>
             {open && (
-                <div className="absolute right-0 z-10 mt-1 w-72 rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-1 shadow-lg">
-                    {files.length === 0 && <p className="p-2 text-xs text-neutral-500">Sin archivos recientes.</p>}
+                <div className="absolute right-0 z-10 mt-1 w-72 rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg">
+                    {files.length === 0 && <p className="p-2 text-xs text-on-surface-variant">Sin archivos recientes.</p>}
                     {files.map((f) => (
                         <button
                             key={f.path}
@@ -37,10 +39,11 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
                                 onOpen(f.path)
                                 setOpen(false)
                             }}
-                            className="block w-full truncate rounded px-2 py-1 text-left text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                            className="flex w-full items-center gap-2 truncate rounded px-2 py-1 text-left font-mono text-xs text-on-surface hover:bg-surface-variant"
                             title={f.path}
                         >
-                            {f.path}
+                            <Icon name="description" size={14} className="shrink-0 opacity-60" />
+                            <span className="truncate">{f.path}</span>
                         </button>
                     ))}
                     {files.length > 0 && (
@@ -49,8 +52,9 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
                                 void ClearRecentFiles().then(() => setFiles([]))
                             }}
                             title="Borra la lista de archivos recientes (no borra los archivos, solo el historial)"
-                            className="mt-1 block w-full rounded px-2 py-1 text-left text-xs text-neutral-400 dark:text-neutral-600 hover:bg-neutral-200 dark:hover:bg-neutral-800 hover:text-neutral-600 dark:hover:text-neutral-400"
+                            className="mt-1 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
+                            <Icon name="delete_sweep" size={14} />
                             Limpiar historial
                         </button>
                     )}

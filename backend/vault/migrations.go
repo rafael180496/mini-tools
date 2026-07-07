@@ -42,6 +42,17 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 4,
+		desc:    "agrega settings.sidebar_collapsed y settings.editor_height para persistir el layout del workspace",
+		apply: func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN sidebar_collapsed INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN editor_height INTEGER NOT NULL DEFAULT 256`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

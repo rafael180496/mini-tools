@@ -1,6 +1,7 @@
 import {FormEvent, useState} from 'react'
 import logo from '../../assets/logo.png'
 import type {Theme} from '../../hooks/useTheme'
+import Icon from '../Icon'
 
 interface UnlockScreenProps {
     isInitialized: boolean
@@ -53,21 +54,25 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
     }
 
     return (
-        <div className="relative flex h-screen w-screen items-center justify-center bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
+        <div className="relative flex h-screen w-screen items-center justify-center bg-background font-sans text-on-background">
             <button
                 type="button"
                 onClick={onToggleTheme}
                 title="Cambiar tema"
-                className="absolute right-4 top-4 rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-2 py-1 text-xs hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-high"
             >
-                {theme === 'dark' ? '☀ Claro' : '🌙 Oscuro'}
+                <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} size={16} />
+                {theme === 'dark' ? 'Claro' : 'Oscuro'}
             </button>
-            <form onSubmit={submit} className="flex w-72 flex-col gap-3 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-6">
+            <form
+                onSubmit={submit}
+                className="flex w-80 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container p-6 shadow-lg"
+            >
                 <img src={logo} alt="mini-tools" className="mx-auto h-16 w-16" />
-                <h1 className="text-center text-lg font-semibold">
+                <h1 className="text-center text-xl font-bold text-on-surface">
                     {isInitialized ? 'Desbloquear vault' : 'Crear clave maestra'}
                 </h1>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                <p className="text-xs text-on-surface-variant">
                     {isInitialized
                         ? 'Ingresa tu clave maestra para acceder a tus conexiones.'
                         : 'Esta clave cifra tus conexiones guardadas. Si la pierdes, pierdes el vault — no hay recuperación.'}
@@ -78,7 +83,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Clave maestra"
-                    className="rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+                    className="rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                 />
                 {!isInitialized && (
                     <input
@@ -86,10 +91,10 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                         value={confirm}
                         onChange={(e) => setConfirm(e.target.value)}
                         placeholder="Confirmar clave"
-                        className="rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+                        className="rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                     />
                 )}
-                {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+                {error && <p className="text-xs text-error">{error}</p>}
                 <button
                     type="submit"
                     disabled={busy || !password}
@@ -98,7 +103,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                             ? 'Descifra tus conexiones guardadas con esta clave maestra'
                             : 'Crea el vault cifrado donde se guardarán tus conexiones — esta clave no se guarda en ningún lado, solo vos la sabés'
                     }
-                    className="rounded bg-neutral-900 dark:bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-100 dark:text-neutral-900 disabled:opacity-50"
+                    className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                     {isInitialized ? 'Desbloquear' : 'Crear vault'}
                 </button>
@@ -108,7 +113,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                         onClick={() => void restore()}
                         disabled={busy}
                         title="Reemplaza el vault actual con un archivo de backup que hayas generado antes (botón Backup vault en la app)"
-                        className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 disabled:opacity-50"
+                        className="text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-50"
                     >
                         Restaurar desde backup…
                     </button>

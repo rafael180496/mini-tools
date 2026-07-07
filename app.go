@@ -149,6 +149,26 @@ func (a *App) SetOpenTabs(paths []string) error {
 	return a.vault.SetOpenTabs(paths)
 }
 
+// SetSidebarCollapsed persists the connection tree's icon-only rail toggle.
+// Gated behind requireUnlocked like SetOpenTabs — the sidebar it describes
+// only exists in the post-unlock Workspace, never on the lock screen.
+func (a *App) SetSidebarCollapsed(collapsed bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetSidebarCollapsed(collapsed)
+}
+
+// SetEditorHeight persists the SQL editor pane's height (px) after the user
+// drags the resize handle between the editor and the results grid. Same
+// requireUnlocked reasoning as SetSidebarCollapsed.
+func (a *App) SetEditorHeight(height int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetEditorHeight(height)
+}
+
 // TestConnection builds a DSN from cfg and pings it, without saving
 // anything. Used by the "Test Connection" button before a connection is
 // persisted.

@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react'
 import {ListSchemas, SetConnectionSchemas} from '../../../wailsjs/go/main/App'
+import Icon from '../Icon'
 
 interface SchemaPickerDialogProps {
     connId: string
@@ -61,25 +62,28 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
 
     return (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
-            <div className="flex max-h-[80vh] w-80 flex-col gap-3 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-6 text-neutral-900 dark:text-neutral-100">
-                <h2 className="text-lg font-semibold">Esquemas a escanear</h2>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            <div className="flex max-h-[80vh] w-80 flex-col gap-3 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg">
+                <h2 className="flex items-center gap-2 text-lg font-semibold">
+                    <Icon name="schema" className="text-primary" />
+                    Esquemas a escanear
+                </h2>
+                <p className="text-xs text-on-surface-variant">
                     Restringe qué esquemas usa el autocomplete/árbol de tablas — útil si esta base tiene muchos esquemas y el
                     escaneo completo es lento.
                 </p>
 
-                {allSchemas === null && !error && <p className="text-xs text-neutral-500">Cargando esquemas…</p>}
-                {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+                {allSchemas === null && !error && <p className="text-xs text-on-surface-variant">Cargando esquemas…</p>}
+                {error && <p className="text-xs text-error">{error}</p>}
 
                 {allSchemas && (
                     <div className="flex flex-col gap-1">
                         {allSchemas.map((s) => (
-                            <label key={s} className="flex items-center gap-2 text-sm">
-                                <input type="checkbox" checked={selected.has(s)} onChange={() => toggle(s)} />
+                            <label key={s} className="flex items-center gap-2 text-sm text-on-surface">
+                                <input type="checkbox" checked={selected.has(s)} onChange={() => toggle(s)} className="accent-primary" />
                                 {s}
                             </label>
                         ))}
-                        {allSchemas.length === 0 && <p className="text-xs text-neutral-500">Sin esquemas.</p>}
+                        {allSchemas.length === 0 && <p className="text-xs text-on-surface-variant">Sin esquemas.</p>}
                     </div>
                 )}
 
@@ -88,7 +92,7 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                         type="button"
                         onClick={onClose}
                         title="Cierra sin cambiar qué esquemas se escanean"
-                        className="rounded px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+                        className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface"
                     >
                         Cancelar
                     </button>
@@ -97,7 +101,7 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                         onClick={() => void save()}
                         disabled={!allSchemas || busy}
                         title="Guarda la selección — solo los esquemas marcados se escanean para autocompletado y el árbol de tablas (útil en bases con muchos esquemas para evitar escaneos lentos)"
-                        className="rounded bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-100 dark:text-neutral-900 disabled:opacity-50"
+                        className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
                         Guardar
                     </button>

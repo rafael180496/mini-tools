@@ -2,6 +2,7 @@ import {FormEvent, useEffect, useState} from 'react'
 import {GetConnectionForEdit, SaveConnection, TestConnection, UpdateConnection} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
 import {parseConnectionString} from '../../lib/connStringParser'
+import Icon from '../Icon'
 
 interface ConnectionDialogProps {
     // null = creating a new connection; a connection id = editing that one.
@@ -147,17 +148,17 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
     }
 
     const inputClass =
-        'rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-neutral-500'
-    const labelClass = 'flex flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-400'
+        'rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary'
+    const labelClass = 'flex flex-col gap-1 text-xs text-on-surface-variant'
 
     return (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
             <form
                 onSubmit={handleSubmit}
-                className="flex max-h-[90vh] w-104 flex-col gap-3 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-6 text-neutral-900 dark:text-neutral-100"
+                className="flex max-h-[90vh] w-104 flex-col gap-3 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg"
             >
                 <h2 className="text-lg font-semibold">{editingId ? 'Editar conexión' : 'Nueva conexión'}</h2>
-                {loadingEdit && <p className="text-xs text-neutral-500">Cargando conexión…</p>}
+                {loadingEdit && <p className="text-xs text-on-surface-variant">Cargando conexión…</p>}
 
                 <label className={labelClass}>
                     Nombre
@@ -178,7 +179,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                         rows={2}
                         className={`${inputClass} font-mono text-xs`}
                     />
-                    {pasteHint && <span className="text-xs text-neutral-500">{pasteHint}</span>}
+                    {pasteHint && <span className="text-xs text-on-surface-variant">{pasteHint}</span>}
                 </label>
 
                 <label className={labelClass}>
@@ -374,25 +375,36 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                                 ? 'Ingresá el password para probar, o guardá directo (se prueba con el password actual antes de guardar)'
                                 : 'Intenta conectar con estos datos ahora mismo, sin guardar la conexión — para confirmar que host/usuario/password son correctos'
                         }
-                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
+                        className="flex items-center gap-1.5 rounded bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
                     >
+                        <Icon name="network_check" size={15} />
                         Test Connection
                     </button>
-                    {pingStatus === 'ok' && <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ conexión ok</span>}
-                    {pingStatus === 'failed' && <span className="text-xs text-red-600 dark:text-red-400">✗ falló</span>}
+                    {pingStatus === 'ok' && (
+                        <span className="flex items-center gap-1 text-xs text-secondary">
+                            <Icon name="check_circle" size={14} filled />
+                            conexión ok
+                        </span>
+                    )}
+                    {pingStatus === 'failed' && (
+                        <span className="flex items-center gap-1 text-xs text-error">
+                            <Icon name="error" size={14} filled />
+                            falló
+                        </span>
+                    )}
                     {passwordUnknownWhileEditing && pingStatus === 'idle' && (
-                        <span className="text-xs text-neutral-500">Password sin cambios — se prueba al guardar</span>
+                        <span className="text-xs text-on-surface-variant">Password sin cambios — se prueba al guardar</span>
                     )}
                 </div>
 
-                {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+                {error && <p className="text-xs text-error">{error}</p>}
 
                 <div className="mt-2 flex justify-end gap-2">
                     <button
                         type="button"
                         onClick={onClose}
                         title="Cierra este formulario sin guardar cambios"
-                        className="rounded px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+                        className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface"
                     >
                         Cancelar
                     </button>
@@ -402,7 +414,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                             disabled={!canSubmit}
                             onClick={() => void doSave(true)}
                             title="Guarda la conexión aunque la prueba haya fallado — útil si el servidor está apagado ahora pero vas a usarlo más tarde"
-                            className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-neutral-50 dark:text-neutral-950 disabled:opacity-50"
+                            className="rounded-lg bg-tertiary-container px-3 py-1.5 text-sm font-medium text-on-tertiary-container disabled:opacity-50"
                         >
                             Guardar de todos modos
                         </button>
@@ -411,7 +423,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                         type="submit"
                         disabled={!canSubmit}
                         title={editingId ? 'Guarda los cambios de esta conexión' : 'Guarda esta conexión nueva en el vault cifrado'}
-                        className="rounded bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-100 dark:text-neutral-900 disabled:opacity-50"
+                        className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
                         {editingId ? 'Guardar cambios' : 'Guardar'}
                     </button>

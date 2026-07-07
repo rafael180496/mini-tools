@@ -138,8 +138,16 @@ export function SetConnectionSchemas(arg1, arg2) {
   return window['go']['main']['App']['SetConnectionSchemas'](arg1, arg2);
 }
 
+export function SetEditorHeight(arg1) {
+  return window['go']['main']['App']['SetEditorHeight'](arg1);
+}
+
 export function SetOpenTabs(arg1) {
   return window['go']['main']['App']['SetOpenTabs'](arg1);
+}
+
+export function SetSidebarCollapsed(arg1) {
+  return window['go']['main']['App']['SetSidebarCollapsed'](arg1);
 }
 
 export function SetTheme(arg1) {

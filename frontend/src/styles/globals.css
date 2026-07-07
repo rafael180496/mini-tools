@@ -2,6 +2,253 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Self-hosted fonts — no CDN/Google Fonts at runtime, mini-tools is a fully
+   offline desktop app. Only the Latin subset was pulled (covers Spanish
+   diacritics: ñ, á-ú, ¿, ¡ — all inside U+0000-00FF), not the full
+   cyrillic/greek/vietnamese subsets Google Fonts ships by default. */
+@font-face {
+    font-family: 'Hanken Grotesk';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../assets/fonts/hanken-grotesk-400.woff') format('woff');
+}
+@font-face {
+    font-family: 'Hanken Grotesk';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('../assets/fonts/hanken-grotesk-600.woff') format('woff');
+}
+@font-face {
+    font-family: 'Hanken Grotesk';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('../assets/fonts/hanken-grotesk-700.woff') format('woff');
+}
+@font-face {
+    font-family: 'Hanken Grotesk';
+    font-style: normal;
+    font-weight: 800;
+    font-display: swap;
+    src: url('../assets/fonts/hanken-grotesk-800.woff') format('woff');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../assets/fonts/jetbrains-mono-400.woff') format('woff');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('../assets/fonts/jetbrains-mono-500.woff') format('woff');
+}
+@font-face {
+    font-family: 'Material Symbols Outlined';
+    font-style: normal;
+    font-weight: 100 700;
+    font-display: block;
+    src: url('../assets/fonts/material-symbols-outlined.woff2') format('woff2');
+}
+
+/* Icon font usage: <span className="material-symbols-outlined">search</span>
+   — see frontend/src/components/Icon.tsx, the wrapper every component
+   should use instead of writing this markup by hand. */
+.material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 20px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Material Design 3 color roles — Tailwind utilities (bg-primary,
+   text-on-surface-variant, etc.) resolve through these CSS custom
+   properties, so they swap automatically with the existing .dark class
+   toggle (frontend/src/hooks/useTheme.ts), same mechanism as before this
+   redesign, no changes needed there.
+
+   Dark values come verbatim from the Stitch-generated mockup (Material
+   Design 3 "Fidelity" dynamic color scheme, spec 2021, seed #4a8eff). Light
+   values were derived, not hand-picked: extracted the exact hue/chroma per
+   color family (primary/secondary/tertiary/neutral/neutral-variant) from
+   the given dark swatches with @material/material-color-utilities, then
+   regenerated the FULL scheme (light AND dark) from those families — the
+   regenerated dark output reproduced the mockup's given hexes almost
+   exactly (avg ΔRGB ~2/441 across 33 roles, one-off script, not a runtime
+   dependency), which validated the derivation before trusting its light
+   output. `surface-variant` was pinned to equal `surface-container-highest`
+   in both modes because the mockup's own dark values do that (a known
+   simplification some MD3 tooling uses for the legacy surface-variant
+   role) — kept for consistency rather than using the library's raw
+   (slightly different) computed value. */
+@theme {
+    --color-primary: var(--md-primary);
+    --color-on-primary: var(--md-on-primary);
+    --color-primary-container: var(--md-primary-container);
+    --color-on-primary-container: var(--md-on-primary-container);
+
+    --color-secondary: var(--md-secondary);
+    --color-on-secondary: var(--md-on-secondary);
+    --color-secondary-container: var(--md-secondary-container);
+    --color-on-secondary-container: var(--md-on-secondary-container);
+
+    --color-tertiary: var(--md-tertiary);
+    --color-on-tertiary: var(--md-on-tertiary);
+    --color-tertiary-container: var(--md-tertiary-container);
+    --color-on-tertiary-container: var(--md-on-tertiary-container);
+
+    --color-error: var(--md-error);
+    --color-on-error: var(--md-on-error);
+    --color-error-container: var(--md-error-container);
+    --color-on-error-container: var(--md-on-error-container);
+
+    --color-background: var(--md-background);
+    --color-on-background: var(--md-on-background);
+
+    --color-surface: var(--md-surface);
+    --color-on-surface: var(--md-on-surface);
+    --color-surface-dim: var(--md-surface-dim);
+    --color-surface-bright: var(--md-surface-bright);
+    --color-surface-container-lowest: var(--md-surface-container-lowest);
+    --color-surface-container-low: var(--md-surface-container-low);
+    --color-surface-container: var(--md-surface-container);
+    --color-surface-container-high: var(--md-surface-container-high);
+    --color-surface-container-highest: var(--md-surface-container-highest);
+    --color-surface-variant: var(--md-surface-variant);
+    --color-on-surface-variant: var(--md-on-surface-variant);
+
+    --color-outline: var(--md-outline);
+    --color-outline-variant: var(--md-outline-variant);
+
+    --color-inverse-surface: var(--md-inverse-surface);
+    --color-inverse-on-surface: var(--md-inverse-on-surface);
+    --color-inverse-primary: var(--md-inverse-primary);
+    --color-surface-tint: var(--md-surface-tint);
+
+    /* UI text uses Hanken Grotesk, code/data/labels use JetBrains Mono —
+       reusing Tailwind's own font-sans/font-mono utility slots (instead of
+       inventing parallel `font-code-md`-style names) so every existing
+       `font-mono`/default-body usage across the app picks this up for
+       free, no per-component renaming needed. */
+    --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+    /* MD3 in this mockup is boxier than Tailwind's defaults — tightened
+       corners system-wide. rounded-full is deliberately left alone (still
+       a true circle/pill), it's used for avatars/badges elsewhere. */
+    --radius: 2px;
+    --radius-lg: 4px;
+    --radius-xl: 8px;
+}
+
+:root {
+    --md-primary: #0058bc;
+    --md-on-primary: #ffffff;
+    --md-primary-container: #2271e0;
+    --md-on-primary-container: #fefcff;
+
+    --md-secondary: #006c49;
+    --md-on-secondary: #ffffff;
+    --md-secondary-container: #6cf8bb;
+    --md-on-secondary-container: #00714d;
+
+    --md-tertiary: #9e3d00;
+    --md-on-tertiary: #ffffff;
+    --md-tertiary-container: #c64f00;
+    --md-on-tertiary-container: #fffbff;
+
+    --md-error: #ba1a1a;
+    --md-on-error: #ffffff;
+    --md-error-container: #ffdad6;
+    --md-on-error-container: #93000a;
+
+    --md-background: #faf8ff;
+    --md-on-background: #131b2e;
+
+    --md-surface: #faf8ff;
+    --md-on-surface: #131b2e;
+    --md-surface-dim: #d2d9f4;
+    --md-surface-bright: #faf8ff;
+    --md-surface-container-lowest: #ffffff;
+    --md-surface-container-low: #f2f3ff;
+    --md-surface-container: #eaedff;
+    --md-surface-container-high: #e1e7ff;
+    --md-surface-container-highest: #dae2fd;
+    --md-surface-variant: #dae2fd; /* = surface-container-highest, see note above */
+    --md-on-surface-variant: #414755;
+
+    --md-outline: #717786;
+    --md-outline-variant: #c1c6d7;
+
+    --md-inverse-surface: #283044;
+    --md-inverse-on-surface: #eef0ff;
+    --md-inverse-primary: #adc6ff;
+    --md-surface-tint: #0058bc; /* = primary */
+}
+
+.dark {
+    --md-primary: #adc7ff;
+    --md-on-primary: #002e68;
+    --md-primary-container: #4a8eff;
+    --md-on-primary-container: #00285b;
+
+    --md-secondary: #4edea3;
+    --md-on-secondary: #003824;
+    --md-secondary-container: #00a572;
+    --md-on-secondary-container: #00311f;
+
+    --md-tertiary: #ffb695;
+    --md-on-tertiary: #571e00;
+    --md-tertiary-container: #ef6719;
+    --md-on-tertiary-container: #4c1a00;
+
+    --md-error: #ffb4ab;
+    --md-on-error: #690005;
+    --md-error-container: #93000a;
+    --md-on-error-container: #ffdad6;
+
+    --md-background: #0b1326;
+    --md-on-background: #dae2fd;
+
+    --md-surface: #0b1326;
+    --md-on-surface: #dae2fd;
+    --md-surface-dim: #0b1326;
+    --md-surface-bright: #31394d;
+    --md-surface-container-lowest: #060e20;
+    --md-surface-container-low: #131b2e;
+    --md-surface-container: #171f33;
+    --md-surface-container-high: #222a3d;
+    --md-surface-container-highest: #2d3449;
+    --md-surface-variant: #2d3449; /* = surface-container-highest, per mockup */
+    --md-on-surface-variant: #c1c6d7;
+
+    --md-outline: #8b90a0;
+    --md-outline-variant: #414754;
+
+    --md-inverse-surface: #dae2fd;
+    --md-inverse-on-surface: #283044;
+    --md-inverse-primary: #005bc0;
+    --md-surface-tint: #adc7ff; /* = primary */
+}
+
+body {
+    font-family: var(--font-sans);
+}
+
 /* Thin scrollbars everywhere (grid, sidebar, editor panels) — WKWebView on
    macOS and WebView2 on Windows are both Chromium/WebKit-based, so the
    ::-webkit-scrollbar pseudo-elements apply on both, unlike Firefox's
@@ -16,16 +263,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-    background-color: rgb(212 212 212 / 0.6); /* neutral-300 */
+    background-color: color-mix(in srgb, var(--md-outline-variant) 60%, transparent);
     border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(163 163 163 / 0.8); /* neutral-400 */
-}
-
-.dark ::-webkit-scrollbar-thumb {
-    background-color: rgb(64 64 64 / 0.6); /* neutral-700 */
+    background-color: var(--md-outline);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {

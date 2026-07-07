@@ -1,3 +1,5 @@
+import Icon from '../Icon'
+
 export interface EditorTab {
     id: string
     title: string
@@ -18,16 +20,17 @@ interface EditorTabsProps {
 // "múltiples tabs: archivos abiertos + queries sueltas sin guardar".
 export default function EditorTabs({tabs, activeId, onSelect, onClose, onNew}: EditorTabsProps) {
     return (
-        <div className="flex items-center gap-1 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-2 pt-1">
+        <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
             {tabs.map((t) => (
                 <div
                     key={t.id}
                     onClick={() => onSelect(t.id)}
-                    className={`flex cursor-pointer items-center gap-2 rounded-t px-3 py-1 text-xs ${
-                        t.id === activeId ? 'bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
+                    className={`flex cursor-pointer items-center gap-2 rounded-t-xs px-3 py-1 text-xs font-mono ${
+                        t.id === activeId ? 'bg-surface text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
                     }`}
                     title={t.path ?? undefined}
                 >
+                    <Icon name={t.path ? 'article' : 'code'} size={14} className="opacity-70" />
                     <span>
                         {t.title}
                         {t.dirty ? ' •' : ''}
@@ -38,18 +41,19 @@ export default function EditorTabs({tabs, activeId, onSelect, onClose, onNew}: E
                             onClose(t.id)
                         }}
                         title={t.dirty ? 'Cerrar pestaña (hay cambios sin guardar)' : 'Cerrar pestaña'}
-                        className="text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300"
+                        className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
-                        ×
+                        <Icon name="close" size={14} />
                     </button>
                 </div>
             ))}
             <button
                 onClick={onNew}
                 title="Abre una pestaña nueva en blanco para escribir un query sin guardarlo todavía"
-                className="px-2 py-1 text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface"
             >
-                + Nueva
+                <Icon name="add" size={16} />
+                Nueva
             </button>
         </div>
     )

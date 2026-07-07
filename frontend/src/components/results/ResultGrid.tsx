@@ -1,6 +1,7 @@
 import {useRef} from 'react'
 import {ColumnDef, flexRender, getCoreRowModel, useReactTable} from '@tanstack/react-table'
 import {useVirtualizer} from '@tanstack/react-virtual'
+import Icon from '../Icon'
 
 interface ResultGridProps {
     columns: string[]
@@ -46,7 +47,8 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
 
     if (columns.length === 0) {
         return (
-            <div className="flex flex-1 items-center justify-center text-xs text-neutral-400 dark:text-neutral-600">
+            <div className="flex flex-1 items-center justify-center gap-2 text-xs text-on-surface-variant/60">
+                <Icon name="table_rows" size={16} />
                 Sin resultados todavía.
             </div>
         )
@@ -58,31 +60,35 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
     const paddingBottom = virtualItems.length > 0 ? totalHeight - virtualItems[virtualItems.length - 1].end : 0
 
     return (
-        <div ref={parentRef} className="flex-1 overflow-auto">
+        <div ref={parentRef} className="flex-1 overflow-auto font-mono">
             <table className="w-full border-collapse text-left text-xs" style={{tableLayout: 'fixed'}}>
-                <thead className="sticky top-0 z-10 bg-neutral-100 dark:bg-neutral-900">
+                <thead className="sticky top-0 z-10 bg-surface-container-high shadow-sm">
                     {table.getHeaderGroups().map((hg) => (
                         <tr key={hg.id}>
                             {hg.headers.map((header) => (
                                 <th
                                     key={header.id}
                                     style={{width: header.getSize(), position: 'relative'}}
-                                    className="border-b border-neutral-200 dark:border-neutral-800 px-3 py-2 font-medium text-neutral-600 dark:text-neutral-400"
+                                    className="border-b border-outline-variant px-3 py-2 font-sans font-medium text-on-surface-variant"
                                 >
                                     <button
                                         onClick={() => onSort?.(header.column.id)}
                                         title="Ordenar por esta columna — click de nuevo para invertir el orden"
-                                        className="flex w-full items-center gap-1 truncate text-left hover:text-neutral-800 dark:hover:text-neutral-200"
+                                        className="flex w-full items-center gap-1 truncate text-left hover:text-on-surface"
                                     >
                                         <span className="truncate">{flexRender(header.column.columnDef.header, header.getContext())}</span>
                                         {sortColumn === header.column.id && (
-                                            <span className="shrink-0">{sortDirection === 'asc' ? '▲' : '▼'}</span>
+                                            <Icon
+                                                name={sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                                                size={14}
+                                                className="shrink-0 text-primary"
+                                            />
                                         )}
                                     </button>
                                     <div
                                         onMouseDown={header.getResizeHandler()}
                                         onTouchStart={header.getResizeHandler()}
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-neutral-400 dark:hover:bg-neutral-600"
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-primary/40"
                                     />
                                 </th>
                             ))}
@@ -98,17 +104,17 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                     {virtualItems.map((vi) => {
                         const row = tableRows[vi.index]
                         return (
-                            <tr key={row.id} className="odd:bg-neutral-50 dark:odd:bg-neutral-950 even:bg-neutral-100/40 dark:even:bg-neutral-900/40 hover:bg-neutral-200/60 dark:hover:bg-neutral-800/60">
+                            <tr key={row.id} className="odd:bg-surface even:bg-surface-container-lowest hover:bg-surface-variant/40">
                                 {row.getVisibleCells().map((cell) => {
                                     const value = cell.getValue()
                                     return (
                                         <td
                                             key={cell.id}
                                             style={{width: cell.column.getSize()}}
-                                            className="truncate whitespace-nowrap border-b border-neutral-100 dark:border-neutral-900 px-3 py-1.5 text-neutral-800 dark:text-neutral-200"
+                                            className="truncate whitespace-nowrap border-b border-outline-variant/30 px-3 py-1.5 text-on-surface"
                                         >
                                             {value === null || value === undefined ? (
-                                                <span className="italic text-neutral-400 dark:text-neutral-600">NULL</span>
+                                                <span className="italic text-on-surface-variant/60">NULL</span>
                                             ) : (
                                                 String(value)
                                             )}
