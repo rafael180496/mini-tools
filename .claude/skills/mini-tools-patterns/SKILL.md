@@ -42,3 +42,20 @@ Streaming de resultados: como los bindings de Wails v2 son petición/respuesta, 
 **Historial de queries:** separado de `EmitFunc` hay un segundo callback, `query.HistorySink` (`func(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string)`), invocado al final de cada statement (done/error/cancelled). En `app.go` apunta a `vault.Store.RecordQueryHistory`, que persiste en la tabla `query_history` (sin cifrar, a diferencia de `connections`). El paquete `query` no importa `vault` — se mantiene desacoplado igual que con `EmitFunc`.
 
 Cancelación: cada `queryID` en curso tiene un `context.CancelFunc` registrado; `CancelQuery(queryID)` lo invoca y limpia el registro. El pool debe quedar sano después de cancelar (no cerrar la conexión subyacente, solo el statement en curso) — verificado en `backend/query/executor_test.go` con una CTE recursiva larga, y con un script multi-statement efímero (cancelar detiene antes del segundo statement).
+
+# Patrones de metadata de schema
+
+`backend/db/metadata.go` (`FetchSchemaMetadata`) unifica tablas/columnas/nullable/PK/FK en `db.SchemaMetadata`, una función por motor:
+- SQLite: `PRAGMA table_info(tabla)` (columnas/nullable/PK) + `PRAGMA foreign_key_list(tabla)` (FK). El nombre de tabla se interpola con `%q` en el SQL del PRAGMA — SQLite no soporta bind params ahí — aceptable porque el nombre viene de `sqlite_master`, no de input de usuario.
+- Postgres: 3 queries bulk (no N+1) sobre `information_schema.columns` + `table_constraints`/`key_column_usage` (PK) + `+ constraint_column_usage` (FK), agrupadas en Go por `schema.table`.
+- Oracle: `user_tab_columns` (no `all_/dba_` — alcance del usuario conectado) + `user_constraints`/`user_cons_columns` para PK, y el patrón estándar de mapeo FK→PK por `position` para FK. No verificado contra una instancia Oracle real.
+
+`App.GetSchemaMetadata(connID, forceRefresh)` cachea el resultado en memoria (`a.metadataCache`, un mapa protegido por mutex) — nunca se refresca solo, hace falta `forceRefresh=true` (el F5 del frontend). Verificado end-to-end con SQLite real y con un Postgres real en Docker (tablas con PK/FK/nullable reales).
+
+# Patrones de Monaco
+
+`frontend/src/monaco/setup.ts` es el único punto de entrada — importa `monaco-editor/esm/vs/editor/editor.api` + `basic-languages/sql/sql.contribution` nada más, y cablea el worker de Vite a mano (`monaco-editor/esm/vs/editor/editor.worker?worker`). Nunca usar `@monaco-editor/react` (su loader por defecto es CDN) ni importar el paquete raíz `monaco-editor` (trae todos los lenguajes). Verificado que el trimming funciona mirando los chunks del build: solo aparece `sql-*.js` (~10KB) además del core — ningún otro lenguaje (json/html/ts/css) se cuela.
+
+Los providers de completion/hover son globales al lenguaje `sql`, no por instancia de editor — `sqlLanguage.ts` (keywords/snippets), `completionProvider.ts` y `hoverProvider.ts` se registran **una sola vez** (guardan un booleano `registered`) la primera vez que se monta un `MonacoSQLEditor`. Los datos de autocomplete/hover salen de `metadataStore.ts`, un holder mutable simple (`getActiveMetadata`/`setActiveMetadata`) — no Zustand, porque no hay necesidad de reactividad de React ahí, solo que el provider (que vive fuera del árbol de React) lea el valor más reciente. `Workspace.tsx` llama `setActiveMetadata` cuando cambia la conexión seleccionada o al refrescar (F5).
+
+El core de Monaco pesa ~3.9MB minificado por sí solo (sin ningún lenguaje extra) — esto es inherente a la librería, no hay margen de recorte adicional ahí. Fue lo que forzó revisar el target de binario de <35MB a <45MB (ver [.claude/rules/technical.md](../../rules/technical.md) punto 8).

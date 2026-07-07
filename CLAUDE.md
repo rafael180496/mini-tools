@@ -54,6 +54,16 @@ go test ./...
 app.go          struct App = TODA la superficie de binding Go↔React
 main.go         bootstrap de Wails, embed de frontend/dist
 
+/build
+  appicon.png   ícono maestro 1024x1024 (con fondo transparente fuera del rounded-square) — `wails build` genera el .icns/.ico de cada plataforma a partir de este archivo. Reemplazar este archivo (y borrar build/windows/icon.ico si existe) para cambiar el ícono de la app.
+  /darwin       Info.plist / Info.dev.plist de macOS
+  /windows      manifest, info.json, instalador NSIS
+
+/frontend
+  /img          assets de origen sin procesar (ej. el mockup completo del logo) — no se importan directo en el código
+  /public       archivos estáticos servidos tal cual por Vite (favicon.png)
+  /src/assets   assets optimizados que sí se importan desde componentes (logo.png recortado/con transparencia, ~256px)
+
 /frontend/src
   /state        stores de Zustand (conexiones, tabs, queries, metadata, UI/tema)
   /lib          wailsClient, detección/formato/lint de SQL en cliente
@@ -73,7 +83,7 @@ Ver el plan completo de fases en `.claude/specs/` y en el historial de planning 
 - **`database/sql` como única capa de acceso a datos.** Nunca `sqlx` ni acceso directo por paquete de driver — los tres motores se registran como drivers `database/sql` para compartir una sola interfaz `Connector`, un solo pool manager y un solo executor.
 - **El frontend nunca ve un DSN ni un password**, solo IDs de conexión opacos. Ningún método bindeado en `App` debe aceptar ni devolver un DSN crudo.
 - **Nunca loguear un DSN ni resultados de queries**, ni siquiera en modo debug.
-- **Binario de producción objetivo <35MB** (revisado en Fase 4: <20MB no es alcanzable con Oracle+Postgres+SQLite nativos en un solo binario — ver detalle en [.claude/rules/technical.md](.claude/rules/technical.md) punto 8). Verificar con `wails build` + `ls -lh build/bin/*` antes de dar por cerrada una fase que añade dependencias grandes (Monaco, XLSX, etc.).
+- **Binario de producción objetivo <45MB** (revisado en Fase 4 y Fase 6: <20MB no es alcanzable con Oracle+Postgres+SQLite nativos + Monaco en un solo binario — ver detalle en [.claude/rules/technical.md](.claude/rules/technical.md) punto 8). Verificar con `wails build` + `ls -lh build/bin/*` antes de dar por cerrada una fase que añade dependencias grandes (Monaco, XLSX, etc.).
 - **El gate del vault se aplica en Go, server-side** (cada método bindeado revisa un flag `unlocked`), nunca solo en la UI.
 - **CodeGraph.** Este repo tiene `.codegraph/` (índice de símbolos/edges). Cada vez que se agregue o elimine un archivo de código, correr `codegraph sync` para mantener el índice al día antes de seguir trabajando.
 - **No escribir tests nuevos** (ni backend `_test.go` ni frontend), para ahorrar tokens — verificar cada fase manualmente (build + `wails build` + correr la app). Los tests de Fases 1-3 ya existentes se dejan como están.

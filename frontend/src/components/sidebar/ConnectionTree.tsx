@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react'
 import {ListConnections} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
+import logo from '../../assets/logo.png'
 
 interface ConnectionTreeProps {
     selectedId: string | null
@@ -24,6 +25,10 @@ export default function ConnectionTree({selectedId, onSelect, onNewConnection, r
 
     return (
         <div className="flex h-full w-64 flex-col border-r border-neutral-800 bg-neutral-950 text-neutral-100">
+            <div className="flex items-center gap-2 border-b border-neutral-800 p-2">
+                <img src={logo} alt="mini-tools" className="h-5 w-5" />
+                <span className="text-sm font-semibold">mini-tools</span>
+            </div>
             <div className="flex items-center justify-between border-b border-neutral-800 p-2">
                 <span className="text-xs font-semibold uppercase text-neutral-500">Conexiones</span>
                 <button

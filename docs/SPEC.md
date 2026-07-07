@@ -22,7 +22,7 @@ Filosofía: simple, minimalista, fácil uso, rápido. No feature bloat.
 
 ## Performance / Peso
 
-- Binario final target <35MB (revisado en Fase 4: el conector Oracle vía `go-ora` obliga a `crypto/tls`, que desde Go 1.24 arrastra el módulo FIPS 140-3 completo — ~15MB extra inevitables sin renunciar a soporte Oracle nativo. <20MB no es alcanzable con los 3 motores nativos linkeados en un solo binario)
+- Binario final target <45MB (revisado dos veces: Fase 4 — el conector Oracle vía `go-ora` obliga a `crypto/tls`, que desde Go 1.24 arrastra el módulo FIPS 140-3 completo, ~15MB extra inevitables sin renunciar a soporte Oracle nativo; Fase 6 — el core de Monaco recortado a SQL pesa ~4MB por sí solo, inherente a la librería. <20MB no es alcanzable con los 3 motores nativos + Monaco en un solo binario)
 - Sin librerías pesadas (no ag-grid enterprise, no lodash completo, tree-shake todo)
 - Monaco: cargar solo lenguaje SQL, no bundle completo
 - Lazy load componentes no críticos (settings, export dialogs)

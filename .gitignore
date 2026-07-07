@@ -629,7 +629,14 @@ pip-selfcheck.json
 
 # Custom rules (everything added below won't be overriden by 'Generate .gitignore File' if you use 'Update' option)
 
-# mini-tools: salida de build de Wails (app empaquetada) y binario suelto de `go build`
+# mini-tools: reglas genéricas más arriba en este archivo (de las secciones
+# Gradle/Android) ignoran "build/" completo — pero acá build/ tiene tanto
+# output (build/bin/) como assets versionables (appicon.png, darwin/*.plist,
+# windows/*) que si no se trackean, cada clone parte del ícono/plist default
+# de Wails en vez de los nuestros. Designoramos el directorio y solo
+# ignoramos bin/ dentro de él.
+!/build/
+!/build/**
 /build/bin/
 /mini-tools
 frontend/dist/

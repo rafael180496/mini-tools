@@ -80,6 +80,11 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 		);
 		CREATE INDEX IF NOT EXISTS idx_query_history_connection
 			ON query_history (connection_id, executed_at DESC);
+
+		CREATE TABLE IF NOT EXISTS recent_files (
+			path      TEXT PRIMARY KEY,
+			opened_at INTEGER NOT NULL
+		);
 	`); err != nil {
 		return nil, fmt.Errorf("vault: creating schema: %w", err)
 	}

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -23,6 +25,16 @@ type App struct {
 	vault    *vault.Store
 	pools    *db.PoolManager
 	executor *query.Executor
+
+	metadataMu    sync.Mutex
+	metadataCache map[string]*db.SchemaMetadata
+}
+
+// FileContent is what OpenSQLFileDialog returns: the path (so Ctrl+S knows
+// where to save back to) and its text.
+type FileContent struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 // ConnectionInput is what the frontend sends to test or save a connection.
@@ -38,8 +50,9 @@ type ConnectionInput struct {
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		gate:  vaultgate.New(),
-		pools: db.NewPoolManager(),
+		gate:          vaultgate.New(),
+		pools:         db.NewPoolManager(),
+		metadataCache: make(map[string]*db.SchemaMetadata),
 	}
 }
 
@@ -173,6 +186,22 @@ func (a *App) DeleteConnection(id string) error {
 	return a.vault.DeleteConnection(id)
 }
 
+// ensurePoolOpen returns connID's pool, opening it from the vault's
+// decrypted DSN first if it isn't already open. Shared by ExecuteQuery and
+// GetSchemaMetadata so both lazily connect the same way.
+func (a *App) ensurePoolOpen(connID string) error {
+	if _, err := a.pools.Get(connID); err == nil {
+		return nil
+	}
+
+	dbType, dsn, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return err
+	}
+	_, err = a.pools.Open(connID, dbType, dsn)
+	return err
+}
+
 // ExecuteQuery opens (or reuses) the pool for connID and streams the result
 // of sqlText back as events under queryID. The frontend must call
 // EventsOn(queryID, ...) before invoking this — see
@@ -181,15 +210,8 @@ func (a *App) ExecuteQuery(connID, queryID, sqlText string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-
-	if _, err := a.pools.Get(connID); err != nil {
-		dbType, dsn, dsnErr := a.vault.ConnectionDSN(connID)
-		if dsnErr != nil {
-			return dsnErr
-		}
-		if _, openErr := a.pools.Open(connID, dbType, dsn); openErr != nil {
-			return openErr
-		}
+	if err := a.ensurePoolOpen(connID); err != nil {
+		return err
 	}
 
 	a.executor.Execute(connID, queryID, sqlText)
@@ -288,4 +310,150 @@ func (a *App) RestoreVaultBackup() error {
 	}
 	a.vault = store
 	return nil
+}
+
+// GetSchemaMetadata returns connID's tables/columns/FKs, from an in-memory
+// cache unless forceRefresh is set (spec: "cache de metadata por conexión,
+// refresh manual (botón/F5)").
+func (a *App) GetSchemaMetadata(connID string, forceRefresh bool) (*db.SchemaMetadata, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+
+	if !forceRefresh {
+		if cached, ok := a.cachedMetadata(connID); ok {
+			return cached, nil
+		}
+	}
+
+	if err := a.ensurePoolOpen(connID); err != nil {
+		return nil, err
+	}
+	pool, err := a.pools.Get(connID)
+	if err != nil {
+		return nil, err
+	}
+	dbType, _ := a.pools.Type(connID)
+
+	meta, err := db.FetchSchemaMetadata(a.ctx, pool, dbType)
+	if err != nil {
+		return nil, err
+	}
+
+	a.setCachedMetadata(connID, meta)
+	return meta, nil
+}
+
+func (a *App) cachedMetadata(connID string) (*db.SchemaMetadata, bool) {
+	a.metadataMu.Lock()
+	defer a.metadataMu.Unlock()
+	meta, ok := a.metadataCache[connID]
+	return meta, ok
+}
+
+func (a *App) setCachedMetadata(connID string, meta *db.SchemaMetadata) {
+	a.metadataMu.Lock()
+	defer a.metadataMu.Unlock()
+	a.metadataCache[connID] = meta
+}
+
+// OpenSQLFileDialog prompts for a .sql file, reads it, and records it in
+// Recent Files. Returns nil (no error) if the user cancels the dialog.
+func (a *App) OpenSQLFileDialog() (*FileContent, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:   "Abrir archivo SQL",
+		Filters: []runtime.FileFilter{{DisplayName: "SQL (*.sql)", Pattern: "*.sql"}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("app: abriendo diálogo de selección: %w", err)
+	}
+	if path == "" {
+		return nil, nil
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("app: leyendo archivo: %w", err)
+	}
+
+	if err := a.vault.RecordRecentFile(path); err != nil {
+		return nil, err
+	}
+	return &FileContent{Path: path, Content: string(content)}, nil
+}
+
+// OpenSQLFilePath reads path directly, no dialog — used when the user
+// clicks an entry in Recent Files, which should reopen it as a tab
+// immediately (spec: "click en recent → reabre tab directo").
+func (a *App) OpenSQLFilePath(path string) (*FileContent, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("app: leyendo archivo: %w", err)
+	}
+
+	if err := a.vault.RecordRecentFile(path); err != nil {
+		return nil, err
+	}
+	return &FileContent{Path: path, Content: string(content)}, nil
+}
+
+// SaveSQLFile writes content to an already-known path (Ctrl+S on an open
+// file/tab) and records it in Recent Files.
+func (a *App) SaveSQLFile(path, content string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("app: guardando archivo: %w", err)
+	}
+	return a.vault.RecordRecentFile(path)
+}
+
+// SaveSQLFileAs prompts for a destination, writes content there, and
+// records it in Recent Files. Returns "" (no error) if the user cancels.
+func (a *App) SaveSQLFileAs(suggestedName, content string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+
+	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Guardar archivo SQL",
+		DefaultFilename: suggestedName,
+		Filters:         []runtime.FileFilter{{DisplayName: "SQL (*.sql)", Pattern: "*.sql"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+	}
+	if dest == "" {
+		return "", nil
+	}
+
+	if err := a.SaveSQLFile(dest, content); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// ListRecentFiles returns the most recently opened/saved .sql files.
+func (a *App) ListRecentFiles() ([]vault.RecentFile, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListRecentFiles(20)
+}
+
+// ClearRecentFiles removes every Recent Files entry.
+func (a *App) ClearRecentFiles() error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.ClearRecentFiles()
 }

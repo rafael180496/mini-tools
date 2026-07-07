@@ -10,12 +10,20 @@ export function CancelQuery(arg1) {
   return window['go']['main']['App']['CancelQuery'](arg1);
 }
 
+export function ClearRecentFiles() {
+  return window['go']['main']['App']['ClearRecentFiles']();
+}
+
 export function DeleteConnection(arg1) {
   return window['go']['main']['App']['DeleteConnection'](arg1);
 }
 
 export function ExecuteQuery(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExecuteQuery'](arg1, arg2, arg3);
+}
+
+export function GetSchemaMetadata(arg1, arg2) {
+  return window['go']['main']['App']['GetSchemaMetadata'](arg1, arg2);
 }
 
 export function InitializeVault(arg1) {
@@ -34,12 +42,32 @@ export function ListQueryHistory(arg1, arg2) {
   return window['go']['main']['App']['ListQueryHistory'](arg1, arg2);
 }
 
+export function ListRecentFiles() {
+  return window['go']['main']['App']['ListRecentFiles']();
+}
+
+export function OpenSQLFileDialog() {
+  return window['go']['main']['App']['OpenSQLFileDialog']();
+}
+
+export function OpenSQLFilePath(arg1) {
+  return window['go']['main']['App']['OpenSQLFilePath'](arg1);
+}
+
 export function RestoreVaultBackup() {
   return window['go']['main']['App']['RestoreVaultBackup']();
 }
 
 export function SaveConnection(arg1, arg2) {
   return window['go']['main']['App']['SaveConnection'](arg1, arg2);
+}
+
+export function SaveSQLFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveSQLFile'](arg1, arg2);
+}
+
+export function SaveSQLFileAs(arg1, arg2) {
+  return window['go']['main']['App']['SaveSQLFileAs'](arg1, arg2);
 }
 
 export function TestConnection(arg1) {

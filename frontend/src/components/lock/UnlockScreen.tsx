@@ -1,4 +1,5 @@
 import {FormEvent, useState} from 'react'
+import logo from '../../assets/logo.png'
 
 interface UnlockScreenProps {
     isInitialized: boolean
@@ -51,7 +52,8 @@ export default function UnlockScreen({isInitialized, onInitialize, onUnlock, onR
     return (
         <div className="flex h-screen w-screen items-center justify-center bg-neutral-950 text-neutral-100">
             <form onSubmit={submit} className="flex w-72 flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-900 p-6">
-                <h1 className="text-lg font-semibold">
+                <img src={logo} alt="mini-tools" className="mx-auto h-16 w-16" />
+                <h1 className="text-center text-lg font-semibold">
                     {isInitialized ? 'Desbloquear vault' : 'Crear clave maestra'}
                 </h1>
                 <p className="text-xs text-neutral-400">
