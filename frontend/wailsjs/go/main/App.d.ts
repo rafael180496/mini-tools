@@ -25,6 +25,8 @@ export function ExportSchemaDDL(arg1:string,arg2:string):Promise<string>;
 
 export function ExportTableDDL(arg1:string,arg2:string,arg3:string):Promise<string>;
 
+export function GenerateProjectDocs(arg1:string,arg2:string):Promise<boolean>;
+
 export function GetSchemaMetadata(arg1:string,arg2:boolean):Promise<db.SchemaMetadata>;
 
 export function InitializeVault(arg1:string):Promise<void>;
@@ -42,6 +44,8 @@ export function ListRecentFiles():Promise<Array<vault.RecentFile>>;
 export function OpenSQLFileDialog():Promise<main.FileContent>;
 
 export function OpenSQLFilePath(arg1:string):Promise<main.FileContent>;
+
+export function RegenerateProjectDocs(arg1:string,arg2:string):Promise<void>;
 
 export function RestoreVaultBackup():Promise<void>;
 

@@ -16,9 +16,11 @@ import {
     ExportConnectionConfig,
     ExportSchemaDDL,
     ExportTableDDL,
+    GenerateProjectDocs,
     GetSchemaMetadata,
     OpenSQLFileDialog,
     OpenSQLFilePath,
+    RegenerateProjectDocs,
     SaveSQLFile,
     SaveSQLFileAs,
 } from '../../wailsjs/go/main/App'
@@ -74,6 +76,13 @@ function newTabId() {
 
 function fileTitle(path: string) {
     return path.split(/[/\\]/).pop() ?? path
+}
+
+// No Node `path` module in the Vite/browser context, so this mirrors
+// fileTitle's manual split-by-separator approach.
+function dirName(path: string) {
+    const idx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+    return idx === -1 ? path : path.slice(0, idx)
 }
 
 function newScratchTab(): EditorTab {
@@ -347,6 +356,27 @@ export default function Workspace() {
         }
     }
 
+    // Best-effort: a project-docs generation failure should never block
+    // opening/saving a file, so errors are swallowed here.
+    function generateProjectDocsFor(path: string) {
+        if (!selected) return
+        GenerateProjectDocs(dirName(path), selected.id)
+            .then((wrote) => {
+                if (wrote) setStatusMessage('CLAUDE.md generado para el proyecto')
+            })
+            .catch(() => {})
+    }
+
+    async function regenerateProjectDocs() {
+        if (!selected || !activeTabData?.path) return
+        try {
+            await RegenerateProjectDocs(dirName(activeTabData.path), selected.id)
+            setStatusMessage('CLAUDE.md regenerado')
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
     function openTabForFile(path: string, content: string) {
         setTabs((prev) => {
             const existing = prev.find((t) => t.path === path)
@@ -358,6 +388,7 @@ export default function Workspace() {
             setActiveTabId(tab.id)
             return [...prev, tab]
         })
+        generateProjectDocsFor(path)
     }
 
     async function openFileDialog() {
@@ -386,12 +417,14 @@ export default function Workspace() {
             if (tab.path) {
                 await SaveSQLFile(tab.path, tab.content)
                 setTabs((prev) => prev.map((t) => (t.id === tab.id ? {...t, dirty: false} : t)))
+                generateProjectDocsFor(tab.path)
             } else {
                 const dest = await SaveSQLFileAs(`${tab.title}.sql`, tab.content)
                 if (dest) {
                     setTabs((prev) =>
                         prev.map((t) => (t.id === tab.id ? {...t, path: dest, title: fileTitle(dest), dirty: false} : t)),
                     )
+                    generateProjectDocsFor(dest)
                 }
             }
         } catch (err) {
@@ -496,6 +529,13 @@ export default function Workspace() {
                         className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700"
                     >
                         Backup vault
+                    </button>
+                    <button
+                        onClick={() => void regenerateProjectDocs()}
+                        disabled={!selected || !activeTabData?.path}
+                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                    >
+                        Regenerar CLAUDE.md
                     </button>
                     <button
                         onClick={runSelectionOrLine}

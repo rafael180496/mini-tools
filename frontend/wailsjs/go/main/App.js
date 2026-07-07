@@ -42,6 +42,10 @@ export function ExportTableDDL(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportTableDDL'](arg1, arg2, arg3);
 }
 
+export function GenerateProjectDocs(arg1, arg2) {
+  return window['go']['main']['App']['GenerateProjectDocs'](arg1, arg2);
+}
+
 export function GetSchemaMetadata(arg1, arg2) {
   return window['go']['main']['App']['GetSchemaMetadata'](arg1, arg2);
 }
@@ -76,6 +80,10 @@ export function OpenSQLFileDialog() {
 
 export function OpenSQLFilePath(arg1) {
   return window['go']['main']['App']['OpenSQLFilePath'](arg1);
+}
+
+export function RegenerateProjectDocs(arg1, arg2) {
+  return window['go']['main']['App']['RegenerateProjectDocs'](arg1, arg2);
 }
 
 export function RestoreVaultBackup() {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"mini-tools/backend/claudemd"
 	"mini-tools/backend/db"
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
@@ -693,4 +694,73 @@ func (a *App) ListExplainHistory(connID string, limit int) ([]vault.ExplainHisto
 		return nil, err
 	}
 	return a.vault.ListExplainHistory(connID, limit)
+}
+
+// GenerateProjectDocs writes CLAUDE.md + .claude/{specs,rules,skills}
+// describing connID's schema into projectRootPath, unless a CLAUDE.md
+// already exists there. Returns wrote=false (no error) when it skipped
+// because one already exists — that is not a failure, it is the documented
+// "don't clobber an existing CLAUDE.md" behavior.
+//
+// This deviates from the plan's single-arg signature
+// (GenerateProjectDocs(projectRootPath)): App has no server-side notion of
+// "the current connection" — that is frontend-only state in Workspace.tsx —
+// so the frontend must pass connID explicitly.
+func (a *App) GenerateProjectDocs(projectRootPath, connID string) (bool, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return false, err
+	}
+	info, err := a.buildClaudeMDInfo(connID)
+	if err != nil {
+		return false, err
+	}
+	return claudemd.Generate(projectRootPath, info)
+}
+
+// RegenerateProjectDocs always overwrites CLAUDE.md + .claude/{specs,rules,
+// skills} in projectRootPath with connID's current schema — the explicit
+// "Regenerar" action.
+func (a *App) RegenerateProjectDocs(projectRootPath, connID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	info, err := a.buildClaudeMDInfo(connID)
+	if err != nil {
+		return err
+	}
+	return claudemd.Regenerate(projectRootPath, info)
+}
+
+// buildClaudeMDInfo looks up connID's display name and current schema
+// metadata for the claudemd templates. Never touches the DSN.
+func (a *App) buildClaudeMDInfo(connID string) (claudemd.ProjectInfo, error) {
+	conns, err := a.vault.ListConnections()
+	if err != nil {
+		return claudemd.ProjectInfo{}, err
+	}
+	var name string
+	var dbType db.DBType
+	found := false
+	for _, c := range conns {
+		if c.ID == connID {
+			name = c.Name
+			dbType = db.DBType(c.DBType)
+			found = true
+			break
+		}
+	}
+	if !found {
+		return claudemd.ProjectInfo{}, fmt.Errorf("app: conexión %q no encontrada", connID)
+	}
+
+	meta, err := a.GetSchemaMetadata(connID, false)
+	if err != nil {
+		return claudemd.ProjectInfo{}, err
+	}
+
+	return claudemd.ProjectInfo{
+		ConnectionName: name,
+		DBType:         dbType,
+		Metadata:       meta,
+	}, nil
 }
