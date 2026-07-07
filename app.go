@@ -90,6 +90,7 @@ func (a *App) startup(ctx context.Context) {
 // key — otherwise it would sit in the process's memory unzeroed until the OS
 // reclaims it on exit.
 func (a *App) shutdown(ctx context.Context) {
+	a.executor.RollbackAll(ctx)
 	a.pools.CloseAll()
 	a.gate.Lock()
 }
@@ -203,10 +204,44 @@ func (a *App) DeleteConnection(id string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
+	a.rollbackIfOpen(id)
 	if err := a.pools.Close(id); err != nil {
 		return err
 	}
 	return a.vault.DeleteConnection(id)
+}
+
+// DisconnectConnection closes id's open pool and drops its cached schema
+// metadata, but — unlike DeleteConnection — keeps the saved connection in
+// the vault. Safe to call on a connection that was never opened (Close is a
+// no-op then). The next query/metadata fetch against id lazily reopens the
+// pool via ensurePoolOpen, same as a fresh connect.
+func (a *App) DisconnectConnection(id string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	a.rollbackIfOpen(id)
+	if err := a.pools.Close(id); err != nil {
+		return err
+	}
+	a.metadataMu.Lock()
+	delete(a.metadataCache, id)
+	a.metadataMu.Unlock()
+	return nil
+}
+
+// rollbackIfOpen releases id's reserved transaction connection, if any,
+// before its pool gets closed — otherwise that connection would leak
+// (sql.DB.Close doesn't reach into connections callers already checked out
+// via pool.Conn and never returned). Best-effort: closing the connection
+// underneath a pending transaction makes ROLLBACK academic anyway (nothing
+// was going to get committed), so a failure here isn't worth surfacing —
+// same "don't let cleanup hide the real result" precedent as
+// fetchDBMSOutput's best-effort read.
+func (a *App) rollbackIfOpen(connID string) {
+	if a.executor.HasOpenTransaction(connID) {
+		_ = a.executor.RollbackTransaction(a.ctx, connID)
+	}
 }
 
 // ensurePoolOpen returns connID's pool, opening it from the vault's
@@ -248,6 +283,49 @@ func (a *App) CancelQuery(queryID string) error {
 	}
 	a.executor.Cancel(queryID)
 	return nil
+}
+
+// BeginTransaction turns auto-commit off for connID: every statement
+// ExecuteQuery runs against it afterward shares one reserved connection
+// until CommitTransaction/RollbackTransaction ends it. Fails if a
+// transaction is already open for connID.
+func (a *App) BeginTransaction(connID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := a.ensurePoolOpen(connID); err != nil {
+		return err
+	}
+	_, dbType, err := a.poolAndType(connID)
+	if err != nil {
+		return err
+	}
+	return a.executor.BeginTransaction(a.ctx, connID, dbType)
+}
+
+// CommitTransaction commits connID's open transaction and turns auto-commit
+// back on for it.
+func (a *App) CommitTransaction(connID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.executor.CommitTransaction(a.ctx, connID)
+}
+
+// RollbackTransaction rolls back connID's open transaction and turns
+// auto-commit back on for it.
+func (a *App) RollbackTransaction(connID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.executor.RollbackTransaction(a.ctx, connID)
+}
+
+// HasOpenTransaction reports whether connID currently has auto-commit off —
+// lets the frontend re-sync its toggle/Commit-Rollback UI (e.g. right after
+// selecting a connection) without assuming its own local state is current.
+func (a *App) HasOpenTransaction(connID string) bool {
+	return a.executor.HasOpenTransaction(connID)
 }
 
 // ListQueryHistory returns the most recent statements run against connID,
@@ -354,13 +432,51 @@ func (a *App) GetSchemaMetadata(connID string, forceRefresh bool) (*db.SchemaMet
 		return nil, err
 	}
 
-	meta, err := db.FetchSchemaMetadata(a.ctx, pool, dbType)
+	schemas, err := a.vault.ConnectionMetadataSchemas(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	meta, err := db.FetchSchemaMetadata(a.ctx, pool, dbType, schemas)
 	if err != nil {
 		return nil, err
 	}
 
 	a.setCachedMetadata(connID, meta)
 	return meta, nil
+}
+
+// ListSchemas returns connID's visible schema names (Postgres only — nil
+// for other engines, see db.ListSchemas) so the frontend can offer a
+// "which schemas should autocomplete scan" picker without paying for a
+// full GetSchemaMetadata fetch first — important on catalogs with 100+
+// schemas, where that fetch is exactly what SetConnectionSchemas exists to
+// let the user avoid running unrestricted.
+func (a *App) ListSchemas(connID string) ([]string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	pool, dbType, err := a.poolAndType(connID)
+	if err != nil {
+		return nil, err
+	}
+	return db.ListSchemas(a.ctx, pool, dbType)
+}
+
+// SetConnectionSchemas persists which schemas connID's metadata fetch
+// should scan (empty = every schema) and drops any cached metadata for it,
+// since the old cache may reflect a different scan scope.
+func (a *App) SetConnectionSchemas(connID string, schemas []string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := a.vault.SetConnectionSchemas(connID, schemas); err != nil {
+		return err
+	}
+	a.metadataMu.Lock()
+	delete(a.metadataCache, connID)
+	a.metadataMu.Unlock()
+	return nil
 }
 
 func (a *App) cachedMetadata(connID string) (*db.SchemaMetadata, bool) {

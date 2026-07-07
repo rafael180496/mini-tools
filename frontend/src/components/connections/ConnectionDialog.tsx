@@ -1,6 +1,7 @@
 import {FormEvent, useState} from 'react'
 import {SaveConnection, TestConnection} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
+import {parseConnectionString} from '../../lib/connStringParser'
 
 interface ConnectionDialogProps {
     onClose: () => void
@@ -39,6 +40,9 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
     const [error, setError] = useState('')
     const [busy, setBusy] = useState(false)
 
+    const [pasteInput, setPasteInput] = useState('')
+    const [pasteHint, setPasteHint] = useState('')
+
     function setParam(key: string, value: string) {
         setParams((prev) => ({...prev, [key]: value}))
     }
@@ -47,6 +51,29 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
         setDbType(next)
         setParams({})
         setPingStatus('idle')
+    }
+
+    // Copy-paste a connection string (from a .env, psql URL, JDBC URL,
+    // Oracle Easy Connect string, or tnsnames.ora descriptor) and auto-fill
+    // the type + every field below — see frontend/src/lib/connStringParser.ts.
+    // Best-effort: an unrecognized format just leaves the form as-is, so
+    // nothing is lost by trying.
+    function handlePasteChange(value: string) {
+        setPasteInput(value)
+        if (!value.trim()) {
+            setPasteHint('')
+            return
+        }
+        const parsed = parseConnectionString(value)
+        if (!parsed) {
+            setPasteHint('No se pudo detectar el formato — completá los campos a mano.')
+            return
+        }
+        setDbType(parsed.dbType)
+        if (parsed.oracleMode) setOracleMode(parsed.oracleMode)
+        setParams(parsed.params)
+        setPingStatus('idle')
+        setPasteHint(`Detectado: ${parsed.dbType === 'oracle' ? `Oracle (${parsed.oracleMode})` : parsed.dbType}`)
     }
 
     function cfg(): main.ConnectionInput {
@@ -107,6 +134,18 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                         placeholder="mi base"
                         className={inputClass}
                     />
+                </label>
+
+                <label className={labelClass}>
+                    Pegar connection string (opcional)
+                    <textarea
+                        value={pasteInput}
+                        onChange={(e) => handlePasteChange(e.target.value)}
+                        placeholder="postgres://user:pass@host:5432/db?sslmode=require, user/pass@host:1521/service, jdbc:oracle:thin:..., o una ruta .db — copiado directo de un .env"
+                        rows={2}
+                        className={`${inputClass} font-mono text-xs`}
+                    />
+                    {pasteHint && <span className="text-xs text-neutral-500">{pasteHint}</span>}
                 </label>
 
                 <label className={labelClass}>

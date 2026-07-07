@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
@@ -20,6 +21,18 @@ type ConnectionSummary struct {
 	Name      string `json:"name"`
 	DBType    string `json:"dbType"`
 	CreatedAt int64  `json:"createdAt"`
+	// MetadataSchemas restricts which schemas GetSchemaMetadata scans for
+	// this connection (Postgres only — see backend/db/metadata.go). Empty
+	// means "scan every schema", the historical default before this field
+	// existed (schema_migrations version 2).
+	MetadataSchemas []string `json:"metadataSchemas"`
+}
+
+func splitSchemas(raw sql.NullString) []string {
+	if !raw.Valid || raw.String == "" {
+		return nil
+	}
+	return strings.Split(raw.String, ",")
 }
 
 // SaveConnection encrypts dsn under the vault key and persists it alongside
@@ -56,7 +69,7 @@ func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string) (*Conn
 // ListConnections returns every saved connection, without DSNs, ordered by
 // name for the sidebar tree.
 func (s *Store) ListConnections() ([]ConnectionSummary, error) {
-	rows, err := s.db.Query(`SELECT id, name, db_type, created_at FROM connections ORDER BY name`)
+	rows, err := s.db.Query(`SELECT id, name, db_type, created_at, metadata_schemas FROM connections ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: listing connections: %w", err)
 	}
@@ -65,12 +78,55 @@ func (s *Store) ListConnections() ([]ConnectionSummary, error) {
 	out := []ConnectionSummary{}
 	for rows.Next() {
 		var c ConnectionSummary
-		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt); err != nil {
+		var schemas sql.NullString
+		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt, &schemas); err != nil {
 			return nil, fmt.Errorf("vault: scanning connection: %w", err)
 		}
+		c.MetadataSchemas = splitSchemas(schemas)
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// SetConnectionSchemas persists which schemas GetSchemaMetadata should scan
+// for id — an empty slice clears the restriction back to "scan every
+// schema". Postgres-only in practice (see backend/db/metadata.go), but not
+// enforced here — an Oracle/SQLite connection would just store a value
+// nothing ever reads.
+func (s *Store) SetConnectionSchemas(id string, schemas []string) error {
+	var value interface{}
+	if len(schemas) > 0 {
+		value = strings.Join(schemas, ",")
+	} // else leave value nil (SQL NULL) — an empty string would make the
+	// "IN (...)" filter downstream reject every schema instead of meaning
+	// "no restriction".
+
+	res, err := s.db.Exec(`UPDATE connections SET metadata_schemas = ? WHERE id = ?`, value, id)
+	if err != nil {
+		return fmt.Errorf("vault: guardando esquemas de conexión: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("vault: guardando esquemas de conexión: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("vault: conexión %q no encontrada", id)
+	}
+	return nil
+}
+
+// ConnectionMetadataSchemas returns id's configured schema restriction (nil
+// = scan everything).
+func (s *Store) ConnectionMetadataSchemas(id string) ([]string, error) {
+	var schemas sql.NullString
+	err := s.db.QueryRow(`SELECT metadata_schemas FROM connections WHERE id = ?`, id).Scan(&schemas)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("vault: conexión %q no encontrada", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("vault: leyendo esquemas de conexión: %w", err)
+	}
+	return splitSchemas(schemas), nil
 }
 
 // DeleteConnection removes a saved connection. The caller is responsible for

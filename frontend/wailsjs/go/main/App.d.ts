@@ -7,11 +7,17 @@ import {main} from '../models';
 
 export function BackupVault():Promise<string>;
 
+export function BeginTransaction(arg1:string):Promise<void>;
+
 export function CancelQuery(arg1:string):Promise<void>;
 
 export function ClearRecentFiles():Promise<void>;
 
+export function CommitTransaction(arg1:string):Promise<void>;
+
 export function DeleteConnection(arg1:string):Promise<void>;
+
+export function DisconnectConnection(arg1:string):Promise<void>;
 
 export function ExecuteQuery(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -31,6 +37,8 @@ export function GetSchemaMetadata(arg1:string,arg2:boolean):Promise<db.SchemaMet
 
 export function GetSettings():Promise<vault.Settings>;
 
+export function HasOpenTransaction(arg1:string):Promise<boolean>;
+
 export function InitializeVault(arg1:string):Promise<void>;
 
 export function IsVaultInitialized():Promise<boolean>;
@@ -43,6 +51,8 @@ export function ListQueryHistory(arg1:string,arg2:number):Promise<Array<vault.Hi
 
 export function ListRecentFiles():Promise<Array<vault.RecentFile>>;
 
+export function ListSchemas(arg1:string):Promise<Array<string>>;
+
 export function OpenSQLFileDialog():Promise<main.FileContent>;
 
 export function OpenSQLFilePath(arg1:string):Promise<main.FileContent>;
@@ -51,11 +61,15 @@ export function RegenerateProjectDocs(arg1:string,arg2:string):Promise<void>;
 
 export function RestoreVaultBackup():Promise<void>;
 
+export function RollbackTransaction(arg1:string):Promise<void>;
+
 export function SaveConnection(arg1:main.ConnectionInput,arg2:boolean):Promise<vault.ConnectionSummary>;
 
 export function SaveSQLFile(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSQLFileAs(arg1:string,arg2:string):Promise<string>;
+
+export function SetConnectionSchemas(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
 

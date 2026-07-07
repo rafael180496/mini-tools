@@ -14,18 +14,14 @@ import (
 const maxDBMSOutputLines = 1000
 
 // runOraclePLSQLBlock executes an Oracle anonymous PL/SQL block (or a
-// CREATE PROCEDURE/FUNCTION/TRIGGER/TYPE body) on a single reserved
-// connection, since DBMS_OUTPUT's ENABLE/PUT_LINE/GET_LINE state is
-// per-session — running enable, the block, and the fetch on different
-// pooled connections would silently return nothing. Only meaningful for
-// Oracle; callers must not call this against other engines.
-func runOraclePLSQLBlock(ctx context.Context, pool *sql.DB, stmtText string) (sql.Result, []string, error) {
-	conn, err := pool.Conn(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("query: reservando conexión para bloque PL/SQL: %w", err)
-	}
-	defer conn.Close()
-
+// CREATE PROCEDURE/FUNCTION/TRIGGER/TYPE body) on conn, since DBMS_OUTPUT's
+// ENABLE/PUT_LINE/GET_LINE state is per-session — running enable, the
+// block, and the fetch on different pooled connections would silently
+// return nothing. Only meaningful for Oracle; callers must not call this
+// against other engines. The caller owns conn's lifecycle (reserving it
+// fresh per call, or reusing an already-open transaction's connection —
+// see executor.go's runPLSQLBlock) — this function never closes it.
+func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string) (sql.Result, []string, error) {
 	if _, err := conn.ExecContext(ctx, `BEGIN DBMS_OUTPUT.ENABLE(NULL); END;`); err != nil {
 		return nil, nil, fmt.Errorf("query: habilitando DBMS_OUTPUT: %w", err)
 	}

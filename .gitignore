@@ -4,7 +4,8 @@
 
 ### dotenv ###
 .env
-
+.DS_Store
+build/.DS_Store
 ### GoLand ###
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
@@ -625,6 +626,10 @@ xcuserdata/
 !/build/
 !/build/**
 /build/bin/
+# .DS_Store (macOS Finder metadata) is ignored generically further up, but
+# !/build/** above re-includes everything under build/, .DS_Store included —
+# re-ignore it explicitly here, same pattern as /build/bin/ above.
+/build/**/.DS_Store
 /mini-tools
 frontend/dist/
 

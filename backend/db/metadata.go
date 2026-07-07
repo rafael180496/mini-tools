@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // Column describes one table column, enough for autocomplete and the
@@ -37,18 +38,52 @@ type SchemaMetadata struct {
 }
 
 // FetchSchemaMetadata queries pool for its table/column/FK metadata, using
-// the catalog appropriate to dbType.
-func FetchSchemaMetadata(ctx context.Context, pool *sql.DB, dbType DBType) (*SchemaMetadata, error) {
+// the catalog appropriate to dbType. schemas restricts the scan to those
+// Postgres schemas only (nil/empty = every schema, the historical default);
+// ignored for SQLite/Oracle, which have no equivalent multi-schema catalog
+// to restrict (see fetchOracleMetadata's doc comment).
+func FetchSchemaMetadata(ctx context.Context, pool *sql.DB, dbType DBType, schemas []string) (*SchemaMetadata, error) {
 	switch dbType {
 	case DBTypeSQLite:
 		return fetchSQLiteMetadata(ctx, pool)
 	case DBTypePostgres:
-		return fetchPostgresMetadata(ctx, pool)
+		return fetchPostgresMetadata(ctx, pool, schemas)
 	case DBTypeOracle:
 		return fetchOracleMetadata(ctx, pool)
 	default:
 		return nil, fmt.Errorf("db: metadata no soportada para %q", dbType)
 	}
+}
+
+// ListSchemas returns just the schema names visible to pool — cheap even on
+// a catalog with hundreds of schemas, since it never touches
+// information_schema.columns (the expensive part FetchSchemaMetadata does).
+// Postgres-only; other engines return an empty slice (nothing to restrict).
+func ListSchemas(ctx context.Context, pool *sql.DB, dbType DBType) ([]string, error) {
+	if dbType != DBTypePostgres {
+		return nil, nil
+	}
+
+	rows, err := pool.QueryContext(ctx, `
+		SELECT schema_name FROM information_schema.schemata
+		WHERE schema_name NOT IN ('pg_catalog', 'information_schema')
+			AND schema_name NOT LIKE 'pg\_%' ESCAPE '\'
+		ORDER BY schema_name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando esquemas postgres: %w", err)
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, fmt.Errorf("db: escaneando esquema postgres: %w", err)
+		}
+		schemas = append(schemas, s)
+	}
+	return schemas, rows.Err()
 }
 
 func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, error) {
@@ -118,17 +153,37 @@ func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, er
 	return &SchemaMetadata{Tables: tables}, nil
 }
 
-func fetchPostgresMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, error) {
+// schemaFilterClause builds a "AND <col> IN ($1, $2, ...)" clause plus its
+// matching args, for however many placeholders already precede it in the
+// query (startAt). Empty schemas means no restriction — returns "" so the
+// caller's query runs unfiltered, same as before this feature existed.
+func schemaFilterClause(col string, schemas []string, startAt int) (string, []interface{}) {
+	if len(schemas) == 0 {
+		return "", nil
+	}
+	placeholders := make([]string, len(schemas))
+	args := make([]interface{}, len(schemas))
+	for i, s := range schemas {
+		placeholders[i] = fmt.Sprintf("$%d", startAt+i)
+		args[i] = s
+	}
+	return fmt.Sprintf("AND %s IN (%s)", col, strings.Join(placeholders, ", ")), args
+}
+
+func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) (*SchemaMetadata, error) {
 	index := map[string]*Table{}
 	var order []string
 	key := func(schema, table string) string { return schema + "." + table }
 
-	rows, err := pool.QueryContext(ctx, `
+	colFilter, colArgs := schemaFilterClause("table_schema", schemas, 1)
+	rows, err := pool.QueryContext(ctx, fmt.Sprintf(`
 		SELECT table_schema, table_name, column_name, data_type, is_nullable
 		FROM information_schema.columns
 		WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+			AND table_schema NOT LIKE 'pg\_%%' ESCAPE '\'
+		%s
 		ORDER BY table_schema, table_name, ordinal_position
-	`)
+	`, colFilter), colArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("db: listando columnas postgres: %w", err)
 	}
@@ -152,13 +207,15 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, 
 		return nil, err
 	}
 
-	pkRows, err := pool.QueryContext(ctx, `
+	pkFilter, pkArgs := schemaFilterClause("tc.table_schema", schemas, 1)
+	pkRows, err := pool.QueryContext(ctx, fmt.Sprintf(`
 		SELECT tc.table_schema, tc.table_name, kcu.column_name
 		FROM information_schema.table_constraints tc
 		JOIN information_schema.key_column_usage kcu
 			ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
 		WHERE tc.constraint_type = 'PRIMARY KEY'
-	`)
+		%s
+	`, pkFilter), pkArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("db: listando primary keys postgres: %w", err)
 	}
@@ -178,7 +235,8 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, 
 	}
 	pkRows.Close()
 
-	fkRows, err := pool.QueryContext(ctx, `
+	fkFilter, fkArgs := schemaFilterClause("tc.table_schema", schemas, 1)
+	fkRows, err := pool.QueryContext(ctx, fmt.Sprintf(`
 		SELECT tc.table_schema, tc.table_name, kcu.column_name, ccu.table_name, ccu.column_name
 		FROM information_schema.table_constraints tc
 		JOIN information_schema.key_column_usage kcu
@@ -186,7 +244,8 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, 
 		JOIN information_schema.constraint_column_usage ccu
 			ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
 		WHERE tc.constraint_type = 'FOREIGN KEY'
-	`)
+		%s
+	`, fkFilter), fkArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("db: listando foreign keys postgres: %w", err)
 	}

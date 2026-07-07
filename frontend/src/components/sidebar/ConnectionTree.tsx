@@ -9,9 +9,11 @@ interface ConnectionTreeProps {
     onNewConnection: () => void
     reloadToken: number
     metadata: db.SchemaMetadata | null
-    onOpenTable: (table: string) => void
+    onOpenTable: (table: string, schema?: string) => void
     onExportConnectionConfig: (connId: string) => void
     onExportTableDDL: (table: string, schema?: string) => void
+    onDisconnect: (connId: string) => void
+    onConfigureSchemas: (conn: vault.ConnectionSummary) => void
 }
 
 // Conexiones → tablas (spec: "árbol conexiones → schemas → tablas/vistas").
@@ -27,15 +29,36 @@ export default function ConnectionTree({
     onOpenTable,
     onExportConnectionConfig,
     onExportTableDDL,
+    onDisconnect,
+    onConfigureSchemas,
 }: ConnectionTreeProps) {
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
     const [filter, setFilter] = useState('')
+    // Which connection's table list is manually collapsed, independent of
+    // which one is selected/active — lets you hide a long table list
+    // without switching away from that connection. Cleared whenever a
+    // different connection is selected, so selecting always shows its
+    // tables by default.
+    const [collapsedId, setCollapsedId] = useState<string | null>(null)
 
     useEffect(() => {
         ListConnections().then(setConnections)
     }, [reloadToken])
 
     const filtered = connections.filter((c) => c.name.toLowerCase().includes(filter.toLowerCase()))
+
+    function selectConnection(c: vault.ConnectionSummary) {
+        if (c.id !== selectedId) setCollapsedId(null)
+        onSelect(c)
+    }
+
+    function toggleExpand(c: vault.ConnectionSummary) {
+        if (c.id !== selectedId) {
+            selectConnection(c)
+            return
+        }
+        setCollapsedId((prev) => (prev === c.id ? null : c.id))
+    }
 
     return (
         <div className="flex h-full w-64 flex-col border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
@@ -62,6 +85,7 @@ export default function ConnectionTree({
                 {filtered.length === 0 && <p className="p-3 text-xs text-neutral-400 dark:text-neutral-600">Sin conexiones todavía.</p>}
                 {filtered.map((c) => {
                     const isSelected = c.id === selectedId
+                    const isExpanded = isSelected && collapsedId !== c.id
                     return (
                         <div key={c.id}>
                             <div
@@ -69,8 +93,14 @@ export default function ConnectionTree({
                                     isSelected ? 'bg-neutral-100 dark:bg-neutral-900 text-emerald-600 dark:text-emerald-400' : 'text-neutral-700 dark:text-neutral-300'
                                 }`}
                             >
-                                <button onClick={() => onSelect(c)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                                    <span className="text-xs text-neutral-400 dark:text-neutral-600">{isSelected ? '▾' : '▸'}</span>
+                                <button
+                                    onClick={() => toggleExpand(c)}
+                                    title={isExpanded ? 'Contraer' : 'Expandir'}
+                                    className="shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300"
+                                >
+                                    {isExpanded ? '▾' : '▸'}
+                                </button>
+                                <button onClick={() => selectConnection(c)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
                                     <span className="text-xs text-neutral-400 dark:text-neutral-600">{c.dbType}</span>
                                     <span className="truncate">{c.name}</span>
                                 </button>
@@ -81,9 +111,31 @@ export default function ConnectionTree({
                                 >
                                     cfg
                                 </button>
+                                {c.dbType === 'postgres' && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            onConfigureSchemas(c)
+                                        }}
+                                        title="Elegir qué esquemas escanear"
+                                        className="hidden shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-neutral-700 dark:hover:text-neutral-300 group-hover:block"
+                                    >
+                                        esq
+                                    </button>
+                                )}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        onDisconnect(c.id)
+                                    }}
+                                    title="Desconectar (mantiene la conexión guardada)"
+                                    className="hidden shrink-0 text-xs text-neutral-400 dark:text-neutral-600 hover:text-red-600 dark:hover:text-red-400 group-hover:block"
+                                >
+                                    ⏻
+                                </button>
                             </div>
 
-                            {isSelected && metadata && (
+                            {isExpanded && metadata && (
                                 <div className="pb-1 pl-6">
                                     {metadata.tables.length === 0 && (
                                         <p className="px-2 py-1 text-xs text-neutral-400 dark:text-neutral-600">Sin tablas.</p>
@@ -91,7 +143,7 @@ export default function ConnectionTree({
                                     {metadata.tables.map((t) => (
                                         <div
                                             key={`${t.schema ?? ''}.${t.name}`}
-                                            onDoubleClick={() => onOpenTable(t.name)}
+                                            onDoubleClick={() => onOpenTable(t.name, t.schema)}
                                             title="Doble click: SELECT * LIMIT 100"
                                             className="group/table flex items-center gap-2 rounded px-2 py-1 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 hover:text-neutral-800 dark:hover:text-neutral-200"
                                         >

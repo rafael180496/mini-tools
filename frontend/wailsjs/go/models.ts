@@ -228,6 +228,7 @@ export namespace vault {
 	    name: string;
 	    dbType: string;
 	    createdAt: number;
+	    metadataSchemas: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionSummary(source);
@@ -239,6 +240,7 @@ export namespace vault {
 	        this.name = source["name"];
 	        this.dbType = source["dbType"];
 	        this.createdAt = source["createdAt"];
+	        this.metadataSchemas = source["metadataSchemas"];
 	    }
 	}
 	export class ExplainHistoryEntry {

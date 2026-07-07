@@ -63,4 +63,4 @@ rm -rf tmp_migrationverify
 
 ## Estado actual
 
-`migrations` (en `backend/vault/migrations.go`) está **vacía** — esta es la entrega del framework únicamente, cero migraciones reales todavía. No confundir con "se migró un cambio de schema existente".
+- **Versión 2** (`backend/vault/migrations.go`): `ALTER TABLE connections ADD COLUMN metadata_schemas TEXT` — restringe qué esquemas escanea `GetSchemaMetadata` en Postgres (ver `.claude/specs/go-react-contract.md`, sección "Escaneo de esquemas restringido"). Primera migración real del framework — verificada contra un Postgres real en Docker con el patrón de script efímero de arriba (además del round-trip de datos, específicamente contra que abrir un vault ya en versión 1 la aplica una sola vez y queda en versión 2).

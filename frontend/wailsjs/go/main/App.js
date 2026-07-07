@@ -6,6 +6,10 @@ export function BackupVault() {
   return window['go']['main']['App']['BackupVault']();
 }
 
+export function BeginTransaction(arg1) {
+  return window['go']['main']['App']['BeginTransaction'](arg1);
+}
+
 export function CancelQuery(arg1) {
   return window['go']['main']['App']['CancelQuery'](arg1);
 }
@@ -14,8 +18,16 @@ export function ClearRecentFiles() {
   return window['go']['main']['App']['ClearRecentFiles']();
 }
 
+export function CommitTransaction(arg1) {
+  return window['go']['main']['App']['CommitTransaction'](arg1);
+}
+
 export function DeleteConnection(arg1) {
   return window['go']['main']['App']['DeleteConnection'](arg1);
+}
+
+export function DisconnectConnection(arg1) {
+  return window['go']['main']['App']['DisconnectConnection'](arg1);
 }
 
 export function ExecuteQuery(arg1, arg2, arg3) {
@@ -54,6 +66,10 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function HasOpenTransaction(arg1) {
+  return window['go']['main']['App']['HasOpenTransaction'](arg1);
+}
+
 export function InitializeVault(arg1) {
   return window['go']['main']['App']['InitializeVault'](arg1);
 }
@@ -78,6 +94,10 @@ export function ListRecentFiles() {
   return window['go']['main']['App']['ListRecentFiles']();
 }
 
+export function ListSchemas(arg1) {
+  return window['go']['main']['App']['ListSchemas'](arg1);
+}
+
 export function OpenSQLFileDialog() {
   return window['go']['main']['App']['OpenSQLFileDialog']();
 }
@@ -94,6 +114,10 @@ export function RestoreVaultBackup() {
   return window['go']['main']['App']['RestoreVaultBackup']();
 }
 
+export function RollbackTransaction(arg1) {
+  return window['go']['main']['App']['RollbackTransaction'](arg1);
+}
+
 export function SaveConnection(arg1, arg2) {
   return window['go']['main']['App']['SaveConnection'](arg1, arg2);
 }
@@ -104,6 +128,10 @@ export function SaveSQLFile(arg1, arg2) {
 
 export function SaveSQLFileAs(arg1, arg2) {
   return window['go']['main']['App']['SaveSQLFileAs'](arg1, arg2);
+}
+
+export function SetConnectionSchemas(arg1, arg2) {
+  return window['go']['main']['App']['SetConnectionSchemas'](arg1, arg2);
 }
 
 export function SetTheme(arg1) {

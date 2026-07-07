@@ -1,3 +1,33 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Thin scrollbars everywhere (grid, sidebar, editor panels) — WKWebView on
+   macOS and WebView2 on Windows are both Chromium/WebKit-based, so the
+   ::-webkit-scrollbar pseudo-elements apply on both, unlike Firefox's
+   scrollbar-width. */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: rgb(212 212 212 / 0.6); /* neutral-300 */
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(163 163 163 / 0.8); /* neutral-400 */
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background-color: rgb(64 64 64 / 0.6); /* neutral-700 */
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(115 115 115 / 0.8); /* neutral-500 */
+}

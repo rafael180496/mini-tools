@@ -25,7 +25,16 @@ type migration struct {
 // migrations is empty today — version 1 is the baseline created directly in
 // store.go's CREATE TABLE IF NOT EXISTS block. The first real entry here
 // will be {version: 2, ...}.
-var migrations = []migration{}
+var migrations = []migration{
+	{
+		version: 2,
+		desc:    "agrega connections.metadata_schemas para limitar qué esquemas escanea el autocomplete",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE connections ADD COLUMN metadata_schemas TEXT`)
+			return err
+		},
+	},
+}
 
 // applyMigrations runs every migration whose version is newer than the
 // database's current schema_migrations version, in order, each in its own

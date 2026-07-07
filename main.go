@@ -6,6 +6,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
 //go:embed all:frontend/dist
@@ -29,8 +30,19 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
+		// Maximised, not a fixed size: Wails sizes this to the current
+		// monitor's actual work area, so the app opens filling the screen
+		// without needing internal scroll — no manual resolution detection
+		// needed. Width/Height above only matter as the restore size if the
+		// user un-maximises.
+		WindowStartState: options.Maximised,
+		Mac: &mac.Options{
+			// Explicit (matches the zero-value default) so the native
+			// green title-bar button stays enabled for maximize/fullscreen.
+			DisableZoom: false,
+		},
+		OnStartup:  app.startup,
+		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
 		},

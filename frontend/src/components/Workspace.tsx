@@ -8,7 +8,10 @@ import MonacoSQLEditor from './editor/MonacoSQLEditor'
 import RecentFilesMenu from './editor/RecentFilesMenu'
 import {
     BackupVault,
+    BeginTransaction,
     CancelQuery,
+    CommitTransaction,
+    DisconnectConnection,
     ExecuteQuery,
     ExplainQuery,
     ExportConnectionConfig,
@@ -16,9 +19,11 @@ import {
     ExportTableDDL,
     GenerateProjectDocs,
     GetSchemaMetadata,
+    HasOpenTransaction,
     OpenSQLFileDialog,
     OpenSQLFilePath,
     RegenerateProjectDocs,
+    RollbackTransaction,
     SaveSQLFile,
     SaveSQLFileAs,
 } from '../../wailsjs/go/main/App'
@@ -34,6 +39,7 @@ import type {Theme} from '../hooks/useTheme'
 // Monaco, which the editor needs immediately and can't defer.
 const ConnectionDialog = lazy(() => import('./connections/ConnectionDialog'))
 const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
+const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'done' | 'cancelled' | 'error'
@@ -95,12 +101,15 @@ function newScratchTab(): EditorTab {
 }
 
 // LIMIT/FETCH syntax differs per engine — spec: "doble click tabla en árbol
-// → SELECT * LIMIT 100 auto".
-function limitQueryFor(dbType: string, table: string): string {
+// → SELECT * LIMIT 100 auto". Schema-qualified when the table came from a
+// non-default Postgres schema, so it resolves correctly regardless of the
+// connection's search_path.
+function limitQueryFor(dbType: string, table: string, schema?: string): string {
+    const qualified = schema ? `${schema}.${table}` : table
     if (dbType === 'oracle') {
-        return `SELECT * FROM ${table} WHERE ROWNUM <= 100`
+        return `SELECT * FROM ${qualified} WHERE ROWNUM <= 100`
     }
-    return `SELECT * FROM ${table} LIMIT 100`
+    return `SELECT * FROM ${qualified} LIMIT 100`
 }
 
 interface WorkspaceProps {
@@ -111,13 +120,24 @@ interface WorkspaceProps {
 export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [selected, setSelected] = useState<vault.ConnectionSummary | null>(null)
     const [showDialog, setShowDialog] = useState(false)
+    const [schemaPickerConn, setSchemaPickerConn] = useState<vault.ConnectionSummary | null>(null)
     const [reloadToken, setReloadToken] = useState(0)
     const [metadata, setMetadata] = useState<db.SchemaMetadata | null>(null)
+    const [activeSchema, setActiveSchema] = useState<string | null>(null)
+    // Auto-commit off for `selected` — while true, Commit/Rollback are the
+    // only way back to auto-commit (see backend Executor.BeginTransaction's
+    // doc comment for why this can't just be a client-side flag: it mirrors
+    // a real reserved connection on the backend).
+    const [txOpen, setTxOpen] = useState(false)
+    const [txBusy, setTxBusy] = useState(false)
 
     const [tabs, setTabs] = useState<EditorTab[]>(() => [newScratchTab()])
     const [activeTabId, setActiveTabId] = useState(() => tabs[0].id)
 
     const [running, setRunning] = useState(false)
+    // Statement progress while `running` — "N/M" for a multi-statement
+    // script, null before the first "columns" event of a run arrives.
+    const [runProgress, setRunProgress] = useState<{current: number; total: number} | null>(null)
     const [resultSets, setResultSets] = useState<ResultSet[]>([])
     const [activeResultTab, setActiveResultTab] = useState(0)
     const [backupMessage, setBackupMessage] = useState('')
@@ -157,29 +177,118 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // possible.
     useEffect(() => {
         if (!selected) {
-            setActiveMetadata(null)
             setMetadata(null)
             return
         }
         GetSchemaMetadata(selected.id, false)
-            .then((meta) => {
-                setActiveMetadata(meta)
-                setMetadata(meta)
-            })
+            .then((meta) => setMetadata(meta))
             .catch((err) => setStatusMessage(String(err)))
     }, [selected])
+
+    // Re-sync the auto-commit UI with the backend's actual state — the
+    // reserved connection lives in the Go executor, not in this component,
+    // so trust it rather than assuming local state survived a reconnect.
+    useEffect(() => {
+        if (!selected) {
+            setTxOpen(false)
+            return
+        }
+        HasOpenTransaction(selected.id)
+            .then(setTxOpen)
+            .catch(() => setTxOpen(false))
+    }, [selected])
+
+    async function beginTransaction() {
+        if (!selected) return
+        setTxBusy(true)
+        try {
+            await BeginTransaction(selected.id)
+            setTxOpen(true)
+            setStatusMessage('Transacción abierta — auto-commit desactivado')
+        } catch (err) {
+            setStatusMessage(String(err))
+        } finally {
+            setTxBusy(false)
+        }
+    }
+
+    async function commitTransaction() {
+        if (!selected) return
+        setTxBusy(true)
+        try {
+            await CommitTransaction(selected.id)
+            setTxOpen(false)
+            setStatusMessage('Commit hecho — auto-commit activado')
+        } catch (err) {
+            setStatusMessage(String(err))
+        } finally {
+            setTxBusy(false)
+        }
+    }
+
+    async function rollbackTransaction() {
+        if (!selected) return
+        setTxBusy(true)
+        try {
+            await RollbackTransaction(selected.id)
+            setTxOpen(false)
+            setStatusMessage('Rollback hecho — auto-commit activado')
+        } catch (err) {
+            setStatusMessage(String(err))
+        } finally {
+            setTxBusy(false)
+        }
+    }
 
     function refreshMetadata() {
         if (!selected) return
         setStatusMessage('Actualizando metadata…')
         GetSchemaMetadata(selected.id, true)
             .then((meta) => {
-                setActiveMetadata(meta)
                 setMetadata(meta)
                 setStatusMessage('Metadata actualizada')
             })
             .catch((err) => setStatusMessage(String(err)))
     }
+
+    // Postgres connections span multiple schemas (table.schema is populated
+    // — see backend/db/metadata.go); Oracle's USER_* views are implicitly
+    // scoped to one schema (table.schema is always empty), so `schemas`
+    // comes back empty there and everything below just falls through
+    // unfiltered, unchanged from before this feature existed.
+    const schemas = metadata
+        ? Array.from(new Set(metadata.tables.map((t) => t.schema).filter((s): s is string => !!s))).sort()
+        : []
+
+    // Keep the active schema valid as metadata changes (new connection,
+    // F5): preserve it if it still exists, default to "public" if present,
+    // otherwise the first schema alphabetically.
+    useEffect(() => {
+        if (schemas.length === 0) {
+            setActiveSchema(null)
+            return
+        }
+        setActiveSchema((prev) => {
+            if (prev && schemas.includes(prev)) return prev
+            return schemas.includes('public') ? 'public' : schemas[0]
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [metadata])
+
+    // The sidebar tree and Monaco's autocomplete/hover both only see the
+    // active schema's tables — "el console debe indicar en qué BD/schema
+    // quiero que esté trabajando" — not the whole multi-schema catalog at
+    // once (that's still the full fetch from GetSchemaMetadata; this only
+    // narrows what's *shown*, see Fase 3 for narrowing what's *fetched*).
+    const filteredMetadata: db.SchemaMetadata | null =
+        metadata && activeSchema
+            ? new db.SchemaMetadata({tables: metadata.tables.filter((t) => t.schema === activeSchema)})
+            : metadata
+
+    useEffect(() => {
+        setActiveMetadata(filteredMetadata)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filteredMetadata])
 
     const runText = useCallback(
         (sqlText: string) => {
@@ -188,10 +297,12 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             const queryId = newQueryId()
             queryIdRef.current = queryId
             setRunning(true)
+            setRunProgress(null)
             setResultSets([])
             setActiveResultTab(0)
 
             const unsubscribe = EventsOn(queryId, (event: QueryEvent) => {
+                setRunProgress({current: event.statementIndex + 1, total: event.totalStatements})
                 setResultSets((prev) => {
                     const next = [...prev]
                     while (next.length <= event.statementIndex) {
@@ -236,6 +347,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     ((event.type === 'done' || event.type === 'error') && event.statementIndex === event.totalStatements - 1)
                 ) {
                     setRunning(false)
+                    setRunProgress(null)
                     unsubscribe()
                 }
             })
@@ -243,6 +355,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             ExecuteQuery(selected.id, queryId, sqlText).catch((err) => {
                 setResultSets([{...emptyResultSet(), status: 'error', error: String(err)}])
                 setRunning(false)
+                setRunProgress(null)
                 unsubscribe()
             })
         },
@@ -252,9 +365,13 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // Spec: "linter básico... warning antes de ejecutar". Only for
     // user-initiated runs (selection/line, full block) — not for
     // auto-generated queries (double-click LIMIT, sort-by-column requery),
-    // which would otherwise pop this dialog on every double-click.
+    // which would otherwise pop this dialog on every double-click. Only
+    // `blocking` warnings (UPDATE/DELETE without WHERE — genuinely
+    // destructive) actually stop execution; non-blocking ones (SELECT *) are
+    // still shown as an editor marker by MonacoSQLEditor.tsx but never
+    // prevent running a plain read query.
     function confirmAndRun(sqlText: string) {
-        const warnings = lintSQL(sqlText)
+        const warnings = lintSQL(sqlText).filter((w) => w.blocking)
         if (warnings.length > 0) {
             const message = warnings.map((w) => `Línea ${w.startLineNumber}: ${w.message}`).join('\n')
             if (!window.confirm(`Advertencias antes de ejecutar:\n\n${message}\n\n¿Ejecutar de todas formas?`)) {
@@ -326,9 +443,9 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         runText(wrapped)
     }
 
-    function openTableQuery(table: string) {
+    function openTableQuery(table: string, schema?: string) {
         if (!selected) return
-        const q = limitQueryFor(selected.dbType, table)
+        const q = limitQueryFor(selected.dbType, table, schema)
         updateActiveTabContent(q)
         runText(q)
     }
@@ -337,6 +454,23 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         try {
             const dest = await ExportConnectionConfig(connId)
             setStatusMessage(dest ? `Config exportada a ${dest}` : '')
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
+    // Closes the pool without touching the saved connection (unlike
+    // deleting it) — if it's the active one, also clears the workspace's
+    // notion of "connected to X" so autocomplete/metadata don't keep
+    // pointing at a closed pool. Reconnecting just means selecting it again.
+    async function disconnectConnection(connId: string) {
+        try {
+            await DisconnectConnection(connId)
+            if (selected?.id === connId) {
+                setSelected(null)
+                setMetadata(null)
+            }
+            setStatusMessage('Desconectado')
         } catch (err) {
             setStatusMessage(String(err))
         }
@@ -493,17 +627,79 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 onSelect={setSelected}
                 onNewConnection={() => setShowDialog(true)}
                 reloadToken={reloadToken}
-                metadata={metadata}
+                metadata={filteredMetadata}
                 onOpenTable={openTableQuery}
                 onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
                 onExportTableDDL={(table, schema) => void exportTableDDL(table, schema)}
+                onDisconnect={(connId) => void disconnectConnection(connId)}
+                onConfigureSchemas={setSchemaPickerConn}
             />
+
+            {schemaPickerConn && (
+                <Suspense fallback={null}>
+                    <SchemaPickerDialog
+                        connId={schemaPickerConn.id}
+                        currentSchemas={schemaPickerConn.metadataSchemas ?? []}
+                        onClose={() => setSchemaPickerConn(null)}
+                        onSaved={() => {
+                            setSchemaPickerConn(null)
+                            setReloadToken((n) => n + 1)
+                            if (schemaPickerConn.id === selected?.id) refreshMetadata()
+                        }}
+                    />
+                </Suspense>
+            )}
 
             <div className="flex flex-1 flex-col">
                 <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 p-2">
                     <span className="text-xs text-neutral-500">
                         {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
                     </span>
+                    {schemas.length > 0 && (
+                        <label className="flex items-center gap-1 text-xs text-neutral-500">
+                            Schema:
+                            <select
+                                value={activeSchema ?? ''}
+                                onChange={(e) => setActiveSchema(e.target.value)}
+                                className="rounded border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-1 py-0.5 text-xs text-neutral-800 dark:text-neutral-200 outline-none"
+                            >
+                                {schemas.map((s) => (
+                                    <option key={s} value={s}>
+                                        {s}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    )}
+                    {selected && !txOpen && (
+                        <button
+                            onClick={() => void beginTransaction()}
+                            disabled={txBusy}
+                            title="Desactivar auto-commit: los statements quedan pendientes hasta Commit/Rollback"
+                            className="rounded border border-neutral-200 dark:border-neutral-800 px-2 py-0.5 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900 disabled:opacity-50"
+                        >
+                            Auto-commit: ON
+                        </button>
+                    )}
+                    {selected && txOpen && (
+                        <span className="flex items-center gap-2 rounded border border-amber-600/60 bg-amber-100 dark:bg-amber-950/40 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-400">
+                            Transacción abierta
+                            <button
+                                onClick={() => void commitTransaction()}
+                                disabled={txBusy}
+                                className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-medium text-neutral-50 hover:bg-emerald-600 disabled:opacity-50"
+                            >
+                                Commit
+                            </button>
+                            <button
+                                onClick={() => void rollbackTransaction()}
+                                disabled={txBusy}
+                                className="rounded bg-red-800 px-2 py-0.5 text-xs font-medium text-neutral-50 hover:bg-red-700 disabled:opacity-50"
+                            >
+                                Rollback
+                            </button>
+                        </span>
+                    )}
                     {statusMessage && <span className="text-xs text-neutral-500">{statusMessage}</span>}
                     {backupMessage && <span className="text-xs text-neutral-500">{backupMessage}</span>}
                     <div className="flex-1" />
@@ -644,7 +840,17 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 )}
 
                 <div className="flex items-center gap-4 border-t border-neutral-200 dark:border-neutral-800 px-3 py-1 text-xs text-neutral-500">
-                    {running && <span>Ejecutando…</span>}
+                    {running && (
+                        <span className="flex items-center gap-2">
+                            <span
+                                aria-hidden
+                                className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-neutral-400 dark:border-neutral-600"
+                            />
+                            {runProgress && runProgress.total > 1
+                                ? `Ejecutando ${runProgress.current}/${runProgress.total}…`
+                                : 'Ejecutando…'}
+                        </span>
+                    )}
                     {activeResult?.status === 'done' && (
                         <span>
                             {activeResult.rowsAffected} filas · {activeResult.durationMs}ms

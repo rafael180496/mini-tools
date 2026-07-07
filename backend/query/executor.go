@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +51,14 @@ type EmitFunc func(event string, data interface{})
 // that knows how to store it.
 type HistorySink func(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string)
 
+// queryExecer is satisfied by both *sql.DB and *sql.Conn — runQuery/runExec
+// don't care which one they got, only the caller (run) decides based on
+// whether connID has an open transaction reserving a single connection.
+type queryExecer interface {
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
 // Executor runs (possibly multi-statement) scripts against pooled
 // connections and streams the results back as Events, one statement at a
 // time. See detect.go/splitter.go for how statements are classified and
@@ -62,6 +71,20 @@ type Executor struct {
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+
+	// txMu/txns implement the auto-commit-off flow: BeginTransaction
+	// reserves one *sql.Conn per connID (auto-commit gets genuinely
+	// disabled there, not just simulated) and every subsequent
+	// ExecuteQuery for that connID routes through this same connection
+	// until Commit/RollbackTransaction releases it. Deliberately a raw
+	// *sql.Conn, not Go's *sql.Tx — SQL text that manages its own
+	// transaction boundary (an explicit COMMIT/ROLLBACK the user typed, or
+	// one inside a PL/SQL block) needs to behave exactly like it would in
+	// psql/sqlplus, which a *sql.Tx wrapper would fight with. See
+	// .claude/specs/vault-migrations.md's sibling doc on transactions for
+	// the full design writeup.
+	txMu sync.Mutex
+	txns map[string]*sql.Conn
 }
 
 // NewExecutor builds an Executor. parentCtx is only used to derive each
@@ -69,7 +92,110 @@ type Executor struct {
 // emit is how results actually reach the frontend; history records each
 // statement's terminal outcome (pass a no-op func if not needed).
 func NewExecutor(parentCtx context.Context, pools *db.PoolManager, emit EmitFunc, history HistorySink) *Executor {
-	return &Executor{parentCtx: parentCtx, pools: pools, emit: emit, history: history, cancels: make(map[string]context.CancelFunc)}
+	return &Executor{
+		parentCtx: parentCtx, pools: pools, emit: emit, history: history,
+		cancels: make(map[string]context.CancelFunc),
+		txns:    make(map[string]*sql.Conn),
+	}
+}
+
+// txConn returns connID's reserved connection if a transaction is open, or
+// nil if auto-commit is on (the common case) — callers fall back to the
+// shared pool.
+func (e *Executor) txConn(connID string) *sql.Conn {
+	e.txMu.Lock()
+	defer e.txMu.Unlock()
+	return e.txns[connID]
+}
+
+// HasOpenTransaction reports whether connID currently has a reserved
+// connection (auto-commit off) — lets the frontend re-sync its toggle state
+// (e.g. after a reload) without guessing.
+func (e *Executor) HasOpenTransaction(connID string) bool {
+	return e.txConn(connID) != nil
+}
+
+// BeginTransaction reserves a single connection from connID's pool so every
+// statement ExecuteQuery sends for it from here on runs on that same
+// connection instead of the shared pool — i.e. auto-commit off. Fails if a
+// transaction is already open for connID.
+func (e *Executor) BeginTransaction(ctx context.Context, connID string, dbType db.DBType) error {
+	e.txMu.Lock()
+	defer e.txMu.Unlock()
+	if _, ok := e.txns[connID]; ok {
+		return fmt.Errorf("query: ya hay una transacción abierta para esta conexión")
+	}
+
+	pool, err := e.pools.Get(connID)
+	if err != nil {
+		return err
+	}
+	conn, err := pool.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("query: reservando conexión: %w", err)
+	}
+
+	// Oracle has no explicit BEGIN — a transaction starts implicitly with
+	// the first statement on the session. Postgres/SQLite need one opened
+	// explicitly for auto-commit to actually be off from here on.
+	if dbType != db.DBTypeOracle {
+		if _, err := conn.ExecContext(ctx, "BEGIN"); err != nil {
+			conn.Close()
+			return fmt.Errorf("query: iniciando transacción: %w", err)
+		}
+	}
+
+	e.txns[connID] = conn
+	return nil
+}
+
+// endTransaction sends stmt ("COMMIT" or "ROLLBACK") on connID's reserved
+// connection and releases it back to the pool — auto-commit is back on
+// afterward regardless of whether stmt succeeded, since the connection is
+// always released.
+func (e *Executor) endTransaction(ctx context.Context, connID, stmt string) error {
+	e.txMu.Lock()
+	conn, ok := e.txns[connID]
+	if ok {
+		delete(e.txns, connID)
+	}
+	e.txMu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("query: no hay una transacción abierta para esta conexión")
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, stmt); err != nil {
+		return fmt.Errorf("query: %s: %w", stmt, err)
+	}
+	return nil
+}
+
+func (e *Executor) CommitTransaction(ctx context.Context, connID string) error {
+	return e.endTransaction(ctx, connID, "COMMIT")
+}
+
+func (e *Executor) RollbackTransaction(ctx context.Context, connID string) error {
+	return e.endTransaction(ctx, connID, "ROLLBACK")
+}
+
+// RollbackAll releases every currently-reserved transaction connection —
+// called on app shutdown, before the pools themselves get closed, so none
+// of them leak (see app.go's rollbackIfOpen for the same concern on a
+// single connID). Best-effort, same reasoning as rollbackIfOpen: the app is
+// closing regardless of whether any individual ROLLBACK succeeds.
+func (e *Executor) RollbackAll(ctx context.Context) {
+	e.txMu.Lock()
+	connIDs := make([]string, 0, len(e.txns))
+	for connID := range e.txns {
+		connIDs = append(connIDs, connID)
+	}
+	e.txMu.Unlock()
+
+	for _, connID := range connIDs {
+		_ = e.RollbackTransaction(ctx, connID)
+	}
 }
 
 // Execute splits sqlText into statements and runs them in order against
@@ -101,6 +227,14 @@ func (e *Executor) run(connID, queryID, sqlText string) {
 	}
 	dbType, _ := e.pools.Type(connID)
 
+	// If auto-commit is off for connID, every statement below runs on its
+	// one reserved connection instead of the shared pool — see txConn's doc
+	// comment and BeginTransaction.
+	var execer queryExecer = pool
+	if conn := e.txConn(connID); conn != nil {
+		execer = conn
+	}
+
 	statements := SplitStatements(sqlText)
 	if len(statements) == 0 {
 		e.emit(queryID, Event{Type: "error", Error: "query: no hay ninguna sentencia para ejecutar"})
@@ -130,9 +264,9 @@ func (e *Executor) run(connID, queryID, sqlText string) {
 		}
 
 		if isSelectLike(stmt.Text) {
-			e.runQuery(ctx, pool, connID, queryID, stmt.Text, idx, total, start)
+			e.runQuery(ctx, execer, connID, queryID, stmt.Text, idx, total, start)
 		} else {
-			e.runExec(ctx, pool, connID, queryID, stmt.Text, idx, total, start)
+			e.runExec(ctx, execer, connID, queryID, stmt.Text, idx, total, start)
 		}
 	}
 }
@@ -147,8 +281,8 @@ func isSelectLike(sqlText string) bool {
 	return false
 }
 
-func (e *Executor) runQuery(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time) {
-	rows, err := pool.QueryContext(ctx, sqlText)
+func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, queryID, sqlText string, idx, total int, start time.Time) {
+	rows, err := execer.QueryContext(ctx, sqlText)
 	if err != nil {
 		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
@@ -208,8 +342,8 @@ func (e *Executor) runQuery(ctx context.Context, pool *sql.DB, connID, queryID, 
 	e.recordHistory(connID, sqlText, "done", rowCount, durationMs, "")
 }
 
-func (e *Executor) runExec(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time) {
-	result, err := pool.ExecContext(ctx, sqlText)
+func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, queryID, sqlText string, idx, total int, start time.Time) {
+	result, err := execer.ExecContext(ctx, sqlText)
 	if err != nil {
 		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
@@ -222,7 +356,25 @@ func (e *Executor) runExec(ctx context.Context, pool *sql.DB, connID, queryID, s
 }
 
 func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time) {
-	result, dbmsOutput, err := runOraclePLSQLBlock(ctx, pool, sqlText)
+	// If a transaction is open for connID, DBMS_OUTPUT must run on that SAME
+	// reserved connection (its ENABLE/PUT_LINE/GET_LINE state is
+	// per-session) — reusing it here also means an explicit COMMIT/ROLLBACK
+	// inside the block affects the transaction the Commit/Rollback buttons
+	// are tracking, not some other connection. Otherwise reserve one just
+	// for this block, exactly as before this feature existed.
+	conn := e.txConn(connID)
+	ownsConn := conn == nil
+	if ownsConn {
+		var err error
+		conn, err = pool.Conn(ctx)
+		if err != nil {
+			e.emitError(connID, queryID, sqlText, fmt.Errorf("query: reservando conexión para bloque PL/SQL: %w", err), idx, total)
+			return
+		}
+		defer conn.Close()
+	}
+
+	result, dbmsOutput, err := runOraclePLSQLBlock(ctx, conn, sqlText)
 	if err != nil {
 		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return

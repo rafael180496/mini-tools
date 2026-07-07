@@ -9,6 +9,13 @@ export interface LintWarning {
     message: string
     startLineNumber: number
     endLineNumber: number
+    // blocking warnings pop the confirm-before-execute dialog (Workspace.tsx
+    // confirmAndRun); non-blocking ones only show as an editor marker
+    // (MonacoSQLEditor.tsx applyLintMarkers, always runs both). SELECT * is
+    // a style nit, not a safety issue — it shouldn't stop a quick read
+    // query. UPDATE/DELETE without WHERE can destroy data, so that one
+    // blocks.
+    blocking: boolean
 }
 
 interface StatementSpan {
@@ -50,6 +57,7 @@ export function lintSQL(text: string): LintWarning[] {
                 message: 'SELECT * puede traer columnas innecesarias — preferí listar las columnas que necesitás.',
                 startLineNumber: stmt.startLine,
                 endLineNumber: stmt.endLine,
+                blocking: false,
             })
         }
 
@@ -58,6 +66,7 @@ export function lintSQL(text: string): LintWarning[] {
                 message: 'UPDATE/DELETE sin WHERE afecta todas las filas de la tabla.',
                 startLineNumber: stmt.startLine,
                 endLineNumber: stmt.endLine,
+                blocking: true,
             })
         }
     }
