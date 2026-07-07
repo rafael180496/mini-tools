@@ -58,6 +58,15 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 			verifier_nonce BLOB NOT NULL,
 			created_at     INTEGER NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS connections (
+			id            TEXT PRIMARY KEY,
+			name          TEXT NOT NULL,
+			db_type       TEXT NOT NULL, -- oracle | postgres | sqlite
+			encrypted_dsn BLOB NOT NULL,
+			nonce         BLOB NOT NULL,
+			created_at    INTEGER
+		);
 	`); err != nil {
 		return nil, fmt.Errorf("vault: creating schema: %w", err)
 	}

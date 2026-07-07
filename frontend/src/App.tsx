@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react'
 import UnlockScreen from './components/lock/UnlockScreen'
+import Workspace from './components/Workspace'
 import {IsVaultInitialized, InitializeVault, UnlockVault} from '../wailsjs/go/main/App'
 
 function App() {
@@ -34,14 +35,7 @@ function App() {
         )
     }
 
-    return (
-        <div className="flex h-screen w-screen items-center justify-center bg-neutral-950 text-neutral-100">
-            <div className="flex flex-col items-center gap-2">
-                <h1 className="text-2xl font-semibold">mini-tools</h1>
-                <p className="text-sm text-emerald-400">Vault desbloqueado</p>
-            </div>
-        </div>
-    )
+    return <Workspace />
 }
 
 export default App

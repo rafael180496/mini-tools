@@ -7,17 +7,17 @@ Superficie de binding del struct `App` (`app.go`). Regla general: el frontend nu
 | Área | Métodos | Fase que lo introduce |
 |---|---|---|
 | Ciclo de vida del vault | `IsVaultInitialized()`, `InitializeVault(password)`, `UnlockVault(password)` | Fase 2 |
-| Conexiones | `TestConnection(cfg)`, `SaveConnection(cfg, force bool)`, `ListConnections()`, `DeleteConnection(id)`, `ExportConnectionConfig(id)` | Fase 3-4 |
+| Conexiones | `TestConnection(cfg)`, `SaveConnection(cfg, force bool)`, `ListConnections()`, `DeleteConnection(id)` | Fase 3 (`ExportConnectionConfig(id)` queda para Fase 7, junto al resto de export) |
 | Metadata | `GetSchemaMetadata(connID, forceRefresh bool)` | Fase 6 |
-| Ejecución de queries | `ExecuteQuery(queryID, connID, sqlText)`, `CancelQuery(queryID)` | Fase 5 |
+| Ejecución de queries | `ExecuteQuery(connID, queryID, sqlText)`, `CancelQuery(queryID)` | Fase 3 (mínimo, un solo statement) → se completa en Fase 5 (PL/SQL, multi-statement) |
 | Archivos | `OpenSQLFileDialog()`, `SaveSQLFile(path, content)`, `SaveSQLFileAs(suggestedName, content)`, `ListRecentFiles()`, `ClearRecentFiles()` | Fase 6 |
 | Explain | `ExplainQuery(connID, sqlText, analyze bool)`, `ListExplainHistory(connID)` | Fase 8 |
 | Export | `ExportResultToFile(queryID, format, destPath)`, `ExportTableDDL(connID, schema, table)`, `ExportSchemaDDL(connID, schema)` | Fase 7 |
 | Settings | `GetSettings()`, `SetTheme(themeName)` | Fase 10 |
 | CLAUDE.md | `GenerateProjectDocs(projectRootPath)`, `RegenerateProjectDocs(projectRootPath)` | Fase 9 |
 
-Estado actual (Fase 2 — completa): `IsVaultInitialized()`, `InitializeVault(password)` y `UnlockVault(password)` implementados en `app.go` sobre `backend/vault.Store` + `backend/vaultgate.Gate`. El `Greet` de demo fue eliminado. Ningún método más existe todavía, así que el "no bypass" real del gate se prueba a partir de Fase 3, cuando aparezcan los primeros métodos que deban revisar `a.gate`/`a.vault` antes de tocar datos de conexión.
+Estado actual (Fase 3 — completa): además del ciclo de vida del vault, `app.go` implementa `TestConnection`, `SaveConnection`, `ListConnections`, `DeleteConnection`, `ExecuteQuery` y `CancelQuery`, todos detrás de `requireUnlocked()` (falla con `vaultgate.ErrLocked` si el vault está bloqueado — el "no bypass" del gate ya se ejerce de verdad, no solo con los métodos de ciclo de vida). Solo el conector SQLite existe (`backend/db/sqlite.go`); Postgres/Oracle devuelven error explícito "aún no implementado" desde `db.ConnectorFor` hasta Fase 4. El executor (`backend/query/executor.go`) es mínimo: clasifica SELECT-like vs todo lo demás con un heurístico simple (sin detectar bloques PL/SQL ni dividir multi-statement todavía — eso es Fase 5).
 
 ## Eventos (streaming)
 
-Los resultados de queries no viajan como valor de retorno de `ExecuteQuery` — se emiten como eventos `runtime.EventsEmit(ctx, queryID, chunk)` desde una goroutine en el backend. El frontend debe llamar `EventsOn(queryID, ...)` **antes** de invocar `ExecuteQuery` (el `queryID` lo genera el cliente, no el backend) para no perder el primer chunk.
+Los resultados de queries no viajan como valor de retorno de `ExecuteQuery` — se emiten como eventos vía un `query.EmitFunc` inyectado (en producción, un closure sobre `runtime.EventsEmit(ctx, queryID, chunk)`; en tests, un stub — `runtime.EventsEmit` exige un contexto real inyectado por Wails y mata el proceso sin uno, así que el executor nunca lo llama directamente). El frontend debe llamar `EventsOn(queryID, ...)` **antes** de invocar `ExecuteQuery` (el `queryID` lo genera el cliente, no el backend) para no perder el primer chunk.
