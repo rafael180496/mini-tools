@@ -67,6 +67,17 @@ go test ./...
 
 Detalle de cada script en [scripts/README.md](scripts/README.md).
 
+## Distribución / Empaquetado macOS
+
+```bash
+./scripts/bump-version.sh patch   # opcional — bumpea VERSION antes de empaquetar
+./scripts/package-macos.sh        # genera build/bin/mini-tools-vX.Y.Z.dmg
+```
+
+El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarización) — al abrirlo en otra Mac, Gatekeeper va a mostrar "desarrollador no identificado". Workaround: clic derecho sobre la app → Abrir, o `xattr -cr /Applications/mini-tools.app`, o Ajustes del Sistema → Privacidad y Seguridad → Abrir de todas formas.
+
+`package-macos.sh` solo genera el `.dmg` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
+
 ## Estructura del proyecto
 
 ```text

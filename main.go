@@ -11,6 +11,11 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// appVersion is stamped at build time via -ldflags "-X main.appVersion=..."
+// (see scripts/build.sh) — read the VERSION file for the source of truth.
+// Not exposed to the frontend; kept for support/debugging only.
+var appVersion = "dev"
+
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()

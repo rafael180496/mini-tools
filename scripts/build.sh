@@ -8,7 +8,8 @@ cd "$ROOT_DIR"
 export PATH="$PATH:$(go env GOPATH)/bin"
 command -v wails >/dev/null || { echo "Wails CLI no encontrado. Corre scripts/install.sh primero."; exit 1; }
 
-wails build -clean "$@"
+VERSION="$(cat "$ROOT_DIR/VERSION" 2>/dev/null || echo dev)"
+wails build -clean -ldflags "-X main.appVersion=$VERSION" "$@"
 
 echo "==> Build listo:"
 ls -lh build/bin/ 2>/dev/null || true

@@ -105,8 +105,22 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 			theme TEXT NOT NULL DEFAULT 'dark'
 		);
 		INSERT OR IGNORE INTO settings (id, theme) VALUES (1, 'dark');
+
+		-- Tracks which migrations (migrations.go) have been applied. Kept
+		-- separate from vault_meta on purpose — vault_meta is the one thing
+		-- a migration must never touch, see .claude/specs/vault-migrations.md.
+		-- Today's schema (everything above) is permanently "version 1".
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version    INTEGER PRIMARY KEY,
+			applied_at INTEGER NOT NULL
+		);
+		INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, strftime('%s','now'));
 	`); err != nil {
 		return nil, fmt.Errorf("vault: creating schema: %w", err)
+	}
+
+	if err := applyMigrations(db); err != nil {
+		return nil, fmt.Errorf("vault: applying migrations: %w", err)
 	}
 
 	return &Store{db: db, gate: gate}, nil

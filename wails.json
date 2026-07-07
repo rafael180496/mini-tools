@@ -9,5 +9,12 @@
   "author": {
     "name": "",
     "email": ""
+  },
+  "info": {
+    "companyName": "",
+    "productName": "mini-tools",
+    "productVersion": "0.0.0",
+    "copyright": "",
+    "comments": ""
   }
 }
