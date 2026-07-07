@@ -12,10 +12,10 @@
 ## Frontend (React/TypeScript)
 
 - Componentes en PascalCase, un componente por archivo, agrupados por dominio bajo `src/components/<dominio>/`.
-- Estado cross-cutting (tabs abiertas, conexión activa, resultados en streaming, tema) vive en stores de Zustand bajo `src/state/`, no en Context ni prop-drilling.
-- Componentes no críticos para el arranque (Settings, Export dialogs) se cargan con `React.lazy` + `Suspense`.
-- El cliente de Wails se envuelve en `src/lib/wailsClient.ts`; los componentes no importan `../wailsjs/go/main/App` directamente salvo casos triviales de scaffold/smoke-test.
-- Tailwind: usar la clase `dark` en `<html>` como fuente de verdad del tema (ver `@custom-variant dark` en `globals.css`), nunca depender de `prefers-color-scheme` como estado real de la app.
+- **Desviación del plan original:** el estado cross-cutting (tabs abiertas, conexión activa, resultados en streaming, tema) NO vive en Zustand — terminó siendo todo `useState`/props, mayormente concentrado en `Workspace.tsx` y pasado hacia abajo (ver `.claude/specs/architecture.md`). No introducir una librería de estado global nueva salvo que el prop-drilling se vuelva real problema, no solo "se ve feo".
+- Componentes gateados por un booleano de mostrar/ocultar (no los que se renderizan siempre) se cargan con `React.lazy` + `Suspense` — ver `ConnectionDialog`/`ExplainPlanPanel` en `Workspace.tsx` como ejemplo. No envolver en lazy algo que se monta incondicionalmente, ni algo que hace falta de inmediato (Monaco).
+- **Desviación del plan original:** no hay wrapper `wailsClient.ts` — los componentes importan `../../wailsjs/go/main/App` directamente, es el patrón establecido en todo el código existente.
+- Tailwind: usar la clase `dark` en `<html>` como fuente de verdad del tema (ver `@custom-variant dark` en `globals.css`, aplicada por `frontend/src/hooks/useTheme.ts`), nunca depender de `prefers-color-scheme` como estado real de la app. El tema se persiste en el vault (`backend/vault/settings_repo.go`, tabla `settings` sin cifrar) vía `GetSettings`/`SetTheme` — los únicos métodos de `App` que no requieren el vault desbloqueado, ver [.claude/rules/technical.md](technical.md) punto 5.
 
 ## Testing
 
@@ -25,3 +25,7 @@
 ## Commits / PRs
 
 - Cada fase del plan (`.claude/specs/`, ver historial de planning) es idealmente un commit o PR separado, con su propio criterio de "listo" verificado antes de pasar a la siguiente.
+
+## CodeGraph
+
+- Este repo tiene `.codegraph/` (índice de símbolos/edges). Después de agregar o eliminar un archivo de código, correr `codegraph sync` para mantener el índice al día antes de seguir trabajando.

@@ -48,7 +48,11 @@ export default function MonacoSQLEditor({value, onChange, onMount}: MonacoSQLEdi
         const editor = monaco.editor.create(containerRef.current, {
             value,
             language: 'sql',
-            theme: 'vs-dark',
+            // No explicit `theme` here on purpose: passing one calls
+            // monaco.editor.setTheme() globally at creation time, which
+            // would silently override whatever useTheme.ts already applied
+            // from the persisted preference. Omitting it inherits Monaco's
+            // current global theme instead.
             automaticLayout: true,
             minimap: {enabled: true},
             fontSize: 13,

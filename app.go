@@ -86,9 +86,12 @@ func (a *App) startup(ctx context.Context) {
 	)
 }
 
-// shutdown closes every open connection pool cleanly.
+// shutdown closes every open connection pool and zeroes the in-memory vault
+// key — otherwise it would sit in the process's memory unzeroed until the OS
+// reclaims it on exit.
 func (a *App) shutdown(ctx context.Context) {
 	a.pools.CloseAll()
+	a.gate.Lock()
 }
 
 // requireUnlocked is the gate check every method below the vault lifecycle
@@ -117,6 +120,21 @@ func (a *App) InitializeVault(password string) error {
 // unlocks the vault in memory on success.
 func (a *App) UnlockVault(password string) error {
 	return a.vault.Unlock(password)
+}
+
+// GetSettings and SetTheme intentionally skip requireUnlocked — the settings
+// table holds no sensitive data (see the comment on it in
+// backend/vault/store.go), and gating the theme behind the master password
+// would force a jarring theme flash on the unlock screen for no security
+// benefit. The gate exists to protect encrypted_dsn/query data, not cosmetic
+// prefs.
+func (a *App) GetSettings() (vault.Settings, error) {
+	return a.vault.GetSettings()
+}
+
+// SetTheme persists the theme preference ("dark" or "light").
+func (a *App) SetTheme(theme string) error {
+	return a.vault.SetTheme(theme)
 }
 
 // TestConnection builds a DSN from cfg and pings it, without saving

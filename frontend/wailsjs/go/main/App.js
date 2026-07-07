@@ -50,6 +50,10 @@ export function GetSchemaMetadata(arg1, arg2) {
   return window['go']['main']['App']['GetSchemaMetadata'](arg1, arg2);
 }
 
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
+}
+
 export function InitializeVault(arg1) {
   return window['go']['main']['App']['InitializeVault'](arg1);
 }
@@ -100,6 +104,10 @@ export function SaveSQLFile(arg1, arg2) {
 
 export function SaveSQLFileAs(arg1, arg2) {
   return window['go']['main']['App']['SaveSQLFileAs'](arg1, arg2);
+}
+
+export function SetTheme(arg1) {
+  return window['go']['main']['App']['SetTheme'](arg1);
 }
 
 export function TestConnection(arg1) {

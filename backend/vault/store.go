@@ -96,6 +96,15 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 		);
 		CREATE INDEX IF NOT EXISTS idx_explain_history_connection
 			ON explain_history (connection_id, created_at DESC);
+
+		-- Non-sensitive app preferences (unlike connections.encrypted_dsn,
+		-- nothing here needs the master key) — readable/writable even while
+		-- the vault is locked, so the theme applies on the unlock screen too.
+		CREATE TABLE IF NOT EXISTS settings (
+			id    INTEGER PRIMARY KEY CHECK (id = 1),
+			theme TEXT NOT NULL DEFAULT 'dark'
+		);
+		INSERT OR IGNORE INTO settings (id, theme) VALUES (1, 'dark');
 	`); err != nil {
 		return nil, fmt.Errorf("vault: creating schema: %w", err)
 	}
@@ -130,7 +139,9 @@ func (s *Store) Initialize(password string) error {
 		return err
 	}
 
-	key := mtcrypto.DeriveKey([]byte(password), salt)
+	passwordBytes := []byte(password)
+	key := mtcrypto.DeriveKey(passwordBytes, salt)
+	mtcrypto.Zero(passwordBytes)
 
 	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(verifierPlaintext))
 	if err != nil {
@@ -167,9 +178,15 @@ func (s *Store) Unlock(password string) error {
 		return fmt.Errorf("vault: reading verifier: %w", err)
 	}
 
-	key := mtcrypto.DeriveKey([]byte(password), salt)
+	passwordBytes := []byte(password)
+	key := mtcrypto.DeriveKey(passwordBytes, salt)
+	mtcrypto.Zero(passwordBytes)
 
 	if _, err := mtcrypto.Decrypt(key, ciphertext, nonce); err != nil {
+		// Wrong password: this key is never handed to the gate, so nothing
+		// else holds a reference to it — zero it before it's dropped rather
+		// than leaving it to linger in memory until GC.
+		mtcrypto.Zero(key)
 		return ErrWrongPassword
 	}
 

@@ -46,7 +46,7 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
 
     if (columns.length === 0) {
         return (
-            <div className="flex flex-1 items-center justify-center text-xs text-neutral-600">
+            <div className="flex flex-1 items-center justify-center text-xs text-neutral-400 dark:text-neutral-600">
                 Sin resultados todavía.
             </div>
         )
@@ -60,18 +60,18 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
     return (
         <div ref={parentRef} className="flex-1 overflow-auto">
             <table className="w-full border-collapse text-left text-xs" style={{tableLayout: 'fixed'}}>
-                <thead className="sticky top-0 z-10 bg-neutral-900">
+                <thead className="sticky top-0 z-10 bg-neutral-100 dark:bg-neutral-900">
                     {table.getHeaderGroups().map((hg) => (
                         <tr key={hg.id}>
                             {hg.headers.map((header) => (
                                 <th
                                     key={header.id}
                                     style={{width: header.getSize(), position: 'relative'}}
-                                    className="border-b border-neutral-800 px-3 py-2 font-medium text-neutral-400"
+                                    className="border-b border-neutral-200 dark:border-neutral-800 px-3 py-2 font-medium text-neutral-600 dark:text-neutral-400"
                                 >
                                     <button
                                         onClick={() => onSort?.(header.column.id)}
-                                        className="flex w-full items-center gap-1 truncate text-left hover:text-neutral-200"
+                                        className="flex w-full items-center gap-1 truncate text-left hover:text-neutral-800 dark:hover:text-neutral-200"
                                     >
                                         <span className="truncate">{flexRender(header.column.columnDef.header, header.getContext())}</span>
                                         {sortColumn === header.column.id && (
@@ -81,7 +81,7 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                                     <div
                                         onMouseDown={header.getResizeHandler()}
                                         onTouchStart={header.getResizeHandler()}
-                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-neutral-600"
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-neutral-400 dark:hover:bg-neutral-600"
                                     />
                                 </th>
                             ))}
@@ -97,17 +97,17 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                     {virtualItems.map((vi) => {
                         const row = tableRows[vi.index]
                         return (
-                            <tr key={row.id} className="odd:bg-neutral-950 even:bg-neutral-900/40 hover:bg-neutral-800/60">
+                            <tr key={row.id} className="odd:bg-neutral-50 dark:odd:bg-neutral-950 even:bg-neutral-100/40 dark:even:bg-neutral-900/40 hover:bg-neutral-200/60 dark:hover:bg-neutral-800/60">
                                 {row.getVisibleCells().map((cell) => {
                                     const value = cell.getValue()
                                     return (
                                         <td
                                             key={cell.id}
                                             style={{width: cell.column.getSize()}}
-                                            className="truncate whitespace-nowrap border-b border-neutral-900 px-3 py-1.5 text-neutral-200"
+                                            className="truncate whitespace-nowrap border-b border-neutral-100 dark:border-neutral-900 px-3 py-1.5 text-neutral-800 dark:text-neutral-200"
                                         >
                                             {value === null || value === undefined ? (
-                                                <span className="italic text-neutral-600">NULL</span>
+                                                <span className="italic text-neutral-400 dark:text-neutral-600">NULL</span>
                                             ) : (
                                                 String(value)
                                             )}

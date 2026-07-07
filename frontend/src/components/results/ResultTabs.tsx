@@ -12,15 +12,15 @@ export default function ResultTabs({count, active, onSelect, statuses}: ResultTa
     if (count <= 1) return null
 
     return (
-        <div className="flex gap-1 border-b border-neutral-800 bg-neutral-900 px-2 pt-1">
+        <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 px-2 pt-1">
             {Array.from({length: count}).map((_, i) => (
                 <button
                     key={i}
                     onClick={() => onSelect(i)}
                     className={`rounded-t px-3 py-1 text-xs ${
                         i === active
-                            ? 'bg-neutral-950 text-neutral-100'
-                            : 'text-neutral-500 hover:text-neutral-300'
+                            ? 'bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100'
+                            : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
                     }`}
                 >
                     Resultado {i + 1}

@@ -88,14 +88,14 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
     }
 
     const inputClass =
-        'rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500'
-    const labelClass = 'flex flex-col gap-1 text-xs text-neutral-400'
+        'rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-neutral-500'
+    const labelClass = 'flex flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-400'
 
     return (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
             <form
                 onSubmit={handleSubmit}
-                className="flex max-h-[90vh] w-104 flex-col gap-3 overflow-y-auto rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-neutral-100"
+                className="flex max-h-[90vh] w-104 flex-col gap-3 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 p-6 text-neutral-900 dark:text-neutral-100"
             >
                 <h2 className="text-lg font-semibold">Nueva conexión</h2>
 
@@ -293,21 +293,21 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                         type="button"
                         onClick={testConnection}
                         disabled={missing.length > 0 || pingStatus === 'testing'}
-                        className="rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700 disabled:opacity-50"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
                         Test Connection
                     </button>
-                    {pingStatus === 'ok' && <span className="text-xs text-emerald-400">✓ conexión ok</span>}
-                    {pingStatus === 'failed' && <span className="text-xs text-red-400">✗ falló</span>}
+                    {pingStatus === 'ok' && <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ conexión ok</span>}
+                    {pingStatus === 'failed' && <span className="text-xs text-red-600 dark:text-red-400">✗ falló</span>}
                 </div>
 
-                {error && <p className="text-xs text-red-400">{error}</p>}
+                {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
 
                 <div className="mt-2 flex justify-end gap-2">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="rounded px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
+                        className="rounded px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
                     >
                         Cancelar
                     </button>
@@ -316,7 +316,7 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                             type="button"
                             disabled={!canSubmit}
                             onClick={() => void doSave(true)}
-                            className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-neutral-950 disabled:opacity-50"
+                            className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-neutral-50 dark:text-neutral-950 disabled:opacity-50"
                         >
                             Guardar de todos modos
                         </button>
@@ -324,7 +324,7 @@ export default function ConnectionDialog({onClose, onSaved}: ConnectionDialogPro
                     <button
                         type="submit"
                         disabled={!canSubmit}
-                        className="rounded bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-900 disabled:opacity-50"
+                        className="rounded bg-neutral-900 dark:bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-100 dark:text-neutral-900 disabled:opacity-50"
                     >
                         Guardar
                     </button>

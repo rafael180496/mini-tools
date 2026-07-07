@@ -29,6 +29,8 @@ export function GenerateProjectDocs(arg1:string,arg2:string):Promise<boolean>;
 
 export function GetSchemaMetadata(arg1:string,arg2:boolean):Promise<db.SchemaMetadata>;
 
+export function GetSettings():Promise<vault.Settings>;
+
 export function InitializeVault(arg1:string):Promise<void>;
 
 export function IsVaultInitialized():Promise<boolean>;
@@ -54,6 +56,8 @@ export function SaveConnection(arg1:main.ConnectionInput,arg2:boolean):Promise<v
 export function SaveSQLFile(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSQLFileAs(arg1:string,arg2:string):Promise<string>;
+
+export function SetTheme(arg1:string):Promise<void>;
 
 export function TestConnection(arg1:main.ConnectionInput):Promise<void>;
 

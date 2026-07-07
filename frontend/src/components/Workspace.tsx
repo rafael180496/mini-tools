@@ -1,13 +1,11 @@
-import {useCallback, useEffect, useRef, useState} from 'react'
+import {lazy, Suspense, useCallback, useEffect, useRef, useState} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
-import ConnectionDialog from './connections/ConnectionDialog'
 import ResultGrid from './results/ResultGrid'
 import ResultTabs from './results/ResultTabs'
 import ExportMenu from './results/ExportMenu'
 import EditorTabs, {EditorTab} from './editor/EditorTabs'
 import MonacoSQLEditor from './editor/MonacoSQLEditor'
 import RecentFilesMenu from './editor/RecentFilesMenu'
-import ExplainPlanPanel from './explain/ExplainPlanPanel'
 import {
     BackupVault,
     CancelQuery,
@@ -29,6 +27,13 @@ import {db, explain, vault} from '../../wailsjs/go/models'
 import {setActiveMetadata} from '../monaco/metadataStore'
 import {monaco} from '../monaco/setup'
 import {lintSQL} from '../lib/linter'
+import type {Theme} from '../hooks/useTheme'
+
+// Lazy: both are only mounted once the user opens them (showDialog /
+// showExplain), so they don't need to be in the initial bundle — unlike
+// Monaco, which the editor needs immediately and can't defer.
+const ConnectionDialog = lazy(() => import('./connections/ConnectionDialog'))
+const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'done' | 'cancelled' | 'error'
@@ -98,7 +103,12 @@ function limitQueryFor(dbType: string, table: string): string {
     return `SELECT * FROM ${table} LIMIT 100`
 }
 
-export default function Workspace() {
+interface WorkspaceProps {
+    theme: Theme
+    onToggleTheme: () => void
+}
+
+export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [selected, setSelected] = useState<vault.ConnectionSummary | null>(null)
     const [showDialog, setShowDialog] = useState(false)
     const [reloadToken, setReloadToken] = useState(0)
@@ -477,7 +487,7 @@ export default function Workspace() {
     const activeResult = resultSets[activeResultTab]
 
     return (
-        <div className="flex h-screen w-screen bg-neutral-950 text-neutral-100">
+        <div className="flex h-screen w-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
             <ConnectionTree
                 selectedId={selected?.id ?? null}
                 onSelect={setSelected}
@@ -490,7 +500,7 @@ export default function Workspace() {
             />
 
             <div className="flex flex-1 flex-col">
-                <div className="flex items-center gap-2 border-b border-neutral-800 p-2">
+                <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 p-2">
                     <span className="text-xs text-neutral-500">
                         {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
                     </span>
@@ -499,41 +509,41 @@ export default function Workspace() {
                     <div className="flex-1" />
                     <button
                         onClick={() => void openFileDialog()}
-                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
                     >
                         Abrir
                     </button>
                     <RecentFilesMenu onOpen={(path) => void openRecentFile(path)} />
                     <button
                         onClick={() => void saveActiveTab()}
-                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
                     >
                         Guardar (Ctrl+S)
                     </button>
                     <button
                         onClick={refreshMetadata}
                         disabled={!selected}
-                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
                         Refrescar (F5)
                     </button>
                     <button
                         onClick={() => void exportSchemaDDL()}
                         disabled={!selected}
-                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
                         DDL schema
                     </button>
                     <button
                         onClick={() => void backupVault()}
-                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
                     >
                         Backup vault
                     </button>
                     <button
                         onClick={() => void regenerateProjectDocs()}
                         disabled={!selected || !activeTabData?.path}
-                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
                         Regenerar CLAUDE.md
                     </button>
@@ -561,22 +571,29 @@ export default function Workspace() {
                     <button
                         onClick={() => void runExplain(false)}
                         disabled={!selected}
-                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
                         Explain
                     </button>
                     <button
                         onClick={() => void runExplain(true)}
                         disabled={!selected}
-                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50"
                     >
                         Explain Analyze
+                    </button>
+                    <button
+                        onClick={onToggleTheme}
+                        title="Cambiar tema"
+                        className="rounded bg-neutral-200 dark:bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                    >
+                        {theme === 'dark' ? '☀' : '🌙'}
                     </button>
                 </div>
 
                 <EditorTabs tabs={tabs} activeId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} onNew={newTab} />
 
-                <div className="h-64 border-b border-neutral-800">
+                <div className="h-64 border-b border-neutral-200 dark:border-neutral-800">
                     <MonacoSQLEditor
                         value={activeTabData?.content ?? ''}
                         onChange={updateActiveTabContent}
@@ -593,7 +610,7 @@ export default function Workspace() {
                     statuses={resultSets.map((r) => r.status)}
                 />
 
-                <div className="flex items-center gap-2 border-b border-neutral-800 px-2 py-1">
+                <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 px-2 py-1">
                     <ExportMenu
                         columns={activeResult?.columns ?? []}
                         rows={activeResult?.rows ?? []}
@@ -610,40 +627,44 @@ export default function Workspace() {
                 />
 
                 {activeResult && activeResult.dbmsOutput.length > 0 && (
-                    <pre className="max-h-32 overflow-y-auto border-t border-neutral-800 bg-neutral-950 p-2 text-xs text-neutral-400">
+                    <pre className="max-h-32 overflow-y-auto border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 p-2 text-xs text-neutral-600 dark:text-neutral-400">
                         {activeResult.dbmsOutput.join('\n')}
                     </pre>
                 )}
 
                 {showExplain && (
-                    <ExplainPlanPanel
-                        plan={explainPlan}
-                        loading={explainLoading}
-                        error={explainError}
-                        onClose={() => setShowExplain(false)}
-                    />
+                    <Suspense fallback={null}>
+                        <ExplainPlanPanel
+                            plan={explainPlan}
+                            loading={explainLoading}
+                            error={explainError}
+                            onClose={() => setShowExplain(false)}
+                        />
+                    </Suspense>
                 )}
 
-                <div className="flex items-center gap-4 border-t border-neutral-800 px-3 py-1 text-xs text-neutral-500">
+                <div className="flex items-center gap-4 border-t border-neutral-200 dark:border-neutral-800 px-3 py-1 text-xs text-neutral-500">
                     {running && <span>Ejecutando…</span>}
                     {activeResult?.status === 'done' && (
                         <span>
                             {activeResult.rowsAffected} filas · {activeResult.durationMs}ms
                         </span>
                     )}
-                    {activeResult?.status === 'cancelled' && <span className="text-amber-400">Cancelada</span>}
-                    {activeResult?.status === 'error' && <span className="text-red-400">{activeResult.error}</span>}
+                    {activeResult?.status === 'cancelled' && <span className="text-amber-600 dark:text-amber-400">Cancelada</span>}
+                    {activeResult?.status === 'error' && <span className="text-red-600 dark:text-red-400">{activeResult.error}</span>}
                 </div>
             </div>
 
             {showDialog && (
-                <ConnectionDialog
-                    onClose={() => setShowDialog(false)}
-                    onSaved={() => {
-                        setShowDialog(false)
-                        setReloadToken((n) => n + 1)
-                    }}
-                />
+                <Suspense fallback={null}>
+                    <ConnectionDialog
+                        onClose={() => setShowDialog(false)}
+                        onSaved={() => {
+                            setShowDialog(false)
+                            setReloadToken((n) => n + 1)
+                        }}
+                    />
+                </Suspense>
             )}
         </div>
     )
