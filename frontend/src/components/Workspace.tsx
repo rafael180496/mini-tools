@@ -7,10 +7,12 @@ import ExportMenu from './results/ExportMenu'
 import EditorTabs, {EditorTab} from './editor/EditorTabs'
 import MonacoSQLEditor from './editor/MonacoSQLEditor'
 import RecentFilesMenu from './editor/RecentFilesMenu'
+import ExplainPlanPanel from './explain/ExplainPlanPanel'
 import {
     BackupVault,
     CancelQuery,
     ExecuteQuery,
+    ExplainQuery,
     ExportConnectionConfig,
     ExportSchemaDDL,
     ExportTableDDL,
@@ -21,9 +23,10 @@ import {
     SaveSQLFileAs,
 } from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
-import {db, vault} from '../../wailsjs/go/models'
+import {db, explain, vault} from '../../wailsjs/go/models'
 import {setActiveMetadata} from '../monaco/metadataStore'
 import {monaco} from '../monaco/setup'
+import {lintSQL} from '../lib/linter'
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'done' | 'cancelled' | 'error'
@@ -100,6 +103,11 @@ export default function Workspace() {
     const [activeResultTab, setActiveResultTab] = useState(0)
     const [backupMessage, setBackupMessage] = useState('')
     const [statusMessage, setStatusMessage] = useState('')
+
+    const [showExplain, setShowExplain] = useState(false)
+    const [explainPlan, setExplainPlan] = useState<explain.Plan | null>(null)
+    const [explainLoading, setExplainLoading] = useState(false)
+    const [explainError, setExplainError] = useState('')
 
     const queryIdRef = useRef<string | null>(null)
     const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -222,6 +230,21 @@ export default function Workspace() {
         [selected, running],
     )
 
+    // Spec: "linter básico... warning antes de ejecutar". Only for
+    // user-initiated runs (selection/line, full block) — not for
+    // auto-generated queries (double-click LIMIT, sort-by-column requery),
+    // which would otherwise pop this dialog on every double-click.
+    function confirmAndRun(sqlText: string) {
+        const warnings = lintSQL(sqlText)
+        if (warnings.length > 0) {
+            const message = warnings.map((w) => `Línea ${w.startLineNumber}: ${w.message}`).join('\n')
+            if (!window.confirm(`Advertencias antes de ejecutar:\n\n${message}\n\n¿Ejecutar de todas formas?`)) {
+                return
+            }
+        }
+        runText(sqlText)
+    }
+
     function runSelectionOrLine() {
         const editor = editorRef.current
         if (!editor) return
@@ -236,11 +259,29 @@ export default function Workspace() {
             const line = selection?.positionLineNumber ?? 1
             text = model.getLineContent(line)
         }
-        runText(text)
+        confirmAndRun(text)
     }
 
     function runFullScript() {
-        runText(activeTabData?.content ?? '')
+        confirmAndRun(activeTabData?.content ?? '')
+    }
+
+    async function runExplain(analyze: boolean) {
+        if (!selected) return
+        const text = activeTabData?.content ?? ''
+        if (!text.trim()) return
+
+        setShowExplain(true)
+        setExplainLoading(true)
+        setExplainError('')
+        try {
+            const plan = await ExplainQuery(selected.id, text, analyze)
+            setExplainPlan(plan)
+        } catch (err) {
+            setExplainError(String(err))
+        } finally {
+            setExplainLoading(false)
+        }
     }
 
     function cancelQuery() {
@@ -477,6 +518,20 @@ export default function Workspace() {
                     >
                         Cancelar
                     </button>
+                    <button
+                        onClick={() => void runExplain(false)}
+                        disabled={!selected}
+                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                    >
+                        Explain
+                    </button>
+                    <button
+                        onClick={() => void runExplain(true)}
+                        disabled={!selected}
+                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                    >
+                        Explain Analyze
+                    </button>
                 </div>
 
                 <EditorTabs tabs={tabs} activeId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} onNew={newTab} />
@@ -518,6 +573,15 @@ export default function Workspace() {
                     <pre className="max-h-32 overflow-y-auto border-t border-neutral-800 bg-neutral-950 p-2 text-xs text-neutral-400">
                         {activeResult.dbmsOutput.join('\n')}
                     </pre>
+                )}
+
+                {showExplain && (
+                    <ExplainPlanPanel
+                        plan={explainPlan}
+                        loading={explainLoading}
+                        error={explainError}
+                        onClose={() => setShowExplain(false)}
+                    />
                 )}
 
                 <div className="flex items-center gap-4 border-t border-neutral-800 px-3 py-1 text-xs text-neutral-500">

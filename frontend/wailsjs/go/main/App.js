@@ -22,6 +22,10 @@ export function ExecuteQuery(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExecuteQuery'](arg1, arg2, arg3);
 }
 
+export function ExplainQuery(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExplainQuery'](arg1, arg2, arg3);
+}
+
 export function ExportConnectionConfig(arg1) {
   return window['go']['main']['App']['ExportConnectionConfig'](arg1);
 }
@@ -52,6 +56,10 @@ export function IsVaultInitialized() {
 
 export function ListConnections() {
   return window['go']['main']['App']['ListConnections']();
+}
+
+export function ListExplainHistory(arg1, arg2) {
+  return window['go']['main']['App']['ListExplainHistory'](arg1, arg2);
 }
 
 export function ListQueryHistory(arg1, arg2) {

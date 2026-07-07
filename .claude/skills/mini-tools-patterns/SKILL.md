@@ -73,3 +73,13 @@ El core de Monaco pesa ~3.9MB minificado por sí solo (sin ningún lenguaje extr
 **"Copiar como INSERT" es frontend-only** (`frontend/src/lib/sqlGenerate.ts`) — formateo de texto + `navigator.clipboard`, sin I/O de archivo, así que no hay razón para un viaje a Go. Desviación del plan original (`backend/export/sqlgen.go`).
 
 **Sort de grid = requery, no sort en cliente:** `Event.SQLText` (agregado en Fase 7) lleva el texto exacto del statement en el evento `"columns"` — así `Workspace.tsx` puede envolver ESE statement puntual en `SELECT * FROM (...) AS mt_sort ORDER BY "col" ASC|DESC` al hacer click en un header, sin tener que duplicar `splitter.go` en TypeScript para saber dónde empieza/termina cada statement de un script multi-statement.
+
+# Patrones de EXPLAIN PLAN
+
+Un `PlanNode`/`Plan` común (`backend/explain/tree.go`) para 3 formatos nativos totalmente distintos — al agregar cualquier lógica que dependa de la forma del plan (ej. un nuevo tipo de warning visual), hacerlo sobre el árbol común, no sobre el formato crudo de un motor específico.
+
+**Ojo con asumir el texto exacto de `EXPLAIN QUERY PLAN` de SQLite sin verificar en vivo:** la primera versión de `isSQLiteFullScan` buscaba el substring `"SCAN TABLE"`, basado en documentación/memoria — pero SQLite moderno solo escribe `"SCAN people"` (sin "TABLE"), así que la detección de full scan nunca disparaba, silenciosamente, hasta que se probó contra una base real con una tabla sin índice. La lección: para cualquier detección basada en parseo de texto de una herramienta externa (EXPLAIN, DDL, etc.), verificar el string real que devuelve la versión instalada, no solo lo que dice la documentación o lo que uno recuerda. La detección correcta es prefijo `"SCAN"` excluyendo `"USING INDEX"`/`"USING COVERING INDEX"` (esas son scans de un índice, no de la tabla completa).
+
+**Oracle EXPLAIN PLAN necesita una `*sql.Conn` reservada + `statement_id` único**, igual que `DBMS_OUTPUT` en `backend/query/dbmsoutput.go` — `EXPLAIN PLAN FOR` escribe a la tabla compartida `PLAN_TABLE`, y sin un `statement_id` único por llamada, EXPLAINs concurrentes de otras sesiones podrían pisarse. No verificado contra una instancia real.
+
+**Postgres `ANALYZE` ejecuta la query de verdad** (no es gratis, especialmente en UPDATE/DELETE — aunque EXPLAIN ANALYZE de por sí ya hace rollback de cualquier escritura, sigue corriendo el plan completo). Sin `ANALYZE`, `Plan.DurationMs` y `PlanNode.ActualTimeMs` quedan en 0 (son solo estimaciones del planner, nunca tiempos reales) — verificado explícitamente con ambos casos contra una base real.

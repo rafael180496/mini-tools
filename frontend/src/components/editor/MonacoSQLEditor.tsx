@@ -3,6 +3,25 @@ import {configureMonacoEnvironment, monaco} from '../../monaco/setup'
 import {registerSqlLanguageExtras} from '../../monaco/sqlLanguage'
 import {registerSchemaCompletionProvider} from '../../monaco/completionProvider'
 import {registerSchemaHoverProvider} from '../../monaco/hoverProvider'
+import {lintSQL} from '../../lib/linter'
+
+const LINT_OWNER = 'mini-tools-linter'
+
+function applyLintMarkers(editor: monaco.editor.IStandaloneCodeEditor) {
+    const model = editor.getModel()
+    if (!model) return
+
+    const warnings = lintSQL(model.getValue())
+    const markers: monaco.editor.IMarkerData[] = warnings.map((w) => ({
+        severity: monaco.MarkerSeverity.Warning,
+        message: w.message,
+        startLineNumber: w.startLineNumber,
+        startColumn: 1,
+        endLineNumber: w.endLineNumber,
+        endColumn: model.getLineMaxColumn(w.endLineNumber),
+    }))
+    monaco.editor.setModelMarkers(model, LINT_OWNER, markers)
+}
 
 configureMonacoEnvironment()
 registerSqlLanguageExtras()
@@ -35,9 +54,11 @@ export default function MonacoSQLEditor({value, onChange, onMount}: MonacoSQLEdi
             fontSize: 13,
         })
         editorRef.current = editor
+        applyLintMarkers(editor)
 
         const sub = editor.onDidChangeModelContent(() => {
             onChangeRef.current(editor.getValue())
+            applyLintMarkers(editor)
         })
 
         onMount?.(editor)

@@ -103,6 +103,89 @@ export namespace db {
 
 }
 
+export namespace explain {
+	
+	export class PlanNode {
+	    operation: string;
+	    objectName?: string;
+	    cost?: number;
+	    rows?: number;
+	    actualTimeMs?: number;
+	    isFullScan?: boolean;
+	    detail?: string;
+	    children?: PlanNode[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanNode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.operation = source["operation"];
+	        this.objectName = source["objectName"];
+	        this.cost = source["cost"];
+	        this.rows = source["rows"];
+	        this.actualTimeMs = source["actualTimeMs"];
+	        this.isFullScan = source["isFullScan"];
+	        this.detail = source["detail"];
+	        this.children = this.convertValues(source["children"], PlanNode);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Plan {
+	    root?: PlanNode;
+	    rawText: string;
+	    durationMs?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Plan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.root = this.convertValues(source["root"], PlanNode);
+	        this.rawText = source["rawText"];
+	        this.durationMs = source["durationMs"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace main {
 	
 	export class ConnectionInput {
@@ -157,6 +240,46 @@ export namespace vault {
 	        this.dbType = source["dbType"];
 	        this.createdAt = source["createdAt"];
 	    }
+	}
+	export class ExplainHistoryEntry {
+	    id: string;
+	    connectionId: string;
+	    sqlText: string;
+	    analyze: boolean;
+	    plan: explain.Plan;
+	    createdAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExplainHistoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.connectionId = source["connectionId"];
+	        this.sqlText = source["sqlText"];
+	        this.analyze = source["analyze"];
+	        this.plan = this.convertValues(source["plan"], explain.Plan);
+	        this.createdAt = source["createdAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class HistoryEntry {
 	    id: string;

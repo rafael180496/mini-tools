@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
 	"mini-tools/backend/query"
 	"mini-tools/backend/vault"
@@ -651,4 +652,45 @@ func (a *App) saveSQLTextAs(title, defaultFilename, text string) (string, error)
 		return "", fmt.Errorf("app: escribiendo archivo: %w", err)
 	}
 	return dest, nil
+}
+
+// ExplainQuery runs EXPLAIN (Postgres: with ANALYZE if requested; SQLite
+// has no ANALYZE equivalent, analyze is ignored for it) against connID and
+// records the result in explain_history.
+func (a *App) ExplainQuery(connID, sqlText string, analyze bool) (*explain.Plan, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	pool, dbType, err := a.poolAndType(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	var plan *explain.Plan
+	switch dbType {
+	case db.DBTypeSQLite:
+		plan, err = explain.SQLitePlan(a.ctx, pool, sqlText)
+	case db.DBTypePostgres:
+		plan, err = explain.PostgresPlan(a.ctx, pool, sqlText, analyze)
+	case db.DBTypeOracle:
+		plan, err = explain.OraclePlan(a.ctx, pool, sqlText)
+	default:
+		return nil, fmt.Errorf("app: EXPLAIN no soportado para %q", dbType)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Best-effort: a failure to persist history shouldn't hide a plan the
+	// user already has.
+	_ = a.vault.RecordExplainPlan(connID, sqlText, analyze, plan)
+	return plan, nil
+}
+
+// ListExplainHistory returns the most recent EXPLAIN results for connID.
+func (a *App) ListExplainHistory(connID string, limit int) ([]vault.ExplainHistoryEntry, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListExplainHistory(connID, limit)
 }

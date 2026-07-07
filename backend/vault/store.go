@@ -85,6 +85,17 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 			path      TEXT PRIMARY KEY,
 			opened_at INTEGER NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS explain_history (
+			id            TEXT PRIMARY KEY,
+			connection_id TEXT NOT NULL,
+			sql_text      TEXT NOT NULL,
+			analyze       INTEGER NOT NULL DEFAULT 0,
+			plan_json     TEXT NOT NULL,
+			created_at    INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_explain_history_connection
+			ON explain_history (connection_id, created_at DESC);
 	`); err != nil {
 		return nil, fmt.Errorf("vault: creating schema: %w", err)
 	}
