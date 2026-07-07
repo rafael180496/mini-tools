@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -10,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/export"
 	"mini-tools/backend/query"
 	"mini-tools/backend/vault"
 	"mini-tools/backend/vaultgate"
@@ -326,14 +329,10 @@ func (a *App) GetSchemaMetadata(connID string, forceRefresh bool) (*db.SchemaMet
 		}
 	}
 
-	if err := a.ensurePoolOpen(connID); err != nil {
-		return nil, err
-	}
-	pool, err := a.pools.Get(connID)
+	pool, dbType, err := a.poolAndType(connID)
 	if err != nil {
 		return nil, err
 	}
-	dbType, _ := a.pools.Type(connID)
 
 	meta, err := db.FetchSchemaMetadata(a.ctx, pool, dbType)
 	if err != nil {
@@ -456,4 +455,200 @@ func (a *App) ClearRecentFiles() error {
 		return err
 	}
 	return a.vault.ClearRecentFiles()
+}
+
+// ExportResult prompts for a destination (extension implied by format:
+// "csv" | "json" | "xlsx") and writes columns/rows there. The frontend
+// passes rows it already streamed and holds in memory — the backend
+// doesn't retain query results after emitting them, so there's no queryID
+// to look up here. Returns "" without an error if the user cancels.
+func (a *App) ExportResult(columns []string, rows [][]interface{}, format string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+
+	var display, pattern, ext string
+	switch format {
+	case "csv":
+		display, pattern, ext = "CSV (*.csv)", "*.csv", ".csv"
+	case "json":
+		display, pattern, ext = "JSON (*.json)", "*.json", ".json"
+	case "xlsx":
+		display, pattern, ext = "Excel (*.xlsx)", "*.xlsx", ".xlsx"
+	default:
+		return "", fmt.Errorf("app: formato de export desconocido %q", format)
+	}
+
+	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Exportar resultados",
+		DefaultFilename: "resultado" + ext,
+		Filters:         []runtime.FileFilter{{DisplayName: display, Pattern: pattern}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+	}
+	if dest == "" {
+		return "", nil
+	}
+
+	switch format {
+	case "csv":
+		err = export.WriteCSV(dest, columns, rows)
+	case "json":
+		err = export.WriteJSON(dest, columns, rows)
+	case "xlsx":
+		err = export.WriteXLSX(dest, columns, rows)
+	}
+	if err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// ExportTableDDL writes table's CREATE TABLE statement (schema is only
+// meaningful for Postgres) to a user-chosen .sql file.
+func (a *App) ExportTableDDL(connID, schema, table string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	pool, dbType, err := a.poolAndType(connID)
+	if err != nil {
+		return "", err
+	}
+
+	var ddl string
+	switch dbType {
+	case db.DBTypeSQLite:
+		ddl, err = export.SQLiteTableDDL(a.ctx, pool, table)
+	case db.DBTypePostgres:
+		ddl, err = export.PostgresTableDDL(a.ctx, pool, schema, table)
+	case db.DBTypeOracle:
+		ddl, err = export.OracleTableDDL(a.ctx, pool, table)
+	default:
+		return "", fmt.Errorf("app: export de DDL no soportado para %q", dbType)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return a.saveSQLTextAs("Exportar DDL de tabla", table+".sql", ddl)
+}
+
+// ExportSchemaDDL writes every table's DDL (schema is only meaningful for
+// Postgres) to a user-chosen .sql file.
+func (a *App) ExportSchemaDDL(connID, schema string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	pool, dbType, err := a.poolAndType(connID)
+	if err != nil {
+		return "", err
+	}
+
+	var ddl string
+	switch dbType {
+	case db.DBTypeSQLite:
+		ddl, err = export.SQLiteSchemaDDL(a.ctx, pool)
+	case db.DBTypePostgres:
+		ddl, err = export.PostgresSchemaDDL(a.ctx, pool, schema)
+	case db.DBTypeOracle:
+		ddl, err = export.OracleSchemaDDL(a.ctx, pool)
+	default:
+		return "", fmt.Errorf("app: export de DDL no soportado para %q", dbType)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return a.saveSQLTextAs("Exportar DDL del schema", "schema.sql", ddl)
+}
+
+// ExportConnectionConfig writes connID's config (name, engine, DSN with the
+// password stripped — see export.RedactDSN) to a user-chosen .json file.
+// Spec: "export de conexión (sin password): para compartir config".
+func (a *App) ExportConnectionConfig(connID string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+
+	dbType, dsn, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return "", err
+	}
+	redacted, err := export.RedactDSN(dsn)
+	if err != nil {
+		return "", err
+	}
+
+	conns, err := a.vault.ListConnections()
+	if err != nil {
+		return "", err
+	}
+	name := connID
+	for _, c := range conns {
+		if c.ID == connID {
+			name = c.Name
+		}
+	}
+
+	payload := struct {
+		Name   string `json:"name"`
+		DBType string `json:"dbType"`
+		DSN    string `json:"dsn"`
+	}{Name: name, DBType: string(dbType), DSN: redacted}
+
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("app: serializando config de conexión: %w", err)
+	}
+
+	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Exportar configuración de conexión",
+		DefaultFilename: name + ".json",
+		Filters:         []runtime.FileFilter{{DisplayName: "JSON (*.json)", Pattern: "*.json"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+	}
+	if dest == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(dest, data, 0o644); err != nil {
+		return "", fmt.Errorf("app: escribiendo config de conexión: %w", err)
+	}
+	return dest, nil
+}
+
+// poolAndType is ensurePoolOpen plus fetching the pool/dbType, the common
+// prefix for every export method that needs to query a live connection.
+func (a *App) poolAndType(connID string) (*sql.DB, db.DBType, error) {
+	if err := a.ensurePoolOpen(connID); err != nil {
+		return nil, "", err
+	}
+	pool, err := a.pools.Get(connID)
+	if err != nil {
+		return nil, "", err
+	}
+	dbType, _ := a.pools.Type(connID)
+	return pool, dbType, nil
+}
+
+// saveSQLTextAs prompts for a .sql destination and writes text there.
+// Returns "" without an error if the user cancels.
+func (a *App) saveSQLTextAs(title, defaultFilename, text string) (string, error) {
+	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           title,
+		DefaultFilename: defaultFilename,
+		Filters:         []runtime.FileFilter{{DisplayName: "SQL (*.sql)", Pattern: "*.sql"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+	}
+	if dest == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(dest, []byte(text), 0o644); err != nil {
+		return "", fmt.Errorf("app: escribiendo archivo: %w", err)
+	}
+	return dest, nil
 }

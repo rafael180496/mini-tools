@@ -59,3 +59,17 @@ Cancelación: cada `queryID` en curso tiene un `context.CancelFunc` registrado; 
 Los providers de completion/hover son globales al lenguaje `sql`, no por instancia de editor — `sqlLanguage.ts` (keywords/snippets), `completionProvider.ts` y `hoverProvider.ts` se registran **una sola vez** (guardan un booleano `registered`) la primera vez que se monta un `MonacoSQLEditor`. Los datos de autocomplete/hover salen de `metadataStore.ts`, un holder mutable simple (`getActiveMetadata`/`setActiveMetadata`) — no Zustand, porque no hay necesidad de reactividad de React ahí, solo que el provider (que vive fuera del árbol de React) lea el valor más reciente. `Workspace.tsx` llama `setActiveMetadata` cuando cambia la conexión seleccionada o al refrescar (F5).
 
 El core de Monaco pesa ~3.9MB minificado por sí solo (sin ningún lenguaje extra) — esto es inherente a la librería, no hay margen de recorte adicional ahí. Fue lo que forzó revisar el target de binario de <35MB a <45MB (ver [.claude/rules/technical.md](../../rules/technical.md) punto 8).
+
+# Patrones de export
+
+`backend/export/` tiene un archivo por formato/motor, todos funciones puras (reciben `columns`/`rows` o un `*sql.DB` + nombre de tabla, devuelven texto/escriben un archivo, sin tocar `vault` ni `App`). `app.go` es quien sabe pedir el diálogo (`runtime.SaveFileDialog`) y decidir el nombre sugerido — mismo patrón que `BackupVault`.
+
+**DDL por motor:** SQLite lee `sqlite_master.sql` tal cual (sin reconstrucción, siempre exacto). Postgres reconstruye desde `information_schema` — sí incluye PK y FK (ver `ddl_postgres.go`), NO incluye check constraints, unique no-PK, tipos custom ni particionado; si se agrega alguna de esas, extender ahí, no crear un archivo nuevo. Oracle usa `DBMS_METADATA.GET_DDL('TABLE', tabla)` — mucho más simple que reconstruir a mano porque Oracle ya lo expone, pero no verificado contra una instancia real.
+
+**`ExportResult` no busca resultados por `queryID`:** el executor no retiene nada después de emitir (streaming puro, Fase 5), así que exportar significa que el frontend reenvía los `columns`/`rows` que ya tiene en memoria — esto es una desviación intencional del plan original (`ExportResultToFile(queryID, format, destPath)`). Si en algún momento se necesita exportar un resultado que el usuario ya cerró/perdió del frontend, la solución sería agregar retención server-side por `queryID` con un TTL, no volver a tratar de buscar algo que nunca se guardó.
+
+**Redacción de DSN** (`connection_export.go`, `RedactDSN`): funciona para los 3 motores porque los 3 DSN son URLs (`scheme://user:pass@host/...` — ver `backend/db/{sqlite,postgres,oracle}.go`). Si algún motor nuevo no genera un DSN URL-shaped, esta función no le sirve tal cual.
+
+**"Copiar como INSERT" es frontend-only** (`frontend/src/lib/sqlGenerate.ts`) — formateo de texto + `navigator.clipboard`, sin I/O de archivo, así que no hay razón para un viaje a Go. Desviación del plan original (`backend/export/sqlgen.go`).
+
+**Sort de grid = requery, no sort en cliente:** `Event.SQLText` (agregado en Fase 7) lleva el texto exacto del statement en el evento `"columns"` — así `Workspace.tsx` puede envolver ESE statement puntual en `SELECT * FROM (...) AS mt_sort ORDER BY "col" ASC|DESC` al hacer click en un header, sin tener que duplicar `splitter.go` en TypeScript para saber dónde empieza/termina cada statement de un script multi-statement.

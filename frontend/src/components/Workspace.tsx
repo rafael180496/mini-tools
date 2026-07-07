@@ -3,6 +3,7 @@ import ConnectionTree from './sidebar/ConnectionTree'
 import ConnectionDialog from './connections/ConnectionDialog'
 import ResultGrid from './results/ResultGrid'
 import ResultTabs from './results/ResultTabs'
+import ExportMenu from './results/ExportMenu'
 import EditorTabs, {EditorTab} from './editor/EditorTabs'
 import MonacoSQLEditor from './editor/MonacoSQLEditor'
 import RecentFilesMenu from './editor/RecentFilesMenu'
@@ -10,6 +11,9 @@ import {
     BackupVault,
     CancelQuery,
     ExecuteQuery,
+    ExportConnectionConfig,
+    ExportSchemaDDL,
+    ExportTableDDL,
     GetSchemaMetadata,
     OpenSQLFileDialog,
     OpenSQLFilePath,
@@ -17,7 +21,7 @@ import {
     SaveSQLFileAs,
 } from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
-import {vault} from '../../wailsjs/go/models'
+import {db, vault} from '../../wailsjs/go/models'
 import {setActiveMetadata} from '../monaco/metadataStore'
 import {monaco} from '../monaco/setup'
 
@@ -25,6 +29,7 @@ interface QueryEvent {
     type: 'columns' | 'rows' | 'done' | 'cancelled' | 'error'
     statementIndex: number
     totalStatements: number
+    sqlText?: string
     columns?: string[]
     rows?: unknown[][]
     rowsAffected?: number
@@ -41,10 +46,16 @@ interface ResultSet {
     durationMs: number
     error: string
     dbmsOutput: string[]
+    sourceSql: string
+    sortColumn: string | null
+    sortDirection: 'asc' | 'desc' | null
 }
 
 function emptyResultSet(): ResultSet {
-    return {columns: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: []}
+    return {
+        columns: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: [],
+        sourceSql: '', sortColumn: null, sortDirection: null,
+    }
 }
 
 // queryID is generated client-side and subscribed to before ExecuteQuery is
@@ -66,10 +77,20 @@ function newScratchTab(): EditorTab {
     return {id: newTabId(), title: 'Query sin título', path: null, content: 'SELECT 1', dirty: false}
 }
 
+// LIMIT/FETCH syntax differs per engine — spec: "doble click tabla en árbol
+// → SELECT * LIMIT 100 auto".
+function limitQueryFor(dbType: string, table: string): string {
+    if (dbType === 'oracle') {
+        return `SELECT * FROM ${table} WHERE ROWNUM <= 100`
+    }
+    return `SELECT * FROM ${table} LIMIT 100`
+}
+
 export default function Workspace() {
     const [selected, setSelected] = useState<vault.ConnectionSummary | null>(null)
     const [showDialog, setShowDialog] = useState(false)
     const [reloadToken, setReloadToken] = useState(0)
+    const [metadata, setMetadata] = useState<db.SchemaMetadata | null>(null)
 
     const [tabs, setTabs] = useState<EditorTab[]>(() => [newScratchTab()])
     const [activeTabId, setActiveTabId] = useState(() => tabs[0].id)
@@ -78,7 +99,7 @@ export default function Workspace() {
     const [resultSets, setResultSets] = useState<ResultSet[]>([])
     const [activeResultTab, setActiveResultTab] = useState(0)
     const [backupMessage, setBackupMessage] = useState('')
-    const [metadataStatus, setMetadataStatus] = useState('')
+    const [statusMessage, setStatusMessage] = useState('')
 
     const queryIdRef = useRef<string | null>(null)
     const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -86,6 +107,7 @@ export default function Workspace() {
     tabsRef.current = tabs
     const activeTabIdRef = useRef(activeTabId)
     activeTabIdRef.current = activeTabId
+    const pendingSortRef = useRef<{column: string; direction: 'asc' | 'desc'} | null>(null)
 
     const activeTabData = tabs.find((t) => t.id === activeTabId) ?? tabs[0]
 
@@ -104,26 +126,32 @@ export default function Workspace() {
     }
 
     // Fetch (and cache) schema metadata whenever the selected connection
-    // changes, so autocomplete/hover have data as soon as possible.
+    // changes, so autocomplete/hover/the sidebar tree have data as soon as
+    // possible.
     useEffect(() => {
         if (!selected) {
             setActiveMetadata(null)
+            setMetadata(null)
             return
         }
         GetSchemaMetadata(selected.id, false)
-            .then(setActiveMetadata)
-            .catch((err) => setMetadataStatus(String(err)))
+            .then((meta) => {
+                setActiveMetadata(meta)
+                setMetadata(meta)
+            })
+            .catch((err) => setStatusMessage(String(err)))
     }, [selected])
 
     function refreshMetadata() {
         if (!selected) return
-        setMetadataStatus('Actualizando metadata…')
+        setStatusMessage('Actualizando metadata…')
         GetSchemaMetadata(selected.id, true)
             .then((meta) => {
                 setActiveMetadata(meta)
-                setMetadataStatus('Metadata actualizada')
+                setMetadata(meta)
+                setStatusMessage('Metadata actualizada')
             })
-            .catch((err) => setMetadataStatus(String(err)))
+            .catch((err) => setStatusMessage(String(err)))
     }
 
     const runText = useCallback(
@@ -147,6 +175,12 @@ export default function Workspace() {
                     switch (event.type) {
                         case 'columns':
                             cur.columns = event.columns ?? []
+                            cur.sourceSql = event.sqlText ?? ''
+                            if (pendingSortRef.current) {
+                                cur.sortColumn = pendingSortRef.current.column
+                                cur.sortDirection = pendingSortRef.current.direction
+                                pendingSortRef.current = null
+                            }
                             break
                         case 'rows':
                             cur.rows = [...cur.rows, ...(event.rows ?? [])]
@@ -215,6 +249,63 @@ export default function Workspace() {
         }
     }
 
+    // Sort re-issues the query wrapped in ORDER BY instead of sorting
+    // client-side (spec: "no ordenar en cliente un dataset parcial"). The
+    // wrapped query becomes the new (single-statement) run, so other result
+    // tabs from the original script are replaced — same trade-off as any
+    // other re-run.
+    function sortActiveResult(column: string) {
+        const rs = resultSets[activeResultTab]
+        if (!rs || !rs.sourceSql || running) return
+
+        const nextDirection: 'asc' | 'desc' = rs.sortColumn === column && rs.sortDirection === 'asc' ? 'desc' : 'asc'
+        const stripped = rs.sourceSql.trim().replace(/;+\s*$/, '')
+        const wrapped = `SELECT * FROM (${stripped}) AS mt_sort ORDER BY "${column}" ${nextDirection.toUpperCase()}`
+
+        pendingSortRef.current = {column, direction: nextDirection}
+        runText(wrapped)
+    }
+
+    function openTableQuery(table: string) {
+        if (!selected) return
+        const q = limitQueryFor(selected.dbType, table)
+        updateActiveTabContent(q)
+        runText(q)
+    }
+
+    async function exportConnectionConfig(connId: string) {
+        try {
+            const dest = await ExportConnectionConfig(connId)
+            setStatusMessage(dest ? `Config exportada a ${dest}` : '')
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
+    async function exportTableDDL(table: string, schema?: string) {
+        if (!selected) return
+        try {
+            // "public" only matters for Postgres (SQLite/Oracle ignore the
+            // schema param) — table.schema from metadata is the real value
+            // when available, this is just the fallback for engines/tables
+            // that don't report one.
+            const dest = await ExportTableDDL(selected.id, schema || 'public', table)
+            setStatusMessage(dest ? `DDL exportado a ${dest}` : '')
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
+    async function exportSchemaDDL() {
+        if (!selected) return
+        try {
+            const dest = await ExportSchemaDDL(selected.id, 'public')
+            setStatusMessage(dest ? `DDL del schema exportado a ${dest}` : '')
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
     function openTabForFile(path: string, content: string) {
         setTabs((prev) => {
             const existing = prev.find((t) => t.path === path)
@@ -233,7 +324,7 @@ export default function Workspace() {
             const file = await OpenSQLFileDialog()
             if (file) openTabForFile(file.path, file.content)
         } catch (err) {
-            setMetadataStatus(String(err))
+            setStatusMessage(String(err))
         }
     }
 
@@ -242,7 +333,7 @@ export default function Workspace() {
             const file = await OpenSQLFilePath(path)
             if (file) openTabForFile(file.path, file.content)
         } catch (err) {
-            setMetadataStatus(String(err))
+            setStatusMessage(String(err))
         }
     }
 
@@ -263,7 +354,7 @@ export default function Workspace() {
                 }
             }
         } catch (err) {
-            setMetadataStatus(String(err))
+            setStatusMessage(String(err))
         }
     }
 
@@ -318,6 +409,10 @@ export default function Workspace() {
                 onSelect={setSelected}
                 onNewConnection={() => setShowDialog(true)}
                 reloadToken={reloadToken}
+                metadata={metadata}
+                onOpenTable={openTableQuery}
+                onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
+                onExportTableDDL={(table, schema) => void exportTableDDL(table, schema)}
             />
 
             <div className="flex flex-1 flex-col">
@@ -325,7 +420,7 @@ export default function Workspace() {
                     <span className="text-xs text-neutral-500">
                         {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
                     </span>
-                    {metadataStatus && <span className="text-xs text-neutral-500">{metadataStatus}</span>}
+                    {statusMessage && <span className="text-xs text-neutral-500">{statusMessage}</span>}
                     {backupMessage && <span className="text-xs text-neutral-500">{backupMessage}</span>}
                     <div className="flex-1" />
                     <button
@@ -347,6 +442,13 @@ export default function Workspace() {
                         className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
                     >
                         Refrescar (F5)
+                    </button>
+                    <button
+                        onClick={() => void exportSchemaDDL()}
+                        disabled={!selected}
+                        className="rounded bg-neutral-800 px-3 py-1 text-xs font-medium hover:bg-neutral-700 disabled:opacity-50"
+                    >
+                        DDL schema
                     </button>
                     <button
                         onClick={() => void backupVault()}
@@ -396,7 +498,21 @@ export default function Workspace() {
                     statuses={resultSets.map((r) => r.status)}
                 />
 
-                <ResultGrid columns={activeResult?.columns ?? []} rows={activeResult?.rows ?? []} />
+                <div className="flex items-center gap-2 border-b border-neutral-800 px-2 py-1">
+                    <ExportMenu
+                        columns={activeResult?.columns ?? []}
+                        rows={activeResult?.rows ?? []}
+                        tableNameHint={selected?.name}
+                    />
+                </div>
+
+                <ResultGrid
+                    columns={activeResult?.columns ?? []}
+                    rows={activeResult?.rows ?? []}
+                    sortColumn={activeResult?.sortColumn}
+                    sortDirection={activeResult?.sortDirection}
+                    onSort={sortActiveResult}
+                />
 
                 {activeResult && activeResult.dbmsOutput.length > 0 && (
                     <pre className="max-h-32 overflow-y-auto border-t border-neutral-800 bg-neutral-950 p-2 text-xs text-neutral-400">

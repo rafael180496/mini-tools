@@ -19,15 +19,21 @@ import (
 // own columns/rows/done-or-error sequence tagged with StatementIndex, so
 // the frontend can render one result-tab per statement.
 type Event struct {
-	Type            string          `json:"type"` // "columns" | "rows" | "done" | "cancelled" | "error"
-	StatementIndex  int             `json:"statementIndex"`
-	TotalStatements int             `json:"totalStatements"`
-	Columns         []string        `json:"columns,omitempty"`
-	Rows            [][]interface{} `json:"rows,omitempty"`
-	RowsAffected    int64           `json:"rowsAffected,omitempty"`
-	DurationMs      int64           `json:"durationMs,omitempty"`
-	Error           string          `json:"error,omitempty"`
-	DBMSOutput      []string        `json:"dbmsOutput,omitempty"`
+	Type            string `json:"type"` // "columns" | "rows" | "done" | "cancelled" | "error"
+	StatementIndex  int    `json:"statementIndex"`
+	TotalStatements int    `json:"totalStatements"`
+	// SQLText is this statement's own source text, sent on "columns" so the
+	// frontend can re-issue it wrapped in an ORDER BY for column-header
+	// sort — the frontend only ever sends the whole (possibly
+	// multi-statement) script to ExecuteQuery, and splitting happens here,
+	// so this is the only way it learns the exact per-statement text.
+	SQLText      string          `json:"sqlText,omitempty"`
+	Columns      []string        `json:"columns,omitempty"`
+	Rows         [][]interface{} `json:"rows,omitempty"`
+	RowsAffected int64           `json:"rowsAffected,omitempty"`
+	DurationMs   int64           `json:"durationMs,omitempty"`
+	Error        string          `json:"error,omitempty"`
+	DBMSOutput   []string        `json:"dbmsOutput,omitempty"`
 }
 
 const rowsPerChunk = 200
@@ -154,7 +160,7 @@ func (e *Executor) runQuery(ctx context.Context, pool *sql.DB, connID, queryID, 
 		e.emitError(connID, queryID, sqlText, err, idx, total)
 		return
 	}
-	e.emit(queryID, Event{Type: "columns", StatementIndex: idx, TotalStatements: total, Columns: columns})
+	e.emit(queryID, Event{Type: "columns", StatementIndex: idx, TotalStatements: total, Columns: columns, SQLText: sqlText})
 
 	values := make([]interface{}, len(columns))
 	scanArgs := make([]interface{}, len(columns))

@@ -14,6 +14,14 @@ export function DeleteConnection(arg1:string):Promise<void>;
 
 export function ExecuteQuery(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function ExportConnectionConfig(arg1:string):Promise<string>;
+
+export function ExportResult(arg1:Array<string>,arg2:Array<any>,arg3:string):Promise<string>;
+
+export function ExportSchemaDDL(arg1:string,arg2:string):Promise<string>;
+
+export function ExportTableDDL(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function GetSchemaMetadata(arg1:string,arg2:boolean):Promise<db.SchemaMetadata>;
 
 export function InitializeVault(arg1:string):Promise<void>;

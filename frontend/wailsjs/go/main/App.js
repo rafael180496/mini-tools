@@ -22,6 +22,22 @@ export function ExecuteQuery(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExecuteQuery'](arg1, arg2, arg3);
 }
 
+export function ExportConnectionConfig(arg1) {
+  return window['go']['main']['App']['ExportConnectionConfig'](arg1);
+}
+
+export function ExportResult(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportResult'](arg1, arg2, arg3);
+}
+
+export function ExportSchemaDDL(arg1, arg2) {
+  return window['go']['main']['App']['ExportSchemaDDL'](arg1, arg2);
+}
+
+export function ExportTableDDL(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportTableDDL'](arg1, arg2, arg3);
+}
+
 export function GetSchemaMetadata(arg1, arg2) {
   return window['go']['main']['App']['GetSchemaMetadata'](arg1, arg2);
 }
