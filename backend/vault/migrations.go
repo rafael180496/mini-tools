@@ -53,6 +53,34 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 5,
+		desc:    "agrega schema_metadata_cache para persistir la metadata de tablas/columnas entre reinicios",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS schema_metadata_cache (
+					connection_id TEXT PRIMARY KEY,
+					tables_json TEXT NOT NULL,
+					synced_at INTEGER NOT NULL
+				)
+			`)
+			return err
+		},
+	},
+	{
+		version: 6,
+		desc:    "agrega schema_list_cache para persistir la lista de esquemas/owners visibles entre reinicios",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS schema_list_cache (
+					connection_id TEXT PRIMARY KEY,
+					schemas_json TEXT NOT NULL,
+					synced_at INTEGER NOT NULL
+				)
+			`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

@@ -196,8 +196,8 @@ func (a *App) TestConnection(cfg ConnectionInput) error {
 // a connID — lets ConnectionDialog.tsx offer the "which schemas should
 // autocomplete scan" picker right after a successful Test Connection, at
 // creation time, instead of only after the connection is already saved
-// (see ListSchemas for that path). Postgres-only, same as ListSchemas —
-// nil for SQLite/Oracle, which have nothing to restrict.
+// (see ListSchemas for that path). Postgres and Oracle, same as ListSchemas
+// — nil for SQLite, which has nothing to restrict.
 func (a *App) ListSchemasForNewConnection(cfg ConnectionInput) ([]string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
@@ -346,6 +346,15 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	a.metadataMu.Lock()
 	delete(a.metadataCache, id)
 	a.metadataMu.Unlock()
+	// The DSN may now point at a different database entirely — both
+	// persisted caches (tables and the schema name list) could reflect a
+	// target that no longer exists behind this connID.
+	if err := a.vault.DeleteSchemaMetadataCache(id); err != nil {
+		return nil, err
+	}
+	if err := a.vault.DeleteSchemaListCache(id); err != nil {
+		return nil, err
+	}
 
 	conns, err := a.vault.ListConnections()
 	if err != nil {
@@ -376,6 +385,12 @@ func (a *App) DeleteConnection(id string) error {
 	}
 	a.rollbackIfOpen(id)
 	if err := a.pools.Close(id); err != nil {
+		return err
+	}
+	if err := a.vault.DeleteSchemaMetadataCache(id); err != nil {
+		return err
+	}
+	if err := a.vault.DeleteSchemaListCache(id); err != nil {
 		return err
 	}
 	return a.vault.DeleteConnection(id)
@@ -597,9 +612,14 @@ func (a *App) RestoreVaultBackup(password string) error {
 	return nil
 }
 
-// GetSchemaMetadata returns connID's tables/columns/FKs, from an in-memory
-// cache unless forceRefresh is set (spec: "cache de metadata por conexión,
-// refresh manual (botón/F5)").
+// GetSchemaMetadata returns connID's tables/columns/FKs. Resolution order
+// when !forceRefresh: in-memory cache (this session already opened it),
+// then the vault-persisted cache (a previous session synced it — this is
+// what makes reopening an already-synced connection instant, without
+// touching the real database at all), and only falls back to a live fetch
+// if neither has anything yet (this connection has never been synced) or
+// forceRefresh is set (spec: "cache de metadata por conexión, refresh
+// manual (botón/F5)").
 func (a *App) GetSchemaMetadata(connID string, forceRefresh bool) (*db.SchemaMetadata, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
@@ -607,6 +627,12 @@ func (a *App) GetSchemaMetadata(connID string, forceRefresh bool) (*db.SchemaMet
 
 	if !forceRefresh {
 		if cached, ok := a.cachedMetadata(connID); ok {
+			return cached, nil
+		}
+		if cached, ok, err := a.vault.GetSchemaMetadataCache(connID); err != nil {
+			return nil, err
+		} else if ok {
+			a.setCachedMetadata(connID, cached)
 			return cached, nil
 		}
 	}
@@ -627,34 +653,113 @@ func (a *App) GetSchemaMetadata(connID string, forceRefresh bool) (*db.SchemaMet
 	}
 
 	a.setCachedMetadata(connID, meta)
+	if err := a.vault.SaveSchemaMetadataCache(connID, meta); err != nil {
+		return nil, err
+	}
 	return meta, nil
 }
 
-// ListSchemas returns connID's visible schema names (Postgres only — nil
-// for other engines, see db.ListSchemas) so the frontend can offer a
-// "which schemas should autocomplete scan" picker without paying for a
-// full GetSchemaMetadata fetch first — important on catalogs with 100+
-// schemas, where that fetch is exactly what SetConnectionSchemas exists to
-// let the user avoid running unrestricted.
-func (a *App) ListSchemas(connID string) ([]string, error) {
+// SyncSchemaMetadata refreshes just one schema's tables (the per-schema
+// sync button in the sidebar tree) instead of the whole connection, so
+// picking up a new/changed table in one schema doesn't force re-scanning
+// every other already-cached schema. schema == "" means the connection has
+// no schema restriction configured (SQLite, or Postgres/Oracle scanned
+// unqualified) — there's only one implicit "schema" in that case, so it's
+// equivalent to a full forceRefresh.
+func (a *App) SyncSchemaMetadata(connID, schema string) (*db.SchemaMetadata, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
 	}
+
+	if schema == "" {
+		return a.GetSchemaMetadata(connID, true)
+	}
+
 	pool, dbType, err := a.poolAndType(connID)
 	if err != nil {
 		return nil, err
 	}
-	return db.ListSchemas(a.ctx, pool, dbType)
+
+	fresh, err := db.FetchSchemaMetadata(a.ctx, pool, dbType, []string{schema})
+	if err != nil {
+		return nil, err
+	}
+
+	merged := &db.SchemaMetadata{}
+	if cached, ok := a.cachedMetadata(connID); ok {
+		merged.Tables = cached.Tables
+	} else if cached, ok, err := a.vault.GetSchemaMetadataCache(connID); err != nil {
+		return nil, err
+	} else if ok {
+		merged.Tables = cached.Tables
+	}
+
+	kept := merged.Tables[:0]
+	for _, t := range merged.Tables {
+		if t.Schema != schema {
+			kept = append(kept, t)
+		}
+	}
+	merged.Tables = append(kept, fresh.Tables...)
+
+	a.setCachedMetadata(connID, merged)
+	if err := a.vault.SaveSchemaMetadataCache(connID, merged); err != nil {
+		return nil, err
+	}
+	return merged, nil
+}
+
+// ListSchemas returns connID's visible schema names (Postgres and Oracle —
+// nil for SQLite, see db.ListSchemas) so the frontend can offer a
+// "which schemas should autocomplete scan" picker without paying for a
+// full GetSchemaMetadata fetch first. Same persisted-cache-first resolution
+// as GetSchemaMetadata: unless forceRefresh, a previously synced list is
+// read from the vault instead of listing schemas live again — on a catalog
+// with 100+ schemas that live listing alone can be slow, and this cache is
+// what lets the picker open instantly on every subsequent visit. Pass
+// forceRefresh to discover a schema created since the last sync (the "sync"
+// button next to the search box in SchemaPickerDialog.tsx).
+func (a *App) ListSchemas(connID string, forceRefresh bool) ([]string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+
+	if !forceRefresh {
+		if cached, ok, err := a.vault.GetSchemaListCache(connID); err != nil {
+			return nil, err
+		} else if ok {
+			return cached, nil
+		}
+	}
+
+	pool, dbType, err := a.poolAndType(connID)
+	if err != nil {
+		return nil, err
+	}
+	schemas, err := db.ListSchemas(a.ctx, pool, dbType)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := a.vault.SaveSchemaListCache(connID, schemas); err != nil {
+		return nil, err
+	}
+	return schemas, nil
 }
 
 // SetConnectionSchemas persists which schemas connID's metadata fetch
-// should scan (empty = every schema) and drops any cached metadata for it,
-// since the old cache may reflect a different scan scope.
+// should scan (empty = every schema) and drops any cached metadata for it
+// — both in-memory and vault-persisted — since the old cache may reflect a
+// different scan scope (a schema just unchecked, or one just added that
+// was never fetched).
 func (a *App) SetConnectionSchemas(connID string, schemas []string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
 	if err := a.vault.SetConnectionSchemas(connID, schemas); err != nil {
+		return err
+	}
+	if err := a.vault.DeleteSchemaMetadataCache(connID); err != nil {
 		return err
 	}
 	a.metadataMu.Lock()

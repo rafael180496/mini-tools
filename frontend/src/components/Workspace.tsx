@@ -32,10 +32,12 @@ import {
     SetEditorHeight,
     SetOpenTabs,
     SetSidebarCollapsed,
+    SyncSchemaMetadata,
 } from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
 import {db, explain, vault} from '../../wailsjs/go/models'
 import {setActiveMetadata} from '../monaco/metadataStore'
+import {setActiveDbType} from '../monaco/activeDbTypeStore'
 import {monaco} from '../monaco/setup'
 import {lintSQL} from '../lib/linter'
 import type {Theme} from '../hooks/useTheme'
@@ -391,11 +393,28 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             .finally(() => setMetadataLoading(false))
     }
 
-    // Postgres connections span multiple schemas (table.schema is populated
-    // — see backend/db/metadata.go); Oracle's USER_* views are implicitly
-    // scoped to one schema (table.schema is always empty), so `schemas`
-    // comes back empty there and everything below just falls through
-    // unfiltered, unchanged from before this feature existed.
+    // Per-schema sync (the icon next to a schema node in ConnectionTree) —
+    // only refreshes that one schema instead of the whole connection like
+    // refreshMetadata/F5 does, so the other already-cached schemas aren't
+    // re-scanned every time.
+    async function syncSchema(connId: string, schema: string) {
+        try {
+            const meta = await SyncSchemaMetadata(connId, schema)
+            if (connId === selected?.id) setMetadata(meta)
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
+    // Postgres and Oracle connections can span multiple schemas/owners
+    // (table.schema is populated for both when the connection has one or
+    // more schemas selected via SchemaPickerDialog — see
+    // backend/db/metadata.go). A connection with no schema restriction
+    // saved keeps falling back to its unqualified default scan
+    // (USER_* for Oracle, every non-system schema for Postgres), where
+    // table.schema is empty for Oracle specifically, so `schemas` comes
+    // back empty and everything below just falls through unfiltered,
+    // unchanged from before this feature existed.
     const schemas = metadata
         ? Array.from(new Set(metadata.tables.map((t) => t.schema).filter((s): s is string => !!s))).sort()
         : []
@@ -429,6 +448,13 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         setActiveMetadata(filteredMetadata)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filteredMetadata])
+
+    // Drives sqlLanguage.ts's per-engine snippet/keyword filtering — same
+    // mutable-holder pattern as setActiveMetadata above, since that
+    // provider is also registered once, globally, outside the React tree.
+    useEffect(() => {
+        setActiveDbType(selected?.dbType ?? null)
+    }, [selected])
 
     const runText = useCallback(
         (sqlText: string) => {
@@ -792,7 +818,11 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 onNewConnection={() => setConnectionDialog('new')}
                 onEditConnection={(conn) => setConnectionDialog(conn.id)}
                 reloadToken={reloadToken}
-                metadata={filteredMetadata}
+                metadata={metadata}
+                schemas={schemas}
+                activeSchema={activeSchema}
+                onSelectSchema={setActiveSchema}
+                onSyncSchema={syncSchema}
                 metadataLoading={metadataLoading}
                 onOpenTable={openTableQuery}
                 onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}

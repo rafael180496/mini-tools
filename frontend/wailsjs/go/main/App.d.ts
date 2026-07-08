@@ -53,7 +53,7 @@ export function ListQueryHistory(arg1:string,arg2:number):Promise<Array<vault.Hi
 
 export function ListRecentFiles():Promise<Array<vault.RecentFile>>;
 
-export function ListSchemas(arg1:string):Promise<Array<string>>;
+export function ListSchemas(arg1:string,arg2:boolean):Promise<Array<string>>;
 
 export function ListSchemasForNewConnection(arg1:main.ConnectionInput):Promise<Array<string>>;
 
@@ -82,6 +82,8 @@ export function SetOpenTabs(arg1:Array<string>):Promise<void>;
 export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
+
+export function SyncSchemaMetadata(arg1:string,arg2:string):Promise<db.SchemaMetadata>;
 
 export function TestConnection(arg1:main.ConnectionInput):Promise<void>;
 

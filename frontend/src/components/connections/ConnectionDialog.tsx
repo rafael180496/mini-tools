@@ -62,6 +62,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
     const [availableSchemas, setAvailableSchemas] = useState<string[] | null>(null)
     const [selectedSchemas, setSelectedSchemas] = useState<Set<string>>(new Set())
     const [schemasLoading, setSchemasLoading] = useState(false)
+    const [schemaSearch, setSchemaSearch] = useState('')
 
     // Pre-fill from the saved connection when editing. Password never comes
     // back from GetConnectionForEdit (see its doc comment) — the field
@@ -149,17 +150,23 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
             await TestConnection(cfg())
             setPingStatus('ok')
 
-            // Only new Postgres connections get the inline picker —
+            // Only new Postgres/Oracle connections get the inline picker —
             // editing an existing one already has this via the sidebar's
-            // "esq" button (SchemaPickerDialog), and Oracle/SQLite have
-            // nothing to restrict (see backend/db/metadata.go's
-            // ListSchemas doc comment).
-            if (!editingId && dbType === 'postgres') {
+            // "esq" button (SchemaPickerDialog), and SQLite has nothing to
+            // restrict (see backend/db/metadata.go's ListSchemas doc
+            // comment).
+            if (!editingId && (dbType === 'postgres' || dbType === 'oracle')) {
                 setSchemasLoading(true)
                 try {
                     const schemas = await ListSchemasForNewConnection(cfg())
                     setAvailableSchemas(schemas ?? [])
-                    setSelectedSchemas(new Set(schemas ?? []))
+                    // Start with only the connection's own schema checked
+                    // (Oracle: the connected user, folded to uppercase like
+                    // Oracle does; Postgres: 'public') instead of everything
+                    // — a catalog with dozens of schemas shouldn't default
+                    // to a full unrestricted scan.
+                    const defaultSchema = dbType === 'oracle' ? (params.user ?? '').toUpperCase() : 'public'
+                    setSelectedSchemas(new Set((schemas ?? []).includes(defaultSchema) ? [defaultSchema] : []))
                 } catch {
                     // Best-effort: if listing schemas fails for some reason,
                     // just skip the picker — the connection can still be
@@ -470,23 +477,34 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                             <Icon name="schema" size={14} />
                             Esquemas a escanear ({selectedSchemas.size}/{availableSchemas.length})
                         </span>
+                        {availableSchemas.length > 4 && (
+                            <input
+                                value={schemaSearch}
+                                onChange={(e) => setSchemaSearch(e.target.value)}
+                                placeholder="Buscar esquema..."
+                                title="Filtra la lista de esquemas por nombre"
+                                className={`${inputClass} text-xs`}
+                            />
+                        )}
                         <div className="max-h-32 overflow-y-auto rounded-lg border border-outline-variant bg-surface p-2">
-                            {availableSchemas.map((s) => (
-                                <label key={s} className="flex items-center gap-2 py-0.5 text-sm text-on-surface">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedSchemas.has(s)}
-                                        onChange={() => toggleSchema(s)}
-                                        className="accent-primary"
-                                    />
-                                    {s}
-                                </label>
-                            ))}
+                            {availableSchemas
+                                .filter((s) => s.toLowerCase().includes(schemaSearch.trim().toLowerCase()))
+                                .map((s) => (
+                                    <label key={s} className="flex items-center gap-2 py-0.5 text-sm text-on-surface">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedSchemas.has(s)}
+                                            onChange={() => toggleSchema(s)}
+                                            className="accent-primary"
+                                        />
+                                        {s}
+                                    </label>
+                                ))}
                         </div>
                         <span className="text-[11px] text-on-surface-variant">
-                            Dejá todos marcados para escanear sin restricción, o desmarcá los que no te interesan — útil si esta
-                            base tiene muchos esquemas y el escaneo completo es lento. Se puede cambiar después desde el ícono
-                            "esq" en la lista de conexiones.
+                            Por default queda marcado solo el esquema propio de la conexión — tildá los que además te interesan
+                            o desmarcá todo para no escanear ninguno. Se puede cambiar después desde el ícono "esq" en la lista
+                            de conexiones.
                         </span>
                     </div>
                 )}

@@ -11,6 +11,14 @@ interface ConnectionTreeProps {
     onEditConnection: (conn: vault.ConnectionSummary) => void
     reloadToken: number
     metadata: db.SchemaMetadata | null
+    // Every schema visible across metadata.tables (empty for SQLite, or for
+    // Postgres/Oracle connections with no schema restriction configured —
+    // see backend/db/metadata.go) and which one Workspace.tsx currently
+    // treats as "active" for autocomplete/CLAUDE.md generation.
+    schemas: string[]
+    activeSchema: string | null
+    onSelectSchema: (schema: string) => void
+    onSyncSchema: (connId: string, schema: string) => Promise<void>
     onOpenTable: (table: string, schema?: string) => void
     onExportConnectionConfig: (connId: string) => void
     onExportTableDDL: (table: string, schema?: string) => void
@@ -24,10 +32,12 @@ interface ConnectionTreeProps {
     metadataLoading: boolean
 }
 
-// Conexiones → tablas (spec: "árbol conexiones → schemas → tablas/vistas").
-// Schemas aren't rendered as their own level yet — table.schema (Postgres)
-// is shown as a small prefix instead, since most connections here have a
-// single relevant schema; revisit if that turns out to be too flat.
+// Conexiones → schemas → tablas (spec: "árbol conexiones → schemas →
+// tablas/vistas"). Schemas only render as their own expandable level when
+// there's more than one to show (schemas.length > 0 — Postgres/Oracle with
+// a restriction configured); otherwise falls back to the flat table list
+// this always had (SQLite, or an unrestricted connection with a single
+// implicit schema).
 export default function ConnectionTree({
     selectedId,
     onSelect,
@@ -35,6 +45,10 @@ export default function ConnectionTree({
     onEditConnection,
     reloadToken,
     metadata,
+    schemas,
+    activeSchema,
+    onSelectSchema,
+    onSyncSchema,
     onOpenTable,
     onExportConnectionConfig,
     onExportTableDDL,
@@ -56,6 +70,11 @@ export default function ConnectionTree({
     // one connection can be expanded at a time, so a single shared piece of
     // state is enough (no need to key it per-connection).
     const [tableFilter, setTableFilter] = useState('')
+    // Which schema nodes are expanded, and which one has a sync in flight
+    // (shows a spinner on just that row) — both reset when a different
+    // connection is selected, same as collapsedId/tableFilter above.
+    const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set())
+    const [syncingSchema, setSyncingSchema] = useState<string | null>(null)
 
     useEffect(() => {
         ListConnections().then(setConnections)
@@ -67,8 +86,54 @@ export default function ConnectionTree({
         if (c.id !== selectedId) {
             setCollapsedId(null)
             setTableFilter('')
+            setExpandedSchemas(new Set())
+            setSyncingSchema(null)
         }
         onSelect(c)
+    }
+
+    function toggleSchema(schema: string) {
+        setExpandedSchemas((prev) => {
+            const next = new Set(prev)
+            if (next.has(schema)) next.delete(schema)
+            else next.add(schema)
+            return next
+        })
+        onSelectSchema(schema)
+    }
+
+    async function syncSchema(connId: string, schema: string) {
+        setSyncingSchema(schema)
+        try {
+            await onSyncSchema(connId, schema)
+        } finally {
+            setSyncingSchema(null)
+        }
+    }
+
+    function renderTableRow(t: db.Table) {
+        return (
+            <div
+                key={`${t.schema ?? ''}.${t.name}`}
+                onDoubleClick={() => onOpenTable(t.name, t.schema)}
+                title="Doble click: SELECT * LIMIT 100"
+                className="group/table flex items-center gap-2 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+            >
+                <Icon name="table_chart" size={14} className="shrink-0 opacity-60" />
+                <span className="truncate">{t.schema ? `${t.schema}.${t.name}` : t.name}</span>
+                <div className="flex-1" />
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        onExportTableDDL(t.name, t.schema)
+                    }}
+                    title="Exportar DDL de la tabla"
+                    className="hidden shrink-0 opacity-70 hover:opacity-100 group-hover/table:block"
+                >
+                    <Icon name="code" size={14} />
+                </button>
+            </div>
+        )
     }
 
     function toggleExpand(c: vault.ConnectionSummary) {
@@ -181,7 +246,7 @@ export default function ConnectionTree({
                                     >
                                         <Icon name="output" size={15} />
                                     </button>
-                                    {c.dbType === 'postgres' && (
+                                    {(c.dbType === 'postgres' || c.dbType === 'oracle') && (
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation()
@@ -228,42 +293,82 @@ export default function ConnectionTree({
                                         />
                                     )}
                                     {(() => {
-                                        const q = tableFilter.trim().toLowerCase()
-                                        const visible = q
-                                            ? metadata.tables.filter(
-                                                  (t) => t.name.toLowerCase().includes(q) || (t.schema ?? '').toLowerCase().includes(q),
-                                              )
-                                            : metadata.tables
                                         if (metadata.tables.length === 0) {
                                             return <p className="px-2 py-1 text-xs text-on-surface-variant/60">Sin tablas.</p>
                                         }
-                                        if (visible.length === 0) {
-                                            return <p className="px-2 py-1 text-xs text-on-surface-variant/60">Sin coincidencias para "{tableFilter}".</p>
+
+                                        const q = tableFilter.trim().toLowerCase()
+
+                                        // Searching flattens across schemas — grouping only makes sense
+                                        // when browsing everything, not when you already know what you
+                                        // want. Same fallback for connections with no schema grouping
+                                        // (SQLite, or unrestricted Oracle/Postgres).
+                                        if (q || schemas.length === 0) {
+                                            const visible = q
+                                                ? metadata.tables.filter(
+                                                      (t) => t.name.toLowerCase().includes(q) || (t.schema ?? '').toLowerCase().includes(q),
+                                                  )
+                                                : metadata.tables
+                                            if (visible.length === 0) {
+                                                return <p className="px-2 py-1 text-xs text-on-surface-variant/60">Sin coincidencias para "{tableFilter}".</p>
+                                            }
+                                            return visible.map((t) => renderTableRow(t))
                                         }
-                                        return visible.map((t) => (
-                                            <div
-                                                key={`${t.schema ?? ''}.${t.name}`}
-                                                onDoubleClick={() => onOpenTable(t.name, t.schema)}
-                                                title="Doble click: SELECT * LIMIT 100"
-                                                className="group/table flex items-center gap-2 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                                            >
-                                                <Icon name="table_chart" size={14} className="shrink-0 opacity-60" />
-                                                <span className="truncate">
-                                                    {t.schema ? `${t.schema}.${t.name}` : t.name}
-                                                </span>
-                                                <div className="flex-1" />
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        onExportTableDDL(t.name, t.schema)
-                                                    }}
-                                                    title="Exportar DDL de la tabla"
-                                                    className="hidden shrink-0 opacity-70 hover:opacity-100 group-hover/table:block"
-                                                >
-                                                    <Icon name="code" size={14} />
-                                                </button>
-                                            </div>
-                                        ))
+
+                                        return schemas.map((schema) => {
+                                            const schemaExpanded = expandedSchemas.has(schema)
+                                            const schemaTables = metadata.tables.filter((t) => t.schema === schema)
+                                            return (
+                                                <div key={schema} className="mb-0.5">
+                                                    <div
+                                                        className={`group/schema flex items-center gap-1 rounded px-1 py-1 text-xs ${
+                                                            schema === activeSchema
+                                                                ? 'font-semibold text-primary'
+                                                                : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                                                        }`}
+                                                    >
+                                                        <button
+                                                            onClick={() => toggleSchema(schema)}
+                                                            title={
+                                                                schema === activeSchema
+                                                                    ? `"${schema}" es el esquema activo (autocomplete/CLAUDE.md)`
+                                                                    : `Ver tablas de "${schema}" y fijarlo como esquema activo`
+                                                            }
+                                                            className="flex min-w-0 flex-1 items-center gap-1 text-left"
+                                                        >
+                                                            <Icon name={schemaExpanded ? 'expand_more' : 'chevron_right'} size={14} className="shrink-0" />
+                                                            <Icon name="schema" size={14} className="shrink-0 opacity-70" />
+                                                            <span className="truncate">{schema}</span>
+                                                            <span className="shrink-0 opacity-60">({schemaTables.length})</span>
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                void syncSchema(c.id, schema)
+                                                            }}
+                                                            disabled={syncingSchema === schema}
+                                                            title={`Sincroniza solo el esquema "${schema}" contra la base de datos — no toca los demás esquemas ya cargados`}
+                                                            className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 disabled:opacity-40 group-hover/schema:block"
+                                                        >
+                                                            <Icon
+                                                                name="sync"
+                                                                size={13}
+                                                                className={syncingSchema === schema ? 'animate-spin' : ''}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                    {schemaExpanded && (
+                                                        <div className="pl-4">
+                                                            {schemaTables.length === 0 ? (
+                                                                <p className="px-2 py-1 text-xs text-on-surface-variant/60">Sin tablas.</p>
+                                                            ) : (
+                                                                schemaTables.map((t) => renderTableRow(t))
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })
                                     })()}
                                 </div>
                             )}

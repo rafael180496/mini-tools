@@ -98,8 +98,8 @@ export function ListRecentFiles() {
   return window['go']['main']['App']['ListRecentFiles']();
 }
 
-export function ListSchemas(arg1) {
-  return window['go']['main']['App']['ListSchemas'](arg1);
+export function ListSchemas(arg1, arg2) {
+  return window['go']['main']['App']['ListSchemas'](arg1, arg2);
 }
 
 export function ListSchemasForNewConnection(arg1) {
@@ -156,6 +156,10 @@ export function SetSidebarCollapsed(arg1) {
 
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
+}
+
+export function SyncSchemaMetadata(arg1, arg2) {
+  return window['go']['main']['App']['SyncSchemaMetadata'](arg1, arg2);
 }
 
 export function TestConnection(arg1) {
