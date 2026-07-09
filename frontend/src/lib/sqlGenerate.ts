@@ -42,3 +42,26 @@ export function generateUpdateStatement(table: string, columns: string[], row: u
         `UPDATE ${quoteIdentifier(table)}\nSET ${setClause}\nWHERE ${whereClause};`
     )
 }
+
+// Multi-row wrapper around generateUpdateStatement, same pattern as
+// generateInsertStatements — one UPDATE per row, joined for pasting as a
+// single script.
+export function generateUpdateStatements(table: string, columns: string[], rows: unknown[][]): string {
+    return rows.map((row) => generateUpdateStatement(table, columns, row)).join('\n\n')
+}
+
+function csvField(v: unknown): string {
+    if (v === null || v === undefined) return ''
+    const s = String(v)
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+// CSV copy for pasting into a spreadsheet (Excel/Sheets/etc.) without going
+// through the file-export dialog (ExportMenu) — same underlying shape as
+// the CSV export, but a direct navigator.clipboard.writeText, matching the
+// "copiar fila"/"copiar como INSERT" clipboard pattern in ResultGrid.
+export function generateCSV(columns: string[], rows: unknown[][]): string {
+    const header = columns.map(csvField).join(',')
+    const body = rows.map((row) => row.map(csvField).join(',')).join('\r\n')
+    return `${header}\r\n${body}`
+}

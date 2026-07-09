@@ -36,6 +36,12 @@
 
 - Este repo tiene `.codegraph/` (índice de símbolos/edges). Después de agregar o eliminar un archivo de código, correr `codegraph sync` para mantener el índice al día antes de seguir trabajando.
 
+## Releases
+
+- **"Compila la versión oficial" (o variantes: "arma el release", "empaqueta para mac") es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), y reflejar esos datos en el `README.md` raíz.
+- El `.dmg`/artefacto empaquetado nunca se versiona en git (`releases/**/*.dmg` en `.gitignore`) — solo el README y el checksum quedan trackeados.
+- Nunca commitear el resultado automáticamente — queda en el working tree para que el usuario lo revise.
+
 ## Migraciones del vault
 
 - **Regla dura, no solo convención:** `vault.db` ya está instalado en varias máquinas con datos reales (conexiones, historial, settings). Toda columna o tabla nueva se agrega vía migración — nunca borrando/recreando la base, ni siquiera "momentáneamente" para probar algo local. Ver [.claude/rules/technical.md](technical.md) punto 13.

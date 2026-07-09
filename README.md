@@ -4,9 +4,38 @@
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
 
-Cliente SQL de escritorio para **Oracle, PostgreSQL y SQLite** — tipo DataGrip, pero minimalista. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron.
+Cliente SQL de escritorio para **Oracle, PostgreSQL y SQLite** — tipo DataGrip, pero minimalista. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron, sin JVM, sin telemetría.
 
 > El spec funcional completo vive en [docs/SPEC.md](docs/SPEC.md); la arquitectura y convenciones actuales del código en [CLAUDE.md](CLAUDE.md).
+
+## Capturas
+
+<p align="center">
+  <img src="docs/screenshots/editor.png" width="900" alt="Editor SQL de mini-tools con autocompletado, tabs y ejecución en vivo">
+</p>
+
+<p align="center"><em>Editor Monaco con autocompletado consciente del contexto, tabs restauradas entre sesiones y resultados en streaming.</em></p>
+
+<table>
+  <tr>
+    <td align="center" width="34%">
+      <img src="docs/screenshots/schema-tree.png" width="260" alt="Árbol de conexiones y esquema"><br>
+      <sub>Árbol de conexiones colapsable, con buscador de tablas/esquema</sub>
+    </td>
+    <td align="center" width="66%">
+      <img src="docs/screenshots/new-connection.png" width="560" alt="Diálogo de nueva conexión con detección de connection string"><br>
+      <sub>Nueva conexión: pegá una connection string y el formulario se completa solo</sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/unlock-vault.png" width="520" alt="Pantalla de desbloqueo del vault cifrado">
+</p>
+
+<p align="center"><em>Conexiones cifradas en un vault local — sin la clave maestra, no hay acceso.</em></p>
+
+> Las capturas usan una conexión y datos de ejemplo ficticios — ninguna corresponde a una base real.
 
 ## Por qué
 
@@ -83,6 +112,19 @@ Detalle de cada script en [scripts/README.md](scripts/README.md).
 El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarización) — al abrirlo en otra Mac, Gatekeeper va a mostrar "desarrollador no identificado". Workaround: clic derecho sobre la app → Abrir, o `xattr -cr /Applications/mini-tools.app`, o Ajustes del Sistema → Privacidad y Seguridad → Abrir de todas formas.
 
 `package-macos.sh` solo genera el `.dmg` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
+
+### Última versión empaquetada
+
+| Campo | Valor |
+|---|---|
+| Versión | 0.1.0 |
+| Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
+| Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
+| Archivo | [`releases/macos/mini-tools-v0.1.0.dmg`](releases/macos/) |
+| SHA-256 | `e943c1ef57c43fa2e785b3daa37ed6527d7e90e91ba0a0b326ecb9b5c22b750e` |
+| Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
+
+Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/macos/README.md](releases/macos/README.md). El `.dmg` en sí no se versiona en git (solo el README y el checksum) — se distribuye por fuera del repo.
 
 ## Estructura del proyecto
 

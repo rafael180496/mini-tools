@@ -272,8 +272,16 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool) 
 	}
 }
 
+// isSelectLike decides which of runQuery/runExec a statement goes through.
+// It strips leading "--"/"/* */" comments first (skipLeadingNoise, shared
+// with splitter.go's classification) — otherwise a statement with an
+// explanatory comment before the real SELECT (a common pattern pasted from
+// scripts, e.g. "-- optional filter:\nSELECT ... FROM DUAL;") would fail
+// this check, get routed to runExec, and silently produce an empty result
+// tab (a "done" with rows-affected instead of columns/rows) even though the
+// query ran fine.
 func isSelectLike(sqlText string) bool {
-	upper := strings.ToUpper(strings.TrimSpace(sqlText))
+	upper := strings.ToUpper(strings.TrimSpace(skipLeadingNoise(sqlText)))
 	for _, prefix := range []string{"SELECT", "WITH", "PRAGMA", "EXPLAIN"} {
 		if strings.HasPrefix(upper, prefix) {
 			return true

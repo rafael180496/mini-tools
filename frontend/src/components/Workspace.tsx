@@ -680,6 +680,22 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         runText(wrapped)
     }
 
+    // Closing a result tab only hides it from resultSets — it never touches
+    // an in-flight run (the statement already finished by the time its tab
+    // exists) nor cancels/reissues anything, unlike sortActiveResult above.
+    function closeResultTab(i: number) {
+        setResultSets((prev) => prev.filter((_, idx) => idx !== i))
+        setActiveResultTab((prev) => {
+            if (i > prev) return prev
+            return Math.max(0, prev - 1)
+        })
+    }
+
+    function closeAllResultTabs() {
+        setResultSets([])
+        setActiveResultTab(0)
+    }
+
     function openTableQuery(table: string, schema?: string) {
         if (!selected) return
         const q = limitQueryFor(selected.dbType, table, schema)
@@ -1250,6 +1266,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             count={resultSets.length}
                             active={activeResultTab}
                             onSelect={setActiveResultTab}
+                            onClose={closeResultTab}
+                            onCloseAll={closeAllResultTabs}
                             statuses={resultSets.map((r) => r.status)}
                         />
 

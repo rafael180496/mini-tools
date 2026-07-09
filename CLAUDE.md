@@ -11,6 +11,7 @@ Este archivo es solo un índice; el contenido real vive en archivos dedicados, c
 | [docs/SPEC.md](docs/SPEC.md) | Spec funcional completo (intención original del proyecto) |
 | [.claude/specs/architecture.md](.claude/specs/architecture.md) | Stack y estructura de carpetas **actuales** (mantenido fase a fase, con notas de desviación vs. el plan original) |
 | [.claude/specs/commands.md](.claude/specs/commands.md) | Comandos de dev/build/test, wrappers de `scripts/` |
+| [.claude/specs/releases.md](.claude/specs/releases.md) | Proceso de empaquetado/publicación (`releases/<os>/`) — trigger "compila la versión oficial" |
 | [.claude/specs/go-react-contract.md](.claude/specs/go-react-contract.md) | Contrato completo de bindings `App` (Go↔React), fase por fase |
 | [.claude/specs/vault-migrations.md](.claude/specs/vault-migrations.md) | Sistema de migraciones del vault (schema_migrations, cómo agregar una migración, verificación) |
 | [.claude/specs/design-system.md](.claude/specs/design-system.md) | Sistema de diseño Material Design 3 — tokens de color, tipografía/iconos self-hosted, mapeo semántico. Leer antes de tocar cualquier estilo. |

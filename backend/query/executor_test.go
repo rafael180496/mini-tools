@@ -73,6 +73,43 @@ func TestExecutorRunsSelectAndStreamsRows(t *testing.T) {
 	}
 }
 
+// Regression test for a real bug: a SELECT preceded by a "--" line comment
+// (a common pasted-from-a-script pattern) was misclassified by
+// isSelectLike as non-SELECT because it only checked the statement's raw
+// prefix — routing it through runExec instead of runQuery, which never
+// emits a "columns" event, silently producing an apparently empty result
+// tab for a query that actually ran fine.
+func TestExecutorSelectWithLeadingCommentStillReturnsRows(t *testing.T) {
+	exec, events := newTestExecutor(t)
+
+	exec.Execute("conn-1", "q1b", "-- explanatory comment\n\nSELECT 1 AS one", true)
+
+	var sawColumns bool
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case e := <-events:
+			if e.Type == "columns" {
+				sawColumns = true
+			}
+			if e.Type == "done" || e.Type == "cancelled" || e.Type == "error" {
+				if e.Type != "done" {
+					t.Fatalf("expected done, got %+v", e)
+				}
+				if !sawColumns {
+					t.Fatalf("expected a columns event before done — statement was likely misrouted to runExec")
+				}
+				if e.RowsAffected != 1 {
+					t.Fatalf("expected 1 row, got %+v", e)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for a terminal event")
+		}
+	}
+}
+
 func TestExecutorRunsExecStatement(t *testing.T) {
 	exec, events := newTestExecutor(t)
 

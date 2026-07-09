@@ -1,8 +1,8 @@
-import {useState, useRef} from 'react'
+import {useState, useRef, type MouseEvent} from 'react'
 import {ColumnDef, flexRender, getCoreRowModel, useReactTable} from '@tanstack/react-table'
 import {useVirtualizer} from '@tanstack/react-virtual'
 import Icon from '../Icon'
-import {generateInsertStatements, generateUpdateStatement} from '../../lib/sqlGenerate'
+import {generateCSV, generateInsertStatements, generateUpdateStatements} from '../../lib/sqlGenerate'
 
 interface ResultGridProps {
     columns: string[]
@@ -27,7 +27,11 @@ const ROW_HEIGHT = 28
 // query con ORDER BY, no ordenar en cliente un dataset parcial".
 export default function ResultGrid({columns, rows, sortColumn, sortDirection, onSort, tableNameHint}: ResultGridProps) {
     const parentRef = useRef<HTMLDivElement>(null)
-    const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+    // Set (not a single index) so ctrl/cmd-click and shift-click can build a
+    // multi-row selection — anchorRef tracks the last non-shift click so a
+    // shift-click knows which end of the range to extend from.
+    const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
+    const anchorRef = useRef<number | null>(null)
     const [copyStatus, setCopyStatus] = useState('')
 
     const colDefs: ColumnDef<unknown[]>[] = columns.map((col, i) => ({
@@ -67,12 +71,35 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
     const totalHeight = virtualizer.getTotalSize()
     const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
     const paddingBottom = virtualItems.length > 0 ? totalHeight - virtualItems[virtualItems.length - 1].end : 0
-    const selectedRow = selectedIndex !== null ? rows[selectedIndex] : null
+    const sortedSelectedIndices = Array.from(selectedIndices).sort((a, b) => a - b)
+    const selectedRows = sortedSelectedIndices.map((i) => rows[i])
 
     async function copy(text: string, label: string) {
         await navigator.clipboard.writeText(text)
         setCopyStatus(label)
         setTimeout(() => setCopyStatus(''), 2000)
+    }
+
+    function clickRow(index: number, e: MouseEvent) {
+        if (e.shiftKey && anchorRef.current !== null) {
+            const [lo, hi] = [Math.min(anchorRef.current, index), Math.max(anchorRef.current, index)]
+            const range = new Set<number>()
+            for (let i = lo; i <= hi; i++) range.add(i)
+            setSelectedIndices(range)
+            return
+        }
+        if (e.ctrlKey || e.metaKey) {
+            setSelectedIndices((prev) => {
+                const next = new Set(prev)
+                if (next.has(index)) next.delete(index)
+                else next.add(index)
+                return next
+            })
+            anchorRef.current = index
+            return
+        }
+        setSelectedIndices((prev) => (prev.size === 1 && prev.has(index) ? new Set() : new Set([index])))
+        anchorRef.current = index
     }
 
     return (
@@ -123,12 +150,12 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                         )}
                         {virtualItems.map((vi) => {
                             const row = tableRows[vi.index]
-                            const isSelected = vi.index === selectedIndex
+                            const isSelected = selectedIndices.has(vi.index)
                             return (
                                 <tr
                                     key={row.id}
-                                    onClick={() => setSelectedIndex(isSelected ? null : vi.index)}
-                                    title="Click para seleccionar la fila — habilita copiarla como texto, INSERT o UPDATE"
+                                    onClick={(e) => clickRow(vi.index, e)}
+                                    title="Click para seleccionar la fila — Ctrl/Cmd+click para sumar filas sueltas, Shift+click para un rango — habilita copiarlas como texto, CSV, INSERT o UPDATE"
                                     className={`cursor-pointer ${
                                         isSelected
                                             ? 'bg-primary-container/40'
@@ -163,22 +190,38 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                 </table>
             </div>
 
-            {selectedRow && (
+            {selectedRows.length > 0 && (
                 <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg">
                     {copyStatus && <span className="px-2 text-xs text-secondary">{copyStatus}</span>}
+                    {selectedRows.length > 1 && (
+                        <span className="px-1 text-xs text-on-surface-variant/70">{selectedRows.length} filas</span>
+                    )}
                     <button
-                        onClick={() => void copy(selectedRow.map((v) => (v === null || v === undefined ? '' : String(v))).join('\t'), 'Fila copiada')}
-                        title="Copia los valores de la fila separados por tab, listos para pegar en una planilla"
+                        onClick={() =>
+                            void copy(
+                                selectedRows.map((r) => r.map((v) => (v === null || v === undefined ? '' : String(v))).join('\t')).join('\n'),
+                                selectedRows.length > 1 ? 'Filas copiadas' : 'Fila copiada'
+                            )
+                        }
+                        title="Copia los valores de la(s) fila(s) separados por tab (una por línea), listos para pegar en una planilla"
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="content_copy" size={15} />
-                        Copiar fila
+                        Copiar fila{selectedRows.length > 1 ? 's' : ''}
+                    </button>
+                    <button
+                        onClick={() => void copy(generateCSV(columns, selectedRows), 'CSV copiado')}
+                        title="Copia la(s) fila(s) seleccionadas como CSV (con encabezado), listo para pegar en Excel/Sheets sin pasar por el diálogo de exportar"
+                        className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="grid_on" size={15} />
+                        Copiar como CSV
                     </button>
                     <button
                         onClick={() =>
-                            void copy(generateInsertStatements(tableNameHint ?? 'tabla', columns, [selectedRow]), 'INSERT copiado')
+                            void copy(generateInsertStatements(tableNameHint ?? 'tabla', columns, selectedRows), 'INSERT copiado')
                         }
-                        title="Copia esta fila como una sentencia INSERT lista para pegar en el editor"
+                        title="Copia la(s) fila(s) seleccionadas como sentencias INSERT listas para pegar en el editor"
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="add_box" size={15} />
@@ -186,17 +229,17 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                     </button>
                     <button
                         onClick={() =>
-                            void copy(generateUpdateStatement(tableNameHint ?? 'tabla', columns, selectedRow), 'UPDATE copiado')
+                            void copy(generateUpdateStatements(tableNameHint ?? 'tabla', columns, selectedRows), 'UPDATE copiado')
                         }
-                        title="Copia esta fila como una sentencia UPDATE (con WHERE por todas las columnas — revisala antes de ejecutar) lista para editar y pegar en el editor"
+                        title="Copia la(s) fila(s) seleccionadas como sentencias UPDATE (con WHERE por todas las columnas — revisalas antes de ejecutar) listas para editar y pegar en el editor"
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="edit_note" size={15} />
                         Copiar como UPDATE
                     </button>
                     <button
-                        onClick={() => setSelectedIndex(null)}
-                        title="Deselecciona la fila"
+                        onClick={() => setSelectedIndices(new Set())}
+                        title="Deselecciona todas las filas"
                         className="rounded p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={15} />

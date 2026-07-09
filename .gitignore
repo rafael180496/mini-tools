@@ -641,3 +641,10 @@ frontend/dist/
 vault.db
 salt.bin
 
+# mini-tools: releases/<os>/README.md documenta el artefacto (versión, checksum,
+# compatibilidad) y sí se versiona; el binario empaquetado en sí (.dmg, etc.) no —
+# se distribuye por fuera del repo (GitHub Releases, etc.), no por git.
+releases/**/*.dmg
+releases/**/*.zip
+releases/**/*.tar.gz
+
