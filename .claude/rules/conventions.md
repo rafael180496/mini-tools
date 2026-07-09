@@ -30,7 +30,8 @@
 
 ## Commits / PRs
 
-- Cada fase del plan (`.claude/specs/`, ver historial de planning) es idealmente un commit o PR separado, con su propio criterio de "listo" verificado antes de pasar a la siguiente.
+- **Regla dura: nunca `git add`/`git commit`/`git push` de forma automática, bajo ningún proceso ni trigger (incluido el de Releases más abajo).** El usuario hace todos los commits y el staging manualmente, siempre — incluso después de haber pedido explícitamente en una conversación que se suba algo puntual (eso no crea un precedente que se repita solo). Dejar los cambios listos en el working tree y avisar qué archivos tocar; nunca stagear/commitear/pushear por iniciativa propia.
+- Cada fase del plan (`.claude/specs/`, ver historial de planning) es idealmente un commit o PR separado, con su propio criterio de "listo" verificado antes de pasar a la siguiente — pero el commit en sí lo arma el usuario.
 
 ## CodeGraph
 
@@ -38,9 +39,9 @@
 
 ## Releases
 
-- **"Compila la versión oficial" (o variantes: "arma el release", "empaqueta para mac") es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), y reflejar esos datos (con link directo al `.dmg`) en el `README.md` raíz.
+- **Cualquier mención de "empaquetar"/"empaquetá"/"empaquete" u "oficial" en el contexto de compilar es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye bumpear la versión (`bump-version.sh patch` por default, ya no es opcional en este flujo), armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), y reflejar esos datos (con link directo al `.dmg`) en el `README.md` raíz.
 - El `.dmg`/artefacto empaquetado **sí se versiona en git** dentro de `releases/<os>/` — no agregarlo a `.gitignore`. Decisión explícita del usuario: el link del README tiene que bajar el binario directo desde GitHub.
-- `git add`/`commit` de esto es normal; el `push` a un remoto sigue la regla general de confirmar con el usuario antes, salvo que ya lo haya pedido explícitamente en la conversación en curso.
+- **El `git add`/`commit`/`push` de todo esto lo hace el usuario, nunca Claude** — ver la regla dura en "Commits / PRs" arriba, sin excepción para este trigger tampoco. Dejar el `.dmg` + docs actualizadas en el working tree y listo.
 
 ## Migraciones del vault
 

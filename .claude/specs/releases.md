@@ -4,12 +4,19 @@ Spec del proceso de empaquetado/publicación local. Complementa
 [commands.md](commands.md) (qué hace cada script) con el flujo completo que
 se espera cuando alguien pide un build oficial, no solo `wails build`.
 
-## Trigger: "compila la versión oficial"
+## Trigger: mención de "empaquetar"/"empaquetá"/"oficial"
 
-Cuando el usuario pida compilar/empaquetar "la versión oficial" (o
-variantes: "compila el build oficial", "arma el release", "empaqueta para
-mac/[SO]"), ejecutar sin pedir confirmación:
+Cualquier mensaje del usuario que mencione **"empaquetar"/"empaquetá"/"empaquete"** o
+**"oficial"** en el contexto de compilar/buildear (p. ej. "empaquetá para mac",
+"compila la versión oficial", "arma el build oficial") dispara este proceso
+completo sin pedir confirmación — no hace falta la frase exacta "compila la
+versión oficial", cualquier mención de esas dos palabras clave alcanza:
 
+0. **Bumpear la versión primero:** `./scripts/bump-version.sh patch` (patch
+   por default — si el usuario especificó minor/major en su pedido, usar
+   esa parte en su lugar). Esto ya NO es un paso opcional para este flujo
+   automático, a diferencia de como lo describe `scripts/README.md` para
+   uso manual suelto.
 1. Correr el script de empaquetado del SO correspondiente — hoy solo existe
    `./scripts/package-macos.sh` (build de producción + `.dmg` sin firmar,
    ver [commands.md](commands.md) y [scripts/README.md](../../scripts/README.md)).
@@ -47,13 +54,14 @@ mac/[SO]"), ejecutar sin pedir confirmación:
 7. El `.dmg` **sí se versiona en git** — no agregar `releases/**/*.dmg` (ni
    patrón equivalente) a `.gitignore`. Ver "Por qué el `.dmg` se versiona
    en git" abajo para el porqué de esta decisión.
-8. **`git add`/`commit` de los archivos de `releases/<os>/` y las docs
-   tocadas es parte normal del proceso — pero el `push` a un remoto sigue
-   la misma regla general de este repo que cualquier otro cambio: se
-   confirma con el usuario antes de pushear, no se asume autorización
-   permanente por haberlo pedido una vez.** Si el usuario ya dijo
-   explícitamente "subilo"/"pushealo" en la conversación en curso, no hace
-   falta volver a preguntar en ese mismo turno.
+8. **Nunca `git add`/`commit`/`push` nada de esto — ni el `.dmg`, ni las
+   docs tocadas.** Regla dura y sin excepción (ver "Commits / PRs" en
+   [conventions.md](../rules/conventions.md)): el usuario hace todo el
+   staging y los commits siempre, a mano. Terminar el proceso con el
+   `.dmg` y las docs actualizadas en el working tree y avisar qué archivos
+   quedaron listos para que el usuario los commitee — incluso si en una
+   conversación anterior pidió explícitamente subir algo puntual, eso no
+   habilita hacerlo de nuevo sin que lo pida otra vez.
 
 ## Por qué el `.dmg` sí se versiona en git
 
