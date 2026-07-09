@@ -38,9 +38,9 @@
 
 ## Releases
 
-- **"Compila la versión oficial" (o variantes: "arma el release", "empaqueta para mac") es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), y reflejar esos datos en el `README.md` raíz.
-- El `.dmg`/artefacto empaquetado nunca se versiona en git (`releases/**/*.dmg` en `.gitignore`) — solo el README y el checksum quedan trackeados.
-- Nunca commitear el resultado automáticamente — queda en el working tree para que el usuario lo revise.
+- **"Compila la versión oficial" (o variantes: "arma el release", "empaqueta para mac") es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), y reflejar esos datos (con link directo al `.dmg`) en el `README.md` raíz.
+- El `.dmg`/artefacto empaquetado **sí se versiona en git** dentro de `releases/<os>/` — no agregarlo a `.gitignore`. Decisión explícita del usuario: el link del README tiene que bajar el binario directo desde GitHub.
+- `git add`/`commit` de esto es normal; el `push` a un remoto sigue la regla general de confirmar con el usuario antes, salvo que ya lo haya pedido explícitamente en la conversación en curso.
 
 ## Migraciones del vault
 

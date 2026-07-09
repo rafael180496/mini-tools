@@ -17,7 +17,10 @@ mac/[SO]"), ejecutar sin pedir confirmación:
 3. **Copiar** (nunca mover) el artefacto generado
    (`build/bin/mini-tools-vX.Y.Z.dmg`) a `releases/<os>/`. `build/bin/`
    sigue siendo la salida cruda y efímera de los scripts de build;
-   `releases/<os>/` es la copia "publicada" y estable.
+   `releases/<os>/` es la copia "publicada" y estable, y **sí se versiona
+   en git** (ver "Por qué el `.dmg` se versiona en git" abajo) — no
+   agregar `releases/**/*.dmg` (ni ningún patrón equivalente) a
+   `.gitignore`.
 4. Calcular el checksum: `shasum -a 256 releases/<os>/mini-tools-vX.Y.Z.dmg`.
 5. Escribir/actualizar `releases/<os>/README.md` (usar el archivo actual
    como plantilla) con:
@@ -38,22 +41,33 @@ mac/[SO]"), ejecutar sin pedir confirmación:
    - Sección "Regenerar este artefacto" con los comandos exactos.
 6. Actualizar la sección de distribución del `README.md` raíz con la
    versión/checksum/compatibilidad actuales (resumen, no duplicar todo el
-   detalle) y el link a `releases/<os>/`.
-7. Confirmar que `.gitignore` excluye el binario (`releases/**/*.dmg` ya
-   está agregado) — el `.dmg` no se versiona en git, solo el README con el
-   checksum queda trackeado. Ver "Por qué no se versiona el binario" abajo.
-8. **Nunca hacer `git add`/`commit` de esto automáticamente** — dejarlo en
-   el working tree para que el usuario lo revise, salvo que pida
-   explícitamente commitear.
+   detalle) y un link directo al archivo `.dmg` dentro de
+   `releases/<os>/` (no solo a la carpeta) — así el link del README
+   descarga el binario directo desde GitHub.
+7. El `.dmg` **sí se versiona en git** — no agregar `releases/**/*.dmg` (ni
+   patrón equivalente) a `.gitignore`. Ver "Por qué el `.dmg` se versiona
+   en git" abajo para el porqué de esta decisión.
+8. **`git add`/`commit` de los archivos de `releases/<os>/` y las docs
+   tocadas es parte normal del proceso — pero el `push` a un remoto sigue
+   la misma regla general de este repo que cualquier otro cambio: se
+   confirma con el usuario antes de pushear, no se asume autorización
+   permanente por haberlo pedido una vez.** Si el usuario ya dijo
+   explícitamente "subilo"/"pushealo" en la conversación en curso, no hace
+   falta volver a preguntar en ese mismo turno.
 
-## Por qué no se versiona el `.dmg`
+## Por qué el `.dmg` sí se versiona en git
 
-Un binario empaquetado de ~15-20MB en cada tag/versión infla el
-repositorio para siempre (git no lo saca del historial al borrarlo
-después). La distribución real de un release es responsabilidad externa a
-git (GitHub Releases, USB, red interna) — el repo solo necesita el
-checksum para verificar integridad y el README para documentar qué se
-publicó y cuándo.
+Decisión explícita del usuario (corrigiendo un intento anterior de este
+mismo proceso que lo excluía vía `.gitignore` con el argumento de "no
+inflar el repo con binarios"): el `.dmg` tiene que estar disponible
+directamente desde un link del repo en GitHub, sin depender de un flujo
+aparte (GitHub Releases, USB, etc.). El repo acepta el costo de que cada
+versión empaquetada sume ~15-20MB permanentes al historial de git a
+cambio de que "bajar la última versión" sea un solo link del README. Si
+el tamaño del repo se vuelve un problema real más adelante, la
+alternativa a evaluar es Git LFS para `releases/**/*.dmg` — no volver a
+excluirlo silenciosamente vía `.gitignore` sin discutirlo primero con el
+usuario.
 
 ## Multi-plataforma a futuro
 

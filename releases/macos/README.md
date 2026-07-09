@@ -71,5 +71,7 @@ un Mac `x86_64`, o extender el script con `-platform darwin/universal`
 
 Este directorio guarda el `.dmg` fuera de `build/bin/` (que es artefacto de
 build efímero, gitignoreado) para tener un lugar estable de "última versión
-empaquetada" — el binario en sí no se versiona en git (ver `.gitignore`),
-solo este README y el checksum quedan trackeados.
+empaquetada" — a diferencia de `build/bin/`, el `.dmg` acá **sí se versiona
+en git y se pushea** (decisión explícita: el link de descarga del README
+tiene que funcionar directo desde GitHub, sin depender de un release
+aparte).

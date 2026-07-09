@@ -120,11 +120,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 | Versión | 0.1.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | [`releases/macos/mini-tools-v0.1.0.dmg`](releases/macos/) |
+| Archivo | **[⬇ Descargar mini-tools-v0.1.0.dmg](releases/macos/mini-tools-v0.1.0.dmg)** |
 | SHA-256 | `e943c1ef57c43fa2e785b3daa37ed6527d7e90e91ba0a0b326ecb9b5c22b750e` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
-Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/macos/README.md](releases/macos/README.md). El `.dmg` en sí no se versiona en git (solo el README y el checksum) — se distribuye por fuera del repo.
+Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/macos/README.md](releases/macos/README.md).
 
 ## Estructura del proyecto
 
