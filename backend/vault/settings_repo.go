@@ -23,6 +23,12 @@ type Settings struct {
 	// the resize handle between the editor and the results grid — see
 	// SetEditorHeight. Defaults to 256 (the old fixed h-64 Tailwind class).
 	EditorHeight int `json:"editorHeight"`
+	// RememberMasterKey reflects the "Recordar clave" toggle — whether
+	// TryAutoUnlock should try the OS keychain at startup. The flag itself
+	// is harmless to read while locked (it's just an on/off preference);
+	// the actual secret it gates lives only in the OS keychain, never here
+	// — see backend/vault/remember.go.
+	RememberMasterKey bool `json:"rememberMasterKey"`
 }
 
 // GetSettings returns the single settings row, seeded with defaults by Open.
@@ -31,9 +37,10 @@ func (s *Store) GetSettings() (Settings, error) {
 	var openTabsJSON sql.NullString
 	var sidebarCollapsed bool
 	var editorHeight int
+	var rememberMasterKey bool
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height FROM settings WHERE id = 1`,
-	).Scan(&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight); err != nil {
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key FROM settings WHERE id = 1`,
+	).Scan(&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
 
@@ -44,7 +51,10 @@ func (s *Store) GetSettings() (Settings, error) {
 		}
 	}
 
-	return Settings{Theme: theme, OpenTabs: openTabs, SidebarCollapsed: sidebarCollapsed, EditorHeight: editorHeight}, nil
+	return Settings{
+		Theme: theme, OpenTabs: openTabs, SidebarCollapsed: sidebarCollapsed,
+		EditorHeight: editorHeight, RememberMasterKey: rememberMasterKey,
+	}, nil
 }
 
 // SetTheme persists the theme preference ("dark" or "light").

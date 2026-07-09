@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	go_ora "github.com/sijms/go-ora/v2"
 )
@@ -21,7 +22,28 @@ const maxDBMSOutputLines = 1000
 // against other engines. The caller owns conn's lifecycle (reserving it
 // fresh per call, or reusing an already-open transaction's connection —
 // see executor.go's runPLSQLBlock) — this function never closes it.
-func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string) (sql.Result, []string, error) {
+//
+// captureOutput is the frontend's "DBMS_OUTPUT" toolbar toggle — when
+// false, the block runs directly with no ENABLE/GET_LINE round trips at
+// all (not just a skipped fetch), which matters when running a large
+// multi-statement script full of PL/SQL blocks and the output isn't
+// needed.
+func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string, captureOutput bool) (sql.Result, []string, error) {
+	// SplitStatements deliberately strips the delimiting ";" from every
+	// flushed statement (fine for plain SQL sent via a single Exec call —
+	// Oracle's SQL engine rejects a trailing ";" there) — but Oracle's
+	// PL/SQL grammar requires that ";" right after the block's final END to
+	// terminate it; without it the parser hits EOF still expecting either
+	// ";" or a label identifier ("PLS-00103: encountered end-of-file").
+	// Real bug found live: every anonymous block/CREATE PROCEDURE-FUNCTION-
+	// TRIGGER body executed via this path failed until this was added back.
+	stmtText = ensureTrailingSemicolon(stmtText)
+
+	if !captureOutput {
+		result, err := conn.ExecContext(ctx, stmtText)
+		return result, nil, err
+	}
+
 	if _, err := conn.ExecContext(ctx, `BEGIN DBMS_OUTPUT.ENABLE(NULL); END;`); err != nil {
 		return nil, nil, fmt.Errorf("query: habilitando DBMS_OUTPUT: %w", err)
 	}
@@ -36,6 +58,17 @@ func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string) (
 	lines, _ := fetchDBMSOutput(ctx, conn)
 
 	return result, lines, nil
+}
+
+// ensureTrailingSemicolon appends ";" to stmtText if its last non-whitespace
+// character isn't already one — SplitStatements strips it during flush, and
+// a PL/SQL block/unit needs it back to compile.
+func ensureTrailingSemicolon(stmtText string) string {
+	trimmed := strings.TrimRight(stmtText, " \t\r\n")
+	if strings.HasSuffix(trimmed, ";") {
+		return stmtText
+	}
+	return trimmed + ";"
 }
 
 func fetchDBMSOutput(ctx context.Context, conn *sql.Conn) ([]string, error) {

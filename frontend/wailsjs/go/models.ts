@@ -344,6 +344,7 @@ export namespace vault {
 	    openTabs: string[];
 	    sidebarCollapsed: boolean;
 	    editorHeight: number;
+	    rememberMasterKey: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -355,6 +356,7 @@ export namespace vault {
 	        this.openTabs = source["openTabs"];
 	        this.sidebarCollapsed = source["sidebarCollapsed"];
 	        this.editorHeight = source["editorHeight"];
+	        this.rememberMasterKey = source["rememberMasterKey"];
 	    }
 	}
 

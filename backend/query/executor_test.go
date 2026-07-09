@@ -62,7 +62,7 @@ func waitForTerminal(t *testing.T, events chan Event) Event {
 func TestExecutorRunsSelectAndStreamsRows(t *testing.T) {
 	exec, events := newTestExecutor(t)
 
-	exec.Execute("conn-1", "q1", "SELECT 1 AS one")
+	exec.Execute("conn-1", "q1", "SELECT 1 AS one", true)
 
 	final := waitForTerminal(t, events)
 	if final.Type != "done" {
@@ -76,7 +76,7 @@ func TestExecutorRunsSelectAndStreamsRows(t *testing.T) {
 func TestExecutorRunsExecStatement(t *testing.T) {
 	exec, events := newTestExecutor(t)
 
-	exec.Execute("conn-1", "q2", "CREATE TABLE t (id INTEGER)")
+	exec.Execute("conn-1", "q2", "CREATE TABLE t (id INTEGER)", true)
 
 	final := waitForTerminal(t, events)
 	if final.Type != "done" {
@@ -87,7 +87,7 @@ func TestExecutorRunsExecStatement(t *testing.T) {
 func TestExecutorUnknownConnectionEmitsError(t *testing.T) {
 	exec, events := newTestExecutor(t)
 
-	exec.Execute("no-such-conn", "q3", "SELECT 1")
+	exec.Execute("no-such-conn", "q3", "SELECT 1", true)
 
 	final := waitForTerminal(t, events)
 	if final.Type != "error" {
@@ -107,7 +107,7 @@ func TestExecutorCancelStopsLongRunningQuery(t *testing.T) {
 		SELECT x + 1 FROM cnt WHERE x < 100000000
 	) SELECT x FROM cnt`
 
-	exec.Execute("conn-1", "q4", slowQuery)
+	exec.Execute("conn-1", "q4", slowQuery, true)
 	time.Sleep(50 * time.Millisecond) // let it actually start running
 	exec.Cancel("q4")
 

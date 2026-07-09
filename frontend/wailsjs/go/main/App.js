@@ -14,6 +14,10 @@ export function CancelQuery(arg1) {
   return window['go']['main']['App']['CancelQuery'](arg1);
 }
 
+export function ClearQueryHistory(arg1) {
+  return window['go']['main']['App']['ClearQueryHistory'](arg1);
+}
+
 export function ClearRecentFiles() {
   return window['go']['main']['App']['ClearRecentFiles']();
 }
@@ -30,8 +34,8 @@ export function DisconnectConnection(arg1) {
   return window['go']['main']['App']['DisconnectConnection'](arg1);
 }
 
-export function ExecuteQuery(arg1, arg2, arg3) {
-  return window['go']['main']['App']['ExecuteQuery'](arg1, arg2, arg3);
+export function ExecuteQuery(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ExecuteQuery'](arg1, arg2, arg3, arg4);
 }
 
 export function ExplainQuery(arg1, arg2, arg3) {
@@ -150,6 +154,10 @@ export function SetOpenTabs(arg1) {
   return window['go']['main']['App']['SetOpenTabs'](arg1);
 }
 
+export function SetRememberMasterKey(arg1) {
+  return window['go']['main']['App']['SetRememberMasterKey'](arg1);
+}
+
 export function SetSidebarCollapsed(arg1) {
   return window['go']['main']['App']['SetSidebarCollapsed'](arg1);
 }
@@ -164,6 +172,10 @@ export function SyncSchemaMetadata(arg1, arg2) {
 
 export function TestConnection(arg1) {
   return window['go']['main']['App']['TestConnection'](arg1);
+}
+
+export function TryAutoUnlock() {
+  return window['go']['main']['App']['TryAutoUnlock']();
 }
 
 export function UnlockVault(arg1) {

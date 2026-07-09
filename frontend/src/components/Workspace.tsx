@@ -12,6 +12,7 @@ import {
     BackupVault,
     BeginTransaction,
     CancelQuery,
+    ClearQueryHistory,
     CommitTransaction,
     DisconnectConnection,
     ExecuteQuery,
@@ -23,6 +24,7 @@ import {
     GetSchemaMetadata,
     GetSettings,
     HasOpenTransaction,
+    ListQueryHistory,
     OpenSQLFileDialog,
     OpenSQLFilePath,
     RegenerateProjectDocs,
@@ -31,6 +33,7 @@ import {
     SaveSQLFileAs,
     SetEditorHeight,
     SetOpenTabs,
+    SetRememberMasterKey,
     SetSidebarCollapsed,
     SyncSchemaMetadata,
 } from '../../wailsjs/go/main/App'
@@ -48,6 +51,7 @@ import type {Theme} from '../hooks/useTheme'
 const ConnectionDialog = lazy(() => import('./connections/ConnectionDialog'))
 const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
+const HistoryPanel = lazy(() => import('./HistoryPanel'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'done' | 'cancelled' | 'error'
@@ -148,6 +152,12 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // a real reserved connection on the backend).
     const [txOpen, setTxOpen] = useState(false)
     const [txBusy, setTxBusy] = useState(false)
+    // Toolbar toggle for capturing DBMS_OUTPUT on Oracle PL/SQL blocks
+    // (ENABLE + GET_LINE round trips) — on by default, matching the
+    // behavior before this toggle existed. Off skips those extra round
+    // trips entirely, useful for a big multi-statement script (like an
+    // idempotent init.sql) full of blocks whose output isn't needed.
+    const [dbmsOutputEnabled, setDbmsOutputEnabled] = useState(true)
 
     const [tabs, setTabs] = useState<EditorTab[]>(() => [newScratchTab()])
     const [activeTabId, setActiveTabId] = useState(() => tabs[0].id)
@@ -167,6 +177,15 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [explainPlan, setExplainPlan] = useState<explain.Plan | null>(null)
     const [explainLoading, setExplainLoading] = useState(false)
     const [explainError, setExplainError] = useState('')
+
+    // "Resultados"/"Historial" are tabs sharing one bottom panel — tab-style
+    // like EditorTabs above, not two docked panels stacked on top of each
+    // other. Starts on "results" (what you want right after running
+    // something); switching to "history" is what triggers the first load.
+    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'history'>('results')
+    const [historyEntries, setHistoryEntries] = useState<vault.HistoryEntry[]>([])
+    const [historyLoading, setHistoryLoading] = useState(false)
+    const [historyError, setHistoryError] = useState('')
 
     const queryIdRef = useRef<string | null>(null)
     const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -199,6 +218,11 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const EDITOR_HEIGHT_MAX = 900
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
     const [editorHeight, setEditorHeightState] = useState(EDITOR_HEIGHT_DEFAULT)
+    // "Recordar clave" toggle — whether the vault auto-unlocks from the OS
+    // keychain on the next launch (see TryAutoUnlock in App.tsx). Read here
+    // just to reflect the persisted state in the checkbox; the actual
+    // secret never passes through the frontend.
+    const [rememberMasterKey, setRememberMasterKeyState] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -207,6 +231,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             .then(async (settings) => {
                 if (cancelled) return
                 setSidebarCollapsed(!!settings.sidebarCollapsed)
+                setRememberMasterKeyState(!!settings.rememberMasterKey)
                 if (settings.editorHeight) {
                     setEditorHeightState(Math.min(EDITOR_HEIGHT_MAX, Math.max(EDITOR_HEIGHT_MIN, settings.editorHeight)))
                 }
@@ -256,6 +281,15 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             void SetSidebarCollapsed(next)
             return next
         })
+    }
+
+    async function toggleRememberMasterKey(checked: boolean) {
+        try {
+            await SetRememberMasterKey(checked)
+            setRememberMasterKeyState(checked)
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
     }
 
     // Drag-to-resize the editor pane against the results grid below it.
@@ -323,6 +357,14 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             .then((meta) => setMetadata(meta))
             .catch((err) => setStatusMessage(String(err)))
             .finally(() => setMetadataLoading(false))
+    }, [selected])
+
+    // Keep the history tab showing the newly-selected connection's own
+    // history instead of the previous connection's, if it's the active tab
+    // — only fetches when it's actually the one showing.
+    useEffect(() => {
+        if (activeBottomTab === 'history') loadHistory()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selected])
 
     // Re-sync the auto-commit UI with the backend's actual state — the
@@ -515,17 +557,21 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     setRunning(false)
                     setRunProgress(null)
                     unsubscribe()
+                    // History is recorded backend-side before this terminal
+                    // event is emitted (see executor.go), so the row for
+                    // what just ran is guaranteed to already exist here.
+                    if (activeBottomTab === 'history') loadHistory()
                 }
             })
 
-            ExecuteQuery(selected.id, queryId, sqlText).catch((err) => {
+            ExecuteQuery(selected.id, queryId, sqlText, dbmsOutputEnabled).catch((err) => {
                 setResultSets([{...emptyResultSet(), status: 'error', error: String(err)}])
                 setRunning(false)
                 setRunProgress(null)
                 unsubscribe()
             })
         },
-        [selected, running],
+        [selected, running, dbmsOutputEnabled, activeBottomTab],
     )
 
     // Spec: "linter básico... warning antes de ejecutar". Only for
@@ -583,6 +629,31 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             setExplainError(String(err))
         } finally {
             setExplainLoading(false)
+        }
+    }
+
+    function loadHistory() {
+        if (!selected) return
+        setHistoryLoading(true)
+        setHistoryError('')
+        ListQueryHistory(selected.id, 200)
+            .then(setHistoryEntries)
+            .catch((err) => setHistoryError(String(err)))
+            .finally(() => setHistoryLoading(false))
+    }
+
+    function selectBottomTab(tab: 'results' | 'history') {
+        if (tab === 'history' && activeBottomTab !== 'history') loadHistory()
+        setActiveBottomTab(tab)
+    }
+
+    async function clearHistory() {
+        if (!selected) return
+        try {
+            await ClearQueryHistory(selected.id)
+            setHistoryEntries([])
+        } catch (err) {
+            setHistoryError(String(err))
         }
     }
 
@@ -811,7 +882,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const activeResult = resultSets[activeResultTab]
 
     return (
-        <div className="flex h-screen w-screen bg-background font-sans text-on-background">
+        <div className="flex h-screen w-screen overflow-hidden bg-background font-sans text-on-background">
             <ConnectionTree
                 selectedId={selected?.id ?? null}
                 onSelect={setSelected}
@@ -879,7 +950,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 </div>
             )}
 
-            <div className="flex flex-1 flex-col">
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                 <div className="flex flex-col border-b border-outline-variant bg-surface">
                     {/* Context row: which connection/schema/transaction state
                         this workspace is currently pointed at. Kept
@@ -958,11 +1029,33 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                         Transacción abierta
                                     </span>
                                 )}
+                                {selected.dbType === 'oracle' && (
+                                    <>
+                                        <Divider />
+                                        <label
+                                            className="flex items-center gap-1.5 text-xs text-on-surface-variant"
+                                            title="Captura el log de DBMS_OUTPUT.PUT_LINE de cada bloque PL/SQL que se ejecute — desactivalo en un script grande con muchos bloques si no necesitás ver la salida, ahorra los round-trips de ENABLE/GET_LINE por bloque"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={dbmsOutputEnabled}
+                                                onChange={(e) => setDbmsOutputEnabled(e.target.checked)}
+                                                className="accent-primary"
+                                            />
+                                            DBMS_OUTPUT
+                                        </label>
+                                    </>
+                                )}
                             </>
                         )}
 
                         {(statusMessage || backupMessage) && (
-                            <span className="truncate text-xs text-on-surface-variant">{statusMessage || backupMessage}</span>
+                            <span
+                                className="min-w-0 flex-1 truncate text-xs text-on-surface-variant"
+                                title={statusMessage || backupMessage}
+                            >
+                                {statusMessage || backupMessage}
+                            </span>
                         )}
 
                         <div className="flex-1" />
@@ -1084,12 +1177,24 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             <Icon name="backup" size={16} />
                             Backup vault
                         </button>
+                        <label
+                            className="flex items-center gap-1.5 px-1 text-xs font-medium text-on-surface-variant"
+                            title="Guarda tu clave maestra en el Keychain de este equipo para no tener que escribirla cada vez que abrís la app. Trade-off real: cualquiera que pueda entrar a tu sesión de usuario del sistema operativo podría desbloquear el vault sin conocer la clave — mismo nivel de exposición que un 'recordarme' de cualquier gestor de contraseñas. Desactivalo para que vuelva a pedirla siempre."
+                        >
+                            <input
+                                type="checkbox"
+                                checked={rememberMasterKey}
+                                onChange={(e) => void toggleRememberMasterKey(e.target.checked)}
+                                className="accent-primary"
+                            />
+                            Recordar clave
+                        </label>
                     </div>
                 </div>
 
                 <EditorTabs tabs={tabs} activeId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} onNew={newTab} />
 
-                <div className="border-b border-outline-variant" style={{height: editorHeight}}>
+                <div className="min-w-0 border-b border-outline-variant" style={{height: editorHeight}}>
                     <MonacoSQLEditor
                         value={activeTabData?.content ?? ''}
                         onChange={updateActiveTabContent}
@@ -1109,34 +1214,84 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     <div className="h-0.5 w-8 rounded-full bg-outline-variant group-hover:bg-primary" />
                 </div>
 
-                <ResultTabs
-                    count={resultSets.length}
-                    active={activeResultTab}
-                    onSelect={setActiveResultTab}
-                    statuses={resultSets.map((r) => r.status)}
-                />
-
-                <div className="flex items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
-                    <ExportMenu
-                        columns={activeResult?.columns ?? []}
-                        rows={activeResult?.rows ?? []}
-                        tableNameHint={selected?.name}
-                    />
+                {/* "Resultados"/"Historial" — tabs sharing this bottom
+                    panel, same visual pattern as EditorTabs above, instead
+                    of two docked panels stacked on top of each other. */}
+                <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
+                    <button
+                        onClick={() => selectBottomTab('results')}
+                        title="Resultado de la última ejecución"
+                        className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
+                            activeBottomTab === 'results'
+                                ? 'bg-surface text-on-surface'
+                                : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name="table_chart" size={14} className="opacity-70" />
+                        Resultados
+                    </button>
+                    <button
+                        onClick={() => selectBottomTab('history')}
+                        title="Historial de ejecuciones de esta conexión — SQL exacto enviado, estado y mensaje de error completo por cada statement corrido"
+                        className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
+                            activeBottomTab === 'history'
+                                ? 'bg-surface text-on-surface'
+                                : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name="history" size={14} className="opacity-70" />
+                        Historial
+                    </button>
                 </div>
 
-                <ResultGrid
-                    columns={activeResult?.columns ?? []}
-                    rows={activeResult?.rows ?? []}
-                    sortColumn={activeResult?.sortColumn}
-                    sortDirection={activeResult?.sortDirection}
-                    onSort={sortActiveResult}
-                    tableNameHint={selected?.name}
-                />
+                {activeBottomTab === 'results' ? (
+                    <>
+                        <ResultTabs
+                            count={resultSets.length}
+                            active={activeResultTab}
+                            onSelect={setActiveResultTab}
+                            statuses={resultSets.map((r) => r.status)}
+                        />
 
-                {activeResult && activeResult.dbmsOutput.length > 0 && (
-                    <pre className="max-h-32 overflow-y-auto border-t border-outline-variant bg-surface-container-lowest p-2 font-mono text-xs text-on-surface-variant">
-                        {activeResult.dbmsOutput.join('\n')}
-                    </pre>
+                        <div className="flex items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
+                            <ExportMenu
+                                columns={activeResult?.columns ?? []}
+                                rows={activeResult?.rows ?? []}
+                                tableNameHint={selected?.name}
+                            />
+                        </div>
+
+                        <ResultGrid
+                            columns={activeResult?.columns ?? []}
+                            rows={activeResult?.rows ?? []}
+                            sortColumn={activeResult?.sortColumn}
+                            sortDirection={activeResult?.sortDirection}
+                            onSort={sortActiveResult}
+                            tableNameHint={selected?.name}
+                        />
+
+                        {activeResult && activeResult.dbmsOutput.length > 0 && (
+                            <div className="border-t border-outline-variant bg-surface-container-lowest">
+                                <div className="flex items-center gap-1.5 px-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                                    <Icon name="terminal" size={12} />
+                                    DBMS_OUTPUT
+                                </div>
+                                <pre className="max-h-32 overflow-y-auto p-2 font-mono text-xs text-on-surface-variant">
+                                    {activeResult.dbmsOutput.join('\n')}
+                                </pre>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <Suspense fallback={null}>
+                        <HistoryPanel
+                            entries={historyEntries}
+                            loading={historyLoading}
+                            error={historyError}
+                            onRefresh={loadHistory}
+                            onClear={() => void clearHistory()}
+                        />
+                    </Suspense>
                 )}
 
                 {showExplain && (
@@ -1150,9 +1305,9 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     </Suspense>
                 )}
 
-                <div className="flex items-center gap-4 border-t border-outline-variant bg-surface-container-low px-3 py-1 text-xs text-on-surface-variant">
+                <div className="flex min-w-0 items-center gap-4 border-t border-outline-variant bg-surface-container-low px-3 py-1 text-xs text-on-surface-variant">
                     {running && (
-                        <span className="flex items-center gap-2">
+                        <span className="flex shrink-0 items-center gap-2">
                             <span
                                 aria-hidden
                                 className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
@@ -1163,12 +1318,16 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         </span>
                     )}
                     {activeResult?.status === 'done' && (
-                        <span>
+                        <span className="shrink-0">
                             {activeResult.rowsAffected} filas · {activeResult.durationMs}ms
                         </span>
                     )}
-                    {activeResult?.status === 'cancelled' && <span className="text-tertiary">Cancelada</span>}
-                    {activeResult?.status === 'error' && <span className="text-error">{activeResult.error}</span>}
+                    {activeResult?.status === 'cancelled' && <span className="shrink-0 text-tertiary">Cancelada</span>}
+                    {activeResult?.status === 'error' && (
+                        <span className="min-w-0 flex-1 truncate text-error" title={activeResult.error}>
+                            {activeResult.error}
+                        </span>
+                    )}
                 </div>
             </div>
 

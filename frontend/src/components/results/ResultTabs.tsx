@@ -14,7 +14,7 @@ export default function ResultTabs({count, active, onSelect, statuses}: ResultTa
     if (count <= 1) return null
 
     return (
-        <div className="flex gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
+        <div className="flex gap-1 overflow-x-auto border-b border-outline-variant bg-surface-container px-2 pt-1">
             {Array.from({length: count}).map((_, i) => (
                 <button
                     key={i}

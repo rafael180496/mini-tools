@@ -11,6 +11,8 @@ export function BeginTransaction(arg1:string):Promise<void>;
 
 export function CancelQuery(arg1:string):Promise<void>;
 
+export function ClearQueryHistory(arg1:string):Promise<void>;
+
 export function ClearRecentFiles():Promise<void>;
 
 export function CommitTransaction(arg1:string):Promise<void>;
@@ -19,7 +21,7 @@ export function DeleteConnection(arg1:string):Promise<void>;
 
 export function DisconnectConnection(arg1:string):Promise<void>;
 
-export function ExecuteQuery(arg1:string,arg2:string,arg3:string):Promise<void>;
+export function ExecuteQuery(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
 
 export function ExplainQuery(arg1:string,arg2:string,arg3:boolean):Promise<explain.Plan>;
 
@@ -79,6 +81,8 @@ export function SetEditorHeight(arg1:number):Promise<void>;
 
 export function SetOpenTabs(arg1:Array<string>):Promise<void>;
 
+export function SetRememberMasterKey(arg1:boolean):Promise<void>;
+
 export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
@@ -86,6 +90,8 @@ export function SetTheme(arg1:string):Promise<void>;
 export function SyncSchemaMetadata(arg1:string,arg2:string):Promise<db.SchemaMetadata>;
 
 export function TestConnection(arg1:main.ConnectionInput):Promise<void>;
+
+export function TryAutoUnlock():Promise<boolean>;
 
 export function UnlockVault(arg1:string):Promise<void>;
 

@@ -202,9 +202,10 @@ func (e *Executor) RollbackAll(ctx context.Context) {
 // connID, streaming Events under queryID. The frontend must call
 // EventsOn(queryID, ...) before invoking the ExecuteQuery binding that
 // calls this — queryID is client-generated precisely so there is no race
-// with the first emitted event.
-func (e *Executor) Execute(connID, queryID, sqlText string) {
-	go e.run(connID, queryID, sqlText)
+// with the first emitted event. captureDBMSOutput is the toolbar toggle —
+// see runOraclePLSQLBlock's doc comment.
+func (e *Executor) Execute(connID, queryID, sqlText string, captureDBMSOutput bool) {
+	go e.run(connID, queryID, sqlText, captureDBMSOutput)
 }
 
 // Cancel cancels the in-flight script registered under queryID, if any —
@@ -219,7 +220,7 @@ func (e *Executor) Cancel(queryID string) {
 	}
 }
 
-func (e *Executor) run(connID, queryID, sqlText string) {
+func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool) {
 	pool, err := e.pools.Get(connID)
 	if err != nil {
 		e.emit(queryID, Event{Type: "error", Error: err.Error()})
@@ -259,7 +260,7 @@ func (e *Executor) run(connID, queryID, sqlText string) {
 		start := time.Now()
 
 		if stmt.Kind == KindPLSQLBlock && dbType == db.DBTypeOracle {
-			e.runPLSQLBlock(ctx, pool, connID, queryID, stmt.Text, idx, total, start)
+			e.runPLSQLBlock(ctx, pool, connID, queryID, stmt.Text, idx, total, start, captureDBMSOutput)
 			continue
 		}
 
@@ -338,8 +339,13 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 	}
 
 	durationMs := time.Since(start).Milliseconds()
-	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: rowCount, DurationMs: durationMs})
+	// History is recorded before the terminal event is emitted (not after)
+	// so that by the time the frontend receives "done" and, say, refreshes
+	// its history panel, the row it's about to query for already exists —
+	// otherwise that refresh could race the write and miss the statement
+	// that just finished.
 	e.recordHistory(connID, sqlText, "done", rowCount, durationMs, "")
+	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: rowCount, DurationMs: durationMs})
 }
 
 func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, queryID, sqlText string, idx, total int, start time.Time) {
@@ -351,11 +357,11 @@ func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, quer
 
 	affected, _ := result.RowsAffected()
 	durationMs := time.Since(start).Milliseconds()
-	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: affected, DurationMs: durationMs})
 	e.recordHistory(connID, sqlText, "done", affected, durationMs, "")
+	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: affected, DurationMs: durationMs})
 }
 
-func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time) {
+func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time, captureDBMSOutput bool) {
 	// If a transaction is open for connID, DBMS_OUTPUT must run on that SAME
 	// reserved connection (its ENABLE/PUT_LINE/GET_LINE state is
 	// per-session) — reusing it here also means an explicit COMMIT/ROLLBACK
@@ -374,7 +380,7 @@ func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, quer
 		defer conn.Close()
 	}
 
-	result, dbmsOutput, err := runOraclePLSQLBlock(ctx, conn, sqlText)
+	result, dbmsOutput, err := runOraclePLSQLBlock(ctx, conn, sqlText, captureDBMSOutput)
 	if err != nil {
 		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
@@ -382,27 +388,27 @@ func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, quer
 
 	affected, _ := result.RowsAffected()
 	durationMs := time.Since(start).Milliseconds()
+	e.recordHistory(connID, sqlText, "done", affected, durationMs, "")
 	e.emit(queryID, Event{
 		Type: "done", StatementIndex: idx, TotalStatements: total,
 		RowsAffected: affected, DurationMs: durationMs, DBMSOutput: dbmsOutput,
 	})
-	e.recordHistory(connID, sqlText, "done", affected, durationMs, "")
 }
 
 // emitTerminal distinguishes a cancellation (ctx was cancelled) from a real
 // error, so the frontend can render "cancelada" instead of an error.
 func (e *Executor) emitTerminal(ctx context.Context, connID, queryID, sqlText string, err error, idx, total int) {
 	if ctx.Err() != nil {
-		e.emit(queryID, Event{Type: "cancelled", StatementIndex: idx, TotalStatements: total})
 		e.recordHistory(connID, sqlText, "cancelled", 0, 0, "")
+		e.emit(queryID, Event{Type: "cancelled", StatementIndex: idx, TotalStatements: total})
 		return
 	}
 	e.emitError(connID, queryID, sqlText, err, idx, total)
 }
 
 func (e *Executor) emitError(connID, queryID, sqlText string, err error, idx, total int) {
-	e.emit(queryID, Event{Type: "error", StatementIndex: idx, TotalStatements: total, Error: err.Error()})
 	e.recordHistory(connID, sqlText, "error", 0, 0, err.Error())
+	e.emit(queryID, Event{Type: "error", StatementIndex: idx, TotalStatements: total, Error: err.Error()})
 }
 
 func (e *Executor) recordHistory(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string) {

@@ -86,13 +86,28 @@ func (a *App) startup(ctx context.Context) {
 	)
 }
 
-// shutdown closes every open connection pool and zeroes the in-memory vault
-// key — otherwise it would sit in the process's memory unzeroed until the OS
-// reclaims it on exit.
+// shutdown closes every open connection pool, checkpoints and closes the
+// vault's own SQLite handle, and zeroes the in-memory vault key — otherwise
+// it would sit in the process's memory unzeroed until the OS reclaims it on
+// exit. This runs on every exit path, not just quitting the window normally
+// — Wails installs its own SIGTERM/SIGINT handler that calls this same
+// shutdown before the process actually exits, so a plain `kill <pid>` goes
+// through here too, not just Cmd+Q.
+//
+// Real bug found live: a.vault.Close() used to be missing here entirely,
+// leaving the vault's SQLite connection (WAL mode) open with no explicit
+// checkpoint on every exit. A process reopening the same vault.db shortly
+// after an abrupt termination could end up discarding the WAL during
+// recovery instead of replaying it — the vault would come back at the
+// right schema_migrations version but with every connection/history row
+// gone. See Store.Close's doc comment for the checkpoint itself.
 func (a *App) shutdown(ctx context.Context) {
 	a.executor.RollbackAll(ctx)
 	a.pools.CloseAll()
 	a.gate.Lock()
+	if a.vault != nil {
+		_ = a.vault.Close()
+	}
 }
 
 // requireUnlocked is the gate check every method below the vault lifecycle
@@ -121,6 +136,26 @@ func (a *App) InitializeVault(password string) error {
 // unlocks the vault in memory on success.
 func (a *App) UnlockVault(password string) error {
 	return a.vault.Unlock(password)
+}
+
+// TryAutoUnlock attempts to unlock the vault using a key previously saved to
+// the OS keychain (the "Recordar clave" toggle, see SetRememberMasterKey) —
+// called once at startup, before UnlockScreen would otherwise be shown. No
+// requireUnlocked guard: this runs precisely while still locked. Every
+// failure mode degrades to (false, nil) rather than surfacing an error —
+// see Store.TryAutoUnlock's doc comment.
+func (a *App) TryAutoUnlock() (bool, error) {
+	return a.vault.TryAutoUnlock()
+}
+
+// SetRememberMasterKey enables or disables auto-unlock via the OS keychain.
+// Requires the vault to be unlocked when enabling (it saves the current
+// session's key) — see Store.SetRememberMasterKey.
+func (a *App) SetRememberMasterKey(enabled bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetRememberMasterKey(enabled)
 }
 
 // GetSettings and SetTheme intentionally skip requireUnlocked — the settings
@@ -448,8 +483,9 @@ func (a *App) ensurePoolOpen(connID string) error {
 // ExecuteQuery opens (or reuses) the pool for connID and streams the result
 // of sqlText back as events under queryID. The frontend must call
 // EventsOn(queryID, ...) before invoking this — see
-// .claude/skills/mini-tools-patterns/SKILL.md.
-func (a *App) ExecuteQuery(connID, queryID, sqlText string) error {
+// .claude/skills/mini-tools-patterns/SKILL.md. captureDBMSOutput is the
+// toolbar's "DBMS_OUTPUT" toggle — ignored outside Oracle PL/SQL blocks.
+func (a *App) ExecuteQuery(connID, queryID, sqlText string, captureDBMSOutput bool) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
@@ -457,7 +493,7 @@ func (a *App) ExecuteQuery(connID, queryID, sqlText string) error {
 		return err
 	}
 
-	a.executor.Execute(connID, queryID, sqlText)
+	a.executor.Execute(connID, queryID, sqlText, captureDBMSOutput)
 	return nil
 }
 
@@ -520,6 +556,14 @@ func (a *App) ListQueryHistory(connID string, limit int) ([]vault.HistoryEntry, 
 		return nil, err
 	}
 	return a.vault.ListQueryHistory(connID, limit)
+}
+
+// ClearQueryHistory deletes connID's recorded execution history.
+func (a *App) ClearQueryHistory(connID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.ClearQueryHistory(connID)
 }
 
 // BackupVault prompts for a destination and writes a full vault backup

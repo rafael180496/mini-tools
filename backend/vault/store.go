@@ -51,6 +51,12 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 		return nil, fmt.Errorf("vault: enabling WAL: %w", err)
 	}
 
+	// Best-effort: consolidate any WAL left over from a previous run that
+	// didn't exit cleanly (see Close's doc comment for why that WAL could
+	// otherwise be at risk) before anything else touches the file. A no-op
+	// on a freshly created database.
+	_, _ = db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS vault_meta (
 			id             INTEGER PRIMARY KEY CHECK (id = 1),
@@ -174,17 +180,28 @@ func (s *Store) Initialize(password string) error {
 }
 
 // Unlock derives a key from the given password and the stored salt, then
-// tries to decrypt the verifier with it. A wrong password fails GCM
-// authentication and the gate stays locked — there is no other check and no
-// bypass.
+// hands it to validateAndSetKey.
 func (s *Store) Unlock(password string) error {
 	salt, err := vaultgate.LoadOrCreateSalt()
 	if err != nil {
 		return err
 	}
 
+	passwordBytes := []byte(password)
+	key := mtcrypto.DeriveKey(passwordBytes, salt)
+	mtcrypto.Zero(passwordBytes)
+
+	return s.validateAndSetKey(key)
+}
+
+// validateAndSetKey tries to decrypt the stored verifier with key — if GCM
+// authentication passes, the key is correct and the gate unlocks with it.
+// Shared by Unlock (which derives key from a password first) and
+// TryAutoUnlock (backend/vault/remember.go — which already has a raw key
+// from the OS keychain and skips password derivation entirely).
+func (s *Store) validateAndSetKey(key []byte) error {
 	var ciphertext, nonce []byte
-	err = s.db.QueryRow(`SELECT verifier, verifier_nonce FROM vault_meta WHERE id = 1`).Scan(&ciphertext, &nonce)
+	err := s.db.QueryRow(`SELECT verifier, verifier_nonce FROM vault_meta WHERE id = 1`).Scan(&ciphertext, &nonce)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("vault: not initialized")
 	}
@@ -192,14 +209,10 @@ func (s *Store) Unlock(password string) error {
 		return fmt.Errorf("vault: reading verifier: %w", err)
 	}
 
-	passwordBytes := []byte(password)
-	key := mtcrypto.DeriveKey(passwordBytes, salt)
-	mtcrypto.Zero(passwordBytes)
-
 	if _, err := mtcrypto.Decrypt(key, ciphertext, nonce); err != nil {
-		// Wrong password: this key is never handed to the gate, so nothing
-		// else holds a reference to it — zero it before it's dropped rather
-		// than leaving it to linger in memory until GC.
+		// Wrong key: this key is never handed to the gate, so nothing else
+		// holds a reference to it — zero it before it's dropped rather than
+		// leaving it to linger in memory until GC.
 		mtcrypto.Zero(key)
 		return ErrWrongPassword
 	}
@@ -239,7 +252,22 @@ func (s *Store) VerifyPassword(password string) error {
 	return nil
 }
 
-// Close closes the underlying database connection.
+// Close checkpoints the WAL into the main database file before closing the
+// underlying connection. Real bug found live: App.shutdown() never called
+// this — on every exit (including the OS-signal-triggered shutdown path
+// Wails installs for SIGTERM/SIGINT, which fires on a plain `kill`, not
+// just `kill -9`) the vault's SQLite handle was left open with an
+// unchecked WAL. A subsequent process reopening the same file while the
+// WAL/shm state from an abruptly-terminated process was still around could
+// end up discarding it during recovery instead of replaying it — observed
+// in practice as a vault that came back at the right schema_migrations
+// version but with every connection/history row gone. Checkpointing here
+// means every clean shutdown leaves all committed data in the main file
+// itself, not stranded in a WAL a future process has to reconstruct.
 func (s *Store) Close() error {
+	// Best-effort — closing the connection still matters even if the
+	// checkpoint itself fails for some reason (e.g. another connection
+	// briefly holding a read lock).
+	_, _ = s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
 	return s.db.Close()
 }

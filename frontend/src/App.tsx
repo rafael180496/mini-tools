@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import UnlockScreen from './components/lock/UnlockScreen'
 import Workspace from './components/Workspace'
-import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackup} from '../wailsjs/go/main/App'
+import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackup, TryAutoUnlock} from '../wailsjs/go/main/App'
 import {useTheme} from './hooks/useTheme'
 
 function App() {
@@ -10,7 +10,18 @@ function App() {
     const {theme, toggleTheme} = useTheme()
 
     useEffect(() => {
-        IsVaultInitialized().then(setIsInitialized)
+        // isInitialized is only set once TryAutoUnlock (the "Recordar
+        // clave" toggle) has already had its chance to run — otherwise
+        // UnlockScreen would flash briefly before auto-unlock resolves.
+        async function init() {
+            const initialized = await IsVaultInitialized()
+            if (initialized) {
+                const autoUnlocked = await TryAutoUnlock()
+                if (autoUnlocked) setUnlocked(true)
+            }
+            setIsInitialized(initialized)
+        }
+        void init()
     }, [])
 
     if (isInitialized === null) {

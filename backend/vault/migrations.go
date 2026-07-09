@@ -81,6 +81,14 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 7,
+		desc:    "agrega settings.remember_master_key para el toggle opt-in de auto-unlock via OS keychain",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN remember_master_key INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

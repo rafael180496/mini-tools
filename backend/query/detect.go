@@ -35,7 +35,7 @@ func IsPLSQLBlock(stmt string) bool {
 //     used by the splitter.
 //   - isPLSQL: true if this statement is a PL/SQL unit at all.
 func classifyStatementStart(s string) (awaitingBegin, isPLSQL bool) {
-	trimmed := strings.TrimLeft(s, " \t\r\n")
+	trimmed := skipLeadingNoise(s)
 	upper := strings.ToUpper(trimmed)
 
 	switch {

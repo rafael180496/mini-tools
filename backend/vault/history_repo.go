@@ -74,3 +74,14 @@ func (s *Store) ListQueryHistory(connID string, limit int) ([]HistoryEntry, erro
 	}
 	return out, rows.Err()
 }
+
+// ClearQueryHistory deletes every recorded history entry for connID — the
+// "Limpiar historial" button in HistoryPanel.tsx. Scoped to one connection
+// rather than wiping the whole table, matching how ListQueryHistory is
+// already scoped.
+func (s *Store) ClearQueryHistory(connID string) error {
+	if _, err := s.db.Exec(`DELETE FROM query_history WHERE connection_id = ?`, connID); err != nil {
+		return fmt.Errorf("vault: borrando historial de queries: %w", err)
+	}
+	return nil
+}

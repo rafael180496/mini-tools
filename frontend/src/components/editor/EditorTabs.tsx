@@ -20,7 +20,7 @@ interface EditorTabsProps {
 // "múltiples tabs: archivos abiertos + queries sueltas sin guardar".
 export default function EditorTabs({tabs, activeId, onSelect, onClose, onNew}: EditorTabsProps) {
     return (
-        <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
+        <div className="flex items-center gap-1 overflow-x-auto border-b border-outline-variant bg-surface-container px-2 pt-1">
             {tabs.map((t) => (
                 <div
                     key={t.id}
