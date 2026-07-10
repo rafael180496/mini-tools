@@ -26,6 +26,10 @@ type ConnectionSummary struct {
 	// means "scan every schema", the historical default before this field
 	// existed (schema_migrations version 2).
 	MetadataSchemas []string `json:"metadataSchemas"`
+	// Color is a user-chosen hex string (e.g. "#60a5fa") purely for visual
+	// identification in ConnectionTree.tsx — never interpreted server-side.
+	// Empty means "no color set" (schema_migrations version 8).
+	Color string `json:"color,omitempty"`
 }
 
 func splitSchemas(raw sql.NullString) []string {
@@ -39,7 +43,7 @@ func splitSchemas(raw sql.NullString) []string {
 // name/db_type. dsn must already be a fully-built DSN (see
 // db.Connector.BuildDSN) — this method only ever sees it in memory, right
 // before encrypting it.
-func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string) (*ConnectionSummary, error) {
+func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string, color string) (*ConnectionSummary, error) {
 	key, err := s.gate.Key()
 	if err != nil {
 		return nil, err
@@ -57,20 +61,29 @@ func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string) (*Conn
 	createdAt := time.Now().Unix()
 
 	if _, err := s.db.Exec(
-		`INSERT INTO connections (id, name, db_type, encrypted_dsn, nonce, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		id, name, string(dbType), ciphertext, nonce, createdAt,
+		`INSERT INTO connections (id, name, db_type, encrypted_dsn, nonce, created_at, color) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, name, string(dbType), ciphertext, nonce, createdAt, nullableString(color),
 	); err != nil {
 		return nil, fmt.Errorf("vault: saving connection: %w", err)
 	}
 
-	return &ConnectionSummary{ID: id, Name: name, DBType: string(dbType), CreatedAt: createdAt}, nil
+	return &ConnectionSummary{ID: id, Name: name, DBType: string(dbType), CreatedAt: createdAt, Color: color}, nil
+}
+
+// nullableString turns an empty string into SQL NULL — "no color set"
+// should read back as "" (zero value), not a stored empty string.
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // UpdateConnection re-encrypts dsn under the vault key and overwrites id's
 // name/db_type/encrypted_dsn in place — same "dsn must already be built"
 // contract as SaveConnection. Does NOT touch metadata_schemas (that's
 // SetConnectionSchemas' job) or created_at. Fails if id doesn't exist.
-func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string) error {
+func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, color string) error {
 	key, err := s.gate.Key()
 	if err != nil {
 		return err
@@ -82,8 +95,8 @@ func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string) 
 	}
 
 	res, err := s.db.Exec(
-		`UPDATE connections SET name = ?, db_type = ?, encrypted_dsn = ?, nonce = ? WHERE id = ?`,
-		name, string(dbType), ciphertext, nonce, id,
+		`UPDATE connections SET name = ?, db_type = ?, encrypted_dsn = ?, nonce = ?, color = ? WHERE id = ?`,
+		name, string(dbType), ciphertext, nonce, nullableString(color), id,
 	)
 	if err != nil {
 		return fmt.Errorf("vault: updating connection: %w", err)
@@ -101,7 +114,7 @@ func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string) 
 // ListConnections returns every saved connection, without DSNs, ordered by
 // name for the sidebar tree.
 func (s *Store) ListConnections() ([]ConnectionSummary, error) {
-	rows, err := s.db.Query(`SELECT id, name, db_type, created_at, metadata_schemas FROM connections ORDER BY name`)
+	rows, err := s.db.Query(`SELECT id, name, db_type, created_at, metadata_schemas, color FROM connections ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: listing connections: %w", err)
 	}
@@ -110,11 +123,12 @@ func (s *Store) ListConnections() ([]ConnectionSummary, error) {
 	out := []ConnectionSummary{}
 	for rows.Next() {
 		var c ConnectionSummary
-		var schemas sql.NullString
-		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt, &schemas); err != nil {
+		var schemas, color sql.NullString
+		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt, &schemas, &color); err != nil {
 			return nil, fmt.Errorf("vault: scanning connection: %w", err)
 		}
 		c.MetadataSchemas = splitSchemas(schemas)
+		c.Color = color.String
 		out = append(out, c)
 	}
 	return out, rows.Err()

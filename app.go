@@ -50,6 +50,9 @@ type ConnectionInput struct {
 	Name   string            `json:"name"`
 	DBType string            `json:"dbType"`
 	Params map[string]string `json:"params"`
+	// Color is a user-chosen hex string for ConnectionTree.tsx — purely
+	// visual, never interpreted server-side.
+	Color string `json:"color"`
 }
 
 // NewApp creates a new App application struct
@@ -278,7 +281,7 @@ func (a *App) SaveConnection(cfg ConnectionInput, force bool) (*vault.Connection
 		}
 	}
 
-	return a.vault.SaveConnection(cfg.Name, dbType, dsn)
+	return a.vault.SaveConnection(cfg.Name, dbType, dsn, cfg.Color)
 }
 
 // ConnectionEditInfo pre-fills the "editar conexión" form. Params never
@@ -289,6 +292,7 @@ type ConnectionEditInfo struct {
 	Name   string            `json:"name"`
 	DBType string            `json:"dbType"`
 	Params map[string]string `json:"params"`
+	Color  string            `json:"color"`
 }
 
 // GetConnectionForEdit decrypts id's saved DSN and parses it back into the
@@ -303,11 +307,12 @@ func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	var name string
+	var name, color string
 	found := false
 	for _, c := range conns {
 		if c.ID == id {
 			name = c.Name
+			color = c.Color
 			found = true
 			break
 		}
@@ -330,7 +335,7 @@ func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
 	}
 	delete(params, "password")
 
-	return &ConnectionEditInfo{Name: name, DBType: string(dbType), Params: params}, nil
+	return &ConnectionEditInfo{Name: name, DBType: string(dbType), Params: params, Color: color}, nil
 }
 
 // UpdateConnection rebuilds id's DSN from cfg and overwrites the saved
@@ -370,7 +375,7 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 		}
 	}
 
-	if err := a.vault.UpdateConnection(id, cfg.Name, dbType, dsn); err != nil {
+	if err := a.vault.UpdateConnection(id, cfg.Name, dbType, dsn, cfg.Color); err != nil {
 		return nil, err
 	}
 
@@ -564,6 +569,14 @@ func (a *App) ClearQueryHistory(connID string) error {
 		return err
 	}
 	return a.vault.ClearQueryHistory(connID)
+}
+
+// DeleteQueryHistoryEntry deletes a single history entry by id.
+func (a *App) DeleteQueryHistoryEntry(id string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.DeleteQueryHistoryEntry(id)
 }
 
 // BackupVault prompts for a destination and writes a full vault backup

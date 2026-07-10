@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react'
 import {ListConnections} from '../../../wailsjs/go/main/App'
 import {vault, db} from '../../../wailsjs/go/models'
 import logo from '../../assets/logo.png'
+import DbTypeIcon from '../DbTypeIcon'
 import Icon from '../Icon'
 
 interface ConnectionTreeProps {
@@ -22,6 +23,7 @@ interface ConnectionTreeProps {
     onOpenTable: (table: string, schema?: string) => void
     onExportConnectionConfig: (connId: string) => void
     onExportTableDDL: (table: string, schema?: string) => void
+    onExportSchemaDDL: (connId: string) => void
     onDisconnect: (connId: string) => void
     onConfigureSchemas: (conn: vault.ConnectionSummary) => void
     collapsed: boolean
@@ -52,6 +54,7 @@ export default function ConnectionTree({
     onOpenTable,
     onExportConnectionConfig,
     onExportTableDDL,
+    onExportSchemaDDL,
     onDisconnect,
     onConfigureSchemas,
     collapsed,
@@ -204,7 +207,7 @@ export default function ConnectionTree({
                                             : 'text-on-surface-variant hover:bg-surface-variant'
                                     }`}
                                 >
-                                    <Icon name="storage" size={18} />
+                                    <DbTypeIcon dbType={c.dbType} size={18} />
                                 </button>
                             ) : (
                                 <div
@@ -226,7 +229,15 @@ export default function ConnectionTree({
                                         title={`Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`}
                                         className="flex min-w-0 flex-1 items-center gap-2 text-left"
                                     >
-                                        <Icon name="storage" size={16} className="shrink-0 opacity-70" />
+                                        <DbTypeIcon dbType={c.dbType} size={16} />
+                                        {c.color && (
+                                            <span
+                                                aria-hidden
+                                                title="Color de esta conexión"
+                                                className="h-2 w-2 shrink-0 rounded-full"
+                                                style={{backgroundColor: c.color}}
+                                            />
+                                        )}
                                         <span className="truncate font-medium">{c.name}</span>
                                     </button>
                                     <button
@@ -246,6 +257,18 @@ export default function ConnectionTree({
                                     >
                                         <Icon name="output" size={15} />
                                     </button>
+                                    {isSelected && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                onExportSchemaDDL(c.id)
+                                            }}
+                                            title="Exporta a un archivo el DDL (CREATE TABLE, etc.) del schema activo de esta conexión"
+                                            className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                                        >
+                                            <Icon name="code" size={15} />
+                                        </button>
+                                    )}
                                     {(c.dbType === 'postgres' || c.dbType === 'oracle') && (
                                         <button
                                             onClick={(e) => {

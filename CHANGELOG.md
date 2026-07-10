@@ -4,8 +4,18 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-10
+
 ### Agregado
 
+- Ícono real por motor de conexión (Oracle/PostgreSQL/SQLite) y color de etiqueta personalizable por conexión, elegible al crear o editar — de un vistazo distinguís cuál conexión es cuál sin leer el nombre.
+- Guardar una conexión (crear o editar) ya no depende de que Test Connection haya sido exitoso — se puede guardar aunque el servidor no responda ahora mismo; Test Connection sigue disponible como verificación opcional aparte.
+- Tabs del editor reordenables por drag-and-drop (`@dnd-kit`) — antes el orden era fijo, el único orden posible era el de apertura.
+- Borrado individual de una entrada del historial de ejecuciones, además del borrado completo ya existente.
+- Modal de Configuración (ícono de engranaje en el toolbar) que agrupa "Backup vault" y "Recordar clave" — antes sueltos en la barra de herramientas principal.
+- Exportar DDL del esquema activo movido del toolbar del editor al árbol de conexiones, como opción de la conexión seleccionada (junto a Editar/Exportar config/Elegir esquemas/Desconectar).
+- `scripts/rebuild.sh` — corre `clean.sh` + `build.sh` en un solo paso para iterar más rápido.
+- `ConfirmDialog.tsx`, modal de confirmación genérico y temado — reemplaza los `window.confirm()` nativos, poco visibles dentro del webview de Wails.
 - Backup/restore del vault ahora piden la clave maestra: se verifica contra el propio archivo de backup (no contra la instalación local) antes de tocar cualquier archivo real, así una clave incorrecta falla limpio en vez de dejar un vault restaurado pero inaccesible.
 - Selector de esquemas al crear una conexión Postgres: después de un Test Connection exitoso, elegís qué esquemas escanear antes de guardar (además del selector ya existente desde el árbol de conexiones).
 - Autocompletado consciente del contexto SQL: tablas después de `FROM`/`INSERT INTO`/`UPDATE`, columnas acotadas a las tablas referenciadas después de `SELECT`/`WHERE`/`SET`, resolución de alias y de `esquema.`/`tabla.` al tipear un punto.
@@ -22,6 +32,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Corregido
 
+- El botón "Borrar historial" no parecía funcionar: usaba `window.confirm()` nativo, fácil de pasar por alto dentro del webview — reemplazado por un modal propio de la app.
 - `SELECT *` ya no bloqueaba la ejecución con una confirmación — ahora es solo una marca visual, igual que cualquier otro warning de estilo.
 - El grid de resultados mostraba un área blanca desbordada cuando había demasiadas columnas para el ancho de la ventana.
 

@@ -51,10 +51,29 @@ versión oficial", cualquier mención de esas dos palabras clave alcanza:
    detalle) y un link directo al archivo `.dmg` dentro de
    `releases/<os>/` (no solo a la carpeta) — así el link del README
    descarga el binario directo desde GitHub.
-7. El `.dmg` **sí se versiona en git** — no agregar `releases/**/*.dmg` (ni
+7. **Actualizar `CHANGELOG.md`** (formato [Keep a
+   Changelog](https://keepachangelog.com/en/1.1.0/), ver cabecera del
+   archivo — SemVer, fuente de verdad en `VERSION`):
+   - Mover **todo** el contenido actual de `## [Unreleased]` a una sección
+     nueva `## [X.Y.Z] - AAAA-MM-DD` (la versión recién bumpeada en el
+     paso 0, fecha real del día del empaquetado — nunca inventada ni
+     copiada de un ejemplo).
+   - Agregar ahí mismo cualquier feature/fix de la sesión actual que
+     todavía no estuviera listado en `[Unreleased]` — no es solo
+     "renombrar la sección", es la oportunidad de dejar el changelog al
+     día con lo que se hizo recién.
+   - Entradas concisas, una línea por feature/fix, agrupadas bajo
+     `### Agregado`/`### Corregido`/etc. según corresponda — mismo nivel
+     de detalle que las entradas ya existentes en el archivo (qué cambió y
+     por qué le importa a quien lo lee), nunca un resumen genérico tipo
+     "varias mejoras" o "fixes varios".
+   - Dejar `## [Unreleased]` en el archivo (encabezado vacío, sin
+     contenido debajo) para que la próxima tanda de cambios post-release
+     tenga dónde acumularse hasta el siguiente empaquetado.
+8. El `.dmg` **sí se versiona en git** — no agregar `releases/**/*.dmg` (ni
    patrón equivalente) a `.gitignore`. Ver "Por qué el `.dmg` se versiona
    en git" abajo para el porqué de esta decisión.
-8. **Nunca `git add`/`commit`/`push` nada de esto — ni el `.dmg`, ni las
+9. **Nunca `git add`/`commit`/`push` nada de esto — ni el `.dmg`, ni las
    docs tocadas.** Regla dura y sin excepción (ver "Commits / PRs" en
    [conventions.md](../rules/conventions.md)): el usuario hace todo el
    staging y los commits siempre, a mano. Terminar el proceso con el

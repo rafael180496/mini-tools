@@ -14,6 +14,7 @@ import {
     CancelQuery,
     ClearQueryHistory,
     CommitTransaction,
+    DeleteQueryHistoryEntry,
     DisconnectConnection,
     ExecuteQuery,
     ExplainQuery,
@@ -52,6 +53,7 @@ const ConnectionDialog = lazy(() => import('./connections/ConnectionDialog'))
 const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
 const HistoryPanel = lazy(() => import('./HistoryPanel'))
+const SettingsDialog = lazy(() => import('./SettingsDialog'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'done' | 'cancelled' | 'error'
@@ -170,6 +172,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [activeResultTab, setActiveResultTab] = useState(0)
     const [backupMessage, setBackupMessage] = useState('')
     const [showBackupPasswordDialog, setShowBackupPasswordDialog] = useState(false)
+    const [showSettingsDialog, setShowSettingsDialog] = useState(false)
     const [statusMessage, setStatusMessage] = useState('')
     const [regeneratingDocs, setRegeneratingDocs] = useState(false)
 
@@ -657,6 +660,15 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         }
     }
 
+    async function deleteHistoryEntry(id: string) {
+        try {
+            await DeleteQueryHistoryEntry(id)
+            setHistoryEntries((prev) => prev.filter((e) => e.id !== id))
+        } catch (err) {
+            setHistoryError(String(err))
+        }
+    }
+
     function cancelQuery() {
         if (queryIdRef.current) {
             void CancelQuery(queryIdRef.current)
@@ -859,6 +871,13 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         setActiveTabId(tab.id)
     }
 
+    // Drag-and-drop reorder from EditorTabs — the persistence effect keyed
+    // on openTabPathsKey (below) picks up the new order automatically,
+    // same as it already does for opening/closing tabs.
+    function reorderTabs(next: EditorTab[]) {
+        setTabs(next)
+    }
+
     function closeTab(id: string) {
         setTabs((prev) => {
             const next = prev.filter((t) => t.id !== id)
@@ -914,6 +933,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 onOpenTable={openTableQuery}
                 onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
                 onExportTableDDL={(table, schema) => void exportTableDDL(table, schema)}
+                onExportSchemaDDL={() => void exportSchemaDDL()}
                 onDisconnect={(connId) => void disconnectConnection(connId)}
                 onConfigureSchemas={setSchemaPickerConn}
                 collapsed={sidebarCollapsed}
@@ -1077,6 +1097,13 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         <div className="flex-1" />
 
                         <button
+                            onClick={() => setShowSettingsDialog(true)}
+                            title="Configuración: backup del vault y si recordar la clave maestra en este equipo"
+                            className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant"
+                        >
+                            <Icon name="settings" size={18} />
+                        </button>
+                        <button
                             onClick={onToggleTheme}
                             title="Cambiar tema"
                             className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant"
@@ -1176,39 +1203,17 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             <Icon name="refresh" size={16} />
                             Refrescar (F5)
                         </button>
-                        <button
-                            onClick={() => void exportSchemaDDL()}
-                            disabled={!selected}
-                            title="Exporta a un archivo el DDL (CREATE TABLE, etc.) del schema actual"
-                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
-                        >
-                            <Icon name="code" size={16} />
-                            DDL schema
-                        </button>
-                        <button
-                            onClick={() => setShowBackupPasswordDialog(true)}
-                            title="Copia el archivo del vault (donde se guardan tus conexiones cifradas) a otra ubicación, por si necesitás restaurarlo después — pide tu clave maestra para confirmar, porque el archivo puede terminar en otra máquina"
-                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
-                        >
-                            <Icon name="backup" size={16} />
-                            Backup vault
-                        </button>
-                        <label
-                            className="flex items-center gap-1.5 px-1 text-xs font-medium text-on-surface-variant"
-                            title="Guarda tu clave maestra en el Keychain de este equipo para no tener que escribirla cada vez que abrís la app. Trade-off real: cualquiera que pueda entrar a tu sesión de usuario del sistema operativo podría desbloquear el vault sin conocer la clave — mismo nivel de exposición que un 'recordarme' de cualquier gestor de contraseñas. Desactivalo para que vuelva a pedirla siempre."
-                        >
-                            <input
-                                type="checkbox"
-                                checked={rememberMasterKey}
-                                onChange={(e) => void toggleRememberMasterKey(e.target.checked)}
-                                className="accent-primary"
-                            />
-                            Recordar clave
-                        </label>
                     </div>
                 </div>
 
-                <EditorTabs tabs={tabs} activeId={activeTabId} onSelect={setActiveTabId} onClose={closeTab} onNew={newTab} />
+                <EditorTabs
+                    tabs={tabs}
+                    activeId={activeTabId}
+                    onSelect={setActiveTabId}
+                    onClose={closeTab}
+                    onNew={newTab}
+                    onReorder={reorderTabs}
+                />
 
                 <div className="min-w-0 border-b border-outline-variant" style={{height: editorHeight}}>
                     <MonacoSQLEditor
@@ -1308,6 +1313,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             error={historyError}
                             onRefresh={loadHistory}
                             onClear={() => void clearHistory()}
+                            onDeleteEntry={(id) => void deleteHistoryEntry(id)}
                         />
                     </Suspense>
                 )}
@@ -1358,6 +1364,20 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             setConnectionDialog(null)
                             setReloadToken((n) => n + 1)
                         }}
+                    />
+                </Suspense>
+            )}
+
+            {showSettingsDialog && (
+                <Suspense fallback={null}>
+                    <SettingsDialog
+                        rememberMasterKey={rememberMasterKey}
+                        onToggleRememberMasterKey={(checked) => void toggleRememberMasterKey(checked)}
+                        onBackupVault={() => {
+                            setShowSettingsDialog(false)
+                            setShowBackupPasswordDialog(true)
+                        }}
+                        onClose={() => setShowSettingsDialog(false)}
                     />
                 </Suspense>
             )}

@@ -89,6 +89,14 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 8,
+		desc:    "agrega connections.color para personalizar la etiqueta de color de cada conexión",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE connections ADD COLUMN color TEXT`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

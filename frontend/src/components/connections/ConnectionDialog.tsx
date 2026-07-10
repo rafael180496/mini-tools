@@ -9,6 +9,7 @@ import {
 } from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
 import {parseConnectionString} from '../../lib/connStringParser'
+import DbTypeIcon, {DB_TYPES, dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
 
 interface ConnectionDialogProps {
@@ -43,6 +44,7 @@ function requiredFields(dbType: DBType, oracleMode: OracleMode): string[] {
 
 export default function ConnectionDialog({editingId, onClose, onSaved}: ConnectionDialogProps) {
     const [name, setName] = useState('')
+    const [color, setColor] = useState('#60a5fa')
     const [dbType, setDbType] = useState<DBType>('sqlite')
     const [oracleMode, setOracleMode] = useState<OracleMode>('service_name')
     const [params, setParams] = useState<Record<string, string>>({})
@@ -74,6 +76,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
             .then((info) => {
                 setName(info.name)
                 setDbType(info.dbType as DBType)
+                if (info.color) setColor(info.color)
                 const {mode, ...rest} = info.params
                 if (mode) setOracleMode(mode as OracleMode)
                 setParams(rest)
@@ -129,7 +132,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
 
     function cfg(): main.ConnectionInput {
         const effectiveParams = dbType === 'oracle' ? {...params, mode: oracleMode} : params
-        return new main.ConnectionInput({name, dbType, params: effectiveParams})
+        return new main.ConnectionInput({name, dbType, params: effectiveParams, color})
     }
 
     const missing = requiredFields(dbType, oracleMode).filter((f) => !(params[f] ?? '').trim())
@@ -137,8 +140,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
     // Editing with a blank password means "keep the existing one" on save
     // (UpdateConnection merges it server-side) — but Test Connection has no
     // such merge, so it would falsely fail against an empty password.
-    // Simplest fix: just don't offer it in that state, push toward Guardar
-    // instead (which pings for real, with the real password, before it commits).
+    // Simplest fix: just don't offer it in that state.
     const passwordUnknownWhileEditing = !!editingId && dbType !== 'sqlite' && !(params.password ?? '').trim()
 
     async function testConnection() {
@@ -183,14 +185,16 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
         }
     }
 
-    async function doSave(force: boolean) {
+    // force=true siempre — ver handleSubmit: Guardar no depende de un ping
+    // exitoso, ni al crear ni al editar.
+    async function doSave() {
         setBusy(true)
         setError('')
         try {
             if (editingId) {
-                await UpdateConnection(editingId, cfg(), force)
+                await UpdateConnection(editingId, cfg(), true)
             } else {
-                const saved = await SaveConnection(cfg(), force)
+                const saved = await SaveConnection(cfg(), true)
                 // Everything checked == no restriction, same convention as
                 // SchemaPickerDialog — only persist a restriction if the
                 // user actually unchecked something.
@@ -206,9 +210,14 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
         }
     }
 
+    // Guardar nunca depende de un ping exitoso — Test Connection ya existe
+    // como paso aparte y opcional para quien quiera verificar antes.
+    // Guardar una conexión que hoy no responde (servidor apagado, VPN
+    // caída, etc.) es un caso de uso válido tanto al crear como al editar,
+    // no un error a bloquear.
     function handleSubmit(e: FormEvent) {
         e.preventDefault()
-        void doSave(false)
+        void doSave()
     }
 
     const inputClass =
@@ -224,15 +233,27 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                 <h2 className="text-lg font-semibold">{editingId ? 'Editar conexión' : 'Nueva conexión'}</h2>
                 {loadingEdit && <p className="text-xs text-on-surface-variant">Cargando conexión…</p>}
 
-                <label className={labelClass}>
-                    Nombre
-                    <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="mi base"
-                        className={inputClass}
-                    />
-                </label>
+                <div className="flex gap-2">
+                    <label className={`${labelClass} flex-1`}>
+                        Nombre
+                        <input
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="mi base"
+                            className={inputClass}
+                        />
+                    </label>
+                    <label className={labelClass} style={{width: '3.25rem'}}>
+                        Color
+                        <input
+                            type="color"
+                            value={color}
+                            onChange={(e) => setColor(e.target.value)}
+                            title="Color para identificar esta conexión en la lista de conexiones — solo visual, no afecta la conexión"
+                            className="h-9 w-full cursor-pointer rounded-lg border border-outline bg-surface p-1"
+                        />
+                    </label>
+                </div>
 
                 <label className={labelClass}>
                     Pegar connection string (opcional)
@@ -246,20 +267,32 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                     {pasteHint && <span className="text-xs text-on-surface-variant">{pasteHint}</span>}
                 </label>
 
-                <label className={labelClass}>
+                <div className={labelClass}>
                     Tipo
-                    <select
-                        value={dbType}
-                        onChange={(e) => changeDbType(e.target.value as DBType)}
-                        disabled={!!editingId}
-                        title={editingId ? 'No se puede cambiar el motor de una conexión existente — creá una nueva' : undefined}
-                        className={`${inputClass} disabled:opacity-50`}
-                    >
-                        <option value="sqlite">SQLite</option>
-                        <option value="postgres">PostgreSQL</option>
-                        <option value="oracle">Oracle</option>
-                    </select>
-                </label>
+                    <div className="flex gap-2">
+                        {DB_TYPES.map((t) => (
+                            <button
+                                key={t}
+                                type="button"
+                                onClick={() => changeDbType(t)}
+                                disabled={!!editingId}
+                                title={
+                                    editingId
+                                        ? 'No se puede cambiar el motor de una conexión existente — creá una nueva'
+                                        : `Usar ${dbTypeLabel(t)}`
+                                }
+                                className={`flex flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2 text-xs disabled:opacity-50 disabled:hover:bg-transparent ${
+                                    dbType === t
+                                        ? 'border-primary bg-primary-container text-on-primary-container'
+                                        : 'border-outline text-on-surface-variant hover:bg-surface-variant'
+                                }`}
+                            >
+                                <DbTypeIcon dbType={t} size={20} />
+                                {dbTypeLabel(t)}
+                            </button>
+                        ))}
+                    </div>
+                </div>
 
                 {dbType === 'sqlite' && (
                     <label className={labelClass}>
@@ -436,7 +469,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                         disabled={missing.length > 0 || pingStatus === 'testing' || passwordUnknownWhileEditing}
                         title={
                             passwordUnknownWhileEditing
-                                ? 'Ingresá el password para probar, o guardá directo (se prueba con el password actual antes de guardar)'
+                                ? 'Ingresá el password para probar — o guardá directo, Guardar no requiere probar la conexión primero'
                                 : 'Intenta conectar con estos datos ahora mismo, sin guardar la conexión — para confirmar que host/usuario/password son correctos'
                         }
                         className="flex items-center gap-1.5 rounded bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
@@ -457,7 +490,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                         </span>
                     )}
                     {passwordUnknownWhileEditing && pingStatus === 'idle' && (
-                        <span className="text-xs text-on-surface-variant">Password sin cambios — se prueba al guardar</span>
+                        <span className="text-xs text-on-surface-variant">Password sin cambios — se mantiene el actual al guardar</span>
                     )}
                 </div>
 
@@ -520,21 +553,14 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                     >
                         Cancelar
                     </button>
-                    {pingStatus === 'failed' && (
-                        <button
-                            type="button"
-                            disabled={!canSubmit}
-                            onClick={() => void doSave(true)}
-                            title="Guarda la conexión aunque la prueba haya fallado — útil si el servidor está apagado ahora pero vas a usarlo más tarde"
-                            className="rounded-lg bg-tertiary-container px-3 py-1.5 text-sm font-medium text-on-tertiary-container disabled:opacity-50"
-                        >
-                            Guardar de todos modos
-                        </button>
-                    )}
                     <button
                         type="submit"
                         disabled={!canSubmit}
-                        title={editingId ? 'Guarda los cambios de esta conexión' : 'Guarda esta conexión nueva en el vault cifrado'}
+                        title={
+                            editingId
+                                ? 'Guarda los cambios de esta conexión — no hace falta que Test Connection haya sido exitoso'
+                                : 'Guarda esta conexión nueva en el vault cifrado — no hace falta probarla antes, podés guardarla aunque no responda ahora mismo'
+                        }
                         className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
                         {editingId ? 'Guardar cambios' : 'Guardar'}

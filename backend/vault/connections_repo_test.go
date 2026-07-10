@@ -17,7 +17,7 @@ func TestConnectionLifecycle(t *testing.T) {
 	sqliteFile := filepath.Join(t.TempDir(), "mydata.db")
 	dsn := "file://" + sqliteFile
 
-	summary, err := store.SaveConnection("local dev", db.DBTypeSQLite, dsn)
+	summary, err := store.SaveConnection("local dev", db.DBTypeSQLite, dsn, "")
 	if err != nil {
 		t.Fatalf("SaveConnection: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestConnectionDSNIsStoredEncrypted(t *testing.T) {
 	}
 
 	dsn := "file:///tmp/plaintext-marker.db"
-	summary, err := store.SaveConnection("marker", db.DBTypeSQLite, dsn)
+	summary, err := store.SaveConnection("marker", db.DBTypeSQLite, dsn, "")
 	if err != nil {
 		t.Fatalf("SaveConnection: %v", err)
 	}

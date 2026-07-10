@@ -192,6 +192,7 @@ export namespace main {
 	    name: string;
 	    dbType: string;
 	    params: Record<string, string>;
+	    color: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionEditInfo(source);
@@ -202,12 +203,14 @@ export namespace main {
 	        this.name = source["name"];
 	        this.dbType = source["dbType"];
 	        this.params = source["params"];
+	        this.color = source["color"];
 	    }
 	}
 	export class ConnectionInput {
 	    name: string;
 	    dbType: string;
 	    params: Record<string, string>;
+	    color: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionInput(source);
@@ -218,6 +221,7 @@ export namespace main {
 	        this.name = source["name"];
 	        this.dbType = source["dbType"];
 	        this.params = source["params"];
+	        this.color = source["color"];
 	    }
 	}
 	export class FileContent {
@@ -245,6 +249,7 @@ export namespace vault {
 	    dbType: string;
 	    createdAt: number;
 	    metadataSchemas: string[];
+	    color?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionSummary(source);
@@ -257,6 +262,7 @@ export namespace vault {
 	        this.dbType = source["dbType"];
 	        this.createdAt = source["createdAt"];
 	        this.metadataSchemas = source["metadataSchemas"];
+	        this.color = source["color"];
 	    }
 	}
 	export class ExplainHistoryEntry {

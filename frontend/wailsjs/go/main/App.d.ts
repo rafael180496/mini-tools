@@ -19,6 +19,8 @@ export function CommitTransaction(arg1:string):Promise<void>;
 
 export function DeleteConnection(arg1:string):Promise<void>;
 
+export function DeleteQueryHistoryEntry(arg1:string):Promise<void>;
+
 export function DisconnectConnection(arg1:string):Promise<void>;
 
 export function ExecuteQuery(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;

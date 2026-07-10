@@ -30,6 +30,10 @@ export function DeleteConnection(arg1) {
   return window['go']['main']['App']['DeleteConnection'](arg1);
 }
 
+export function DeleteQueryHistoryEntry(arg1) {
+  return window['go']['main']['App']['DeleteQueryHistoryEntry'](arg1);
+}
+
 export function DisconnectConnection(arg1) {
   return window['go']['main']['App']['DisconnectConnection'](arg1);
 }

@@ -85,3 +85,13 @@ func (s *Store) ClearQueryHistory(connID string) error {
 	}
 	return nil
 }
+
+// DeleteQueryHistoryEntry deletes a single history entry by id — the
+// per-row delete button in HistoryPanel.tsx, scoped by primary key so it
+// only ever removes the row the user actually clicked.
+func (s *Store) DeleteQueryHistoryEntry(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM query_history WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("vault: borrando entrada de historial: %w", err)
+	}
+	return nil
+}
