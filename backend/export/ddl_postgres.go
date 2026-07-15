@@ -173,6 +173,34 @@ func PostgresSchemaDDL(ctx context.Context, pool *sql.DB, schema string) (string
 	return b.String(), nil
 }
 
+// PostgresFunctionDDL returns a function or procedure's full
+// CREATE-statement text via the built-in pg_get_functiondef — unlike
+// PostgresTableDDL, no hand reconstruction needed, Postgres exposes this
+// directly. oid (not schema+name) identifies the object because Postgres
+// allows overloading — the same name can have multiple signatures, only
+// the oid is unambiguous (see db.Function/db.Procedure's OID field).
+func PostgresFunctionDDL(ctx context.Context, pool *sql.DB, oid int64) (string, error) {
+	var ddl string
+	err := pool.QueryRowContext(ctx, `SELECT pg_get_functiondef($1)`, oid).Scan(&ddl)
+	if err != nil {
+		return "", fmt.Errorf("export: leyendo DDL de la función/procedure: %w", err)
+	}
+	return ddl + ";\n", nil
+}
+
+// PostgresTriggerDDL returns a trigger's CREATE TRIGGER statement via the
+// built-in pg_get_triggerdef. Same oid-not-name reasoning as
+// PostgresFunctionDDL — trigger names are only unique per-table, not
+// globally, so the oid is the simplest unambiguous key.
+func PostgresTriggerDDL(ctx context.Context, pool *sql.DB, oid int64) (string, error) {
+	var ddl string
+	err := pool.QueryRowContext(ctx, `SELECT pg_get_triggerdef($1, true)`, oid).Scan(&ddl)
+	if err != nil {
+		return "", fmt.Errorf("export: leyendo DDL del trigger: %w", err)
+	}
+	return ddl + ";\n", nil
+}
+
 func formatPostgresType(dtype string, charLen, numPrec, numScale sql.NullInt64) string {
 	switch dtype {
 	case "character varying":

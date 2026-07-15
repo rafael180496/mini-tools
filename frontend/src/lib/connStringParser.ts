@@ -1,19 +1,26 @@
 // Parses a pasted connection string (copy-pasted from a .env, a psql/JDBC
-// URL, an Oracle Easy Connect string, or a tnsnames.ora descriptor) into the
-// same {dbType, oracleMode, params} shape ConnectionDialog.tsx already uses
-// to build a ConnectionInput — see backend/db/{sqlite,postgres,oracle}.go's
-// BuildDSN for the params each engine actually needs.
+// URL, an Oracle Easy Connect string, a tnsnames.ora descriptor, or a Redis
+// URL) into the same {dbType, oracleMode/redisMode, params} shape
+// ConnectionDialog.tsx already uses to build a ConnectionInput — see
+// backend/db/{sqlite,postgres,oracle,redis}.go's BuildDSN for the params
+// each engine actually needs.
 //
 // Best-effort, not a full DSN grammar: unrecognized formats return null and
 // the dialog stays exactly as manually-fillable as before — nothing is lost
-// by trying.
+// by trying. Redis Cluster/Sentinel DSNs (multiple nodes) are deliberately
+// NOT covered here — they're rarely pasted as a single URL, and
+// backend/db/redis.go's cluster/sentinel DSN shape (nodes/sentinels in a
+// query param) isn't something a user would hand-paste anyway; only
+// standalone redis://[user:pass@]host[:port][/db] is detected.
 
-export type DBType = 'sqlite' | 'postgres' | 'oracle'
+export type DBType = 'sqlite' | 'postgres' | 'oracle' | 'redis'
 export type OracleMode = 'service_name' | 'easy_connect' | 'sid' | 'tns'
+export type RedisMode = 'standalone' | 'cluster' | 'sentinel'
 
 export interface ParsedConnection {
     dbType: DBType
     oracleMode?: OracleMode
+    redisMode?: RedisMode
     params: Record<string, string>
 }
 
@@ -155,6 +162,26 @@ function parseOracleEasyConnect(s: string): ParsedConnection | null {
     return {dbType: 'oracle', oracleMode: 'easy_connect', params}
 }
 
+// Standalone Redis URL: "redis://[user:pass@]host[:port][/db]" (or
+// "rediss://" for TLS) — same shape backend/db/redis.go's BuildDSN produces
+// for standalone mode.
+function parseRedisURL(s: string): ParsedConnection | null {
+    try {
+        const url = new URL(s)
+        const params: Record<string, string> = {}
+        if (url.hostname) params.host = url.hostname
+        if (url.port) params.port = url.port
+        if (url.username) params.user = decodeURIComponent(url.username)
+        if (url.password) params.password = decodeURIComponent(url.password)
+        const dbIndex = url.pathname.replace(/^\//, '')
+        if (dbIndex) params.db = dbIndex
+        if (url.protocol === 'rediss:') params.tls = 'true'
+        return {dbType: 'redis', redisMode: 'standalone', params}
+    } catch {
+        return null
+    }
+}
+
 // JDBC thin style: "jdbc:oracle:thin:user/password@host:port:sid",
 // "jdbc:oracle:thin:@host:port:sid", "jdbc:oracle:thin:@//host:port/service".
 function parseOracleJDBC(s: string): ParsedConnection | null {
@@ -185,6 +212,7 @@ export function parseConnectionString(raw: string): ParsedConnection | null {
     const s = stripEnvWrapper(raw)
     if (!s) return null
 
+    if (/^rediss?:\/\//i.test(s)) return parseRedisURL(s)
     if (/^postgres(ql)?:\/\//i.test(s)) return parsePostgresURL(s)
     if (/^sqlite3?:\/\//i.test(s)) return {dbType: 'sqlite', params: {path: stripSqliteScheme(s)}}
     if (/^file:\/\//i.test(s)) return {dbType: 'sqlite', params: {path: stripSqliteScheme(s)}}

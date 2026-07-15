@@ -1,22 +1,31 @@
 import {lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
+import ConfirmDialog from './ConfirmDialog'
+import DDLViewerModal, {type DDLObjectType} from './DDLViewerModal'
 import Icon from './Icon'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import ResultGrid from './results/ResultGrid'
 import ResultTabs from './results/ResultTabs'
 import ExportMenu from './results/ExportMenu'
-import EditorTabs, {EditorTab} from './editor/EditorTabs'
-import MonacoSQLEditor from './editor/MonacoSQLEditor'
+import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
+import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
+import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import RecentFilesMenu from './editor/RecentFilesMenu'
+import RedisBrowserTab from './redis/RedisBrowserTab'
 import {
     BackupVault,
     BeginTransaction,
     CancelQuery,
+    CancelRedisCommand,
     ClearQueryHistory,
     CommitTransaction,
+    CreateFolder,
+    DeleteConnection,
+    DeleteFolder,
     DeleteQueryHistoryEntry,
     DisconnectConnection,
     ExecuteQuery,
+    ExecuteRedisCommand,
     ExplainQuery,
     ExportConnectionConfig,
     ExportSchemaDDL,
@@ -25,14 +34,21 @@ import {
     GetSchemaMetadata,
     GetSettings,
     HasOpenTransaction,
+    ListConnections,
+    ListFolders,
     ListQueryHistory,
+    MoveConnectionToFolder,
     OpenSQLFileDialog,
     OpenSQLFilePath,
     RegenerateProjectDocs,
+    RenameFolder,
+    ReorderFolder,
     RollbackTransaction,
     SaveSQLFile,
     SaveSQLFileAs,
+    SetCollapsedSidebarModules,
     SetEditorHeight,
+    SetEditorTheme,
     SetOpenTabs,
     SetRememberMasterKey,
     SetSidebarCollapsed,
@@ -40,15 +56,14 @@ import {
 } from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
 import {db, explain, vault} from '../../wailsjs/go/models'
-import {setActiveMetadata} from '../monaco/metadataStore'
-import {setActiveDbType} from '../monaco/activeDbTypeStore'
-import {monaco} from '../monaco/setup'
+import type {EditorView} from '@codemirror/view'
 import {lintSQL} from '../lib/linter'
+import {lintRedisCommands} from '../lib/redisLinter'
 import type {Theme} from '../hooks/useTheme'
 
 // Lazy: both are only mounted once the user opens them (showDialog /
 // showExplain), so they don't need to be in the initial bundle — unlike
-// Monaco, which the editor needs immediately and can't defer.
+// the editor itself, which the workspace needs immediately and can't defer.
 const ConnectionDialog = lazy(() => import('./connections/ConnectionDialog'))
 const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
@@ -66,6 +81,18 @@ interface QueryEvent {
     durationMs?: number
     error?: string
     dbmsOutput?: string[]
+}
+
+// Mirrors backend/redisquery.Event's JSON shape (see runRedisText below).
+interface RedisQueryEvent {
+    type: 'done' | 'cancelled' | 'error'
+    commandIndex: number
+    totalCommands: number
+    commandText?: string
+    resultKind?: string
+    result?: unknown
+    durationMs?: number
+    error?: string
 }
 
 interface ResultSet {
@@ -110,15 +137,19 @@ function dirName(path: string) {
     return idx === -1 ? path : path.slice(0, idx)
 }
 
+function languageForDbType(dbType: string): TabLanguage {
+    return dbType === 'redis' ? 'redis-cli' : 'sql'
+}
+
+function newScratchTab(): EditorTab {
+    return {id: newTabId(), title: 'Query sin título', path: null, content: 'SELECT 1', dirty: false, connId: null, language: 'sql', kind: 'editor'}
+}
+
 // Vertical separator between button clusters in the toolbar — purely
 // visual, no state, so it lives outside the component like the other
 // helpers here.
 function Divider() {
     return <div className="mx-0.5 h-4 w-px shrink-0 bg-outline-variant" />
-}
-
-function newScratchTab(): EditorTab {
-    return {id: newTabId(), title: 'Query sin título', path: null, content: 'SELECT 1', dirty: false}
 }
 
 // LIMIT/FETCH syntax differs per engine — spec: "doble click tabla en árbol
@@ -133,25 +164,146 @@ function limitQueryFor(dbType: string, table: string, schema?: string): string {
     return `SELECT * FROM ${qualified} LIMIT 100`
 }
 
+function defaultSchema(schemas: string[]): string {
+    return schemas.includes('public') ? 'public' : schemas[0]
+}
+
+// Every distinct schema name across tables AND the scanned procedures/
+// functions/triggers/packages — scanning tables alone would silently hide
+// a schema that contains only routines (e.g. a Postgres "utils" schema
+// with functions but no tables of its own), falling it back into the flat/
+// ungrouped tree view (see ConnectionTree.tsx) instead of its own group.
+function schemasOf(meta: db.SchemaMetadata | null): string[] {
+    if (!meta) return []
+    const names = [
+        ...meta.tables.map((t) => t.schema),
+        ...(meta.procedures ?? []).map((p) => p.schema),
+        ...(meta.functions ?? []).map((f) => f.schema),
+        ...(meta.triggers ?? []).map((t) => t.schema),
+        ...(meta.packages ?? []).map((p) => p.schema),
+    ]
+    return Array.from(new Set(names.filter((s): s is string => !!s))).sort()
+}
+
 interface WorkspaceProps {
     theme: Theme
     onToggleTheme: () => void
 }
 
 export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
+    // `selected` is ONLY the sidebar's own navigation state — which
+    // connection's table/key tree is expanded there. It is deliberately
+    // never synced with the active editor tab in either direction (a
+    // confirmed decision): binding a tab to a connection is always an
+    // explicit act via EditorTabs' own per-tab selector, never a side
+    // effect of browsing the sidebar. See .claude/skills/mini-tools-patterns/SKILL.md.
     const [selected, setSelected] = useState<vault.ConnectionSummary | null>(null)
     // 'new' opens the dialog empty (create); any other string is a
     // connection id to edit; null keeps it closed.
     const [connectionDialog, setConnectionDialog] = useState<'new' | string | null>(null)
     const [schemaPickerConn, setSchemaPickerConn] = useState<vault.ConnectionSummary | null>(null)
+    // Which procedure/function/trigger/package's DDL is currently shown in
+    // the modal (see SchemaObjectsList.tsx/DDLViewerModal.tsx) — null when
+    // closed.
+    const [ddlViewer, setDdlViewer] = useState<{connId: string; objectType: DDLObjectType; schema: string; name: string; oid: number} | null>(
+        null,
+    )
     const [reloadToken, setReloadToken] = useState(0)
-    const [metadata, setMetadata] = useState<db.SchemaMetadata | null>(null)
-    const [metadataLoading, setMetadataLoading] = useState(false)
-    const [activeSchema, setActiveSchema] = useState<string | null>(null)
-    // Auto-commit off for `selected` — while true, Commit/Rollback are the
-    // only way back to auto-commit (see backend Executor.BeginTransaction's
-    // doc comment for why this can't just be a client-side flag: it mirrors
-    // a real reserved connection on the backend).
+
+    // Every saved connection, fetched here (in addition to ConnectionTree's
+    // own internal copy) so EditorTabs' per-tab selector and
+    // activeTabConnection below can resolve a tab's connId to a full
+    // ConnectionSummary without threading state through the sidebar tree.
+    const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
+    useEffect(() => {
+        ListConnections().then(setConnections).catch(() => {})
+    }, [reloadToken])
+
+    // Folder tree for organizing saved connections (backend/vault/folders_repo.go)
+    // — same reloadToken as connections, since creating/renaming/deleting a
+    // folder or moving a connection into one should refresh both together.
+    const [folders, setFolders] = useState<vault.Folder[]>([])
+    useEffect(() => {
+        ListFolders().then(setFolders).catch(() => {})
+    }, [reloadToken])
+
+    function createFolder(name: string, parentId: string) {
+        CreateFolder(name, parentId)
+            .then(() => setReloadToken((n) => n + 1))
+            .catch((err) => setStatusMessage(String(err)))
+    }
+
+    function renameFolder(id: string, name: string) {
+        RenameFolder(id, name)
+            .then(() => setReloadToken((n) => n + 1))
+            .catch((err) => setStatusMessage(String(err)))
+    }
+
+    function deleteFolder(id: string) {
+        DeleteFolder(id)
+            .then(() => setReloadToken((n) => n + 1))
+            .catch((err) => setStatusMessage(String(err)))
+    }
+
+    function reorderFolder(id: string, direction: 'up' | 'down') {
+        ReorderFolder(id, direction)
+            .then(() => setReloadToken((n) => n + 1))
+            .catch((err) => setStatusMessage(String(err)))
+    }
+
+    function moveConnectionToFolder(connId: string, folderId: string) {
+        MoveConnectionToFolder(connId, folderId)
+            .then(() => setReloadToken((n) => n + 1))
+            .catch((err) => setStatusMessage(String(err)))
+    }
+
+    // Which sidebar module ids ("connections", more later) are collapsed to
+    // an accordion header — distinct from sidebarCollapsed below, which is
+    // the whole-sidebar icon-only rail toggle.
+    const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set())
+
+    function toggleModuleCollapsed(moduleId: string) {
+        setCollapsedModules((prev) => {
+            const next = new Set(prev)
+            if (next.has(moduleId)) next.delete(moduleId)
+            else next.add(moduleId)
+            void SetCollapsedSidebarModules(Array.from(next))
+            return next
+        })
+    }
+
+    // Schema metadata cached per connection id — shared by the sidebar tree
+    // (keyed on `selected`) and the editor's autocomplete/toolbar (keyed on
+    // `activeTabConnection`), which are independent now and may or may not
+    // be the same connection at any given moment.
+    const [metadataByConn, setMetadataByConn] = useState<Record<string, db.SchemaMetadata>>({})
+    const [loadingConnIds, setLoadingConnIds] = useState<Set<string>>(new Set())
+    // Which schema is "active" (autocomplete narrowing, CLAUDE.md scope, the
+    // sidebar's expanded schema node), remembered per connection id for the
+    // same reason as metadataByConn.
+    const [activeSchemaByConn, setActiveSchemaByConn] = useState<Record<string, string>>({})
+
+    function ensureMetadata(connId: string, dbType: string, force: boolean) {
+        if (dbType === 'redis') return
+        if (!force && metadataByConn[connId]) return
+        setLoadingConnIds((prev) => new Set(prev).add(connId))
+        GetSchemaMetadata(connId, force)
+            .then((meta) => setMetadataByConn((prev) => ({...prev, [connId]: meta})))
+            .catch((err) => setStatusMessage(String(err)))
+            .finally(() =>
+                setLoadingConnIds((prev) => {
+                    const next = new Set(prev)
+                    next.delete(connId)
+                    return next
+                }),
+            )
+    }
+
+    // Auto-commit off for `activeTabConnection` — while true, Commit/Rollback
+    // are the only way back to auto-commit (see backend
+    // Executor.BeginTransaction's doc comment for why this can't just be a
+    // client-side flag: it mirrors a real reserved connection on the
+    // backend).
     const [txOpen, setTxOpen] = useState(false)
     const [txBusy, setTxBusy] = useState(false)
     // Toolbar toggle for capturing DBMS_OUTPUT on Oracle PL/SQL blocks
@@ -170,6 +322,25 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [runProgress, setRunProgress] = useState<{current: number; total: number} | null>(null)
     const [resultSets, setResultSets] = useState<ResultSet[]>([])
     const [activeResultTab, setActiveResultTab] = useState(0)
+    // Redis's own result stream (backend/redisquery.Event) — a command's
+    // result isn't tabular (columns/rows), so it doesn't fit ResultSet; see
+    // RedisResultView's transcript-style rendering instead of ResultTabs.
+    const [redisResults, setRedisResults] = useState<RedisCommandResult[]>([])
+    // A FLUSHALL/FLUSHDB in the script needs confirming before it runs (see
+    // lintRedisCommands) — a themed ConfirmDialog, never window.confirm()
+    // (see .claude/rules/conventions.md), holding the script text until the
+    // user confirms or cancels.
+    const [pendingRedisCommandRun, setPendingRedisCommandRun] = useState<string | null>(null)
+    // A double-click on a key in the sidebar's inline RedisKeyTree (via
+    // ConnectionTree's onOpenRedisKey) opens/focuses that connection's
+    // Redis Browser tab with this key pre-selected in the detail panel —
+    // see openRedisKeyDetail and RedisBrowserTab's initialKey/
+    // initialKeyToken props below. token forces the effect that consumes
+    // this to re-fire even when key is unchanged (double-clicking the same
+    // key again, or double-clicking a different key while that tab is
+    // already the active one).
+    const [pendingBrowserKey, setPendingBrowserKey] = useState<{connId: string; key: string; token: number} | null>(null)
+    const pendingBrowserKeyTokenRef = useRef(0)
     const [backupMessage, setBackupMessage] = useState('')
     const [showBackupPasswordDialog, setShowBackupPasswordDialog] = useState(false)
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
@@ -191,7 +362,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [historyError, setHistoryError] = useState('')
 
     const queryIdRef = useRef<string | null>(null)
-    const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+    const editorRef = useRef<EditorView | null>(null)
     const tabsRef = useRef(tabs)
     tabsRef.current = tabs
     const activeTabIdRef = useRef(activeTabId)
@@ -199,15 +370,41 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const pendingSortRef = useRef<{column: string; direction: 'asc' | 'desc'} | null>(null)
 
     const activeTabData = tabs.find((t) => t.id === activeTabId) ?? tabs[0]
+    // The connection the ACTIVE TAB is bound to — this, not `selected`,
+    // drives everything about running queries/commands and the toolbar's
+    // engine-specific controls. null when the tab has no connection linked
+    // yet, or when a previously-linked connection no longer exists (deleted
+    // while the app was closed) — both cases resolve to the same "unbound"
+    // state with no special-casing needed.
+    const activeTabConnection = activeTabData?.connId ? connections.find((c) => c.id === activeTabData.connId) ?? null : null
 
     function updateActiveTabContent(content: string) {
         setTabs((prev) => prev.map((t) => (t.id === activeTabIdRef.current ? {...t, content, dirty: true} : t)))
     }
 
-    // Session restore: reopen whatever tabs were open last time, and warn
-    // (once) about any that were deleted from disk since. Guards against
-    // the persist-effect below firing with the initial scratch tab BEFORE
-    // this has had a chance to run — see hasRestoredRef.
+    function changeTabConnection(tabId: string, connId: string | null) {
+        setTabs((prev) =>
+            prev.map((t) => {
+                if (t.id !== tabId) return t
+                if (!connId) return {...t, connId: null}
+                const conn = connections.find((c) => c.id === connId)
+                return {...t, connId, language: conn ? languageForDbType(conn.dbType) : t.language}
+            }),
+        )
+    }
+
+    function changeTabLanguage(tabId: string, language: TabLanguage) {
+        // Only meaningful while unbound — EditorTabs' own selector already
+        // disables this control once a connection is linked, this is just
+        // the defense-in-depth backstop.
+        setTabs((prev) => prev.map((t) => (t.id === tabId && !t.connId ? {...t, language} : t)))
+    }
+
+    // Session restore: reopen whatever tabs were open last time (path +
+    // connection/language binding), and warn (once) about any that were
+    // deleted from disk since. Guards against the persist-effect below
+    // firing with the initial scratch tab BEFORE this has had a chance to
+    // run — see hasRestoredRef.
     const [deletedPaths, setDeletedPaths] = useState<string[]>([])
     const hasRestoredRef = useRef(false)
 
@@ -226,6 +423,11 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // just to reflect the persisted state in the checkbox; the actual
     // secret never passes through the frontend.
     const [rememberMasterKey, setRememberMasterKeyState] = useState(false)
+    // CodeMirror color theme id (frontend/src/codemirror/themes.ts's
+    // registry) — "auto" (the default) follows the app-wide dark/light
+    // `theme` prop instead of a fixed preset, resolved inside
+    // CodeMirrorTabbedEditor via resolveEditorTheme.
+    const [editorThemeId, setEditorThemeIdState] = useState('auto')
 
     useEffect(() => {
         let cancelled = false
@@ -235,23 +437,57 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 if (cancelled) return
                 setSidebarCollapsed(!!settings.sidebarCollapsed)
                 setRememberMasterKeyState(!!settings.rememberMasterKey)
+                if (settings.editorTheme) {
+                    setEditorThemeIdState(settings.editorTheme)
+                }
+                if (settings.collapsedSidebarModules) {
+                    setCollapsedModules(new Set(settings.collapsedSidebarModules))
+                }
                 if (settings.editorHeight) {
                     setEditorHeightState(Math.min(EDITOR_HEIGHT_MAX, Math.max(EDITOR_HEIGHT_MIN, settings.editorHeight)))
                 }
 
-                const paths = settings.openTabs ?? []
-                if (paths.length === 0) return
+                const infos = settings.openTabs ?? []
+                if (infos.length === 0) return
 
                 const restored: EditorTab[] = []
                 const deleted: string[] = []
-                for (const path of paths) {
+                for (const info of infos) {
+                    // Redis Browser tabs have no file — nothing to open,
+                    // just reopen the tab itself against the same
+                    // connection (RedisKeyTree/RedisKeyDetailPanel show
+                    // their own error state if that connection is gone).
+                    if (info.kind === 'redis-browser') {
+                        if (info.connId) {
+                            restored.push({
+                                id: newTabId(),
+                                title: 'Redis Browser',
+                                path: null,
+                                content: '',
+                                dirty: false,
+                                connId: info.connId,
+                                language: 'redis-cli',
+                                kind: 'redis-browser',
+                            })
+                        }
+                        continue
+                    }
                     try {
-                        const file = await OpenSQLFilePath(path)
+                        const file = await OpenSQLFilePath(info.path)
                         if (file) {
-                            restored.push({id: newTabId(), title: fileTitle(file.path), path: file.path, content: file.content, dirty: false})
+                            restored.push({
+                                id: newTabId(),
+                                title: fileTitle(file.path),
+                                path: file.path,
+                                content: file.content,
+                                dirty: false,
+                                connId: info.connId || null,
+                                language: (info.language as TabLanguage) || 'sql',
+                                kind: 'editor',
+                            })
                         }
                     } catch {
-                        deleted.push(path)
+                        deleted.push(info.path)
                     }
                 }
                 if (cancelled) return
@@ -264,7 +500,17 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     setDeletedPaths(deleted)
                     // Persist the cleaned-up list right away so these
                     // don't get flagged again next launch.
-                    void SetOpenTabs(restored.map((t) => t.path).filter((p): p is string => !!p))
+                    void SetOpenTabs(
+                        restored.map(
+                            (t) =>
+                                new vault.OpenTabInfo({
+                                    path: t.path ?? '',
+                                    connId: t.connId ?? '',
+                                    language: t.language,
+                                    kind: t.kind === 'redis-browser' ? 'redis-browser' : '',
+                                }),
+                        ),
+                    )
                 }
             })
             .catch(() => {})
@@ -295,6 +541,11 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         }
     }
 
+    function changeEditorTheme(id: string) {
+        setEditorThemeIdState(id)
+        void SetEditorTheme(id)
+    }
+
     // Drag-to-resize the editor pane against the results grid below it.
     // Only persists once on mouseup (not on every mousemove) — dragging can
     // fire dozens of events per second, and the vault write doesn't need to
@@ -322,18 +573,32 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         window.addEventListener('mouseup', onUp)
     }
 
-    // Persist the current set of open tab paths whenever it changes (open,
-    // close, or a tab gains a path via Save/Save As) — but NOT on every
-    // keystroke, which would also change `tabs`' reference via
-    // updateActiveTabContent. Keying on just the ordered path list (not the
-    // whole tabs array) keeps this from firing on content-only changes.
-    const openTabPathsKey = tabs.map((t) => t.path ?? '').join(' ')
+    // Persist the current set of open tabs (path + connection/language
+    // binding) whenever any of that changes — but NOT on every keystroke,
+    // which would also change `tabs`' reference via updateActiveTabContent.
+    // Keying on path+connId+language+kind per tab (not the whole tabs
+    // array) keeps this from firing on content-only changes.
+    const openTabsKey = tabs.map((t) => `${t.path ?? ''}|${t.connId ?? ''}|${t.language}|${t.kind}`).join(' ')
     useEffect(() => {
         if (!hasRestoredRef.current) return
-        const paths = tabs.map((t) => t.path).filter((p): p is string => !!p)
-        void SetOpenTabs(paths)
+        // A plain editor tab only persists once it has a path (unsaved
+        // scratch queries were never restorable); a redis-browser tab has
+        // no path at all but is restorable via connId alone, so it
+        // qualifies too.
+        const infos = tabs
+            .filter((t) => !!t.path || t.kind === 'redis-browser')
+            .map(
+                (t) =>
+                    new vault.OpenTabInfo({
+                        path: t.path ?? '',
+                        connId: t.connId ?? '',
+                        language: t.language,
+                        kind: t.kind === 'redis-browser' ? 'redis-browser' : '',
+                    }),
+            )
+        void SetOpenTabs(infos)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [openTabPathsKey])
+    }, [openTabsKey])
 
     // BackupVault re-verifies the master password server-side before
     // writing anything — see backend/vault/store.go's VerifyPassword doc
@@ -345,49 +610,93 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         setBackupMessage(dest ? `Backup guardado en ${dest}` : '')
     }
 
-    // Fetch (and cache) schema metadata whenever the selected connection
-    // changes, so autocomplete/hover/the sidebar tree have data as soon as
-    // possible.
+    // Fetch (and cache) schema metadata for the sidebar's expanded
+    // connection and for the active tab's bound connection independently —
+    // they may be different connections, or the same one (cache hit either
+    // way).
     useEffect(() => {
-        if (!selected) {
-            setMetadata(null)
-            setMetadataLoading(false)
-            return
-        }
-        setMetadataLoading(true)
-        setMetadata(null)
-        GetSchemaMetadata(selected.id, false)
-            .then((meta) => setMetadata(meta))
-            .catch((err) => setStatusMessage(String(err)))
-            .finally(() => setMetadataLoading(false))
-    }, [selected])
+        if (selected) ensureMetadata(selected.id, selected.dbType, false)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selected?.id])
 
-    // Keep the history tab showing the newly-selected connection's own
-    // history instead of the previous connection's, if it's the active tab
-    // — only fetches when it's actually the one showing.
+    useEffect(() => {
+        if (activeTabConnection) ensureMetadata(activeTabConnection.id, activeTabConnection.dbType, false)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTabConnection?.id])
+
+    const sidebarMetadata = selected ? metadataByConn[selected.id] ?? null : null
+    const sidebarMetadataLoading = selected ? loadingConnIds.has(selected.id) : false
+    const sidebarSchemas = schemasOf(sidebarMetadata)
+    const sidebarActiveSchema = selected ? activeSchemaByConn[selected.id] ?? null : null
+
+    const editorMetadata = activeTabConnection ? metadataByConn[activeTabConnection.id] ?? null : null
+    const editorMetadataLoading = activeTabConnection ? loadingConnIds.has(activeTabConnection.id) : false
+    const editorSchemas = schemasOf(editorMetadata)
+    const editorActiveSchema = activeTabConnection ? activeSchemaByConn[activeTabConnection.id] ?? null : null
+
+    // Keep the active schema valid as metadata changes (new connection, F5):
+    // preserve it if it still exists, default to "public" if present,
+    // otherwise the first schema alphabetically. Runs independently for the
+    // sidebar's connection and the editor's, same reasoning as the two
+    // ensureMetadata effects above.
+    useEffect(() => {
+        if (!selected || sidebarSchemas.length === 0) return
+        setActiveSchemaByConn((prev) => {
+            if (prev[selected.id] && sidebarSchemas.includes(prev[selected.id])) return prev
+            return {...prev, [selected.id]: defaultSchema(sidebarSchemas)}
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selected?.id, sidebarMetadata])
+
+    useEffect(() => {
+        if (!activeTabConnection || editorSchemas.length === 0) return
+        setActiveSchemaByConn((prev) => {
+            if (prev[activeTabConnection.id] && editorSchemas.includes(prev[activeTabConnection.id])) return prev
+            return {...prev, [activeTabConnection.id]: defaultSchema(editorSchemas)}
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTabConnection?.id, editorMetadata])
+
+    // The editor's autocomplete/hover only ever see the active tab's
+    // connection's active schema's tables — "el console debe indicar en qué
+    // BD/schema quiero que esté trabajando" — not the whole multi-schema
+    // catalog at once (that's still the full fetch from GetSchemaMetadata;
+    // this only narrows what's *shown*). Passed directly as a prop to
+    // CodeMirrorTabbedEditor, which reconfigures its own per-tab schema
+    // Compartment — no global mutable store to push into (see that
+    // component's module doc comment for why, now that each tab carries
+    // its own CodeMirror EditorState).
+    const filteredEditorMetadata: db.SchemaMetadata | null =
+        editorMetadata && editorActiveSchema
+            ? new db.SchemaMetadata({tables: editorMetadata.tables.filter((t) => t.schema === editorActiveSchema)})
+            : editorMetadata
+
+    // Keep the history tab showing the active tab connection's own history
+    // instead of the previous one's, if it's the active bottom tab — only
+    // fetches when it's actually the one showing.
     useEffect(() => {
         if (activeBottomTab === 'history') loadHistory()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selected])
+    }, [activeTabConnection?.id])
 
     // Re-sync the auto-commit UI with the backend's actual state — the
     // reserved connection lives in the Go executor, not in this component,
     // so trust it rather than assuming local state survived a reconnect.
     useEffect(() => {
-        if (!selected) {
+        if (!activeTabConnection) {
             setTxOpen(false)
             return
         }
-        HasOpenTransaction(selected.id)
+        HasOpenTransaction(activeTabConnection.id)
             .then(setTxOpen)
             .catch(() => setTxOpen(false))
-    }, [selected])
+    }, [activeTabConnection?.id])
 
     async function beginTransaction() {
-        if (!selected) return
+        if (!activeTabConnection) return
         setTxBusy(true)
         try {
-            await BeginTransaction(selected.id)
+            await BeginTransaction(activeTabConnection.id)
             setTxOpen(true)
             setStatusMessage('Transacción abierta — auto-commit desactivado')
         } catch (err) {
@@ -398,10 +707,10 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     async function commitTransaction() {
-        if (!selected) return
+        if (!activeTabConnection) return
         setTxBusy(true)
         try {
-            await CommitTransaction(selected.id)
+            await CommitTransaction(activeTabConnection.id)
             setTxOpen(false)
             setStatusMessage('Commit hecho — auto-commit activado')
         } catch (err) {
@@ -412,10 +721,10 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     async function rollbackTransaction() {
-        if (!selected) return
+        if (!activeTabConnection) return
         setTxBusy(true)
         try {
-            await RollbackTransaction(selected.id)
+            await RollbackTransaction(activeTabConnection.id)
             setTxOpen(false)
             setStatusMessage('Rollback hecho — auto-commit activado')
         } catch (err) {
@@ -426,16 +735,9 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     function refreshMetadata() {
-        if (!selected) return
-        setMetadataLoading(true)
+        if (!activeTabConnection) return
         setStatusMessage('Actualizando metadata…')
-        GetSchemaMetadata(selected.id, true)
-            .then((meta) => {
-                setMetadata(meta)
-                setStatusMessage('Metadata actualizada')
-            })
-            .catch((err) => setStatusMessage(String(err)))
-            .finally(() => setMetadataLoading(false))
+        ensureMetadata(activeTabConnection.id, activeTabConnection.dbType, true)
     }
 
     // Per-schema sync (the icon next to a schema node in ConnectionTree) —
@@ -445,65 +747,15 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     async function syncSchema(connId: string, schema: string) {
         try {
             const meta = await SyncSchemaMetadata(connId, schema)
-            if (connId === selected?.id) setMetadata(meta)
+            setMetadataByConn((prev) => ({...prev, [connId]: meta}))
         } catch (err) {
             setStatusMessage(String(err))
         }
     }
 
-    // Postgres and Oracle connections can span multiple schemas/owners
-    // (table.schema is populated for both when the connection has one or
-    // more schemas selected via SchemaPickerDialog — see
-    // backend/db/metadata.go). A connection with no schema restriction
-    // saved keeps falling back to its unqualified default scan
-    // (USER_* for Oracle, every non-system schema for Postgres), where
-    // table.schema is empty for Oracle specifically, so `schemas` comes
-    // back empty and everything below just falls through unfiltered,
-    // unchanged from before this feature existed.
-    const schemas = metadata
-        ? Array.from(new Set(metadata.tables.map((t) => t.schema).filter((s): s is string => !!s))).sort()
-        : []
-
-    // Keep the active schema valid as metadata changes (new connection,
-    // F5): preserve it if it still exists, default to "public" if present,
-    // otherwise the first schema alphabetically.
-    useEffect(() => {
-        if (schemas.length === 0) {
-            setActiveSchema(null)
-            return
-        }
-        setActiveSchema((prev) => {
-            if (prev && schemas.includes(prev)) return prev
-            return schemas.includes('public') ? 'public' : schemas[0]
-        })
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [metadata])
-
-    // The sidebar tree and Monaco's autocomplete/hover both only see the
-    // active schema's tables — "el console debe indicar en qué BD/schema
-    // quiero que esté trabajando" — not the whole multi-schema catalog at
-    // once (that's still the full fetch from GetSchemaMetadata; this only
-    // narrows what's *shown*, see Fase 3 for narrowing what's *fetched*).
-    const filteredMetadata: db.SchemaMetadata | null =
-        metadata && activeSchema
-            ? new db.SchemaMetadata({tables: metadata.tables.filter((t) => t.schema === activeSchema)})
-            : metadata
-
-    useEffect(() => {
-        setActiveMetadata(filteredMetadata)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filteredMetadata])
-
-    // Drives sqlLanguage.ts's per-engine snippet/keyword filtering — same
-    // mutable-holder pattern as setActiveMetadata above, since that
-    // provider is also registered once, globally, outside the React tree.
-    useEffect(() => {
-        setActiveDbType(selected?.dbType ?? null)
-    }, [selected])
-
     const runText = useCallback(
-        (sqlText: string) => {
-            if (!selected || running || !sqlText.trim()) return
+        (connection: vault.ConnectionSummary, sqlText: string) => {
+            if (running || !sqlText.trim()) return
 
             const queryId = newQueryId()
             queryIdRef.current = queryId
@@ -567,14 +819,67 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 }
             })
 
-            ExecuteQuery(selected.id, queryId, sqlText, dbmsOutputEnabled).catch((err) => {
+            ExecuteQuery(connection.id, queryId, sqlText, dbmsOutputEnabled).catch((err) => {
                 setResultSets([{...emptyResultSet(), status: 'error', error: String(err)}])
                 setRunning(false)
                 setRunProgress(null)
                 unsubscribe()
             })
         },
-        [selected, running, dbmsOutputEnabled, activeBottomTab],
+        [running, dbmsOutputEnabled, activeBottomTab],
+    )
+
+    // Redis counterpart of runText — same client-generated queryId +
+    // EventsOn-before-invoking contract (see ExecuteRedisCommand's doc
+    // comment), but streams backend/redisquery.Event (one entry per
+    // command) into redisResults instead of columns/rows into resultSets.
+    const runRedisText = useCallback(
+        (connection: vault.ConnectionSummary, commandText: string) => {
+            if (running || !commandText.trim()) return
+
+            const queryId = newQueryId()
+            queryIdRef.current = queryId
+            setRunning(true)
+            setRunProgress(null)
+            setRedisResults([])
+
+            const unsubscribe = EventsOn(queryId, (event: RedisQueryEvent) => {
+                setRunProgress({current: event.commandIndex + 1, total: event.totalCommands})
+                setRedisResults((prev) => {
+                    const next = [...prev]
+                    while (next.length <= event.commandIndex) {
+                        next.push({commandText: '', status: 'running', durationMs: 0, error: ''})
+                    }
+                    next[event.commandIndex] = {
+                        commandText: event.commandText ?? next[event.commandIndex].commandText,
+                        status: event.type,
+                        resultKind: event.resultKind,
+                        result: event.result,
+                        durationMs: event.durationMs ?? 0,
+                        error: event.error ?? '',
+                    }
+                    return next
+                })
+
+                if (
+                    event.type === 'cancelled' ||
+                    ((event.type === 'done' || event.type === 'error') && event.commandIndex === event.totalCommands - 1)
+                ) {
+                    setRunning(false)
+                    setRunProgress(null)
+                    unsubscribe()
+                    if (activeBottomTab === 'history') loadHistory()
+                }
+            })
+
+            ExecuteRedisCommand(connection.id, queryId, commandText).catch((err) => {
+                setRedisResults([{commandText, status: 'error', durationMs: 0, error: String(err)}])
+                setRunning(false)
+                setRunProgress(null)
+                unsubscribe()
+            })
+        },
+        [running, activeBottomTab],
     )
 
     // Spec: "linter básico... warning antes de ejecutar". Only for
@@ -583,32 +888,49 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // which would otherwise pop this dialog on every double-click. Only
     // `blocking` warnings (UPDATE/DELETE without WHERE — genuinely
     // destructive) actually stop execution; non-blocking ones (SELECT *) are
-    // still shown as an editor marker by MonacoSQLEditor.tsx but never
+    // still shown as an editor marker by MonacoTabbedEditor.tsx but never
     // prevent running a plain read query.
-    function confirmAndRun(sqlText: string) {
-        const warnings = lintSQL(sqlText).filter((w) => w.blocking)
+    function confirmAndRun(text: string) {
+        if (!activeTabConnection) {
+            setStatusMessage('Vinculá esta pestaña a una conexión antes de ejecutar (ícono a la izquierda del título)')
+            return
+        }
+
+        if (activeTabConnection.dbType === 'redis') {
+            // FLUSHALL/FLUSHDB block via a themed ConfirmDialog (never
+            // window.confirm(), see .claude/rules/conventions.md) instead
+            // of the SQL branch's inline window.confirm() below — that one
+            // is pre-existing code, left as-is rather than touched as a
+            // drive-by fix outside this task's scope.
+            const warnings = lintRedisCommands(text).filter((w) => w.blocking)
+            if (warnings.length > 0) {
+                setPendingRedisCommandRun(text)
+                return
+            }
+            runRedisText(activeTabConnection, text)
+            return
+        }
+
+        const warnings = lintSQL(text).filter((w) => w.blocking)
         if (warnings.length > 0) {
             const message = warnings.map((w) => `Línea ${w.startLineNumber}: ${w.message}`).join('\n')
             if (!window.confirm(`Advertencias antes de ejecutar:\n\n${message}\n\n¿Ejecutar de todas formas?`)) {
                 return
             }
         }
-        runText(sqlText)
+        runText(activeTabConnection, text)
     }
 
     function runSelectionOrLine() {
-        const editor = editorRef.current
-        if (!editor) return
-        const selection = editor.getSelection()
-        const model = editor.getModel()
-        if (!model) return
+        const view = editorRef.current
+        if (!view) return
+        const {from, to, empty} = view.state.selection.main
 
         let text = ''
-        if (selection && !selection.isEmpty()) {
-            text = model.getValueInRange(selection)
+        if (!empty) {
+            text = view.state.sliceDoc(from, to)
         } else {
-            const line = selection?.positionLineNumber ?? 1
-            text = model.getLineContent(line)
+            text = view.state.doc.lineAt(from).text
         }
         confirmAndRun(text)
     }
@@ -618,7 +940,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     async function runExplain(analyze: boolean) {
-        if (!selected) return
+        if (!activeTabConnection) return
         const text = activeTabData?.content ?? ''
         if (!text.trim()) return
 
@@ -626,7 +948,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         setExplainLoading(true)
         setExplainError('')
         try {
-            const plan = await ExplainQuery(selected.id, text, analyze)
+            const plan = await ExplainQuery(activeTabConnection.id, text, analyze)
             setExplainPlan(plan)
         } catch (err) {
             setExplainError(String(err))
@@ -636,10 +958,10 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     function loadHistory() {
-        if (!selected) return
+        if (!activeTabConnection) return
         setHistoryLoading(true)
         setHistoryError('')
-        ListQueryHistory(selected.id, 200)
+        ListQueryHistory(activeTabConnection.id, 200)
             .then(setHistoryEntries)
             .catch((err) => setHistoryError(String(err)))
             .finally(() => setHistoryLoading(false))
@@ -651,9 +973,9 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     async function clearHistory() {
-        if (!selected) return
+        if (!activeTabConnection) return
         try {
-            await ClearQueryHistory(selected.id)
+            await ClearQueryHistory(activeTabConnection.id)
             setHistoryEntries([])
         } catch (err) {
             setHistoryError(String(err))
@@ -670,7 +992,10 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     function cancelQuery() {
-        if (queryIdRef.current) {
+        if (!queryIdRef.current) return
+        if (activeTabConnection?.dbType === 'redis') {
+            void CancelRedisCommand(queryIdRef.current)
+        } else {
             void CancelQuery(queryIdRef.current)
         }
     }
@@ -682,14 +1007,14 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // other re-run.
     function sortActiveResult(column: string) {
         const rs = resultSets[activeResultTab]
-        if (!rs || !rs.sourceSql || running) return
+        if (!rs || !rs.sourceSql || running || !activeTabConnection) return
 
         const nextDirection: 'asc' | 'desc' = rs.sortColumn === column && rs.sortDirection === 'asc' ? 'desc' : 'asc'
         const stripped = rs.sourceSql.trim().replace(/;+\s*$/, '')
         const wrapped = `SELECT * FROM (${stripped}) AS mt_sort ORDER BY "${column}" ${nextDirection.toUpperCase()}`
 
         pendingSortRef.current = {column, direction: nextDirection}
-        runText(wrapped)
+        runText(activeTabConnection, wrapped)
     }
 
     // Closing a result tab only hides it from resultSets — it never touches
@@ -708,11 +1033,69 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         setActiveResultTab(0)
     }
 
+    // Double-clicking a table in the sidebar tree always runs against
+    // `selected` (the connection whose tree is expanded there), matching
+    // the sidebar's own scope — never the active tab's possibly-different
+    // binding. If the active tab is ALREADY bound to that same connection,
+    // reuse it (matches the old single-connection behavior exactly);
+    // otherwise open a new tab bound to it, rather than silently hijacking
+    // whatever the user had open in a different pestaña.
     function openTableQuery(table: string, schema?: string) {
         if (!selected) return
         const q = limitQueryFor(selected.dbType, table, schema)
-        updateActiveTabContent(q)
-        runText(q)
+        if (activeTabData?.connId === selected.id) {
+            updateActiveTabContent(q)
+        } else {
+            const tab: EditorTab = {
+                id: newTabId(),
+                title: 'Query sin título',
+                path: null,
+                content: q,
+                dirty: false,
+                connId: selected.id,
+                language: languageForDbType(selected.dbType),
+                kind: 'editor',
+            }
+            setTabs((prev) => [...prev, tab])
+            setActiveTabId(tab.id)
+        }
+        runText(selected, q)
+    }
+
+    // Opens conn's Redis Browser tab (full-tab key list + editable detail
+    // panel, see RedisBrowserTab.tsx) — or focuses it if already open,
+    // never duplicates one per connection. Reached from ConnectionTree's
+    // dedicated "Abrir en pestaña" button on a Redis connection row.
+    function openRedisBrowser(conn: vault.ConnectionSummary) {
+        const existing = tabs.find((t) => t.kind === 'redis-browser' && t.connId === conn.id)
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: 'Redis Browser',
+            path: null,
+            content: '',
+            dirty: false,
+            connId: conn.id,
+            language: 'redis-cli',
+            kind: 'redis-browser',
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
+    // Double-clicking a key in the sidebar's inline RedisKeyTree used to
+    // open a read-only modal (RedisValueInspector) — now it opens/focuses
+    // that connection's Redis Browser tab with the key pre-selected in the
+    // (editable) detail panel instead, see pendingBrowserKey above.
+    function openRedisKeyDetail(connId: string, key: string) {
+        const conn = connections.find((c) => c.id === connId)
+        if (!conn) return
+        pendingBrowserKeyTokenRef.current += 1
+        setPendingBrowserKey({connId, key, token: pendingBrowserKeyTokenRef.current})
+        openRedisBrowser(conn)
     }
 
     async function exportConnectionConfig(connId: string) {
@@ -725,17 +1108,35 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     // Closes the pool without touching the saved connection (unlike
-    // deleting it) — if it's the active one, also clears the workspace's
-    // notion of "connected to X" so autocomplete/metadata don't keep
-    // pointing at a closed pool. Reconnecting just means selecting it again.
+    // deleting it) — if it's the sidebar's selected one, also clears that so
+    // the tree stops showing a stale table list. Reconnecting just means
+    // selecting it again. Tabs bound to this connection are untouched — a
+    // disconnect is not a delete, the binding (and the pool, lazily) comes
+    // back on the next run.
     async function disconnectConnection(connId: string) {
         try {
             await DisconnectConnection(connId)
             if (selected?.id === connId) {
                 setSelected(null)
-                setMetadata(null)
             }
             setStatusMessage('Desconectado')
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
+    // Deletes the saved connection permanently. Any editor tab bound to it
+    // loses ONLY the binding (connId → null) — its path/content/dirty state
+    // is never touched, matching the "eliminar conexión no borra el
+    // archivo" requirement. The tab falls back to showing as unbound, same
+    // as if the user had never linked it.
+    async function deleteConnection(connId: string) {
+        try {
+            await DeleteConnection(connId)
+            setReloadToken((n) => n + 1)
+            if (selected?.id === connId) setSelected(null)
+            setTabs((prev) => prev.map((t) => (t.connId === connId ? {...t, connId: null} : t)))
+            setStatusMessage('Conexión eliminada')
         } catch (err) {
             setStatusMessage(String(err))
         }
@@ -758,7 +1159,12 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     async function exportSchemaDDL() {
         if (!selected) return
         try {
-            const dest = await ExportSchemaDDL(selected.id, 'public')
+            // Fixed bug: this used to hardcode 'public' regardless of which
+            // schema was actually expanded/active in the sidebar tree —
+            // sidebarActiveSchema is the real value (falls back to
+            // 'public' only when nothing is active yet, same default the
+            // hardcode used to be).
+            const dest = await ExportSchemaDDL(selected.id, sidebarActiveSchema || 'public')
             setStatusMessage(dest ? `DDL del schema exportado a ${dest}` : '')
         } catch (err) {
             setStatusMessage(String(err))
@@ -766,16 +1172,18 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     // Best-effort: a project-docs generation failure should never block
-    // opening/saving a file, so errors are swallowed here.
+    // opening/saving a file, so errors are swallowed here. Scoped to the
+    // ACTIVE TAB's connection — CLAUDE.md documents whatever database the
+    // file you're editing is meant to run against.
     function generateProjectDocsFor(path: string) {
-        if (!selected) return
+        if (!activeTabConnection) return
         const dir = dirName(path)
-        GenerateProjectDocs(dir, selected.id, activeSchema ?? '')
+        GenerateProjectDocs(dir, activeTabConnection.id, editorActiveSchema ?? '')
             .then((wrote) => {
                 if (wrote) {
                     setStatusMessage(
-                        activeSchema
-                            ? `CLAUDE.md generado en ${dir} (esquema ${activeSchema})`
+                        editorActiveSchema
+                            ? `CLAUDE.md generado en ${dir} (esquema ${editorActiveSchema})`
                             : `CLAUDE.md generado en ${dir}`,
                     )
                 }
@@ -787,20 +1195,20 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // confirmation first since it's destructive to any manual edits the
     // user might have made to the previously generated files.
     async function regenerateProjectDocs() {
-        if (!selected || !activeTabData?.path) return
+        if (!activeTabConnection || !activeTabData?.path) return
         const dir = dirName(activeTabData.path)
-        const scopeDesc = activeSchema ? `el esquema "${activeSchema}"` : 'todos los esquemas configurados'
+        const scopeDesc = editorActiveSchema ? `el esquema "${editorActiveSchema}"` : 'todos los esquemas configurados'
         const confirmed = window.confirm(
-            `Esto sobrescribe CLAUDE.md y .claude/ en ${dir} con la metadata de "${selected.name}" (${scopeDesc}). ¿Continuar?`,
+            `Esto sobrescribe CLAUDE.md y .claude/ en ${dir} con la metadata de "${activeTabConnection.name}" (${scopeDesc}). ¿Continuar?`,
         )
         if (!confirmed) return
 
         setRegeneratingDocs(true)
         try {
-            await RegenerateProjectDocs(dir, selected.id, activeSchema ?? '')
+            await RegenerateProjectDocs(dir, activeTabConnection.id, editorActiveSchema ?? '')
             setStatusMessage(
-                activeSchema
-                    ? `CLAUDE.md regenerado en ${dir} (esquema ${activeSchema})`
+                editorActiveSchema
+                    ? `CLAUDE.md regenerado en ${dir} (esquema ${editorActiveSchema})`
                     : `CLAUDE.md regenerado en ${dir}`,
             )
         } catch (err) {
@@ -817,7 +1225,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 setActiveTabId(existing.id)
                 return prev.map((t) => (t.id === existing.id ? {...t, content, dirty: false} : t))
             }
-            const tab: EditorTab = {id: newTabId(), title: fileTitle(path), path, content, dirty: false}
+            const tab: EditorTab = {id: newTabId(), title: fileTitle(path), path, content, dirty: false, connId: null, language: 'sql', kind: 'editor'}
             setActiveTabId(tab.id)
             return [...prev, tab]
         })
@@ -872,8 +1280,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }
 
     // Drag-and-drop reorder from EditorTabs — the persistence effect keyed
-    // on openTabPathsKey (below) picks up the new order automatically,
-    // same as it already does for opening/closing tabs.
+    // on openTabsKey (above) picks up the new order automatically, same as
+    // it already does for opening/closing tabs.
     function reorderTabs(next: EditorTab[]) {
         setTabs(next)
     }
@@ -912,9 +1320,12 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         window.addEventListener('keydown', onKeyDown)
         return () => window.removeEventListener('keydown', onKeyDown)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [runText, selected])
+    }, [activeTabConnection])
 
     const activeResult = resultSets[activeResultTab]
+    const isSqlActive = !!activeTabConnection && activeTabConnection.dbType !== 'redis'
+    const isRedisActive = activeTabConnection?.dbType === 'redis'
+    const isBrowserTabActive = activeTabData?.kind === 'redis-browser'
 
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-background font-sans text-on-background">
@@ -924,21 +1335,48 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 onNewConnection={() => setConnectionDialog('new')}
                 onEditConnection={(conn) => setConnectionDialog(conn.id)}
                 reloadToken={reloadToken}
-                metadata={metadata}
-                schemas={schemas}
-                activeSchema={activeSchema}
-                onSelectSchema={setActiveSchema}
+                metadata={sidebarMetadata}
+                schemas={sidebarSchemas}
+                activeSchema={sidebarActiveSchema}
+                onSelectSchema={(schema) => selected && setActiveSchemaByConn((prev) => ({...prev, [selected.id]: schema}))}
                 onSyncSchema={syncSchema}
-                metadataLoading={metadataLoading}
+                metadataLoading={sidebarMetadataLoading}
                 onOpenTable={openTableQuery}
+                onOpenObjectDDL={(connId, params) => setDdlViewer({connId, ...params})}
+                onOpenRedisKey={openRedisKeyDetail}
+                onOpenRedisBrowser={openRedisBrowser}
+                activeTabConnectionId={activeTabConnection?.id ?? null}
                 onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
                 onExportTableDDL={(table, schema) => void exportTableDDL(table, schema)}
                 onExportSchemaDDL={() => void exportSchemaDDL()}
                 onDisconnect={(connId) => void disconnectConnection(connId)}
+                onDeleteConnection={(connId) => void deleteConnection(connId)}
                 onConfigureSchemas={setSchemaPickerConn}
                 collapsed={sidebarCollapsed}
                 onToggleCollapsed={toggleSidebarCollapsed}
+                folders={folders}
+                moduleCollapsed={collapsedModules.has('connections')}
+                onToggleModuleCollapsed={() => toggleModuleCollapsed('connections')}
+                onCreateFolder={createFolder}
+                onRenameFolder={renameFolder}
+                onDeleteFolder={deleteFolder}
+                onReorderFolder={reorderFolder}
+                onMoveConnectionToFolder={moveConnectionToFolder}
             />
+
+            {ddlViewer && (
+                <DDLViewerModal
+                    connId={ddlViewer.connId}
+                    objectType={ddlViewer.objectType}
+                    schema={ddlViewer.schema}
+                    name={ddlViewer.name}
+                    oid={ddlViewer.oid}
+                    dbType={connections.find((c) => c.id === ddlViewer.connId)?.dbType ?? ''}
+                    editorThemeId={editorThemeId}
+                    appTheme={theme}
+                    onClose={() => setDdlViewer(null)}
+                />
+            )}
 
             {schemaPickerConn && (
                 <Suspense fallback={null}>
@@ -989,16 +1427,17 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                 <div className="flex flex-col border-b border-outline-variant bg-surface">
                     {/* Context row: which connection/schema/transaction state
-                        this workspace is currently pointed at. Kept
-                        separate from the actions row below so neither
-                        crowds the other. */}
+                        the ACTIVE TAB is bound to. Kept separate from the
+                        actions row below so neither crowds the other. */}
                     <div className="flex flex-wrap items-center gap-3 px-3 py-1.5">
                         <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
-                            <span className={`h-2 w-2 rounded-full ${selected ? 'bg-secondary' : 'bg-outline'}`} />
-                            {selected ? `Conectado a: ${selected.name}` : 'Selecciona una conexión'}
+                            <span className={`h-2 w-2 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`} />
+                            {activeTabConnection
+                                ? `Pestaña vinculada a: ${activeTabConnection.name}`
+                                : 'Pestaña sin conexión — vincularla con el ícono a la izquierda del título'}
                         </span>
 
-                        {selected && metadataLoading && (
+                        {activeTabConnection && editorMetadataLoading && (
                             <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
                                 <span
                                     aria-hidden
@@ -1008,15 +1447,18 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             </span>
                         )}
 
-                        {!metadataLoading && schemas.length > 0 && (
+                        {!editorMetadataLoading && editorSchemas.length > 0 && (
                             <label className="flex items-center gap-1 text-xs text-on-surface-variant">
                                 Schema:
                                 <select
-                                    value={activeSchema ?? ''}
-                                    onChange={(e) => setActiveSchema(e.target.value)}
+                                    value={editorActiveSchema ?? ''}
+                                    onChange={(e) =>
+                                        activeTabConnection &&
+                                        setActiveSchemaByConn((prev) => ({...prev, [activeTabConnection.id]: e.target.value}))
+                                    }
                                     className="rounded border-none bg-surface-container-highest px-1.5 py-0.5 text-xs text-on-surface outline-none"
                                 >
-                                    {schemas.map((s) => (
+                                    {editorSchemas.map((s) => (
                                         <option key={s} value={s}>
                                             {s}
                                         </option>
@@ -1025,7 +1467,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             </label>
                         )}
 
-                        {selected && (
+                        {isSqlActive && (
                             <>
                                 <Divider />
                                 <label
@@ -1065,7 +1507,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                         Transacción abierta
                                     </span>
                                 )}
-                                {selected.dbType === 'oracle' && (
+                                {activeTabConnection?.dbType === 'oracle' && (
                                     <>
                                         <Divider />
                                         <label
@@ -1134,21 +1576,23 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             <Icon name="save" size={16} />
                             Guardar (Ctrl+S)
                         </button>
-                        <button
-                            onClick={() => void regenerateProjectDocs()}
-                            disabled={!selected || !activeTabData?.path || regeneratingDocs}
-                            title="Sobrescribe CLAUDE.md y .claude/ en la carpeta del archivo abierto con el schema y las tablas de la conexión actual (o solo el esquema seleccionado arriba, si hay uno). Útil si la base de datos cambió desde la última vez."
-                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
-                        >
-                            <Icon name="auto_awesome" size={16} />
-                            {regeneratingDocs ? 'Regenerando…' : 'Regenerar CLAUDE.md'}
-                        </button>
+                        {isSqlActive && (
+                            <button
+                                onClick={() => void regenerateProjectDocs()}
+                                disabled={!activeTabData?.path || regeneratingDocs}
+                                title="Sobrescribe CLAUDE.md y .claude/ en la carpeta del archivo abierto con el schema y las tablas de la conexión vinculada a esta pestaña (o solo el esquema seleccionado arriba, si hay uno). Útil si la base de datos cambió desde la última vez."
+                                className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
+                            >
+                                <Icon name="auto_awesome" size={16} />
+                                {regeneratingDocs ? 'Regenerando…' : 'Regenerar CLAUDE.md'}
+                            </button>
+                        )}
 
                         <Divider />
 
                         <button
                             onClick={runSelectionOrLine}
-                            disabled={!selected || running}
+                            disabled={!activeTabConnection || running}
                             title="Ejecuta el texto seleccionado, o si no hay selección, la línea donde está el cursor (atajo: Ctrl+Enter)"
                             className="flex items-center gap-1.5 rounded bg-secondary-container px-3 py-1 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-50"
                         >
@@ -1157,7 +1601,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         </button>
                         <button
                             onClick={runFullScript}
-                            disabled={!selected || running}
+                            disabled={!activeTabConnection || running}
                             title="Ejecuta todos los statements del editor en orden, uno por uno (atajo: Ctrl+Shift+Enter)"
                             className="flex items-center gap-1.5 rounded bg-secondary-container px-3 py-1 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-50"
                         >
@@ -1173,138 +1617,193 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             <Icon name="stop" size={16} filled />
                             Cancelar
                         </button>
-                        <button
-                            onClick={() => void runExplain(false)}
-                            disabled={!selected}
-                            title="Muestra el plan de ejecución del query (EXPLAIN) sin correrlo — útil para diagnosticar lentitud sin afectar datos"
-                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
-                        >
-                            <Icon name="query_stats" size={16} />
-                            Explain
-                        </button>
-                        <button
-                            onClick={() => void runExplain(true)}
-                            disabled={!selected}
-                            title="Ejecuta el query de verdad y muestra el plan con tiempos reales (EXPLAIN ANALYZE) — a diferencia de Explain, sí corre el query"
-                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
-                        >
-                            <Icon name="analytics" size={16} />
-                            Explain Analyze
-                        </button>
+                        {isSqlActive && (
+                            <>
+                                <button
+                                    onClick={() => void runExplain(false)}
+                                    disabled={!activeTabConnection}
+                                    title="Muestra el plan de ejecución del query (EXPLAIN) sin correrlo — útil para diagnosticar lentitud sin afectar datos"
+                                    className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
+                                >
+                                    <Icon name="query_stats" size={16} />
+                                    Explain
+                                </button>
+                                <button
+                                    onClick={() => void runExplain(true)}
+                                    disabled={!activeTabConnection}
+                                    title="Ejecuta el query de verdad y muestra el plan con tiempos reales (EXPLAIN ANALYZE) — a diferencia de Explain, sí corre el query"
+                                    className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
+                                >
+                                    <Icon name="analytics" size={16} />
+                                    Explain Analyze
+                                </button>
 
-                        <Divider />
+                                <Divider />
 
-                        <button
-                            onClick={refreshMetadata}
-                            disabled={!selected}
-                            title="Vuelve a leer las tablas y columnas de la base de datos (atajo: F5) — usalo si acabás de crear/alterar una tabla"
-                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
-                        >
-                            <Icon name="refresh" size={16} />
-                            Refrescar (F5)
-                        </button>
+                                <button
+                                    onClick={refreshMetadata}
+                                    disabled={!activeTabConnection}
+                                    title="Vuelve a leer las tablas y columnas de la base de datos (atajo: F5) — usalo si acabás de crear/alterar una tabla"
+                                    className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
+                                >
+                                    <Icon name="refresh" size={16} />
+                                    Refrescar (F5)
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
 
                 <EditorTabs
                     tabs={tabs}
                     activeId={activeTabId}
+                    connections={connections}
                     onSelect={setActiveTabId}
                     onClose={closeTab}
                     onNew={newTab}
                     onReorder={reorderTabs}
+                    onChangeTabConnection={changeTabConnection}
+                    onChangeTabLanguage={changeTabLanguage}
                 />
 
-                <div className="min-w-0 border-b border-outline-variant" style={{height: editorHeight}}>
-                    <MonacoSQLEditor
-                        value={activeTabData?.content ?? ''}
-                        onChange={updateActiveTabContent}
-                        onMount={(editor) => {
-                            editorRef.current = editor
+                <div
+                    className="min-w-0 border-b border-outline-variant"
+                    style={{height: editorHeight, display: isBrowserTabActive ? 'none' : undefined}}
+                >
+                    {/* Always mounted, even behind a Redis Browser tab —
+                        CodeMirrorTabbedEditor caches every other open
+                        tab's EditorState/undo history in a ref that only
+                        survives while it stays mounted. Unmounting it
+                        conditionally would lose that state the moment the
+                        user switches back from a browser tab. */}
+                    <CodeMirrorTabbedEditor
+                        tabs={tabs}
+                        activeTabId={activeTabId}
+                        onChangeContent={(tabId, content) =>
+                            setTabs((prev) => prev.map((t) => (t.id === tabId ? {...t, content, dirty: true} : t)))
+                        }
+                        onMount={(view) => {
+                            editorRef.current = view
                         }}
+                        dbType={activeTabConnection?.dbType ?? null}
+                        schemaMetadata={filteredEditorMetadata}
+                        editorThemeId={editorThemeId}
+                        appTheme={theme}
                     />
                 </div>
 
-                {/* Drag handle: resizes the editor pane against the results
-                    grid below. Persisted on mouseup, see startEditorResize. */}
-                <div
-                    onMouseDown={startEditorResize}
-                    title="Arrastrar para cambiar el alto del editor — el tamaño queda guardado"
-                    className="group flex h-1.5 shrink-0 cursor-row-resize items-center justify-center bg-surface-container-low hover:bg-primary/30"
-                >
-                    <div className="h-0.5 w-8 rounded-full bg-outline-variant group-hover:bg-primary" />
-                </div>
-
-                {/* "Resultados"/"Historial" — tabs sharing this bottom
-                    panel, same visual pattern as EditorTabs above, instead
-                    of two docked panels stacked on top of each other. */}
-                <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
-                    <button
-                        onClick={() => selectBottomTab('results')}
-                        title="Resultado de la última ejecución"
-                        className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
-                            activeBottomTab === 'results'
-                                ? 'bg-surface text-on-surface'
-                                : 'text-on-surface-variant hover:text-on-surface'
-                        }`}
-                    >
-                        <Icon name="table_chart" size={14} className="opacity-70" />
-                        Resultados
-                    </button>
-                    <button
-                        onClick={() => selectBottomTab('history')}
-                        title="Historial de ejecuciones de esta conexión — SQL exacto enviado, estado y mensaje de error completo por cada statement corrido"
-                        className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
-                            activeBottomTab === 'history'
-                                ? 'bg-surface text-on-surface'
-                                : 'text-on-surface-variant hover:text-on-surface'
-                        }`}
-                    >
-                        <Icon name="history" size={14} className="opacity-70" />
-                        Historial
-                    </button>
-                </div>
-
-                {activeBottomTab === 'results' ? (
-                    <>
-                        <ResultTabs
-                            count={resultSets.length}
-                            active={activeResultTab}
-                            onSelect={setActiveResultTab}
-                            onClose={closeResultTab}
-                            onCloseAll={closeAllResultTabs}
-                            statuses={resultSets.map((r) => r.status)}
-                        />
-
-                        <div className="flex items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
-                            <ExportMenu
-                                columns={activeResult?.columns ?? []}
-                                rows={activeResult?.rows ?? []}
-                                tableNameHint={selected?.name}
+                {/* Every open Redis Browser tab stays mounted (hidden via
+                    CSS unless active), same "never unmount, just hide"
+                    principle as CodeMirrorTabbedEditor above — otherwise
+                    switching to another tab and back would lose the
+                    selected key / checked keys / any in-progress inline
+                    edit every single time. At most one tab per connId
+                    exists (see openRedisBrowser's dedupe), so
+                    pendingBrowserKey never targets more than one of these. */}
+                {tabs
+                    .filter((t) => t.kind === 'redis-browser' && t.connId)
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex min-h-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <RedisBrowserTab
+                                connId={t.connId as string}
+                                initialKey={pendingBrowserKey?.connId === t.connId ? pendingBrowserKey.key : undefined}
+                                initialKeyToken={pendingBrowserKey?.token}
                             />
                         </div>
+                    ))}
 
-                        <ResultGrid
-                            columns={activeResult?.columns ?? []}
-                            rows={activeResult?.rows ?? []}
-                            sortColumn={activeResult?.sortColumn}
-                            sortDirection={activeResult?.sortDirection}
-                            onSort={sortActiveResult}
-                            tableNameHint={selected?.name}
-                        />
+                {!isBrowserTabActive && (
+                    <>
+                        {/* Drag handle: resizes the editor pane against the
+                            results grid below. Persisted on mouseup, see
+                            startEditorResize. */}
+                        <div
+                            onMouseDown={startEditorResize}
+                            title="Arrastrar para cambiar el alto del editor — el tamaño queda guardado"
+                            className="group flex h-1.5 shrink-0 cursor-row-resize items-center justify-center bg-surface-container-low hover:bg-primary/30"
+                        >
+                            <div className="h-0.5 w-8 rounded-full bg-outline-variant group-hover:bg-primary" />
+                        </div>
 
-                        {activeResult && activeResult.dbmsOutput.length > 0 && (
-                            <div className="border-t border-outline-variant bg-surface-container-lowest">
-                                <div className="flex items-center gap-1.5 px-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
-                                    <Icon name="terminal" size={12} />
-                                    DBMS_OUTPUT
-                                </div>
-                                <pre className="max-h-32 overflow-y-auto p-2 font-mono text-xs text-on-surface-variant">
-                                    {activeResult.dbmsOutput.join('\n')}
-                                </pre>
+                        {/* "Resultados"/"Historial" — tabs sharing this
+                            bottom panel, same visual pattern as EditorTabs
+                            above, instead of two docked panels stacked on
+                            top of each other. */}
+                        <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
+                            <button
+                                onClick={() => selectBottomTab('results')}
+                                title="Resultado de la última ejecución"
+                                className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
+                                    activeBottomTab === 'results'
+                                        ? 'bg-surface text-on-surface'
+                                        : 'text-on-surface-variant hover:text-on-surface'
+                                }`}
+                            >
+                                <Icon name="table_chart" size={14} className="opacity-70" />
+                                Resultados
+                            </button>
+                            <button
+                                onClick={() => selectBottomTab('history')}
+                                title="Historial de ejecuciones de la conexión vinculada a esta pestaña — SQL/comando exacto enviado, estado y mensaje de error completo por cada uno"
+                                className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
+                                    activeBottomTab === 'history'
+                                        ? 'bg-surface text-on-surface'
+                                        : 'text-on-surface-variant hover:text-on-surface'
+                                }`}
+                            >
+                                <Icon name="history" size={14} className="opacity-70" />
+                                Historial
+                            </button>
+                        </div>
+
+                        {activeBottomTab === 'results' ? (
+                    isRedisActive ? (
+                        <RedisResultView results={redisResults} />
+                    ) : (
+                        <>
+                            <ResultTabs
+                                count={resultSets.length}
+                                active={activeResultTab}
+                                onSelect={setActiveResultTab}
+                                onClose={closeResultTab}
+                                onCloseAll={closeAllResultTabs}
+                                statuses={resultSets.map((r) => r.status)}
+                            />
+
+                            <div className="flex items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
+                                <ExportMenu
+                                    columns={activeResult?.columns ?? []}
+                                    rows={activeResult?.rows ?? []}
+                                    tableNameHint={activeTabConnection?.name}
+                                />
                             </div>
-                        )}
-                    </>
+
+                            <ResultGrid
+                                columns={activeResult?.columns ?? []}
+                                rows={activeResult?.rows ?? []}
+                                sortColumn={activeResult?.sortColumn}
+                                sortDirection={activeResult?.sortDirection}
+                                onSort={sortActiveResult}
+                                tableNameHint={activeTabConnection?.name}
+                            />
+
+                            {activeResult && activeResult.dbmsOutput.length > 0 && (
+                                <div className="border-t border-outline-variant bg-surface-container-lowest">
+                                    <div className="flex items-center gap-1.5 px-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                                        <Icon name="terminal" size={12} />
+                                        DBMS_OUTPUT
+                                    </div>
+                                    <pre className="max-h-32 overflow-y-auto p-2 font-mono text-xs text-on-surface-variant">
+                                        {activeResult.dbmsOutput.join('\n')}
+                                    </pre>
+                                </div>
+                            )}
+                        </>
+                    )
                 ) : (
                     <Suspense fallback={null}>
                         <HistoryPanel
@@ -1341,18 +1840,22 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                 : 'Ejecutando…'}
                         </span>
                     )}
-                    {activeResult?.status === 'done' && (
+                    {!isRedisActive && activeResult?.status === 'done' && (
                         <span className="shrink-0">
                             {activeResult.rowsAffected} filas · {activeResult.durationMs}ms
                         </span>
                     )}
-                    {activeResult?.status === 'cancelled' && <span className="shrink-0 text-tertiary">Cancelada</span>}
-                    {activeResult?.status === 'error' && (
+                    {!isRedisActive && activeResult?.status === 'cancelled' && (
+                        <span className="shrink-0 text-tertiary">Cancelada</span>
+                    )}
+                    {!isRedisActive && activeResult?.status === 'error' && (
                         <span className="min-w-0 flex-1 truncate text-error" title={activeResult.error}>
                             {activeResult.error}
                         </span>
                     )}
                 </div>
+                    </>
+                )}
             </div>
 
             {connectionDialog && (
@@ -1373,6 +1876,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     <SettingsDialog
                         rememberMasterKey={rememberMasterKey}
                         onToggleRememberMasterKey={(checked) => void toggleRememberMasterKey(checked)}
+                        editorThemeId={editorThemeId}
+                        onChangeEditorThemeId={changeEditorTheme}
                         onBackupVault={() => {
                             setShowSettingsDialog(false)
                             setShowBackupPasswordDialog(true)
@@ -1389,6 +1894,17 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     confirmLabel="Guardar backup"
                     onConfirm={backupVault}
                     onClose={() => setShowBackupPasswordDialog(false)}
+                />
+            )}
+
+            {pendingRedisCommandRun && activeTabConnection && (
+                <ConfirmDialog
+                    title="Comando destructivo"
+                    description="Este script incluye FLUSHALL/FLUSHDB, que borra datos de Redis de forma irreversible. ¿Ejecutar de todas formas?"
+                    confirmLabel="Ejecutar"
+                    danger
+                    onConfirm={() => runRedisText(activeTabConnection, pendingRedisCommandRun)}
+                    onClose={() => setPendingRedisCommandRun(null)}
                 />
             )}
         </div>

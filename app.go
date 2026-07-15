@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/claudemd"
@@ -16,6 +17,7 @@ import (
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
 	"mini-tools/backend/query"
+	"mini-tools/backend/redisquery"
 	"mini-tools/backend/vault"
 	"mini-tools/backend/vaultgate"
 )
@@ -30,6 +32,14 @@ type App struct {
 	vault    *vault.Store
 	pools    *db.PoolManager
 	executor *query.Executor
+
+	// redisPools/redisExecutor are Redis's native parallel path — it does
+	// NOT go through PoolManager/query.Executor (both hard-typed to
+	// *sql.DB/database/sql), a deliberate, documented exception to
+	// .claude/rules/technical.md point 2. See
+	// .claude/skills/mini-tools-patterns/SKILL.md's Redis section.
+	redisPools    *db.RedisPoolManager
+	redisExecutor *redisquery.Executor
 
 	metadataMu    sync.Mutex
 	metadataCache map[string]*db.SchemaMetadata
@@ -60,6 +70,7 @@ func NewApp() *App {
 	return &App{
 		gate:          vaultgate.New(),
 		pools:         db.NewPoolManager(),
+		redisPools:    db.NewRedisPoolManager(),
 		metadataCache: make(map[string]*db.SchemaMetadata),
 	}
 }
@@ -76,17 +87,23 @@ func (a *App) startup(ctx context.Context) {
 		panic(fmt.Errorf("app: opening vault: %w", err))
 	}
 	a.vault = store
-	a.executor = query.NewExecutor(
-		ctx, a.pools,
-		func(event string, data interface{}) {
-			runtime.EventsEmit(ctx, event, data)
-		},
-		func(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string) {
-			// Best-effort: a failure to persist history shouldn't affect the
-			// query result the user already saw.
-			_ = a.vault.RecordQueryHistory(connID, sqlText, status, rowsAffected, durationMs, errMsg)
-		},
-	)
+
+	// Shared by both executors — query.EmitFunc/HistorySink and
+	// redisquery.EmitFunc/HistorySink are distinct named types with
+	// identical underlying signatures, so the same closures satisfy both
+	// constructors without duplication (same Wails event name = queryID,
+	// same query_history table for both SQL statements and Redis
+	// commands).
+	emit := func(event string, data interface{}) {
+		runtime.EventsEmit(ctx, event, data)
+	}
+	history := func(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string) {
+		// Best-effort: a failure to persist history shouldn't affect the
+		// query result the user already saw.
+		_ = a.vault.RecordQueryHistory(connID, sqlText, status, rowsAffected, durationMs, errMsg)
+	}
+	a.executor = query.NewExecutor(ctx, a.pools, emit, history)
+	a.redisExecutor = redisquery.NewExecutor(ctx, a.redisPools, emit, history)
 }
 
 // shutdown closes every open connection pool, checkpoints and closes the
@@ -107,6 +124,7 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(ctx context.Context) {
 	a.executor.RollbackAll(ctx)
 	a.pools.CloseAll()
+	a.redisPools.CloseAll()
 	a.gate.Lock()
 	if a.vault != nil {
 		_ = a.vault.Close()
@@ -176,15 +194,16 @@ func (a *App) SetTheme(theme string) error {
 	return a.vault.SetTheme(theme)
 }
 
-// SetOpenTabs persists which editor tabs (by file path) are currently open,
-// so Workspace.tsx can restore them on the next launch. Gated behind
-// requireUnlocked — unlike GetSettings/SetTheme, this is only ever called
-// during active use (after unlock), never from the lock screen.
-func (a *App) SetOpenTabs(paths []string) error {
+// SetOpenTabs persists which editor tabs (path plus optional
+// connection/language binding) are currently open, so Workspace.tsx can
+// restore them on the next launch. Gated behind requireUnlocked — unlike
+// GetSettings/SetTheme, this is only ever called during active use (after
+// unlock), never from the lock screen.
+func (a *App) SetOpenTabs(tabs []vault.OpenTabInfo) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.vault.SetOpenTabs(paths)
+	return a.vault.SetOpenTabs(tabs)
 }
 
 // SetSidebarCollapsed persists the connection tree's icon-only rail toggle.
@@ -207,6 +226,18 @@ func (a *App) SetEditorHeight(height int) error {
 	return a.vault.SetEditorHeight(height)
 }
 
+// SetEditorTheme persists the CodeMirror color theme id. Gated behind
+// requireUnlocked like SetEditorHeight/SetSidebarCollapsed — unlike the
+// app-wide dark/light Theme (see GetSettings/SetTheme's doc comment), this
+// only ever affects the post-unlock Workspace's editor, never the lock
+// screen, so there's no "flash of the wrong theme" reason to exempt it.
+func (a *App) SetEditorTheme(theme string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetEditorTheme(theme)
+}
+
 // TestConnection builds a DSN from cfg and pings it, without saving
 // anything. Used by the "Test Connection" button before a connection is
 // persisted.
@@ -226,6 +257,16 @@ func (a *App) TestConnection(cfg ConnectionInput) error {
 		return err
 	}
 
+	return pingDSN(dbType, dsn)
+}
+
+// pingDSN dispatches to the right ping implementation for dbType — Redis is
+// not a database/sql driver, so it needs its own short-lived-client path
+// (db.PingRedisDSN) instead of db.Ping's sql.Open-based one.
+func pingDSN(dbType db.DBType, dsn string) error {
+	if dbType == db.DBTypeRedis {
+		return db.PingRedisDSN(dsn)
+	}
 	return db.Ping(dbType, dsn)
 }
 
@@ -276,7 +317,7 @@ func (a *App) SaveConnection(cfg ConnectionInput, force bool) (*vault.Connection
 	}
 
 	if !force {
-		if err := db.Ping(dbType, dsn); err != nil {
+		if err := pingDSN(dbType, dsn); err != nil {
 			return nil, fmt.Errorf("ping falló (guarda con force=true para omitir): %w", err)
 		}
 	}
@@ -370,7 +411,7 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	}
 
 	if !force {
-		if err := db.Ping(dbType, dsn); err != nil {
+		if err := pingDSN(dbType, dsn); err != nil {
 			return nil, fmt.Errorf("ping falló (guarda con force=true para omitir): %w", err)
 		}
 	}
@@ -381,6 +422,12 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 
 	a.rollbackIfOpen(id)
 	if err := a.pools.Close(id); err != nil {
+		return nil, err
+	}
+	// Harmless no-op on whichever pool manager doesn't actually own id —
+	// closing both unconditionally means callers never need to know which
+	// engine id used to be before this update.
+	if err := a.redisPools.Close(id); err != nil {
 		return nil, err
 	}
 	a.metadataMu.Lock()
@@ -417,6 +464,75 @@ func (a *App) ListConnections() ([]vault.ConnectionSummary, error) {
 	return a.vault.ListConnections()
 }
 
+// ListFolders returns every folder (flat) for the sidebar's connection
+// tree — see vault.Folder and frontend/src/lib/folderTree.ts.
+func (a *App) ListFolders() ([]vault.Folder, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListFolders()
+}
+
+// CreateFolder creates a new folder, optionally nested under parentID ("" =
+// root).
+func (a *App) CreateFolder(name, parentID string) (*vault.Folder, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.CreateFolder(name, parentID)
+}
+
+// RenameFolder updates a folder's display name.
+func (a *App) RenameFolder(id, name string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.RenameFolder(id, name)
+}
+
+// MoveFolder reparents a folder under newParentID ("" = root).
+func (a *App) MoveFolder(id, newParentID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.MoveFolder(id, newParentID)
+}
+
+// ReorderFolder moves a folder one slot "up" or "down" among its siblings.
+func (a *App) ReorderFolder(id, direction string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.ReorderFolder(id, direction)
+}
+
+// DeleteFolder removes a folder — its subfolders and connections are
+// reparented to its own parent, never deleted (see vault.Store.DeleteFolder).
+func (a *App) DeleteFolder(id string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.DeleteFolder(id)
+}
+
+// MoveConnectionToFolder re-organizes a saved connection under a different
+// folder ("" = root).
+func (a *App) MoveConnectionToFolder(connID, folderID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.MoveConnectionToFolder(connID, folderID)
+}
+
+// SetCollapsedSidebarModules persists which sidebar module ids are
+// collapsed to an accordion header.
+func (a *App) SetCollapsedSidebarModules(ids []string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetCollapsedSidebarModules(ids)
+}
+
 // DeleteConnection closes any open pool for id and removes it from the
 // vault.
 func (a *App) DeleteConnection(id string) error {
@@ -425,6 +541,9 @@ func (a *App) DeleteConnection(id string) error {
 	}
 	a.rollbackIfOpen(id)
 	if err := a.pools.Close(id); err != nil {
+		return err
+	}
+	if err := a.redisPools.Close(id); err != nil {
 		return err
 	}
 	if err := a.vault.DeleteSchemaMetadataCache(id); err != nil {
@@ -447,6 +566,9 @@ func (a *App) DisconnectConnection(id string) error {
 	}
 	a.rollbackIfOpen(id)
 	if err := a.pools.Close(id); err != nil {
+		return err
+	}
+	if err := a.redisPools.Close(id); err != nil {
 		return err
 	}
 	a.metadataMu.Lock()
@@ -485,6 +607,22 @@ func (a *App) ensurePoolOpen(connID string) error {
 	return err
 }
 
+// ensureRedisPoolOpen is ensurePoolOpen's counterpart for Redis's
+// RedisPoolManager — shared by ExecuteRedisCommand and every keyspace
+// binding below so they all lazily connect the same way.
+func (a *App) ensureRedisPoolOpen(connID string) error {
+	if _, err := a.redisPools.Get(connID); err == nil {
+		return nil
+	}
+
+	_, dsn, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return err
+	}
+	_, err = a.redisPools.Open(connID, dsn)
+	return err
+}
+
 // ExecuteQuery opens (or reuses) the pool for connID and streams the result
 // of sqlText back as events under queryID. The frontend must call
 // EventsOn(queryID, ...) before invoking this — see
@@ -509,6 +647,252 @@ func (a *App) CancelQuery(queryID string) error {
 	}
 	a.executor.Cancel(queryID)
 	return nil
+}
+
+// ExecuteRedisCommand opens (or reuses) the Redis client for connID and
+// streams the result of commandText back as events under queryID — same
+// request/response-plus-streamed-events contract as ExecuteQuery, but for
+// Redis's own one-command-per-line syntax instead of SQL (see
+// backend/redisquery).
+func (a *App) ExecuteRedisCommand(connID, queryID, commandText string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := a.ensureRedisPoolOpen(connID); err != nil {
+		return err
+	}
+
+	a.redisExecutor.Execute(connID, queryID, commandText)
+	return nil
+}
+
+// CancelRedisCommand cancels the in-flight Redis command script registered
+// under queryID, if any.
+func (a *App) CancelRedisCommand(queryID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	a.redisExecutor.Cancel(queryID)
+	return nil
+}
+
+// ListRedisKeys pages through connID's keyspace via SCAN — never KEYS *,
+// see .claude/rules/technical.md's performance rule. cursor is opaque: ""
+// starts from the beginning, and a returned cursor of "" means there are no
+// more pages. match is a SCAN glob ("*" for all keys).
+func (a *App) ListRedisKeys(connID, cursor, match, keyType string, count int64) (db.RedisScanPage, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return db.RedisScanPage{}, err
+	}
+	if err := a.ensureRedisPoolOpen(connID); err != nil {
+		return db.RedisScanPage{}, err
+	}
+	client, err := a.redisPools.Get(connID)
+	if err != nil {
+		return db.RedisScanPage{}, err
+	}
+	return db.ScanKeys(a.ctx, client, cursor, match, keyType, count)
+}
+
+// GetRedisStats returns the sidebar header's summary (total keys + used
+// memory) — see db.GetRedisStats for why UsedMemoryBytes is server-wide,
+// not per logical database.
+func (a *App) GetRedisStats(connID string) (db.RedisStats, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return db.RedisStats{}, err
+	}
+	if err := a.ensureRedisPoolOpen(connID); err != nil {
+		return db.RedisStats{}, err
+	}
+	client, err := a.redisPools.Get(connID)
+	if err != nil {
+		return db.RedisStats{}, err
+	}
+	return db.GetRedisStats(a.ctx, client)
+}
+
+// GetRedisKeyInfo returns key's type and TTL (see db.GetRedisKeyInfo for the
+// -1/-2 TTL sentinel semantics) — the frontend always fetches this before
+// GetRedisKeyValue, since the value fetch needs to know which type-specific
+// path to take.
+func (a *App) GetRedisKeyInfo(connID, key string) (db.RedisKeyInfo, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return db.RedisKeyInfo{}, err
+	}
+	if err := a.ensureRedisPoolOpen(connID); err != nil {
+		return db.RedisKeyInfo{}, err
+	}
+	client, err := a.redisPools.Get(connID)
+	if err != nil {
+		return db.RedisKeyInfo{}, err
+	}
+	return db.GetRedisKeyInfo(a.ctx, client, key)
+}
+
+// GetRedisKeyValue returns one paginated page of key's value, shaped by typ
+// (as returned by GetRedisKeyInfo) — see db.GetRedisValue for the
+// pagination semantics, which differ by type.
+func (a *App) GetRedisKeyValue(connID, key, typ, cursor string, offset, count int64) (db.RedisValue, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return db.RedisValue{}, err
+	}
+	if err := a.ensureRedisPoolOpen(connID); err != nil {
+		return db.RedisValue{}, err
+	}
+	client, err := a.redisPools.Get(connID)
+	if err != nil {
+		return db.RedisValue{}, err
+	}
+	return db.GetRedisValue(a.ctx, client, key, typ, cursor, offset, count)
+}
+
+// DeleteRedisKey deletes key from connID — an explicit action the frontend
+// confirms first (never inline/silent mutation), matching this project's
+// existing philosophy for row data (see
+// .claude/skills/mini-tools-patterns/SKILL.md).
+func (a *App) DeleteRedisKey(connID, key string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := a.ensureRedisPoolOpen(connID); err != nil {
+		return err
+	}
+	client, err := a.redisPools.Get(connID)
+	if err != nil {
+		return err
+	}
+	return db.DeleteRedisKey(a.ctx, client, key)
+}
+
+// redisClientFor unlocks the vault, ensures connID's Redis pool is open,
+// and returns its client — the common prefix every write/export binding
+// below shares (the read-only bindings above predate this feature and
+// keep their own copy of the same 3 lines, left as-is to avoid an
+// unrelated diff).
+func (a *App) redisClientFor(connID string) (redis.UniversalClient, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	if err := a.ensureRedisPoolOpen(connID); err != nil {
+		return nil, err
+	}
+	return a.redisPools.Get(connID)
+}
+
+// SetRedisStringValue overwrites key's whole string value, preserving any
+// existing TTL (see db.SetStringValue).
+func (a *App) SetRedisStringValue(connID, key, value string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.SetStringValue(a.ctx, client, key, value)
+}
+
+// SetRedisJSONValue overwrites key's whole RedisJSON document (see
+// db.SetJSONValue). value must already be valid JSON — the frontend
+// validates it before calling this, JSON.SET itself would otherwise
+// return a cryptic parser error instead of a friendly one.
+func (a *App) SetRedisJSONValue(connID, key, value string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.SetJSONValue(a.ctx, client, key, value)
+}
+
+// SetRedisHashField creates or overwrites one field of a hash.
+func (a *App) SetRedisHashField(connID, key, field, value string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.SetHashField(a.ctx, client, key, field, value)
+}
+
+// DeleteRedisHashField removes one field from a hash.
+func (a *App) DeleteRedisHashField(connID, key, field string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.DeleteHashField(a.ctx, client, key, field)
+}
+
+// SetRedisListIndex overwrites the element at index.
+func (a *App) SetRedisListIndex(connID, key string, index int64, value string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.SetListIndex(a.ctx, client, key, index, value)
+}
+
+// PushRedisListValue appends value to the end of a list.
+func (a *App) PushRedisListValue(connID, key, value string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.PushListValue(a.ctx, client, key, value)
+}
+
+// RemoveRedisListIndex deletes the element at index (see
+// db.RemoveListIndex for the LSET+LREM sentinel technique).
+func (a *App) RemoveRedisListIndex(connID, key string, index int64) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.RemoveListIndex(a.ctx, client, key, index)
+}
+
+// AddRedisSetMember adds member to a set.
+func (a *App) AddRedisSetMember(connID, key, member string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.AddSetMember(a.ctx, client, key, member)
+}
+
+// RemoveRedisSetMember removes member from a set.
+func (a *App) RemoveRedisSetMember(connID, key, member string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.RemoveSetMember(a.ctx, client, key, member)
+}
+
+// AddRedisZSetMember adds (or updates the score of) member in a sorted set.
+func (a *App) AddRedisZSetMember(connID, key, member string, score float64) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.AddZSetMember(a.ctx, client, key, member, score)
+}
+
+// RemoveRedisZSetMember removes member from a sorted set.
+func (a *App) RemoveRedisZSetMember(connID, key, member string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.RemoveZSetMember(a.ctx, client, key, member)
+}
+
+// ExportRedisKeys fetches type/TTL/full value for every key in keys — used
+// by the Redis Browser tab's bulk "Exportar" action. Returns data, not a
+// file (same pattern as GetObjectDDL): the frontend decides JSON vs CSV
+// and calls SaveDDLToFile with the result.
+func (a *App) ExportRedisKeys(connID string, keys []string) ([]db.RedisKeyExport, error) {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return nil, err
+	}
+	return db.ExportRedisKeys(a.ctx, client, keys)
 }
 
 // BeginTransaction turns auto-commit off for connID: every statement
@@ -744,26 +1128,47 @@ func (a *App) SyncSchemaMetadata(connID, schema string) (*db.SchemaMetadata, err
 
 	merged := &db.SchemaMetadata{}
 	if cached, ok := a.cachedMetadata(connID); ok {
-		merged.Tables = cached.Tables
+		*merged = *cached
 	} else if cached, ok, err := a.vault.GetSchemaMetadataCache(connID); err != nil {
 		return nil, err
 	} else if ok {
-		merged.Tables = cached.Tables
+		*merged = *cached
 	}
 
-	kept := merged.Tables[:0]
-	for _, t := range merged.Tables {
-		if t.Schema != schema {
-			kept = append(kept, t)
-		}
-	}
-	merged.Tables = append(kept, fresh.Tables...)
+	// Bug fixed here: this used to only ever carry Tables through the
+	// merge (`merged.Tables = cached.Tables` + a manual filter/append),
+	// silently dropping Procedures/Functions/Triggers/Packages back to
+	// empty on every sync even when fresh had them — added when
+	// SchemaMetadata grew those fields (scanner DDL spec) without
+	// updating this merge. replaceSchemaObjects now does the same
+	// "drop this schema's old entries, append the fresh ones" swap for
+	// all five object types.
+	merged.Tables = replaceSchemaObjects(merged.Tables, schema, fresh.Tables, func(t db.Table) string { return t.Schema })
+	merged.Procedures = replaceSchemaObjects(merged.Procedures, schema, fresh.Procedures, func(p db.Procedure) string { return p.Schema })
+	merged.Functions = replaceSchemaObjects(merged.Functions, schema, fresh.Functions, func(f db.Function) string { return f.Schema })
+	merged.Triggers = replaceSchemaObjects(merged.Triggers, schema, fresh.Triggers, func(t db.Trigger) string { return t.Schema })
+	merged.Packages = replaceSchemaObjects(merged.Packages, schema, fresh.Packages, func(p db.Package) string { return p.Schema })
 
 	a.setCachedMetadata(connID, merged)
 	if err := a.vault.SaveSchemaMetadataCache(connID, merged); err != nil {
 		return nil, err
 	}
 	return merged, nil
+}
+
+// replaceSchemaObjects drops every item in cached whose schema matches
+// schema, then appends fresh's items — the shared "refresh exactly one
+// schema's slice, leave every other already-cached schema's objects
+// alone" primitive SyncSchemaMetadata uses for tables/procedures/
+// functions/triggers/packages alike.
+func replaceSchemaObjects[T any](cached []T, schema string, fresh []T, schemaOf func(T) string) []T {
+	kept := cached[:0]
+	for _, item := range cached {
+		if schemaOf(item) != schema {
+			kept = append(kept, item)
+		}
+	}
+	return append(kept, fresh...)
 }
 
 // ListSchemas returns connID's visible schema names (Postgres and Oracle —
@@ -1043,6 +1448,68 @@ func (a *App) ExportSchemaDDL(connID, schema string) (string, error) {
 	}
 
 	return a.saveSQLTextAs("Exportar DDL del schema", "schema.sql", ddl)
+}
+
+// GetObjectDDL fetches the current DDL for any scanned schema object, for
+// the in-app DDL viewer modal (unlike ExportTableDDL/ExportSchemaDDL above,
+// this returns the text directly instead of writing it to a file — the
+// modal shows it, SaveDDLToFile below is the separate opt-in "export what
+// I'm already looking at" action). objectType is one of "table",
+// "procedure", "function", "trigger", "package"; schema/oid are only
+// meaningful for the object types/engines that need them (schema: Postgres
+// tables; oid: Postgres functions/procedures/triggers, to disambiguate
+// overloads — see db.Function's doc comment).
+func (a *App) GetObjectDDL(connID, objectType, schema, name string, oid int64) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	pool, dbType, err := a.poolAndType(connID)
+	if err != nil {
+		return "", err
+	}
+
+	switch dbType {
+	case db.DBTypeSQLite:
+		switch objectType {
+		case "table":
+			return export.SQLiteTableDDL(a.ctx, pool, name)
+		case "trigger":
+			return export.SQLiteTriggerDDL(a.ctx, pool, name)
+		}
+	case db.DBTypePostgres:
+		switch objectType {
+		case "table":
+			return export.PostgresTableDDL(a.ctx, pool, schema, name)
+		case "function", "procedure":
+			return export.PostgresFunctionDDL(a.ctx, pool, oid)
+		case "trigger":
+			return export.PostgresTriggerDDL(a.ctx, pool, oid)
+		}
+	case db.DBTypeOracle:
+		switch objectType {
+		case "table":
+			return export.OracleTableDDL(a.ctx, pool, name)
+		case "procedure":
+			return export.OracleProcedureDDL(a.ctx, pool, name)
+		case "function":
+			return export.OracleFunctionDDL(a.ctx, pool, name)
+		case "trigger":
+			return export.OracleTriggerDDL(a.ctx, pool, name)
+		case "package":
+			return export.OraclePackageDDL(a.ctx, pool, name)
+		}
+	}
+	return "", fmt.Errorf("app: GetObjectDDL no soportado para %q/%q", dbType, objectType)
+}
+
+// SaveDDLToFile prompts for a .sql destination and writes ddl there — the
+// DDL viewer modal's "Exportar a archivo" button calls this with whatever
+// text GetObjectDDL already returned, no re-fetch needed.
+func (a *App) SaveDDLToFile(defaultFilename, ddl string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	return a.saveSQLTextAs("Exportar DDL", defaultFilename, ddl)
 }
 
 // ExportConnectionConfig writes connID's config (name, engine, DSN with the

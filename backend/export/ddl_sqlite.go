@@ -18,6 +18,17 @@ func SQLiteTableDDL(ctx context.Context, pool *sql.DB, table string) (string, er
 	return ddl + ";\n", nil
 }
 
+// SQLiteTriggerDDL returns the CREATE TRIGGER statement for trigger exactly
+// as SQLite stored it — same pattern as SQLiteTableDDL.
+func SQLiteTriggerDDL(ctx context.Context, pool *sql.DB, trigger string) (string, error) {
+	var ddl string
+	err := pool.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?`, trigger).Scan(&ddl)
+	if err != nil {
+		return "", fmt.Errorf("export: leyendo DDL de %q: %w", trigger, err)
+	}
+	return ddl + ";\n", nil
+}
+
 // SQLiteSchemaDDL returns the CREATE statements for every table/view/index
 // in the database, tables first (so views/indexes that depend on them
 // don't fail if replayed in order).

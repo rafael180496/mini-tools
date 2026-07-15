@@ -53,3 +53,52 @@ func OracleSchemaDDL(ctx context.Context, pool *sql.DB) (string, error) {
 	}
 	return b.String(), nil
 }
+
+// OracleProcedureDDL/OracleFunctionDDL/OracleTriggerDDL are OracleTableDDL's
+// siblings for the other object types GET_DDL supports — same stateless
+// single-call pattern (GET_DDL has no session-state dependency the way
+// DBMS_OUTPUT does, so no reserved *sql.Conn is needed here, plain
+// pool.QueryRowContext is enough).
+func OracleProcedureDDL(ctx context.Context, pool *sql.DB, name string) (string, error) {
+	var ddl string
+	err := pool.QueryRowContext(ctx, `SELECT DBMS_METADATA.GET_DDL('PROCEDURE', :1) FROM DUAL`, name).Scan(&ddl)
+	if err != nil {
+		return "", fmt.Errorf("export: leyendo DDL de %q: %w", name, err)
+	}
+	return ddl, nil
+}
+
+func OracleFunctionDDL(ctx context.Context, pool *sql.DB, name string) (string, error) {
+	var ddl string
+	err := pool.QueryRowContext(ctx, `SELECT DBMS_METADATA.GET_DDL('FUNCTION', :1) FROM DUAL`, name).Scan(&ddl)
+	if err != nil {
+		return "", fmt.Errorf("export: leyendo DDL de %q: %w", name, err)
+	}
+	return ddl, nil
+}
+
+func OracleTriggerDDL(ctx context.Context, pool *sql.DB, name string) (string, error) {
+	var ddl string
+	err := pool.QueryRowContext(ctx, `SELECT DBMS_METADATA.GET_DDL('TRIGGER', :1) FROM DUAL`, name).Scan(&ddl)
+	if err != nil {
+		return "", fmt.Errorf("export: leyendo DDL de %q: %w", name, err)
+	}
+	return ddl, nil
+}
+
+// OraclePackageDDL concatenates the package spec and body — a package's
+// full definition usually needs both to be useful. The body is optional
+// (a spec-only package is valid Oracle), so a failure fetching
+// PACKAGE_BODY isn't a hard error, it just falls back to the spec alone.
+func OraclePackageDDL(ctx context.Context, pool *sql.DB, name string) (string, error) {
+	var spec string
+	if err := pool.QueryRowContext(ctx, `SELECT DBMS_METADATA.GET_DDL('PACKAGE', :1) FROM DUAL`, name).Scan(&spec); err != nil {
+		return "", fmt.Errorf("export: leyendo DDL de %q: %w", name, err)
+	}
+
+	var body string
+	if err := pool.QueryRowContext(ctx, `SELECT DBMS_METADATA.GET_DDL('PACKAGE_BODY', :1) FROM DUAL`, name).Scan(&body); err != nil {
+		return spec, nil
+	}
+	return spec + "\n\n" + body, nil
+}

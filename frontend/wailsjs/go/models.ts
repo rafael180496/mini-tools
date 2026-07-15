@@ -34,6 +34,254 @@ export namespace db {
 	        this.referencedColumn = source["referencedColumn"];
 	    }
 	}
+	export class Function {
+	    schema?: string;
+	    name: string;
+	    returnType?: string;
+	    oid?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Function(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema = source["schema"];
+	        this.name = source["name"];
+	        this.returnType = source["returnType"];
+	        this.oid = source["oid"];
+	    }
+	}
+	export class Package {
+	    schema?: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Package(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema = source["schema"];
+	        this.name = source["name"];
+	    }
+	}
+	export class Procedure {
+	    schema?: string;
+	    name: string;
+	    oid?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Procedure(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema = source["schema"];
+	        this.name = source["name"];
+	        this.oid = source["oid"];
+	    }
+	}
+	export class RedisFieldValue {
+	    field: string;
+	    value: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisFieldValue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.field = source["field"];
+	        this.value = source["value"];
+	    }
+	}
+	export class RedisKeyEntry {
+	    key: string;
+	    type: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisKeyEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.type = source["type"];
+	    }
+	}
+	export class RedisKeyExport {
+	    key: string;
+	    type: string;
+	    ttlSeconds: number;
+	    value: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisKeyExport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.type = source["type"];
+	        this.ttlSeconds = source["ttlSeconds"];
+	        this.value = source["value"];
+	    }
+	}
+	export class RedisKeyInfo {
+	    key: string;
+	    type: string;
+	    ttlSeconds: number;
+	    sizeBytes?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisKeyInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.type = source["type"];
+	        this.ttlSeconds = source["ttlSeconds"];
+	        this.sizeBytes = source["sizeBytes"];
+	    }
+	}
+	export class RedisScanPage {
+	    keys: RedisKeyEntry[];
+	    cursor?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisScanPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.keys = this.convertValues(source["keys"], RedisKeyEntry);
+	        this.cursor = source["cursor"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RedisScoredMember {
+	    member: string;
+	    score: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisScoredMember(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.member = source["member"];
+	        this.score = source["score"];
+	    }
+	}
+	export class RedisStats {
+	    totalKeys: number;
+	    usedMemoryBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalKeys = source["totalKeys"];
+	        this.usedMemoryBytes = source["usedMemoryBytes"];
+	    }
+	}
+	export class RedisStreamEntry {
+	    id: string;
+	    fields: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisStreamEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.fields = source["fields"];
+	    }
+	}
+	export class RedisValue {
+	    type: string;
+	    stringVal?: string;
+	    hashPairs?: RedisFieldValue[];
+	    listItems?: string[];
+	    setMembers?: string[];
+	    zsetItems?: RedisScoredMember[];
+	    streamEntries?: RedisStreamEntry[];
+	    cursor?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisValue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.stringVal = source["stringVal"];
+	        this.hashPairs = this.convertValues(source["hashPairs"], RedisFieldValue);
+	        this.listItems = source["listItems"];
+	        this.setMembers = source["setMembers"];
+	        this.zsetItems = this.convertValues(source["zsetItems"], RedisScoredMember);
+	        this.streamEntries = this.convertValues(source["streamEntries"], RedisStreamEntry);
+	        this.cursor = source["cursor"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Trigger {
+	    schema?: string;
+	    name: string;
+	    table?: string;
+	    oid?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Trigger(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema = source["schema"];
+	        this.name = source["name"];
+	        this.table = source["table"];
+	        this.oid = source["oid"];
+	    }
+	}
 	export class Table {
 	    schema?: string;
 	    name: string;
@@ -72,6 +320,10 @@ export namespace db {
 	}
 	export class SchemaMetadata {
 	    tables: Table[];
+	    procedures?: Procedure[];
+	    functions?: Function[];
+	    triggers?: Trigger[];
+	    packages?: Package[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SchemaMetadata(source);
@@ -80,6 +332,10 @@ export namespace db {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.tables = this.convertValues(source["tables"], Table);
+	        this.procedures = this.convertValues(source["procedures"], Procedure);
+	        this.functions = this.convertValues(source["functions"], Function);
+	        this.triggers = this.convertValues(source["triggers"], Trigger);
+	        this.packages = this.convertValues(source["packages"], Package);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -100,6 +356,7 @@ export namespace db {
 		    return a;
 		}
 	}
+	
 
 }
 
@@ -250,6 +507,7 @@ export namespace vault {
 	    createdAt: number;
 	    metadataSchemas: string[];
 	    color?: string;
+	    folderId?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionSummary(source);
@@ -263,6 +521,7 @@ export namespace vault {
 	        this.createdAt = source["createdAt"];
 	        this.metadataSchemas = source["metadataSchemas"];
 	        this.color = source["color"];
+	        this.folderId = source["folderId"];
 	    }
 	}
 	export class ExplainHistoryEntry {
@@ -305,6 +564,26 @@ export namespace vault {
 		    return a;
 		}
 	}
+	export class Folder {
+	    id: string;
+	    name: string;
+	    parentId?: string;
+	    sortOrder: number;
+	    createdAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Folder(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.parentId = source["parentId"];
+	        this.sortOrder = source["sortOrder"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class HistoryEntry {
 	    id: string;
 	    connectionId: string;
@@ -331,6 +610,24 @@ export namespace vault {
 	        this.executedAt = source["executedAt"];
 	    }
 	}
+	export class OpenTabInfo {
+	    path: string;
+	    connId?: string;
+	    language?: string;
+	    kind?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OpenTabInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.connId = source["connId"];
+	        this.language = source["language"];
+	        this.kind = source["kind"];
+	    }
+	}
 	export class RecentFile {
 	    path: string;
 	    openedAt: number;
@@ -347,10 +644,12 @@ export namespace vault {
 	}
 	export class Settings {
 	    theme: string;
-	    openTabs: string[];
+	    openTabs: OpenTabInfo[];
 	    sidebarCollapsed: boolean;
 	    editorHeight: number;
 	    rememberMasterKey: boolean;
+	    editorTheme: string;
+	    collapsedSidebarModules: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -359,11 +658,31 @@ export namespace vault {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.theme = source["theme"];
-	        this.openTabs = source["openTabs"];
+	        this.openTabs = this.convertValues(source["openTabs"], OpenTabInfo);
 	        this.sidebarCollapsed = source["sidebarCollapsed"];
 	        this.editorHeight = source["editorHeight"];
 	        this.rememberMasterKey = source["rememberMasterKey"];
+	        this.editorTheme = source["editorTheme"];
+	        this.collapsedSidebarModules = source["collapsedSidebarModules"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

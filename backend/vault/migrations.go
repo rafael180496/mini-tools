@@ -97,6 +97,52 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 9,
+		desc:    "agrega settings.editor_theme para el tema configurable del editor CodeMirror",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN editor_theme TEXT NOT NULL DEFAULT 'auto'`)
+			return err
+		},
+	},
+	{
+		version: 10,
+		desc:    "agrega folders (árbol de carpetas para conexiones), connections.folder_id y settings.collapsed_sidebar_modules",
+		apply: func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS folders (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL,
+					parent_id TEXT,
+					sort_order INTEGER NOT NULL DEFAULT 0,
+					created_at INTEGER NOT NULL
+				)
+			`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`ALTER TABLE connections ADD COLUMN folder_id TEXT`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN collapsed_sidebar_modules TEXT`)
+			return err
+		},
+	},
+	{
+		version: 11,
+		desc:    "agrega schema_metadata_cache.scanner_version — invalida en frío el cache de metadata previo al scanner de procedures/functions/triggers/packages",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT 0 applies to every existing row too (same SQLite
+			// behavior already relied on by sidebar_collapsed/editor_height
+			// above) — every cache entry written before this column existed
+			// reads back as version 0, which GetSchemaMetadataCache treats
+			// as a miss (see schema_metadata_repo.go's currentScannerVersion),
+			// forcing exactly one live re-fetch per connection instead of
+			// silently serving stale metadata missing the new object types
+			// forever. New rows are written with the current version.
+			_, err := tx.Exec(`ALTER TABLE schema_metadata_cache ADD COLUMN scanner_version INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

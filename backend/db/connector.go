@@ -2,18 +2,27 @@ package db
 
 import "fmt"
 
-// DBType identifies which of the 3 supported engines a connection uses.
+// DBType identifies which of the 4 supported engines a connection uses.
 type DBType string
 
 const (
 	DBTypeSQLite   DBType = "sqlite"
 	DBTypePostgres DBType = "postgres"
 	DBTypeOracle   DBType = "oracle"
+	// DBTypeRedis is the one deliberate exception to "all engines go
+	// through database/sql" (.claude/rules/technical.md point 2, exception
+	// documented there) — Redis isn't relational and go-redis's client
+	// doesn't implement database/sql interfaces, so it's driven by
+	// RedisPoolManager (redis_pool.go) instead of PoolManager. See
+	// .claude/skills/mini-tools-patterns/SKILL.md's Redis section.
+	DBTypeRedis DBType = "redis"
 )
 
 // DriverName returns the database/sql driver name registered for this
-// engine — all three engines are unified under database/sql, never sqlx or
-// a driver's native SDK directly. See .claude/rules/technical.md.
+// engine — Oracle/Postgres/SQLite are unified under database/sql, never
+// sqlx or a driver's native SDK directly. See .claude/rules/technical.md.
+// Redis has no database/sql driver and never calls this — it's routed
+// through RedisPoolManager instead of PoolManager.
 func (t DBType) DriverName() string {
 	switch t {
 	case DBTypeSQLite:
@@ -52,6 +61,8 @@ func ConnectorFor(t DBType) (Connector, error) {
 		return postgresConnector{}, nil
 	case DBTypeOracle:
 		return oracleConnector{}, nil
+	case DBTypeRedis:
+		return redisConnector{}, nil
 	default:
 		return nil, fmt.Errorf("db: db_type desconocido %q", t)
 	}

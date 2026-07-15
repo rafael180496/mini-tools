@@ -9,17 +9,17 @@ a ningún lado — solo empaqueta el `.dmg` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.1.1 |
-| Archivo | `mini-tools-v0.1.1.dmg` |
+| Versión | 0.2.0 |
+| Archivo | `mini-tools-v0.2.0.dmg` |
 | Tamaño | ~16 MB |
-| SHA-256 | `ccb0e27d78fe34921959b79fd33b2ef24e5cb064813a1fd9e86596995d32e4b8` |
+| SHA-256 | `e0d9580df8f0146448ac05abb1136f23074305ee96bf2fa9919c55cafa6240ce` |
 | Arquitectura | `arm64` (Apple Silicon) |
 | Generado | `wails build -clean` (modo producción, sin devtools) |
 
 Verificar la integridad del archivo descargado:
 
 ```bash
-shasum -a 256 mini-tools-v0.1.1.dmg
+shasum -a 256 mini-tools-v0.2.0.dmg
 # debe coincidir con el hash de la tabla de arriba
 ```
 

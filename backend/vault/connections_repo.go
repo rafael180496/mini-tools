@@ -30,6 +30,9 @@ type ConnectionSummary struct {
 	// identification in ConnectionTree.tsx — never interpreted server-side.
 	// Empty means "no color set" (schema_migrations version 8).
 	Color string `json:"color,omitempty"`
+	// FolderID is which folders.id this connection is organized under —
+	// empty means root (schema_migrations version 10). See folders_repo.go.
+	FolderID string `json:"folderId,omitempty"`
 }
 
 func splitSchemas(raw sql.NullString) []string {
@@ -114,7 +117,7 @@ func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, 
 // ListConnections returns every saved connection, without DSNs, ordered by
 // name for the sidebar tree.
 func (s *Store) ListConnections() ([]ConnectionSummary, error) {
-	rows, err := s.db.Query(`SELECT id, name, db_type, created_at, metadata_schemas, color FROM connections ORDER BY name`)
+	rows, err := s.db.Query(`SELECT id, name, db_type, created_at, metadata_schemas, color, folder_id FROM connections ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: listing connections: %w", err)
 	}
@@ -123,15 +126,34 @@ func (s *Store) ListConnections() ([]ConnectionSummary, error) {
 	out := []ConnectionSummary{}
 	for rows.Next() {
 		var c ConnectionSummary
-		var schemas, color sql.NullString
-		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt, &schemas, &color); err != nil {
+		var schemas, color, folderID sql.NullString
+		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt, &schemas, &color, &folderID); err != nil {
 			return nil, fmt.Errorf("vault: scanning connection: %w", err)
 		}
 		c.MetadataSchemas = splitSchemas(schemas)
 		c.Color = color.String
+		c.FolderID = folderID.String
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// MoveConnectionToFolder re-organizes a connection under a different folder
+// ("" = root) — purely organizational, never touches encrypted_dsn. Same
+// pattern as SetConnectionSchemas.
+func (s *Store) MoveConnectionToFolder(id, folderID string) error {
+	res, err := s.db.Exec(`UPDATE connections SET folder_id = ? WHERE id = ?`, nullableString(folderID), id)
+	if err != nil {
+		return fmt.Errorf("vault: moviendo conexión de carpeta: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("vault: moviendo conexión de carpeta: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("vault: conexión %q no encontrada", id)
+	}
+	return nil
 }
 
 // SetConnectionSchemas persists which schemas GetSchemaMetadata should scan

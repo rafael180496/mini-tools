@@ -4,7 +4,7 @@
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
 
-Cliente SQL de escritorio para **Oracle, PostgreSQL y SQLite** — tipo DataGrip, pero minimalista. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron, sin JVM, sin telemetría.
+Cliente de escritorio para **Oracle, PostgreSQL, SQLite y Redis** — tipo DataGrip + RedisInsight, pero minimalista y en un solo binario nativo. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron, sin JVM, sin telemetría.
 
 > El spec funcional completo vive en [docs/SPEC.md](docs/SPEC.md); la arquitectura y convenciones actuales del código en [CLAUDE.md](CLAUDE.md).
 
@@ -14,17 +14,23 @@ Cliente SQL de escritorio para **Oracle, PostgreSQL y SQLite** — tipo DataGrip
   <img src="docs/screenshots/editor.png" width="900" alt="Editor SQL de mini-tools con autocompletado, tabs reordenables, transacciones explícitas y configuración centralizada">
 </p>
 
-<p align="center"><em>Editor Monaco con autocompletado consciente del contexto, tabs que se reordenan arrastrando, transacciones explícitas siempre visibles y un ícono de Configuración a un click de distancia.</em></p>
+<p align="center"><em>Editor CodeMirror con autocompletado consciente del contexto, tabs que se reordenan arrastrando, transacciones explícitas siempre visibles y un ícono de Configuración a un click de distancia.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/redis-browser.png" width="900" alt="Redis Browser: explorador de keys en pestaña completa, con filtro por tipo, stats de header, selección múltiple y panel de detalle editable">
+</p>
+
+<p align="center"><em>Redis Browser: pestaña de ventana completa por conexión Redis — filtro por tipo con badges de color, stats de keys/memoria, selección múltiple con exportación a JSON/CSV, y edición inline del valor (string, JSON, hash, list, set, zset) preservando el TTL.</em></p>
 
 <table>
   <tr>
     <td align="center" width="34%">
-      <img src="docs/screenshots/schema-tree.png" width="260" alt="Árbol de conexiones con ícono por motor y color de etiqueta por conexión"><br>
-      <sub>Cada conexión con el ícono real de su motor y un color de etiqueta a elección — reconocible de un vistazo, sin leer el nombre</sub>
+      <img src="docs/screenshots/schema-tree.png" width="260" alt="Árbol de conexiones con carpetas, múltiples motores (incluido Redis) y categorías colapsables de tablas/functions/triggers"><br>
+      <sub>Conexiones organizadas en carpetas, ícono real por motor (Oracle/PostgreSQL/SQLite/Redis), y tablas/procedures/functions/triggers en categorías colapsables y ordenadas — probado en vivo con un schema de 342 tablas</sub>
     </td>
     <td align="center" width="66%">
-      <img src="docs/screenshots/new-connection.png" width="560" alt="Diálogo de nueva conexión con selector visual de motor y color, y detección de connection string"><br>
-      <sub>Nueva conexión: pegá una connection string y se completa sola, elegí el motor con un click y ponele un color propio</sub>
+      <img src="docs/screenshots/new-connection.png" width="560" alt="Diálogo de nueva conexión con los 4 motores soportados, selector visual de tipo y color, y detección de connection string"><br>
+      <sub>Nueva conexión: pegá una connection string y se completa sola, elegí motor (incluido Redis: standalone/cluster/sentinel) con un click y ponele un color propio</sub>
     </td>
   </tr>
 </table>
@@ -35,7 +41,7 @@ Cliente SQL de escritorio para **Oracle, PostgreSQL y SQLite** — tipo DataGrip
 
 <p align="center"><em>Conexiones cifradas en un vault local — sin la clave maestra, no hay acceso.</em></p>
 
-> El diálogo de nueva conexión y la pantalla de desbloqueo son ejemplos ficticios. El editor y el árbol de conexiones muestran una conexión real con el nombre y los nombres de tabla difuminados a propósito — el resto de la interfaz (toolbar, tabs, ícono por motor, colores) es exactamente como se ve en uso normal.
+> El diálogo de nueva conexión y la pantalla de desbloqueo son ejemplos ficticios. El editor, el árbol de conexiones y el Redis Browser muestran datos reales con nombres de tabla/conexión difuminados y, en el Redis Browser, los nombres de key y el valor de la key seleccionada pixelados a propósito (esa captura en particular exponía una key con un secreto real) — el resto de la interfaz (toolbar, tabs, badges de tipo, ícono por motor, colores) es exactamente como se ve en uso normal.
 
 ## Por qué
 
@@ -43,20 +49,23 @@ La mayoría de clientes SQL multi-motor son pesados (JVM, Electron, cientos de M
 
 ## Features
 
-- **3 motores nativos**: Oracle (TNS / Easy Connect / SID / Service Name), PostgreSQL (SSL modes completos), SQLite — todos vía `database/sql`, sin cliente Oracle/Postgres instalado aparte.
+- **4 motores nativos**: Oracle (TNS / Easy Connect / SID / Service Name), PostgreSQL (SSL modes completos), SQLite — vía `database/sql`, sin cliente Oracle/Postgres instalado aparte — y Redis (Standalone/Cluster/Sentinel, ACL, TLS) vía `go-redis`, con soporte de primera clase para RediSearch (`FT.SEARCH`/`FT.AGGREGATE`) y RedisJSON (`JSON.*`).
 - **Vault cifrado local**: las conexiones se guardan en SQLite, con el DSN cifrado columna a columna (AES-256-GCM, clave derivada con Argon2id). Sin clave maestra correcta, no hay acceso — no hay bypass.
 - **Backup/restore protegido por clave maestra**: exportar e importar el vault completo (conexiones + salt) como un solo archivo. Tanto generar el backup como restaurarlo piden tu clave maestra — se verifica contra el propio archivo antes de tocar nada, así que un backup que termine en otra máquina, USB o la nube no sirve de nada sin ella.
 - **Pegar connection string**: copiá una URL de Postgres, un Easy Connect/SID/TNS de Oracle, un JDBC, o una ruta SQLite (directo de un `.env`) y el formulario de conexión se completa solo, detectando el motor.
-- **Ícono real por motor y color de etiqueta por conexión**: cada conexión muestra el logo de Oracle/PostgreSQL/SQLite y un color a elección (elegible al crear o editar) — distinguís de un vistazo cuál es cuál sin leer el nombre, sobre todo útil con muchas conexiones abiertas.
+- **Ícono real por motor y color de etiqueta por conexión**: cada conexión muestra el logo de Oracle/PostgreSQL/SQLite/Redis y un color a elección (elegible al crear o editar) — distinguís de un vistazo cuál es cuál sin leer el nombre, sobre todo útil con muchas conexiones abiertas.
+- **Carpetas para organizar conexiones**: crear, renombrar, mover y reordenar carpetas desde el propio árbol — "Conexiones" es un módulo de acordeón colapsable en el sidebar, con espacio para futuros módulos.
 - **Guardar sin depender de un ping**: crear o editar una conexión nunca exige que el Test Connection haya sido exitoso — guardás igual si el servidor está apagado ahora pero lo vas a usar más tarde. Test Connection sigue ahí como verificación opcional.
 - **Selector de esquemas al crear la conexión**: en Postgres, después de un Test Connection exitoso elegís qué esquemas escanear — clave en catálogos con cientos de esquemas donde un escaneo completo es lento. Editable después desde el árbol de conexiones.
-- **Editor SQL** (Monaco, recortado solo a SQL, sin CDN) con tabs reordenables por drag-and-drop, archivos recientes, y pestañas restauradas automáticamente al reabrir la app.
+- **Editor** (CodeMirror 6, sin CDN) con syntax highlighting real para SQL y para comandos Redis, tabs reordenables por drag-and-drop, archivos recientes, y pestañas restauradas automáticamente al reabrir la app — incluidas las pestañas del Redis Browser.
+- **Redis Browser**: pestaña de ventana completa por conexión Redis — filtro por tipo con badges de color, buscador por patrón, stats de header (total de keys / memoria), selección múltiple con exportación a JSON/CSV, y edición inline del valor (string, JSON, hash, list, set, zset — streams de solo lectura) que siempre preserva el TTL existente.
+- **Scanner de objetos de esquema**: procedures, functions y triggers (PostgreSQL, Oracle) y packages (Oracle) además de tablas, agrupados en categorías colapsables por schema. Un click muestra el DDL actual en un visor con syntax highlighting (CodeMirror), botón de copiar y de exportar a `.sql`.
 - **Autocompletado consciente del contexto**: sugiere tablas después de `FROM`/`INSERT INTO`/`UPDATE` y columnas acotadas a las tablas realmente referenciadas después de `SELECT`/`WHERE`/`SET`; resuelve alias y esquema al tipear un punto (`u.` → columnas de `users` si `u` es su alias).
 - **Transacciones explícitas**: auto-commit es un checkbox, Commit/Rollback siempre visibles (deshabilitados cuando no aplican) — nunca hay ambigüedad sobre si un cambio quedó confirmado.
 - **Ejecución con streaming**: resultados en vivo statement por statement, cancelación en caliente, soporte de scripts multi-statement y bloques PL/SQL de Oracle (con `DBMS_OUTPUT` capturado). Múltiples resultados (uno por statement) en pestañas que se cierran individualmente o todas juntas.
 - **Historial de ejecuciones** por conexión: SQL exacto, estado, duración y error completo de cada statement corrido — filtrable, borrable entero o fila por fila.
 - **Grid de resultados** virtualizado para miles de filas sin lag, columnas redimensionables/ordenables (el sort reemite la query con `ORDER BY`, no ordena en cliente). Seleccionar una fila habilita copiarla como texto, `INSERT` o `UPDATE` listos para pegar en el editor.
-- **Árbol de conexiones** colapsable a una barra de solo íconos, con buscador de tablas/esquema, export de DDL (tabla puntual o esquema completo) desde el propio árbol, y layout (sidebar colapsado, alto del editor) recordado entre sesiones.
+- **Árbol de conexiones** colapsable a una barra de solo íconos, con buscador que cubre tablas y también procedures/functions/triggers/packages, categoría de tablas colapsable y siempre ordenada alfabéticamente (probado con un schema real de 342 tablas), export de DDL (objeto puntual o esquema completo) desde el propio árbol, y layout (sidebar colapsado, alto del editor) recordado entre sesiones.
 - **Configuración centralizada**: backup del vault y "recordar clave maestra" viven en un modal de Configuración propio, abierto desde el ícono de engranaje — no sueltos en la barra de herramientas.
 - **EXPLAIN PLAN visual**: árbol de plan de ejecución para los 3 motores, con detección de full table scan resaltada.
 - **Linter SQL básico**: marca `SELECT *` como sugerencia visual (no bloquea) y `UPDATE`/`DELETE` sin `WHERE` con confirmación antes de ejecutar.
@@ -121,11 +130,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.1.1 |
+| Versión | 0.2.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v0.1.1.dmg](releases/macos/mini-tools-v0.1.1.dmg)** |
-| SHA-256 | `ccb0e27d78fe34921959b79fd33b2ef24e5cb064813a1fd9e86596995d32e4b8` |
+| Archivo | **[⬇ Descargar mini-tools-v0.2.0.dmg](releases/macos/mini-tools-v0.2.0.dmg)** |
+| SHA-256 | `e0d9580df8f0146448ac05abb1136f23074305ee96bf2fa9919c55cafa6240ce` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/macos/README.md](releases/macos/README.md).

@@ -1,15 +1,10 @@
 import {useCallback, useEffect, useState} from 'react'
 import {GetSettings, SetTheme} from '../../wailsjs/go/main/App'
-import {monaco} from '../monaco/setup'
 
 export type Theme = 'dark' | 'light'
 
 function applyTheme(theme: Theme) {
     document.documentElement.classList.toggle('dark', theme === 'dark')
-    // Monaco's theme is a global singleton shared by every editor instance
-    // on the page, not per-instance — setTheme() re-themes any already-
-    // created editor too.
-    monaco.editor.setTheme(theme === 'dark' ? 'vs-dark' : 'vs')
 }
 
 // Single source of truth for the theme, meant to be called once at the top

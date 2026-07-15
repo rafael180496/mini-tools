@@ -31,10 +31,49 @@ type Table struct {
 	ForeignKeys []ForeignKey `json:"foreignKeys"`
 }
 
+// Procedure/Function/Trigger/Package are scanned alongside tables so the
+// sidebar tree/DDL viewer can show them too (backend/export's
+// GetObjectDDL). OID is populated for Postgres only — a Postgres function
+// can be overloaded (same name, different args), so its name alone isn't
+// enough to unambiguously ask pg_get_functiondef/pg_get_triggerdef for its
+// DDL; Oracle/SQLite leave it 0 (DBMS_METADATA.GET_DDL and sqlite_master
+// both take a plain name, no overloading to disambiguate).
+type Procedure struct {
+	Schema string `json:"schema,omitempty"`
+	Name   string `json:"name"`
+	OID    int64  `json:"oid,omitempty"`
+}
+
+type Function struct {
+	Schema     string `json:"schema,omitempty"`
+	Name       string `json:"name"`
+	ReturnType string `json:"returnType,omitempty"`
+	OID        int64  `json:"oid,omitempty"`
+}
+
+type Trigger struct {
+	Schema string `json:"schema,omitempty"`
+	Name   string `json:"name"`
+	Table  string `json:"table,omitempty"`
+	OID    int64  `json:"oid,omitempty"`
+}
+
+// Package is Oracle-only — Postgres/SQLite never populate this.
+type Package struct {
+	Schema string `json:"schema,omitempty"`
+	Name   string `json:"name"`
+}
+
 // SchemaMetadata is the unified shape used to populate the sidebar tree and
-// Monaco's autocomplete/hover, regardless of engine.
+// the editor's autocomplete/hover, regardless of engine. Every engine
+// leaves whichever object types it doesn't support empty (SQLite: only
+// Triggers; Postgres: no Packages) rather than erroring.
 type SchemaMetadata struct {
-	Tables []Table `json:"tables"`
+	Tables     []Table     `json:"tables"`
+	Procedures []Procedure `json:"procedures,omitempty"`
+	Functions  []Function  `json:"functions,omitempty"`
+	Triggers   []Trigger   `json:"triggers,omitempty"`
+	Packages   []Package   `json:"packages,omitempty"`
 }
 
 // FetchSchemaMetadata queries pool for its table/column/FK metadata, using
@@ -210,7 +249,27 @@ func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, er
 		tables = append(tables, t)
 	}
 
-	return &SchemaMetadata{Tables: tables}, nil
+	triggerRows, err := pool.QueryContext(ctx, `
+		SELECT name, tbl_name FROM sqlite_master WHERE type = 'trigger' ORDER BY name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando triggers sqlite: %w", err)
+	}
+	var triggers []Trigger
+	for triggerRows.Next() {
+		var name, table string
+		if err := triggerRows.Scan(&name, &table); err != nil {
+			triggerRows.Close()
+			return nil, fmt.Errorf("db: escaneando trigger sqlite: %w", err)
+		}
+		triggers = append(triggers, Trigger{Name: name, Table: table})
+	}
+	triggerRows.Close()
+	if err := triggerRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &SchemaMetadata{Tables: tables, Triggers: triggers}, nil
 }
 
 // schemaFilterClause builds a "AND <col> IN ($1, $2, ...)" clause plus its
@@ -325,7 +384,80 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) 
 	for _, k := range order {
 		tables = append(tables, *index[k])
 	}
-	return &SchemaMetadata{Tables: tables}, nil
+
+	// prokind: 'f' = function, 'p' = procedure — 'a' (aggregate) and 'w'
+	// (window function) are deliberately excluded, they aren't what a user
+	// asking to scan "procedures/functions" means. pg_get_function_result
+	// is NULL for procedures (they have no return type), hence NullString.
+	routineFilter, routineArgs := schemaFilterClause("n.nspname", schemas, 1)
+	routineRows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT n.nspname, p.proname, p.oid, p.prokind, pg_catalog.pg_get_function_result(p.oid)
+		FROM pg_proc p
+		JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+			AND n.nspname NOT LIKE 'pg\_%%' ESCAPE '\'
+			AND p.prokind IN ('f', 'p')
+		%s
+		ORDER BY n.nspname, p.proname
+	`, routineFilter), routineArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando funciones/procedures postgres: %w", err)
+	}
+	var procedures []Procedure
+	var functions []Function
+	for routineRows.Next() {
+		var schema, name, kind string
+		var oid int64
+		var returnType sql.NullString
+		if err := routineRows.Scan(&schema, &name, &oid, &kind, &returnType); err != nil {
+			routineRows.Close()
+			return nil, fmt.Errorf("db: escaneando función/procedure postgres: %w", err)
+		}
+		if kind == "p" {
+			procedures = append(procedures, Procedure{Schema: schema, Name: name, OID: oid})
+		} else {
+			functions = append(functions, Function{Schema: schema, Name: name, OID: oid, ReturnType: returnType.String})
+		}
+	}
+	routineRows.Close()
+	if err := routineRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// NOT tgisinternal excludes triggers Postgres creates implicitly for FK
+	// constraints — without it, every FK would show up as a spurious
+	// "trigger" the user never created.
+	triggerFilter, triggerArgs := schemaFilterClause("n.nspname", schemas, 1)
+	triggerRows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT n.nspname, t.tgname, c.relname, t.oid
+		FROM pg_trigger t
+		JOIN pg_class c ON c.oid = t.tgrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE NOT t.tgisinternal
+			AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+			AND n.nspname NOT LIKE 'pg\_%%' ESCAPE '\'
+		%s
+		ORDER BY n.nspname, t.tgname
+	`, triggerFilter), triggerArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando triggers postgres: %w", err)
+	}
+	var triggers []Trigger
+	for triggerRows.Next() {
+		var schema, name, table string
+		var oid int64
+		if err := triggerRows.Scan(&schema, &name, &table, &oid); err != nil {
+			triggerRows.Close()
+			return nil, fmt.Errorf("db: escaneando trigger postgres: %w", err)
+		}
+		triggers = append(triggers, Trigger{Schema: schema, Name: name, Table: table, OID: oid})
+	}
+	triggerRows.Close()
+	if err := triggerRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &SchemaMetadata{Tables: tables, Procedures: procedures, Functions: functions, Triggers: triggers}, nil
 }
 
 // oracleSchemaFilterClause is schemaFilterClause's Oracle counterpart: bind
@@ -446,7 +578,74 @@ func fetchOracleMetadataUnqualified(ctx context.Context, pool *sql.DB) (*SchemaM
 	for _, name := range order {
 		tables = append(tables, *index[name])
 	}
-	return &SchemaMetadata{Tables: tables}, nil
+
+	procedures, functions, packages, err := fetchOracleUnqualifiedRoutines(ctx, pool)
+	if err != nil {
+		return nil, err
+	}
+	triggers, err := fetchOracleUnqualifiedTriggers(ctx, pool)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SchemaMetadata{Tables: tables, Procedures: procedures, Functions: functions, Triggers: triggers, Packages: packages}, nil
+}
+
+// fetchOracleUnqualifiedRoutines lists procedures/functions/packages owned
+// by the connected user via USER_OBJECTS — one query covers all three
+// object types (OBJECT_TYPE distinguishes them), unlike Postgres which
+// needs pg_proc specifically for routines. Not verified against a real
+// Oracle instance — see .claude/skills/mini-tools-patterns/SKILL.md.
+func fetchOracleUnqualifiedRoutines(ctx context.Context, pool *sql.DB) (procedures []Procedure, functions []Function, packages []Package, err error) {
+	rows, err := pool.QueryContext(ctx, `
+		SELECT object_name, object_type FROM user_objects
+		WHERE object_type IN ('PROCEDURE', 'FUNCTION', 'PACKAGE')
+		ORDER BY object_type, object_name
+	`)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("db: listando procedures/functions/packages oracle: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name, objType string
+		if err := rows.Scan(&name, &objType); err != nil {
+			return nil, nil, nil, fmt.Errorf("db: escaneando objeto oracle: %w", err)
+		}
+		switch objType {
+		case "PROCEDURE":
+			procedures = append(procedures, Procedure{Name: name})
+		case "FUNCTION":
+			functions = append(functions, Function{Name: name})
+		case "PACKAGE":
+			packages = append(packages, Package{Name: name})
+		}
+	}
+	return procedures, functions, packages, rows.Err()
+}
+
+// fetchOracleUnqualifiedTriggers uses USER_TRIGGERS rather than
+// USER_OBJECTS for triggers specifically — it has TABLE_NAME natively, so
+// the sidebar can show which table a trigger belongs to (same reasoning
+// Postgres's pg_trigger→pg_class join above gets for free).
+func fetchOracleUnqualifiedTriggers(ctx context.Context, pool *sql.DB) ([]Trigger, error) {
+	rows, err := pool.QueryContext(ctx, `
+		SELECT trigger_name, table_name FROM user_triggers ORDER BY trigger_name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando triggers oracle: %w", err)
+	}
+	defer rows.Close()
+
+	var triggers []Trigger
+	for rows.Next() {
+		var name, table string
+		if err := rows.Scan(&name, &table); err != nil {
+			return nil, fmt.Errorf("db: escaneando trigger oracle: %w", err)
+		}
+		triggers = append(triggers, Trigger{Name: name, Table: table})
+	}
+	return triggers, rows.Err()
 }
 
 func fetchOracleMetadataForOwners(ctx context.Context, pool *sql.DB, schemas []string) (*SchemaMetadata, error) {
@@ -550,5 +749,74 @@ func fetchOracleMetadataForOwners(ctx context.Context, pool *sql.DB, schemas []s
 	for _, k := range order {
 		tables = append(tables, *index[k])
 	}
-	return &SchemaMetadata{Tables: tables}, nil
+
+	procedures, functions, packages, err := fetchOracleOwnerRoutines(ctx, pool, schemas)
+	if err != nil {
+		return nil, err
+	}
+	triggers, err := fetchOracleOwnerTriggers(ctx, pool, schemas)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SchemaMetadata{Tables: tables, Procedures: procedures, Functions: functions, Triggers: triggers, Packages: packages}, nil
+}
+
+// fetchOracleOwnerRoutines is fetchOracleUnqualifiedRoutines's ALL_OBJECTS
+// counterpart, filtered by owner the same way fetchOracleMetadataForOwners
+// filters ALL_TAB_COLUMNS above.
+func fetchOracleOwnerRoutines(ctx context.Context, pool *sql.DB, schemas []string) (procedures []Procedure, functions []Function, packages []Package, err error) {
+	filter, args := oracleSchemaFilterClause("owner", schemas, 1)
+	rows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT owner, object_name, object_type FROM all_objects
+		WHERE object_type IN ('PROCEDURE', 'FUNCTION', 'PACKAGE')
+		%s
+		ORDER BY owner, object_type, object_name
+	`, filter), args...)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("db: listando procedures/functions/packages oracle: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var owner, name, objType string
+		if err := rows.Scan(&owner, &name, &objType); err != nil {
+			return nil, nil, nil, fmt.Errorf("db: escaneando objeto oracle: %w", err)
+		}
+		switch objType {
+		case "PROCEDURE":
+			procedures = append(procedures, Procedure{Schema: owner, Name: name})
+		case "FUNCTION":
+			functions = append(functions, Function{Schema: owner, Name: name})
+		case "PACKAGE":
+			packages = append(packages, Package{Schema: owner, Name: name})
+		}
+	}
+	return procedures, functions, packages, rows.Err()
+}
+
+// fetchOracleOwnerTriggers is fetchOracleUnqualifiedTriggers's ALL_TRIGGERS
+// counterpart, filtered by owner.
+func fetchOracleOwnerTriggers(ctx context.Context, pool *sql.DB, schemas []string) ([]Trigger, error) {
+	filter, args := oracleSchemaFilterClause("owner", schemas, 1)
+	rows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT owner, trigger_name, table_name FROM all_triggers
+		WHERE 1 = 1
+		%s
+		ORDER BY owner, trigger_name
+	`, filter), args...)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando triggers oracle: %w", err)
+	}
+	defer rows.Close()
+
+	var triggers []Trigger
+	for rows.Next() {
+		var owner, name, table string
+		if err := rows.Scan(&owner, &name, &table); err != nil {
+			return nil, fmt.Errorf("db: escaneando trigger oracle: %w", err)
+		}
+		triggers = append(triggers, Trigger{Schema: owner, Name: name, Table: table})
+	}
+	return triggers, rows.Err()
 }

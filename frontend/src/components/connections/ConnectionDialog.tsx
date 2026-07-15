@@ -19,15 +19,17 @@ interface ConnectionDialogProps {
     onSaved: () => void
 }
 
-type DBType = 'sqlite' | 'postgres' | 'oracle'
+type DBType = 'sqlite' | 'postgres' | 'oracle' | 'redis'
 type OracleMode = 'service_name' | 'easy_connect' | 'sid' | 'tns'
+type RedisMode = 'standalone' | 'cluster' | 'sentinel'
 
 const SSL_MODES = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full']
 
-// Fields required per engine (and, for Oracle, per connect mode) before the
-// dialog will let you Test/Save — mirrors what each db.Connector.BuildDSN
-// implementation requires. See backend/db/{sqlite,postgres,oracle}.go.
-function requiredFields(dbType: DBType, oracleMode: OracleMode): string[] {
+// Fields required per engine (and, for Oracle/Redis, per connect mode)
+// before the dialog will let you Test/Save — mirrors what each
+// db.Connector.BuildDSN implementation requires. See
+// backend/db/{sqlite,postgres,oracle,redis}.go.
+function requiredFields(dbType: DBType, oracleMode: OracleMode, redisMode: RedisMode): string[] {
     switch (dbType) {
         case 'sqlite':
             return ['path']
@@ -39,7 +41,29 @@ function requiredFields(dbType: DBType, oracleMode: OracleMode): string[] {
             if (oracleMode === 'tns') return [...base, 'connectDescriptor']
             return [...base, 'service']
         }
+        case 'redis':
+            switch (redisMode) {
+                case 'cluster':
+                    return ['nodes']
+                case 'sentinel':
+                    return ['sentinels', 'master']
+                default:
+                    return ['host']
+            }
     }
+}
+
+// normalizeNodeList turns a textarea's freeform newline/comma-separated
+// host:port list into the single comma-separated string
+// backend/db/redis.go's BuildDSN expects for "nodes"/"sentinels" — the
+// textarea accepts either separator for easier pasting, but the Go side
+// only ever splits on commas.
+function normalizeNodeList(raw: string): string {
+    return raw
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(',')
 }
 
 export default function ConnectionDialog({editingId, onClose, onSaved}: ConnectionDialogProps) {
@@ -47,6 +71,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
     const [color, setColor] = useState('#60a5fa')
     const [dbType, setDbType] = useState<DBType>('sqlite')
     const [oracleMode, setOracleMode] = useState<OracleMode>('service_name')
+    const [redisMode, setRedisMode] = useState<RedisMode>('standalone')
     const [params, setParams] = useState<Record<string, string>>({})
     const [pingStatus, setPingStatus] = useState<'idle' | 'testing' | 'ok' | 'failed'>('idle')
     const [error, setError] = useState('')
@@ -78,7 +103,8 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                 setDbType(info.dbType as DBType)
                 if (info.color) setColor(info.color)
                 const {mode, ...rest} = info.params
-                if (mode) setOracleMode(mode as OracleMode)
+                if (mode && info.dbType === 'oracle') setOracleMode(mode as OracleMode)
+                if (mode && info.dbType === 'redis') setRedisMode(mode as RedisMode)
                 setParams(rest)
             })
             .catch((err) => setError(String(err)))
@@ -125,23 +151,43 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
         }
         setDbType(parsed.dbType)
         if (parsed.oracleMode) setOracleMode(parsed.oracleMode)
+        if (parsed.redisMode) setRedisMode(parsed.redisMode)
         setParams(parsed.params)
         setPingStatus('idle')
         setPasteHint(`Detectado: ${parsed.dbType === 'oracle' ? `Oracle (${parsed.oracleMode})` : parsed.dbType}`)
     }
 
     function cfg(): main.ConnectionInput {
-        const effectiveParams = dbType === 'oracle' ? {...params, mode: oracleMode} : params
+        let effectiveParams = params
+        if (dbType === 'oracle') {
+            effectiveParams = {...params, mode: oracleMode}
+        } else if (dbType === 'redis') {
+            effectiveParams = {...params, mode: redisMode}
+            if (redisMode === 'cluster' && effectiveParams.nodes) {
+                effectiveParams.nodes = normalizeNodeList(effectiveParams.nodes)
+            }
+            if (redisMode === 'sentinel' && effectiveParams.sentinels) {
+                effectiveParams.sentinels = normalizeNodeList(effectiveParams.sentinels)
+            }
+        }
         return new main.ConnectionInput({name, dbType, params: effectiveParams, color})
     }
 
-    const missing = requiredFields(dbType, oracleMode).filter((f) => !(params[f] ?? '').trim())
+    const missing = requiredFields(dbType, oracleMode, redisMode).filter((f) => !(params[f] ?? '').trim())
     const canSubmit = name.trim() !== '' && missing.length === 0 && !busy && !loadingEdit
     // Editing with a blank password means "keep the existing one" on save
     // (UpdateConnection merges it server-side) — but Test Connection has no
     // such merge, so it would falsely fail against an empty password.
-    // Simplest fix: just don't offer it in that state.
-    const passwordUnknownWhileEditing = !!editingId && dbType !== 'sqlite' && !(params.password ?? '').trim()
+    // Simplest fix: just don't offer it in that state. Only Postgres/Oracle
+    // get this treatment — those two conventionally always have a
+    // password, so "blank while editing" reliably means "hidden, not
+    // absent". Redis is deliberately excluded: a blank password there is
+    // routinely real (plenty of Redis servers run with no auth at all), so
+    // treating it as "unknown" would permanently block Test Connection on
+    // an unauthenticated Redis instance every time you reopen the edit
+    // dialog.
+    const passwordUnknownWhileEditing =
+        !!editingId && (dbType === 'postgres' || dbType === 'oracle') && !(params.password ?? '').trim()
 
     async function testConnection() {
         setPingStatus('testing')
@@ -459,6 +505,132 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                                 />
                             </label>
                         )}
+                    </>
+                )}
+
+                {dbType === 'redis' && (
+                    <>
+                        <label className={labelClass}>
+                            Modo de conexión
+                            <select
+                                value={redisMode}
+                                onChange={(e) => setRedisMode(e.target.value as RedisMode)}
+                                title="Standalone: un solo servidor Redis. Cluster: varios nodos con sharding automático (sin índice de DB — Redis Cluster no soporta SELECT). Sentinel: alta disponibilidad con failover automático de un master/réplica."
+                                className={inputClass}
+                            >
+                                <option value="standalone">Standalone</option>
+                                <option value="cluster">Cluster</option>
+                                <option value="sentinel">Sentinel</option>
+                            </select>
+                        </label>
+
+                        {redisMode === 'standalone' && (
+                            <div className="flex gap-2">
+                                <label className={`${labelClass} flex-1`}>
+                                    Host
+                                    <input
+                                        value={params.host ?? ''}
+                                        onChange={(e) => setParam('host', e.target.value)}
+                                        placeholder="localhost"
+                                        className={inputClass}
+                                    />
+                                </label>
+                                <label className={labelClass} style={{width: '5rem'}}>
+                                    Puerto
+                                    <input
+                                        value={params.port ?? ''}
+                                        onChange={(e) => setParam('port', e.target.value)}
+                                        placeholder="6379"
+                                        className={inputClass}
+                                    />
+                                </label>
+                            </div>
+                        )}
+
+                        {redisMode === 'cluster' && (
+                            <label className={labelClass}>
+                                Nodos del cluster
+                                <textarea
+                                    value={params.nodes ?? ''}
+                                    onChange={(e) => setParam('nodes', e.target.value)}
+                                    placeholder={'host1:6379\nhost2:6379\nhost3:6379'}
+                                    title="Lista de nodos semilla del cluster (host:puerto), uno por línea o separados por coma — no hace falta listar todos los nodos, con 1-2 nodos vivos el cliente descubre el resto"
+                                    rows={3}
+                                    className={`${inputClass} font-mono text-xs`}
+                                />
+                            </label>
+                        )}
+
+                        {redisMode === 'sentinel' && (
+                            <>
+                                <label className={labelClass}>
+                                    Nodos Sentinel
+                                    <textarea
+                                        value={params.sentinels ?? ''}
+                                        onChange={(e) => setParam('sentinels', e.target.value)}
+                                        placeholder={'sentinel1:26379\nsentinel2:26379\nsentinel3:26379'}
+                                        title="Direcciones de los procesos Sentinel (NO del servidor Redis en sí) — uno por línea o separados por coma"
+                                        rows={3}
+                                        className={`${inputClass} font-mono text-xs`}
+                                    />
+                                </label>
+                                <label className={labelClass}>
+                                    Master name
+                                    <input
+                                        value={params.master ?? ''}
+                                        onChange={(e) => setParam('master', e.target.value)}
+                                        placeholder="mymaster"
+                                        title="Nombre lógico del master configurado en los Sentinel (sentinel monitor <nombre> ...) — no es un host ni una IP"
+                                        className={inputClass}
+                                    />
+                                </label>
+                            </>
+                        )}
+
+                        <label className={labelClass}>
+                            Usuario ACL (opcional)
+                            <input
+                                value={params.user ?? ''}
+                                onChange={(e) => setParam('user', e.target.value)}
+                                placeholder="default"
+                                title="Usuario ACL de Redis 6+ — dejar en blanco si el servidor no tiene ACLs configuradas"
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className={labelClass}>
+                            Password
+                            <input
+                                type="password"
+                                value={params.password ?? ''}
+                                onChange={(e) => setParam('password', e.target.value)}
+                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
+                                className={inputClass}
+                            />
+                        </label>
+                        {redisMode !== 'cluster' && (
+                            <label className={labelClass}>
+                                Índice de DB (0-15)
+                                <input
+                                    value={params.db ?? ''}
+                                    onChange={(e) => setParam('db', e.target.value)}
+                                    placeholder="0"
+                                    title="Base lógica de Redis a usar (0-15, default 0) — no aplica en modo Cluster, que siempre usa una única base"
+                                    className={inputClass}
+                                />
+                            </label>
+                        )}
+                        <label
+                            className="flex items-center gap-2 text-xs text-on-surface-variant"
+                            title="Usar TLS (esquema rediss://) para conectar — activalo si el servidor requiere conexión cifrada"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={params.tls === 'true'}
+                                onChange={(e) => setParam('tls', e.target.checked ? 'true' : '')}
+                                className="accent-primary"
+                            />
+                            TLS
+                        </label>
                     </>
                 )}
 

@@ -4,6 +4,23 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-14
+
+### Agregado
+
+- **Redis como cuarto motor**, a la par de Oracle/PostgreSQL/SQLite: conexión Standalone/Cluster/Sentinel, usuario ACL, TLS, índice de base (0-15), autocompletado de comandos y de keys ya escaneadas, linter que confirma antes de correr `FLUSHALL`/`FLUSHDB`.
+- **Redis Browser**: botón "Abrir en pestaña" en cualquier conexión Redis (o doble click a una key en el árbol) abre un explorador de keys en modo ventana completa — filtro por tipo con badges de color, buscador por patrón, stats de header (total de keys / memoria usada), selección múltiple con exportación masiva a JSON o CSV. El panel de detalle de cada key es editable: string y JSON con edición del valor completo (preservando el TTL existente), hash/list/set/zset con alta, edición y borrado por campo/elemento/miembro — streams quedan de solo lectura.
+- **RediSearch y RedisJSON de primera clase**: autocompletado de `FT.SEARCH`/`FT.AGGREGATE`/`JSON.*` en el editor de comandos, resultados de búsqueda mostrados en tabla estructurada en vez de texto crudo.
+- **Scanner de objetos de esquema**: además de tablas, se escanean procedures, functions y triggers (PostgreSQL, Oracle) y packages (Oracle), agrupados en categorías colapsables dentro de cada schema en el árbol de conexiones. Un click abre su DDL actual (`DBMS_METADATA.GET_DDL` / `pg_get_functiondef` / `pg_get_triggerdef`) en un visor con **syntax highlighting real vía CodeMirror** (mismo tema que el editor principal), botón de copiar y de exportar a archivo `.sql`.
+- **Categoría "Tablas" colapsable** dentro de cada schema, con las tablas siempre ordenadas alfabéticamente — antes era una lista plana sin poder ocultarla, inmanejable en esquemas con cientos de tablas (probado con un schema real de 342).
+- **Buscador transversal**: el filtro de objetos dentro de una conexión expandida ahora también busca procedures/functions/triggers/packages, no solo tablas, auto-expandiendo la categoría que tenga una coincidencia.
+- **Folders + módulos de sidebar**: las conexiones guardadas se organizan en carpetas (crear/renombrar/mover/reordenar); "Conexiones" pasa a ser un módulo de acordeón colapsable en el sidebar, dejando espacio para futuros módulos.
+
+### Corregido
+
+- Sincronizar el esquema activo (botón de sync por-schema) borraba en silencio los procedures/functions/triggers/packages ya escaneados de ese schema — el merge solo reasignaba las tablas.
+- Una conexión sincronizada antes de esta versión servía su metadata cacheada en disco indefinidamente sin los nuevos procedures/functions/triggers/packages, incluso después de actualizar la app — el cache ahora versiona su formato y fuerza un refetch en vivo la primera vez que hace falta.
+
 ## [0.1.1] - 2026-07-10
 
 ### Agregado
