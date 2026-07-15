@@ -8,6 +8,15 @@ Cliente de escritorio para **Oracle, PostgreSQL, SQLite y Redis** — tipo DataG
 
 > El spec funcional completo vive en [docs/SPEC.md](docs/SPEC.md); la arquitectura y convenciones actuales del código en [CLAUDE.md](CLAUDE.md).
 
+## Descargas
+
+| Plataforma | Archivo | Notas |
+|---|---|---|
+| macOS (Apple Silicon) | **[⬇ mini-tools-v0.2.0.dmg](releases/macos/mini-tools-v0.2.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v0.2.0-windows-amd64.exe](releases/windows/mini-tools-v0.2.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). ⚠️ No verificado corriendo en Windows real todavía. |
+
+Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
+
 ## Capturas
 
 <p align="center">
@@ -115,6 +124,18 @@ go test ./...
 
 Detalle de cada script en [scripts/README.md](scripts/README.md).
 
+## Empaquetar una versión nueva
+
+```bash
+./scripts/bump-version.sh patch   # opcional — bumpea VERSION antes de empaquetar
+./scripts/package-all.sh          # empaqueta macOS + Windows juntos (default)
+```
+
+`package-all.sh` corre `package-macos.sh` (salteado automáticamente si no
+se ejecuta desde macOS) y `package-windows.sh` en una sola pasada. Para
+empaquetar un solo SO puntual, correr su script directo — ver el detalle
+de cada plataforma abajo.
+
 ## Distribución / Empaquetado macOS
 
 ```bash
@@ -136,6 +157,29 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 | Archivo | **[⬇ Descargar mini-tools-v0.2.0.dmg](releases/macos/mini-tools-v0.2.0.dmg)** |
 | SHA-256 | `e0d9580df8f0146448ac05abb1136f23074305ee96bf2fa9919c55cafa6240ce` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
+
+## Distribución / Empaquetado Windows
+
+```bash
+./scripts/bump-version.sh patch   # opcional — bumpea VERSION antes de empaquetar
+./scripts/package-windows.sh      # genera build/bin/mini-tools-vX.Y.Z-windows-amd64.exe
+```
+
+Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
+
+> ⚠️ **Todavía no probado en una Windows real** — solo se confirmó que compila limpio y produce un `.exe` PE32+ válido. WebView2 runtime, DPI scaling y diálogos nativos solo se pueden verificar corriéndolo en Windows de verdad. Detalle completo en [releases/windows/README.md](releases/windows/README.md).
+
+`package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
+
+### Última versión empaquetada
+
+| Campo | Valor |
+|---|---|
+| Versión | 0.2.0 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado, sin verificar en Windows real |
+| Archivo | **[⬇ Descargar mini-tools-v0.2.0-windows-amd64.exe](releases/windows/mini-tools-v0.2.0-windows-amd64.exe)** |
+| SHA-256 | `07b05f4f0cc300ca2a38b800c577a41c0a8eb3196b5cf51481671afc6f66e24f` |
+| Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/macos/README.md](releases/macos/README.md).
 

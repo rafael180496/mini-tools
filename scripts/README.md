@@ -10,7 +10,9 @@ Wrappers de conveniencia sobre los comandos de `wails`/`go`/`pnpm`. Todos son id
 | `start.sh` | Abre/ejecuta el binario ya compilado en `build/bin/` (`open build/bin/mini-tools.app` en macOS). No compila nada. | Para correr el último build sin recompilar. |
 | `clean.sh` | Borra `build/bin/`, `frontend/dist/` y cualquier binario suelto de `go build` en la raíz. Con `--all` también borra `frontend/node_modules` y la cache de build de Go (`go clean -cache`). | Cuando un build se ve raro / obsoleto, o antes de medir el tamaño del binario desde cero. |
 | `package-macos.sh` | Lee `VERSION`, parchea `wails.json` transitoriamente con esa versión (se restaura solo al terminar, éxito o error — el repo queda sin diff), corre `build.sh`, y arma `build/bin/mini-tools-vX.Y.Z.dmg` (con symlink a `/Applications`) vía `hdiutil`. **Sin firmar** (sin Apple Developer ID/notarización) — Gatekeeper avisa "desarrollador no identificado" al abrirlo en otra máquina, el workaround se imprime al final. **Sin comandos git/gh** — genera el `.dmg` local únicamente, publicarlo es manual. Solo macOS. | Para generar el instalador oficial antes de distribuir una versión. |
-| `bump-version.sh` | `patch`\|`minor`\|`major` — bumpea `VERSION` (semver). Sin comandos git (ni commit ni tag). | Antes de correr `package-macos.sh` para una versión nueva. |
+| `package-windows.sh` | Mismo patrón que `package-macos.sh` (parchea `wails.json`, restaura al terminar) pero cross-compila con `wails build -platform windows/amd64` y arma `build/bin/mini-tools-vX.Y.Z-windows-amd64.exe` — **portable, sin instalador NSIS** (`makensis` no instalado) y **sin firma Authenticode** (SmartScreen va a avisar). Corre desde macOS/Linux, no requiere Windows ni CGO. **No probado en una Windows real** — solo se confirmó que compila. Sin comandos git/gh. | Para generar el `.exe` de Windows antes de distribuir una versión — verificar en Windows real antes de confiar en él para producción. |
+| `package-all.sh` | Orquesta `package-macos.sh` + `package-windows.sh` en una sola pasada (salteando macOS automáticamente si no corre en Darwin) — no duplica lógica de empaquetado, solo los llama en orden e imprime qué se generó. | **Default al preparar una versión nueva** — ver [.claude/specs/releases.md](../.claude/specs/releases.md), trigger "empaquetar"/"oficial"/"preparar la versión". |
+| `bump-version.sh` | `patch`\|`minor`\|`major` — bumpea `VERSION` (semver). Sin comandos git (ni commit ni tag). | Antes de correr `package-all.sh` (o `package-macos.sh`/`package-windows.sh` sueltos) para una versión nueva. |
 
 ## Uso típico
 
@@ -22,7 +24,10 @@ Wrappers de conveniencia sobre los comandos de `wails`/`go`/`pnpm`. Todos son id
 ./scripts/start.sh          # correr ese build
 
 ./scripts/bump-version.sh patch   # 0.1.0 → 0.1.1
-./scripts/package-macos.sh        # genera build/bin/mini-tools-v0.1.1.dmg
+./scripts/package-all.sh          # genera el .dmg de mac Y el .exe de windows juntos (default)
+# — o, para un solo SO puntual —
+./scripts/package-macos.sh        # solo build/bin/mini-tools-v0.1.1.dmg
+./scripts/package-windows.sh      # solo build/bin/mini-tools-v0.1.1-windows-amd64.exe
 
 ./scripts/clean.sh          # limpiar build/bin + dist
 ./scripts/clean.sh --all    # + node_modules + cache de Go

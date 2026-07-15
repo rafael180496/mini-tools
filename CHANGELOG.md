@@ -15,6 +15,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 - **Categoría "Tablas" colapsable** dentro de cada schema, con las tablas siempre ordenadas alfabéticamente — antes era una lista plana sin poder ocultarla, inmanejable en esquemas con cientos de tablas (probado con un schema real de 342).
 - **Buscador transversal**: el filtro de objetos dentro de una conexión expandida ahora también busca procedures/functions/triggers/packages, no solo tablas, auto-expandiendo la categoría que tenga una coincidencia.
 - **Folders + módulos de sidebar**: las conexiones guardadas se organizan en carpetas (crear/renombrar/mover/reordenar); "Conexiones" pasa a ser un módulo de acordeón colapsable en el sidebar, dejando espacio para futuros módulos.
+- `scripts/package-windows.sh` — cross-compila `build/bin/mini-tools-vX.Y.Z-windows-amd64.exe` con `wails build -platform windows/amd64` desde macOS/Linux (ninguno de los conectores usa CGO, no hace falta toolchain de Windows). Portable, sin instalador NSIS ni firma Authenticode. **No verificado todavía en una Windows real** — ver [releases/windows/README.md](releases/windows/README.md).
+- `scripts/package-all.sh` — orquesta `package-macos.sh` + `package-windows.sh` en una sola pasada; a partir de ahora es el default al preparar una versión nueva (ver [.claude/specs/releases.md](.claude/specs/releases.md)).
 
 ### Corregido
 
