@@ -6,6 +6,7 @@ import {CSS} from '@dnd-kit/utilities'
 import {vault} from '../../../wailsjs/go/models'
 import DbTypeIcon, {dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
+import RecentFilesMenu from './RecentFilesMenu'
 
 export type TabLanguage = 'sql' | 'redis-cli'
 
@@ -49,6 +50,12 @@ interface EditorTabsProps {
     onReorder: (tabs: EditorTab[]) => void
     onChangeTabConnection: (tabId: string, connId: string | null) => void
     onChangeTabLanguage: (tabId: string, language: TabLanguage) => void
+    // Open/reopen a .sql file — global actions (which file to open doesn't
+    // depend on which tab happens to be active), so they live in the tab
+    // strip itself next to "+ Nueva" instead of the per-tab toolbar below
+    // (where they used to sit, duplicated-looking above every tab).
+    onOpenFile: () => void
+    onOpenRecentFile: (path: string) => void
 }
 
 interface SortableTabProps {
@@ -246,6 +253,8 @@ export default function EditorTabs({
     onReorder,
     onChangeTabConnection,
     onChangeTabLanguage,
+    onOpenFile,
+    onOpenRecentFile,
 }: EditorTabsProps) {
     const sensors = useSensors(useSensor(PointerSensor, {activationConstraint: {distance: 5}}))
 
@@ -259,31 +268,58 @@ export default function EditorTabs({
     }
 
     return (
-        <div className="flex items-center gap-1 overflow-x-auto border-b border-outline-variant bg-surface-container px-2 pt-1">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-                    {tabs.map((t) => (
-                        <SortableTab
-                            key={t.id}
-                            tab={t}
-                            isActive={t.id === activeId}
-                            connections={connections}
-                            onSelect={onSelect}
-                            onClose={onClose}
-                            onChangeTabConnection={onChangeTabConnection}
-                            onChangeTabLanguage={onChangeTabLanguage}
-                        />
-                    ))}
-                </SortableContext>
-            </DndContext>
+        <div className="flex items-center border-b border-outline-variant bg-surface-container px-2 pt-1">
+            {/* Scrollable region: only the tabs themselves. Kept separate
+                from the actions cluster below (shrink-0, never scrolls) so
+                Nueva/Abrir/Recientes stay reachable no matter how many tabs
+                are open, instead of potentially sliding out of view along
+                with the tab list. */}
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
+                        {tabs.map((t) => (
+                            <SortableTab
+                                key={t.id}
+                                tab={t}
+                                isActive={t.id === activeId}
+                                connections={connections}
+                                onSelect={onSelect}
+                                onClose={onClose}
+                                onChangeTabConnection={onChangeTabConnection}
+                                onChangeTabLanguage={onChangeTabLanguage}
+                            />
+                        ))}
+                    </SortableContext>
+                </DndContext>
+            </div>
+
+            {/* "+ Nueva" stays right against the tab strip (no divider), same
+                spot it always had — it's the highest-frequency action here,
+                so it belongs closer to the tabs than Abrir/Recientes. */}
             <button
                 onClick={onNew}
                 title="Abre una pestaña nueva en blanco para escribir un query sin guardarlo todavía"
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface"
+                className="ml-1 flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface"
             >
                 <Icon name="add" size={16} />
                 Nueva
             </button>
+
+            {/* Global file actions — which file to open next doesn't depend
+                on the active tab, so these live here once instead of
+                duplicated-looking above every tab in the per-tab toolbar
+                below. */}
+            <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-outline-variant pl-1">
+                <button
+                    onClick={onOpenFile}
+                    title="Abre un archivo .sql desde tu disco en una nueva pestaña del editor"
+                    className="flex items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface"
+                >
+                    <Icon name="folder_open" size={16} />
+                    Abrir
+                </button>
+                <RecentFilesMenu onOpen={onOpenRecentFile} />
+            </div>
         </div>
     )
 }

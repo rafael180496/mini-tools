@@ -4,6 +4,24 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-15
+
+### Cambiado
+
+- "Abrir"/"Recientes" pasan de la barra de herramientas por-pestaña a la franja de tabs, como acciones globales — antes se repetían idénticas arriba de cada pestaña aunque no dependen de cuál esté activa.
+- Rediseño visual de la fila de acciones (Guardar/Ejecutar/Bloque/Cancelar/Explain/Explain Analyze/Refrescar) y de la fila de conectividad (conexión, schema, transacción, DBMS_OUTPUT): agrupadas en clusters con separadores y pills con color de fondo para el estado activo, en vez de una fila plana de botones sin jerarquía visual.
+- "+ Nueva pestaña" vuelve a estar pegado a la franja de tabs — es la acción de mayor uso ahí, y había quedado detrás del cluster Abrir/Recientes tras el reordenamiento anterior.
+
+### Quitado
+
+- Botón "Regenerar CLAUDE.md" del toolbar del editor — no se usaba en la práctica; la generación automática de `CLAUDE.md` al abrir o guardar un archivo sigue funcionando igual.
+
+### Corregido
+
+- El splitter de SQL interpretaba mal el `END` de una expresión `CASE` (sin el sufijo `CASE`) como si cerrara un bloque `BEGIN`/`IF`/`LOOP`, fragmentando scripts PL/SQL grandes en decenas de statements inválidos — causaba errores `ORA-00900` en procedures válidos, y explicaba también el síntoma de "Cancelar no responde": no era un bug del cancelado, sino la ejecución en cadena de decenas de fragmentos rotos.
+- Un módulo de sidebar expandido con poco contenido (p. ej. un par de carpetas SSH) se estiraba para ocupar toda la altura restante del sidebar en vez de ajustarse a su propio contenido, empujando el header del siguiente módulo detrás de un hueco vacío — en 0.2.1 se había corregido el mismo síntoma solo para el estado colapsado; este era el caso expandido.
+- `RecentFilesMenu` se recortaba verticalmente al abrirse cerca del borde de la franja de tabs (`overflow-x-auto` fuerza el otro eje a comportarse como `overflow: auto` también) — ahora se renderiza en un portal con posición fija, mismo patrón que `MoveToFolderMenu`.
+
 ## [0.2.1] - 2026-07-15
 
 ### Agregado

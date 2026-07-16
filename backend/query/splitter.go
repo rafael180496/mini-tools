@@ -181,14 +181,50 @@ func SplitStatements(sqlText string) []Statement {
 			i += len("BEGIN")
 			continue
 		}
+		// CASE opens its own nesting level on the SAME counter as BEGIN.
+		// Real bug found live: a CASE *expression* (CASE WHEN ... THEN ...
+		// ELSE ... END, used as a value — e.g. an argument in a function
+		// call) closes with a BARE "END", no trailing "CASE" — indistinguishable
+		// from a real BEGIN...END block closer by the old END-handling below
+		// alone. Without tracking CASE's own open here, that bare END wrongly
+		// decremented the ENCLOSING block's depth one level early, so the
+		// next semicolon after it got treated as a top-level statement
+		// terminator — shattering the rest of a real procedure body into
+		// dozens of invalid fragments (confirmed: SGCPRO.PR_REFACT_NIR, whose
+		// v_ctx := T_REFACT_CTX(..., FECHA_TAR => CASE WHEN ... END, ...)
+		// call sits inside its BEGIN block). A CASE *statement* (ending in
+		// "END CASE;") already worked before this fix (see the END-handling
+		// below); this only had to stop miscounting the expression form.
+		if matchKeywordAt(runes, i, "CASE") {
+			blockDepth++
+			i += len("CASE")
+			continue
+		}
 		if matchKeywordAt(runes, i, "END") {
-			next := peekNextWord(runes, i+len("END"))
-			if next != "IF" && next != "LOOP" && next != "CASE" {
+			next, nextEnd := peekNextWordSpan(runes, i+len("END"))
+			switch next {
+			case "IF", "LOOP":
+				// END IF / END LOOP never incremented this counter (see
+				// above), so there's nothing to undo here either.
+				i += len("END")
+			case "CASE":
+				// END CASE — closes the CASE pushed above. Consume the
+				// trailing "CASE" word too, or the next loop iteration would
+				// match it as a brand new CASE keyword and push again.
 				if blockDepth > 0 {
 					blockDepth--
 				}
+				i = nextEnd
+			default:
+				// Bare END: closes whatever's actually open — a real BEGIN
+				// block, or a CASE *expression* (no trailing CASE word).
+				// Either way the counter it incremented is the same one, so
+				// popping it here is correct regardless of which it was.
+				if blockDepth > 0 {
+					blockDepth--
+				}
+				i += len("END")
 			}
-			i += len("END")
 			continue
 		}
 
@@ -232,9 +268,13 @@ func matchKeywordAt(runes []rune, i int, kw string) bool {
 	return true
 }
 
-// peekNextWord returns the next whitespace-delimited word starting at or
-// after i (skipping leading whitespace), uppercased, or "" if none.
-func peekNextWord(runes []rune, i int) string {
+// peekNextWordSpan returns the next whitespace-delimited word starting at or
+// after i (skipping leading whitespace), uppercased, plus the index right
+// after it — so a caller that needs to consume the word (not just peek at
+// it, see the END-CASE handling above) can jump straight there instead of
+// re-deriving its length. Returns ("", i) with end pointing at the first
+// non-space position if there's no word (i.e. nothing left to consume).
+func peekNextWordSpan(runes []rune, i int) (word string, end int) {
 	n := len(runes)
 	for i < n && unicode.IsSpace(runes[i]) {
 		i++
@@ -244,9 +284,9 @@ func peekNextWord(runes []rune, i int) string {
 		i++
 	}
 	if i == start {
-		return ""
+		return "", start
 	}
-	return strings.ToUpper(string(runes[start:i]))
+	return strings.ToUpper(string(runes[start:i])), i
 }
 
 // matchDollarTag matches a Postgres dollar-quote delimiter ($$ or

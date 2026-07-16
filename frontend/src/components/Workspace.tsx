@@ -11,7 +11,6 @@ import ExportMenu from './results/ExportMenu'
 import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
 import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
-import RecentFilesMenu from './editor/RecentFilesMenu'
 import RedisBrowserTab from './redis/RedisBrowserTab'
 import SshTerminalTab, {closeSshTerminalSession} from './ssh/SshTerminalTab'
 import {
@@ -42,7 +41,6 @@ import {
     MoveConnectionToFolder,
     OpenSQLFileDialog,
     OpenSQLFilePath,
-    RegenerateProjectDocs,
     RenameFolder,
     ReorderFolder,
     RollbackTransaction,
@@ -351,7 +349,6 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [showBackupPasswordDialog, setShowBackupPasswordDialog] = useState(false)
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
     const [statusMessage, setStatusMessage] = useState('')
-    const [regeneratingDocs, setRegeneratingDocs] = useState(false)
 
     const [showExplain, setShowExplain] = useState(false)
     const [explainPlan, setExplainPlan] = useState<explain.Plan | null>(null)
@@ -1240,33 +1237,6 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             .catch(() => {})
     }
 
-    // Explicit "Regenerar" action — always overwrites, so it asks for
-    // confirmation first since it's destructive to any manual edits the
-    // user might have made to the previously generated files.
-    async function regenerateProjectDocs() {
-        if (!activeTabConnection || !activeTabData?.path) return
-        const dir = dirName(activeTabData.path)
-        const scopeDesc = editorActiveSchema ? `el esquema "${editorActiveSchema}"` : 'todos los esquemas configurados'
-        const confirmed = window.confirm(
-            `Esto sobrescribe CLAUDE.md y .claude/ en ${dir} con la metadata de "${activeTabConnection.name}" (${scopeDesc}). ¿Continuar?`,
-        )
-        if (!confirmed) return
-
-        setRegeneratingDocs(true)
-        try {
-            await RegenerateProjectDocs(dir, activeTabConnection.id, editorActiveSchema ?? '')
-            setStatusMessage(
-                editorActiveSchema
-                    ? `CLAUDE.md regenerado en ${dir} (esquema ${editorActiveSchema})`
-                    : `CLAUDE.md regenerado en ${dir}`,
-            )
-        } catch (err) {
-            setStatusMessage(String(err))
-        } finally {
-            setRegeneratingDocs(false)
-        }
-    }
-
     function openTabForFile(path: string, content: string) {
         setTabs((prev) => {
             const existing = prev.find((t) => t.path === path)
@@ -1507,16 +1477,45 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             )}
 
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                {/* Tab strip goes FIRST, above the toolbar — its position
+                    must stay fixed regardless of which tab is active. The
+                    toolbar below it grows/shrinks (isSqlActive/
+                    isBrowserTabActive/isSshTerminalTabActive show or hide
+                    whole rows of buttons depending on the active tab's
+                    connection), and used to sit ABOVE the tab strip: every
+                    connection bind/unbind that changed the toolbar's height
+                    (flex-wrap kicking in as buttons appeared) visibly shoved
+                    the tabs up/down with it. Real bug, reported live. */}
+                <EditorTabs
+                    tabs={tabs}
+                    activeId={activeTabId}
+                    connections={connections}
+                    onSelect={setActiveTabId}
+                    onClose={closeTab}
+                    onNew={newTab}
+                    onReorder={reorderTabs}
+                    onChangeTabConnection={changeTabConnection}
+                    onChangeTabLanguage={changeTabLanguage}
+                    onOpenFile={() => void openFileDialog()}
+                    onOpenRecentFile={(path) => void openRecentFile(path)}
+                />
+
                 <div className="flex flex-col border-b border-outline-variant bg-surface">
                     {/* Context row: which connection/schema/transaction state
                         the ACTIVE TAB is bound to. Kept separate from the
-                        actions row below so neither crowds the other. */}
-                    <div className="flex flex-wrap items-center gap-3 px-3 py-1.5">
-                        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
+                        actions row below so neither crowds the other. Each
+                        cluster (connection, schema, transaction, DBMS_OUTPUT)
+                        is its own pill/chip instead of one flat run of
+                        same-weight text+controls — makes the transaction
+                        cluster in particular easy to spot at a glance
+                        (tinted when a transaction is actually open, the
+                        state that most needs to catch your eye). */}
+                    <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high px-2.5 py-1 text-xs text-on-surface-variant">
                             {isSshTerminalTabActive && activeTabConnection ? (
                                 <>
                                     <span
-                                        className={`h-2 w-2 rounded-full ${
+                                        className={`h-2 w-2 shrink-0 rounded-full ${
                                             liveSshConnIds.has(activeTabConnection.id) ? 'bg-secondary' : 'bg-error'
                                         }`}
                                     />
@@ -1525,7 +1524,9 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                 </>
                             ) : (
                                 <>
-                                    <span className={`h-2 w-2 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`} />
+                                    <span
+                                        className={`h-2 w-2 shrink-0 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`}
+                                    />
                                     {activeTabConnection
                                         ? `Pestaña vinculada a: ${activeTabConnection.name}`
                                         : 'Pestaña sin conexión — vincularla con el ícono a la izquierda del título'}
@@ -1534,7 +1535,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         </span>
 
                         {activeTabConnection && editorMetadataLoading && (
-                            <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
+                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high px-2.5 py-1 text-xs text-on-surface-variant">
                                 <span
                                     aria-hidden
                                     className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
@@ -1544,7 +1545,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         )}
 
                         {!editorMetadataLoading && editorSchemas.length > 0 && (
-                            <label className="flex items-center gap-1 text-xs text-on-surface-variant">
+                            <label className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high py-1 pl-2.5 pr-1.5 text-xs text-on-surface-variant">
                                 Schema:
                                 <select
                                     value={editorActiveSchema ?? ''}
@@ -1564,10 +1565,13 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         )}
 
                         {isSqlActive && (
-                            <>
-                                <Divider />
+                            <div
+                                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full py-1 pl-2.5 pr-1.5 ${
+                                    txOpen ? 'bg-tertiary-container' : 'bg-surface-container-high'
+                                }`}
+                            >
                                 <label
-                                    className="flex items-center gap-1.5 text-xs text-on-surface-variant"
+                                    className={`flex items-center gap-1.5 text-xs ${txOpen ? 'text-on-tertiary-container' : 'text-on-surface-variant'}`}
                                     title="Desactivar: los statements quedan pendientes hasta Commit/Rollback en vez de aplicarse solos"
                                 >
                                     <input
@@ -1583,7 +1587,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                     onClick={() => void commitTransaction()}
                                     disabled={!txOpen || txBusy}
                                     title="Confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción actual"
-                                    className="flex items-center gap-1 rounded bg-secondary-container px-2 py-0.5 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-40"
+                                    className="flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-40"
                                 >
                                     <Icon name="check_circle" size={14} />
                                     Commit
@@ -1592,35 +1596,33 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                     onClick={() => void rollbackTransaction()}
                                     disabled={!txOpen || txBusy}
                                     title="Descarta todos los cambios pendientes de la transacción actual y vuelve al estado antes de abrirla"
-                                    className="flex items-center gap-1 rounded bg-error-container px-2 py-0.5 text-xs font-medium text-on-error-container hover:opacity-90 disabled:opacity-40"
+                                    className="flex items-center gap-1 rounded-full bg-error-container px-2 py-0.5 text-xs font-medium text-on-error-container hover:opacity-90 disabled:opacity-40"
                                 >
                                     <Icon name="undo" size={14} />
                                     Rollback
                                 </button>
                                 {txOpen && (
-                                    <span className="flex items-center gap-1 whitespace-nowrap text-xs text-tertiary">
+                                    <span className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-on-tertiary-container">
                                         <Icon name="warning" size={14} />
                                         Transacción abierta
                                     </span>
                                 )}
-                                {activeTabConnection?.dbType === 'oracle' && (
-                                    <>
-                                        <Divider />
-                                        <label
-                                            className="flex items-center gap-1.5 text-xs text-on-surface-variant"
-                                            title="Captura el log de DBMS_OUTPUT.PUT_LINE de cada bloque PL/SQL que se ejecute — desactivalo en un script grande con muchos bloques si no necesitás ver la salida, ahorra los round-trips de ENABLE/GET_LINE por bloque"
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={dbmsOutputEnabled}
-                                                onChange={(e) => setDbmsOutputEnabled(e.target.checked)}
-                                                className="accent-primary"
-                                            />
-                                            DBMS_OUTPUT
-                                        </label>
-                                    </>
-                                )}
-                            </>
+                            </div>
+                        )}
+
+                        {isSqlActive && activeTabConnection?.dbType === 'oracle' && (
+                            <label
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high px-2.5 py-1 text-xs text-on-surface-variant"
+                                title="Captura el log de DBMS_OUTPUT.PUT_LINE de cada bloque PL/SQL que se ejecute — desactivalo en un script grande con muchos bloques si no necesitás ver la salida, ahorra los round-trips de ENABLE/GET_LINE por bloque"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={dbmsOutputEnabled}
+                                    onChange={(e) => setDbmsOutputEnabled(e.target.checked)}
+                                    className="accent-primary"
+                                />
+                                DBMS_OUTPUT
+                            </label>
                         )}
 
                         {(statusMessage || backupMessage) && (
@@ -1650,47 +1652,38 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         </button>
                     </div>
 
-                    {/* Actions row: file ops, then query ops, then
-                        schema/vault utilities — grouped with dividers so
-                        the eye can parse clusters instead of one long run
-                        of same-looking buttons. Hidden entirely for
+                    {/* Actions row: save, then the primary run cluster
+                        (visually heavier — bg-secondary-container/
+                        bg-error-container — so Ejecutar/Bloque/Cancelar
+                        read as the main thing this row is for), then
+                        diagnostic/schema utilities — grouped with dividers
+                        so the eye can parse clusters instead of one long run
+                        of same-looking buttons. "Abrir"/"Recientes" live in
+                        the tab strip above instead (EditorTabs.tsx) — they
+                        open/reopen a FILE, a global action, not something
+                        scoped to whichever tab happens to be active right
+                        now. "Regenerar CLAUDE.md" was removed outright
+                        (unused in practice) — CLAUDE.md still generates
+                        automatically on open/save, see
+                        generateProjectDocsFor. Hidden entirely for
                         redis-browser/ssh-terminal tabs — none of these
-                        (open/save a .sql file, run a query) apply to either
+                        (save a .sql file, run a query) apply to either
                         (their `content`/`path` fields are unused
                         placeholders, see EditorTab's doc comment). The
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
                     {!isBrowserTabActive && !isSshTerminalTabActive && (
-                    <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-1.5">
-                        <button
-                            onClick={() => void openFileDialog()}
-                            title="Abre un archivo .sql desde tu disco en una nueva pestaña del editor"
-                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
-                        >
-                            <Icon name="folder_open" size={16} />
-                            Abrir
-                        </button>
-                        <RecentFilesMenu onOpen={(path) => void openRecentFile(path)} />
+                    <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
                         <button
                             onClick={() => void saveActiveTab()}
                             title="Guarda el contenido de la pestaña activa en disco (atajo: Ctrl+S). Si es una pestaña nueva, te pide dónde guardarla"
-                            className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
+                            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant"
                         >
                             <Icon name="save" size={16} />
-                            Guardar (Ctrl+S)
+                            Guardar
+                            <span className="font-normal opacity-60">Ctrl+S</span>
                         </button>
-                        {isSqlActive && (
-                            <button
-                                onClick={() => void regenerateProjectDocs()}
-                                disabled={!activeTabData?.path || regeneratingDocs}
-                                title="Sobrescribe CLAUDE.md y .claude/ en la carpeta del archivo abierto con el schema y las tablas de la conexión vinculada a esta pestaña (o solo el esquema seleccionado arriba, si hay uno). Útil si la base de datos cambió desde la última vez."
-                                className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
-                            >
-                                <Icon name="auto_awesome" size={16} />
-                                {regeneratingDocs ? 'Regenerando…' : 'Regenerar CLAUDE.md'}
-                            </button>
-                        )}
 
                         <Divider />
 
@@ -1698,36 +1691,40 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             onClick={runSelectionOrLine}
                             disabled={!activeTabConnection || running}
                             title="Ejecuta el texto seleccionado, o si no hay selección, la línea donde está el cursor (atajo: Ctrl+Enter)"
-                            className="flex items-center gap-1.5 rounded bg-secondary-container px-3 py-1 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded-md bg-secondary-container px-3 py-1.5 text-xs font-semibold text-on-secondary-container transition-colors hover:opacity-90 disabled:opacity-50"
                         >
                             <Icon name="play_arrow" size={16} filled />
-                            Ejecutar (Ctrl+Enter)
+                            Ejecutar
+                            <span className="font-normal opacity-60">Ctrl+Enter</span>
                         </button>
                         <button
                             onClick={runFullScript}
                             disabled={!activeTabConnection || running}
                             title="Ejecuta todos los statements del editor en orden, uno por uno (atajo: Ctrl+Shift+Enter)"
-                            className="flex items-center gap-1.5 rounded bg-secondary-container px-3 py-1 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded-md bg-secondary-container px-3 py-1.5 text-xs font-medium text-on-secondary-container transition-colors hover:opacity-90 disabled:opacity-50"
                         >
                             <Icon name="playlist_play" size={16} />
-                            Bloque (Ctrl+Shift+Enter)
+                            Bloque
+                            <span className="font-normal opacity-60">Ctrl+Shift+Enter</span>
                         </button>
                         <button
                             onClick={cancelQuery}
                             disabled={!running}
                             title="Interrumpe la consulta que está corriendo ahora mismo"
-                            className="flex items-center gap-1.5 rounded bg-error-container px-3 py-1 text-xs font-medium text-on-error-container hover:opacity-90 disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded-md bg-error-container px-3 py-1.5 text-xs font-medium text-on-error-container transition-colors hover:opacity-90 disabled:opacity-40"
                         >
                             <Icon name="stop" size={16} filled />
                             Cancelar
                         </button>
                         {isSqlActive && (
                             <>
+                                <Divider />
+
                                 <button
                                     onClick={() => void runExplain(false)}
                                     disabled={!activeTabConnection}
                                     title="Muestra el plan de ejecución del query (EXPLAIN) sin correrlo — útil para diagnosticar lentitud sin afectar datos"
-                                    className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
+                                    className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-50"
                                 >
                                     <Icon name="query_stats" size={16} />
                                     Explain
@@ -1736,7 +1733,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                     onClick={() => void runExplain(true)}
                                     disabled={!activeTabConnection}
                                     title="Ejecuta el query de verdad y muestra el plan con tiempos reales (EXPLAIN ANALYZE) — a diferencia de Explain, sí corre el query"
-                                    className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
+                                    className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-50"
                                 >
                                     <Icon name="analytics" size={16} />
                                     Explain Analyze
@@ -1748,28 +1745,17 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                     onClick={refreshMetadata}
                                     disabled={!activeTabConnection}
                                     title="Vuelve a leer las tablas y columnas de la base de datos (atajo: F5) — usalo si acabás de crear/alterar una tabla"
-                                    className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
+                                    className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-50"
                                 >
                                     <Icon name="refresh" size={16} />
-                                    Refrescar (F5)
+                                    Refrescar
+                                    <span className="font-normal opacity-60">F5</span>
                                 </button>
                             </>
                         )}
                     </div>
                     )}
                 </div>
-
-                <EditorTabs
-                    tabs={tabs}
-                    activeId={activeTabId}
-                    connections={connections}
-                    onSelect={setActiveTabId}
-                    onClose={closeTab}
-                    onNew={newTab}
-                    onReorder={reorderTabs}
-                    onChangeTabConnection={changeTabConnection}
-                    onChangeTabLanguage={changeTabLanguage}
-                />
 
                 <div
                     className="min-w-0 border-b border-outline-variant"

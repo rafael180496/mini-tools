@@ -22,13 +22,27 @@ interface SidebarModuleProps {
 // losing discoverability).
 export default function SidebarModule({title, collapsed, onToggleCollapsed, actions, children}: SidebarModuleProps) {
     return (
-        // flex-1 only while expanded — collapsed, this must shrink to just
-        // its header row (shrink-0), not keep claiming an equal flex share
-        // of the sidebar's height. Real bug found live: with two modules
-        // stacked (Conexiones + SSH), collapsing one still left it holding
-        // half the sidebar as dead space above the other's header, reading
-        // as a giant blank gap instead of a tight accordion stack.
-        <div className={`flex flex-col ${collapsed ? 'shrink-0' : 'min-h-0 flex-1'}`}>
+        // Collapsed: shrink-0, just its header row (see the first bug fixed
+        // here — collapsing one module used to still leave it holding an
+        // equal flex share of the sidebar as dead space above the next
+        // module's header).
+        //
+        // Expanded: flex-initial (flex: 0 1 auto), NOT flex-1. Real bug
+        // found live, round two: flex-1 (flex: 1 1 0%) always grows to fill
+        // 100% of whatever space the OTHER module (collapsed, shrink-0)
+        // isn't using — so a module with sparse content (a couple of
+        // folders) still stretched to consume the sidebar's entire
+        // remaining height, shoving the next module's header all the way to
+        // the bottom behind a huge blank gap, even though nothing was
+        // actually fighting it for space. flex-initial sizes to the
+        // module's own content instead, so two sparse modules stack close
+        // together and any true leftover space ends up trailing after the
+        // LAST module (reads as normal empty space, not a broken gap
+        // mid-list) — while still allowing this to shrink (min-h-0 below)
+        // and hand off to its children's own overflow-y-auto when content
+        // genuinely doesn't fit (a long connection list still scrolls
+        // internally instead of blowing out the sidebar's fixed height).
+        <div className={`flex flex-col ${collapsed ? 'shrink-0' : 'min-h-0 flex-initial'}`}>
             <div className="flex items-center justify-between gap-1 px-3 pb-2 pt-3">
                 <button
                     onClick={onToggleCollapsed}
