@@ -143,6 +143,20 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 12,
+		desc:    "agrega folders.scope — separa el árbol de carpetas de conexiones SSH del de conexiones de base de datos, dos módulos de sidebar independientes en vez de uno compartido",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT 'db' applies to every folder that already existed —
+			// every one of them was, until now, exclusively used to
+			// organize DB connections (SSH didn't have its own module yet),
+			// so this preserves their current place in "Conexiones" exactly
+			// and leaves the new "SSH" module starting empty, same as a
+			// fresh install.
+			_, err := tx.Exec(`ALTER TABLE folders ADD COLUMN scope TEXT NOT NULL DEFAULT 'db'`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

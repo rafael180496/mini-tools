@@ -22,7 +22,13 @@ interface SidebarModuleProps {
 // losing discoverability).
 export default function SidebarModule({title, collapsed, onToggleCollapsed, actions, children}: SidebarModuleProps) {
     return (
-        <div className="flex min-h-0 flex-1 flex-col">
+        // flex-1 only while expanded — collapsed, this must shrink to just
+        // its header row (shrink-0), not keep claiming an equal flex share
+        // of the sidebar's height. Real bug found live: with two modules
+        // stacked (Conexiones + SSH), collapsing one still left it holding
+        // half the sidebar as dead space above the other's header, reading
+        // as a giant blank gap instead of a tight accordion stack.
+        <div className={`flex flex-col ${collapsed ? 'shrink-0' : 'min-h-0 flex-1'}`}>
             <div className="flex items-center justify-between gap-1 px-3 pb-2 pt-3">
                 <button
                     onClick={onToggleCollapsed}

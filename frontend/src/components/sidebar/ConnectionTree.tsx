@@ -1,5 +1,4 @@
-import {useEffect, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
-import {createPortal} from 'react-dom'
+import {useEffect, useState, type ReactNode} from 'react'
 import {ListConnections} from '../../../wailsjs/go/main/App'
 import {vault, db} from '../../../wailsjs/go/models'
 import logo from '../../assets/logo.png'
@@ -9,6 +8,7 @@ import Icon from '../Icon'
 import RedisKeyTree from '../redis/RedisKeyTree'
 import SidebarModule from './SidebarModule'
 import SchemaObjectsList from './SchemaObjectsList'
+import MoveToFolderMenu, {flattenForMenu} from './MoveToFolderMenu'
 import type {DDLObjectType} from '../DDLViewerModal'
 import {likeToRegExp} from '../../lib/likePattern'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
@@ -78,91 +78,16 @@ interface ConnectionTreeProps {
     onDeleteFolder: (id: string) => void
     onReorderFolder: (id: string, direction: 'up' | 'down') => void
     onMoveConnectionToFolder: (connId: string, folderId: string) => void
-}
-
-// Portal-based "Mover a carpeta ▸" menu on a connection row — same
-// createPortal(..., document.body) + fixed-position-from-getBoundingClientRect
-// pattern EditorTabs.tsx's per-tab connection chip already established, for
-// the same reason: this row sits inside a scrollable container
-// (overflow-y-auto), and a plain position:absolute dropdown would get
-// clipped vertically (the CSS "fixing one overflow axis forces the other to
-// behave as auto too" rule — see EditorTabs.tsx's own comment on this).
-function MoveToFolderMenu({
-    connId,
-    flatFolders,
-    onMove,
-}: {
-    connId: string
-    flatFolders: {folder: vault.Folder; depth: number}[]
-    onMove: (connId: string, folderId: string) => void
-}) {
-    const [open, setOpen] = useState(false)
-    const [pos, setPos] = useState({top: 0, left: 0})
-    const btnRef = useRef<HTMLButtonElement>(null)
-
-    function openMenu(e: ReactMouseEvent) {
-        e.stopPropagation()
-        const rect = btnRef.current?.getBoundingClientRect()
-        if (rect) setPos({top: rect.bottom + 4, left: rect.left})
-        setOpen((v) => !v)
-    }
-
-    return (
-        <>
-            <button
-                ref={btnRef}
-                onClick={openMenu}
-                title="Mover a carpeta"
-                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
-            >
-                <Icon name="drive_file_move" size={15} />
-            </button>
-            {open &&
-                createPortal(
-                    <>
-                        <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-                        <div
-                            style={{position: 'fixed', top: pos.top, left: pos.left}}
-                            onClick={(e) => e.stopPropagation()}
-                            className="z-50 max-h-64 w-56 cursor-default overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-high p-1 text-on-surface shadow-lg"
-                        >
-                            <button
-                                onClick={() => {
-                                    onMove(connId, '')
-                                    setOpen(false)
-                                }}
-                                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                            >
-                                <Icon name="close" size={14} className="opacity-60" />
-                                Sin carpeta
-                            </button>
-                            {flatFolders.map(({folder, depth}) => (
-                                <button
-                                    key={folder.id}
-                                    onClick={() => {
-                                        onMove(connId, folder.id)
-                                        setOpen(false)
-                                    }}
-                                    style={{paddingLeft: `${8 + depth * 12}px`}}
-                                    className="flex w-full items-center gap-2 rounded py-1.5 pr-2 text-left text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                                >
-                                    <Icon name="folder" size={14} className="shrink-0 opacity-60" />
-                                    <span className="truncate">{folder.name}</span>
-                                </button>
-                            ))}
-                            {flatFolders.length === 0 && (
-                                <p className="px-2 py-1.5 text-xs text-on-surface-variant/60">Sin carpetas todavía.</p>
-                            )}
-                        </div>
-                    </>,
-                    document.body,
-                )}
-        </>
-    )
-}
-
-function flattenForMenu(nodes: FolderNode[], depth = 0): {folder: vault.Folder; depth: number}[] {
-    return nodes.flatMap((n) => [{folder: n.folder, depth}, ...flattenForMenu(n.children, depth + 1)])
+    // SSH connections get their own sidebar module (SshConnectionTree.tsx) —
+    // a fundamentally different interaction (open a terminal, not browse a
+    // schema) that doesn't belong mixed into "Conexiones". Rendered here, as
+    // a sibling SidebarModule below "Conexiones" inside the same <aside>, so
+    // both share this component's header/rail-mode chrome instead of
+    // duplicating it. Only shown in the expanded (non-rail) sidebar — the
+    // icon-only collapsed rail below still lists every connection type
+    // together (see the `collapsed` branch), same as before this module
+    // existed.
+    extraModules?: ReactNode
 }
 
 // Conexiones → carpetas (árbol de proyecto) → schemas → tablas/vistas.
@@ -205,6 +130,7 @@ export default function ConnectionTree({
     onDeleteFolder,
     onReorderFolder,
     onMoveConnectionToFolder,
+    extraModules,
 }: ConnectionTreeProps) {
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
     const [filter, setFilter] = useState('')
@@ -254,10 +180,19 @@ export default function ConnectionTree({
         ListConnections().then(setConnections)
     }, [reloadToken])
 
+    // This module is DB connections only — SSH has its own sidebar module
+    // (SshConnectionTree.tsx, rendered via extraModules below) with its own
+    // independent folder tree (vault.Folder.Scope — see the doc comment on
+    // that field). Only the collapsed icon-rail branch further down still
+    // uses the unfiltered `connections` (it has no module boundaries at
+    // all, see its own comment).
+    const dbConnections = connections.filter((c) => c.dbType !== 'ssh')
+    const dbFolders = folders.filter((f) => f.scope === 'db')
+
     const q = filter.trim().toLowerCase()
     const connectionMatches = (c: vault.ConnectionSummary) => !q || c.name.toLowerCase().includes(q)
     const folderNameMatches = (f: vault.Folder) => !q || f.name.toLowerCase().includes(q)
-    const folderTree = buildFolderTree(folders)
+    const folderTree = buildFolderTree(dbFolders)
     const flatFoldersForMenu = flattenForMenu(folderTree)
 
     // Tables + every scanned schema object type together — drives both
@@ -279,7 +214,7 @@ export default function ConnectionTree({
         // the folder and the input you're typing into vanish immediately.
         if (creatingFolderParentId === node.folder.id) return true
         if (folderNameMatches(node.folder)) return true
-        if (connections.some((c) => c.folderId === node.folder.id && connectionMatches(c))) return true
+        if (dbConnections.some((c) => c.folderId === node.folder.id && connectionMatches(c))) return true
         return node.children.some(folderHasVisibleContent)
     }
 
@@ -288,7 +223,7 @@ export default function ConnectionTree({
         return expandedFolders.has(id)
     }
 
-    const rootConnections = connections.filter((c) => !c.folderId && connectionMatches(c))
+    const rootConnections = dbConnections.filter((c) => !c.folderId && connectionMatches(c))
     const visibleFolderNodes = folderTree.filter((node) => !q || folderHasVisibleContent(node))
 
     function selectConnection(c: vault.ConnectionSummary) {
@@ -713,7 +648,7 @@ export default function ConnectionTree({
 
         const expanded = isFolderExpanded(node.folder.id)
         const isRenaming = renamingFolderId === node.folder.id
-        const ownConnections = connections.filter((c) => c.folderId === node.folder.id && connectionMatches(c))
+        const ownConnections = dbConnections.filter((c) => c.folderId === node.folder.id && connectionMatches(c))
         const isCreatingHere = creatingFolderParentId === node.folder.id
 
         return (
@@ -906,6 +841,8 @@ export default function ConnectionTree({
                     </div>
                 </SidebarModule>
             )}
+
+            {!collapsed && extraModules}
 
             {confirmDelete && (
                 <ConfirmDialog

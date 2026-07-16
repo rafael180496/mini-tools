@@ -17,11 +17,19 @@ interface ConnectionDialogProps {
     editingId: string | null
     onClose: () => void
     onSaved: () => void
+    // Set when opened from a type-specific "+" button (e.g.
+    // SshConnectionTree's own module, see Workspace.tsx's 'new-ssh' dialog
+    // state) instead of the generic "Conexiones" module — pre-selects that
+    // type and hides the type picker entirely (ignored while editingId is
+    // set; an existing connection's type is already locked by that path,
+    // see the picker's own disabled state below).
+    initialDbType?: DBType
 }
 
-type DBType = 'sqlite' | 'postgres' | 'oracle' | 'redis'
+type DBType = 'sqlite' | 'postgres' | 'oracle' | 'redis' | 'ssh'
 type OracleMode = 'service_name' | 'easy_connect' | 'sid' | 'tns'
 type RedisMode = 'standalone' | 'cluster' | 'sentinel'
+type SSHAuthMethod = 'password' | 'key'
 
 const SSL_MODES = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full']
 
@@ -50,6 +58,13 @@ function requiredFields(dbType: DBType, oracleMode: OracleMode, redisMode: Redis
                 default:
                     return ['host']
             }
+        case 'ssh':
+            // password/privateKey deliberately excluded, same convention as
+            // postgres/oracle's password — Guardar never depends on a
+            // credential being filled in (see the "sin ping ok -> guarda
+            // igual si usuario fuerza" spec rule), only Test Connection
+            // cares, via passwordUnknownWhileEditing below.
+            return ['host', 'user']
     }
 }
 
@@ -66,12 +81,19 @@ function normalizeNodeList(raw: string): string {
         .join(',')
 }
 
-export default function ConnectionDialog({editingId, onClose, onSaved}: ConnectionDialogProps) {
+export default function ConnectionDialog({editingId, onClose, onSaved, initialDbType}: ConnectionDialogProps) {
     const [name, setName] = useState('')
     const [color, setColor] = useState('#60a5fa')
-    const [dbType, setDbType] = useState<DBType>('sqlite')
+    const [dbType, setDbType] = useState<DBType>(initialDbType ?? 'sqlite')
+    // Type-locked dialog (opened from a type-specific module's "+" button,
+    // e.g. SshConnectionTree) — same "can't change engine" treatment the
+    // type picker already gives an existing connection being edited, just
+    // triggered by initialDbType instead of editingId. Only meaningful for
+    // a NEW connection; editingId's own lock takes over once one is set.
+    const typeLocked = !editingId && !!initialDbType
     const [oracleMode, setOracleMode] = useState<OracleMode>('service_name')
     const [redisMode, setRedisMode] = useState<RedisMode>('standalone')
+    const [sshAuthMethod, setSshAuthMethod] = useState<SSHAuthMethod>('password')
     const [params, setParams] = useState<Record<string, string>>({})
     const [pingStatus, setPingStatus] = useState<'idle' | 'testing' | 'ok' | 'failed'>('idle')
     const [error, setError] = useState('')
@@ -102,9 +124,10 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                 setName(info.name)
                 setDbType(info.dbType as DBType)
                 if (info.color) setColor(info.color)
-                const {mode, ...rest} = info.params
+                const {mode, auth, ...rest} = info.params
                 if (mode && info.dbType === 'oracle') setOracleMode(mode as OracleMode)
                 if (mode && info.dbType === 'redis') setRedisMode(mode as RedisMode)
+                if (auth && info.dbType === 'ssh') setSshAuthMethod(auth as SSHAuthMethod)
                 setParams(rest)
             })
             .catch((err) => setError(String(err)))
@@ -119,6 +142,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
     function changeDbType(next: DBType) {
         setDbType(next)
         setParams({})
+        setSshAuthMethod('password')
         setPingStatus('idle')
         setAvailableSchemas(null)
         setSelectedSchemas(new Set())
@@ -169,6 +193,8 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
             if (redisMode === 'sentinel' && effectiveParams.sentinels) {
                 effectiveParams.sentinels = normalizeNodeList(effectiveParams.sentinels)
             }
+        } else if (dbType === 'ssh') {
+            effectiveParams = {...params, auth: sshAuthMethod}
         }
         return new main.ConnectionInput({name, dbType, params: effectiveParams, color})
     }
@@ -186,8 +212,15 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
     // treating it as "unknown" would permanently block Test Connection on
     // an unauthenticated Redis instance every time you reopen the edit
     // dialog.
+    // SSH gets the same treatment as Postgres/Oracle above (never blank by
+    // convention), checking whichever credential field its chosen auth
+    // method actually uses.
+    const sshCredentialBlank =
+        dbType === 'ssh' &&
+        (sshAuthMethod === 'password' ? !(params.password ?? '').trim() : !(params.privateKey ?? '').trim())
     const passwordUnknownWhileEditing =
-        !!editingId && (dbType === 'postgres' || dbType === 'oracle') && !(params.password ?? '').trim()
+        !!editingId &&
+        ((dbType === 'postgres' || dbType === 'oracle') ? !(params.password ?? '').trim() : sshCredentialBlank)
 
     async function testConnection() {
         setPingStatus('testing')
@@ -276,7 +309,9 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                 onSubmit={handleSubmit}
                 className="flex max-h-[90vh] w-104 flex-col gap-3 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg"
             >
-                <h2 className="text-lg font-semibold">{editingId ? 'Editar conexión' : 'Nueva conexión'}</h2>
+                <h2 className="text-lg font-semibold">
+                    {editingId ? 'Editar conexión' : typeLocked ? `Nueva conexión ${dbTypeLabel(dbType)}` : 'Nueva conexión'}
+                </h2>
                 {loadingEdit && <p className="text-xs text-on-surface-variant">Cargando conexión…</p>}
 
                 <div className="flex gap-2">
@@ -301,44 +336,61 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                     </label>
                 </div>
 
-                <label className={labelClass}>
-                    Pegar connection string (opcional)
-                    <textarea
-                        value={pasteInput}
-                        onChange={(e) => handlePasteChange(e.target.value)}
-                        placeholder="postgres://user:pass@host:5432/db?sslmode=require, user/pass@host:1521/service, jdbc:oracle:thin:..., o una ruta .db — copiado directo de un .env"
-                        rows={2}
-                        className={`${inputClass} font-mono text-xs`}
-                    />
-                    {pasteHint && <span className="text-xs text-on-surface-variant">{pasteHint}</span>}
-                </label>
+                {!typeLocked && (
+                    <label className={labelClass}>
+                        Pegar connection string (opcional)
+                        <textarea
+                            value={pasteInput}
+                            onChange={(e) => handlePasteChange(e.target.value)}
+                            placeholder="postgres://user:pass@host:5432/db?sslmode=require, user/pass@host:1521/service, jdbc:oracle:thin:..., o una ruta .db — copiado directo de un .env"
+                            rows={2}
+                            className={`${inputClass} font-mono text-xs`}
+                        />
+                        {pasteHint && <span className="text-xs text-on-surface-variant">{pasteHint}</span>}
+                    </label>
+                )}
 
-                <div className={labelClass}>
-                    Tipo
-                    <div className="flex gap-2">
-                        {DB_TYPES.map((t) => (
-                            <button
-                                key={t}
-                                type="button"
-                                onClick={() => changeDbType(t)}
-                                disabled={!!editingId}
-                                title={
-                                    editingId
-                                        ? 'No se puede cambiar el motor de una conexión existente — creá una nueva'
-                                        : `Usar ${dbTypeLabel(t)}`
-                                }
-                                className={`flex flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2 text-xs disabled:opacity-50 disabled:hover:bg-transparent ${
-                                    dbType === t
-                                        ? 'border-primary bg-primary-container text-on-primary-container'
-                                        : 'border-outline text-on-surface-variant hover:bg-surface-variant'
-                                }`}
-                            >
-                                <DbTypeIcon dbType={t} size={20} />
-                                {dbTypeLabel(t)}
-                            </button>
-                        ))}
+                {typeLocked ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-highest px-3 py-2 text-xs text-on-surface-variant">
+                        <DbTypeIcon dbType={dbType} size={18} />
+                        Motor: {dbTypeLabel(dbType)}
                     </div>
-                </div>
+                ) : (
+                    <div className={labelClass}>
+                        Tipo
+                        <div className="flex gap-2">
+                            {/* SSH is deliberately excluded from this generic
+                                picker — it lives in its own sidebar module
+                                (SshConnectionTree.tsx) with its own "+" that
+                                always opens this dialog type-locked
+                                (initialDbType='ssh', see typeLocked above).
+                                A connection created 'ssh' from here would
+                                never show up in "Conexiones" (see
+                                ConnectionTree.tsx's dbConnections filter). */}
+                            {DB_TYPES.filter((t) => t !== 'ssh').map((t) => (
+                                <button
+                                    key={t}
+                                    type="button"
+                                    onClick={() => changeDbType(t)}
+                                    disabled={!!editingId}
+                                    title={
+                                        editingId
+                                            ? 'No se puede cambiar el motor de una conexión existente — creá una nueva'
+                                            : `Usar ${dbTypeLabel(t)}`
+                                    }
+                                    className={`flex flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2 text-xs disabled:opacity-50 disabled:hover:bg-transparent ${
+                                        dbType === t
+                                            ? 'border-primary bg-primary-container text-on-primary-container'
+                                            : 'border-outline text-on-surface-variant hover:bg-surface-variant'
+                                    }`}
+                                >
+                                    <DbTypeIcon dbType={t} size={20} />
+                                    {dbTypeLabel(t)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {dbType === 'sqlite' && (
                     <label className={labelClass}>
@@ -630,6 +682,108 @@ export default function ConnectionDialog({editingId, onClose, onSaved}: Connecti
                                 className="accent-primary"
                             />
                             TLS
+                        </label>
+                    </>
+                )}
+
+                {dbType === 'ssh' && (
+                    <>
+                        <div className="flex gap-2">
+                            <label className={`${labelClass} flex-1`}>
+                                Host
+                                <input
+                                    value={params.host ?? ''}
+                                    onChange={(e) => setParam('host', e.target.value)}
+                                    placeholder="192.168.1.10"
+                                    className={inputClass}
+                                />
+                            </label>
+                            <label className={labelClass} style={{width: '5rem'}}>
+                                Puerto
+                                <input
+                                    value={params.port ?? ''}
+                                    onChange={(e) => setParam('port', e.target.value)}
+                                    placeholder="22"
+                                    className={inputClass}
+                                />
+                            </label>
+                        </div>
+                        <label className={labelClass}>
+                            Usuario
+                            <input
+                                value={params.user ?? ''}
+                                onChange={(e) => setParam('user', e.target.value)}
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className={labelClass}>
+                            Método de autenticación
+                            <select
+                                value={sshAuthMethod}
+                                onChange={(e) => setSshAuthMethod(e.target.value as SSHAuthMethod)}
+                                title="Password: autenticación con usuario y contraseña. Private key: autenticación con una clave privada (RSA/Ed25519/etc.), opcionalmente protegida por passphrase."
+                                className={inputClass}
+                            >
+                                <option value="password">Password</option>
+                                <option value="key">Private key</option>
+                            </select>
+                        </label>
+
+                        {sshAuthMethod === 'password' && (
+                            <label className={labelClass}>
+                                Password
+                                <input
+                                    type="password"
+                                    value={params.password ?? ''}
+                                    onChange={(e) => setParam('password', e.target.value)}
+                                    placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
+                                    className={inputClass}
+                                />
+                            </label>
+                        )}
+
+                        {sshAuthMethod === 'key' && (
+                            <>
+                                <label className={labelClass}>
+                                    Private key
+                                    <textarea
+                                        value={params.privateKey ?? ''}
+                                        onChange={(e) => setParam('privateKey', e.target.value)}
+                                        placeholder={
+                                            editingId
+                                                ? 'Dejar en blanco para mantener la actual'
+                                                : '-----BEGIN OPENSSH PRIVATE KEY-----\n...'
+                                        }
+                                        title="Contenido completo del archivo de clave privada (ej. ~/.ssh/id_ed25519) — nunca la ruta del archivo, se guarda cifrada en el vault"
+                                        rows={4}
+                                        className={`${inputClass} font-mono text-xs`}
+                                    />
+                                </label>
+                                <label className={labelClass}>
+                                    Passphrase (opcional)
+                                    <input
+                                        type="password"
+                                        value={params.passphrase ?? ''}
+                                        onChange={(e) => setParam('passphrase', e.target.value)}
+                                        placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
+                                        title="Passphrase que protege la private key, si tiene una — dejar en blanco si la key no está protegida"
+                                        className={inputClass}
+                                    />
+                                </label>
+                            </>
+                        )}
+
+                        <label
+                            className="flex items-center gap-2 text-xs text-on-surface-variant"
+                            title="Reenvía tu ssh-agent local al host remoto para que comandos corridos ahí (git clone, otro ssh) puedan usarlo para autenticarse en un siguiente salto — requiere un ssh-agent corriendo localmente (SSH_AUTH_SOCK). No es un método de autenticación en sí, es independiente de Password/Private key de arriba."
+                        >
+                            <input
+                                type="checkbox"
+                                checked={params.agentForwarding === '1'}
+                                onChange={(e) => setParam('agentForwarding', e.target.checked ? '1' : '')}
+                                className="accent-primary"
+                            />
+                            Agent Forwarding
                         </label>
                     </>
                 )}

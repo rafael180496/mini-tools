@@ -15,7 +15,9 @@ export type TabLanguage = 'sql' | 'redis-cli'
 // content, so most EditorTab fields (content/dirty/language) are unused
 // placeholders for that kind, kept only so every tab still fits one array
 // of one type instead of a union threaded through EditorTabs/Workspace.
-export type TabKind = 'editor' | 'redis-browser'
+// 'ssh-terminal' is the same idea for an interactive SSH shell (see
+// SshTerminalTab.tsx) — same unused-placeholder-fields treatment.
+export type TabKind = 'editor' | 'redis-browser' | 'ssh-terminal'
 
 export interface EditorTab {
     id: string
@@ -79,6 +81,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
         ? `Vinculada a "${boundConnection.name}" (${dbTypeLabel(boundConnection.dbType)}) — click para cambiar`
         : `Sin conexión vinculada (lenguaje: ${tab.language === 'redis-cli' ? 'Redis' : 'SQL'}) — click para vincular una conexión o cambiar el lenguaje. La conexión vinculada se muestra arriba, en la barra de herramientas.`
     const isBrowserTab = tab.kind === 'redis-browser'
+    const isSshTab = tab.kind === 'ssh-terminal'
 
     // Posiciona el menú vía viewport coords + un portal a document.body, no
     // position:absolute dentro de esta fila — la fila de pestañas tiene
@@ -118,6 +121,13 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
                 >
                     <DbTypeIcon dbType="redis" size={12} />
+                </span>
+            ) : isSshTab ? (
+                <span
+                    title="Terminal SSH — no se puede vincular a otra conexión, abrí una nueva para eso"
+                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
+                >
+                    <Icon name="terminal" size={12} />
                 </span>
             ) : (
                 <button
@@ -179,11 +189,18 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                     className="rounded border-none bg-surface-container-highest px-2 py-1 text-xs text-on-surface outline-none"
                                 >
                                     <option value="">Sin conexión</option>
-                                    {connections.map((c) => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name} ({dbTypeLabel(c.dbType)})
-                                        </option>
-                                    ))}
+                                    {/* SSH connections have no query/editor concept at all — their
+                                        only interaction mode is the terminal itself (see
+                                        openSshTerminal in Workspace.tsx), so they're excluded here
+                                        the same way this dropdown has no case for binding to
+                                        something with no queryable surface. */}
+                                    {connections
+                                        .filter((c) => c.dbType !== 'ssh')
+                                        .map((c) => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.name} ({dbTypeLabel(c.dbType)})
+                                            </option>
+                                        ))}
                                 </select>
                             </label>
                             <label className="mt-2 flex flex-col gap-1 text-[11px] text-on-surface-variant">

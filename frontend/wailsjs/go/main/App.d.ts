@@ -21,9 +21,11 @@ export function ClearQueryHistory(arg1:string):Promise<void>;
 
 export function ClearRecentFiles():Promise<void>;
 
+export function CloseSSHTerminal(arg1:string):Promise<void>;
+
 export function CommitTransaction(arg1:string):Promise<void>;
 
-export function CreateFolder(arg1:string,arg2:string):Promise<vault.Folder>;
+export function CreateFolder(arg1:string,arg2:string,arg3:string):Promise<vault.Folder>;
 
 export function DeleteConnection(arg1:string):Promise<void>;
 
@@ -99,6 +101,8 @@ export function OpenSQLFileDialog():Promise<main.FileContent>;
 
 export function OpenSQLFilePath(arg1:string):Promise<main.FileContent>;
 
+export function OpenSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+
 export function PushRedisListValue(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function RegenerateProjectDocs(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -112,6 +116,8 @@ export function RemoveRedisZSetMember(arg1:string,arg2:string,arg3:string):Promi
 export function RenameFolder(arg1:string,arg2:string):Promise<void>;
 
 export function ReorderFolder(arg1:string,arg2:string):Promise<void>;
+
+export function ResizeSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function RestoreVaultBackup(arg1:string):Promise<void>;
 
@@ -158,3 +164,5 @@ export function TryAutoUnlock():Promise<boolean>;
 export function UnlockVault(arg1:string):Promise<void>;
 
 export function UpdateConnection(arg1:string,arg2:main.ConnectionInput,arg3:boolean):Promise<vault.ConnectionSummary>;
+
+export function WriteSSHTerminal(arg1:string,arg2:string):Promise<void>;

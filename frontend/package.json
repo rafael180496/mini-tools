@@ -30,6 +30,8 @@
     "@uiw/codemirror-theme-solarized": "^4.25.11",
     "@uiw/codemirror-theme-tokyo-night": "^4.25.11",
     "@uiw/codemirror-theme-vscode": "^4.25.11",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "codemirror": "^6.0.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

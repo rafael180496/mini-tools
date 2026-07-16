@@ -4,6 +4,21 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-15
+
+### Agregado
+
+- **Módulo SSH**, como quinto tipo de conexión: auth por password o private key (+ passphrase opcional) más Agent Forwarding, con Test Connection antes de guardar — igual que los motores de base de datos, guardar nunca depende de un ping exitoso.
+- **Terminal interactiva real (xterm.js)** por conexión SSH: se abre en una pestaña (dedup por conexión — reabrir enfoca la misma pestaña en vez de duplicarla), streaming de la sesión remota vía PTY, resize automático, y la sesión se corta al cerrar la pestaña.
+- **SSH tiene su propio módulo de sidebar**, separado de "Conexiones" — mismo patrón de acordeón colapsable y árbol de carpetas (crear/renombrar/mover/reordenar), pero con un árbol de carpetas completamente independiente del de conexiones de base de datos: una carpeta SSH y una de base de datos nunca comparten contenido aunque tengan el mismo nombre.
+- Crear una conexión desde el módulo SSH abre el diálogo ya bloqueado en tipo SSH (sin el selector de motor ni el textbox de pegar connection string, que no aplican a un tipo fijo).
+
+### Corregido
+
+- `Exportar configuración (sin password)` de una conexión SSH exponía en texto plano el password, la private key completa y la passphrase en el archivo exportado — esos campos viajan en el query string del DSN (no en el userinfo de la URL, a diferencia de los demás motores) y no se estaban redactando ahí.
+- Editar una conexión SSH y cambiar el método de auth (password → key o viceversa) con el campo nuevo vacío arrastraba la credencial del método anterior al DSN reconstruido en vez de dejarlo vacío.
+- Un módulo de sidebar colapsado (p. ej. "Conexiones" con el módulo SSH agregado al lado) seguía reservando la mitad de la altura del sidebar como espacio vacío en vez de reducirse a solo su header — los dos módulos ahora se apilan de forma compacta, como un árbol.
+
 ## [0.2.0] - 2026-07-14
 
 ### Agregado

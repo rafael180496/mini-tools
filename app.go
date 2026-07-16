@@ -18,6 +18,7 @@ import (
 	"mini-tools/backend/export"
 	"mini-tools/backend/query"
 	"mini-tools/backend/redisquery"
+	"mini-tools/backend/sshconn"
 	"mini-tools/backend/vault"
 	"mini-tools/backend/vaultgate"
 )
@@ -40,6 +41,12 @@ type App struct {
 	// .claude/skills/mini-tools-patterns/SKILL.md's Redis section.
 	redisPools    *db.RedisPoolManager
 	redisExecutor *redisquery.Executor
+
+	// sshSessions is SSH's own native parallel path — same exception as
+	// redisPools/redisExecutor above, but with no separate "pool" step: an
+	// interactive terminal session is opened, streamed, and closed as one
+	// unit (see backend/sshconn's package doc).
+	sshSessions *sshconn.SessionManager
 
 	metadataMu    sync.Mutex
 	metadataCache map[string]*db.SchemaMetadata
@@ -104,6 +111,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.executor = query.NewExecutor(ctx, a.pools, emit, history)
 	a.redisExecutor = redisquery.NewExecutor(ctx, a.redisPools, emit, history)
+	a.sshSessions = sshconn.NewSessionManager(emit)
 }
 
 // shutdown closes every open connection pool, checkpoints and closes the
@@ -125,6 +133,7 @@ func (a *App) shutdown(ctx context.Context) {
 	a.executor.RollbackAll(ctx)
 	a.pools.CloseAll()
 	a.redisPools.CloseAll()
+	a.sshSessions.CloseAll()
 	a.gate.Lock()
 	if a.vault != nil {
 		_ = a.vault.Close()
@@ -267,6 +276,9 @@ func pingDSN(dbType db.DBType, dsn string) error {
 	if dbType == db.DBTypeRedis {
 		return db.PingRedisDSN(dsn)
 	}
+	if dbType == db.DBTypeSSH {
+		return sshconn.PingSSHDSN(dsn)
+	}
 	return db.Ping(dbType, dsn)
 }
 
@@ -375,6 +387,11 @@ func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
 		return nil, err
 	}
 	delete(params, "password")
+	// SSH-specific credential material — same "never reaches the frontend"
+	// treatment as password (.claude/rules/technical.md point 9). No-op for
+	// every other engine, whose params never have these keys.
+	delete(params, "privateKey")
+	delete(params, "passphrase")
 
 	return &ConnectionEditInfo{Name: name, DBType: string(dbType), Params: params, Color: color}, nil
 }
@@ -397,10 +414,30 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 		return nil, err
 	}
 
-	if cfg.Params["password"] == "" {
+	// A blank password (and, for SSH, privateKey/passphrase) means "keep the
+	// existing one" — GetConnectionForEdit never returns credential
+	// material to the frontend, so the form always submits it blank unless
+	// the user typed a new value. For SSH only the fields the currently
+	// selected auth method actually uses are merged — switching from
+	// password to key auth (or back) shouldn't carry the other method's
+	// now-irrelevant stale credential forward into the rebuilt DSN.
+	sshKeyAuth := dbType == db.DBTypeSSH && cfg.Params["auth"] == db.SSHAuthKey
+	needsPasswordMerge := !sshKeyAuth && cfg.Params["password"] == ""
+	needsKeyMerge := sshKeyAuth && (cfg.Params["privateKey"] == "" || cfg.Params["passphrase"] == "")
+	if needsPasswordMerge || needsKeyMerge {
 		if _, existingDSN, err := a.vault.ConnectionDSN(id); err == nil {
 			if existingParams, err := connector.ParseDSN(existingDSN); err == nil {
-				cfg.Params["password"] = existingParams["password"]
+				if needsPasswordMerge {
+					cfg.Params["password"] = existingParams["password"]
+				}
+				if needsKeyMerge {
+					if cfg.Params["privateKey"] == "" {
+						cfg.Params["privateKey"] = existingParams["privateKey"]
+					}
+					if cfg.Params["passphrase"] == "" {
+						cfg.Params["passphrase"] = existingParams["passphrase"]
+					}
+				}
 			}
 		}
 	}
@@ -424,10 +461,13 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	if err := a.pools.Close(id); err != nil {
 		return nil, err
 	}
-	// Harmless no-op on whichever pool manager doesn't actually own id —
-	// closing both unconditionally means callers never need to know which
-	// engine id used to be before this update.
+	// Harmless no-op on whichever pool/session manager doesn't actually own
+	// id — closing all three unconditionally means callers never need to
+	// know which engine id used to be before this update.
 	if err := a.redisPools.Close(id); err != nil {
+		return nil, err
+	}
+	if err := a.sshSessions.Close(id); err != nil {
 		return nil, err
 	}
 	a.metadataMu.Lock()
@@ -474,12 +514,13 @@ func (a *App) ListFolders() ([]vault.Folder, error) {
 }
 
 // CreateFolder creates a new folder, optionally nested under parentID ("" =
-// root).
-func (a *App) CreateFolder(name, parentID string) (*vault.Folder, error) {
+// root), scoped to "db" or "ssh" (vault.Folder.Scope) — keeps SSH
+// connections' folder tree entirely independent of DB connections'.
+func (a *App) CreateFolder(name, parentID, scope string) (*vault.Folder, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
 	}
-	return a.vault.CreateFolder(name, parentID)
+	return a.vault.CreateFolder(name, parentID, scope)
 }
 
 // RenameFolder updates a folder's display name.
@@ -546,6 +587,9 @@ func (a *App) DeleteConnection(id string) error {
 	if err := a.redisPools.Close(id); err != nil {
 		return err
 	}
+	if err := a.sshSessions.Close(id); err != nil {
+		return err
+	}
 	if err := a.vault.DeleteSchemaMetadataCache(id); err != nil {
 		return err
 	}
@@ -569,6 +613,9 @@ func (a *App) DisconnectConnection(id string) error {
 		return err
 	}
 	if err := a.redisPools.Close(id); err != nil {
+		return err
+	}
+	if err := a.sshSessions.Close(id); err != nil {
 		return err
 	}
 	a.metadataMu.Lock()
@@ -674,6 +721,51 @@ func (a *App) CancelRedisCommand(queryID string) error {
 	}
 	a.redisExecutor.Cancel(queryID)
 	return nil
+}
+
+// OpenSSHTerminal decrypts connID's saved DSN and opens an interactive
+// PTY-backed shell against it, sized to cols x rows. The frontend must call
+// EventsOn(connID, ...) BEFORE this — connID doubles as the Wails event
+// name streaming Event{Type:"data"} chunks back (see sshconn.Event), same
+// race-avoidance pattern as ExecuteQuery/ExecuteRedisCommand's queryID.
+func (a *App) OpenSSHTerminal(connID string, cols, rows int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	_, dsn, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return err
+	}
+	return a.sshSessions.Open(connID, dsn, cols, rows)
+}
+
+// WriteSSHTerminal forwards data (keystrokes/paste from xterm.js) to
+// connID's open shell stdin.
+func (a *App) WriteSSHTerminal(connID, data string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sshSessions.Write(connID, data)
+}
+
+// ResizeSSHTerminal reflows connID's PTY after the frontend's terminal
+// container is resized.
+func (a *App) ResizeSSHTerminal(connID string, cols, rows int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sshSessions.Resize(connID, cols, rows)
+}
+
+// CloseSSHTerminal tears down connID's live shell session, if any is open —
+// called when its terminal tab is closed. Unlike a Redis pool (cheap to
+// leave open), a live shell is a real remote process, so this is not
+// optional cleanup the way DisconnectConnection's pool close is.
+func (a *App) CloseSSHTerminal(connID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sshSessions.Close(connID)
 }
 
 // ListRedisKeys pages through connID's keyspace via SCAN — never KEYS *,

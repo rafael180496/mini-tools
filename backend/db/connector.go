@@ -16,6 +16,14 @@ const (
 	// RedisPoolManager (redis_pool.go) instead of PoolManager. See
 	// .claude/skills/mini-tools-patterns/SKILL.md's Redis section.
 	DBTypeRedis DBType = "redis"
+	// DBTypeSSH is a second deliberate exception to the same rule, same
+	// reasoning as DBTypeRedis: an SSH session is not a relational
+	// database/sql connection at all, so it's driven by
+	// sshconn.SessionManager instead of PoolManager. Unlike Redis it has no
+	// pooled/reusable connection concept in the first place — an SSH
+	// terminal session is a stateful remote process, opened and closed
+	// explicitly per connection, never reused across queries.
+	DBTypeSSH DBType = "ssh"
 )
 
 // DriverName returns the database/sql driver name registered for this
@@ -63,6 +71,8 @@ func ConnectorFor(t DBType) (Connector, error) {
 		return oracleConnector{}, nil
 	case DBTypeRedis:
 		return redisConnector{}, nil
+	case DBTypeSSH:
+		return sshConnector{}, nil
 	default:
 		return nil, fmt.Errorf("db: db_type desconocido %q", t)
 	}

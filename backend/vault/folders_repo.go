@@ -17,11 +17,18 @@ type Folder struct {
 	ParentID  string `json:"parentId,omitempty"`
 	SortOrder int    `json:"sortOrder"`
 	CreatedAt int64  `json:"createdAt"`
+	// Scope keeps SSH connections' folder tree entirely independent of DB
+	// connections' — "db" or "ssh" (schema_migrations version 12). Two
+	// folders with the same name/parent but different scope are unrelated;
+	// each sidebar module (ConnectionTree.tsx/SshConnectionTree.tsx)
+	// filters ListFolders' flat result to its own scope client-side, same
+	// "flat rows in, tree built client-side" approach as ever.
+	Scope string `json:"scope"`
 }
 
 // CreateFolder inserts a new folder, optionally nested under parentID ("" =
-// root).
-func (s *Store) CreateFolder(name, parentID string) (*Folder, error) {
+// root), scoped to "db" or "ssh" — see Folder.Scope.
+func (s *Store) CreateFolder(name, parentID, scope string) (*Folder, error) {
 	id, err := newID()
 	if err != nil {
 		return nil, err
@@ -29,13 +36,13 @@ func (s *Store) CreateFolder(name, parentID string) (*Folder, error) {
 	createdAt := time.Now().Unix()
 
 	if _, err := s.db.Exec(
-		`INSERT INTO folders (id, name, parent_id, sort_order, created_at) VALUES (?, ?, ?, 0, ?)`,
-		id, name, nullableString(parentID), createdAt,
+		`INSERT INTO folders (id, name, parent_id, sort_order, created_at, scope) VALUES (?, ?, ?, 0, ?, ?)`,
+		id, name, nullableString(parentID), createdAt, scope,
 	); err != nil {
 		return nil, fmt.Errorf("vault: creando carpeta: %w", err)
 	}
 
-	return &Folder{ID: id, Name: name, ParentID: parentID, CreatedAt: createdAt}, nil
+	return &Folder{ID: id, Name: name, ParentID: parentID, CreatedAt: createdAt, Scope: scope}, nil
 }
 
 // RenameFolder updates a folder's display name in place.
@@ -117,14 +124,23 @@ func (s *Store) ReorderFolder(id, direction string) error {
 	}
 
 	var parentID sql.NullString
-	if err := s.db.QueryRow(`SELECT parent_id FROM folders WHERE id = ?`, id).Scan(&parentID); err != nil {
+	var scope string
+	if err := s.db.QueryRow(`SELECT parent_id, scope FROM folders WHERE id = ?`, id).Scan(&parentID, &scope); err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("vault: carpeta %q no encontrada", id)
 		}
 		return fmt.Errorf("vault: leyendo carpeta: %w", err)
 	}
 
-	rows, err := s.db.Query(`SELECT id FROM folders WHERE parent_id IS ? ORDER BY sort_order, name`, nullableString(parentID.String))
+	// Siblings means same parent AND same scope — otherwise reordering an
+	// SSH root folder could silently swap sort_order with an unrelated DB
+	// root folder that happens to interleave with it in the global
+	// sort_order/name ordering, moving nothing visible in either module's
+	// own (scope-filtered) tree.
+	rows, err := s.db.Query(
+		`SELECT id FROM folders WHERE parent_id IS ? AND scope = ? ORDER BY sort_order, name`,
+		nullableString(parentID.String), scope,
+	)
 	if err != nil {
 		return fmt.Errorf("vault: listando carpetas hermanas: %w", err)
 	}
@@ -180,7 +196,7 @@ func (s *Store) ReorderFolder(id, direction string) error {
 // tree built client-side" approach ConnectionTree.tsx already uses for
 // connections→schemas.
 func (s *Store) ListFolders() ([]Folder, error) {
-	rows, err := s.db.Query(`SELECT id, name, parent_id, sort_order, created_at FROM folders ORDER BY sort_order, name`)
+	rows, err := s.db.Query(`SELECT id, name, parent_id, sort_order, created_at, scope FROM folders ORDER BY sort_order, name`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: listando carpetas: %w", err)
 	}
@@ -190,7 +206,7 @@ func (s *Store) ListFolders() ([]Folder, error) {
 	for rows.Next() {
 		var f Folder
 		var parentID sql.NullString
-		if err := rows.Scan(&f.ID, &f.Name, &parentID, &f.SortOrder, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &parentID, &f.SortOrder, &f.CreatedAt, &f.Scope); err != nil {
 			return nil, fmt.Errorf("vault: leyendo carpeta: %w", err)
 		}
 		f.ParentID = parentID.String

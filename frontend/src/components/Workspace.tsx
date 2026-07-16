@@ -1,5 +1,6 @@
 import {lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
+import SshConnectionTree from './sidebar/SshConnectionTree'
 import ConfirmDialog from './ConfirmDialog'
 import DDLViewerModal, {type DDLObjectType} from './DDLViewerModal'
 import Icon from './Icon'
@@ -12,6 +13,7 @@ import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import RecentFilesMenu from './editor/RecentFilesMenu'
 import RedisBrowserTab from './redis/RedisBrowserTab'
+import SshTerminalTab, {closeSshTerminalSession} from './ssh/SshTerminalTab'
 import {
     BackupVault,
     BeginTransaction,
@@ -227,8 +229,12 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         ListFolders().then(setFolders).catch(() => {})
     }, [reloadToken])
 
-    function createFolder(name: string, parentId: string) {
-        CreateFolder(name, parentId)
+    // scope keeps SSH connections' folder tree entirely independent of DB
+    // connections' (vault.Folder.Scope, schema_migrations version 12) —
+    // ConnectionTree.tsx and SshConnectionTree.tsx each wire this with
+    // their own fixed scope below, never let the user pick it.
+    function createFolder(name: string, parentId: string, scope: 'db' | 'ssh') {
+        CreateFolder(name, parentId, scope)
             .then(() => setReloadToken((n) => n + 1))
             .catch((err) => setStatusMessage(String(err)))
     }
@@ -284,7 +290,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [activeSchemaByConn, setActiveSchemaByConn] = useState<Record<string, string>>({})
 
     function ensureMetadata(connId: string, dbType: string, force: boolean) {
-        if (dbType === 'redis') return
+        if (dbType === 'redis' || dbType === 'ssh') return
         if (!force && metadataByConn[connId]) return
         setLoadingConnIds((prev) => new Set(prev).add(connId))
         GetSchemaMetadata(connId, force)
@@ -1086,6 +1092,32 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         setActiveTabId(tab.id)
     }
 
+    // Opens conn's SSH terminal tab — or focuses it if already open, never
+    // duplicates one per connection. Same dedup contract as
+    // openRedisBrowser above, reached from ConnectionTree's dedicated
+    // "Abrir en pestaña" button on an SSH connection row. language is set
+    // to 'sql' purely as a placeholder — SshTerminalTab never reads it,
+    // same "unused field" treatment redis-browser tabs give `content`.
+    function openSshTerminal(conn: vault.ConnectionSummary) {
+        const existing = tabs.find((t) => t.kind === 'ssh-terminal' && t.connId === conn.id)
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: `Terminal — ${conn.name}`,
+            path: null,
+            content: '',
+            dirty: false,
+            connId: conn.id,
+            language: 'sql',
+            kind: 'ssh-terminal',
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
     // Double-clicking a key in the sidebar's inline RedisKeyTree used to
     // open a read-only modal (RedisValueInspector) — now it opens/focuses
     // that connection's Redis Browser tab with the key pre-selected in the
@@ -1288,6 +1320,14 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
 
     function closeTab(id: string) {
         setTabs((prev) => {
+            // Unlike a Redis pool (cheap to leave open, see openRedisBrowser
+            // — no equivalent cleanup here), an SSH terminal tab holds a
+            // real remote shell process. Tear it down explicitly when its
+            // tab actually closes, not just when the app quits.
+            const closing = prev.find((t) => t.id === id)
+            if (closing?.kind === 'ssh-terminal' && closing.connId) {
+                closeSshTerminalSession(closing.connId)
+            }
             const next = prev.filter((t) => t.id !== id)
             if (next.length === 0) {
                 const fresh = newScratchTab()
@@ -1323,9 +1363,10 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     }, [activeTabConnection])
 
     const activeResult = resultSets[activeResultTab]
-    const isSqlActive = !!activeTabConnection && activeTabConnection.dbType !== 'redis'
+    const isSqlActive = !!activeTabConnection && activeTabConnection.dbType !== 'redis' && activeTabConnection.dbType !== 'ssh'
     const isRedisActive = activeTabConnection?.dbType === 'redis'
     const isBrowserTabActive = activeTabData?.kind === 'redis-browser'
+    const isSshTerminalTabActive = activeTabData?.kind === 'ssh-terminal'
 
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-background font-sans text-on-background">
@@ -1357,11 +1398,31 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 folders={folders}
                 moduleCollapsed={collapsedModules.has('connections')}
                 onToggleModuleCollapsed={() => toggleModuleCollapsed('connections')}
-                onCreateFolder={createFolder}
+                onCreateFolder={(name, parentId) => createFolder(name, parentId, 'db')}
                 onRenameFolder={renameFolder}
                 onDeleteFolder={deleteFolder}
                 onReorderFolder={reorderFolder}
                 onMoveConnectionToFolder={moveConnectionToFolder}
+                extraModules={
+                    <SshConnectionTree
+                        onNewConnection={() => setConnectionDialog('new-ssh')}
+                        onEditConnection={(conn) => setConnectionDialog(conn.id)}
+                        onOpenSshTerminal={openSshTerminal}
+                        activeTabConnectionId={activeTabConnection?.id ?? null}
+                        onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
+                        onDisconnect={(connId) => void disconnectConnection(connId)}
+                        onDeleteConnection={(connId) => void deleteConnection(connId)}
+                        reloadToken={reloadToken}
+                        moduleCollapsed={collapsedModules.has('ssh-connections')}
+                        onToggleModuleCollapsed={() => toggleModuleCollapsed('ssh-connections')}
+                        folders={folders}
+                        onCreateFolder={(name, parentId) => createFolder(name, parentId, 'ssh')}
+                        onRenameFolder={renameFolder}
+                        onDeleteFolder={deleteFolder}
+                        onReorderFolder={reorderFolder}
+                        onMoveConnectionToFolder={moveConnectionToFolder}
+                    />
+                }
             />
 
             {ddlViewer && (
@@ -1668,7 +1729,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
 
                 <div
                     className="min-w-0 border-b border-outline-variant"
-                    style={{height: editorHeight, display: isBrowserTabActive ? 'none' : undefined}}
+                    style={{height: editorHeight, display: isBrowserTabActive || isSshTerminalTabActive ? 'none' : undefined}}
                 >
                     {/* Always mounted, even behind a Redis Browser tab —
                         CodeMirrorTabbedEditor caches every other open
@@ -1716,7 +1777,26 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         </div>
                     ))}
 
-                {!isBrowserTabActive && (
+                {/* Same "never unmount, just hide" treatment as Redis
+                    Browser tabs above — each open terminal keeps its own
+                    xterm.js Terminal instance (and the live remote shell
+                    behind it) alive while its tab isn't focused, so
+                    scrollback/cursor state survives switching away and back.
+                    At most one tab per connId exists (see openSshTerminal's
+                    dedupe). */}
+                {tabs
+                    .filter((t) => t.kind === 'ssh-terminal' && t.connId)
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex min-h-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <SshTerminalTab connId={t.connId as string} theme={theme} />
+                        </div>
+                    ))}
+
+                {!isBrowserTabActive && !isSshTerminalTabActive && (
                     <>
                         {/* Drag handle: resizes the editor pane against the
                             results grid below. Persisted on mouseup, see
@@ -1861,7 +1941,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             {connectionDialog && (
                 <Suspense fallback={null}>
                     <ConnectionDialog
-                        editingId={connectionDialog === 'new' ? null : connectionDialog}
+                        editingId={connectionDialog === 'new' || connectionDialog === 'new-ssh' ? null : connectionDialog}
+                        initialDbType={connectionDialog === 'new-ssh' ? 'ssh' : undefined}
                         onClose={() => setConnectionDialog(null)}
                         onSaved={() => {
                             setConnectionDialog(null)

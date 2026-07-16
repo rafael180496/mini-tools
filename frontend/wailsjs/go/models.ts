@@ -570,6 +570,7 @@ export namespace vault {
 	    parentId?: string;
 	    sortOrder: number;
 	    createdAt: number;
+	    scope: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Folder(source);
@@ -582,6 +583,7 @@ export namespace vault {
 	        this.parentId = source["parentId"];
 	        this.sortOrder = source["sortOrder"];
 	        this.createdAt = source["createdAt"];
+	        this.scope = source["scope"];
 	    }
 	}
 	export class HistoryEntry {

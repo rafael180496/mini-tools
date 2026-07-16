@@ -34,12 +34,16 @@ export function ClearRecentFiles() {
   return window['go']['main']['App']['ClearRecentFiles']();
 }
 
+export function CloseSSHTerminal(arg1) {
+  return window['go']['main']['App']['CloseSSHTerminal'](arg1);
+}
+
 export function CommitTransaction(arg1) {
   return window['go']['main']['App']['CommitTransaction'](arg1);
 }
 
-export function CreateFolder(arg1, arg2) {
-  return window['go']['main']['App']['CreateFolder'](arg1, arg2);
+export function CreateFolder(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateFolder'](arg1, arg2, arg3);
 }
 
 export function DeleteConnection(arg1) {
@@ -190,6 +194,10 @@ export function OpenSQLFilePath(arg1) {
   return window['go']['main']['App']['OpenSQLFilePath'](arg1);
 }
 
+export function OpenSSHTerminal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenSSHTerminal'](arg1, arg2, arg3);
+}
+
 export function PushRedisListValue(arg1, arg2, arg3) {
   return window['go']['main']['App']['PushRedisListValue'](arg1, arg2, arg3);
 }
@@ -216,6 +224,10 @@ export function RenameFolder(arg1, arg2) {
 
 export function ReorderFolder(arg1, arg2) {
   return window['go']['main']['App']['ReorderFolder'](arg1, arg2);
+}
+
+export function ResizeSSHTerminal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResizeSSHTerminal'](arg1, arg2, arg3);
 }
 
 export function RestoreVaultBackup(arg1) {
@@ -308,4 +320,8 @@ export function UnlockVault(arg1) {
 
 export function UpdateConnection(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateConnection'](arg1, arg2, arg3);
+}
+
+export function WriteSSHTerminal(arg1, arg2) {
+  return window['go']['main']['App']['WriteSSHTerminal'](arg1, arg2);
 }
