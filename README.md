@@ -64,7 +64,8 @@ La mayoría de clientes SQL multi-motor son pesados (JVM, Electron, cientos de M
 - **Pegar connection string**: copiá una URL de Postgres, un Easy Connect/SID/TNS de Oracle, un JDBC, o una ruta SQLite (directo de un `.env`) y el formulario de conexión se completa solo, detectando el motor.
 - **Ícono real por motor y color de etiqueta por conexión**: cada conexión muestra el logo de Oracle/PostgreSQL/SQLite/Redis y un color a elección (elegible al crear o editar) — distinguís de un vistazo cuál es cuál sin leer el nombre, sobre todo útil con muchas conexiones abiertas.
 - **Carpetas para organizar conexiones**: crear, renombrar, mover y reordenar carpetas desde el propio árbol — "Conexiones" es un módulo de acordeón colapsable en el sidebar.
-- **Terminal SSH** en su propio módulo de sidebar (con su propio árbol de carpetas, independiente del de conexiones de base de datos): auth por password o private key (+ passphrase) más Agent Forwarding, Test Connection antes de guardar, y una terminal interactiva real (xterm.js) por conexión que se abre en una pestaña — cerrás el tab, se corta la sesión remota; volvés a abrirlo, se reconecta.
+- **Conexiones SSH** en su propio módulo de sidebar — "SSH", separado de "Conexiones" — con el mismo patrón de carpetas (crear/renombrar/mover/reordenar) pero un árbol completamente propio, nunca mezclado con las carpetas de base de datos. Auth por password o private key (+ passphrase opcional) más Agent Forwarding, y Test Connection antes de guardar como cualquier otro motor.
+- **Terminal interactiva real (xterm.js)** por conexión SSH: se abre en su propia pestaña — reabrir la misma conexión enfoca esa pestaña en vez de duplicarla — con streaming de la sesión remota vía PTY y resize automático. Cerrar la pestaña corta la sesión del lado remoto, no la deja colgada.
 - **Guardar sin depender de un ping**: crear o editar una conexión nunca exige que el Test Connection haya sido exitoso — guardás igual si el servidor está apagado ahora pero lo vas a usar más tarde. Test Connection sigue ahí como verificación opcional.
 - **Selector de esquemas al crear la conexión**: en Postgres, después de un Test Connection exitoso elegís qué esquemas escanear — clave en catálogos con cientos de esquemas donde un escaneo completo es lento. Editable después desde el árbol de conexiones.
 - **Editor** (CodeMirror 6, sin CDN) con syntax highlighting real para SQL y para comandos Redis, tabs reordenables por drag-and-drop, archivos recientes, y pestañas restauradas automáticamente al reabrir la app — incluidas las pestañas del Redis Browser.
@@ -188,9 +189,10 @@ Detalle completo, checksum de verificación e instrucciones de instalación paso
 
 ```text
 /backend        crypto (Argon2id + AES-256-GCM), vault (SQLite cifrado columna a columna),
-                 conectores de los 3 motores, ejecución de queries (streaming/cancelación),
+                 conectores de los 4 motores de base de datos (Oracle/PostgreSQL/SQLite/Redis),
+                 ejecución de queries (streaming/cancelación), sshconn (sesiones SSH interactivas vía PTY),
                  EXPLAIN PLAN, export, generador de CLAUDE.md
-/frontend       React + TypeScript + Vite + Tailwind v4, editor Monaco recortado a SQL
+/frontend       React + TypeScript + Vite + Tailwind v4, editor CodeMirror 6, terminal xterm.js
 app.go          superficie completa de binding Go ↔ React
 main.go         bootstrap de Wails, embed de frontend/dist
 ```
@@ -199,9 +201,9 @@ Detalle completo (stack, estructura fase a fase, contrato de bindings) en [CLAUD
 
 ## Seguridad
 
-- El DSN de cada conexión se cifra con AES-256-GCM antes de guardarse; la clave se deriva de tu clave maestra con Argon2id y nunca se persiste en ningún lado.
+- El DSN de cada conexión se cifra con AES-256-GCM antes de guardarse; la clave se deriva de tu clave maestra con Argon2id y nunca se persiste en ningún lado. Para SSH esto incluye el password, la private key completa y su passphrase — mismo tratamiento que el DSN de cualquier otro motor, nunca un campo aparte sin cifrar.
 - Sin clave maestra correcta, la app no arranca — no hay bypass, ni siquiera desde las bindings internas.
-- El DSN nunca llega al frontend ni se loguea, tampoco en modo debug.
+- El DSN (y las credenciales SSH) nunca llegan al frontend ni se loguean, tampoco en modo debug — "Exportar configuración" redacta password/private key/passphrase antes de escribir el archivo.
 - Los backups del vault están atados a la clave maestra: generarlos y restaurarlos piden la clave, verificada contra el propio archivo de backup — no contra la instalación local, porque un backup puede restaurarse en otra máquina.
 
 ## Licencia
