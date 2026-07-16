@@ -386,7 +386,12 @@ export default function ConnectionTree({
                         </button>
                         <button
                             onClick={() => selectConnection(c)}
-                            title={`Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`}
+                            onDoubleClick={() => c.dbType === 'redis' && onOpenRedisBrowser(c)}
+                            title={
+                                c.dbType === 'redis'
+                                    ? `Click: seleccionar "${c.name}" y ver sus keys acá abajo. Doble click: abrir el Redis Browser en una pestaña completa.`
+                                    : `Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`
+                            }
                             className="flex min-w-0 flex-1 items-center gap-2 text-left"
                         >
                             <DbTypeIcon dbType={c.dbType} size={16} />

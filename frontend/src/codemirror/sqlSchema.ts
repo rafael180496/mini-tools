@@ -1,7 +1,7 @@
 import {sql, PostgreSQL, SQLite, PLSQL, StandardSQL, type SQLDialect, type SQLNamespace} from '@codemirror/lang-sql'
 import {hoverTooltip} from '@codemirror/view'
 import type {Extension} from '@codemirror/state'
-import type {Completion} from '@codemirror/autocomplete'
+import type {Completion, CompletionContext, CompletionResult, CompletionSource} from '@codemirror/autocomplete'
 import {db} from '../../wailsjs/go/models'
 
 // Real dialects from @codemirror/lang-sql instead of a hand-rolled keyword
@@ -28,12 +28,18 @@ interface TableRef {
 }
 
 // Same regex/stopword approach as the retired monaco/sqlContext.ts's
-// extractTableRefs — kept only for hover's alias resolution (JOIN between
-// two same-column-name tables must resolve to the right one). Table/column
-// completion itself no longer needs this: @codemirror/lang-sql's own
-// schema-aware completion (driven by schemaToNamespace below) already
-// handles FROM/JOIN vs. SELECT/WHERE scoping and "alias."/"table." dot
-// completion natively.
+// extractTableRefs. Used by both sqlSchemaHover below AND
+// referencedColumnCompletionSource further down — @codemirror/lang-sql's
+// own schema-aware completion (driven by schemaToNamespace) already handles
+// "alias."/"table." dot completion natively (it tracks FROM-clause aliases
+// itself, see its getAliases), but it does NOT scope BARE completion (no
+// dot typed yet — e.g. right after "WHERE ") to the tables referenced in
+// the current statement. Its own top-level completion there only offers
+// table/schema names, never columns, unless a single static
+// defaultTable/defaultSchema is configured (SQLConfig — a fixed setting,
+// not "whichever table this specific query's FROM clause mentions"). That
+// gap is real and confirmed by reading @codemirror/lang-sql's
+// completeFromSchema source directly (dist/index.js) — not an assumption.
 const ALIAS_STOPWORDS = new Set([
     'WHERE', 'ON', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'FULL', 'CROSS',
     'GROUP', 'ORDER', 'LIMIT', 'SET', 'VALUES', 'AND', 'OR', 'USING', 'NATURAL', 'AS',
@@ -77,6 +83,52 @@ function columnCompletion(t: db.Table, c: db.Column): Completion {
     }
 }
 
+// Completion source that fills the gap described in extractTableRefs' doc
+// comment above: at a BARE identifier position (no "." typed yet), suggest
+// the columns of every table referenced in the current statement's
+// FROM/JOIN/INTO/UPDATE clause(s) — covers SELECT ... WHERE, UPDATE ... SET
+// ... WHERE, and INSERT INTO table (...), all three explicitly needed
+// (SELECT/UPDATE/INSERT). Registered as a SEPARATE language.data
+// "autocomplete" source alongside @codemirror/lang-sql's own — CodeMirror
+// queries every matching source at the cursor and merges their results, so
+// this doesn't replace or need to reimplement the library's own (already
+// correct) table-name and dot-qualified completion.
+function referencedColumnCompletionSource(meta: db.SchemaMetadata | null): CompletionSource {
+    return (context: CompletionContext): CompletionResult | null => {
+        if (!meta) return null
+
+        // Skip at a dot-qualified position ("alias." / "table.") — that's
+        // already precisely scoped by @codemirror/lang-sql's own alias
+        // tracking (schemaToNamespace's nested children); adding every
+        // referenced table's columns there too would just add noise to an
+        // already-correct, narrower list.
+        if (context.matchBefore(/[\w"'`]*\.[\w"'`]*$/)) return null
+
+        const word = context.matchBefore(/\w*/)
+        if (!word) return null
+        if (word.from === word.to && !context.explicit) return null
+
+        const refs = extractTableRefs(context.state.doc.toString())
+        if (refs.length === 0) return null
+
+        const seen = new Set<string>()
+        const options: Completion[] = []
+        for (const ref of refs) {
+            const table = resolveRefTable(ref, meta)
+            if (!table) continue
+            for (const c of table.columns) {
+                const key = c.name.toLowerCase()
+                if (seen.has(key)) continue
+                seen.add(key)
+                options.push(columnCompletion(table, c))
+            }
+        }
+        if (options.length === 0) return null
+
+        return {from: word.from, options, validFor: /^\w*$/}
+    }
+}
+
 // Converts the active connection's cached schema metadata into the
 // SQLNamespace shape @codemirror/lang-sql's built-in schema completion
 // understands. Every table is reachable both unqualified (bare name, same
@@ -114,11 +166,16 @@ export function schemaToNamespace(meta: db.SchemaMetadata | null): SQLNamespace 
 // metadataStore.ts/activeDbTypeStore.ts singletons are gone, each tab's
 // EditorState just carries its own schema directly).
 export function sqlLanguageExtension(dbType: string | null | undefined, meta: db.SchemaMetadata | null): Extension {
-    return sql({
-        dialect: dialectForDbType(dbType),
-        schema: schemaToNamespace(meta),
-        upperCaseKeywords: true,
-    })
+    const dialect = dialectForDbType(dbType)
+    return [
+        sql({dialect, schema: schemaToNamespace(meta), upperCaseKeywords: true}),
+        // Additional autocomplete source, same language.data facet the line
+        // above's sql() call already registers its own two sources on
+        // (keywords + schema) — CodeMirror queries every source active at
+        // the cursor and merges the results, so this only ADDS referenced-
+        // table columns to bare completion, see its own doc comment.
+        dialect.language.data.of({autocomplete: referencedColumnCompletionSource(meta)}),
+    ]
 }
 
 // Hover tooltip for a table/column under the cursor — port of the retired

@@ -9,6 +9,12 @@ import type {Theme} from '../../hooks/useTheme'
 interface SshTerminalTabProps {
     connId: string
     theme: Theme
+    // Reports the session's real connected/disconnected state up to
+    // Workspace.tsx — used for the "Pestaña vinculada a" status line, which
+    // otherwise only knew whether a connection was BOUND to the tab, not
+    // whether the remote shell was actually still alive (it could have
+    // dropped server-side, or never connected in the first place).
+    onConnectedChange: (connected: boolean) => void
 }
 
 // Mirrors sshconn.Event (backend/sshconn/sessions.go) — connId doubles as
@@ -40,7 +46,7 @@ function base64ToBytes(b64: string): Uint8Array {
 // render block, the same "never unmount" treatment RedisBrowserTab.tsx gets
 // so its state survives switching tabs. That means this component's mount
 // effect below runs exactly once per session, not on every tab-focus.
-export default function SshTerminalTab({connId, theme}: SshTerminalTabProps) {
+export default function SshTerminalTab({connId, theme, onConnectedChange}: SshTerminalTabProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const termRef = useRef<Terminal | null>(null)
 
@@ -69,8 +75,10 @@ export default function SshTerminalTab({connId, theme}: SshTerminalTabProps) {
                 term.write(base64ToBytes(event.data))
             } else if (event.type === 'closed') {
                 term.write('\r\n\x1b[90m[sesión cerrada]\x1b[0m\r\n')
+                onConnectedChange(false)
             } else if (event.type === 'error') {
                 term.write(`\r\n\x1b[31m[error] ${event.error ?? 'desconocido'}\x1b[0m\r\n`)
+                onConnectedChange(false)
             }
         })
 
@@ -78,9 +86,12 @@ export default function SshTerminalTab({connId, theme}: SshTerminalTabProps) {
             void WriteSSHTerminal(connId, data)
         })
 
-        OpenSSHTerminal(connId, term.cols, term.rows).catch((err) => {
-            term.write(`\r\n\x1b[31m[error] ${String(err)}\x1b[0m\r\n`)
-        })
+        OpenSSHTerminal(connId, term.cols, term.rows)
+            .then(() => onConnectedChange(true))
+            .catch((err) => {
+                term.write(`\r\n\x1b[31m[error] ${String(err)}\x1b[0m\r\n`)
+                onConnectedChange(false)
+            })
 
         const resizeObserver = new ResizeObserver(() => {
             fitAddon.fit()
@@ -94,10 +105,13 @@ export default function SshTerminalTab({connId, theme}: SshTerminalTabProps) {
             unsubscribe()
             term.dispose()
             termRef.current = null
+            onConnectedChange(false)
         }
         // Deliberately connId-only — this effect must run exactly once per
         // mounted session (see the component doc comment above), not
-        // re-run when the app-wide theme toggles.
+        // re-run when the app-wide theme toggles or when onConnectedChange's
+        // identity changes (it closes over a stable setState setter, so an
+        // older render's closure still updates the right state).
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [connId])
 

@@ -1092,6 +1092,23 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
         setActiveTabId(tab.id)
     }
 
+    // Which SSH connIds currently have a live remote session — reported by
+    // SshTerminalTab.tsx's onConnectedChange, since a session can drop
+    // server-side at any time, not just when the user closes the tab. Drives
+    // the real connected/disconnected indicator in the context row below
+    // (see isSshTerminalTabActive's usage further down), instead of the
+    // generic "is a connection bound to this tab" dot every other tab kind
+    // uses.
+    const [liveSshConnIds, setLiveSshConnIds] = useState<Set<string>>(new Set())
+    function setSshConnected(connId: string, connected: boolean) {
+        setLiveSshConnIds((prev) => {
+            const next = new Set(prev)
+            if (connected) next.add(connId)
+            else next.delete(connId)
+            return next
+        })
+    }
+
     // Opens conn's SSH terminal tab — or focuses it if already open, never
     // duplicates one per connection. Same dedup contract as
     // openRedisBrowser above, reached from ConnectionTree's dedicated
@@ -1320,13 +1337,17 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
 
     function closeTab(id: string) {
         setTabs((prev) => {
-            // Unlike a Redis pool (cheap to leave open, see openRedisBrowser
-            // — no equivalent cleanup here), an SSH terminal tab holds a
-            // real remote shell process. Tear it down explicitly when its
-            // tab actually closes, not just when the app quits.
+            // Closing a redis-browser/ssh-terminal tab disconnects its
+            // underlying connection — never leave a live SSH shell or an
+            // open Redis pool behind just because the tab is gone. Doesn't
+            // touch the saved connection itself, same as the sidebar's own
+            // "Desconectar" — reconnecting just means reopening the tab.
             const closing = prev.find((t) => t.id === id)
             if (closing?.kind === 'ssh-terminal' && closing.connId) {
                 closeSshTerminalSession(closing.connId)
+            }
+            if (closing?.kind === 'redis-browser' && closing.connId) {
+                void DisconnectConnection(closing.connId)
             }
             const next = prev.filter((t) => t.id !== id)
             if (next.length === 0) {
@@ -1492,10 +1513,24 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         actions row below so neither crowds the other. */}
                     <div className="flex flex-wrap items-center gap-3 px-3 py-1.5">
                         <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
-                            <span className={`h-2 w-2 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`} />
-                            {activeTabConnection
-                                ? `Pestaña vinculada a: ${activeTabConnection.name}`
-                                : 'Pestaña sin conexión — vincularla con el ícono a la izquierda del título'}
+                            {isSshTerminalTabActive && activeTabConnection ? (
+                                <>
+                                    <span
+                                        className={`h-2 w-2 rounded-full ${
+                                            liveSshConnIds.has(activeTabConnection.id) ? 'bg-secondary' : 'bg-error'
+                                        }`}
+                                    />
+                                    {activeTabConnection.name} —{' '}
+                                    {liveSshConnIds.has(activeTabConnection.id) ? 'conectado' : 'desconectado'}
+                                </>
+                            ) : (
+                                <>
+                                    <span className={`h-2 w-2 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`} />
+                                    {activeTabConnection
+                                        ? `Pestaña vinculada a: ${activeTabConnection.name}`
+                                        : 'Pestaña sin conexión — vincularla con el ícono a la izquierda del título'}
+                                </>
+                            )}
                         </span>
 
                         {activeTabConnection && editorMetadataLoading && (
@@ -1618,7 +1653,15 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     {/* Actions row: file ops, then query ops, then
                         schema/vault utilities — grouped with dividers so
                         the eye can parse clusters instead of one long run
-                        of same-looking buttons. */}
+                        of same-looking buttons. Hidden entirely for
+                        redis-browser/ssh-terminal tabs — none of these
+                        (open/save a .sql file, run a query) apply to either
+                        (their `content`/`path` fields are unused
+                        placeholders, see EditorTab's doc comment). The
+                        context row above stays visible either way —
+                        connection status and Settings/theme are still
+                        meaningful regardless of which tab kind is active. */}
+                    {!isBrowserTabActive && !isSshTerminalTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-1.5">
                         <button
                             onClick={() => void openFileDialog()}
@@ -1713,6 +1756,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             </>
                         )}
                     </div>
+                    )}
                 </div>
 
                 <EditorTabs
@@ -1792,7 +1836,11 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             className="flex min-h-0 flex-1 overflow-hidden"
                             style={{display: activeTabId === t.id ? undefined : 'none'}}
                         >
-                            <SshTerminalTab connId={t.connId as string} theme={theme} />
+                            <SshTerminalTab
+                                connId={t.connId as string}
+                                theme={theme}
+                                onConnectedChange={(connected) => setSshConnected(t.connId as string, connected)}
+                            />
                         </div>
                     ))}
 
