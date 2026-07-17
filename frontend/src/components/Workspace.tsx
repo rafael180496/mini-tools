@@ -15,6 +15,7 @@ import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import RedisBrowserTab from './redis/RedisBrowserTab'
 import SshTerminalTab, {closeSshTerminalSession} from './ssh/SshTerminalTab'
+import SftpTab from './sftp/SftpTab'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
 import {
     BackupVault,
@@ -1204,6 +1205,30 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
         setActiveTabId(tab.id)
     }
 
+    // Opens (or focuses) the dual-pane SFTP explorer for a host. One tab per
+    // connId, same dedupe as openSshTerminal — the launched host seeds one
+    // pane (the other starts Local), but either pane can be switched to any
+    // host afterwards, so a single tab already covers remote↔remote too.
+    function openSftp(conn: vault.ConnectionSummary) {
+        const existing = tabs.find((t) => t.kind === 'sftp' && t.connId === conn.id)
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: `SFTP — ${conn.name}`,
+            path: null,
+            content: '',
+            dirty: false,
+            connId: conn.id,
+            language: 'sql',
+            kind: 'sftp',
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
     // Double-clicking a key in the sidebar's inline RedisKeyTree used to
     // open a read-only modal (RedisValueInspector) — now it opens/focuses
     // that connection's Redis Browser tab with the key pre-selected in the
@@ -1430,6 +1455,7 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
     const isRedisActive = activeTabConnection?.dbType === 'redis'
     const isBrowserTabActive = activeTabData?.kind === 'redis-browser'
     const isSshTerminalTabActive = activeTabData?.kind === 'ssh-terminal'
+    const isSftpTabActive = activeTabData?.kind === 'sftp'
 
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-background font-sans text-on-background">
@@ -1471,6 +1497,7 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                         onNewConnection={() => setConnectionDialog('new-ssh')}
                         onEditConnection={(conn) => setConnectionDialog(conn.id)}
                         onOpenSshTerminal={openSshTerminal}
+                        onOpenSftp={openSftp}
                         activeTabConnectionId={activeTabConnection?.id ?? null}
                         onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
                         onDisconnect={(connId) => void disconnectConnection(connId)}
@@ -1745,7 +1772,7 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
-                    {!isBrowserTabActive && !isSshTerminalTabActive && (
+                    {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
                         <button
                             onClick={() => void saveActiveTab()}
@@ -1831,7 +1858,7 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
 
                 <div
                     className="min-w-0 border-b border-outline-variant"
-                    style={{height: editorHeight, display: isBrowserTabActive || isSshTerminalTabActive ? 'none' : undefined}}
+                    style={{height: editorHeight, display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive ? 'none' : undefined}}
                 >
                     {/* Always mounted, even behind a Redis Browser tab —
                         CodeMirrorTabbedEditor caches every other open
@@ -1904,7 +1931,29 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                         </div>
                     ))}
 
-                {!isBrowserTabActive && !isSshTerminalTabActive && (
+                {/* Same "never unmount, just hide" treatment as the SSH
+                    terminal / Redis Browser tabs above — each SFTP explorer
+                    keeps its two browse sessions and any in-flight transfers
+                    alive while its tab isn't focused. Its own unmount cleanup
+                    (when the tab is closed) tears down the sessions and cancels
+                    transfers, so there is no closeTab branch to add here. */}
+                {tabs
+                    .filter((t) => t.kind === 'sftp' && t.connId)
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex min-h-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <SftpTab
+                                tabId={t.id}
+                                initialConnId={t.connId as string}
+                                connections={connections.filter((c) => c.dbType === 'ssh')}
+                            />
+                        </div>
+                    ))}
+
+                {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && (
                     <>
                         {/* Drag handle: resizes the editor pane against the
                             results grid below. Persisted on mouseup, see

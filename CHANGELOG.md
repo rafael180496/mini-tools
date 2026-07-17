@@ -4,6 +4,20 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-07-17
+
+### Agregado
+
+- **Módulo de transferencia de archivos SFTP**: explorador de doble panel (estilo Termius) que reutiliza las conexiones SSH ya guardadas — se abre desde el árbol SSH del sidebar. Transfiere en ambos sentidos entre la máquina local y un host remoto, y también remoto↔remoto (haciendo streaming a través de la máquina local, ya que SFTP no copia servidor-a-servidor directo). Arrastrar y soltar entre paneles o botón "Enviar", con una cola de transferencias que muestra el progreso por porcentaje/bytes/archivos y deja cancelar cada una. Procesa lotes de muchos archivos en paralelo (pool de goroutines acotado) y no deja procesos colgados al cancelar o al perder la conexión (cancelación por contexto + cierre ordenado de las conexiones dedicadas de cada transferencia).
+- **Explorador SFTP con columnas ordenables**: Nombre, Fecha de modificación, Tamaño, Kind y Permisos, con headers clickeables para ordenar ascendente/descendente (carpetas siempre primero).
+- **Gestión de archivos por SFTP**: menú contextual (click derecho) con Enviar, Renombrar, Eliminar, Refrescar y Nueva carpeta, más un diálogo "Editar permisos" (chmod) con toggles de Lectura/Escritura/Ejecución para Propietario/Grupo/Otros y preview octal/simbólico en vivo; la propiedad (usuario/grupo) se muestra como solo lectura (SFTP no expone nombres, y cambiar dueño suele requerir root).
+- El selector de host de cada panel del explorador SFTP lista solo Local + las conexiones SSH (las conexiones de base de datos no tienen superficie SFTP).
+
+### Corregido
+
+- Restaurar un backup del vault en la pantalla de creación (primer arranque) mostraba un error como si hubiera fallado, aunque la restauración sí se completaba en disco: el formulario no avanzaba tras el éxito y un segundo intento chocaba con "ya existe un vault inicializado". Ahora, tras restaurar, pasa directo a la pantalla de desbloqueo. Además, el botón "Restaurar desde backup…" ahora abre el selector de archivo primero y recién después pide la clave con la que se hizo *ese* backup — antes exigía escribir una clave en el campo de creación de vault nuevo antes de siquiera elegir el archivo.
+- Los errores de operaciones SFTP (transferencias, permisos, etc.) se muestran completos en la interfaz (banner y cola), sin recortar el mensaje.
+
 ## [0.2.3] - 2026-07-17
 
 ### Agregado

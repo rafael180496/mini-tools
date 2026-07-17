@@ -22,6 +22,8 @@
   /vault        store.go + repos (connections, history, plans, settings) sobre SQLite
   /query        detect.go/splitter.go (PL/SQL vs SQL plano) + executor.go (streaming, cancelación) — motores SQL
   /redisquery   executor.go + splitter.go — mismo patrón que /query (Event/EmitFunc/HistorySink/cancel-registry) pero para comandos Redis, path nativo paralelo (no database/sql)
+  /sshconn      terminal SSH interactivo (SessionManager, PTY) + ping.go + dial.go (Dial() exportado: dial reusable que reusa parseDSN/clientConfig) — path nativo paralelo (no database/sql)
+  /sftpx        transferencia de archivos SFTP: fs.go (abstracción local/remoto) + browse.go (BrowseManager, sesiones por panel) + transfer.go (TransferManager, pool de workers, ctx-cancel, progreso) — dialea vía sshconn.Dial, dep github.com/pkg/sftp, path nativo paralelo
   /explain      EXPLAIN PLAN por motor → árbol común (SQL únicamente, no aplica a Redis)
   /export       CSV/JSON/XLSX/DDL/config export
   /claudemd     generador de CLAUDE.md + .claude/{skills,specs,rules} para proyectos DE TERCEROS abiertos en la app (schemas SQL únicamente, no aplica a Redis)

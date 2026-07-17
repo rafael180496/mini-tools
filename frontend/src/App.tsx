@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import UnlockScreen from './components/lock/UnlockScreen'
 import Workspace from './components/Workspace'
-import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackup, TryAutoUnlock} from '../wailsjs/go/main/App'
+import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackupFirstRun, TryAutoUnlock} from '../wailsjs/go/main/App'
 import {useTheme} from './hooks/useTheme'
 
 function App() {
@@ -46,8 +46,8 @@ function App() {
                     await UnlockVault(password)
                     setUnlocked(true)
                 }}
-                onRestore={async (password) => {
-                    await RestoreVaultBackup(password)
+                onRestore={async (path, backupPassword) => {
+                    await RestoreVaultBackupFirstRun(path, backupPassword)
                     setIsInitialized(await IsVaultInitialized())
                 }}
             />

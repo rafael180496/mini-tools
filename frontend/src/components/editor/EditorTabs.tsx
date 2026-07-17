@@ -18,7 +18,10 @@ export type TabLanguage = 'sql' | 'redis-cli'
 // of one type instead of a union threaded through EditorTabs/Workspace.
 // 'ssh-terminal' is the same idea for an interactive SSH shell (see
 // SshTerminalTab.tsx) — same unused-placeholder-fields treatment.
-export type TabKind = 'editor' | 'redis-browser' | 'ssh-terminal'
+// 'sftp' is the dual-pane file-transfer explorer (see SftpTab.tsx) — likewise
+// a full-tab view with the editor fields unused; connId marks the host it was
+// launched from (for the tab strip icon / dedupe), not a bound query engine.
+export type TabKind = 'editor' | 'redis-browser' | 'ssh-terminal' | 'sftp'
 
 export interface EditorTab {
     id: string
@@ -89,6 +92,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
         : `Sin conexión vinculada (lenguaje: ${tab.language === 'redis-cli' ? 'Redis' : 'SQL'}) — click para vincular una conexión o cambiar el lenguaje. La conexión vinculada se muestra arriba, en la barra de herramientas.`
     const isBrowserTab = tab.kind === 'redis-browser'
     const isSshTab = tab.kind === 'ssh-terminal'
+    const isSftpTab = tab.kind === 'sftp'
 
     // Posiciona el menú vía viewport coords + un portal a document.body, no
     // position:absolute dentro de esta fila — la fila de pestañas tiene
@@ -135,6 +139,13 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
                 >
                     <Icon name="terminal" size={12} />
+                </span>
+            ) : isSftpTab ? (
+                <span
+                    title="Transferencia SFTP — explorador de archivos entre hosts"
+                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
+                >
+                    <Icon name="swap_horiz" size={12} />
                 </span>
             ) : (
                 <button

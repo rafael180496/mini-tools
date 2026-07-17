@@ -18,6 +18,7 @@ import (
 	"mini-tools/backend/export"
 	"mini-tools/backend/query"
 	"mini-tools/backend/redisquery"
+	"mini-tools/backend/sftpx"
 	"mini-tools/backend/sshconn"
 	"mini-tools/backend/vault"
 	"mini-tools/backend/vaultgate"
@@ -47,6 +48,15 @@ type App struct {
 	// interactive terminal session is opened, streamed, and closed as one
 	// unit (see backend/sshconn's package doc).
 	sshSessions *sshconn.SessionManager
+
+	// sftpBrowse/sftpTransfers are the SFTP file-transfer parallel path,
+	// dialing through sshconn.Dial and speaking SFTP (github.com/pkg/sftp) —
+	// same native-path exception as sshSessions above. Browse sessions (one
+	// per explorer pane) are kept separate from transfers (dedicated
+	// connections) so a slow transfer never blocks the file listing and
+	// closing a pane never kills an in-flight transfer. See backend/sftpx.
+	sftpBrowse    *sftpx.BrowseManager
+	sftpTransfers *sftpx.TransferManager
 
 	metadataMu    sync.Mutex
 	metadataCache map[string]*db.SchemaMetadata
@@ -78,6 +88,7 @@ func NewApp() *App {
 		gate:          vaultgate.New(),
 		pools:         db.NewPoolManager(),
 		redisPools:    db.NewRedisPoolManager(),
+		sftpBrowse:    sftpx.NewBrowseManager(),
 		metadataCache: make(map[string]*db.SchemaMetadata),
 	}
 }
@@ -112,6 +123,7 @@ func (a *App) startup(ctx context.Context) {
 	a.executor = query.NewExecutor(ctx, a.pools, emit, history)
 	a.redisExecutor = redisquery.NewExecutor(ctx, a.redisPools, emit, history)
 	a.sshSessions = sshconn.NewSessionManager(emit)
+	a.sftpTransfers = sftpx.NewTransferManager(emit)
 }
 
 // shutdown closes every open connection pool, checkpoints and closes the
@@ -134,6 +146,8 @@ func (a *App) shutdown(ctx context.Context) {
 	a.pools.CloseAll()
 	a.redisPools.CloseAll()
 	a.sshSessions.CloseAll()
+	a.sftpTransfers.CancelAll()
+	a.sftpBrowse.CloseAll()
 	a.gate.Lock()
 	if a.vault != nil {
 		_ = a.vault.Close()
@@ -819,6 +833,159 @@ func (a *App) MoveSshSnippetToFolder(id, folderID string) error {
 	return a.vault.MoveSshSnippetToFolder(id, folderID)
 }
 
+// --- SFTP file transfer -----------------------------------------------------
+
+// SftpEndpointInput is one side of a transfer as the frontend describes it:
+// Local means the user's own machine; otherwise ConnID is an opaque SSH
+// connection id whose DSN this layer resolves — the frontend never sees it.
+type SftpEndpointInput struct {
+	Local  bool   `json:"local"`
+	ConnID string `json:"connId"`
+}
+
+// SftpTransferInput is the StartSftpTransfer request. TransferID is generated
+// by the frontend, which must EventsOn(TransferID, ...) before calling this —
+// same event/race contract as OpenSSHTerminal / ExecuteQuery.
+type SftpTransferInput struct {
+	TransferID string            `json:"transferId"`
+	Src        SftpEndpointInput `json:"src"`
+	Dst        SftpEndpointInput `json:"dst"`
+	DstDir     string            `json:"dstDir"`
+	Items      []sftpx.Item      `json:"items"`
+}
+
+// OpenSftpBrowse opens a persistent SFTP browse session for a remote
+// connection and returns its home directory. sessionID is a frontend-chosen
+// pane id (never sftpx.LocalSession — the local pane needs no session). The
+// DSN is decrypted here and never crosses back to the frontend.
+func (a *App) OpenSftpBrowse(sessionID, connID string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	_, dsn, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return "", err
+	}
+	return a.sftpBrowse.Open(sessionID, dsn)
+}
+
+// ListSftpDir lists dir for a pane. sessionID == "local" (sftpx.LocalSession)
+// lists the user's own machine; any other id must have been OpenSftpBrowse'd.
+// An empty dir resolves to that pane's home directory.
+func (a *App) ListSftpDir(sessionID, dir string) ([]sftpx.FileEntry, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.sftpBrowse.ListDir(sessionID, dir)
+}
+
+// SftpHomeDir returns a pane's home/start directory.
+func (a *App) SftpHomeDir(sessionID string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	return a.sftpBrowse.Home(sessionID)
+}
+
+// MakeSftpDir creates a new directory (New Folder) on a pane.
+func (a *App) MakeSftpDir(sessionID, dir string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sftpBrowse.MkdirAll(sessionID, dir)
+}
+
+// DeleteSftpPath removes a file or directory (recursive) on a pane.
+func (a *App) DeleteSftpPath(sessionID, path string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sftpBrowse.Remove(sessionID, path)
+}
+
+// RenameSftpPath renames/moves within a pane.
+func (a *App) RenameSftpPath(sessionID, oldPath, newPath string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sftpBrowse.Rename(sessionID, oldPath, newPath)
+}
+
+// SftpPathPermissions returns a path's permission bits + ownership for the
+// "Editar permisos" dialog.
+func (a *App) SftpPathPermissions(sessionID, path string) (sftpx.PermInfo, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return sftpx.PermInfo{}, err
+	}
+	return a.sftpBrowse.PermInfo(sessionID, path)
+}
+
+// ChmodSftpPath sets a path's permission bits — mode is the raw 0..0o777 value
+// the frontend builds from the owner/group/other × rwx toggles.
+func (a *App) ChmodSftpPath(sessionID, path string, mode int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sftpBrowse.Chmod(sessionID, path, mode)
+}
+
+// CloseSftpBrowse tears down a pane's remote session (when it switches hosts
+// or its SFTP tab closes). No-op for the local pane.
+func (a *App) CloseSftpBrowse(sessionID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sftpBrowse.Close(sessionID)
+}
+
+// StartSftpTransfer resolves each remote endpoint's DSN and launches the
+// transfer in the background. Progress and the terminal result stream back as
+// sftpx.ProgressEvent on the TransferID event. Returns quickly after
+// enumeration; a setup failure is returned and also emitted as "error".
+func (a *App) StartSftpTransfer(in SftpTransferInput) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	src, err := a.resolveSftpEndpoint(in.Src)
+	if err != nil {
+		return err
+	}
+	dst, err := a.resolveSftpEndpoint(in.Dst)
+	if err != nil {
+		return err
+	}
+	return a.sftpTransfers.Start(sftpx.Request{
+		ID:     in.TransferID,
+		Src:    src,
+		Dst:    dst,
+		DstDir: in.DstDir,
+		Items:  in.Items,
+	})
+}
+
+// CancelSftpTransfer stops an in-flight transfer; its terminal event will be
+// "cancelled".
+func (a *App) CancelSftpTransfer(transferID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.sftpTransfers.Cancel(transferID)
+}
+
+// resolveSftpEndpoint turns a frontend endpoint (opaque connId or local flag)
+// into an sftpx.Endpoint carrying the decrypted DSN — the DSN never leaves the
+// backend.
+func (a *App) resolveSftpEndpoint(e SftpEndpointInput) (sftpx.Endpoint, error) {
+	if e.Local {
+		return sftpx.Endpoint{Local: true}, nil
+	}
+	_, dsn, err := a.vault.ConnectionDSN(e.ConnID)
+	if err != nil {
+		return sftpx.Endpoint{}, err
+	}
+	return sftpx.Endpoint{DSN: dsn}, nil
+}
+
 // ListRedisKeys pages through connID's keyspace via SCAN — never KEYS *,
 // see .claude/rules/technical.md's performance rule. cursor is opaque: ""
 // starts from the beginning, and a returned cursor of "" means there are no
@@ -1140,23 +1307,23 @@ func (a *App) BackupVault(password string) (string, error) {
 	return dest, nil
 }
 
-// RestoreVaultBackup prompts for a backup file and restores it, replacing
-// this install's vault.db/salt.bin. Only allowed when no vault has been
-// initialized yet — restoring over an existing vault would silently
-// discard its connections, so that has to be a deliberate separate step
-// (delete/rename the vault first), not implicit in a restore click.
-// password must match the master password the backup was made under —
-// checked against the backup file itself (see vault.VerifyBackupPassword)
-// before anything on disk is touched, so a wrong password fails cleanly
-// instead of leaving an inaccessible vault behind. Returns without an
-// error if the user cancels the open dialog.
-func (a *App) RestoreVaultBackup(password string) error {
+// PickVaultBackupFileFirstRun is step 1 of restoring a backup on FIRST RUN —
+// the "Crear clave maestra" lock screen, when no vault exists yet. Unlike
+// PickVaultBackupFile (restoring OVER an existing vault) there is no current
+// master password to confirm: nothing is being replaced or authorized, so the
+// button opens the file picker straight away and the backup's own password is
+// asked for afterward, tied to the chosen file (see
+// RestoreVaultBackupFirstRun). Only allowed while uninitialized — restoring
+// over an existing vault must go through the current-password-gated
+// Configuración flow instead. Returns "" without an error if the user cancels
+// the picker.
+func (a *App) PickVaultBackupFileFirstRun() (string, error) {
 	initialized, err := a.vault.IsInitialized()
 	if err != nil {
-		return err
+		return "", err
 	}
 	if initialized {
-		return fmt.Errorf("app: ya existe un vault inicializado; no se puede restaurar encima (hacé backup o eliminá el vault actual primero)")
+		return "", fmt.Errorf("app: ya existe un vault inicializado; restaurá desde Configuración, no desde la pantalla de creación")
 	}
 
 	src, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
@@ -1166,13 +1333,29 @@ func (a *App) RestoreVaultBackup(password string) error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("app: abriendo diálogo de selección: %w", err)
+		return "", fmt.Errorf("app: abriendo diálogo de selección: %w", err)
 	}
-	if src == "" {
-		return nil
-	}
+	return src, nil
+}
 
-	if err := vault.VerifyBackupPassword(src, password); err != nil {
+// RestoreVaultBackupFirstRun is step 2 of the first-run restore: path was
+// already chosen via PickVaultBackupFileFirstRun, so this only needs the
+// backup's own master password — verified against the file itself
+// (vault.VerifyBackupPassword) before anything on disk is touched, so a wrong
+// password fails cleanly instead of leaving an inaccessible vault behind. Only
+// allowed while uninitialized. After it succeeds the vault IS initialized
+// (encrypted with the backup's password), so the frontend flips the lock
+// screen to "Desbloquear" and the user unlocks with that same password — the
+// gate is never left unlocked here.
+func (a *App) RestoreVaultBackupFirstRun(path, backupPassword string) error {
+	initialized, err := a.vault.IsInitialized()
+	if err != nil {
+		return err
+	}
+	if initialized {
+		return fmt.Errorf("app: ya existe un vault inicializado; no se puede restaurar encima")
+	}
+	if err := vault.VerifyBackupPassword(path, backupPassword); err != nil {
 		return err
 	}
 
@@ -1180,7 +1363,7 @@ func (a *App) RestoreVaultBackup(password string) error {
 		return fmt.Errorf("app: cerrando vault actual: %w", err)
 	}
 
-	if err := vault.RestoreBackup(src); err != nil {
+	if err := vault.RestoreBackup(path); err != nil {
 		// Reopen whatever was there before so the app isn't left with a.vault nil.
 		if store, openErr := vault.Open(a.gate); openErr == nil {
 			a.vault = store

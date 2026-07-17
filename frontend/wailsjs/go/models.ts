@@ -495,6 +495,119 @@ export namespace main {
 	        this.content = source["content"];
 	    }
 	}
+	export class SftpEndpointInput {
+	    local: boolean;
+	    connId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SftpEndpointInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.local = source["local"];
+	        this.connId = source["connId"];
+	    }
+	}
+	export class SftpTransferInput {
+	    transferId: string;
+	    src: SftpEndpointInput;
+	    dst: SftpEndpointInput;
+	    dstDir: string;
+	    items: sftpx.Item[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SftpTransferInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.transferId = source["transferId"];
+	        this.src = this.convertValues(source["src"], SftpEndpointInput);
+	        this.dst = this.convertValues(source["dst"], SftpEndpointInput);
+	        this.dstDir = source["dstDir"];
+	        this.items = this.convertValues(source["items"], sftpx.Item);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace sftpx {
+	
+	export class FileEntry {
+	    name: string;
+	    path: string;
+	    size: number;
+	    isDir: boolean;
+	    mode: string;
+	    modTime: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.size = source["size"];
+	        this.isDir = source["isDir"];
+	        this.mode = source["mode"];
+	        this.modTime = source["modTime"];
+	    }
+	}
+	export class Item {
+	    path: string;
+	    isDir: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Item(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.isDir = source["isDir"];
+	    }
+	}
+	export class PermInfo {
+	    path: string;
+	    mode: number;
+	    isDir: boolean;
+	    owner: string;
+	    group: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PermInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.mode = source["mode"];
+	        this.isDir = source["isDir"];
+	        this.owner = source["owner"];
+	        this.group = source["group"];
+	    }
+	}
 
 }
 

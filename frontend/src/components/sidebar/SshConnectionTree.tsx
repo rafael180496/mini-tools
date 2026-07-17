@@ -17,6 +17,9 @@ interface SshConnectionTreeProps {
     // from clicking the row itself (unlike ConnectionTree, there's no
     // separate "select to expand a tree" step to distinguish it from).
     onOpenSshTerminal: (conn: vault.ConnectionSummary) => void
+    // Opens (or focuses) the dual-pane SFTP file-transfer explorer seeded with
+    // this host — reuses the same saved SSH connection as the terminal.
+    onOpenSftp: (conn: vault.ConnectionSummary) => void
     // Highlights whichever row's terminal is the ACTIVE editor tab right
     // now — this module has no "selected connection" concept of its own
     // (see ConnectionTree's selectedId), so it borrows the tab system's own
@@ -50,6 +53,7 @@ export default function SshConnectionTree({
     onNewConnection,
     onEditConnection,
     onOpenSshTerminal,
+    onOpenSftp,
     activeTabConnectionId,
     onExportConnectionConfig,
     onDisconnect,
@@ -220,6 +224,16 @@ export default function SshConnectionTree({
                         className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
                     >
                         <Icon name="open_in_new" size={15} />
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onOpenSftp(c)
+                        }}
+                        title="Abrir explorador SFTP — transferir archivos entre hosts"
+                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                    >
+                        <Icon name="swap_horiz" size={15} />
                     </button>
                     <button
                         onClick={(e) => {

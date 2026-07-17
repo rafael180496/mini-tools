@@ -26,6 +26,14 @@ export function CancelRedisCommand(arg1) {
   return window['go']['main']['App']['CancelRedisCommand'](arg1);
 }
 
+export function CancelSftpTransfer(arg1) {
+  return window['go']['main']['App']['CancelSftpTransfer'](arg1);
+}
+
+export function ChmodSftpPath(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ChmodSftpPath'](arg1, arg2, arg3);
+}
+
 export function ClearQueryHistory(arg1) {
   return window['go']['main']['App']['ClearQueryHistory'](arg1);
 }
@@ -36,6 +44,10 @@ export function ClearRecentFiles() {
 
 export function CloseSSHTerminal(arg1) {
   return window['go']['main']['App']['CloseSSHTerminal'](arg1);
+}
+
+export function CloseSftpBrowse(arg1) {
+  return window['go']['main']['App']['CloseSftpBrowse'](arg1);
 }
 
 export function CommitTransaction(arg1) {
@@ -68,6 +80,10 @@ export function DeleteRedisHashField(arg1, arg2, arg3) {
 
 export function DeleteRedisKey(arg1, arg2) {
   return window['go']['main']['App']['DeleteRedisKey'](arg1, arg2);
+}
+
+export function DeleteSftpPath(arg1, arg2) {
+  return window['go']['main']['App']['DeleteSftpPath'](arg1, arg2);
 }
 
 export function DeleteSshSnippet(arg1) {
@@ -186,8 +202,16 @@ export function ListSchemasForNewConnection(arg1) {
   return window['go']['main']['App']['ListSchemasForNewConnection'](arg1);
 }
 
+export function ListSftpDir(arg1, arg2) {
+  return window['go']['main']['App']['ListSftpDir'](arg1, arg2);
+}
+
 export function ListSshSnippets() {
   return window['go']['main']['App']['ListSshSnippets']();
+}
+
+export function MakeSftpDir(arg1, arg2) {
+  return window['go']['main']['App']['MakeSftpDir'](arg1, arg2);
 }
 
 export function MoveConnectionToFolder(arg1, arg2) {
@@ -214,8 +238,16 @@ export function OpenSSHTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenSSHTerminal'](arg1, arg2, arg3);
 }
 
+export function OpenSftpBrowse(arg1, arg2) {
+  return window['go']['main']['App']['OpenSftpBrowse'](arg1, arg2);
+}
+
 export function PickVaultBackupFile(arg1) {
   return window['go']['main']['App']['PickVaultBackupFile'](arg1);
+}
+
+export function PickVaultBackupFileFirstRun() {
+  return window['go']['main']['App']['PickVaultBackupFileFirstRun']();
 }
 
 export function PushRedisListValue(arg1, arg2, arg3) {
@@ -242,6 +274,10 @@ export function RenameFolder(arg1, arg2) {
   return window['go']['main']['App']['RenameFolder'](arg1, arg2);
 }
 
+export function RenameSftpPath(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RenameSftpPath'](arg1, arg2, arg3);
+}
+
 export function ReorderFolder(arg1, arg2) {
   return window['go']['main']['App']['ReorderFolder'](arg1, arg2);
 }
@@ -250,8 +286,8 @@ export function ResizeSSHTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSHTerminal'](arg1, arg2, arg3);
 }
 
-export function RestoreVaultBackup(arg1) {
-  return window['go']['main']['App']['RestoreVaultBackup'](arg1);
+export function RestoreVaultBackupFirstRun(arg1, arg2) {
+  return window['go']['main']['App']['RestoreVaultBackupFirstRun'](arg1, arg2);
 }
 
 export function RestoreVaultBackupFromFile(arg1, arg2) {
@@ -328,6 +364,18 @@ export function SetSshTerminalTheme(arg1) {
 
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
+}
+
+export function SftpHomeDir(arg1) {
+  return window['go']['main']['App']['SftpHomeDir'](arg1);
+}
+
+export function SftpPathPermissions(arg1, arg2) {
+  return window['go']['main']['App']['SftpPathPermissions'](arg1, arg2);
+}
+
+export function StartSftpTransfer(arg1) {
+  return window['go']['main']['App']['StartSftpTransfer'](arg1);
 }
 
 export function SyncSchemaMetadata(arg1, arg2) {

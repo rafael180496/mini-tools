@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/pkg/sftp v1.13.9
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/wailsapp/wails/v2 v2.13.0
@@ -27,6 +28,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/labstack/echo/v4 v4.13.3 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leaanthony/go-ansi-parser v1.6.1 // indirect

@@ -4,6 +4,7 @@ import {vault} from '../models';
 import {explain} from '../models';
 import {db} from '../models';
 import {main} from '../models';
+import {sftpx} from '../models';
 
 export function AddRedisSetMember(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -17,11 +18,17 @@ export function CancelQuery(arg1:string):Promise<void>;
 
 export function CancelRedisCommand(arg1:string):Promise<void>;
 
+export function CancelSftpTransfer(arg1:string):Promise<void>;
+
+export function ChmodSftpPath(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function ClearQueryHistory(arg1:string):Promise<void>;
 
 export function ClearRecentFiles():Promise<void>;
 
 export function CloseSSHTerminal(arg1:string):Promise<void>;
+
+export function CloseSftpBrowse(arg1:string):Promise<void>;
 
 export function CommitTransaction(arg1:string):Promise<void>;
 
@@ -38,6 +45,8 @@ export function DeleteQueryHistoryEntry(arg1:string):Promise<void>;
 export function DeleteRedisHashField(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function DeleteRedisKey(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteSftpPath(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteSshSnippet(arg1:string):Promise<void>;
 
@@ -97,7 +106,11 @@ export function ListSchemas(arg1:string,arg2:boolean):Promise<Array<string>>;
 
 export function ListSchemasForNewConnection(arg1:main.ConnectionInput):Promise<Array<string>>;
 
+export function ListSftpDir(arg1:string,arg2:string):Promise<Array<sftpx.FileEntry>>;
+
 export function ListSshSnippets():Promise<Array<vault.SshSnippet>>;
+
+export function MakeSftpDir(arg1:string,arg2:string):Promise<void>;
 
 export function MoveConnectionToFolder(arg1:string,arg2:string):Promise<void>;
 
@@ -111,7 +124,11 @@ export function OpenSQLFilePath(arg1:string):Promise<main.FileContent>;
 
 export function OpenSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
+export function OpenSftpBrowse(arg1:string,arg2:string):Promise<string>;
+
 export function PickVaultBackupFile(arg1:string):Promise<string>;
+
+export function PickVaultBackupFileFirstRun():Promise<string>;
 
 export function PushRedisListValue(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -125,11 +142,13 @@ export function RemoveRedisZSetMember(arg1:string,arg2:string,arg3:string):Promi
 
 export function RenameFolder(arg1:string,arg2:string):Promise<void>;
 
+export function RenameSftpPath(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function ReorderFolder(arg1:string,arg2:string):Promise<void>;
 
 export function ResizeSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
-export function RestoreVaultBackup(arg1:string):Promise<void>;
+export function RestoreVaultBackupFirstRun(arg1:string,arg2:string):Promise<void>;
 
 export function RestoreVaultBackupFromFile(arg1:string,arg2:string):Promise<void>;
 
@@ -168,6 +187,12 @@ export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 export function SetSshTerminalTheme(arg1:string):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
+
+export function SftpHomeDir(arg1:string):Promise<string>;
+
+export function SftpPathPermissions(arg1:string,arg2:string):Promise<sftpx.PermInfo>;
+
+export function StartSftpTransfer(arg1:main.SftpTransferInput):Promise<void>;
 
 export function SyncSchemaMetadata(arg1:string,arg2:string):Promise<db.SchemaMetadata>;
 
