@@ -23,11 +23,14 @@ type Event struct {
 	Type            string `json:"type"` // "columns" | "rows" | "done" | "cancelled" | "error"
 	StatementIndex  int    `json:"statementIndex"`
 	TotalStatements int    `json:"totalStatements"`
-	// SQLText is this statement's own source text, sent on "columns" so the
+	// SQLText is this statement's own source text. Sent on "columns" so the
 	// frontend can re-issue it wrapped in an ORDER BY for column-header
-	// sort — the frontend only ever sends the whole (possibly
-	// multi-statement) script to ExecuteQuery, and splitting happens here,
-	// so this is the only way it learns the exact per-statement text.
+	// sort, and ALSO on every terminal event ("done"/"error"/"cancelled") —
+	// including for exec/PL-SQL-block statements that never emit a
+	// "columns" event at all — so the frontend's execution console can
+	// echo the exact statement/block that just finished next to its
+	// result line, the same way a script's statements are only known by
+	// splitting here (see splitter.go).
 	SQLText      string          `json:"sqlText,omitempty"`
 	Columns      []string        `json:"columns,omitempty"`
 	Rows         [][]interface{} `json:"rows,omitempty"`
@@ -353,7 +356,7 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 	// otherwise that refresh could race the write and miss the statement
 	// that just finished.
 	e.recordHistory(connID, sqlText, "done", rowCount, durationMs, "")
-	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: rowCount, DurationMs: durationMs})
+	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: rowCount, DurationMs: durationMs, SQLText: sqlText})
 }
 
 func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, queryID, sqlText string, idx, total int, start time.Time) {
@@ -366,7 +369,7 @@ func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, quer
 	affected, _ := result.RowsAffected()
 	durationMs := time.Since(start).Milliseconds()
 	e.recordHistory(connID, sqlText, "done", affected, durationMs, "")
-	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: affected, DurationMs: durationMs})
+	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: affected, DurationMs: durationMs, SQLText: sqlText})
 }
 
 func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time, captureDBMSOutput bool) {
@@ -399,7 +402,7 @@ func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, quer
 	e.recordHistory(connID, sqlText, "done", affected, durationMs, "")
 	e.emit(queryID, Event{
 		Type: "done", StatementIndex: idx, TotalStatements: total,
-		RowsAffected: affected, DurationMs: durationMs, DBMSOutput: dbmsOutput,
+		RowsAffected: affected, DurationMs: durationMs, DBMSOutput: dbmsOutput, SQLText: sqlText,
 	})
 }
 
@@ -408,7 +411,7 @@ func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, quer
 func (e *Executor) emitTerminal(ctx context.Context, connID, queryID, sqlText string, err error, idx, total int) {
 	if ctx.Err() != nil {
 		e.recordHistory(connID, sqlText, "cancelled", 0, 0, "")
-		e.emit(queryID, Event{Type: "cancelled", StatementIndex: idx, TotalStatements: total})
+		e.emit(queryID, Event{Type: "cancelled", StatementIndex: idx, TotalStatements: total, SQLText: sqlText})
 		return
 	}
 	e.emitError(connID, queryID, sqlText, err, idx, total)
@@ -416,7 +419,7 @@ func (e *Executor) emitTerminal(ctx context.Context, connID, queryID, sqlText st
 
 func (e *Executor) emitError(connID, queryID, sqlText string, err error, idx, total int) {
 	e.recordHistory(connID, sqlText, "error", 0, 0, err.Error())
-	e.emit(queryID, Event{Type: "error", StatementIndex: idx, TotalStatements: total, Error: err.Error()})
+	e.emit(queryID, Event{Type: "error", StatementIndex: idx, TotalStatements: total, Error: err.Error(), SQLText: sqlText})
 }
 
 func (e *Executor) recordHistory(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string) {

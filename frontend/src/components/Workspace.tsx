@@ -7,6 +7,7 @@ import Icon from './Icon'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import ResultGrid from './results/ResultGrid'
 import ResultTabs from './results/ResultTabs'
+import ExecutionConsole, {ConsoleLogEntry} from './results/ExecutionConsole'
 import ExportMenu from './results/ExportMenu'
 import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
 import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
@@ -114,6 +115,10 @@ function emptyResultSet(): ResultSet {
         sourceSql: '', sortColumn: null, sortDirection: null,
     }
 }
+
+// ConsoleLogEntry itself is defined (and exported) by ExecutionConsole.tsx —
+// same pattern as RedisCommandResult/RedisResultView.tsx: the component that
+// renders a type owns its definition, Workspace.tsx just imports it.
 
 // queryID is generated client-side and subscribed to before ExecuteQuery is
 // called, so there's no race with the backend's first emitted event — see
@@ -326,6 +331,10 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [runProgress, setRunProgress] = useState<{current: number; total: number} | null>(null)
     const [resultSets, setResultSets] = useState<ResultSet[]>([])
     const [activeResultTab, setActiveResultTab] = useState(0)
+    // One entry per statement of the last SQL run (see ConsoleLogEntry) —
+    // built alongside resultSets in runText's EventsOn handler, rendered by
+    // ExecutionConsole under the "Consola" bottom tab.
+    const [consoleLog, setConsoleLog] = useState<ConsoleLogEntry[]>([])
     // Redis's own result stream (backend/redisquery.Event) — a command's
     // result isn't tabular (columns/rows), so it doesn't fit ResultSet; see
     // RedisResultView's transcript-style rendering instead of ResultTabs.
@@ -355,11 +364,14 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const [explainLoading, setExplainLoading] = useState(false)
     const [explainError, setExplainError] = useState('')
 
-    // "Resultados"/"Historial" are tabs sharing one bottom panel — tab-style
-    // like EditorTabs above, not two docked panels stacked on top of each
-    // other. Starts on "results" (what you want right after running
-    // something); switching to "history" is what triggers the first load.
-    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'history'>('results')
+    // "Resultados"/"Consola"/"Historial" are tabs sharing one bottom panel —
+    // tab-style like EditorTabs above, not docked panels stacked on top of
+    // each other. Starts on "results" (what you want right after running a
+    // single statement); a multi-statement run auto-switches to "console"
+    // instead (see runText) so the per-statement log is what you land on,
+    // matching the DataGrip-style console this mirrors. Switching to
+    // "history" is what triggers its first load.
+    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'console' | 'history'>('results')
     const [historyEntries, setHistoryEntries] = useState<vault.HistoryEntry[]>([])
     const [historyLoading, setHistoryLoading] = useState(false)
     const [historyError, setHistoryError] = useState('')
@@ -766,9 +778,29 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             setRunProgress(null)
             setResultSets([])
             setActiveResultTab(0)
+            setConsoleLog([])
+
+            // Per-run scratch state, captured by this closure (a fresh Set/
+            // flag every time runText is called, never shared across runs).
+            // seenColumns tracks which statement indices got a "columns"
+            // event, so the console log entry built below can tell a
+            // SELECT-like statement ("N filas obtenidas") apart from a DDL/
+            // exec/PL-SQL block ("completado") without re-deriving it from
+            // resultSets (whose updater must stay a pure reducer).
+            const seenColumns = new Set<number>()
+            let switchedToConsole = false
 
             const unsubscribe = EventsOn(queryId, (event: QueryEvent) => {
                 setRunProgress({current: event.statementIndex + 1, total: event.totalStatements})
+
+                // A multi-statement script lands on "Consola" instead of
+                // "Resultados" — see activeBottomTab's doc comment. Decided
+                // once, off the very first event of this run.
+                if (!switchedToConsole) {
+                    switchedToConsole = true
+                    if (event.totalStatements > 1) setActiveBottomTab('console')
+                }
+
                 setResultSets((prev) => {
                     const next = [...prev]
                     while (next.length <= event.statementIndex) {
@@ -780,6 +812,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         case 'columns':
                             cur.columns = event.columns ?? []
                             cur.sourceSql = event.sqlText ?? ''
+                            seenColumns.add(event.statementIndex)
                             if (pendingSortRef.current) {
                                 cur.sortColumn = pendingSortRef.current.column
                                 cur.sortDirection = pendingSortRef.current.direction
@@ -807,6 +840,22 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     next[event.statementIndex] = cur
                     return next
                 })
+
+                if (event.type === 'done' || event.type === 'error' || event.type === 'cancelled') {
+                    const terminalStatus = event.type
+                    const newEntry: ConsoleLogEntry = {
+                        index: event.statementIndex,
+                        total: event.totalStatements,
+                        sqlText: event.sqlText ?? '',
+                        status: terminalStatus,
+                        hasColumns: seenColumns.has(event.statementIndex),
+                        rowsAffected: event.rowsAffected ?? 0,
+                        durationMs: event.durationMs ?? 0,
+                        error: event.error ?? '',
+                        timestamp: Date.now(),
+                    }
+                    setConsoleLog((prev) => [...prev, newEntry])
+                }
 
                 if (
                     event.type === 'cancelled' ||
@@ -970,7 +1019,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
             .finally(() => setHistoryLoading(false))
     }
 
-    function selectBottomTab(tab: 'results' | 'history') {
+    function selectBottomTab(tab: 'results' | 'console' | 'history') {
         if (tab === 'history' && activeBottomTab !== 'history') loadHistory()
         setActiveBottomTab(tab)
     }
@@ -1843,10 +1892,14 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             <div className="h-0.5 w-8 rounded-full bg-outline-variant group-hover:bg-primary" />
                         </div>
 
-                        {/* "Resultados"/"Historial" — tabs sharing this
-                            bottom panel, same visual pattern as EditorTabs
-                            above, instead of two docked panels stacked on
-                            top of each other. */}
+                        {/* "Resultados"/"Consola"/"Historial" — tabs sharing
+                            this bottom panel, same visual pattern as
+                            EditorTabs above, instead of docked panels
+                            stacked on top of each other. "Consola" is SQL-
+                            only (redisqueries already get their own
+                            transcript-style view, RedisResultView) — hidden
+                            for a Redis-bound tab instead of always shown but
+                            perpetually empty. */}
                         <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
                             <button
                                 onClick={() => selectBottomTab('results')}
@@ -1860,6 +1913,23 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                                 <Icon name="table_chart" size={14} className="opacity-70" />
                                 Resultados
                             </button>
+                            {!isRedisActive && (
+                                <button
+                                    onClick={() => selectBottomTab('console')}
+                                    title="Consola de ejecución: cada statement del último script corrido, con su texto completo y si terminó OK (con duración) o con error — como el output de un cliente SQL de escritorio"
+                                    className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
+                                        activeBottomTab === 'console'
+                                            ? 'bg-surface text-on-surface'
+                                            : 'text-on-surface-variant hover:text-on-surface'
+                                    }`}
+                                >
+                                    <Icon name="terminal" size={14} className="opacity-70" />
+                                    Consola
+                                    {consoleLog.some((e) => e.status === 'error') && (
+                                        <Icon name="error" size={14} className="text-error" filled />
+                                    )}
+                                </button>
+                            )}
                             <button
                                 onClick={() => selectBottomTab('history')}
                                 title="Historial de ejecuciones de la conexión vinculada a esta pestaña — SQL/comando exacto enviado, estado y mensaje de error completo por cada uno"
@@ -1918,6 +1988,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             )}
                         </>
                     )
+                ) : activeBottomTab === 'console' ? (
+                    <ExecutionConsole entries={consoleLog} running={running} onClear={() => setConsoleLog([])} />
                 ) : (
                     <Suspense fallback={null}>
                         <HistoryPanel
