@@ -85,12 +85,18 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
     const [name, setName] = useState('')
     const [color, setColor] = useState('#60a5fa')
     const [dbType, setDbType] = useState<DBType>(initialDbType ?? 'sqlite')
-    // Type-locked dialog (opened from a type-specific module's "+" button,
-    // e.g. SshConnectionTree) — same "can't change engine" treatment the
-    // type picker already gives an existing connection being edited, just
-    // triggered by initialDbType instead of editingId. Only meaningful for
-    // a NEW connection; editingId's own lock takes over once one is set.
-    const typeLocked = !editingId && !!initialDbType
+    // Type-locked dialog: hides the generic Tipo picker + "pegar connection
+    // string" box, shows a plain "Motor: X" badge instead. True for a NEW
+    // connection opened from a type-specific module's own "+" button (e.g.
+    // SshConnectionTree, initialDbType='ssh'), AND for EDITING any
+    // connection whose engine is excluded from the generic picker below
+    // (today only 'ssh' — DB_TYPES.filter(t => t !== 'ssh') deliberately
+    // excludes it there, see that picker's comment). Real bug this second
+    // clause fixes: without it, editing an existing SSH connection fell
+    // through to the generic (disabled) picker with none of its four
+    // buttons matching the real type, plus the postgres/oracle/sqlite-
+    // flavored paste box — both irrelevant and confusing for SSH.
+    const typeLocked = dbType === 'ssh' || (!editingId && !!initialDbType)
     const [oracleMode, setOracleMode] = useState<OracleMode>('service_name')
     const [redisMode, setRedisMode] = useState<RedisMode>('standalone')
     const [sshAuthMethod, setSshAuthMethod] = useState<SSHAuthMethod>('password')

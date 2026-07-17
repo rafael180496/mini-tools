@@ -72,6 +72,23 @@ Cancelación: cada `queryID` en curso tiene un `context.CancelFunc` registrado; 
 
 CodeMirror 6 resultó **más liviano** que Monaco recortado a SQL pese a sumar autocompletado por esquema, dialectos SQL reales, lint y search: el binario bajó de 44MB a 41MB (ver [.claude/rules/technical.md](../../rules/technical.md) punto 8). No se agregó minimap (CodeMirror no tiene un paquete oficial equivalente) — diferencia visual menor, no funcional, no reportada como bloqueante.
 
+# Autocompletado SQL: `@codemirror/lang-sql` no distingue cláusula (post-lanzamiento)
+
+**Bug real reportado por el usuario contra un Oracle real** (schema con decenas de tablas/sinónimos `exam_*`): tipear `WHERE exam_` sugería, mezclados, `exmaple` de la tabla del `FROM` junto con `exam_PROV`, `exmaple_H`, `exmaple_PASO` y otras tablas/sinónimos del schema completo que nada tienen que ver con la consulta — la sugerencia correcta aparecía primero pero enterrada entre ruido.
+
+**Causa raíz confirmada leyendo el fuente compilado** (`node_modules/@codemirror/lang-sql/dist/index.js`, `completeFromSchema`): la completion schema-aware de la librería NO tiene noción de cláusula — en una posición "bare" (sin punto), matchea el prefijo tipeado contra TODO el namespace de nivel superior (todas las tablas + `defaultTable`/`defaultSchema` si están configurados), sin importar si el cursor está después de `FROM` o después de `WHERE`. `defaultTable`/`defaultSchema` (`SQLConfig`) además son **aditivos, nunca exclusivos** — agregan columnas al nivel superior, no restringen qué más aparece. No hay ninguna opción nativa para "solo columnas de esta tabla, nada más".
+
+**Fix (`frontend/src/codemirror/sqlSchema.ts`):** se dejó de pasar `schema` a `sql({...})` — confirmado en el mismo fuente que `schemaCompletion(config)` retorna `[]` cuando `config.schema` es falsy, así que la librería no registra NINGUNA fuente de completado basada en schema (su `keywordCompletionSource` sigue intacta, no depende de `schema`). En su lugar, `schemaAwareCompletionSource` toma control total del completado basado en schema: reintroduce un detector de cláusula liviano (`detectClause`, mismo enfoque que el retirado `monaco/sqlContext.ts` — último keyword relevante antes del cursor gana: `FROM`/`JOIN`/`INTO`/`UPDATE` → `'from'`, `SELECT`/`WHERE`/`SET`/`ON`/`AND`/`OR`/`GROUP`/`ORDER`/`HAVING`/`BY` → `'column'`) y con eso decide:
+- Posición con punto (`alias.`/`tabla.`/`schema.`): resuelve vía el mismo `extractTableRefs` que ya usaba el hover — solo columnas/tablas de ESE alcance.
+- Cláusula `'from'`: nombres de tabla + schema (sin cambios de comportamiento).
+- Cláusula `'column'`: SOLO las columnas de las tablas referenciadas en el `FROM`/`JOIN` del statement — el fix real. Si ningún ref resuelve a una tabla conocida (consulta nueva sin `FROM` aún), cae a columnas de TODAS las tablas — nunca sugiere menos que antes.
+
+**Edge case heredado del retirado `sqlContext.ts` y re-portado:** `INSERT INTO tabla (col1, col2|` — el último keyword visto es `INTO` (clasificaría como `'from'`, tabla), pero un paréntesis sin cerrar después de la referencia de tabla significa que ya se está en la lista de columnas. `detectClause` cuenta paréntesis abiertos/cerrados desde el final de `INTO` y fuerza `'column'` si hay un `(` sin cerrar.
+
+**Verificado con un script Node standalone** (mismo patrón que `connStringParser.ts`/el retirado `sqlContext.ts` — mirror en JS plano de `detectClause`, sin test nuevo) cubriendo 13 casos: el de la screenshot original, `FROM` bare, lista de columnas en `SELECT`, `AND`/`ON`/`SET`, `INSERT INTO` con y sin paréntesis abierto, múltiples tablas en `FROM`, y un script multi-statement (el detector encuentra el último keyword más cercano al cursor sin importar que cruce un `;` de statement anterior, porque siempre se queda con el match de mayor índice). Un solo caso quedó como limitación aceptada y documentada: dentro de `VALUES (|` ninguna clasificación es realmente correcta (no es tabla ni columna) — `'column'` es la menos mala de las dos, no amerita más lógica especial.
+
+**No se tocó `sqlSchemaHover`** (el hover del cursor sobre tabla/columna) — sigue usando su propia resolución de alias/punto independiente, sin relación con este cambio salvo compartir `extractTableRefs`.
+
 # Patrones de export
 
 `backend/export/` tiene un archivo por formato/motor, todos funciones puras (reciben `columns`/`rows` o un `*sql.DB` + nombre de tabla, devuelven texto/escriben un archivo, sin tocar `vault` ni `App`). `app.go` es quien sabe pedir el diálogo (`runtime.SaveFileDialog`) y decidir el nombre sugerido — mismo patrón que `BackupVault`.

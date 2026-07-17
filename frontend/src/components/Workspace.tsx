@@ -1903,7 +1903,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                         <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
                             <button
                                 onClick={() => selectBottomTab('results')}
-                                title="Resultado de la última ejecución"
+                                title="Resultado de la última ejecución — el ícono de terminal indica que algún statement generó DBMS_OUTPUT (PL/SQL Oracle), aunque estés viendo otra pestaña"
                                 className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
                                     activeBottomTab === 'results'
                                         ? 'bg-surface text-on-surface'
@@ -1912,6 +1912,9 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             >
                                 <Icon name="table_chart" size={14} className="opacity-70" />
                                 Resultados
+                                {resultSets.some((r) => r.dbmsOutput.length > 0) && (
+                                    <Icon name="terminal" size={14} className="text-primary" filled />
+                                )}
                             </button>
                             {!isRedisActive && (
                                 <button
