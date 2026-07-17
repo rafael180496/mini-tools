@@ -35,7 +35,6 @@ import {
     ExportConnectionConfig,
     ExportSchemaDDL,
     ExportTableDDL,
-    GenerateProjectDocs,
     GetSchemaMetadata,
     GetSettings,
     HasOpenTransaction,
@@ -137,13 +136,6 @@ function newTabId() {
 
 function fileTitle(path: string) {
     return path.split(/[/\\]/).pop() ?? path
-}
-
-// No Node `path` module in the Vite/browser context, so this mirrors
-// fileTitle's manual split-by-separator approach.
-function dirName(path: string) {
-    const idx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
-    return idx === -1 ? path : path.slice(0, idx)
 }
 
 function languageForDbType(dbType: string): TabLanguage {
@@ -308,7 +300,18 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
         setLoadingConnIds((prev) => new Set(prev).add(connId))
         GetSchemaMetadata(connId, force)
             .then((meta) => setMetadataByConn((prev) => ({...prev, [connId]: meta})))
-            .catch((err) => setStatusMessage(String(err)))
+            // Only the EXPLICIT refresh (F5, force=true) surfaces a failure —
+            // the auto-load that fires just from selecting/switching a
+            // connection must stay silent. Metadata only powers autocomplete;
+            // popping the raw DB error into the status bar every single time a
+            // connection is picked (e.g. the schema scan is slow or the user
+            // lacks catalog privileges) was the recurring "error al seleccionar
+            // conexión". A failed auto-load just leaves autocomplete empty; the
+            // connection is still fully usable.
+            .catch((err) => {
+                if (force) setStatusMessage(String(err))
+                else console.warn('metadata auto-load falló para', connId, err)
+            })
             .finally(() =>
                 setLoadingConnIds((prev) => {
                     const next = new Set(prev)
@@ -1314,26 +1317,6 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
         }
     }
 
-    // Best-effort: a project-docs generation failure should never block
-    // opening/saving a file, so errors are swallowed here. Scoped to the
-    // ACTIVE TAB's connection — CLAUDE.md documents whatever database the
-    // file you're editing is meant to run against.
-    function generateProjectDocsFor(path: string) {
-        if (!activeTabConnection) return
-        const dir = dirName(path)
-        GenerateProjectDocs(dir, activeTabConnection.id, editorActiveSchema ?? '')
-            .then((wrote) => {
-                if (wrote) {
-                    setStatusMessage(
-                        editorActiveSchema
-                            ? `CLAUDE.md generado en ${dir} (esquema ${editorActiveSchema})`
-                            : `CLAUDE.md generado en ${dir}`,
-                    )
-                }
-            })
-            .catch(() => {})
-    }
-
     function openTabForFile(path: string, content: string) {
         setTabs((prev) => {
             const existing = prev.find((t) => t.path === path)
@@ -1345,7 +1328,6 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
             setActiveTabId(tab.id)
             return [...prev, tab]
         })
-        generateProjectDocsFor(path)
     }
 
     async function openFileDialog() {
@@ -1374,14 +1356,12 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
             if (tab.path) {
                 await SaveSQLFile(tab.path, tab.content)
                 setTabs((prev) => prev.map((t) => (t.id === tab.id ? {...t, dirty: false} : t)))
-                generateProjectDocsFor(tab.path)
             } else {
                 const dest = await SaveSQLFileAs(`${tab.title}.sql`, tab.content)
                 if (dest) {
                     setTabs((prev) =>
                         prev.map((t) => (t.id === tab.id ? {...t, path: dest, title: fileTitle(dest), dirty: false} : t)),
                     )
-                    generateProjectDocsFor(dest)
                 }
             }
         } catch (err) {
@@ -1761,10 +1741,12 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                         the tab strip above instead (EditorTabs.tsx) — they
                         open/reopen a FILE, a global action, not something
                         scoped to whichever tab happens to be active right
-                        now. "Regenerar CLAUDE.md" was removed outright
-                        (unused in practice) — CLAUDE.md still generates
-                        automatically on open/save, see
-                        generateProjectDocsFor. Hidden entirely for
+                        now. The old "Regenerar CLAUDE.md" button was removed
+                        outright (unused in practice) and the automatic
+                        CLAUDE.md generation on open/save was later removed too
+                        — the app no longer writes CLAUDE.md/.claude/ into a
+                        project directory on its own (it kept recreating files
+                        the user had deleted). Hidden entirely for
                         redis-browser/ssh-terminal tabs — none of these
                         (save a .sql file, run a query) apply to either
                         (their `content`/`path` fields are unused

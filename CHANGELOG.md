@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Corregido
+
+- Seleccionar una conexión en la pestaña del editor ya no muestra un error cada vez: la carga automática de metadata del esquema (que alimenta el autocompletado) fallaba en silencio antes, pero mostraba el error crudo de la base en la barra de estado en cada cambio de conexión. Ahora la auto-carga es silenciosa (el autocompletado simplemente queda vacío si el escaneo falla) y solo el refresh explícito (F5) muestra el error.
+
+### Quitado
+
+- Generación automática de `CLAUDE.md` al abrir/guardar un archivo `.sql`: la app ya no escribe `CLAUDE.md` ni el árbol `.claude/` dentro de la carpeta del proyecto por su cuenta. Recreaba los archivos que el usuario había borrado a propósito y escribía en carpetas de proyectos ajenos; el botón manual "Regenerar" ya se había quitado en 0.2.2, así que esto completa la baja de la función.
+
 ## [0.2.4] - 2026-07-17
 
 ### Agregado

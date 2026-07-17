@@ -4,7 +4,7 @@
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
 
-Cliente de escritorio para **Oracle, PostgreSQL, SQLite y Redis**, más un módulo de **terminal SSH** — tipo DataGrip + RedisInsight + Termius, pero minimalista y en un solo binario nativo. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron, sin JVM, sin telemetría.
+Cliente de escritorio para **Oracle, PostgreSQL, SQLite y Redis**, más **terminal SSH** y **transferencia de archivos por SFTP** — tipo DataGrip + RedisInsight + Termius, pero minimalista y en un solo binario nativo. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron, sin JVM, sin telemetría.
 
 > El spec funcional completo vive en [docs/SPEC.md](docs/SPEC.md); la arquitectura y convenciones actuales del código en [CLAUDE.md](CLAUDE.md).
 
@@ -31,6 +31,38 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
 
 <p align="center"><em>Redis Browser: pestaña de ventana completa por conexión Redis — filtro por tipo con badges de color, stats de keys/memoria, selección múltiple con exportación a JSON/CSV, y edición inline del valor (string, JSON, hash, list, set, zset) preservando el TTL.</em></p>
 
+### 🖥️ Terminal SSH, temas y consola de ejecución
+
+<table>
+  <tr>
+    <td align="center" width="62%">
+      <img src="docs/screenshots/ssh-terminal.png" width="580" alt="Terminal SSH interactiva real (xterm.js) conectada a un host remoto, en su propia pestaña"><br>
+      <sub>Terminal SSH interactiva real (xterm.js) por conexión, en su propia pestaña — PTY con streaming en vivo, resize automático y cierre limpio de la sesión remota. Panel de <strong>Snippets</strong> para comandos/scripts guardados, reutilizables en cualquier sesión.</sub>
+    </td>
+    <td align="center" width="38%">
+      <img src="docs/screenshots/terminal-themes.png" width="220" alt="Selector visual de temas de terminal con muestra de paleta"><br>
+      <sub>Selector visual de temas de terminal (Dracula, Nord, Solarized, Gruvbox, One Half…) con muestra de paleta, o Automático siguiendo el tema de la app.</sub>
+    </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td align="center" width="42%">
+      <img src="docs/screenshots/new-ssh-connection.png" width="300" alt="Diálogo de nueva conexión SSH con auth por password o private key y Agent Forwarding"><br>
+      <sub>Conexiones SSH en su propio módulo de sidebar: auth por password o private key (+ passphrase) y Agent Forwarding, con Test Connection antes de guardar.</sub>
+    </td>
+    <td align="center" width="58%">
+      <img src="docs/screenshots/execution-console.png" width="440" alt="Consola de ejecución mostrando cada statement con su resultado y marca de tiempo"><br>
+      <sub>Consola de ejecución estilo SQL Developer: cada statement con su texto completo y una línea de resultado con hora — <em>N filas obtenidas</em>, <em>completado</em>, o el <em>ERROR</em> completo sin recortar.</sub>
+    </td>
+  </tr>
+</table>
+
+### 📂 Transferencia de archivos por SFTP <sub>· nuevo en 0.2.4</sub>
+
+> **Explorador de doble panel que reutiliza tus conexiones SSH** — arrastrá archivos entre paneles y transferí en cualquier dirección: **local → remoto, remoto → local y remoto → remoto** (streaming a través de tu máquina). Cola de transferencias con **porcentaje en vivo** y **cancelación**, procesamiento de lotes grandes en paralelo (pool de goroutines) **sin dejar procesos colgados** al cancelar o desconectar. Listado tipo Finder con columnas ordenables (Nombre, Fecha, Tamaño, Kind, Permisos), menú contextual (Enviar / Renombrar / Eliminar / Nueva carpeta) y diálogo de **permisos (chmod)** con toggles Lectura/Escritura/Ejecución para Propietario/Grupo/Otros.
+
 <table>
   <tr>
     <td align="center" width="34%">
@@ -44,13 +76,20 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
   </tr>
 </table>
 
-<p align="center">
-  <img src="docs/screenshots/unlock-vault.png" width="520" alt="Pantalla de desbloqueo del vault cifrado">
-</p>
+<table>
+  <tr>
+    <td align="center" width="52%">
+      <img src="docs/screenshots/unlock-vault.png" width="420" alt="Pantalla de desbloqueo del vault cifrado"><br>
+      <sub>Conexiones cifradas en un vault local — sin la clave maestra, no hay acceso.</sub>
+    </td>
+    <td align="center" width="48%">
+      <img src="docs/screenshots/vault-settings.png" width="360" alt="Modal de Configuración con backup y restaurar del vault, recordar clave y tema del editor"><br>
+      <sub>Configuración centralizada: backup y <strong>restaurar</strong> el vault, recordar clave maestra y tema del editor — todo en un modal propio, no suelto en la barra.</sub>
+    </td>
+  </tr>
+</table>
 
-<p align="center"><em>Conexiones cifradas en un vault local — sin la clave maestra, no hay acceso.</em></p>
-
-> El diálogo de nueva conexión y la pantalla de desbloqueo son ejemplos ficticios. El editor, el árbol de conexiones y el Redis Browser muestran datos reales con nombres de tabla/conexión difuminados y, en el Redis Browser, los nombres de key y el valor de la key seleccionada pixelados a propósito (esa captura en particular exponía una key con un secreto real) — el resto de la interfaz (toolbar, tabs, badges de tipo, ícono por motor, colores) es exactamente como se ve en uso normal.
+> Los diálogos de nueva conexión (SQL y SSH) y la pantalla de desbloqueo son ejemplos ficticios. El editor, el árbol de conexiones, el Redis Browser y la terminal SSH muestran datos reales con nombres de tabla/conexión difuminados y, en el Redis Browser, los nombres de key y el valor de la key seleccionada pixelados a propósito (esa captura en particular exponía una key con un secreto real) — el resto de la interfaz (toolbar, tabs, badges de tipo, ícono por motor, colores) es exactamente como se ve en uso normal.
 
 ## Por qué
 
@@ -66,6 +105,9 @@ La mayoría de clientes SQL multi-motor son pesados (JVM, Electron, cientos de M
 - **Carpetas para organizar conexiones**: crear, renombrar, mover y reordenar carpetas desde el propio árbol — "Conexiones" es un módulo de acordeón colapsable en el sidebar.
 - **Conexiones SSH** en su propio módulo de sidebar — "SSH", separado de "Conexiones" — con el mismo patrón de carpetas (crear/renombrar/mover/reordenar) pero un árbol completamente propio, nunca mezclado con las carpetas de base de datos. Auth por password o private key (+ passphrase opcional) más Agent Forwarding, y Test Connection antes de guardar como cualquier otro motor.
 - **Terminal interactiva real (xterm.js)** por conexión SSH: se abre en su propia pestaña — reabrir la misma conexión enfoca esa pestaña en vez de duplicarla — con streaming de la sesión remota vía PTY y resize automático. Cerrar la pestaña corta la sesión del lado remoto, no la deja colgada.
+- **Temas de terminal**: selector visual con muestra de paleta (Dracula, Nord, Solarized Dark/Light, Gruvbox, One Half, Tomorrow Night, GitHub Light…) o Automático siguiendo el tema de la app — un ajuste global que aplica a todas las sesiones SSH abiertas.
+- **Snippets SSH**: comandos o scripts guardados, reutilizables en cualquier sesión SSH abierta (no atados a una conexión), con carpetas propias y buscador por nombre/contenido — botones Ejecutar (corre cada línea) y Pegar (los escribe sin confirmar).
+- **Transferencia de archivos por SFTP** reutilizando tus conexiones SSH: explorador de doble panel (estilo Termius) que se abre desde el árbol SSH. Transferí en cualquier dirección — **local → remoto, remoto → local y remoto → remoto** (streaming a través de tu máquina) — arrastrando entre paneles o con el botón Enviar. Cola de transferencias con **porcentaje/bytes/archivos en vivo** y **cancelación** por transferencia; los lotes grandes se procesan en paralelo (pool de goroutines) y **no dejan procesos colgados** al cancelar o perder la conexión. Listado tipo Finder con columnas ordenables (Nombre, Fecha, Tamaño, Kind, Permisos), menú contextual (Enviar/Renombrar/Eliminar/Nueva carpeta/Refrescar) y diálogo de **permisos (chmod)** con toggles Lectura/Escritura/Ejecución para Propietario/Grupo/Otros.
 - **Guardar sin depender de un ping**: crear o editar una conexión nunca exige que el Test Connection haya sido exitoso — guardás igual si el servidor está apagado ahora pero lo vas a usar más tarde. Test Connection sigue ahí como verificación opcional.
 - **Selector de esquemas al crear la conexión**: en Postgres, después de un Test Connection exitoso elegís qué esquemas escanear — clave en catálogos con cientos de esquemas donde un escaneo completo es lento. Editable después desde el árbol de conexiones.
 - **Editor** (CodeMirror 6, sin CDN) con syntax highlighting real para SQL y para comandos Redis, tabs reordenables por drag-and-drop, archivos recientes, y pestañas restauradas automáticamente al reabrir la app — incluidas las pestañas del Redis Browser.
@@ -74,6 +116,7 @@ La mayoría de clientes SQL multi-motor son pesados (JVM, Electron, cientos de M
 - **Autocompletado consciente del contexto**: sugiere tablas después de `FROM`/`INSERT INTO`/`UPDATE` y columnas acotadas a las tablas realmente referenciadas después de `SELECT`/`WHERE`/`SET`; resuelve alias y esquema al tipear un punto (`u.` → columnas de `users` si `u` es su alias).
 - **Transacciones explícitas**: auto-commit es un checkbox, Commit/Rollback siempre visibles (deshabilitados cuando no aplican) — nunca hay ambigüedad sobre si un cambio quedó confirmado.
 - **Ejecución con streaming**: resultados en vivo statement por statement, cancelación en caliente, soporte de scripts multi-statement y bloques PL/SQL de Oracle (con `DBMS_OUTPUT` capturado). Múltiples resultados (uno por statement) en pestañas que se cierran individualmente o todas juntas.
+- **Consola de ejecución** (estilo DataGrip/SQL Developer): pestaña propia junto a Resultados/Historial que registra cada statement de un script con su texto completo y una línea de resultado con hora (`N filas obtenidas en Xms`, `completado en Xms`, o el `ERROR` completo sin recortar) — se activa sola en cualquier script de más de un statement.
 - **Historial de ejecuciones** por conexión: SQL exacto, estado, duración y error completo de cada statement corrido — filtrable, borrable entero o fila por fila.
 - **Grid de resultados** virtualizado para miles de filas sin lag, columnas redimensionables/ordenables (el sort reemite la query con `ORDER BY`, no ordena en cliente). Seleccionar una fila habilita copiarla como texto, `INSERT` o `UPDATE` listos para pegar en el editor.
 - **Árbol de conexiones** colapsable a una barra de solo íconos, con buscador que cubre tablas y también procedures/functions/triggers/packages, categoría de tablas colapsable y siempre ordenada alfabéticamente (probado con un schema real de 342 tablas), export de DDL (objeto puntual o esquema completo) desde el propio árbol, y layout (sidebar colapsado, alto del editor) recordado entre sesiones.
@@ -81,7 +124,6 @@ La mayoría de clientes SQL multi-motor son pesados (JVM, Electron, cientos de M
 - **EXPLAIN PLAN visual**: árbol de plan de ejecución para los 3 motores, con detección de full table scan resaltada.
 - **Linter SQL básico**: marca `SELECT *` como sugerencia visual (no bloquea) y `UPDATE`/`DELETE` sin `WHERE` con confirmación antes de ejecutar.
 - **Export**: CSV, JSON, XLSX, DDL de tabla/schema completo, y config de conexión (sin password) — más "copiar como INSERT" desde el grid.
-- **CLAUDE.md automático**: al abrir/guardar un archivo `.sql` en una carpeta, mini-tools genera (o regenera a pedido, con confirmación) un `CLAUDE.md` con el schema de la base conectada — tablas, columnas, foreign keys y convenciones de SQL del motor, acotado al esquema activo cuando aplica — para que Claude Code tenga contexto real al trabajar ese proyecto.
 - **Tooltips contextuales** en cada control, pensados para alguien que abre la app por primera vez. Toda confirmación (borrar historial, backup del vault) usa un modal propio con el tema de la app, nunca un diálogo nativo del navegador.
 - Interfaz Material Design 3, dark/light con toggle persistido, tipografías e íconos empaquetados con la app (sin depender de internet para renderizar).
 
