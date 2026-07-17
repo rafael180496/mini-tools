@@ -10,6 +10,10 @@ export function AddRedisZSetMember(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddRedisZSetMember'](arg1, arg2, arg3, arg4);
 }
 
+export function AppVersion() {
+  return window['go']['main']['App']['AppVersion']();
+}
+
 export function BackupVault(arg1) {
   return window['go']['main']['App']['BackupVault'](arg1);
 }

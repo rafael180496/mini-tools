@@ -11,6 +11,8 @@ import {main} from '../../../wailsjs/go/models'
 import {parseConnectionString} from '../../lib/connStringParser'
 import DbTypeIcon, {DB_TYPES, dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
+import Select from '../Select'
+import Toggle from '../Toggle'
 
 interface ConnectionDialogProps {
     // null = creating a new connection; a connection id = editing that one.
@@ -310,14 +312,41 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
     const labelClass = 'flex flex-col gap-1 text-xs text-on-surface-variant'
 
     return (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
             <form
                 onSubmit={handleSubmit}
-                className="flex max-h-[90vh] w-104 flex-col gap-3 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg"
+                onClick={(e) => e.stopPropagation()}
+                className="flex max-h-[92vh] w-104 max-w-[94vw] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high text-on-surface shadow-lg"
             >
-                <h2 className="text-lg font-semibold">
-                    {editingId ? 'Editar conexión' : typeLocked ? `Nueva conexión ${dbTypeLabel(dbType)}` : 'Nueva conexión'}
-                </h2>
+                {/* Header (fijo) */}
+                <div className="flex items-center gap-3 border-b border-outline-variant px-6 py-4">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-container-highest">
+                        <DbTypeIcon dbType={dbType} size={20} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <h2 className="text-base font-semibold leading-tight">
+                            {editingId ? 'Editar conexión' : typeLocked ? `Nueva conexión ${dbTypeLabel(dbType)}` : 'Nueva conexión'}
+                        </h2>
+                        <p className="text-xs text-on-surface-variant">
+                            {dbType === 'ssh'
+                                ? 'Terminal interactiva y transferencia de archivos por SSH'
+                                : editingId
+                                  ? 'Los cambios se guardan cifrados en el vault'
+                                  : 'Completá los datos — se guarda cifrada en el vault'}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        title="Cerrar sin guardar"
+                        className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="close" size={20} />
+                    </button>
+                </div>
+
+                {/* Body (scrolleable) */}
+                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
                 {loadingEdit && <p className="text-xs text-on-surface-variant">Cargando conexión…</p>}
 
                 <div className="flex gap-2">
@@ -458,20 +487,16 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className={inputClass}
                             />
                         </label>
-                        <label className={labelClass}>
+                        <div className={labelClass}>
                             SSL mode
-                            <select
+                            <Select
                                 value={params.sslmode ?? 'prefer'}
-                                onChange={(e) => setParam('sslmode', e.target.value)}
-                                className={inputClass}
-                            >
-                                {SSL_MODES.map((m) => (
-                                    <option key={m} value={m}>
-                                        {m}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
+                                options={SSL_MODES.map((m) => ({value: m, label: m}))}
+                                onChange={(v) => setParam('sslmode', v)}
+                                ariaLabel="SSL mode"
+                                className="w-full"
+                            />
+                        </div>
                     </>
                 )}
 
@@ -515,19 +540,21 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className={inputClass}
                             />
                         </label>
-                        <label className={labelClass}>
+                        <div className={labelClass}>
                             Modo de conexión
-                            <select
+                            <Select
                                 value={oracleMode}
-                                onChange={(e) => setOracleMode(e.target.value as OracleMode)}
-                                className={inputClass}
-                            >
-                                <option value="service_name">Service Name</option>
-                                <option value="easy_connect">Easy Connect</option>
-                                <option value="sid">SID</option>
-                                <option value="tns">TNS (descriptor completo)</option>
-                            </select>
-                        </label>
+                                options={[
+                                    {value: 'service_name', label: 'Service Name'},
+                                    {value: 'easy_connect', label: 'Easy Connect'},
+                                    {value: 'sid', label: 'SID'},
+                                    {value: 'tns', label: 'TNS (descriptor completo)'},
+                                ]}
+                                onChange={(v) => setOracleMode(v as OracleMode)}
+                                ariaLabel="Modo de conexión Oracle"
+                                className="w-full"
+                            />
+                        </div>
 
                         {(oracleMode === 'service_name' || oracleMode === 'easy_connect') && (
                             <label className={labelClass}>
@@ -568,19 +595,21 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
 
                 {dbType === 'redis' && (
                     <>
-                        <label className={labelClass}>
+                        <div className={labelClass}>
                             Modo de conexión
-                            <select
+                            <Select
                                 value={redisMode}
-                                onChange={(e) => setRedisMode(e.target.value as RedisMode)}
+                                options={[
+                                    {value: 'standalone', label: 'Standalone'},
+                                    {value: 'cluster', label: 'Cluster'},
+                                    {value: 'sentinel', label: 'Sentinel'},
+                                ]}
+                                onChange={(v) => setRedisMode(v as RedisMode)}
                                 title="Standalone: un solo servidor Redis. Cluster: varios nodos con sharding automático (sin índice de DB — Redis Cluster no soporta SELECT). Sentinel: alta disponibilidad con failover automático de un master/réplica."
-                                className={inputClass}
-                            >
-                                <option value="standalone">Standalone</option>
-                                <option value="cluster">Cluster</option>
-                                <option value="sentinel">Sentinel</option>
-                            </select>
-                        </label>
+                                ariaLabel="Modo de conexión Redis"
+                                className="w-full"
+                            />
+                        </div>
 
                         {redisMode === 'standalone' && (
                             <div className="flex gap-2">
@@ -677,18 +706,17 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 />
                             </label>
                         )}
-                        <label
-                            className="flex items-center gap-2 text-xs text-on-surface-variant"
+                        <div
+                            className="flex items-center gap-2.5 text-xs text-on-surface-variant"
                             title="Usar TLS (esquema rediss://) para conectar — activalo si el servidor requiere conexión cifrada"
                         >
-                            <input
-                                type="checkbox"
+                            <Toggle
                                 checked={params.tls === 'true'}
-                                onChange={(e) => setParam('tls', e.target.checked ? 'true' : '')}
-                                className="accent-primary"
+                                onChange={(c) => setParam('tls', c ? 'true' : '')}
+                                ariaLabel="TLS"
                             />
                             TLS
-                        </label>
+                        </div>
                     </>
                 )}
 
@@ -722,18 +750,20 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className={inputClass}
                             />
                         </label>
-                        <label className={labelClass}>
+                        <div className={labelClass}>
                             Método de autenticación
-                            <select
+                            <Select
                                 value={sshAuthMethod}
-                                onChange={(e) => setSshAuthMethod(e.target.value as SSHAuthMethod)}
+                                options={[
+                                    {value: 'password', label: 'Password'},
+                                    {value: 'key', label: 'Private key'},
+                                ]}
+                                onChange={(v) => setSshAuthMethod(v as SSHAuthMethod)}
                                 title="Password: autenticación con usuario y contraseña. Private key: autenticación con una clave privada (RSA/Ed25519/etc.), opcionalmente protegida por passphrase."
-                                className={inputClass}
-                            >
-                                <option value="password">Password</option>
-                                <option value="key">Private key</option>
-                            </select>
-                        </label>
+                                ariaLabel="Método de autenticación"
+                                className="w-full"
+                            />
+                        </div>
 
                         {sshAuthMethod === 'password' && (
                             <label className={labelClass}>
@@ -779,18 +809,17 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             </>
                         )}
 
-                        <label
-                            className="flex items-center gap-2 text-xs text-on-surface-variant"
+                        <div
+                            className="flex items-center gap-2.5 text-xs text-on-surface-variant"
                             title="Reenvía tu ssh-agent local al host remoto para que comandos corridos ahí (git clone, otro ssh) puedan usarlo para autenticarse en un siguiente salto — requiere un ssh-agent corriendo localmente (SSH_AUTH_SOCK). No es un método de autenticación en sí, es independiente de Password/Private key de arriba."
                         >
-                            <input
-                                type="checkbox"
+                            <Toggle
                                 checked={params.agentForwarding === '1'}
-                                onChange={(e) => setParam('agentForwarding', e.target.checked ? '1' : '')}
-                                className="accent-primary"
+                                onChange={(c) => setParam('agentForwarding', c ? '1' : '')}
+                                ariaLabel="Agent Forwarding"
                             />
                             Agent Forwarding
-                        </label>
+                        </div>
                     </>
                 )}
 
@@ -804,7 +833,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 ? 'Ingresá el password para probar — o guardá directo, Guardar no requiere probar la conexión primero'
                                 : 'Intenta conectar con estos datos ahora mismo, sin guardar la conexión — para confirmar que host/usuario/password son correctos'
                         }
-                        className="flex items-center gap-1.5 rounded bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
+                        className="flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-highest px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/50 hover:text-on-surface disabled:opacity-50"
                     >
                         <Icon name="network_check" size={15} />
                         Test Connection
@@ -851,20 +880,31 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className={`${inputClass} text-xs`}
                             />
                         )}
-                        <div className="max-h-32 overflow-y-auto rounded-lg border border-outline-variant bg-surface p-2">
+                        <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-lg border border-outline-variant bg-surface p-1">
                             {availableSchemas
                                 .filter((s) => s.toLowerCase().includes(schemaSearch.trim().toLowerCase()))
-                                .map((s) => (
-                                    <label key={s} className="flex items-center gap-2 py-0.5 text-sm text-on-surface">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedSchemas.has(s)}
-                                            onChange={() => toggleSchema(s)}
-                                            className="accent-primary"
-                                        />
-                                        {s}
-                                    </label>
-                                ))}
+                                .map((s) => {
+                                    const on = selectedSchemas.has(s)
+                                    return (
+                                        <button
+                                            key={s}
+                                            type="button"
+                                            onClick={() => toggleSchema(s)}
+                                            className={`flex items-center gap-2.5 rounded-md px-2 py-1 text-left text-sm transition-colors ${
+                                                on ? 'bg-primary/10' : 'hover:bg-surface-variant'
+                                            }`}
+                                        >
+                                            <span
+                                                className={`flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded border transition-colors ${
+                                                    on ? 'border-primary bg-primary text-on-primary' : 'border-outline'
+                                                }`}
+                                            >
+                                                {on && <Icon name="check" size={14} />}
+                                            </span>
+                                            <span className="min-w-0 flex-1 truncate text-on-surface">{s}</span>
+                                        </button>
+                                    )
+                                })}
                         </div>
                         <span className="text-[11px] text-on-surface-variant">
                             Por default queda marcado solo el esquema propio de la conexión — tildá los que además te interesan
@@ -875,8 +915,10 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                 )}
 
                 {error && <p className="text-xs text-error">{error}</p>}
+                </div>
 
-                <div className="mt-2 flex justify-end gap-2">
+                {/* Footer (fijo) */}
+                <div className="flex justify-end gap-2 border-t border-outline-variant px-6 py-3">
                     <button
                         type="button"
                         onClick={onClose}
@@ -893,7 +935,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 ? 'Guarda los cambios de esta conexión — no hace falta que Test Connection haya sido exitoso'
                                 : 'Guarda esta conexión nueva en el vault cifrado — no hace falta probarla antes, podés guardarla aunque no responda ahora mismo'
                         }
-                        className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
+                        className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
                         {editingId ? 'Guardar cambios' : 'Guardar'}
                     </button>

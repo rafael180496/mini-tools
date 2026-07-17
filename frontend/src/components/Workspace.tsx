@@ -4,6 +4,8 @@ import SshConnectionTree from './sidebar/SshConnectionTree'
 import ConfirmDialog from './ConfirmDialog'
 import DDLViewerModal, {type DDLObjectType} from './DDLViewerModal'
 import Icon from './Icon'
+import Select from './Select'
+import Toggle from './Toggle'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import RestoreVaultDialog from './RestoreVaultDialog'
 import ResultGrid from './results/ResultGrid'
@@ -879,6 +881,7 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                         rowsAffected: event.rowsAffected ?? 0,
                         durationMs: event.durationMs ?? 0,
                         error: event.error ?? '',
+                        dbmsOutput: event.dbmsOutput ?? [],
                         timestamp: Date.now(),
                     }
                     setConsoleLog((prev) => [...prev, newEntry])
@@ -1624,23 +1627,19 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                         )}
 
                         {!editorMetadataLoading && editorSchemas.length > 0 && (
-                            <label className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high py-1 pl-2.5 pr-1.5 text-xs text-on-surface-variant">
-                                Schema:
-                                <select
+                            <div className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
+                                <span>Schema:</span>
+                                <Select
                                     value={editorActiveSchema ?? ''}
-                                    onChange={(e) =>
-                                        activeTabConnection &&
-                                        setActiveSchemaByConn((prev) => ({...prev, [activeTabConnection.id]: e.target.value}))
+                                    options={editorSchemas.map((s) => ({value: s, label: s}))}
+                                    onChange={(v) =>
+                                        activeTabConnection && setActiveSchemaByConn((prev) => ({...prev, [activeTabConnection.id]: v}))
                                     }
-                                    className="rounded border-none bg-surface-container-highest px-1.5 py-0.5 text-xs text-on-surface outline-none"
-                                >
-                                    {editorSchemas.map((s) => (
-                                        <option key={s} value={s}>
-                                            {s}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
+                                    size="sm"
+                                    ariaLabel="Schema activo"
+                                    className="min-w-28"
+                                />
+                            </div>
                         )}
 
                         {isSqlActive && (
@@ -1649,19 +1648,19 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                                     txOpen ? 'bg-tertiary-container' : 'bg-surface-container-high'
                                 }`}
                             >
-                                <label
+                                <span
                                     className={`flex items-center gap-1.5 text-xs ${txOpen ? 'text-on-tertiary-container' : 'text-on-surface-variant'}`}
                                     title="Desactivar: los statements quedan pendientes hasta Commit/Rollback en vez de aplicarse solos"
                                 >
-                                    <input
-                                        type="checkbox"
+                                    <Toggle
                                         checked={!txOpen}
                                         disabled={txBusy || txOpen}
                                         onChange={() => void beginTransaction()}
-                                        className="accent-primary"
+                                        size="sm"
+                                        ariaLabel="Auto-commit"
                                     />
                                     Auto-commit
-                                </label>
+                                </span>
                                 <button
                                     onClick={() => void commitTransaction()}
                                     disabled={!txOpen || txBusy}
@@ -1690,18 +1689,18 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                         )}
 
                         {isSqlActive && activeTabConnection?.dbType === 'oracle' && (
-                            <label
+                            <span
                                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high px-2.5 py-1 text-xs text-on-surface-variant"
                                 title="Captura el log de DBMS_OUTPUT.PUT_LINE de cada bloque PL/SQL que se ejecute — desactivalo en un script grande con muchos bloques si no necesitás ver la salida, ahorra los round-trips de ENABLE/GET_LINE por bloque"
                             >
-                                <input
-                                    type="checkbox"
+                                <Toggle
                                     checked={dbmsOutputEnabled}
-                                    onChange={(e) => setDbmsOutputEnabled(e.target.checked)}
-                                    className="accent-primary"
+                                    onChange={setDbmsOutputEnabled}
+                                    size="sm"
+                                    ariaLabel="DBMS_OUTPUT"
                                 />
                                 DBMS_OUTPUT
-                            </label>
+                            </span>
                         )}
 
                         {(statusMessage || backupMessage) && (

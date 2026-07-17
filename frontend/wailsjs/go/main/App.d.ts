@@ -10,6 +10,8 @@ export function AddRedisSetMember(arg1:string,arg2:string,arg3:string):Promise<v
 
 export function AddRedisZSetMember(arg1:string,arg2:string,arg3:string,arg4:number):Promise<void>;
 
+export function AppVersion():Promise<string>;
+
 export function BackupVault(arg1:string):Promise<string>;
 
 export function BeginTransaction(arg1:string):Promise<void>;

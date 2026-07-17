@@ -217,6 +217,14 @@ func (a *App) SetTheme(theme string) error {
 	return a.vault.SetTheme(theme)
 }
 
+// AppVersion returns the app's semantic version, stamped at build time via
+// -ldflags "-X main.appVersion=..." (see scripts/build.sh, VERSION is the
+// source of truth). Returns "dev" for an unstamped build (e.g. `wails dev`).
+// No requireUnlocked — it's not sensitive, and Configuración shows it.
+func (a *App) AppVersion() string {
+	return appVersion
+}
+
 // SetOpenTabs persists which editor tabs (path plus optional
 // connection/language binding) are currently open, so Workspace.tsx can
 // restore them on the next launch. Gated behind requireUnlocked — unlike

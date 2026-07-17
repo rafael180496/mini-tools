@@ -10,6 +10,10 @@ export interface ConsoleLogEntry {
     rowsAffected: number
     durationMs: number
     error: string
+    // DBMS_OUTPUT.PUT_LINE lines captured from an Oracle PL/SQL block (empty
+    // for everything else) — shown right under the result line, same place a
+    // desktop SQL client's console echoes server output.
+    dbmsOutput: string[]
     timestamp: number
 }
 
@@ -108,6 +112,11 @@ export default function ExecutionConsole({entries, running, onClear}: ExecutionC
                                 Statement {entry.index + 1}/{entry.total}
                             </div>
                             <pre className="overflow-x-auto font-mono text-xs text-on-surface">{entry.sqlText}</pre>
+                            {entry.dbmsOutput.length > 0 && (
+                                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-xs text-secondary">
+                                    {entry.dbmsOutput.join('\n')}
+                                </pre>
+                            )}
                             <div className="mt-1 font-mono text-xs">
                                 <ResultLine entry={entry} />
                             </div>

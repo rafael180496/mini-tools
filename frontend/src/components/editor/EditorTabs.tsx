@@ -6,6 +6,7 @@ import {CSS} from '@dnd-kit/utilities'
 import {vault} from '../../../wailsjs/go/models'
 import DbTypeIcon, {dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
+import Select from '../Select'
 import RecentFilesMenu from './RecentFilesMenu'
 
 export type TabLanguage = 'sql' | 'redis-cli'
@@ -208,52 +209,48 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                             onClick={(e) => e.stopPropagation()}
                             className="z-50 w-56 cursor-default rounded-lg border border-outline-variant bg-surface-container-high p-2 text-on-surface shadow-lg"
                         >
-                            <label className="flex flex-col gap-1 text-[11px] text-on-surface-variant">
+                            {/* SSH connections have no query/editor concept at all — their
+                                only interaction mode is the terminal itself (see
+                                openSshTerminal in Workspace.tsx), so they're excluded here
+                                the same way this dropdown has no case for binding to
+                                something with no queryable surface. */}
+                            <div className="flex flex-col gap-1 text-[11px] text-on-surface-variant">
                                 Conexión
-                                <select
+                                <Select
                                     value={tab.connId ?? ''}
-                                    onChange={(e) => {
-                                        onChangeTabConnection(tab.id, e.target.value || null)
+                                    options={[
+                                        {value: '', label: 'Sin conexión'},
+                                        ...connections
+                                            .filter((c) => c.dbType !== 'ssh')
+                                            .map((c) => ({value: c.id, label: c.name, hint: dbTypeLabel(c.dbType)})),
+                                    ]}
+                                    onChange={(v) => {
+                                        onChangeTabConnection(tab.id, v || null)
                                         setMenuOpen(false)
                                     }}
-                                    title="Vincula esta pestaña a una conexión guardada — al ejecutar, corre contra esta conexión sin importar cuál esté seleccionada en el sidebar"
-                                    className="rounded border-none bg-surface-container-highest px-2 py-1 text-xs text-on-surface outline-none"
-                                >
-                                    <option value="">Sin conexión</option>
-                                    {/* SSH connections have no query/editor concept at all — their
-                                        only interaction mode is the terminal itself (see
-                                        openSshTerminal in Workspace.tsx), so they're excluded here
-                                        the same way this dropdown has no case for binding to
-                                        something with no queryable surface. */}
-                                    {connections
-                                        .filter((c) => c.dbType !== 'ssh')
-                                        .map((c) => (
-                                            <option key={c.id} value={c.id}>
-                                                {c.name} ({dbTypeLabel(c.dbType)})
-                                            </option>
-                                        ))}
-                                </select>
-                            </label>
-                            <label className="mt-2 flex flex-col gap-1 text-[11px] text-on-surface-variant">
+                                    size="sm"
+                                    ariaLabel="Conexión de la pestaña"
+                                    className="w-full"
+                                />
+                            </div>
+                            <div className="mt-2 flex flex-col gap-1 text-[11px] text-on-surface-variant">
                                 Lenguaje
-                                <select
+                                <Select
                                     value={tab.language}
                                     disabled={!!tab.connId}
-                                    onChange={(e) => {
-                                        onChangeTabLanguage(tab.id, e.target.value as TabLanguage)
+                                    options={[
+                                        {value: 'sql', label: 'SQL'},
+                                        {value: 'redis-cli', label: 'Redis'},
+                                    ]}
+                                    onChange={(v) => {
+                                        onChangeTabLanguage(tab.id, v as TabLanguage)
                                         setMenuOpen(false)
                                     }}
-                                    title={
-                                        tab.connId
-                                            ? 'El lenguaje lo determina la conexión vinculada — desvinculá la pestaña para elegirlo a mano'
-                                            : 'Lenguaje del editor para esta pestaña mientras no tenga conexión vinculada'
-                                    }
-                                    className="rounded border-none bg-surface-container-highest px-2 py-1 text-xs text-on-surface outline-none disabled:opacity-50"
-                                >
-                                    <option value="sql">SQL</option>
-                                    <option value="redis-cli">Redis</option>
-                                </select>
-                            </label>
+                                    size="sm"
+                                    ariaLabel="Lenguaje de la pestaña"
+                                    className="w-full"
+                                />
+                            </div>
                         </div>
                     </>,
                     document.body,

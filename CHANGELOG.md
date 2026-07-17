@@ -4,8 +4,22 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-07-17
+
+### Cambiado
+
+- Rediseño del diálogo de conexión (crear/editar, DB y SSH): header fijo con el ícono del motor, título y subtítulo + botón de cerrar; cuerpo scrolleable y footer fijo (Cancelar/Guardar siempre visibles); Test Connection con estilo de botón. Mismo lenguaje visual que Configuración y el modal de esquemas.
+- Controles de formulario unificados y temados en toda la app: se reemplazaron todos los `<select>` nativos (schema del toolbar, chip de conexión/lenguaje de la pestaña, motor/modo/auth/SSL de la conexión, filtro de tipo en Redis, tema del editor) por un dropdown propio (`Select`) con menú en portal; y los checkboxes de opciones booleanas (Auto-commit, DBMS_OUTPUT, Agent Forwarding, TLS, Recordar clave) por un switch propio (`Toggle`). Ambos siguen el tema claro/oscuro de la app, a diferencia de los controles nativos que se veían fuera de lugar.
+- Rediseño del modal "Esquemas a escanear": más ancho, con header/búsqueda/pie fijos y la lista scrolleable, buscador con ícono, contador de seleccionados + botones "Todos/Ninguno", y filas con un check propio en vez del checkbox nativo. Mismo tratamiento a la lista de esquemas dentro del diálogo de conexión.
+- Rediseño del diálogo de Configuración: más ancho, con las opciones agrupadas en secciones ("Vault", "Preferencias") y cada una en su tarjeta con ícono, título y descripción; "Recordar clave" pasa de checkbox a un toggle. El selector de tema del editor pasa de un `<select>` nativo (que no respetaba el tema de la app) a un dropdown propio, temado, con menú en portal (no lo clippea el modal). Contenido compactado para que el modal no muestre scroll en pantallas normales. Header con subtítulo y pie con la versión. Mismos tokens MD3 del resto de la app.
+
+### Agregado
+
+- El diálogo de Configuración ahora muestra la versión actual de la app (`mini-tools vX.Y.Z`) en un pie, leída del binario (`main.appVersion`, estampada en build por `-ldflags`). En un build sin estampar (`wails dev`) muestra `dev`.
+
 ### Corregido
 
+- `DBMS_OUTPUT` no mostraba ninguna línea aunque estuviera activado, en bloques PL/SQL de Oracle que sí emiten `DBMS_OUTPUT.PUT_LINE`: (1) el bind del parámetro de salida `VARCHAR2` de `DBMS_OUTPUT.GET_LINE` no llevaba `Size`, y go-ora necesita el tamaño para un OUT string — sin él fallaba (ORA-06502) y el error se tragaba, devolviendo cero líneas; se fijó `Size: 32767`. (2) La pestaña "Consola" no renderizaba las líneas de `DBMS_OUTPUT` (solo estaban en la pestaña "Resultados"); ahora se muestran también en la Consola, debajo del texto del statement, como en un cliente SQL de escritorio.
 - La pestaña del editor ya no se "va en modo movimiento" (arrastre) al vincularle una conexión: el menú de conexión se renderiza en un portal de React, y como los portales propagan los eventos por el árbol de React (no por el DOM), el `pointerdown` sobre el `<select>` subía hasta el `<div>` de la pestaña y arrancaba un arrastre de dnd-kit, dejando la pestaña pegada al cursor. El menú tenía `onClick` con `stopPropagation` pero no `onPointerDown` (dnd-kit activa con `pointerdown`). Se agregó `onPointerDown` con `stopPropagation` al menú y su backdrop.
 - Seleccionar una conexión en la pestaña del editor ya no muestra un error cada vez: la carga automática de metadata del esquema (que alimenta el autocompletado) fallaba en silencio antes, pero mostraba el error crudo de la base en la barra de estado en cada cambio de conexión. Ahora la auto-carga es silenciosa (el autocompletado simplemente queda vacío si el escaneo falla) y solo el refresh explícito (F5) muestra el error.
 

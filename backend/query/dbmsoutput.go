@@ -78,7 +78,12 @@ func fetchDBMSOutput(ctx context.Context, conn *sql.Conn) ([]string, error) {
 		var status int64
 		if _, err := conn.ExecContext(ctx,
 			`BEGIN DBMS_OUTPUT.GET_LINE(:1, :2); END;`,
-			go_ora.Out{Dest: &line},
+			// Size is REQUIRED for a VARCHAR2 OUT param in go-ora: without it
+			// the driver allocates a zero-length buffer and Oracle can't return
+			// the line (ORA-06502), which fetchDBMSOutput's caller swallows —
+			// the symptom being "DBMS_OUTPUT enabled but nothing shows". 32767
+			// is the max length a single DBMS_OUTPUT line can have.
+			go_ora.Out{Dest: &line, Size: 32767},
 			go_ora.Out{Dest: &status},
 		); err != nil {
 			return lines, fmt.Errorf("query: leyendo DBMS_OUTPUT: %w", err)

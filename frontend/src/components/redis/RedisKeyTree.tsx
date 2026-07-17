@@ -6,6 +6,7 @@ import {likeToRedisGlob} from '../../lib/likePattern'
 import {formatBytes} from '../../lib/formatBytes'
 import {redisTypeStyle, REDIS_TYPES} from '../../lib/redisTypeStyle'
 import Icon from '../Icon'
+import Select from '../Select'
 
 interface RedisKeyTreeProps {
     connId: string
@@ -147,19 +148,18 @@ export default function RedisKeyTree({
             </div>
 
             <div className="mb-1 flex items-center gap-1">
-                <select
+                <Select
                     value={typeFilter}
-                    onChange={(e) => changeTypeFilter(e.target.value)}
+                    options={[
+                        {value: '', label: 'Todos los tipos'},
+                        ...REDIS_TYPES.map((t) => ({value: t, label: redisTypeStyle(t).label})),
+                    ]}
+                    onChange={changeTypeFilter}
+                    size="sm"
                     title="Filtra las keys por tipo — usa el propio filtro TYPE de SCAN, del lado del servidor"
-                    className="shrink-0 rounded border-none bg-surface-container-highest px-1.5 py-1 text-xs text-on-surface outline-none"
-                >
-                    <option value="">Todos los tipos</option>
-                    {REDIS_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                            {redisTypeStyle(t).label}
-                        </option>
-                    ))}
-                </select>
+                    ariaLabel="Filtrar por tipo"
+                    className="shrink-0"
+                />
                 <input
                     value={match}
                     onChange={(e) => setMatch(e.target.value)}
@@ -198,13 +198,19 @@ export default function RedisKeyTree({
                         className="flex items-center gap-2 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         {selectable && (
-                            <input
-                                type="checkbox"
-                                checked={selectedKeys?.has(k.key) ?? false}
-                                onChange={() => onToggleSelect?.(k.key)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="shrink-0"
-                            />
+                            <span
+                                role="checkbox"
+                                aria-checked={selectedKeys?.has(k.key) ?? false}
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    onToggleSelect?.(k.key)
+                                }}
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                                    selectedKeys?.has(k.key) ? 'border-primary bg-primary text-on-primary' : 'border-outline'
+                                }`}
+                            >
+                                {(selectedKeys?.has(k.key) ?? false) && <Icon name="check" size={12} />}
+                            </span>
                         )}
                         <Icon name="key" size={14} className="shrink-0 opacity-60" />
                         <span className="flex-1 truncate">{k.key}</span>

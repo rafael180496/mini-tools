@@ -1,4 +1,8 @@
+import {useEffect, useState} from 'react'
+import {AppVersion} from '../../wailsjs/go/main/App'
 import Icon from './Icon'
+import Select from './Select'
+import Toggle from './Toggle'
 import {EDITOR_THEME_IDS, EDITOR_THEME_LABELS} from '../codemirror/themes'
 
 interface SettingsDialogProps {
@@ -11,12 +15,14 @@ interface SettingsDialogProps {
     onClose: () => void
 }
 
+const THEME_OPTIONS = EDITOR_THEME_IDS.map((id) => ({value: id, label: EDITOR_THEME_LABELS[id]}))
+
 // Configuración general de la app (no de una conexión particular) — se abre
 // desde el ícono de engranaje en la esquina del toolbar. Regla del proyecto:
 // toda opción de este tipo vive acá, no suelta en el toolbar principal (ver
-// .claude/rules/conventions.md). Mismo patrón visual que
-// PasswordConfirmDialog: modal temado con los tokens semánticos de
-// Material Design 3, no clases neutral-* hardcodeadas.
+// .claude/rules/conventions.md). Diseño MD3: modal en surface-container-high,
+// cada opción en una tarjeta surface-container-highest, agrupadas por sección
+// (ver .claude/specs/design-system.md para el mapeo de roles de color).
 export default function SettingsDialog({
     rememberMasterKey,
     onToggleRememberMasterKey,
@@ -26,69 +32,129 @@ export default function SettingsDialog({
     onRestoreVault,
     onClose,
 }: SettingsDialogProps) {
+    // Stamped at build time (main.appVersion). "dev" for an unstamped build.
+    const [version, setVersion] = useState('')
+    useEffect(() => {
+        AppVersion()
+            .then(setVersion)
+            .catch(() => setVersion(''))
+    }, [])
+
     return (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
-            <div className="flex w-96 flex-col gap-4 rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg">
-                <div className="flex items-center justify-between">
-                    <h2 className="flex items-center gap-2 text-lg font-semibold">
-                        <Icon name="settings" size={18} className="text-primary" />
-                        Configuración
-                    </h2>
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+            <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex max-h-[92vh] w-136 max-w-[94vw] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high text-on-surface shadow-lg"
+            >
+                {/* Header */}
+                <div className="flex items-center gap-3 border-b border-outline-variant px-5 py-3.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                        <Icon name="settings" size={20} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <h2 className="text-base font-semibold leading-tight">Configuración</h2>
+                        <p className="text-xs text-on-surface-variant">Ajustes generales de la aplicación</p>
+                    </div>
                     <button
                         onClick={onClose}
                         title="Cerrar configuración"
-                        className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
-                        <Icon name="close" size={18} />
+                        <Icon name="close" size={20} />
                     </button>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                    <button
-                        onClick={onBackupVault}
-                        title="Copia el archivo del vault (donde se guardan tus conexiones cifradas) a otra ubicación, por si necesitás restaurarlo después — pide tu clave maestra para confirmar, porque el archivo puede terminar en otra máquina"
-                        className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                    >
-                        <Icon name="backup" size={16} />
-                        Backup vault
-                    </button>
-                    <button
-                        onClick={onRestoreVault}
-                        title="Reemplaza TODO el vault actual (conexiones, snippets, historial) con el contenido de un archivo .mtbackup elegido — destructivo, pide la clave actual y la del backup, y después te pide desbloquear de nuevo"
-                        className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-error hover:bg-error-container"
-                    >
-                        <Icon name="restore" size={16} />
-                        Restaurar backup
-                    </button>
-                    <label
-                        className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-on-surface-variant"
-                        title="Guarda tu clave maestra en el Keychain de este equipo para no tener que escribirla cada vez que abrís la app. Trade-off real: cualquiera que pueda entrar a tu sesión de usuario del sistema operativo podría desbloquear el vault sin conocer la clave — mismo nivel de exposición que un 'recordarme' de cualquier gestor de contraseñas. Desactivalo para que vuelva a pedirla siempre."
-                    >
-                        <input
-                            type="checkbox"
-                            checked={rememberMasterKey}
-                            onChange={(e) => onToggleRememberMasterKey(e.target.checked)}
-                            className="accent-primary"
-                        />
-                        Recordar clave
-                    </label>
-                    <label
-                        className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium text-on-surface-variant"
-                        title="Tema de color del editor SQL/Redis. 'Automático' sigue el toggle claro/oscuro de la app en vez de un preset fijo."
-                    >
-                        Tema del editor
-                        <select
-                            value={editorThemeId}
-                            onChange={(e) => onChangeEditorThemeId(e.target.value)}
-                            className="rounded-md border border-outline-variant bg-surface px-2 py-1 text-sm text-on-surface"
+                {/* Body */}
+                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+                    {/* Vault */}
+                    <section className="flex flex-col gap-2">
+                        <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Vault</h3>
+
+                        <button
+                            onClick={onBackupVault}
+                            title="Copia el archivo del vault (donde se guardan tus conexiones cifradas) a otra ubicación, por si necesitás restaurarlo después — pide tu clave maestra para confirmar, porque el archivo puede terminar en otra máquina"
+                            className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3 text-left transition-colors hover:border-secondary/60 hover:bg-surface-variant"
                         >
-                            {EDITOR_THEME_IDS.map((id) => (
-                                <option key={id} value={id}>
-                                    {EDITOR_THEME_LABELS[id]}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary/15 text-secondary">
+                                <Icon name="backup" size={18} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-medium text-on-surface">Backup del vault</span>
+                                <span className="block truncate text-xs text-on-surface-variant">
+                                    Copia cifrada de tus conexiones. Pide la clave maestra.
+                                </span>
+                            </span>
+                            <Icon name="chevron_right" size={20} className="shrink-0 text-on-surface-variant" />
+                        </button>
+
+                        <button
+                            onClick={onRestoreVault}
+                            title="Reemplaza TODO el vault actual (conexiones, snippets, historial) con el contenido de un archivo .mtbackup elegido — destructivo, pide la clave actual y la del backup, y después te pide desbloquear de nuevo"
+                            className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3 text-left transition-colors hover:border-error/60 hover:bg-error-container/30"
+                        >
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-error/15 text-error">
+                                <Icon name="restore" size={18} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-medium text-error">Restaurar backup</span>
+                                <span className="block truncate text-xs text-on-surface-variant">
+                                    Reemplaza todo el vault con un .mtbackup. Destructivo.
+                                </span>
+                            </span>
+                            <Icon name="chevron_right" size={20} className="shrink-0 text-error/70" />
+                        </button>
+                    </section>
+
+                    {/* Preferencias */}
+                    <section className="flex flex-col gap-2">
+                        <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Preferencias</h3>
+
+                        {/* Recordar clave — toggle */}
+                        <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                <Icon name="key" size={18} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <span className="block text-sm font-medium text-on-surface">Recordar clave maestra</span>
+                                <span
+                                    className="block truncate text-xs text-on-surface-variant"
+                                    title="Guarda tu clave maestra en el Keychain de este equipo para no tener que escribirla cada vez. Cualquiera que pueda entrar a tu sesión del sistema podría desbloquear el vault sin conocer la clave — mismo nivel de exposición que un 'recordarme' de cualquier gestor de contraseñas."
+                                >
+                                    Desbloqueá con el Keychain, sin reescribir la clave.
+                                </span>
+                            </div>
+                            <Toggle
+                                checked={rememberMasterKey}
+                                onChange={onToggleRememberMasterKey}
+                                title={rememberMasterKey ? 'Desactivar — volver a pedir la clave siempre' : 'Activar — recordar la clave en el Keychain'}
+                                ariaLabel="Recordar clave maestra"
+                            />
+                        </div>
+
+                        {/* Tema del editor */}
+                        <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                <Icon name="palette" size={18} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <span className="block text-sm font-medium text-on-surface">Tema del editor</span>
+                                <span className="block truncate text-xs text-on-surface-variant">Colores del editor SQL/Redis.</span>
+                            </div>
+                            <Select
+                                value={editorThemeId}
+                                options={THEME_OPTIONS}
+                                onChange={onChangeEditorThemeId}
+                                ariaLabel="Tema del editor"
+                                className="w-52"
+                            />
+                        </div>
+                    </section>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-center gap-1.5 border-t border-outline-variant px-5 py-2.5 text-xs text-on-surface-variant">
+                    <Icon name="info" size={14} />
+                    mini-tools {version ? `v${version}` : '—'}
                 </div>
             </div>
         </div>
