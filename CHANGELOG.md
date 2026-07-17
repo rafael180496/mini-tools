@@ -6,6 +6,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Corregido
 
+- La pestaña del editor ya no se "va en modo movimiento" (arrastre) al vincularle una conexión: el menú de conexión se renderiza en un portal de React, y como los portales propagan los eventos por el árbol de React (no por el DOM), el `pointerdown` sobre el `<select>` subía hasta el `<div>` de la pestaña y arrancaba un arrastre de dnd-kit, dejando la pestaña pegada al cursor. El menú tenía `onClick` con `stopPropagation` pero no `onPointerDown` (dnd-kit activa con `pointerdown`). Se agregó `onPointerDown` con `stopPropagation` al menú y su backdrop.
 - Seleccionar una conexión en la pestaña del editor ya no muestra un error cada vez: la carga automática de metadata del esquema (que alimenta el autocompletado) fallaba en silencio antes, pero mostraba el error crudo de la base en la barra de estado en cada cambio de conexión. Ahora la auto-carga es silenciosa (el autocompletado simplemente queda vacío si el escaneo falla) y solo el refresh explícito (F5) muestra el error.
 
 ### Quitado

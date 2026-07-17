@@ -189,9 +189,22 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                             necesario porque, al ser un portal, ya no hay un
                             "afuera de este div" natural que React pueda detectar
                             solo con stopPropagation. */}
-                        <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                        <div
+                            className="fixed inset-0 z-40"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => setMenuOpen(false)}
+                        />
+                        {/* onPointerDown stopPropagation es OBLIGATORIO acá: un
+                            portal de React propaga los eventos por el árbol de
+                            React, NO por el DOM, así que sin esto el pointerdown
+                            sobre estos <select> sube hasta el <div> de la
+                            pestaña (que tiene los listeners de dnd-kit) y arranca
+                            un arrastre — la pestaña se "iba en modo movimiento"
+                            al elegir una conexión. onClick solo no alcanza porque
+                            dnd-kit activa con pointerdown, no con click. */}
                         <div
                             style={{position: 'fixed', top: menuPos.top, left: menuPos.left}}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
                             className="z-50 w-56 cursor-default rounded-lg border border-outline-variant bg-surface-container-high p-2 text-on-surface shadow-lg"
                         >
