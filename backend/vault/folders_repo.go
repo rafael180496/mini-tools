@@ -78,11 +78,22 @@ func (s *Store) MoveFolder(id, newParentID string) error {
 }
 
 // DeleteFolder removes a folder WITHOUT ever deleting what's inside it —
-// its subfolders and connections are reparented to id's own parent (or to
-// root, if id was already a root folder) before the row itself is deleted.
-// Same "organizational delete never touches real data" principle as
-// unbinding an editor tab's connection without touching the file on disk
-// (see EditorTabs.tsx).
+// its subfolders, connections, AND ssh_snippets are reparented to id's own
+// parent (or to root, if id was already a root folder) before the row
+// itself is deleted. Same "organizational delete never touches real data"
+// principle as unbinding an editor tab's connection without touching the
+// file on disk (see EditorTabs.tsx).
+//
+// Real bug fixed here: ssh_snippets.folder_id (schema_migrations version
+// 14) was added after this function already existed and got missed —
+// deleting a folder that had snippets in it left them with a dangling
+// folder_id pointing at a folder that no longer existed. Not silently
+// deleted (folder_id isn't a real FK, SQLite doesn't enforce it), but
+// effectively orphaned: invisible in the UI (neither at root, since
+// folderId wasn't "", nor under any real folder), while still sitting in
+// the database. Caught by a throwaway test exercising this exact path, not
+// by inspection — see .claude/skills/mini-tools-patterns's own note on the
+// analogous ReorderFolder cross-scope bug found the same way.
 func (s *Store) DeleteFolder(id string) error {
 	var parentID sql.NullString
 	if err := s.db.QueryRow(`SELECT parent_id FROM folders WHERE id = ?`, id).Scan(&parentID); err != nil {
@@ -103,6 +114,9 @@ func (s *Store) DeleteFolder(id string) error {
 	}
 	if _, err := tx.Exec(`UPDATE connections SET folder_id = ? WHERE folder_id = ?`, parentID, id); err != nil {
 		return fmt.Errorf("vault: reparentando conexiones: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE ssh_snippets SET folder_id = ? WHERE folder_id = ?`, parentID, id); err != nil {
+		return fmt.Errorf("vault: reparentando snippets: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM folders WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("vault: borrando carpeta: %w", err)

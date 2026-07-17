@@ -157,6 +157,33 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 13,
+		desc:    "agrega ssh_snippets (comandos/scripts reutilizables en cualquier sesión SSH) y settings.ssh_terminal_theme",
+		apply: func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS ssh_snippets (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL,
+					script TEXT NOT NULL,
+					sort_order INTEGER NOT NULL DEFAULT 0,
+					created_at INTEGER NOT NULL
+				)
+			`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN ssh_terminal_theme TEXT NOT NULL DEFAULT 'auto'`)
+			return err
+		},
+	},
+	{
+		version: 14,
+		desc:    "agrega ssh_snippets.folder_id para organizar snippets en carpetas — árbol independiente (scope 'ssh-snippet') del de conexiones DB/SSH, reusando folders.scope igual que la migración 12",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE ssh_snippets ADD COLUMN folder_id TEXT`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

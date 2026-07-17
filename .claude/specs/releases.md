@@ -18,15 +18,22 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
    esa parte en su lugar). Esto ya NO es un paso opcional para este flujo
    automático, a diferencia de como lo describe `scripts/README.md` para
    uso manual suelto.
-1. **Correr el script de empaquetado de CADA SO soportado, en la misma
-   pasada — nunca uno solo por default.** Hoy son dos:
-   `./scripts/package-macos.sh` (nativo, requiere correr desde macOS,
-   produce `.dmg` sin firmar) y `./scripts/package-windows.sh`
-   (cross-compila desde cualquier SO con Go+Wails, produce `.exe` portable
-   sin firmar — ver [commands.md](commands.md) y
+1. **Correr `./scripts/package-all.sh`** — orquesta el empaquetado de CADA
+   SO soportado en la misma pasada (nunca uno solo por default). Hoy son
+   dos: macOS (nativo, requiere correr desde macOS, produce `.dmg` sin
+   firmar) y Windows (cross-compila desde cualquier SO con Go+Wails,
+   produce `.exe` portable sin firmar — ver [commands.md](commands.md) y
    [scripts/README.md](../../scripts/README.md) para el detalle de cada
-   uno). Si el usuario pide explícitamente un solo SO ("empaquetá solo para
-   windows"), correr solo ese — el default sin aclaración es ambos.
+   uno). **Nunca correr `package-macos.sh` y `package-windows.sh` sueltos
+   en secuencia manual** — los dos usan `wails build -clean`, que borra
+   `build/bin/` completo al arrancar, así que el segundo script borra el
+   artefacto que acababa de dejar el primero antes de poder copiarlo a
+   ningún lado (bug real, ver el comentario de cabecera de
+   `package-all.sh`, que ya resuelve esto moviendo cada artefacto a un
+   directorio temporal apenas termina su propio script). Si el usuario pide
+   explícitamente un solo SO ("empaquetá solo para windows"), ahí sí correr
+   solo ese script individual — el default sin aclaración es
+   `package-all.sh` (ambos).
 2. Crear (si no existe) `releases/<os>/` para cada SO empaquetado en el
    paso anterior — hoy `releases/macos/` y `releases/windows/`.
 3. **Copiar** (nunca mover) cada artefacto generado

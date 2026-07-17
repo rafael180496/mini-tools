@@ -247,6 +247,16 @@ func (a *App) SetEditorTheme(theme string) error {
 	return a.vault.SetEditorTheme(theme)
 }
 
+// SetSshTerminalTheme persists the xterm.js color theme id. Gated behind
+// requireUnlocked like SetEditorTheme — the SSH terminal only ever exists
+// in the post-unlock Workspace, never the lock screen.
+func (a *App) SetSshTerminalTheme(theme string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetSshTerminalTheme(theme)
+}
+
 // TestConnection builds a DSN from cfg and pings it, without saving
 // anything. Used by the "Test Connection" button before a connection is
 // persisted.
@@ -768,6 +778,47 @@ func (a *App) CloseSSHTerminal(connID string) error {
 	return a.sshSessions.Close(connID)
 }
 
+// ListSshSnippets returns every saved SSH snippet — global, reusable across
+// any open terminal session (see vault.SshSnippet's doc comment).
+func (a *App) ListSshSnippets() ([]vault.SshSnippet, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListSshSnippets()
+}
+
+// CreateSshSnippet saves a new reusable command/script.
+func (a *App) CreateSshSnippet(name, script string) (*vault.SshSnippet, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.CreateSshSnippet(name, script)
+}
+
+// UpdateSshSnippet overwrites an existing snippet's name/script in place.
+func (a *App) UpdateSshSnippet(id, name, script string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.UpdateSshSnippet(id, name, script)
+}
+
+// DeleteSshSnippet removes a snippet permanently.
+func (a *App) DeleteSshSnippet(id string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.DeleteSshSnippet(id)
+}
+
+// MoveSshSnippetToFolder reparents a snippet under folderID ("" = root).
+func (a *App) MoveSshSnippetToFolder(id, folderID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.MoveSshSnippetToFolder(id, folderID)
+}
+
 // ListRedisKeys pages through connID's keyspace via SCAN — never KEYS *,
 // see .claude/rules/technical.md's performance rule. cursor is opaque: ""
 // starts from the beginning, and a returned cursor of "" means there are no
@@ -1142,6 +1193,87 @@ func (a *App) RestoreVaultBackup(password string) error {
 		return fmt.Errorf("app: reabriendo vault restaurado: %w", err)
 	}
 	a.vault = store
+	return nil
+}
+
+// PickVaultBackupFile is step 1 of restoring a backup OVER an already-
+// initialized, unlocked vault (Configuración → "Restaurar backup", not the
+// first-run lock screen — see RestoreVaultBackupFromFile for step 2 and the
+// full reasoning). Verifies currentPassword — proves the caller is the
+// legitimate current vault owner before anything gets destroyed, same
+// VerifyPassword re-confirmation BackupVault already does before writing a
+// file out — then opens the file picker and returns the chosen path.
+//
+// Deliberately split from step 2 instead of taking the backup's own
+// password here too: at this point the user hasn't chosen a file yet, so
+// asking for "the backup's password" before they even know which backup
+// it's for is backwards — the password prompt belongs AFTER the file is
+// picked, tied to that specific file's name/date, and a wrong guess there
+// can retry against the same already-chosen path without reopening the
+// picker or re-entering currentPassword. Returns "" without an error if the
+// user cancels the picker.
+func (a *App) PickVaultBackupFile(currentPassword string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	if err := a.vault.VerifyPassword(currentPassword); err != nil {
+		return "", err
+	}
+
+	src, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Seleccionar backup del vault",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "mini-tools backup (*.mtbackup)", Pattern: "*.mtbackup"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("app: abriendo diálogo de selección: %w", err)
+	}
+	return src, nil
+}
+
+// RestoreVaultBackupFromFile is step 2: path was already chosen via
+// PickVaultBackupFile (and currentPassword already verified there), so this
+// only needs backupPassword — the master password that was active when
+// THAT specific backup was made, almost certainly different from
+// currentPassword. VerifyBackupPassword confirms it can actually be
+// decrypted before anything gets destroyed.
+//
+// On success every live SSH session and DB/Redis pool is torn down first
+// (their connections are about to disappear along with the old vault), then
+// the old vault.db/salt.bin are replaced and the gate is locked — the
+// frontend must send the user back through the unlock screen afterward (see
+// App.tsx's onLocked), since the restored vault's password is whatever the
+// backup was encrypted with, not currentPassword.
+func (a *App) RestoreVaultBackupFromFile(path, backupPassword string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := vault.VerifyBackupPassword(path, backupPassword); err != nil {
+		return err
+	}
+
+	a.sshSessions.CloseAll()
+	a.pools.CloseAll()
+	a.redisPools.CloseAll()
+
+	if err := a.vault.Close(); err != nil {
+		return fmt.Errorf("app: cerrando vault actual: %w", err)
+	}
+
+	if err := vault.RestoreBackup(path); err != nil {
+		if store, openErr := vault.Open(a.gate); openErr == nil {
+			a.vault = store
+		}
+		return err
+	}
+
+	store, err := vault.Open(a.gate)
+	if err != nil {
+		return fmt.Errorf("app: reabriendo vault restaurado: %w", err)
+	}
+	a.vault = store
+	a.gate.Lock()
 	return nil
 }
 

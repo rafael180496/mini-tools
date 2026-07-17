@@ -27,6 +27,8 @@ export function CommitTransaction(arg1:string):Promise<void>;
 
 export function CreateFolder(arg1:string,arg2:string,arg3:string):Promise<vault.Folder>;
 
+export function CreateSshSnippet(arg1:string,arg2:string):Promise<vault.SshSnippet>;
+
 export function DeleteConnection(arg1:string):Promise<void>;
 
 export function DeleteFolder(arg1:string):Promise<void>;
@@ -36,6 +38,8 @@ export function DeleteQueryHistoryEntry(arg1:string):Promise<void>;
 export function DeleteRedisHashField(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function DeleteRedisKey(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteSshSnippet(arg1:string):Promise<void>;
 
 export function DisconnectConnection(arg1:string):Promise<void>;
 
@@ -93,15 +97,21 @@ export function ListSchemas(arg1:string,arg2:boolean):Promise<Array<string>>;
 
 export function ListSchemasForNewConnection(arg1:main.ConnectionInput):Promise<Array<string>>;
 
+export function ListSshSnippets():Promise<Array<vault.SshSnippet>>;
+
 export function MoveConnectionToFolder(arg1:string,arg2:string):Promise<void>;
 
 export function MoveFolder(arg1:string,arg2:string):Promise<void>;
+
+export function MoveSshSnippetToFolder(arg1:string,arg2:string):Promise<void>;
 
 export function OpenSQLFileDialog():Promise<main.FileContent>;
 
 export function OpenSQLFilePath(arg1:string):Promise<main.FileContent>;
 
 export function OpenSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function PickVaultBackupFile(arg1:string):Promise<string>;
 
 export function PushRedisListValue(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -120,6 +130,8 @@ export function ReorderFolder(arg1:string,arg2:string):Promise<void>;
 export function ResizeSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function RestoreVaultBackup(arg1:string):Promise<void>;
+
+export function RestoreVaultBackupFromFile(arg1:string,arg2:string):Promise<void>;
 
 export function RollbackTransaction(arg1:string):Promise<void>;
 
@@ -153,6 +165,8 @@ export function SetRememberMasterKey(arg1:boolean):Promise<void>;
 
 export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 
+export function SetSshTerminalTheme(arg1:string):Promise<void>;
+
 export function SetTheme(arg1:string):Promise<void>;
 
 export function SyncSchemaMetadata(arg1:string,arg2:string):Promise<db.SchemaMetadata>;
@@ -164,5 +178,7 @@ export function TryAutoUnlock():Promise<boolean>;
 export function UnlockVault(arg1:string):Promise<void>;
 
 export function UpdateConnection(arg1:string,arg2:main.ConnectionInput,arg3:boolean):Promise<vault.ConnectionSummary>;
+
+export function UpdateSshSnippet(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function WriteSSHTerminal(arg1:string,arg2:string):Promise<void>;

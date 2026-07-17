@@ -46,6 +46,10 @@ export function CreateFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateFolder'](arg1, arg2, arg3);
 }
 
+export function CreateSshSnippet(arg1, arg2) {
+  return window['go']['main']['App']['CreateSshSnippet'](arg1, arg2);
+}
+
 export function DeleteConnection(arg1) {
   return window['go']['main']['App']['DeleteConnection'](arg1);
 }
@@ -64,6 +68,10 @@ export function DeleteRedisHashField(arg1, arg2, arg3) {
 
 export function DeleteRedisKey(arg1, arg2) {
   return window['go']['main']['App']['DeleteRedisKey'](arg1, arg2);
+}
+
+export function DeleteSshSnippet(arg1) {
+  return window['go']['main']['App']['DeleteSshSnippet'](arg1);
 }
 
 export function DisconnectConnection(arg1) {
@@ -178,12 +186,20 @@ export function ListSchemasForNewConnection(arg1) {
   return window['go']['main']['App']['ListSchemasForNewConnection'](arg1);
 }
 
+export function ListSshSnippets() {
+  return window['go']['main']['App']['ListSshSnippets']();
+}
+
 export function MoveConnectionToFolder(arg1, arg2) {
   return window['go']['main']['App']['MoveConnectionToFolder'](arg1, arg2);
 }
 
 export function MoveFolder(arg1, arg2) {
   return window['go']['main']['App']['MoveFolder'](arg1, arg2);
+}
+
+export function MoveSshSnippetToFolder(arg1, arg2) {
+  return window['go']['main']['App']['MoveSshSnippetToFolder'](arg1, arg2);
 }
 
 export function OpenSQLFileDialog() {
@@ -196,6 +212,10 @@ export function OpenSQLFilePath(arg1) {
 
 export function OpenSSHTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenSSHTerminal'](arg1, arg2, arg3);
+}
+
+export function PickVaultBackupFile(arg1) {
+  return window['go']['main']['App']['PickVaultBackupFile'](arg1);
 }
 
 export function PushRedisListValue(arg1, arg2, arg3) {
@@ -232,6 +252,10 @@ export function ResizeSSHTerminal(arg1, arg2, arg3) {
 
 export function RestoreVaultBackup(arg1) {
   return window['go']['main']['App']['RestoreVaultBackup'](arg1);
+}
+
+export function RestoreVaultBackupFromFile(arg1, arg2) {
+  return window['go']['main']['App']['RestoreVaultBackupFromFile'](arg1, arg2);
 }
 
 export function RollbackTransaction(arg1) {
@@ -298,6 +322,10 @@ export function SetSidebarCollapsed(arg1) {
   return window['go']['main']['App']['SetSidebarCollapsed'](arg1);
 }
 
+export function SetSshTerminalTheme(arg1) {
+  return window['go']['main']['App']['SetSshTerminalTheme'](arg1);
+}
+
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
 }
@@ -320,6 +348,10 @@ export function UnlockVault(arg1) {
 
 export function UpdateConnection(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateConnection'](arg1, arg2, arg3);
+}
+
+export function UpdateSshSnippet(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateSshSnippet'](arg1, arg2, arg3);
 }
 
 export function WriteSSHTerminal(arg1, arg2) {

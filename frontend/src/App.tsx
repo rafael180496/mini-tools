@@ -54,7 +54,7 @@ function App() {
         )
     }
 
-    return <Workspace theme={theme} onToggleTheme={toggleTheme} />
+    return <Workspace theme={theme} onToggleTheme={toggleTheme} onLocked={() => setUnlocked(false)} />
 }
 
 export default App

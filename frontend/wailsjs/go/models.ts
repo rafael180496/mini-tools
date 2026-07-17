@@ -652,6 +652,7 @@ export namespace vault {
 	    rememberMasterKey: boolean;
 	    editorTheme: string;
 	    collapsedSidebarModules: string[];
+	    sshTerminalTheme: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -666,6 +667,7 @@ export namespace vault {
 	        this.rememberMasterKey = source["rememberMasterKey"];
 	        this.editorTheme = source["editorTheme"];
 	        this.collapsedSidebarModules = source["collapsedSidebarModules"];
+	        this.sshTerminalTheme = source["sshTerminalTheme"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -685,6 +687,26 @@ export namespace vault {
 		    }
 		    return a;
 		}
+	}
+	export class SshSnippet {
+	    id: string;
+	    name: string;
+	    script: string;
+	    folderId?: string;
+	    createdAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SshSnippet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.script = source["script"];
+	        this.folderId = source["folderId"];
+	        this.createdAt = source["createdAt"];
+	    }
 	}
 
 }

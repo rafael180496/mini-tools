@@ -5,6 +5,7 @@ import ConfirmDialog from './ConfirmDialog'
 import DDLViewerModal, {type DDLObjectType} from './DDLViewerModal'
 import Icon from './Icon'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
+import RestoreVaultDialog from './RestoreVaultDialog'
 import ResultGrid from './results/ResultGrid'
 import ResultTabs from './results/ResultTabs'
 import ExecutionConsole, {ConsoleLogEntry} from './results/ExecutionConsole'
@@ -14,6 +15,7 @@ import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import RedisBrowserTab from './redis/RedisBrowserTab'
 import SshTerminalTab, {closeSshTerminalSession} from './ssh/SshTerminalTab'
+import type {TerminalThemeId} from '../xterm/terminalThemes'
 import {
     BackupVault,
     BeginTransaction,
@@ -53,6 +55,7 @@ import {
     SetOpenTabs,
     SetRememberMasterKey,
     SetSidebarCollapsed,
+    SetSshTerminalTheme,
     SyncSchemaMetadata,
 } from '../../wailsjs/go/main/App'
 import {EventsOn} from '../../wailsjs/runtime'
@@ -193,9 +196,15 @@ function schemasOf(meta: db.SchemaMetadata | null): string[] {
 interface WorkspaceProps {
     theme: Theme
     onToggleTheme: () => void
+    // Called after a successful "Restaurar backup" (see
+    // RestoreVaultBackupOverExisting) — the restored vault's password is
+    // whatever the backup was encrypted with, not whatever unlocked this
+    // session, so App.tsx must send the user back through UnlockScreen
+    // instead of pretending this session is still validly unlocked.
+    onLocked: () => void
 }
 
-export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
+export default function Workspace({theme, onToggleTheme, onLocked}: WorkspaceProps) {
     // `selected` is ONLY the sidebar's own navigation state — which
     // connection's table/key tree is expanded there. It is deliberately
     // never synced with the active editor tab in either direction (a
@@ -356,6 +365,7 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     const pendingBrowserKeyTokenRef = useRef(0)
     const [backupMessage, setBackupMessage] = useState('')
     const [showBackupPasswordDialog, setShowBackupPasswordDialog] = useState(false)
+    const [showRestoreDialog, setShowRestoreDialog] = useState(false)
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
     const [statusMessage, setStatusMessage] = useState('')
 
@@ -443,6 +453,11 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     // `theme` prop instead of a fixed preset, resolved inside
     // CodeMirrorTabbedEditor via resolveEditorTheme.
     const [editorThemeId, setEditorThemeIdState] = useState('auto')
+    // xterm.js color theme id (frontend/src/xterm/terminalThemes.ts's
+    // registry) — same "auto follows theme" convention as editorThemeId
+    // above, just for the SSH terminal. One global setting shared by every
+    // open terminal tab (see SshTerminalTab.tsx's terminalThemeId prop).
+    const [terminalThemeId, setTerminalThemeIdState] = useState('auto')
 
     useEffect(() => {
         let cancelled = false
@@ -454,6 +469,9 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                 setRememberMasterKeyState(!!settings.rememberMasterKey)
                 if (settings.editorTheme) {
                     setEditorThemeIdState(settings.editorTheme)
+                }
+                if (settings.sshTerminalTheme) {
+                    setTerminalThemeIdState(settings.sshTerminalTheme)
                 }
                 if (settings.collapsedSidebarModules) {
                     setCollapsedModules(new Set(settings.collapsedSidebarModules))
@@ -559,6 +577,11 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
     function changeEditorTheme(id: string) {
         setEditorThemeIdState(id)
         void SetEditorTheme(id)
+    }
+
+    function changeTerminalTheme(id: TerminalThemeId) {
+        setTerminalThemeIdState(id)
+        void SetSshTerminalTheme(id)
     }
 
     // Drag-to-resize the editor pane against the results grid below it.
@@ -1874,6 +1897,8 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             <SshTerminalTab
                                 connId={t.connId as string}
                                 theme={theme}
+                                terminalThemeId={terminalThemeId}
+                                onChangeTerminalTheme={changeTerminalTheme}
                                 onConnectedChange={(connected) => setSshConnected(t.connId as string, connected)}
                             />
                         </div>
@@ -2072,6 +2097,10 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                             setShowSettingsDialog(false)
                             setShowBackupPasswordDialog(true)
                         }}
+                        onRestoreVault={() => {
+                            setShowSettingsDialog(false)
+                            setShowRestoreDialog(true)
+                        }}
                         onClose={() => setShowSettingsDialog(false)}
                     />
                 </Suspense>
@@ -2085,6 +2114,10 @@ export default function Workspace({theme, onToggleTheme}: WorkspaceProps) {
                     onConfirm={backupVault}
                     onClose={() => setShowBackupPasswordDialog(false)}
                 />
+            )}
+
+            {showRestoreDialog && (
+                <RestoreVaultDialog onRestored={onLocked} onClose={() => setShowRestoreDialog(false)} />
             )}
 
             {pendingRedisCommandRun && activeTabConnection && (

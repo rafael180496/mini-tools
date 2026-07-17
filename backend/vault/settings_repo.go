@@ -63,6 +63,13 @@ type Settings struct {
 	// modules besides "connections" are expected later. See
 	// SetCollapsedSidebarModules.
 	CollapsedSidebarModules []string `json:"collapsedSidebarModules"`
+	// SshTerminalTheme is the xterm.js color theme id (one of
+	// frontend/src/xterm/terminalThemes.ts's registry, e.g. "auto",
+	// "dracula", "nord") — same "auto follows the app's own dark/light
+	// Theme" convention as EditorTheme above, just for the SSH terminal
+	// instead of the SQL editor. One global setting, not per-connection —
+	// same reasoning as EditorTheme.
+	SshTerminalTheme string `json:"sshTerminalTheme"`
 }
 
 // GetSettings returns the single settings row, seeded with defaults by Open.
@@ -74,9 +81,12 @@ func (s *Store) GetSettings() (Settings, error) {
 	var rememberMasterKey bool
 	var editorTheme string
 	var collapsedModulesJSON sql.NullString
+	var sshTerminalTheme string
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules FROM settings WHERE id = 1`,
-	).Scan(&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON); err != nil {
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme FROM settings WHERE id = 1`,
+	).Scan(
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme,
+	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
 
@@ -110,6 +120,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		Theme: theme, OpenTabs: openTabs, SidebarCollapsed: sidebarCollapsed,
 		EditorHeight: editorHeight, RememberMasterKey: rememberMasterKey,
 		EditorTheme: editorTheme, CollapsedSidebarModules: collapsedModules,
+		SshTerminalTheme: sshTerminalTheme,
 	}, nil
 }
 
@@ -166,6 +177,17 @@ func (s *Store) SetEditorHeight(height int) error {
 func (s *Store) SetEditorTheme(theme string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET editor_theme = ? WHERE id = 1`, theme); err != nil {
 		return fmt.Errorf("vault: guardando editor_theme: %w", err)
+	}
+	return nil
+}
+
+// SetSshTerminalTheme persists the xterm.js theme id. No validation against
+// a fixed list here, same "storage only" reasoning as SetEditorTheme — the
+// registry of valid ids lives in frontend/src/xterm/terminalThemes.ts, and
+// an unrecognized id just falls back to "auto" there.
+func (s *Store) SetSshTerminalTheme(theme string) error {
+	if _, err := s.db.Exec(`UPDATE settings SET ssh_terminal_theme = ? WHERE id = 1`, theme); err != nil {
+		return fmt.Errorf("vault: guardando ssh_terminal_theme: %w", err)
 	}
 	return nil
 }

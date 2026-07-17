@@ -3,6 +3,7 @@ import {hoverTooltip} from '@codemirror/view'
 import type {Extension} from '@codemirror/state'
 import type {Completion, CompletionContext, CompletionResult, CompletionSource} from '@codemirror/autocomplete'
 import {db} from '../../wailsjs/go/models'
+import {sqlSnippetCompletionSource} from './sqlSnippets'
 
 // Real dialects from @codemirror/lang-sql instead of a hand-rolled keyword
 // list per engine (see the retired frontend/src/monaco/sqlLanguage.ts) —
@@ -94,7 +95,19 @@ const COLUMN_KEYWORDS = new Set([
     'SELECT', 'WHERE', 'SET', 'ON', 'AND', 'OR', 'GROUP', 'ORDER', 'HAVING', 'BY',
 ])
 
-function detectClause(textBeforeCursor: string): Clause {
+export function detectClause(textBeforeCursor: string): Clause {
+    // Scope the scan to the CURRENT statement only — a naive last-";" split
+    // (no string/PL-SQL-block awareness, same tolerance the rest of this
+    // hand-rolled analysis already accepts — see this function's own doc
+    // comment). Without this, typing right after "SELECT 1; |" still saw the
+    // PREVIOUS statement's SELECT as "the last keyword" and stayed in
+    // 'column' mode instead of 'other' — wrong for both this function's
+    // existing callers (table/column completion misbehaving at the start of
+    // a later statement in a multi-statement script) and for
+    // sqlSnippetCompletionSource (statement snippets never offered there).
+    const lastSemi = textBeforeCursor.lastIndexOf(';')
+    if (lastSemi !== -1) textBeforeCursor = textBeforeCursor.slice(lastSemi + 1)
+
     const re = /\b([a-zA-Z_]+)\b/g
     let lastKeyword: string | null = null
     let lastKeywordEnd = 0
@@ -264,6 +277,13 @@ export function sqlLanguageExtension(dbType: string | null | undefined, meta: db
         // regardless (keywordCompletionSource, unaffected by this).
         sql({dialect, upperCaseKeywords: true}),
         dialect.language.data.of({autocomplete: schemaAwareCompletionSource(meta)}),
+        // A separate `autocomplete` entry, not merged into the same source
+        // function above — CodeMirror queries every source registered on the
+        // language data and merges their results, same additive pattern
+        // Redis's own completion source already relies on for command vs.
+        // key suggestions. Generic statement snippets ("ins" → full INSERT
+        // skeleton, etc.), see sqlSnippets.ts.
+        dialect.language.data.of({autocomplete: sqlSnippetCompletionSource(dbType)}),
     ]
 }
 

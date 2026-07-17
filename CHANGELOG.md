@@ -4,6 +4,22 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-07-17
+
+### Agregado
+
+- **Consola de ejecución**: nueva pestaña "Consola" en el panel inferior (junto a Resultados/Historial), estilo DataGrip/SQL Developer — al correr un script de varios statements, cada uno aparece con su texto completo y una línea de resultado con hora (`N filas obtenidas en Xms`, `completado en Xms`, o `ERROR: <mensaje completo>`, nunca cortado). Se activa sola en cualquier script de más de un statement.
+- **Snippets genéricos en el editor SQL**: tipear `ins`/`up`/`del`/`sel`/etc. ofrece la plantilla completa (`INSERT`, `UPDATE`, `DELETE`, `SELECT`, `SELECT ... JOIN`, `CREATE TABLE`, `CASE`) con tab-stops para completar los campos; para Oracle además `DECLARE/BEGIN/END` (bloque PL/SQL anónimo) y `MERGE`.
+- **Módulo de Snippets SSH**: comandos o scripts guardados, reutilizables en cualquier sesión SSH abierta (no atados a una conexión) — botones Ejecutar (corre cada línea) y Pegar (los escribe sin confirmar la última línea), con carpetas propias para organizarlos y buscador por nombre/contenido.
+- **Temas de color para la terminal SSH**: selector visual con muestra de paleta (Dracula, Solarized Dark/Light, Gruvbox Dark, One Half Dark/Light, Tomorrow Night, GitHub Light, o Automático) — un ajuste global que aplica a todas las sesiones SSH abiertas.
+- **Restaurar backup del vault desde Configuración**: antes solo se podía restaurar un backup en la pantalla de desbloqueo inicial con el vault vacío; ahora también reemplaza un vault ya inicializado. Flujo en dos pasos — primero la clave maestra actual y elegir el archivo `.mtbackup`, y recién con el archivo ya elegido pide la clave con la que se hizo *ese* backup (nunca antes de saber a cuál corresponde), para poder reintentar sin volver a elegir el archivo si la clave es incorrecta.
+
+### Corregido
+
+- Editar una conexión SSH existente mostraba el selector genérico de motor (sin SSH, ya que está excluido a propósito de ahí) más el textarea de "pegar connection string" — ninguno de los dos aplica a SSH. El bloqueo de tipo (`typeLocked`) solo se activaba al crear una conexión nueva, nunca al editar.
+- El detector de cláusula SQL (autocompletado de tablas/columnas y snippets) no reconocía el `;` de cierre de un statement anterior — tipear al inicio de un statement nuevo, en un script de varios statements, seguía viendo el último `SELECT`/`WHERE` del statement previo.
+- Borrar una carpeta de snippets SSH no reparentaba los snippets que tenía adentro (solo subcarpetas y conexiones) — quedaban con una carpeta inexistente asignada: no se borraban, pero se volvían invisibles en la interfaz.
+
 ## [0.2.2] - 2026-07-15
 
 ### Cambiado

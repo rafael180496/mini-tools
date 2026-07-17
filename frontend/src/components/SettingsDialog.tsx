@@ -7,6 +7,7 @@ interface SettingsDialogProps {
     editorThemeId: string
     onChangeEditorThemeId: (id: string) => void
     onBackupVault: () => void
+    onRestoreVault: () => void
     onClose: () => void
 }
 
@@ -22,6 +23,7 @@ export default function SettingsDialog({
     editorThemeId,
     onChangeEditorThemeId,
     onBackupVault,
+    onRestoreVault,
     onClose,
 }: SettingsDialogProps) {
     return (
@@ -49,6 +51,14 @@ export default function SettingsDialog({
                     >
                         <Icon name="backup" size={16} />
                         Backup vault
+                    </button>
+                    <button
+                        onClick={onRestoreVault}
+                        title="Reemplaza TODO el vault actual (conexiones, snippets, historial) con el contenido de un archivo .mtbackup elegido — destructivo, pide la clave actual y la del backup, y después te pide desbloquear de nuevo"
+                        className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-error hover:bg-error-container"
+                    >
+                        <Icon name="restore" size={16} />
+                        Restaurar backup
                     </button>
                     <label
                         className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-on-surface-variant"
