@@ -611,6 +611,29 @@ export namespace sftpx {
 
 }
 
+export namespace updatecheck {
+	
+	export class Info {
+	    available: boolean;
+	    current: string;
+	    latest: string;
+	    releaseUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Info(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.current = source["current"];
+	        this.latest = source["latest"];
+	        this.releaseUrl = source["releaseUrl"];
+	    }
+	}
+
+}
+
 export namespace vault {
 	
 	export class ConnectionSummary {
@@ -766,6 +789,9 @@ export namespace vault {
 	    editorTheme: string;
 	    collapsedSidebarModules: string[];
 	    sshTerminalTheme: string;
+	    autoBackupEnabled: boolean;
+	    autoBackupIntervalHours: number;
+	    autoBackupPath: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -781,6 +807,9 @@ export namespace vault {
 	        this.editorTheme = source["editorTheme"];
 	        this.collapsedSidebarModules = source["collapsedSidebarModules"];
 	        this.sshTerminalTheme = source["sshTerminalTheme"];
+	        this.autoBackupEnabled = source["autoBackupEnabled"];
+	        this.autoBackupIntervalHours = source["autoBackupIntervalHours"];
+	        this.autoBackupPath = source["autoBackupPath"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

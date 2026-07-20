@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"mini-tools/backend/autobackup"
 	"mini-tools/backend/claudemd"
 	"mini-tools/backend/db"
 	"mini-tools/backend/explain"
@@ -20,6 +21,7 @@ import (
 	"mini-tools/backend/redisquery"
 	"mini-tools/backend/sftpx"
 	"mini-tools/backend/sshconn"
+	"mini-tools/backend/updatecheck"
 	"mini-tools/backend/vault"
 	"mini-tools/backend/vaultgate"
 )
@@ -57,6 +59,11 @@ type App struct {
 	// closing a pane never kills an in-flight transfer. See backend/sftpx.
 	sftpBrowse    *sftpx.BrowseManager
 	sftpTransfers *sftpx.TransferManager
+
+	// autoBackup ticks a periodic vault.Backup while the app is open,
+	// gated by the settings.auto_backup_* columns — see
+	// backend/autobackup's package doc.
+	autoBackup *autobackup.Scheduler
 
 	metadataMu    sync.Mutex
 	metadataCache map[string]*db.SchemaMetadata
@@ -106,6 +113,11 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.vault = store
 
+	a.autoBackup = autobackup.New(a.vault)
+	if settings, err := a.vault.GetSettings(); err == nil {
+		a.autoBackup.Reconfigure(settings.AutoBackupEnabled, settings.AutoBackupIntervalHours, settings.AutoBackupPath)
+	}
+
 	// Shared by both executors — query.EmitFunc/HistorySink and
 	// redisquery.EmitFunc/HistorySink are distinct named types with
 	// identical underlying signatures, so the same closures satisfy both
@@ -142,6 +154,9 @@ func (a *App) startup(ctx context.Context) {
 // right schema_migrations version but with every connection/history row
 // gone. See Store.Close's doc comment for the checkpoint itself.
 func (a *App) shutdown(ctx context.Context) {
+	if a.autoBackup != nil {
+		a.autoBackup.Stop()
+	}
 	a.executor.RollbackAll(ctx)
 	a.pools.CloseAll()
 	a.redisPools.CloseAll()
@@ -277,6 +292,88 @@ func (a *App) SetSshTerminalTheme(theme string) error {
 		return err
 	}
 	return a.vault.SetSshTerminalTheme(theme)
+}
+
+// refreshAutoBackupScheduler re-reads settings and hands the current
+// enabled/interval/folder to a.autoBackup — called after each
+// SetAutoBackup*/PickAutoBackupFolder succeeds, instead of threading the one
+// field that just changed by hand, so the scheduler is always driven by the
+// same row it would read on the app's next startup anyway.
+func (a *App) refreshAutoBackupScheduler() {
+	settings, err := a.vault.GetSettings()
+	if err != nil {
+		return
+	}
+	a.autoBackup.Reconfigure(settings.AutoBackupEnabled, settings.AutoBackupIntervalHours, settings.AutoBackupPath)
+}
+
+// SetAutoBackupEnabled turns the vault's automatic backup scheduler
+// (backend/autobackup) on or off. Gated behind requireUnlocked for flow
+// consistency — same reasoning as SetRememberMasterKey: it's only ever
+// invoked from inside SettingsDialog, already authenticated, not because
+// the flag itself is sensitive. The scheduler's own tick does NOT re-check
+// requireUnlocked (see backend/vault/backup.go: Backup only copies
+// already-encrypted bytes, it doesn't decrypt anything).
+func (a *App) SetAutoBackupEnabled(enabled bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := a.vault.SetAutoBackupEnabled(enabled); err != nil {
+		return err
+	}
+	a.refreshAutoBackupScheduler()
+	return nil
+}
+
+// SetAutoBackupIntervalHours persists how often the automatic backup runs
+// (1-23, validated in vault.Store.SetAutoBackupIntervalHours) and
+// reconfigures the live scheduler.
+func (a *App) SetAutoBackupIntervalHours(hours int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := a.vault.SetAutoBackupIntervalHours(hours); err != nil {
+		return err
+	}
+	a.refreshAutoBackupScheduler()
+	return nil
+}
+
+// PickAutoBackupFolder opens a native folder picker for the automatic
+// backup's destination; if the user confirms (doesn't cancel), persists the
+// folder and reconfigures the scheduler. Returns "" without an error if the
+// user cancels — same convention as PickVaultBackupFile.
+func (a *App) PickAutoBackupFolder() (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:                "Elegir carpeta para el backup automático del vault",
+		CanCreateDirectories: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("app: abriendo diálogo de carpeta: %w", err)
+	}
+	if dir == "" {
+		return "", nil
+	}
+
+	if err := a.vault.SetAutoBackupPath(dir); err != nil {
+		return "", err
+	}
+	a.refreshAutoBackupScheduler()
+	return dir, nil
+}
+
+// CheckForUpdate compares this build's version against the VERSION file
+// published in the repo — see backend/updatecheck's package doc for the
+// full read-only contract. Deliberately skips requireUnlocked and never
+// touches a.vault: it has to work the same whether the vault is locked,
+// unlocked, or (hypothetically) broken, since it's purely a network read
+// against GitHub, unrelated to vault.db.
+func (a *App) CheckForUpdate() updatecheck.Info {
+	return updatecheck.Check(appVersion)
 }
 
 // TestConnection builds a DSN from cfg and pings it, without saving

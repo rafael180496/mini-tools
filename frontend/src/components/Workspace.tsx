@@ -46,11 +46,14 @@ import {
     MoveConnectionToFolder,
     OpenSQLFileDialog,
     OpenSQLFilePath,
+    PickAutoBackupFolder,
     RenameFolder,
     ReorderFolder,
     RollbackTransaction,
     SaveSQLFile,
     SaveSQLFileAs,
+    SetAutoBackupEnabled,
+    SetAutoBackupIntervalHours,
     SetCollapsedSidebarModules,
     SetEditorHeight,
     SetEditorTheme,
@@ -60,8 +63,8 @@ import {
     SetSshTerminalTheme,
     SyncSchemaMetadata,
 } from '../../wailsjs/go/main/App'
-import {EventsOn} from '../../wailsjs/runtime'
-import {db, explain, vault} from '../../wailsjs/go/models'
+import {BrowserOpenURL, EventsOn} from '../../wailsjs/runtime'
+import {db, explain, updatecheck, vault} from '../../wailsjs/go/models'
 import type {EditorView} from '@codemirror/view'
 import {lintSQL} from '../lib/linter'
 import {lintRedisCommands} from '../lib/redisLinter'
@@ -197,9 +200,14 @@ interface WorkspaceProps {
     // session, so App.tsx must send the user back through UnlockScreen
     // instead of pretending this session is still validly unlocked.
     onLocked: () => void
+    // Result of App.tsx's one-per-session CheckForUpdate call — null while
+    // still pending or if the check failed/found nothing newer. Passed down
+    // instead of checked here because Workspace unmounts on every lock, so
+    // "check once" only means once per process if it lives in App.tsx.
+    updateInfo: updatecheck.Info | null
 }
 
-export default function Workspace({theme, onToggleTheme, onLocked}: WorkspaceProps) {
+export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: WorkspaceProps) {
     // `selected` is ONLY the sidebar's own navigation state — which
     // connection's table/key tree is expanded there. It is deliberately
     // never synced with the active editor tab in either direction (a
@@ -464,6 +472,13 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
     // above, just for the SSH terminal. One global setting shared by every
     // open terminal tab (see SshTerminalTab.tsx's terminalThemeId prop).
     const [terminalThemeId, setTerminalThemeIdState] = useState('auto')
+    // "Backup automático" toggle + its two dependent fields — mirrors
+    // settings.auto_backup_* (backend/vault/settings_repo.go). The
+    // scheduler itself lives in Go (backend/autobackup); this state is only
+    // for reflecting/editing it from SettingsDialog.
+    const [autoBackupEnabled, setAutoBackupEnabledState] = useState(false)
+    const [autoBackupIntervalHours, setAutoBackupIntervalHoursState] = useState(6)
+    const [autoBackupPath, setAutoBackupPathState] = useState('')
 
     useEffect(() => {
         let cancelled = false
@@ -485,6 +500,9 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                 if (settings.editorHeight) {
                     setEditorHeightState(Math.min(EDITOR_HEIGHT_MAX, Math.max(EDITOR_HEIGHT_MIN, settings.editorHeight)))
                 }
+                setAutoBackupEnabledState(!!settings.autoBackupEnabled)
+                setAutoBackupIntervalHoursState(settings.autoBackupIntervalHours || 6)
+                setAutoBackupPathState(settings.autoBackupPath || '')
 
                 const infos = settings.openTabs ?? []
                 if (infos.length === 0) return
@@ -588,6 +606,47 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
     function changeTerminalTheme(id: TerminalThemeId) {
         setTerminalThemeIdState(id)
         void SetSshTerminalTheme(id)
+    }
+
+    async function toggleAutoBackup(checked: boolean) {
+        if (checked && !autoBackupPath) {
+            // Turning it on without a folder chosen would leave the
+            // scheduler silently inactive (see autobackup.Scheduler.Reconfigure
+            // treating an empty path as "not configured") — ask for the
+            // folder first instead of a toggle that reads "on" but does nothing.
+            try {
+                const dir = await PickAutoBackupFolder()
+                if (!dir) return // cancelled the picker — don't turn it on
+                setAutoBackupPathState(dir)
+            } catch (err) {
+                setStatusMessage(String(err))
+                return
+            }
+        }
+        try {
+            await SetAutoBackupEnabled(checked)
+            setAutoBackupEnabledState(checked)
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
+    function changeAutoBackupInterval(hours: number) {
+        setAutoBackupIntervalHoursState(hours)
+        void SetAutoBackupIntervalHours(hours).catch((err) => setStatusMessage(String(err)))
+    }
+
+    async function pickAutoBackupFolder() {
+        try {
+            const dir = await PickAutoBackupFolder()
+            if (dir) setAutoBackupPathState(dir)
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
+    function openRepo() {
+        if (updateInfo?.releaseUrl) BrowserOpenURL(updateInfo.releaseUrl)
     }
 
     // Drag-to-resize the editor pane against the results grid below it.
@@ -1716,10 +1775,17 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
 
                         <button
                             onClick={() => setShowSettingsDialog(true)}
-                            title="Configuración: backup del vault y si recordar la clave maestra en este equipo"
-                            className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant"
+                            title={
+                                updateInfo?.available
+                                    ? `Configuración — hay una versión nueva disponible (v${updateInfo.latest}), abrí Configuración para ver el link al repositorio`
+                                    : 'Configuración: backup del vault, backup automático y si recordar la clave maestra en este equipo'
+                            }
+                            className="relative rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant"
                         >
                             <Icon name="settings" size={18} />
+                            {updateInfo?.available && (
+                                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                            )}
                         </button>
                         <button
                             onClick={onToggleTheme}
@@ -2131,6 +2197,14 @@ export default function Workspace({theme, onToggleTheme, onLocked}: WorkspacePro
                             setShowSettingsDialog(false)
                             setShowRestoreDialog(true)
                         }}
+                        autoBackupEnabled={autoBackupEnabled}
+                        onToggleAutoBackup={(checked) => void toggleAutoBackup(checked)}
+                        autoBackupIntervalHours={autoBackupIntervalHours}
+                        onChangeAutoBackupInterval={changeAutoBackupInterval}
+                        autoBackupPath={autoBackupPath}
+                        onPickAutoBackupFolder={() => void pickAutoBackupFolder()}
+                        updateInfo={updateInfo}
+                        onOpenRepo={openRepo}
                         onClose={() => setShowSettingsDialog(false)}
                     />
                 </Suspense>

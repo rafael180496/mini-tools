@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react'
 import {AppVersion} from '../../wailsjs/go/main/App'
+import {updatecheck} from '../../wailsjs/go/models'
 import Icon from './Icon'
 import Select from './Select'
 import Toggle from './Toggle'
@@ -12,10 +13,22 @@ interface SettingsDialogProps {
     onChangeEditorThemeId: (id: string) => void
     onBackupVault: () => void
     onRestoreVault: () => void
+    autoBackupEnabled: boolean
+    onToggleAutoBackup: (checked: boolean) => void
+    autoBackupIntervalHours: number
+    onChangeAutoBackupInterval: (hours: number) => void
+    autoBackupPath: string
+    onPickAutoBackupFolder: () => void
+    updateInfo: updatecheck.Info | null
+    onOpenRepo: () => void
     onClose: () => void
 }
 
 const THEME_OPTIONS = EDITOR_THEME_IDS.map((id) => ({value: id, label: EDITOR_THEME_LABELS[id]}))
+const AUTO_BACKUP_HOUR_OPTIONS = Array.from({length: 23}, (_, i) => i + 1).map((h) => ({
+    value: String(h),
+    label: h === 1 ? '1 hora' : `${h} horas`,
+}))
 
 // Configuración general de la app (no de una conexión particular) — se abre
 // desde el ícono de engranaje en la esquina del toolbar. Regla del proyecto:
@@ -30,6 +43,14 @@ export default function SettingsDialog({
     onChangeEditorThemeId,
     onBackupVault,
     onRestoreVault,
+    autoBackupEnabled,
+    onToggleAutoBackup,
+    autoBackupIntervalHours,
+    onChangeAutoBackupInterval,
+    autoBackupPath,
+    onPickAutoBackupFolder,
+    updateInfo,
+    onOpenRepo,
     onClose,
 }: SettingsDialogProps) {
     // Stamped at build time (main.appVersion). "dev" for an unstamped build.
@@ -148,13 +169,85 @@ export default function SettingsDialog({
                                 className="w-52"
                             />
                         </div>
+
+                        {/* Backup automático */}
+                        <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                            <div className="flex items-center gap-3">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                    <Icon name="schedule" size={18} />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <span className="block text-sm font-medium text-on-surface">Backup automático</span>
+                                    <span className="block truncate text-xs text-on-surface-variant">
+                                        Guarda una copia del vault cada tantas horas, en la carpeta que elijas.
+                                    </span>
+                                </div>
+                                <Toggle
+                                    checked={autoBackupEnabled}
+                                    onChange={onToggleAutoBackup}
+                                    title={
+                                        autoBackupEnabled
+                                            ? 'Desactivar el backup automático del vault'
+                                            : 'Activar el backup automático del vault — te va a pedir elegir una carpeta de destino'
+                                    }
+                                    ariaLabel="Backup automático"
+                                />
+                            </div>
+
+                            {autoBackupEnabled && (
+                                <div className="flex flex-col gap-2 border-t border-outline-variant pt-3 pl-12">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-xs text-on-surface-variant">Cada</span>
+                                        <Select
+                                            value={String(autoBackupIntervalHours)}
+                                            options={AUTO_BACKUP_HOUR_OPTIONS}
+                                            onChange={(v) => onChangeAutoBackupInterval(Number(v))}
+                                            ariaLabel="Frecuencia del backup automático"
+                                            title="Cada cuántas horas se genera un backup automático del vault (reemplaza el anterior, no se acumulan archivos)"
+                                            className="w-28"
+                                            size="sm"
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={onPickAutoBackupFolder}
+                                            title="Elegí la carpeta donde se guarda el backup automático del vault. Cada backup reemplaza al anterior (mismo nombre de archivo), no se acumulan"
+                                            className="flex items-center gap-1.5 rounded-md border border-outline-variant bg-surface px-2.5 py-1 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/60 hover:text-on-surface"
+                                        >
+                                            <Icon name="folder_open" size={14} />
+                                            Elegir carpeta
+                                        </button>
+                                        <span
+                                            className="min-w-0 flex-1 truncate text-xs text-on-surface-variant"
+                                            title={autoBackupPath || 'Todavía no elegiste una carpeta'}
+                                        >
+                                            {autoBackupPath || 'Sin carpeta elegida'}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </section>
                 </div>
 
                 {/* Footer */}
                 <div className="flex items-center justify-center gap-1.5 border-t border-outline-variant px-5 py-2.5 text-xs text-on-surface-variant">
-                    <Icon name="info" size={14} />
-                    mini-tools {version ? `v${version}` : '—'}
+                    {updateInfo?.available ? (
+                        <button
+                            onClick={onOpenRepo}
+                            title={`Hay una versión nueva disponible (v${updateInfo.latest}, la tuya es v${version || '—'}) — clic para abrir el repositorio en el navegador y descargarla`}
+                            className="flex items-center gap-1.5 text-primary hover:underline"
+                        >
+                            <Icon name="new_releases" size={14} />
+                            mini-tools v{version} · Nueva versión v{updateInfo.latest} disponible
+                            <Icon name="open_in_new" size={12} />
+                        </button>
+                    ) : (
+                        <>
+                            <Icon name="info" size={14} />
+                            mini-tools {version ? `v${version}` : '—'}
+                        </>
+                    )}
                 </div>
             </div>
         </div>

@@ -70,7 +70,32 @@ type Settings struct {
 	// instead of the SQL editor. One global setting, not per-connection —
 	// same reasoning as EditorTheme.
 	SshTerminalTheme string `json:"sshTerminalTheme"`
+	// AutoBackupEnabled reflects the "Backup automático" toggle — whether
+	// backend/autobackup.Scheduler should be ticking for this install. See
+	// SetAutoBackupEnabled.
+	AutoBackupEnabled bool `json:"autoBackupEnabled"`
+	// AutoBackupIntervalHours is how often the automatic backup runs, in
+	// hours (see MinAutoBackupIntervalHours/MaxAutoBackupIntervalHours).
+	// Validated in SetAutoBackupIntervalHours, not here.
+	AutoBackupIntervalHours int `json:"autoBackupIntervalHours"`
+	// AutoBackupPath is the destination folder for the automatic backup —
+	// the scheduler always writes the same fixed filename there, replacing
+	// the previous run (unlike the timestamped manual backup from
+	// BackupVault). Empty until the user picks a folder via
+	// PickAutoBackupFolder; the scheduler treats an empty path as "not
+	// configured yet" and stays stopped even if AutoBackupEnabled is true.
+	AutoBackupPath string `json:"autoBackupPath"`
 }
+
+// AutoBackupIntervalHours must fall within these bounds — the scheduler
+// (backend/autobackup) ticks on an interval that has to be a positive,
+// bounded number of hours to make sense as a "every X hours" <select>
+// (1..23, not 24 — "every 24h" and "every 0h/disabled" would be
+// redundant/ambiguous).
+const (
+	MinAutoBackupIntervalHours = 1
+	MaxAutoBackupIntervalHours = 23
+)
 
 // GetSettings returns the single settings row, seeded with defaults by Open.
 func (s *Store) GetSettings() (Settings, error) {
@@ -82,10 +107,13 @@ func (s *Store) GetSettings() (Settings, error) {
 	var editorTheme string
 	var collapsedModulesJSON sql.NullString
 	var sshTerminalTheme string
+	var autoBackupEnabled bool
+	var autoBackupIntervalHours int
+	var autoBackupPath string
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -121,6 +149,8 @@ func (s *Store) GetSettings() (Settings, error) {
 		EditorHeight: editorHeight, RememberMasterKey: rememberMasterKey,
 		EditorTheme: editorTheme, CollapsedSidebarModules: collapsedModules,
 		SshTerminalTheme: sshTerminalTheme,
+		AutoBackupEnabled: autoBackupEnabled, AutoBackupIntervalHours: autoBackupIntervalHours,
+		AutoBackupPath: autoBackupPath,
 	}, nil
 }
 
@@ -188,6 +218,42 @@ func (s *Store) SetEditorTheme(theme string) error {
 func (s *Store) SetSshTerminalTheme(theme string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET ssh_terminal_theme = ? WHERE id = 1`, theme); err != nil {
 		return fmt.Errorf("vault: guardando ssh_terminal_theme: %w", err)
+	}
+	return nil
+}
+
+// SetAutoBackupEnabled persists the "Backup automático" toggle. Storage
+// only — App.SetAutoBackupEnabled is responsible for telling
+// backend/autobackup.Scheduler to start/stop after this succeeds.
+func (s *Store) SetAutoBackupEnabled(enabled bool) error {
+	if _, err := s.db.Exec(`UPDATE settings SET auto_backup_enabled = ? WHERE id = 1`, enabled); err != nil {
+		return fmt.Errorf("vault: guardando auto_backup_enabled: %w", err)
+	}
+	return nil
+}
+
+// SetAutoBackupIntervalHours persists how often the automatic backup runs.
+// Unlike SetEditorHeight/SetEditorTheme (storage only), this DOES validate
+// the range: an out-of-range value would feed
+// autobackup.Scheduler.Reconfigure a nonsensical duration — 0 or negative
+// hours panics time.NewTicker.
+func (s *Store) SetAutoBackupIntervalHours(hours int) error {
+	if hours < MinAutoBackupIntervalHours || hours > MaxAutoBackupIntervalHours {
+		return fmt.Errorf("vault: intervalo de backup automático inválido: %d (debe ser entre %d y %d horas)", hours, MinAutoBackupIntervalHours, MaxAutoBackupIntervalHours)
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET auto_backup_interval_hours = ? WHERE id = 1`, hours); err != nil {
+		return fmt.Errorf("vault: guardando auto_backup_interval_hours: %w", err)
+	}
+	return nil
+}
+
+// SetAutoBackupPath persists the automatic backup's destination folder. No
+// existence check here — App.PickAutoBackupFolder only ever passes a path
+// the OS's native picker just returned, which by construction exists and is
+// a directory.
+func (s *Store) SetAutoBackupPath(path string) error {
+	if _, err := s.db.Exec(`UPDATE settings SET auto_backup_path = ? WHERE id = 1`, path); err != nil {
+		return fmt.Errorf("vault: guardando auto_backup_path: %w", err)
 	}
 	return nil
 }

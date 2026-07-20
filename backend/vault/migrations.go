@@ -184,6 +184,20 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 15,
+		desc:    "agrega settings.auto_backup_enabled/auto_backup_interval_hours/auto_backup_path para el backup automático periódico del vault",
+		apply: func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN auto_backup_enabled INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN auto_backup_interval_hours INTEGER NOT NULL DEFAULT 6`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN auto_backup_path TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

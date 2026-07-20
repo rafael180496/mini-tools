@@ -10,17 +10,17 @@ ningún lado — solo empaqueta el `.exe` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.2.5 |
-| Archivo | `mini-tools-v0.2.5-windows-amd64.exe` |
+| Versión | 0.3.0 |
+| Archivo | `mini-tools-v0.3.0-windows-amd64.exe` |
 | Tamaño | ~46 MB |
-| SHA-256 | `6dcb382a42bc6c9ee00b54d3eb76ef6c12e5dfd973edac25bf33f0a47923dc08` |
-| Arquitectura | `amd64` (x86-64) |
+| SHA-256 | `df8b12b5359d1457156c88d19e7434febcf38cea76a691f37f537d1660c9e8b1` |
+| Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v0.2.5-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v0.3.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -62,7 +62,7 @@ verdad y lo confirme acá.
 
 ## Instalación
 
-1. Descargar `mini-tools-v0.2.5-windows-amd64.exe`.
+1. Descargar `mini-tools-v0.3.0-windows-amd64.exe`.
 2. Doble click para correrlo — no hace falta instalar nada.
 3. Si SmartScreen bloquea la app: clic en "Más información" → "Ejecutar
    de todas formas".

@@ -4,6 +4,17 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-20
+
+### Agregado
+
+- **Backup automático del vault**: nuevo toggle en Configuración → Preferencias que, activado, guarda una copia del vault cada 1 a 23 horas (elegible con un select) en una carpeta elegida con el picker nativo de carpetas — cada corrida reemplaza el archivo anterior (`mini-tools-auto-backup.mtbackup`), a diferencia del backup manual que arma un archivo con timestamp por corrida. Corre en segundo plano (un ticker por proceso, arrancado al iniciar la app si ya estaba activado y detenido al cerrarla) y no vuelve a pedir la clave maestra en cada corrida — el backup a nivel de archivo solo copia bytes ya cifrados, no necesita desbloquear nada.
+- **Aviso de nueva versión disponible**: al abrir la app se compara la versión del binario contra el archivo `VERSION` publicado en el repo (chequeo de solo lectura por HTTP contra la API pública de GitHub, con timeout corto y fallo silencioso si no hay red — nunca toca el vault ni bloquea el arranque). Si hay una versión más nueva, aparece un punto sobre el ícono de Configuración y, dentro del modal, la línea de versión del pie se vuelve un link que abre el repositorio en el navegador.
+
+### Corregido
+
+- El menú "Recientes" ya no recorta el nombre del archivo: antes cada entrada mostraba el path completo en una sola línea truncada, y como el truncado corta por el final se perdía justo el nombre (todos se veían iguales, `…/logs/…`). Ahora cada reciente muestra el nombre del archivo en una línea prominente y la carpeta debajo como texto secundario truncado; el menú es un poco más ancho (288→360 px) y el tooltip sigue mostrando el path completo.
+
 ## [0.2.5] - 2026-07-17
 
 ### Cambiado

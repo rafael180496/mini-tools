@@ -8,7 +8,16 @@ interface RecentFilesMenuProps {
     onOpen: (path: string) => void
 }
 
-const MENU_WIDTH = 288 // w-72
+const MENU_WIDTH = 360
+
+// Splits a path into its directory and file name, handling both unix and
+// windows separators so the file name (the useful part) is never truncated
+// away like it was when the whole path was rendered on a single truncated line.
+function splitPath(path: string): {dir: string; name: string} {
+    const idx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+    if (idx < 0) return {dir: '', name: path}
+    return {dir: path.slice(0, idx), name: path.slice(idx + 1)}
+}
 
 // Spec: "click en recent reabre tab directo" + "limpiar historial: botón
 // manual". A simple dropdown, opened on demand rather than always fetching.
@@ -61,20 +70,26 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
                             className="z-50 rounded-lg border border-outline-variant bg-surface-container-high p-1 text-on-surface shadow-lg"
                         >
                             {files.length === 0 && <p className="p-2 text-xs text-on-surface-variant">Sin archivos recientes.</p>}
-                            {files.map((f) => (
-                                <button
-                                    key={f.path}
-                                    onClick={() => {
-                                        onOpen(f.path)
-                                        setOpen(false)
-                                    }}
-                                    className="flex w-full items-center gap-2 truncate rounded px-2 py-1 text-left font-mono text-xs text-on-surface hover:bg-surface-variant"
-                                    title={f.path}
-                                >
-                                    <Icon name="description" size={14} className="shrink-0 opacity-60" />
-                                    <span className="truncate">{f.path}</span>
-                                </button>
-                            ))}
+                            {files.map((f) => {
+                                const {dir, name} = splitPath(f.path)
+                                return (
+                                    <button
+                                        key={f.path}
+                                        onClick={() => {
+                                            onOpen(f.path)
+                                            setOpen(false)
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-surface-variant"
+                                        title={f.path}
+                                    >
+                                        <Icon name="description" size={14} className="shrink-0 opacity-60" />
+                                        <span className="flex min-w-0 flex-col">
+                                            <span className="truncate font-mono text-xs text-on-surface">{name}</span>
+                                            {dir && <span className="truncate text-[11px] text-on-surface-variant">{dir}</span>}
+                                        </span>
+                                    </button>
+                                )
+                            })}
                             {files.length > 0 && (
                                 <button
                                     onClick={() => {

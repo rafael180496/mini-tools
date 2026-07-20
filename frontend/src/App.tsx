@@ -1,12 +1,14 @@
 import {useEffect, useState} from 'react'
 import UnlockScreen from './components/lock/UnlockScreen'
 import Workspace from './components/Workspace'
-import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackupFirstRun, TryAutoUnlock} from '../wailsjs/go/main/App'
+import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackupFirstRun, TryAutoUnlock, CheckForUpdate} from '../wailsjs/go/main/App'
+import {updatecheck} from '../wailsjs/go/models'
 import {useTheme} from './hooks/useTheme'
 
 function App() {
     const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
     const [unlocked, setUnlocked] = useState(false)
+    const [updateInfo, setUpdateInfo] = useState<updatecheck.Info | null>(null)
     const {theme, toggleTheme} = useTheme()
 
     useEffect(() => {
@@ -22,6 +24,19 @@ function App() {
             setIsInitialized(initialized)
         }
         void init()
+    }, [])
+
+    useEffect(() => {
+        // Lives here (not inside Workspace) on purpose: Workspace unmounts
+        // every time the vault gets locked (onLocked below), so a check
+        // placed there would really run once per unlock, not once per app
+        // session. App never unmounts while the process is alive, so this
+        // truly runs once. A slow/absent network must never delay
+        // UnlockScreen/Workspace — this effect is independent of the
+        // init() one above.
+        CheckForUpdate()
+            .then(setUpdateInfo)
+            .catch(() => {})
     }, [])
 
     if (isInitialized === null) {
@@ -54,7 +69,7 @@ function App() {
         )
     }
 
-    return <Workspace theme={theme} onToggleTheme={toggleTheme} onLocked={() => setUnlocked(false)} />
+    return <Workspace theme={theme} onToggleTheme={toggleTheme} onLocked={() => setUnlocked(false)} updateInfo={updateInfo} />
 }
 
 export default App

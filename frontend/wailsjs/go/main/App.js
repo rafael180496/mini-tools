@@ -34,6 +34,10 @@ export function CancelSftpTransfer(arg1) {
   return window['go']['main']['App']['CancelSftpTransfer'](arg1);
 }
 
+export function CheckForUpdate() {
+  return window['go']['main']['App']['CheckForUpdate']();
+}
+
 export function ChmodSftpPath(arg1, arg2, arg3) {
   return window['go']['main']['App']['ChmodSftpPath'](arg1, arg2, arg3);
 }
@@ -246,6 +250,10 @@ export function OpenSftpBrowse(arg1, arg2) {
   return window['go']['main']['App']['OpenSftpBrowse'](arg1, arg2);
 }
 
+export function PickAutoBackupFolder() {
+  return window['go']['main']['App']['PickAutoBackupFolder']();
+}
+
 export function PickVaultBackupFile(arg1) {
   return window['go']['main']['App']['PickVaultBackupFile'](arg1);
 }
@@ -316,6 +324,14 @@ export function SaveSQLFile(arg1, arg2) {
 
 export function SaveSQLFileAs(arg1, arg2) {
   return window['go']['main']['App']['SaveSQLFileAs'](arg1, arg2);
+}
+
+export function SetAutoBackupEnabled(arg1) {
+  return window['go']['main']['App']['SetAutoBackupEnabled'](arg1);
+}
+
+export function SetAutoBackupIntervalHours(arg1) {
+  return window['go']['main']['App']['SetAutoBackupIntervalHours'](arg1);
 }
 
 export function SetCollapsedSidebarModules(arg1) {
