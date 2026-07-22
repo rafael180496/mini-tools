@@ -28,9 +28,10 @@ interface ConnectionDialogProps {
     initialDbType?: DBType
 }
 
-type DBType = 'sqlite' | 'postgres' | 'oracle' | 'redis' | 'ssh'
+type DBType = 'sqlite' | 'postgres' | 'oracle' | 'sqlserver' | 'mongodb' | 'redis' | 'ssh'
 type OracleMode = 'service_name' | 'easy_connect' | 'sid' | 'tns'
 type RedisMode = 'standalone' | 'cluster' | 'sentinel'
+type MongoMode = 'standard' | 'srv'
 type SSHAuthMethod = 'password' | 'key'
 
 const SSL_MODES = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full']
@@ -45,6 +46,12 @@ function requiredFields(dbType: DBType, oracleMode: OracleMode, redisMode: Redis
             return ['path']
         case 'postgres':
             return ['host', 'user', 'dbname']
+        case 'sqlserver':
+            return ['host', 'user', 'dbname']
+        case 'mongodb':
+            // user/password optional (many Mongo servers run without auth,
+            // like Redis); database optional (the tree browses every DB).
+            return ['host']
         case 'oracle': {
             const base = ['host', 'user']
             if (oracleMode === 'sid') return [...base, 'sid']
@@ -101,6 +108,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
     const typeLocked = dbType === 'ssh' || (!editingId && !!initialDbType)
     const [oracleMode, setOracleMode] = useState<OracleMode>('service_name')
     const [redisMode, setRedisMode] = useState<RedisMode>('standalone')
+    const [mongoMode, setMongoMode] = useState<MongoMode>('standard')
     const [sshAuthMethod, setSshAuthMethod] = useState<SSHAuthMethod>('password')
     const [params, setParams] = useState<Record<string, string>>({})
     const [pingStatus, setPingStatus] = useState<'idle' | 'testing' | 'ok' | 'failed'>('idle')
@@ -135,6 +143,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                 const {mode, auth, ...rest} = info.params
                 if (mode && info.dbType === 'oracle') setOracleMode(mode as OracleMode)
                 if (mode && info.dbType === 'redis') setRedisMode(mode as RedisMode)
+                if (mode && info.dbType === 'mongodb') setMongoMode(mode as MongoMode)
                 if (auth && info.dbType === 'ssh') setSshAuthMethod(auth as SSHAuthMethod)
                 setParams(rest)
             })
@@ -184,6 +193,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
         setDbType(parsed.dbType)
         if (parsed.oracleMode) setOracleMode(parsed.oracleMode)
         if (parsed.redisMode) setRedisMode(parsed.redisMode)
+        if (parsed.mongoMode) setMongoMode(parsed.mongoMode)
         setParams(parsed.params)
         setPingStatus('idle')
         setPasteHint(`Detectado: ${parsed.dbType === 'oracle' ? `Oracle (${parsed.oracleMode})` : parsed.dbType}`)
@@ -201,6 +211,8 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
             if (redisMode === 'sentinel' && effectiveParams.sentinels) {
                 effectiveParams.sentinels = normalizeNodeList(effectiveParams.sentinels)
             }
+        } else if (dbType === 'mongodb') {
+            effectiveParams = {...params, mode: mongoMode}
         } else if (dbType === 'ssh') {
             effectiveParams = {...params, auth: sshAuthMethod}
         }
@@ -228,7 +240,9 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
         (sshAuthMethod === 'password' ? !(params.password ?? '').trim() : !(params.privateKey ?? '').trim())
     const passwordUnknownWhileEditing =
         !!editingId &&
-        ((dbType === 'postgres' || dbType === 'oracle') ? !(params.password ?? '').trim() : sshCredentialBlank)
+        ((dbType === 'postgres' || dbType === 'oracle' || dbType === 'sqlserver')
+            ? !(params.password ?? '').trim()
+            : sshCredentialBlank)
 
     async function testConnection() {
         setPingStatus('testing')
@@ -244,7 +258,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
             // "esq" button (SchemaPickerDialog), and SQLite has nothing to
             // restrict (see backend/db/metadata.go's ListSchemas doc
             // comment).
-            if (!editingId && (dbType === 'postgres' || dbType === 'oracle')) {
+            if (!editingId && (dbType === 'postgres' || dbType === 'oracle' || dbType === 'sqlserver')) {
                 setSchemasLoading(true)
                 try {
                     const schemas = await ListSchemasForNewConnection(cfg())
@@ -254,7 +268,12 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                     // Oracle does; Postgres: 'public') instead of everything
                     // — a catalog with dozens of schemas shouldn't default
                     // to a full unrestricted scan.
-                    const defaultSchema = dbType === 'oracle' ? (params.user ?? '').toUpperCase() : 'public'
+                    const defaultSchema =
+                        dbType === 'oracle'
+                            ? (params.user ?? '').toUpperCase()
+                            : dbType === 'sqlserver'
+                              ? 'dbo'
+                              : 'public'
                     setSelectedSchemas(new Set((schemas ?? []).includes(defaultSchema) ? [defaultSchema] : []))
                 } catch {
                     // Best-effort: if listing schemas fails for some reason,
@@ -316,7 +335,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
             <form
                 onSubmit={handleSubmit}
                 onClick={(e) => e.stopPropagation()}
-                className="flex max-h-[92vh] w-104 max-w-[94vw] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high text-on-surface shadow-lg"
+                className="flex max-h-[92vh] w-120 max-w-[94vw] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high text-on-surface shadow-lg"
             >
                 {/* Header (fijo) */}
                 <div className="flex items-center gap-3 border-b border-outline-variant px-6 py-4">
@@ -393,15 +412,18 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                 ) : (
                     <div className={labelClass}>
                         Tipo
-                        <div className="flex gap-2">
-                            {/* SSH is deliberately excluded from this generic
-                                picker — it lives in its own sidebar module
-                                (SshConnectionTree.tsx) with its own "+" that
-                                always opens this dialog type-locked
-                                (initialDbType='ssh', see typeLocked above).
-                                A connection created 'ssh' from here would
-                                never show up in "Conexiones" (see
-                                ConnectionTree.tsx's dbConnections filter). */}
+                        {/* A responsive grid, not a single flex row — with 6
+                            engines a fixed row overflowed the modal and clipped
+                            the last chip (Redis). 3 columns = 2 tidy rows that
+                            always fit; labels truncate so a wide name never
+                            forces horizontal overflow. SSH is deliberately
+                            excluded from this generic picker — it lives in its
+                            own sidebar module (SshConnectionTree.tsx) with its
+                            own "+" that opens this dialog type-locked
+                            (initialDbType='ssh'); a connection created 'ssh'
+                            from here would never show up in "Conexiones" (see
+                            ConnectionTree.tsx's dbConnections filter). */}
+                        <div className="grid grid-cols-3 gap-2">
                             {DB_TYPES.filter((t) => t !== 'ssh').map((t) => (
                                 <button
                                     key={t}
@@ -413,14 +435,14 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                             ? 'No se puede cambiar el motor de una conexión existente — creá una nueva'
                                             : `Usar ${dbTypeLabel(t)}`
                                     }
-                                    className={`flex flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2 text-xs disabled:opacity-50 disabled:hover:bg-transparent ${
+                                    className={`flex min-w-0 flex-col items-center gap-1.5 rounded-lg border px-1 py-2.5 text-xs transition-colors disabled:opacity-50 disabled:hover:bg-transparent ${
                                         dbType === t
                                             ? 'border-primary bg-primary-container text-on-primary-container'
                                             : 'border-outline text-on-surface-variant hover:bg-surface-variant'
                                     }`}
                                 >
-                                    <DbTypeIcon dbType={t} size={20} />
-                                    {dbTypeLabel(t)}
+                                    <DbTypeIcon dbType={t} size={22} />
+                                    <span className="w-full truncate text-center">{dbTypeLabel(t)}</span>
                                 </button>
                             ))}
                         </div>
@@ -497,6 +519,87 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className="w-full"
                             />
                         </div>
+                    </>
+                )}
+
+                {dbType === 'sqlserver' && (
+                    <>
+                        <div className="flex gap-2">
+                            <label className={`${labelClass} flex-1`}>
+                                Host
+                                <input
+                                    value={params.host ?? ''}
+                                    onChange={(e) => setParam('host', e.target.value)}
+                                    placeholder="localhost"
+                                    className={inputClass}
+                                />
+                            </label>
+                            <label className={labelClass} style={{width: '5rem'}}>
+                                Puerto
+                                <input
+                                    value={params.port ?? ''}
+                                    onChange={(e) => setParam('port', e.target.value)}
+                                    placeholder="1433"
+                                    title="Puerto TCP (por defecto 1433). Se ignora si indicás una instancia con nombre."
+                                    className={inputClass}
+                                />
+                            </label>
+                        </div>
+                        <label className={labelClass}>
+                            Instancia (opcional)
+                            <input
+                                value={params.instance ?? ''}
+                                onChange={(e) => setParam('instance', e.target.value)}
+                                placeholder="SQLEXPRESS"
+                                title="Nombre de instancia con nombre. Si se indica, el puerto lo resuelve el SQL Server Browser y el campo Puerto se ignora."
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className={labelClass}>
+                            Usuario
+                            <input
+                                value={params.user ?? ''}
+                                onChange={(e) => setParam('user', e.target.value)}
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className={labelClass}>
+                            Password
+                            <input
+                                type="password"
+                                value={params.password ?? ''}
+                                onChange={(e) => setParam('password', e.target.value)}
+                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className={labelClass}>
+                            Base de datos
+                            <input
+                                value={params.dbname ?? ''}
+                                onChange={(e) => setParam('dbname', e.target.value)}
+                                className={inputClass}
+                            />
+                        </label>
+                        <div className={labelClass}>
+                            Encriptación
+                            <Select
+                                value={params.encrypt ?? 'disable'}
+                                options={['disable', 'false', 'true', 'strict'].map((m) => ({value: m, label: m}))}
+                                onChange={(v) => setParam('encrypt', v)}
+                                ariaLabel="Modo de encriptación"
+                                className="w-full"
+                            />
+                        </div>
+                        <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+                            <input
+                                type="checkbox"
+                                checked={(params.trustServerCertificate ?? '') === 'true'}
+                                onChange={(e) => setParam('trustServerCertificate', e.target.checked ? 'true' : '')}
+                                title="Confiar en el certificado del servidor sin validarlo (útil con certificados autofirmados en redes internas). No recomendado fuera de una red controlada."
+                            />
+                            Confiar en el certificado del servidor
+                        </label>
                     </>
                 )}
 
@@ -590,6 +693,90 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 />
                             </label>
                         )}
+                    </>
+                )}
+
+                {dbType === 'mongodb' && (
+                    <>
+                        <div className={labelClass}>
+                            Modo
+                            <Select
+                                value={mongoMode}
+                                options={[
+                                    {value: 'standard', label: 'Standard (mongodb://)'},
+                                    {value: 'srv', label: 'SRV / Atlas (mongodb+srv://)'},
+                                ]}
+                                onChange={(v) => setMongoMode(v as MongoMode)}
+                                ariaLabel="Modo de conexión MongoDB"
+                                className="w-full"
+                            />
+                        </div>
+                        <div className="flex gap-2">
+                            <label className={`${labelClass} flex-1`}>
+                                Host
+                                <input value={params.host ?? ''} onChange={(e) => setParam('host', e.target.value)} placeholder="localhost" className={inputClass} />
+                            </label>
+                            {mongoMode === 'standard' && (
+                                <label className={labelClass} style={{width: '5rem'}}>
+                                    Puerto
+                                    <input value={params.port ?? ''} onChange={(e) => setParam('port', e.target.value)} placeholder="27017" className={inputClass} />
+                                </label>
+                            )}
+                        </div>
+                        {mongoMode === 'standard' && (
+                            <label className={labelClass}>
+                                Hosts (replica set, opcional)
+                                <input
+                                    value={params.hosts ?? ''}
+                                    onChange={(e) => setParam('hosts', e.target.value)}
+                                    placeholder="h1:27017,h2:27017"
+                                    title="Lista separada por comas para un replica set / mongos. Si se completa, reemplaza Host/Puerto."
+                                    className={inputClass}
+                                />
+                            </label>
+                        )}
+                        <label className={labelClass}>
+                            Usuario (opcional)
+                            <input value={params.user ?? ''} onChange={(e) => setParam('user', e.target.value)} className={inputClass} />
+                        </label>
+                        <label className={labelClass}>
+                            Password (opcional)
+                            <input
+                                type="password"
+                                value={params.password ?? ''}
+                                onChange={(e) => setParam('password', e.target.value)}
+                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className={labelClass}>
+                            Base de datos (opcional)
+                            <input
+                                value={params.database ?? ''}
+                                onChange={(e) => setParam('database', e.target.value)}
+                                title="Base por defecto. El árbol lateral navega todas las bases igual."
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className={labelClass}>
+                            authSource (opcional)
+                            <input value={params.authSource ?? ''} onChange={(e) => setParam('authSource', e.target.value)} placeholder="admin" className={inputClass} />
+                        </label>
+                        {mongoMode === 'standard' && (
+                            <label className={labelClass}>
+                                replicaSet (opcional)
+                                <input value={params.replicaSet ?? ''} onChange={(e) => setParam('replicaSet', e.target.value)} className={inputClass} />
+                            </label>
+                        )}
+                        <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+                            <input
+                                type="checkbox"
+                                checked={(params.tls ?? '') === 'true'}
+                                onChange={(e) => setParam('tls', e.target.checked ? 'true' : '')}
+                                title="Conectar con TLS/SSL."
+                            />
+                            TLS
+                        </label>
                     </>
                 )}
 

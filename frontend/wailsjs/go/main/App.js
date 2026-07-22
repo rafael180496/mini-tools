@@ -22,6 +22,10 @@ export function BeginTransaction(arg1) {
   return window['go']['main']['App']['BeginTransaction'](arg1);
 }
 
+export function CancelMongoQuery(arg1) {
+  return window['go']['main']['App']['CancelMongoQuery'](arg1);
+}
+
 export function CancelQuery(arg1) {
   return window['go']['main']['App']['CancelQuery'](arg1);
 }
@@ -62,6 +66,10 @@ export function CommitTransaction(arg1) {
   return window['go']['main']['App']['CommitTransaction'](arg1);
 }
 
+export function CountMongoDocuments(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CountMongoDocuments'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateFolder'](arg1, arg2, arg3);
 }
@@ -76,6 +84,10 @@ export function DeleteConnection(arg1) {
 
 export function DeleteFolder(arg1) {
   return window['go']['main']['App']['DeleteFolder'](arg1);
+}
+
+export function DeleteMongoDocument(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeleteMongoDocument'](arg1, arg2, arg3, arg4);
 }
 
 export function DeleteQueryHistoryEntry(arg1) {
@@ -100,6 +112,10 @@ export function DeleteSshSnippet(arg1) {
 
 export function DisconnectConnection(arg1) {
   return window['go']['main']['App']['DisconnectConnection'](arg1);
+}
+
+export function ExecuteMongoQuery(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ExecuteMongoQuery'](arg1, arg2, arg3, arg4);
 }
 
 export function ExecuteQuery(arg1, arg2, arg3, arg4) {
@@ -140,6 +156,14 @@ export function GenerateProjectDocs(arg1, arg2, arg3) {
 
 export function GetConnectionForEdit(arg1) {
   return window['go']['main']['App']['GetConnectionForEdit'](arg1);
+}
+
+export function GetMongoDefaultDatabase(arg1) {
+  return window['go']['main']['App']['GetMongoDefaultDatabase'](arg1);
+}
+
+export function GetMongoIndexes(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetMongoIndexes'](arg1, arg2, arg3);
 }
 
 export function GetObjectDDL(arg1, arg2, arg3, arg4, arg5) {
@@ -188,6 +212,18 @@ export function ListExplainHistory(arg1, arg2) {
 
 export function ListFolders() {
   return window['go']['main']['App']['ListFolders']();
+}
+
+export function ListMongoCollections(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ListMongoCollections'](arg1, arg2, arg3);
+}
+
+export function ListMongoDatabases(arg1) {
+  return window['go']['main']['App']['ListMongoDatabases'](arg1);
+}
+
+export function ListMongoDocuments(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['ListMongoDocuments'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function ListQueryHistory(arg1, arg2) {
@@ -294,6 +330,10 @@ export function ReorderFolder(arg1, arg2) {
   return window['go']['main']['App']['ReorderFolder'](arg1, arg2);
 }
 
+export function ReplaceMongoDocument(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ReplaceMongoDocument'](arg1, arg2, arg3, arg4);
+}
+
 export function ResizeSSHTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSHTerminal'](arg1, arg2, arg3);
 }
@@ -332,6 +372,14 @@ export function SetAutoBackupEnabled(arg1) {
 
 export function SetAutoBackupIntervalHours(arg1) {
   return window['go']['main']['App']['SetAutoBackupIntervalHours'](arg1);
+}
+
+export function SetAutoSaveEnabled(arg1) {
+  return window['go']['main']['App']['SetAutoSaveEnabled'](arg1);
+}
+
+export function SetAutoSaveIntervalSeconds(arg1) {
+  return window['go']['main']['App']['SetAutoSaveIntervalSeconds'](arg1);
 }
 
 export function SetCollapsedSidebarModules(arg1) {

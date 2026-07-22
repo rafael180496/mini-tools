@@ -6,6 +6,7 @@ import ConfirmDialog from '../ConfirmDialog'
 import DbTypeIcon from '../DbTypeIcon'
 import Icon from '../Icon'
 import RedisKeyTree from '../redis/RedisKeyTree'
+import MongoCollectionTree from '../mongo/MongoCollectionTree'
 import SidebarModule from './SidebarModule'
 import SchemaObjectsList from './SchemaObjectsList'
 import MoveToFolderMenu, {flattenForMenu} from './MoveToFolderMenu'
@@ -38,6 +39,9 @@ interface ConnectionTreeProps {
     // c.dbType === 'redis') opens the value inspector via this instead of
     // onOpenTable.
     onOpenRedisKey: (connId: string, key: string) => void
+    onOpenMongoCollection: (connId: string, database: string, collection: string) => void
+    onSelectMongoDatabase: (connId: string, database: string) => void
+    onOpenMongoBrowser: (conn: vault.ConnectionSummary) => void
     // Opens (or focuses) the Redis Browser tab (full-tab key list + editable
     // detail panel, see RedisBrowserTab.tsx) for a Redis connection —
     // additive to the inline RedisKeyTree already shown below when this row
@@ -111,6 +115,9 @@ export default function ConnectionTree({
     onOpenTable,
     onOpenObjectDDL,
     onOpenRedisKey,
+    onOpenMongoCollection,
+    onSelectMongoDatabase,
+    onOpenMongoBrowser,
     onOpenRedisBrowser,
     activeTabConnectionId,
     onExportConnectionConfig,
@@ -386,11 +393,16 @@ export default function ConnectionTree({
                         </button>
                         <button
                             onClick={() => selectConnection(c)}
-                            onDoubleClick={() => c.dbType === 'redis' && onOpenRedisBrowser(c)}
+                            onDoubleClick={() => {
+                                if (c.dbType === 'redis') onOpenRedisBrowser(c)
+                                else if (c.dbType === 'mongodb') onOpenMongoBrowser(c)
+                            }}
                             title={
                                 c.dbType === 'redis'
                                     ? `Click: seleccionar "${c.name}" y ver sus keys acá abajo. Doble click: abrir el Redis Browser en una pestaña completa.`
-                                    : `Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`
+                                    : c.dbType === 'mongodb'
+                                      ? `Click: seleccionar "${c.name}" y ver sus bases/colecciones acá abajo. Doble click: abrir el MongoDB Browser en una pestaña completa.`
+                                      : `Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`
                             }
                             className="flex min-w-0 flex-1 items-center gap-2 text-left"
                         >
@@ -435,7 +447,19 @@ export default function ConnectionTree({
                                 <Icon name="open_in_new" size={15} />
                             </button>
                         )}
-                        {isSelected && c.dbType !== 'redis' && (
+                        {c.dbType === 'mongodb' && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    onOpenMongoBrowser(c)
+                                }}
+                                title="Abrir el MongoDB Browser en una pestaña — explorador de documentos con filtro, asistente y edición"
+                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                            >
+                                <Icon name="open_in_new" size={15} />
+                            </button>
+                        )}
+                        {isSelected && c.dbType !== 'redis' && c.dbType !== 'mongodb' && (
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
@@ -447,7 +471,7 @@ export default function ConnectionTree({
                                 <Icon name="code" size={15} />
                             </button>
                         )}
-                        {(c.dbType === 'postgres' || c.dbType === 'oracle') && (
+                        {(c.dbType === 'postgres' || c.dbType === 'oracle' || c.dbType === 'sqlserver') && (
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
@@ -491,14 +515,24 @@ export default function ConnectionTree({
                     />
                 )}
 
-                {isExpanded && c.dbType !== 'redis' && metadataLoading && (
+                {isExpanded && c.dbType === 'mongodb' && (
+                    <MongoCollectionTree
+                        connId={c.id}
+                        reloadToken={reloadToken}
+                        onOpenCollection={(database, collection) => onOpenMongoCollection(c.id, database, collection)}
+                        onSelectDatabase={(database) => onSelectMongoDatabase(c.id, database)}
+                        isActiveTabConnection={c.id === activeTabConnectionId}
+                    />
+                )}
+
+                {isExpanded && c.dbType !== 'redis' && c.dbType !== 'mongodb' && metadataLoading && (
                     <div className="flex items-center gap-2 py-2 pl-7 text-xs text-on-surface-variant">
                         <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary" />
                         Cargando tablas…
                     </div>
                 )}
 
-                {isExpanded && c.dbType !== 'redis' && !metadataLoading && metadata && (
+                {isExpanded && c.dbType !== 'redis' && c.dbType !== 'mongodb' && !metadataLoading && metadata && (
                     <div className="pb-1 pl-7 pr-2">
                         {totalObjectCount > 4 && (
                             <input

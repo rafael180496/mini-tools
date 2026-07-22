@@ -17,6 +17,8 @@ export function BackupVault(arg1:string):Promise<string>;
 
 export function BeginTransaction(arg1:string):Promise<void>;
 
+export function CancelMongoQuery(arg1:string):Promise<void>;
+
 export function CancelQuery(arg1:string):Promise<void>;
 
 export function CancelRedisCommand(arg1:string):Promise<void>;
@@ -37,6 +39,8 @@ export function CloseSftpBrowse(arg1:string):Promise<void>;
 
 export function CommitTransaction(arg1:string):Promise<void>;
 
+export function CountMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:string):Promise<number>;
+
 export function CreateFolder(arg1:string,arg2:string,arg3:string):Promise<vault.Folder>;
 
 export function CreateSshSnippet(arg1:string,arg2:string):Promise<vault.SshSnippet>;
@@ -44,6 +48,8 @@ export function CreateSshSnippet(arg1:string,arg2:string):Promise<vault.SshSnipp
 export function DeleteConnection(arg1:string):Promise<void>;
 
 export function DeleteFolder(arg1:string):Promise<void>;
+
+export function DeleteMongoDocument(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function DeleteQueryHistoryEntry(arg1:string):Promise<void>;
 
@@ -56,6 +62,8 @@ export function DeleteSftpPath(arg1:string,arg2:string):Promise<void>;
 export function DeleteSshSnippet(arg1:string):Promise<void>;
 
 export function DisconnectConnection(arg1:string):Promise<void>;
+
+export function ExecuteMongoQuery(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function ExecuteQuery(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
 
@@ -76,6 +84,10 @@ export function ExportTableDDL(arg1:string,arg2:string,arg3:string):Promise<stri
 export function GenerateProjectDocs(arg1:string,arg2:string,arg3:string):Promise<boolean>;
 
 export function GetConnectionForEdit(arg1:string):Promise<main.ConnectionEditInfo>;
+
+export function GetMongoDefaultDatabase(arg1:string):Promise<string>;
+
+export function GetMongoIndexes(arg1:string,arg2:string,arg3:string):Promise<Array<db.MongoIndex>>;
 
 export function GetObjectDDL(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number):Promise<string>;
 
@@ -100,6 +112,12 @@ export function ListConnections():Promise<Array<vault.ConnectionSummary>>;
 export function ListExplainHistory(arg1:string,arg2:number):Promise<Array<vault.ExplainHistoryEntry>>;
 
 export function ListFolders():Promise<Array<vault.Folder>>;
+
+export function ListMongoCollections(arg1:string,arg2:string,arg3:boolean):Promise<Array<db.MongoCollectionInfo>>;
+
+export function ListMongoDatabases(arg1:string):Promise<Array<db.MongoDatabaseInfo>>;
+
+export function ListMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number):Promise<Array<string>>;
 
 export function ListQueryHistory(arg1:string,arg2:number):Promise<Array<vault.HistoryEntry>>;
 
@@ -153,6 +171,8 @@ export function RenameSftpPath(arg1:string,arg2:string,arg3:string):Promise<void
 
 export function ReorderFolder(arg1:string,arg2:string):Promise<void>;
 
+export function ReplaceMongoDocument(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function ResizeSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function RestoreVaultBackupFirstRun(arg1:string,arg2:string):Promise<void>;
@@ -172,6 +192,10 @@ export function SaveSQLFileAs(arg1:string,arg2:string):Promise<string>;
 export function SetAutoBackupEnabled(arg1:boolean):Promise<void>;
 
 export function SetAutoBackupIntervalHours(arg1:number):Promise<void>;
+
+export function SetAutoSaveEnabled(arg1:boolean):Promise<void>;
+
+export function SetAutoSaveIntervalSeconds(arg1:number):Promise<void>;
 
 export function SetCollapsedSidebarModules(arg1:Array<string>):Promise<void>;
 

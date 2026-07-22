@@ -65,12 +65,21 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
      todas formas). Windows: sin firma Authenticode — SmartScreen avisa
      "Windows protegió su PC", workaround "Más información" → "Ejecutar de
      todas formas".
-   - **El `.exe` de Windows lleva además una advertencia explícita de "no
-     verificado en Windows real"** — se genera cross-compilando desde
-     macOS/Linux, nadie confirmó que corra en una Windows de verdad
-     (WebView2 runtime, DPI scaling, diálogos nativos). No quitar esa nota
-     solo porque una versión nueva se empaquetó sin problemas — "compila
-     limpio" no es lo mismo que "se probó".
+   - **Estado de verificación del `.exe` de Windows, según lo que
+     realmente pasó con ESA versión** — no un texto fijo. El `.exe` se
+     cross-compila desde macOS/Linux, y "compila limpio" nunca es lo
+     mismo que "se probó": WebView2 runtime, DPI scaling y diálogos
+     nativos solo se confirman corriendo el binario en Windows. Regla:
+     - Si alguien corrió esta versión en una Windows real y lo confirmó,
+       documentarlo indicando **en qué versiones de Windows** (ej.: "10 y
+       11") y qué se confirmó. Nunca extrapolar de una versión anterior:
+       que 0.4.0 se haya probado no dice nada de 0.5.0.
+     - Si nadie la probó, va la advertencia explícita de "no verificado
+       en Windows real" con las cosas que quedan sin confirmar. No
+       quitarla solo porque el empaquetado no dio errores.
+     - Ante la duda de si se probó o no: **preguntarle al usuario**, no
+       asumir el caso optimista — esto es una afirmación de
+       compatibilidad de cara a quien descarga el binario.
    - Instrucciones de instalación paso a paso.
    - Sección "Regenerar este artefacto" con los comandos exactos.
 6. Actualizar **ambas** secciones de distribución del `README.md` raíz
@@ -133,9 +142,14 @@ macOS (`releases/macos/`, `package-macos.sh`) y Windows
 (`releases/windows/`, `package-windows.sh`) están cubiertos — el paso 1
 del trigger corre ambos por default en la misma pasada. Windows se
 cross-compila desde macOS/Linux sin necesitar una máquina Windows (ningún
-conector de base de datos usa CGO) pero **no está verificado corriendo en
-Windows real** — esa advertencia va siempre en `releases/windows/README.md`
-y no se retira solo porque un empaquetado nuevo compiló sin errores.
+conector de base de datos usa CGO); **correrlo en Windows real es un paso
+aparte, manual, y no lo cubre ningún script**.
+
+Estado a 0.4.0 (2026-07-22): el `.exe` **fue verificado corriendo en
+Windows 10 y Windows 11** — arranca sin instalar el WebView2 Runtime
+aparte, con DPI scaling y diálogos nativos correctos. Ese estado es de
+esa versión, no del proyecto: cada release nuevo vuelve a la pregunta de
+si alguien lo probó (ver la regla del paso 5).
 
 Si se agrega Linux, seguir el mismo patrón: `releases/linux/`, con su
 propio README siguiendo esta misma estructura (no un README único para

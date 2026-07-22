@@ -85,6 +85,16 @@ type Settings struct {
 	// PickAutoBackupFolder; the scheduler treats an empty path as "not
 	// configured yet" and stays stopped even if AutoBackupEnabled is true.
 	AutoBackupPath string `json:"autoBackupPath"`
+	// AutoSaveEnabled reflects the "Auto-guardar editores" toggle — whether
+	// the frontend should periodically write dirty tabs that have a file path
+	// back to disk. Unlike auto-backup there's no Go-side scheduler; the timer
+	// lives in the frontend (Workspace.tsx), this is just the persisted
+	// preference. See SetAutoSaveEnabled.
+	AutoSaveEnabled bool `json:"autoSaveEnabled"`
+	// AutoSaveIntervalSeconds is how often the frontend's auto-save timer
+	// fires, in seconds (validated in SetAutoSaveIntervalSeconds against the
+	// Min/Max bounds below).
+	AutoSaveIntervalSeconds int `json:"autoSaveIntervalSeconds"`
 }
 
 // AutoBackupIntervalHours must fall within these bounds — the scheduler
@@ -95,6 +105,14 @@ type Settings struct {
 const (
 	MinAutoBackupIntervalHours = 1
 	MaxAutoBackupIntervalHours = 23
+)
+
+// AutoSaveIntervalSeconds bounds — a positive, sane range for a "save every X
+// seconds" timer (5s..600s = 10min); anything faster thrashes the disk, slower
+// than 10min defeats the purpose.
+const (
+	MinAutoSaveIntervalSeconds = 5
+	MaxAutoSaveIntervalSeconds = 600
 )
 
 // GetSettings returns the single settings row, seeded with defaults by Open.
@@ -110,10 +128,12 @@ func (s *Store) GetSettings() (Settings, error) {
 	var autoBackupEnabled bool
 	var autoBackupIntervalHours int
 	var autoBackupPath string
+	var autoSaveEnabled bool
+	var autoSaveIntervalSeconds int
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -150,7 +170,9 @@ func (s *Store) GetSettings() (Settings, error) {
 		EditorTheme: editorTheme, CollapsedSidebarModules: collapsedModules,
 		SshTerminalTheme: sshTerminalTheme,
 		AutoBackupEnabled: autoBackupEnabled, AutoBackupIntervalHours: autoBackupIntervalHours,
-		AutoBackupPath: autoBackupPath,
+		AutoBackupPath:          autoBackupPath,
+		AutoSaveEnabled:         autoSaveEnabled,
+		AutoSaveIntervalSeconds: autoSaveIntervalSeconds,
 	}, nil
 }
 
@@ -254,6 +276,28 @@ func (s *Store) SetAutoBackupIntervalHours(hours int) error {
 func (s *Store) SetAutoBackupPath(path string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET auto_backup_path = ? WHERE id = 1`, path); err != nil {
 		return fmt.Errorf("vault: guardando auto_backup_path: %w", err)
+	}
+	return nil
+}
+
+// SetAutoSaveEnabled persists the "Auto-guardar editores" toggle. Storage only
+// — the timer that acts on it lives entirely in the frontend (Workspace.tsx),
+// so there's nothing server-side to reconfigure.
+func (s *Store) SetAutoSaveEnabled(enabled bool) error {
+	if _, err := s.db.Exec(`UPDATE settings SET auto_save_enabled = ? WHERE id = 1`, enabled); err != nil {
+		return fmt.Errorf("vault: guardando auto_save_enabled: %w", err)
+	}
+	return nil
+}
+
+// SetAutoSaveIntervalSeconds persists the auto-save cadence, validating the
+// range (a 0/negative interval would make setInterval useless / thrash).
+func (s *Store) SetAutoSaveIntervalSeconds(seconds int) error {
+	if seconds < MinAutoSaveIntervalSeconds || seconds > MaxAutoSaveIntervalSeconds {
+		return fmt.Errorf("vault: intervalo de auto-guardado inválido: %d (debe ser entre %d y %d segundos)", seconds, MinAutoSaveIntervalSeconds, MaxAutoSaveIntervalSeconds)
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET auto_save_interval_seconds = ? WHERE id = 1`, seconds); err != nil {
+		return fmt.Errorf("vault: guardando auto_save_interval_seconds: %w", err)
 	}
 	return nil
 }

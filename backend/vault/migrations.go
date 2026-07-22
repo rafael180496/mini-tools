@@ -198,6 +198,31 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 16,
+		desc:    "agrega settings.auto_save_enabled/auto_save_interval_seconds para el auto-guardado periódico de los editores a su archivo",
+		apply: func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN auto_save_enabled INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN auto_save_interval_seconds INTEGER NOT NULL DEFAULT 30`)
+			return err
+		},
+	},
+	{
+		version: 17,
+		desc:    "agrega mongo_collection_cache para cachear la lista de colecciones (con conteo) por conexión+base de MongoDB, evitando re-consultar el servidor en cada expansión del árbol",
+		apply: func(tx *sql.Tx) error {
+			_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS mongo_collection_cache (
+				connection_id TEXT NOT NULL,
+				database TEXT NOT NULL,
+				collections_json TEXT NOT NULL,
+				synced_at INTEGER NOT NULL,
+				PRIMARY KEY (connection_id, database)
+			)`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

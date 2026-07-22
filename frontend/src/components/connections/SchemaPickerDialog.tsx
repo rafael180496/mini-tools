@@ -29,6 +29,7 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
         try {
             const info = await GetConnectionForEdit(connId)
             if (info.dbType === 'oracle') return (info.params.user ?? '').toUpperCase()
+            if (info.dbType === 'sqlserver') return 'dbo'
         } catch {
             // best-effort — falls through to 'public'
         }

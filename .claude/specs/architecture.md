@@ -9,7 +9,9 @@
 - Oracle: `github.com/sijms/go-ora/v2` (driver `database/sql` `"oracle"`)
 - PostgreSQL: `github.com/jackc/pgx/v5/stdlib` (driver `database/sql` `"pgx"`)
 - SQLite: `modernc.org/sqlite` (driver `database/sql` `"sqlite"`, puro Go, sin cgo)
+- SQL Server: `github.com/microsoft/go-mssqldb` (driver `database/sql` `"sqlserver"`, puro Go, sin cgo)
 - Redis: `github.com/redis/go-redis/v9` (`redis.UniversalClient` — standalone/Cluster/Sentinel — path nativo paralelo, NO `database/sql`; ver excepción documentada en [.claude/rules/technical.md](../rules/technical.md) punto 2 y el detalle de diseño en [.claude/skills/mini-tools-patterns/SKILL.md](../skills/mini-tools-patterns/SKILL.md))
+- MongoDB: `go.mongodb.org/mongo-driver/v2` (`*mongo.Client` — path nativo paralelo, NO `database/sql`, segunda excepción documentada del punto 2; sintaxis mongosh en el editor, vista de resultados JSON con color, browser de documentos editable, asistente de find)
 
 ## Estructura de carpetas
 
@@ -18,10 +20,11 @@
   /appdata      dir de datos de la app (vault.db, salt.bin)
   /crypto       Argon2id (KDF) + AES-256-GCM (AEAD), zero-out de buffers
   /vaultgate    gate de clave maestra (unlock/lock), key en memoria
-  /db           Connector interface + oracle.go/postgres.go/sqlite.go/redis.go + pool_manager.go (SQL) + redis_pool.go + metadata.go + rediskeys.go (SCAN/TYPE/TTL/valor paginado)
+  /db           Connector interface + oracle.go/postgres.go/sqlite.go/sqlserver.go/redis.go/mongo.go + pool_manager.go (SQL) + redis_pool.go + mongo_pool.go + metadata.go + rediskeys.go + mongometa.go (bases/colecciones/índices) + mongodocs.go (browse/edición de documentos)
   /vault        store.go + repos (connections, history, plans, settings) sobre SQLite
   /query        detect.go/splitter.go (PL/SQL vs SQL plano) + executor.go (streaming, cancelación) — motores SQL
   /redisquery   executor.go + splitter.go — mismo patrón que /query (Event/EmitFunc/HistorySink/cancel-registry) pero para comandos Redis, path nativo paralelo (no database/sql)
+  /mongoquery   executor.go (dispatch de db.<coll>.<método>()) + parser.go (parser de statements mongosh) + extjson.go (conversor lenient mongosh→Extended JSON: claves sin comillas, comillas simples, ObjectId()/ISODate()/NumberLong()) — mismo patrón que /query, path nativo paralelo (no database/sql)
   /sshconn      terminal SSH interactivo (SessionManager, PTY) + ping.go + dial.go (Dial() exportado: dial reusable que reusa parseDSN/clientConfig) — path nativo paralelo (no database/sql)
   /sftpx        transferencia de archivos SFTP: fs.go (abstracción local/remoto) + browse.go (BrowseManager, sesiones por panel) + transfer.go (TransferManager, pool de workers, ctx-cancel, progreso) — dialea vía sshconn.Dial, dep github.com/pkg/sftp, path nativo paralelo
   /explain      EXPLAIN PLAN por motor → árbol común (SQL únicamente, no aplica a Redis)

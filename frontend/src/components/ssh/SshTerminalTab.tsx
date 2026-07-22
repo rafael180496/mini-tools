@@ -9,6 +9,7 @@ import {resolveTerminalTheme, type TerminalThemeId} from '../../xterm/terminalTh
 import SshSnippetsPanel from './SshSnippetsPanel'
 import SshTerminalThemePicker from './SshTerminalThemePicker'
 import Icon from '../Icon'
+import {SshLineModel} from '../../lib/sshLineModel'
 
 interface SshTerminalTabProps {
     connId: string
@@ -55,7 +56,13 @@ function base64ToBytes(b64: string): Uint8Array {
 // effect below runs exactly once per session, not on every tab-focus.
 export default function SshTerminalTab({connId, theme, terminalThemeId, onChangeTerminalTheme, onConnectedChange}: SshTerminalTabProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    const wrapperRef = useRef<HTMLDivElement>(null)
     const termRef = useRef<Terminal | null>(null)
+    // Reconstructs the current input line from raw keystrokes to drive the
+    // ghost autocomplete suggestion (see lib/sshLineModel.ts). One per session.
+    const modelRef = useRef(new SshLineModel())
+    const [ghostText, setGhostText] = useState('')
+    const [ghostPos, setGhostPos] = useState<{left: number; top: number; cellH: number} | null>(null)
     const [showSnippets, setShowSnippets] = useState(false)
     const [showThemePicker, setShowThemePicker] = useState(false)
 
@@ -79,19 +86,66 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
         // first emitted chunk and the subscription, same contract as
         // ExecuteQuery/ExecuteRedisCommand's queryID (see their doc
         // comments in Workspace.tsx).
+        // Reposition the ghost overlay at the terminal cursor. Called after
+        // each server echo (the cursor only moves once the PTY echoes back).
+        const positionGhost = () => {
+            const wrap = wrapperRef.current
+            if (!wrap) return
+            const ghost = modelRef.current.suggestion()
+            if (!ghost) {
+                setGhostPos(null)
+                return
+            }
+            const screen = wrap.querySelector('.xterm-screen') as HTMLElement | null
+            if (!screen) {
+                setGhostPos(null)
+                return
+            }
+            const wrapRect = wrap.getBoundingClientRect()
+            const screenRect = screen.getBoundingClientRect()
+            const cellW = screenRect.width / term.cols
+            const cellH = screenRect.height / term.rows
+            const buf = term.buffer.active
+            setGhostPos({
+                left: screenRect.left - wrapRect.left + buf.cursorX * cellW,
+                top: screenRect.top - wrapRect.top + buf.cursorY * cellH,
+                cellH,
+            })
+        }
+
         const unsubscribe = EventsOn(connId, (event: SshEvent) => {
             if (event.type === 'data' && event.data) {
-                term.write(base64ToBytes(event.data))
+                term.write(base64ToBytes(event.data), () => positionGhost())
             } else if (event.type === 'closed') {
                 term.write('\r\n\x1b[90m[sesión cerrada]\x1b[0m\r\n')
+                setGhostText('')
+                setGhostPos(null)
                 onConnectedChange(false)
             } else if (event.type === 'error') {
                 term.write(`\r\n\x1b[31m[error] ${event.error ?? 'desconocido'}\x1b[0m\r\n`)
+                setGhostText('')
+                setGhostPos(null)
                 onConnectedChange(false)
             }
         })
 
         const dataDisposable = term.onData((data) => {
+            const model = modelRef.current
+            // Accept the ghost suggestion on Tab or Right-arrow when one is
+            // showing — send its bytes as if typed. When no ghost is showing,
+            // Tab/→ fall through to the remote shell unchanged (Tab keeps doing
+            // the remote's own completion).
+            if (data === '\x1b[C' || data === '\t') {
+                const ghost = model.suggestion()
+                if (ghost) {
+                    model.accept(ghost)
+                    setGhostText('')
+                    void WriteSSHTerminal(connId, ghost)
+                    return
+                }
+            }
+            model.process(data)
+            setGhostText(model.suggestion())
             void WriteSSHTerminal(connId, data)
         })
 
@@ -166,7 +220,29 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
                         Tema
                     </button>
                 </div>
-                <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden bg-surface p-1" />
+                <div ref={wrapperRef} className="relative min-h-0 flex-1 overflow-hidden bg-surface p-1">
+                    <div ref={containerRef} className="h-full w-full" />
+                    {ghostText && ghostPos && (
+                        <span
+                            aria-hidden
+                            style={{
+                                position: 'absolute',
+                                left: ghostPos.left,
+                                top: ghostPos.top,
+                                height: ghostPos.cellH,
+                                lineHeight: `${ghostPos.cellH}px`,
+                                fontFamily: '"JetBrains Mono", monospace',
+                                fontSize: 13,
+                                color: 'rgba(130,130,130,0.85)',
+                                whiteSpace: 'pre',
+                                pointerEvents: 'none',
+                                zIndex: 5,
+                            }}
+                        >
+                            {ghostText}
+                        </span>
+                    )}
+                </div>
             </div>
             {showSnippets && <SshSnippetsPanel connId={connId} onClose={() => setShowSnippets(false)} />}
             {showThemePicker && (

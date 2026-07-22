@@ -19,6 +19,10 @@ interface SettingsDialogProps {
     onChangeAutoBackupInterval: (hours: number) => void
     autoBackupPath: string
     onPickAutoBackupFolder: () => void
+    autoSaveEnabled: boolean
+    onToggleAutoSave: (checked: boolean) => void
+    autoSaveIntervalSeconds: number
+    onChangeAutoSaveInterval: (seconds: number) => void
     updateInfo: updatecheck.Info | null
     onOpenRepo: () => void
     onClose: () => void
@@ -28,6 +32,10 @@ const THEME_OPTIONS = EDITOR_THEME_IDS.map((id) => ({value: id, label: EDITOR_TH
 const AUTO_BACKUP_HOUR_OPTIONS = Array.from({length: 23}, (_, i) => i + 1).map((h) => ({
     value: String(h),
     label: h === 1 ? '1 hora' : `${h} horas`,
+}))
+const AUTO_SAVE_INTERVAL_OPTIONS = [5, 10, 15, 30, 60, 120, 300, 600].map((s) => ({
+    value: String(s),
+    label: s < 60 ? `${s} segundos` : s === 60 ? '1 minuto' : `${s / 60} minutos`,
 }))
 
 // Configuración general de la app (no de una conexión particular) — se abre
@@ -49,6 +57,10 @@ export default function SettingsDialog({
     onChangeAutoBackupInterval,
     autoBackupPath,
     onPickAutoBackupFolder,
+    autoSaveEnabled,
+    onToggleAutoSave,
+    autoSaveIntervalSeconds,
+    onChangeAutoSaveInterval,
     updateInfo,
     onOpenRepo,
     onClose,
@@ -224,6 +236,46 @@ export default function SettingsDialog({
                                             {autoBackupPath || 'Sin carpeta elegida'}
                                         </span>
                                     </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Auto-guardar editores */}
+                        <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                            <div className="flex items-center gap-3">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                    <Icon name="save" size={18} />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <span className="block text-sm font-medium text-on-surface">Auto-guardar editores</span>
+                                    <span className="block truncate text-xs text-on-surface-variant">
+                                        Guarda automáticamente las pestañas con archivo a disco cada tantos segundos.
+                                    </span>
+                                </div>
+                                <Toggle
+                                    checked={autoSaveEnabled}
+                                    onChange={onToggleAutoSave}
+                                    title={
+                                        autoSaveEnabled
+                                            ? 'Desactivar el auto-guardado de los editores'
+                                            : 'Activar el auto-guardado — solo afecta pestañas que ya tienen un archivo asociado, las nuevas sin guardar no se tocan'
+                                    }
+                                    ariaLabel="Auto-guardar editores"
+                                />
+                            </div>
+
+                            {autoSaveEnabled && (
+                                <div className="flex items-center justify-between gap-3 border-t border-outline-variant pt-3 pl-12">
+                                    <span className="text-xs text-on-surface-variant">Cada</span>
+                                    <Select
+                                        value={String(autoSaveIntervalSeconds)}
+                                        options={AUTO_SAVE_INTERVAL_OPTIONS}
+                                        onChange={(v) => onChangeAutoSaveInterval(Number(v))}
+                                        ariaLabel="Frecuencia del auto-guardado"
+                                        title="Cada cuántos segundos se guardan a disco las pestañas con cambios sin guardar"
+                                        className="w-32"
+                                        size="sm"
+                                    />
                                 </div>
                             )}
                         </div>

@@ -8,6 +8,7 @@ import {db} from '../../../wailsjs/go/models'
 import type {EditorTab, TabLanguage} from './EditorTabs'
 import {sqlLanguageExtension, sqlSchemaHover} from '../../codemirror/sqlSchema'
 import {redisCli} from '../../codemirror/redisLanguage'
+import {mongosh} from '../../codemirror/mongoLanguage'
 import {lintExtension} from '../../codemirror/lintAdapter'
 import {resolveEditorTheme} from '../../codemirror/themes'
 import type {Theme} from '../../hooks/useTheme'
@@ -27,6 +28,7 @@ const baseTheme = EditorView.theme({
 
 function languageExtensions(language: TabLanguage, dbType: string | null, meta: db.SchemaMetadata | null): Extension[] {
     if (language === 'redis-cli') return [redisCli(), lintExtension(language)]
+    if (language === 'mongosh') return [mongosh(), lintExtension(language)]
     return [sqlLanguageExtension(dbType, meta), sqlSchemaHover(meta), lintExtension(language)]
 }
 

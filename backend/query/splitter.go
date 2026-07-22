@@ -29,9 +29,10 @@ const classifyLookaheadRunes = 8192
 // comments, Postgres dollar-quoting ($$...$$ / $tag$...$tag$), and Oracle
 // PL/SQL BEGIN/END nesting (including DECLARE sections and CREATE
 // PROCEDURE/FUNCTION/TRIGGER/TYPE bodies) — a `;` inside any of those never
-// splits the statement. See detect.go's doc comment for the accepted
-// scope/limitations of the PL/SQL handling. Empty statements (blank lines,
-// a stray trailing `;`) are dropped.
+// splits the statement. A T-SQL `GO` alone on its own line is also honored as
+// a batch boundary (see isLoneGoLine). See detect.go's doc comment for the
+// accepted scope/limitations of the PL/SQL handling. Empty statements (blank
+// lines, a stray trailing `;`) are dropped.
 func SplitStatements(sqlText string) []Statement {
 	runes := []rune(sqlText)
 	n := len(runes)
@@ -145,6 +146,27 @@ func SplitStatements(sqlText string) []Statement {
 		}
 
 		ensureStarted(i)
+
+		// "GO" alone on its own line (optionally with a repeat count, "GO 5")
+		// is T-SQL's batch separator — sqlcmd/SSMS split on it and never send
+		// it to the server. Treated as a statement/batch boundary here, the
+		// same idea as the SQL*Plus lone "/" above, and flushing regardless of
+		// blockDepth because GO always ends the current batch in T-SQL. Safe
+		// for the non-T-SQL engines: a line that is only "GO" isn't valid SQL
+		// in any of them either, so this never mis-splits a real statement.
+		if matchKeywordAt(runes, i, "GO") && isLoneGoLine(runes, i) {
+			flush(i)
+			j := i
+			for j < n && runes[j] != '\n' {
+				j++
+			}
+			if j < n {
+				j++ // consume the newline too
+			}
+			i = j
+			stmtStart = i
+			continue
+		}
 
 		if c == '-' && i+1 < n && runes[i+1] == '-' {
 			inLineComment = true
@@ -328,6 +350,37 @@ func isLoneSlashLine(runes []rune, i int) bool {
 		if !unicode.IsSpace(runes[j]) {
 			return false
 		}
+	}
+	return true
+}
+
+// isLoneGoLine reports whether the "GO" keyword at runes[i] stands alone on
+// its line — only whitespace before it back to the line start, and only
+// whitespace (plus an optional integer repeat count, "GO 5") after it to the
+// line end. matchKeywordAt already guarantees the word boundary, so "GOTO" or
+// a "GO" glued to another token never reaches here.
+func isLoneGoLine(runes []rune, i int) bool {
+	for j := i - 1; j >= 0; j-- {
+		if runes[j] == '\n' {
+			break
+		}
+		if !unicode.IsSpace(runes[j]) {
+			return false
+		}
+	}
+	n := len(runes)
+	j := i + len("GO")
+	for j < n && runes[j] != '\n' && unicode.IsSpace(runes[j]) {
+		j++
+	}
+	for j < n && unicode.IsDigit(runes[j]) { // optional repeat count
+		j++
+	}
+	for j < n && runes[j] != '\n' {
+		if !unicode.IsSpace(runes[j]) {
+			return false
+		}
+		j++
 	}
 	return true
 }

@@ -1,9 +1,10 @@
-import {sql, PostgreSQL, SQLite, PLSQL, StandardSQL, type SQLDialect} from '@codemirror/lang-sql'
+import {sql, PostgreSQL, SQLite, PLSQL, MSSQL, StandardSQL, type SQLDialect} from '@codemirror/lang-sql'
 import {hoverTooltip} from '@codemirror/view'
 import type {Extension} from '@codemirror/state'
 import type {Completion, CompletionContext, CompletionResult, CompletionSource} from '@codemirror/autocomplete'
 import {db} from '../../wailsjs/go/models'
 import {sqlSnippetCompletionSource} from './sqlSnippets'
+import {sqlFunctionCompletionSource} from './sqlFunctions'
 
 // Real dialects from @codemirror/lang-sql instead of a hand-rolled keyword
 // list per engine (see the retired frontend/src/monaco/sqlLanguage.ts) —
@@ -17,6 +18,8 @@ export function dialectForDbType(dbType: string | null | undefined): SQLDialect 
             return SQLite
         case 'oracle':
             return PLSQL
+        case 'sqlserver':
+            return MSSQL
         default:
             return StandardSQL
     }
@@ -284,6 +287,10 @@ export function sqlLanguageExtension(dbType: string | null | undefined, meta: db
         // key suggestions. Generic statement snippets ("ins" → full INSERT
         // skeleton, etc.), see sqlSnippets.ts.
         dialect.language.data.of({autocomplete: sqlSnippetCompletionSource(dbType)}),
+        // Per-dialect built-in function completions (COUNT, COALESCE, NVL,
+        // GETDATE, ...) — the gap lang-sql's keyword-only completion left. Same
+        // additive registration; see sqlFunctions.ts.
+        dialect.language.data.of({autocomplete: sqlFunctionCompletionSource(dbType)}),
     ]
 }
 

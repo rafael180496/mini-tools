@@ -9,17 +9,17 @@ a ningún lado — solo empaqueta el `.dmg` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.3.0 |
-| Archivo | `mini-tools-v0.3.0.dmg` |
-| Tamaño | ~17 MB |
-| SHA-256 | `bc6245a71e72b1bdbfa10b260e9bc8e22b13031aa7d562402fbef06590786757` |
+| Versión | 0.4.0 |
+| Archivo | `mini-tools-v0.4.0.dmg` |
+| Tamaño | ~20 MB |
+| SHA-256 | `d954599db7735c20a9fa86462c416725c836d6554d283f5c33eb03677e661355` |
 | Arquitectura | `arm64` (Apple Silicon) — verificado con `file` sobre el binario dentro del `.dmg` |
 | Generado | `wails build -clean` (modo producción, sin devtools) |
 
 Verificar la integridad del archivo descargado:
 
 ```bash
-shasum -a 256 mini-tools-v0.3.0.dmg
+shasum -a 256 mini-tools-v0.4.0.dmg
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -46,7 +46,7 @@ shasum -a 256 mini-tools-v0.3.0.dmg
 
 ## Instalación
 
-1. Descargar `mini-tools-v0.3.0.dmg` y abrirlo (doble click).
+1. Descargar `mini-tools-v0.4.0.dmg` y abrirlo (doble click).
 2. Arrastrar `mini-tools.app` al symlink de `Applications` que trae el `.dmg`.
 3. Al abrir la app por primera vez, Gatekeeper bloquea la app sin firma.
    Cualquiera de estas tres opciones lo resuelve:

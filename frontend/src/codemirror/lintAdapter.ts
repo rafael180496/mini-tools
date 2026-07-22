@@ -2,6 +2,7 @@ import {linter, type Diagnostic} from '@codemirror/lint'
 import type {EditorState, Extension} from '@codemirror/state'
 import {lintSQL} from '../lib/linter'
 import {lintRedisCommands} from '../lib/redisLinter'
+import {lintMongoCommands} from '../lib/mongoLinter'
 import type {TabLanguage} from '../components/editor/EditorTabs'
 
 // Adapts lib/linter.ts's lintSQL / lib/redisLinter.ts's lintRedisCommands
@@ -15,7 +16,8 @@ import type {TabLanguage} from '../components/editor/EditorTabs'
 // marker color.
 function lintDiagnostics(state: EditorState, language: TabLanguage): Diagnostic[] {
     const text = state.doc.toString()
-    const warnings = language === 'redis-cli' ? lintRedisCommands(text) : lintSQL(text)
+    const warnings =
+        language === 'redis-cli' ? lintRedisCommands(text) : language === 'mongosh' ? lintMongoCommands(text) : lintSQL(text)
 
     return warnings.map((w) => {
         const startLine = state.doc.line(Math.min(Math.max(w.startLineNumber, 1), state.doc.lines))

@@ -91,6 +91,12 @@ func renderSQLConventions(info ProjectInfo) string {
 		b.WriteString("- Placeholders: `?`.\n")
 		b.WriteString("- Paginación: `LIMIT n`.\n")
 		b.WriteString("- Tipado dinámico (type affinity) — las columnas no fuerzan estrictamente su tipo declarado.\n")
+	case db.DBTypeSQLServer:
+		b.WriteString("- Placeholders: `@p1`, `@p2`, ... o `@nombre`.\n")
+		b.WriteString("- Identificadores entre corchetes si tienen espacios o palabras reservadas: `[Mi Columna]`.\n")
+		b.WriteString("- Paginación: `SELECT TOP n ...` o `OFFSET m ROWS FETCH NEXT n ROWS ONLY` (requiere `ORDER BY`).\n")
+		b.WriteString("- Lotes T-SQL separados por `GO` (separador de sqlcmd/SSMS, no se envía al servidor).\n")
+		b.WriteString("- Bloques con `BEGIN ... END`; transacciones con `BEGIN TRANSACTION` / `COMMIT` / `ROLLBACK`.\n")
 	default:
 		b.WriteString("Motor desconocido — sin convenciones documentadas.\n")
 	}

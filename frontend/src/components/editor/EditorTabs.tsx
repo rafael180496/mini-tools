@@ -9,7 +9,7 @@ import Icon from '../Icon'
 import Select from '../Select'
 import RecentFilesMenu from './RecentFilesMenu'
 
-export type TabLanguage = 'sql' | 'redis-cli'
+export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 
 // 'editor' is a plain CodeMirror tab (the only kind that existed before
 // the Redis Browser feature). 'redis-browser' is a full-tab key
@@ -22,7 +22,7 @@ export type TabLanguage = 'sql' | 'redis-cli'
 // 'sftp' is the dual-pane file-transfer explorer (see SftpTab.tsx) — likewise
 // a full-tab view with the editor fields unused; connId marks the host it was
 // launched from (for the tab strip icon / dedupe), not a bound query engine.
-export type TabKind = 'editor' | 'redis-browser' | 'ssh-terminal' | 'sftp'
+export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp'
 
 export interface EditorTab {
     id: string
@@ -90,7 +90,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
     const boundConnection = tab.connId ? connections.find((c) => c.id === tab.connId) : undefined
     const bindingTitle = boundConnection
         ? `Vinculada a "${boundConnection.name}" (${dbTypeLabel(boundConnection.dbType)}) — click para cambiar`
-        : `Sin conexión vinculada (lenguaje: ${tab.language === 'redis-cli' ? 'Redis' : 'SQL'}) — click para vincular una conexión o cambiar el lenguaje. La conexión vinculada se muestra arriba, en la barra de herramientas.`
+        : `Sin conexión vinculada (lenguaje: ${tab.language === 'redis-cli' ? 'Redis' : tab.language === 'mongosh' ? 'MongoDB' : 'SQL'}) — click para vincular una conexión o cambiar el lenguaje. La conexión vinculada se muestra arriba, en la barra de herramientas.`
     const isBrowserTab = tab.kind === 'redis-browser'
     const isSshTab = tab.kind === 'ssh-terminal'
     const isSftpTab = tab.kind === 'sftp'
@@ -163,7 +163,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     {boundConnection ? (
                         <DbTypeIcon dbType={boundConnection.dbType} size={12} />
                     ) : (
-                        <Icon name={tab.language === 'redis-cli' ? 'terminal' : 'code'} size={12} className="text-error" />
+                        <Icon name={tab.language === 'redis-cli' ? 'terminal' : tab.language === 'mongosh' ? 'database' : 'code'} size={12} className="text-error" />
                     )}
                 </button>
             )}
@@ -241,6 +241,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                     options={[
                                         {value: 'sql', label: 'SQL'},
                                         {value: 'redis-cli', label: 'Redis'},
+                                        {value: 'mongosh', label: 'MongoDB'},
                                     ]}
                                     onChange={(v) => {
                                         onChangeTabLanguage(tab.id, v as TabLanguage)

@@ -13,14 +13,16 @@
 // query param) isn't something a user would hand-paste anyway; only
 // standalone redis://[user:pass@]host[:port][/db] is detected.
 
-export type DBType = 'sqlite' | 'postgres' | 'oracle' | 'redis'
+export type DBType = 'sqlite' | 'postgres' | 'oracle' | 'sqlserver' | 'mongodb' | 'redis'
 export type OracleMode = 'service_name' | 'easy_connect' | 'sid' | 'tns'
 export type RedisMode = 'standalone' | 'cluster' | 'sentinel'
+export type MongoMode = 'standard' | 'srv'
 
 export interface ParsedConnection {
     dbType: DBType
     oracleMode?: OracleMode
     redisMode?: RedisMode
+    mongoMode?: MongoMode
     params: Record<string, string>
 }
 
@@ -208,11 +210,149 @@ function parseOracleJDBC(s: string): ParsedConnection | null {
     return {dbType: 'oracle', oracleMode: 'easy_connect', params}
 }
 
+// go-mssqldb URL form, e.g.
+// "sqlserver://user:pass@host:1433/INSTANCE?database=db&encrypt=disable".
+function parseSQLServerURL(s: string): ParsedConnection | null {
+    try {
+        const url = new URL(s)
+        const params: Record<string, string> = {}
+        if (url.hostname) params.host = url.hostname
+        if (url.port) params.port = url.port
+        if (url.username) params.user = decodeURIComponent(url.username)
+        if (url.password) params.password = decodeURIComponent(url.password)
+        const instance = url.pathname.replace(/^\//, '')
+        if (instance) params.instance = instance
+        const database = url.searchParams.get('database')
+        if (database) params.dbname = database
+        const encrypt = url.searchParams.get('encrypt')
+        if (encrypt) params.encrypt = encrypt.toLowerCase()
+        const tsc = url.searchParams.get('trustservercertificate') ?? url.searchParams.get('TrustServerCertificate')
+        if (tsc) params.trustServerCertificate = tsc.toLowerCase()
+        return {dbType: 'sqlserver', params}
+    } catch {
+        return null
+    }
+}
+
+// applySQLServerHost splits a SQL Server "server" token — which can carry a
+// port (host,1433 .NET-style or host:1433 JDBC-style) and/or a named instance
+// (host\INSTANCE) — into the separate host/port/instance params BuildDSN wants.
+function applySQLServerHost(params: Record<string, string>, raw: string): void {
+    let hp = raw.replace(/^tcp:/i, '').replace(/^np:/i, '').trim()
+    const portMatch = hp.match(/[,:](\d+)$/)
+    if (portMatch) {
+        params.port = portMatch[1]
+        hp = hp.slice(0, portMatch.index).trim()
+    }
+    const bs = hp.indexOf('\\')
+    if (bs >= 0) {
+        const instance = hp.slice(bs + 1).trim()
+        if (instance) params.instance = instance
+        hp = hp.slice(0, bs).trim()
+    }
+    if (hp) params.host = hp
+}
+
+// .NET (ADO) and JDBC key=value forms, e.g.
+// "Server=tcp:host,1433;Database=db;User Id=me;Password=x;Encrypt=True" or
+// "jdbc:sqlserver://host:1433;databaseName=db;user=me;password=x".
+function parseSQLServerKeywordValue(s: string): ParsedConnection {
+    const params: Record<string, string> = {}
+    let rest = s
+
+    const jdbc = rest.match(/^jdbc:sqlserver:\/\/([^;]*)/i)
+    if (jdbc) {
+        const hostPort = jdbc[1].trim()
+        if (hostPort) applySQLServerHost(params, hostPort)
+        rest = rest.slice(jdbc[0].length)
+    }
+
+    for (const pair of rest.split(';')) {
+        const idx = pair.indexOf('=')
+        if (idx < 0) continue
+        const key = pair.slice(0, idx).trim().toLowerCase()
+        const val = pair.slice(idx + 1).trim()
+        if (!val) continue
+        switch (key) {
+            case 'server':
+            case 'data source':
+            case 'address':
+            case 'addr':
+            case 'network address':
+                applySQLServerHost(params, val)
+                break
+            case 'database':
+            case 'initial catalog':
+            case 'databasename':
+                params.dbname = val
+                break
+            case 'user id':
+            case 'uid':
+            case 'user':
+                params.user = val
+                break
+            case 'password':
+            case 'pwd':
+                params.password = val
+                break
+            case 'encrypt':
+                params.encrypt = val.toLowerCase()
+                break
+            case 'trustservercertificate':
+                params.trustServerCertificate = val.toLowerCase()
+                break
+            case 'instance name':
+            case 'instancename':
+                params.instance = val
+                break
+        }
+    }
+    return {dbType: 'sqlserver', params}
+}
+
+// MongoDB URI: mongodb://[user:pass@]host[:port][,host2...]/[db]?opts or the
+// SRV/Atlas form mongodb+srv://[user:pass@]host/[db]?opts. A multi-host
+// authority (comma list) becomes params.hosts; a single host splits into
+// host/port. The scheme decides the mode (mongodb vs mongodb+srv).
+function parseMongoURL(s: string): ParsedConnection | null {
+    try {
+        const url = new URL(s)
+        const srv = /^mongodb\+srv:/i.test(s)
+        const params: Record<string, string> = {}
+        // url.host keeps the raw authority (multi-host "h1,h2" survives here,
+        // where url.hostname/url.port would mis-split it).
+        const authority = url.host
+        if (srv) {
+            params.host = url.hostname
+        } else if (authority.includes(',')) {
+            params.hosts = authority
+        } else {
+            params.host = url.hostname
+            if (url.port) params.port = url.port
+        }
+        if (url.username) params.user = decodeURIComponent(url.username)
+        if (url.password) params.password = decodeURIComponent(url.password)
+        const database = url.pathname.replace(/^\//, '')
+        if (database) params.database = database
+        const authSource = url.searchParams.get('authSource')
+        if (authSource) params.authSource = authSource
+        const replicaSet = url.searchParams.get('replicaSet')
+        if (replicaSet) params.replicaSet = replicaSet
+        if (url.searchParams.get('tls') === 'true' || url.searchParams.get('ssl') === 'true') params.tls = 'true'
+        return {dbType: 'mongodb', mongoMode: srv ? 'srv' : 'standard', params}
+    } catch {
+        return null
+    }
+}
+
 export function parseConnectionString(raw: string): ParsedConnection | null {
     const s = stripEnvWrapper(raw)
     if (!s) return null
 
     if (/^rediss?:\/\//i.test(s)) return parseRedisURL(s)
+    if (/^mongodb(\+srv)?:\/\//i.test(s)) return parseMongoURL(s)
+    if (/^(sqlserver|mssql):\/\//i.test(s)) return parseSQLServerURL(s)
+    if (/^jdbc:sqlserver:/i.test(s)) return parseSQLServerKeywordValue(s)
     if (/^postgres(ql)?:\/\//i.test(s)) return parsePostgresURL(s)
     if (/^sqlite3?:\/\//i.test(s)) return {dbType: 'sqlite', params: {path: stripSqliteScheme(s)}}
     if (/^file:\/\//i.test(s)) return {dbType: 'sqlite', params: {path: stripSqliteScheme(s)}}
@@ -220,6 +360,7 @@ export function parseConnectionString(raw: string): ParsedConnection | null {
     if (/^jdbc:oracle:thin:/i.test(s)) return parseOracleJDBC(s)
     if (/^\(DESCRIPTION\s*=/i.test(s)) return {dbType: 'oracle', oracleMode: 'tns', params: {connectDescriptor: s}}
     if (/^[^/\s@]+\/[^@\s]*@/.test(s)) return parseOracleEasyConnect(s)
+    if (/\b(server|data source|initial catalog|databasename)\s*=/i.test(s)) return parseSQLServerKeywordValue(s)
     if (/\b(host|dbname|user)\s*=/i.test(s)) return parsePostgresKeywordValue(s)
     if (/^([./]|[A-Za-z]:\\|~\/)/.test(s) || /\.(db|sqlite3?|db3)$/i.test(s)) {
         return {dbType: 'sqlite', params: {path: s}}

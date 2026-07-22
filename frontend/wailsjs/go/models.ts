@@ -52,6 +52,56 @@ export namespace db {
 	        this.oid = source["oid"];
 	    }
 	}
+	export class MongoCollectionInfo {
+	    name: string;
+	    type: string;
+	    estimatedCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MongoCollectionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.estimatedCount = source["estimatedCount"];
+	    }
+	}
+	export class MongoDatabaseInfo {
+	    name: string;
+	    sizeOnDisk: number;
+	    empty: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MongoDatabaseInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.sizeOnDisk = source["sizeOnDisk"];
+	        this.empty = source["empty"];
+	    }
+	}
+	export class MongoIndex {
+	    name: string;
+	    keysJson: string;
+	    unique: boolean;
+	    sparse: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MongoIndex(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.keysJson = source["keysJson"];
+	        this.unique = source["unique"];
+	        this.sparse = source["sparse"];
+	    }
+	}
 	export class Package {
 	    schema?: string;
 	    name: string;
@@ -792,6 +842,8 @@ export namespace vault {
 	    autoBackupEnabled: boolean;
 	    autoBackupIntervalHours: number;
 	    autoBackupPath: string;
+	    autoSaveEnabled: boolean;
+	    autoSaveIntervalSeconds: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -810,6 +862,8 @@ export namespace vault {
 	        this.autoBackupEnabled = source["autoBackupEnabled"];
 	        this.autoBackupIntervalHours = source["autoBackupIntervalHours"];
 	        this.autoBackupPath = source["autoBackupPath"];
+	        this.autoSaveEnabled = source["autoSaveEnabled"];
+	        this.autoSaveIntervalSeconds = source["autoSaveIntervalSeconds"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

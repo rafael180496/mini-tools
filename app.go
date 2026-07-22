@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/autobackup"
@@ -17,6 +18,7 @@ import (
 	"mini-tools/backend/db"
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
+	"mini-tools/backend/mongoquery"
 	"mini-tools/backend/query"
 	"mini-tools/backend/redisquery"
 	"mini-tools/backend/sftpx"
@@ -44,6 +46,14 @@ type App struct {
 	// .claude/skills/mini-tools-patterns/SKILL.md's Redis section.
 	redisPools    *db.RedisPoolManager
 	redisExecutor *redisquery.Executor
+
+	// mongoPools/mongoExecutor are MongoDB's native parallel path — same
+	// deliberate, documented exception as Redis (.claude/rules/technical.md
+	// point 2): MongoDB is document-oriented and the official driver doesn't
+	// implement database/sql. See .claude/skills/mini-tools-patterns/SKILL.md's
+	// MongoDB section.
+	mongoPools    *db.MongoPoolManager
+	mongoExecutor *mongoquery.Executor
 
 	// sshSessions is SSH's own native parallel path — same exception as
 	// redisPools/redisExecutor above, but with no separate "pool" step: an
@@ -95,6 +105,7 @@ func NewApp() *App {
 		gate:          vaultgate.New(),
 		pools:         db.NewPoolManager(),
 		redisPools:    db.NewRedisPoolManager(),
+		mongoPools:    db.NewMongoPoolManager(),
 		sftpBrowse:    sftpx.NewBrowseManager(),
 		metadataCache: make(map[string]*db.SchemaMetadata),
 	}
@@ -134,6 +145,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.executor = query.NewExecutor(ctx, a.pools, emit, history)
 	a.redisExecutor = redisquery.NewExecutor(ctx, a.redisPools, emit, history)
+	a.mongoExecutor = mongoquery.NewExecutor(ctx, a.mongoPools, emit, history)
 	a.sshSessions = sshconn.NewSessionManager(emit)
 	a.sftpTransfers = sftpx.NewTransferManager(emit)
 }
@@ -160,6 +172,7 @@ func (a *App) shutdown(ctx context.Context) {
 	a.executor.RollbackAll(ctx)
 	a.pools.CloseAll()
 	a.redisPools.CloseAll()
+	a.mongoPools.CloseAll()
 	a.sshSessions.CloseAll()
 	a.sftpTransfers.CancelAll()
 	a.sftpBrowse.CloseAll()
@@ -339,6 +352,25 @@ func (a *App) SetAutoBackupIntervalHours(hours int) error {
 	return nil
 }
 
+// SetAutoSaveEnabled persists the "Auto-guardar editores" toggle. No scheduler
+// to reconfigure — the auto-save timer runs in the frontend (Workspace.tsx),
+// this only records the preference.
+func (a *App) SetAutoSaveEnabled(enabled bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetAutoSaveEnabled(enabled)
+}
+
+// SetAutoSaveIntervalSeconds persists the auto-save cadence (validated in
+// vault.Store.SetAutoSaveIntervalSeconds).
+func (a *App) SetAutoSaveIntervalSeconds(seconds int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetAutoSaveIntervalSeconds(seconds)
+}
+
 // PickAutoBackupFolder opens a native folder picker for the automatic
 // backup's destination; if the user confirms (doesn't cancel), persists the
 // folder and reconfigures the scheduler. Returns "" without an error if the
@@ -404,6 +436,9 @@ func (a *App) TestConnection(cfg ConnectionInput) error {
 func pingDSN(dbType db.DBType, dsn string) error {
 	if dbType == db.DBTypeRedis {
 		return db.PingRedisDSN(dsn)
+	}
+	if dbType == db.DBTypeMongo {
+		return db.PingMongoDSN(dsn)
 	}
 	if dbType == db.DBTypeSSH {
 		return sshconn.PingSSHDSN(dsn)
@@ -596,6 +631,9 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	if err := a.redisPools.Close(id); err != nil {
 		return nil, err
 	}
+	if err := a.mongoPools.Close(id); err != nil {
+		return nil, err
+	}
 	if err := a.sshSessions.Close(id); err != nil {
 		return nil, err
 	}
@@ -609,6 +647,9 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 		return nil, err
 	}
 	if err := a.vault.DeleteSchemaListCache(id); err != nil {
+		return nil, err
+	}
+	if err := a.vault.DeleteMongoCollectionCache(id); err != nil {
 		return nil, err
 	}
 
@@ -716,6 +757,9 @@ func (a *App) DeleteConnection(id string) error {
 	if err := a.redisPools.Close(id); err != nil {
 		return err
 	}
+	if err := a.mongoPools.Close(id); err != nil {
+		return err
+	}
 	if err := a.sshSessions.Close(id); err != nil {
 		return err
 	}
@@ -723,6 +767,9 @@ func (a *App) DeleteConnection(id string) error {
 		return err
 	}
 	if err := a.vault.DeleteSchemaListCache(id); err != nil {
+		return err
+	}
+	if err := a.vault.DeleteMongoCollectionCache(id); err != nil {
 		return err
 	}
 	return a.vault.DeleteConnection(id)
@@ -742,6 +789,9 @@ func (a *App) DisconnectConnection(id string) error {
 		return err
 	}
 	if err := a.redisPools.Close(id); err != nil {
+		return err
+	}
+	if err := a.mongoPools.Close(id); err != nil {
 		return err
 	}
 	if err := a.sshSessions.Close(id); err != nil {
@@ -850,6 +900,190 @@ func (a *App) CancelRedisCommand(queryID string) error {
 	}
 	a.redisExecutor.Cancel(queryID)
 	return nil
+}
+
+// ensureMongoPoolOpen is ensurePoolOpen's counterpart for MongoDB's
+// MongoPoolManager — shared by every Mongo binding so they all lazily connect
+// the same way.
+func (a *App) ensureMongoPoolOpen(connID string) error {
+	if _, err := a.mongoPools.Get(connID); err == nil {
+		return nil
+	}
+	_, dsn, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return err
+	}
+	_, err = a.mongoPools.Open(connID, dsn)
+	return err
+}
+
+// mongoClientFor unlocks the vault, ensures connID's Mongo client is open, and
+// returns it — shared by every metadata/document binding below.
+func (a *App) mongoClientFor(connID string) (*mongo.Client, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	if err := a.ensureMongoPoolOpen(connID); err != nil {
+		return nil, err
+	}
+	return a.mongoPools.Get(connID)
+}
+
+// mongoOpCtx derives a bounded context for a one-shot metadata/document
+// operation (not the streaming executor, which uses its own cancelable ctx).
+func (a *App) mongoOpCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(a.ctx, 30*time.Second)
+}
+
+// ExecuteMongoQuery opens (or reuses) the Mongo client for connID and streams
+// the result of commandText (mongosh-style db.<coll>.<method>(...) commands)
+// back as events under queryID. database is the "current db" the `db` prefix
+// refers to — MongoDB browses many, so the frontend passes the active one.
+func (a *App) ExecuteMongoQuery(connID, queryID, database, commandText string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := a.ensureMongoPoolOpen(connID); err != nil {
+		return err
+	}
+	a.mongoExecutor.Execute(connID, queryID, database, commandText)
+	return nil
+}
+
+// CancelMongoQuery cancels the in-flight Mongo command script under queryID.
+func (a *App) CancelMongoQuery(queryID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	a.mongoExecutor.Cancel(queryID)
+	return nil
+}
+
+// GetMongoDefaultDatabase returns the database named in connID's DSN (if any),
+// so the editor/sidebar can pick a sensible initial "current database" before
+// the user browses others.
+func (a *App) GetMongoDefaultDatabase(connID string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	_, dsn, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return "", err
+	}
+	connector, err := db.ConnectorFor(db.DBTypeMongo)
+	if err != nil {
+		return "", err
+	}
+	params, err := connector.ParseDSN(dsn)
+	if err != nil {
+		return "", err
+	}
+	return params["database"], nil
+}
+
+// ListMongoDatabases lists every database on connID's server (sidebar top level).
+func (a *App) ListMongoDatabases(connID string) ([]db.MongoDatabaseInfo, error) {
+	client, err := a.mongoClientFor(connID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := a.mongoOpCtx()
+	defer cancel()
+	return db.ListMongoDatabases(ctx, client)
+}
+
+// ListMongoCollections lists the collections/views of one database. Unless
+// forceRefresh is set, it returns the SQLite-cached list (mongo_collection_cache)
+// when present — listing collections fans out an EstimatedDocumentCount per
+// collection, slow on a database with many. forceRefresh (the tree's sync
+// button) bypasses the cache, re-queries the server, and re-caches. A cache hit
+// never opens the Mongo pool, so re-expanding a database is instant.
+func (a *App) ListMongoCollections(connID, database string, forceRefresh bool) ([]db.MongoCollectionInfo, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	if !forceRefresh {
+		if cached, ok, _ := a.vault.GetMongoCollectionCache(connID, database); ok {
+			var cols []db.MongoCollectionInfo
+			if err := json.Unmarshal([]byte(cached), &cols); err == nil {
+				return cols, nil
+			}
+		}
+	}
+
+	if err := a.ensureMongoPoolOpen(connID); err != nil {
+		return nil, err
+	}
+	client, err := a.mongoPools.Get(connID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := a.mongoOpCtx()
+	defer cancel()
+	cols, err := db.ListMongoCollections(ctx, client, database)
+	if err != nil {
+		return nil, err
+	}
+	if data, err := json.Marshal(cols); err == nil {
+		_ = a.vault.SaveMongoCollectionCache(connID, database, string(data))
+	}
+	return cols, nil
+}
+
+// GetMongoIndexes lists the indexes of one collection.
+func (a *App) GetMongoIndexes(connID, database, collection string) ([]db.MongoIndex, error) {
+	client, err := a.mongoClientFor(connID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := a.mongoOpCtx()
+	defer cancel()
+	return db.GetMongoIndexes(ctx, client, database, collection)
+}
+
+// ListMongoDocuments returns a page of a collection's documents (Extended JSON),
+// optionally filtered — feeds the browser panel.
+func (a *App) ListMongoDocuments(connID, database, collection, filterJSON string, skip, limit int64) ([]string, error) {
+	client, err := a.mongoClientFor(connID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := a.mongoOpCtx()
+	defer cancel()
+	return db.ListMongoDocuments(ctx, client, database, collection, filterJSON, skip, limit)
+}
+
+// CountMongoDocuments returns the exact count matching filterJSON.
+func (a *App) CountMongoDocuments(connID, database, collection, filterJSON string) (int64, error) {
+	client, err := a.mongoClientFor(connID)
+	if err != nil {
+		return 0, err
+	}
+	ctx, cancel := a.mongoOpCtx()
+	defer cancel()
+	return db.CountMongoDocuments(ctx, client, database, collection, filterJSON)
+}
+
+// ReplaceMongoDocument replaces a whole document (identified by its own _id).
+func (a *App) ReplaceMongoDocument(connID, database, collection, docJSON string) error {
+	client, err := a.mongoClientFor(connID)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := a.mongoOpCtx()
+	defer cancel()
+	return db.ReplaceMongoDocument(ctx, client, database, collection, docJSON)
+}
+
+// DeleteMongoDocument deletes the document whose _id is inside docJSON.
+func (a *App) DeleteMongoDocument(connID, database, collection, docJSON string) error {
+	client, err := a.mongoClientFor(connID)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := a.mongoOpCtx()
+	defer cancel()
+	return db.DeleteMongoDocument(ctx, client, database, collection, docJSON)
 }
 
 // OpenSSHTerminal decrypts connID's saved DSN and opens an interactive
@@ -1544,6 +1778,7 @@ func (a *App) RestoreVaultBackupFromFile(path, backupPassword string) error {
 	a.sshSessions.CloseAll()
 	a.pools.CloseAll()
 	a.redisPools.CloseAll()
+	a.mongoPools.CloseAll()
 
 	if err := a.vault.Close(); err != nil {
 		return fmt.Errorf("app: cerrando vault actual: %w", err)
@@ -1923,6 +2158,8 @@ func (a *App) ExportTableDDL(connID, schema, table string) (string, error) {
 		ddl, err = export.PostgresTableDDL(a.ctx, pool, schema, table)
 	case db.DBTypeOracle:
 		ddl, err = export.OracleTableDDL(a.ctx, pool, table)
+	case db.DBTypeSQLServer:
+		ddl, err = export.SQLServerTableDDL(a.ctx, pool, schema, table)
 	default:
 		return "", fmt.Errorf("app: export de DDL no soportado para %q", dbType)
 	}
@@ -1952,6 +2189,8 @@ func (a *App) ExportSchemaDDL(connID, schema string) (string, error) {
 		ddl, err = export.PostgresSchemaDDL(a.ctx, pool, schema)
 	case db.DBTypeOracle:
 		ddl, err = export.OracleSchemaDDL(a.ctx, pool)
+	case db.DBTypeSQLServer:
+		ddl, err = export.SQLServerSchemaDDL(a.ctx, pool, schema)
 	default:
 		return "", fmt.Errorf("app: export de DDL no soportado para %q", dbType)
 	}
@@ -2009,6 +2248,13 @@ func (a *App) GetObjectDDL(connID, objectType, schema, name string, oid int64) (
 			return export.OracleTriggerDDL(a.ctx, pool, name)
 		case "package":
 			return export.OraclePackageDDL(a.ctx, pool, name)
+		}
+	case db.DBTypeSQLServer:
+		switch objectType {
+		case "table":
+			return export.SQLServerTableDDL(a.ctx, pool, schema, name)
+		case "procedure", "function", "trigger":
+			return export.SQLServerObjectDDL(a.ctx, pool, schema, name)
 		}
 	}
 	return "", fmt.Errorf("app: GetObjectDDL no soportado para %q/%q", dbType, objectType)
@@ -2134,6 +2380,8 @@ func (a *App) ExplainQuery(connID, sqlText string, analyze bool) (*explain.Plan,
 		plan, err = explain.PostgresPlan(a.ctx, pool, sqlText, analyze)
 	case db.DBTypeOracle:
 		plan, err = explain.OraclePlan(a.ctx, pool, sqlText)
+	case db.DBTypeSQLServer:
+		plan, err = explain.SQLServerPlan(a.ctx, pool, sqlText, analyze)
 	default:
 		return nil, fmt.Errorf("app: EXPLAIN no soportado para %q", dbType)
 	}

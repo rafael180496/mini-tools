@@ -13,15 +13,19 @@ import ResultTabs from './results/ResultTabs'
 import ExecutionConsole, {ConsoleLogEntry} from './results/ExecutionConsole'
 import ExportMenu from './results/ExportMenu'
 import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
+import MongoResultView, {MongoCommandResult} from './results/MongoResultView'
 import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import RedisBrowserTab from './redis/RedisBrowserTab'
+import MongoBrowserTab from './mongo/MongoBrowserTab'
+import MongoFindWizard from './mongo/MongoFindWizard'
 import SshTerminalTab, {closeSshTerminalSession} from './ssh/SshTerminalTab'
 import SftpTab from './sftp/SftpTab'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
 import {
     BackupVault,
     BeginTransaction,
+    CancelMongoQuery,
     CancelQuery,
     CancelRedisCommand,
     ClearQueryHistory,
@@ -31,12 +35,16 @@ import {
     DeleteFolder,
     DeleteQueryHistoryEntry,
     DisconnectConnection,
+    ExecuteMongoQuery,
     ExecuteQuery,
     ExecuteRedisCommand,
     ExplainQuery,
     ExportConnectionConfig,
     ExportSchemaDDL,
     ExportTableDDL,
+    GetMongoDefaultDatabase,
+    ListMongoCollections,
+    ListMongoDatabases,
     GetSchemaMetadata,
     GetSettings,
     HasOpenTransaction,
@@ -54,6 +62,8 @@ import {
     SaveSQLFileAs,
     SetAutoBackupEnabled,
     SetAutoBackupIntervalHours,
+    SetAutoSaveEnabled,
+    SetAutoSaveIntervalSeconds,
     SetCollapsedSidebarModules,
     SetEditorHeight,
     SetEditorTheme,
@@ -68,6 +78,8 @@ import {db, explain, updatecheck, vault} from '../../wailsjs/go/models'
 import type {EditorView} from '@codemirror/view'
 import {lintSQL} from '../lib/linter'
 import {lintRedisCommands} from '../lib/redisLinter'
+import {lintMongoCommands} from '../lib/mongoLinter'
+import {setActiveMongoCollections} from '../codemirror/mongoCollectionsStore'
 import type {Theme} from '../hooks/useTheme'
 
 // Lazy: both are only mounted once the user opens them (showDialog /
@@ -100,6 +112,18 @@ interface RedisQueryEvent {
     commandText?: string
     resultKind?: string
     result?: unknown
+    durationMs?: number
+    error?: string
+}
+
+// Mirrors backend/mongoquery.Event's JSON shape (see runMongoText below).
+interface MongoQueryEvent {
+    type: 'done' | 'cancelled' | 'error'
+    commandIndex: number
+    totalCommands: number
+    commandText?: string
+    documents?: string[]
+    summary?: string
     durationMs?: number
     error?: string
 }
@@ -144,7 +168,9 @@ function fileTitle(path: string) {
 }
 
 function languageForDbType(dbType: string): TabLanguage {
-    return dbType === 'redis' ? 'redis-cli' : 'sql'
+    if (dbType === 'redis') return 'redis-cli'
+    if (dbType === 'mongodb') return 'mongosh'
+    return 'sql'
 }
 
 function newScratchTab(): EditorTab {
@@ -166,6 +192,9 @@ function limitQueryFor(dbType: string, table: string, schema?: string): string {
     const qualified = schema ? `${schema}.${table}` : table
     if (dbType === 'oracle') {
         return `SELECT * FROM ${qualified} WHERE ROWNUM <= 100`
+    }
+    if (dbType === 'sqlserver') {
+        return `SELECT TOP 100 * FROM ${qualified}`
     }
     return `SELECT * FROM ${qualified} LIMIT 100`
 }
@@ -305,7 +334,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const [activeSchemaByConn, setActiveSchemaByConn] = useState<Record<string, string>>({})
 
     function ensureMetadata(connId: string, dbType: string, force: boolean) {
-        if (dbType === 'redis' || dbType === 'ssh') return
+        if (dbType === 'redis' || dbType === 'mongodb' || dbType === 'ssh') return
         if (!force && metadataByConn[connId]) return
         setLoadingConnIds((prev) => new Set(prev).add(connId))
         GetSchemaMetadata(connId, force)
@@ -377,11 +406,30 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // already the active one).
     const [pendingBrowserKey, setPendingBrowserKey] = useState<{connId: string; key: string; token: number} | null>(null)
     const pendingBrowserKeyTokenRef = useRef(0)
+    // MongoDB's own result stream (backend/mongoquery.Event) — documents, not
+    // rows, rendered by MongoResultView. Parallel to redisResults above.
+    const [mongoResults, setMongoResults] = useState<MongoCommandResult[]>([])
+    // A destructive Mongo command (deleteMany/updateMany with {} filter, drop)
+    // needs confirming before it runs (lintMongoCommands) — same themed
+    // ConfirmDialog pattern as pendingRedisCommandRun.
+    const [pendingMongoCommandRun, setPendingMongoCommandRun] = useState<string | null>(null)
+    // The "current database" the mongosh `db` prefix targets, per connection
+    // (MongoDB browses many DBs — same per-conn cache idea as activeSchemaByConn).
+    // Seeded from the connection's DSN default, updated when a collection is
+    // opened from the tree, or via the toolbar db selector.
+    const [mongoDbByConn, setMongoDbByConn] = useState<Record<string, string>>({})
+    // Database names per Mongo connection, feeding the toolbar's active-db
+    // selector — fetched when the connection becomes the active tab's.
+    const [mongoDatabasesByConn, setMongoDatabasesByConn] = useState<Record<string, string[]>>({})
+    const [pendingMongoBrowser, setPendingMongoBrowser] = useState<{connId: string; database: string; collection: string; token: number} | null>(null)
+    const pendingMongoBrowserTokenRef = useRef(0)
     const [backupMessage, setBackupMessage] = useState('')
     const [showBackupPasswordDialog, setShowBackupPasswordDialog] = useState(false)
     const [showRestoreDialog, setShowRestoreDialog] = useState(false)
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
     const [statusMessage, setStatusMessage] = useState('')
+
+    const [showMongoWizard, setShowMongoWizard] = useState(false)
 
     const [showExplain, setShowExplain] = useState(false)
     const [explainPlan, setExplainPlan] = useState<explain.Plan | null>(null)
@@ -479,6 +527,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const [autoBackupEnabled, setAutoBackupEnabledState] = useState(false)
     const [autoBackupIntervalHours, setAutoBackupIntervalHoursState] = useState(6)
     const [autoBackupPath, setAutoBackupPathState] = useState('')
+    const [autoSaveEnabled, setAutoSaveEnabledState] = useState(false)
+    const [autoSaveIntervalSeconds, setAutoSaveIntervalSecondsState] = useState(30)
 
     useEffect(() => {
         let cancelled = false
@@ -503,6 +553,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 setAutoBackupEnabledState(!!settings.autoBackupEnabled)
                 setAutoBackupIntervalHoursState(settings.autoBackupIntervalHours || 6)
                 setAutoBackupPathState(settings.autoBackupPath || '')
+                setAutoSaveEnabledState(!!settings.autoSaveEnabled)
+                setAutoSaveIntervalSecondsState(settings.autoSaveIntervalSeconds || 30)
 
                 const infos = settings.openTabs ?? []
                 if (infos.length === 0) return
@@ -636,6 +688,40 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         void SetAutoBackupIntervalHours(hours).catch((err) => setStatusMessage(String(err)))
     }
 
+    function toggleAutoSave(checked: boolean) {
+        setAutoSaveEnabledState(checked)
+        void SetAutoSaveEnabled(checked).catch((err) => setStatusMessage(String(err)))
+    }
+
+    function changeAutoSaveInterval(seconds: number) {
+        setAutoSaveIntervalSecondsState(seconds)
+        void SetAutoSaveIntervalSeconds(seconds).catch((err) => setStatusMessage(String(err)))
+    }
+
+    // Auto-save timer: while enabled, periodically write every dirty tab that
+    // already has a file path back to disk (scratch tabs with no path are
+    // skipped — SaveSQLFileAs would pop a native dialog, wrong on a timer).
+    // Reads tabsRef so the interval callback always sees the current tabs
+    // without re-subscribing on every keystroke.
+    useEffect(() => {
+        if (!autoSaveEnabled) return
+        const id = setInterval(() => {
+            const dirtyWithPath = tabsRef.current.filter((t) => t.dirty && t.path && t.kind === 'editor')
+            if (dirtyWithPath.length === 0) return
+            for (const t of dirtyWithPath) {
+                SaveSQLFile(t.path as string, t.content)
+                    .then(() => {
+                        setTabs((prev) => prev.map((x) => (x.id === t.id && x.content === t.content ? {...x, dirty: false} : x)))
+                    })
+                    .catch(() => {
+                        // Best-effort: a failed auto-save shouldn't nag; the
+                        // manual Ctrl+S surfaces errors. Leave the tab dirty.
+                    })
+            }
+        }, Math.max(5, autoSaveIntervalSeconds) * 1000)
+        return () => clearInterval(id)
+    }, [autoSaveEnabled, autoSaveIntervalSeconds])
+
     async function pickAutoBackupFolder() {
         try {
             const dir = await PickAutoBackupFolder()
@@ -724,6 +810,40 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
 
     useEffect(() => {
         if (activeTabConnection) ensureMetadata(activeTabConnection.id, activeTabConnection.dbType, false)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTabConnection?.id])
+
+    // Seed the active Mongo connection's "current database" from its DSN default
+    // (if any), so the editor's `db` prefix targets something sensible before
+    // the user expands a database in the tree. Only fetched once per connection.
+    useEffect(() => {
+        const conn = activeTabConnection
+        if (!conn || conn.dbType !== 'mongodb') return
+        const currentDb = mongoDbByConn[conn.id]
+        if (!currentDb) {
+            GetMongoDefaultDatabase(conn.id)
+                .then((defaultDb) => {
+                    if (!defaultDb) return
+                    setMongoDbByConn((prev) => (prev[conn.id] ? prev : {...prev, [conn.id]: defaultDb}))
+                    // Load the default database's collections so autocomplete +
+                    // the find wizard are usable right away, not only after the
+                    // user picks a database from the toolbar or the tree.
+                    ListMongoCollections(conn.id, defaultDb, false)
+                        .then((cols) => setActiveMongoCollections((cols ?? []).map((c) => c.name)))
+                        .catch(() => {})
+                })
+                .catch(() => {})
+        } else {
+            ListMongoCollections(conn.id, currentDb, false)
+                .then((cols) => setActiveMongoCollections((cols ?? []).map((c) => c.name)))
+                .catch(() => {})
+        }
+        // Populate the toolbar's database selector for this connection.
+        if (!mongoDatabasesByConn[conn.id]) {
+            ListMongoDatabases(conn.id)
+                .then((dbs) => setMongoDatabasesByConn((prev) => ({...prev, [conn.id]: (dbs ?? []).map((d) => d.name)})))
+                .catch(() => {})
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTabConnection?.id])
 
@@ -1023,6 +1143,65 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         [running, activeBottomTab],
     )
 
+    // MongoDB counterpart of runText/runRedisText — streams
+    // backend/mongoquery.Event (one entry per command) into mongoResults. The
+    // active database (the mongosh `db` target) is passed explicitly since a
+    // Mongo connection browses many databases.
+    const runMongoText = useCallback(
+        (connection: vault.ConnectionSummary, commandText: string) => {
+            if (running || !commandText.trim()) return
+
+            const database = mongoDbByConn[connection.id] ?? ''
+            if (!database) {
+                setStatusMessage('Elegí una base de datos en el árbol lateral antes de ejecutar comandos MongoDB')
+                return
+            }
+
+            const queryId = newQueryId()
+            queryIdRef.current = queryId
+            setRunning(true)
+            setRunProgress(null)
+            setMongoResults([])
+
+            const unsubscribe = EventsOn(queryId, (event: MongoQueryEvent) => {
+                setRunProgress({current: event.commandIndex + 1, total: event.totalCommands})
+                setMongoResults((prev) => {
+                    const next = [...prev]
+                    while (next.length <= event.commandIndex) {
+                        next.push({commandText: '', status: 'running'})
+                    }
+                    next[event.commandIndex] = {
+                        commandText: event.commandText ?? next[event.commandIndex].commandText,
+                        status: event.type,
+                        documents: event.documents,
+                        summary: event.summary,
+                        durationMs: event.durationMs ?? 0,
+                        error: event.error ?? '',
+                    }
+                    return next
+                })
+
+                if (
+                    event.type === 'cancelled' ||
+                    ((event.type === 'done' || event.type === 'error') && event.commandIndex === event.totalCommands - 1)
+                ) {
+                    setRunning(false)
+                    setRunProgress(null)
+                    unsubscribe()
+                    if (activeBottomTab === 'history') loadHistory()
+                }
+            })
+
+            ExecuteMongoQuery(connection.id, queryId, database, commandText).catch((err) => {
+                setMongoResults([{commandText, status: 'error', error: String(err)}])
+                setRunning(false)
+                setRunProgress(null)
+                unsubscribe()
+            })
+        },
+        [running, activeBottomTab, mongoDbByConn],
+    )
+
     // Spec: "linter básico... warning antes de ejecutar". Only for
     // user-initiated runs (selection/line, full block) — not for
     // auto-generated queries (double-click LIMIT, sort-by-column requery),
@@ -1049,6 +1228,16 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 return
             }
             runRedisText(activeTabConnection, text)
+            return
+        }
+
+        if (activeTabConnection.dbType === 'mongodb') {
+            const warnings = lintMongoCommands(text).filter((w) => w.blocking)
+            if (warnings.length > 0) {
+                setPendingMongoCommandRun(text)
+                return
+            }
+            runMongoText(activeTabConnection, text)
             return
         }
 
@@ -1136,6 +1325,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         if (!queryIdRef.current) return
         if (activeTabConnection?.dbType === 'redis') {
             void CancelRedisCommand(queryIdRef.current)
+        } else if (activeTabConnection?.dbType === 'mongodb') {
+            void CancelMongoQuery(queryIdRef.current)
         } else {
             void CancelQuery(queryIdRef.current)
         }
@@ -1222,6 +1413,71 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             connId: conn.id,
             language: 'redis-cli',
             kind: 'redis-browser',
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
+    // Sets the editor's current database for a Mongo connection (the mongosh
+    // `db` target) — called from the toolbar's Base selector and when a
+    // database is expanded in the tree. Also loads that database's collections
+    // into the completion store so the editor autocomplete AND the find wizard
+    // "activate" for it immediately (the toolbar selector otherwise wouldn't
+    // populate collections — only expanding the tree did).
+    function selectMongoDatabase(connId: string, database: string) {
+        setMongoDbByConn((prev) => ({...prev, [connId]: database}))
+        if (activeTabConnection?.id === connId && database) {
+            ListMongoCollections(connId, database, false)
+                .then((cols) => setActiveMongoCollections((cols ?? []).map((c) => c.name)))
+                .catch(() => {})
+        }
+    }
+
+    // Opens (or focuses) a connection's Mongo Browser tab without pre-selecting
+    // a collection — the user picks one from the tab's own tree. Reached by
+    // double-clicking a Mongo connection row (parallel to openRedisBrowser).
+    function openMongoBrowser(conn: vault.ConnectionSummary) {
+        const existing = tabs.find((t) => t.kind === 'mongo-browser' && t.connId === conn.id)
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: 'MongoDB Browser',
+            path: null,
+            content: '',
+            dirty: false,
+            connId: conn.id,
+            language: 'mongosh',
+            kind: 'mongo-browser',
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
+    // Double-clicking a collection in the tree: mark its database active and
+    // open/focus the connection's Mongo Browser tab, selecting that collection
+    // (pendingMongoBrowser + token, same pattern as pendingBrowserKey for Redis).
+    function openMongoCollection(connId: string, database: string, collection: string) {
+        setMongoDbByConn((prev) => ({...prev, [connId]: database}))
+        const token = ++pendingMongoBrowserTokenRef.current
+        setPendingMongoBrowser({connId, database, collection, token})
+
+        const existing = tabs.find((t) => t.kind === 'mongo-browser' && t.connId === connId)
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: 'MongoDB Browser',
+            path: null,
+            content: '',
+            dirty: false,
+            connId,
+            language: 'mongosh',
+            kind: 'mongo-browser',
         }
         setTabs((prev) => [...prev, tab])
         setActiveTabId(tab.id)
@@ -1493,9 +1749,14 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     }, [activeTabConnection])
 
     const activeResult = resultSets[activeResultTab]
-    const isSqlActive = !!activeTabConnection && activeTabConnection.dbType !== 'redis' && activeTabConnection.dbType !== 'ssh'
+    const isSqlActive =
+        !!activeTabConnection &&
+        activeTabConnection.dbType !== 'redis' &&
+        activeTabConnection.dbType !== 'mongodb' &&
+        activeTabConnection.dbType !== 'ssh'
     const isRedisActive = activeTabConnection?.dbType === 'redis'
-    const isBrowserTabActive = activeTabData?.kind === 'redis-browser'
+    const isMongoActive = activeTabConnection?.dbType === 'mongodb'
+    const isBrowserTabActive = activeTabData?.kind === 'redis-browser' || activeTabData?.kind === 'mongo-browser'
     const isSshTerminalTabActive = activeTabData?.kind === 'ssh-terminal'
     const isSftpTabActive = activeTabData?.kind === 'sftp'
 
@@ -1516,6 +1777,9 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 onOpenTable={openTableQuery}
                 onOpenObjectDDL={(connId, params) => setDdlViewer({connId, ...params})}
                 onOpenRedisKey={openRedisKeyDetail}
+                onOpenMongoCollection={openMongoCollection}
+                onSelectMongoDatabase={selectMongoDatabase}
+                onOpenMongoBrowser={openMongoBrowser}
                 onOpenRedisBrowser={openRedisBrowser}
                 activeTabConnectionId={activeTabConnection?.id ?? null}
                 onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
@@ -1698,6 +1962,30 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     ariaLabel="Schema activo"
                                     className="min-w-28"
                                 />
+                            </div>
+                        )}
+
+                        {isMongoActive && activeTabConnection && (
+                            <div className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
+                                <span title="Base de datos a la que apunta `db` en el editor mongosh">Base:</span>
+                                <Select
+                                    value={mongoDbByConn[activeTabConnection.id] ?? ''}
+                                    options={(mongoDatabasesByConn[activeTabConnection.id] ?? []).map((d) => ({value: d, label: d}))}
+                                    onChange={(v) => selectMongoDatabase(activeTabConnection.id, v)}
+                                    placeholder="elegí una base"
+                                    size="sm"
+                                    ariaLabel="Base de datos activa de MongoDB"
+                                    className="min-w-32"
+                                />
+                                <button
+                                    onClick={() => setShowMongoWizard(true)}
+                                    disabled={!mongoDbByConn[activeTabConnection.id]}
+                                    title="Asistente de consulta: armá un find() visualmente (colección, condiciones, orden, límite) — se abre en una pestaña de editor y se ejecuta"
+                                    className="flex items-center gap-1 rounded-md border border-outline-variant px-2 py-1 text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-40"
+                                >
+                                    <Icon name="auto_awesome" size={14} />
+                                    Asistente
+                                </button>
                             </div>
                         )}
 
@@ -1953,6 +2241,25 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         </div>
                     ))}
 
+                {/* MongoDB Browser tabs — same never-unmount-just-hide
+                    treatment as Redis Browser above. */}
+                {tabs
+                    .filter((t) => t.kind === 'mongo-browser' && t.connId)
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex min-h-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <MongoBrowserTab
+                                connId={t.connId as string}
+                                initialDatabase={pendingMongoBrowser?.connId === t.connId ? pendingMongoBrowser.database : undefined}
+                                initialCollection={pendingMongoBrowser?.connId === t.connId ? pendingMongoBrowser.collection : undefined}
+                                initialToken={pendingMongoBrowser?.token}
+                            />
+                        </div>
+                    ))}
+
                 {/* Same "never unmount, just hide" treatment as Redis
                     Browser tabs above — each open terminal keeps its own
                     xterm.js Terminal instance (and the live remote shell
@@ -2037,7 +2344,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     <Icon name="terminal" size={14} className="text-primary" filled />
                                 )}
                             </button>
-                            {!isRedisActive && (
+                            {!isRedisActive && !isMongoActive && (
                                 <button
                                     onClick={() => selectBottomTab('console')}
                                     title="Consola de ejecución: cada statement del último script corrido, con su texto completo y si terminó OK (con duración) o con error — como el output de un cliente SQL de escritorio"
@@ -2071,6 +2378,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         {activeBottomTab === 'results' ? (
                     isRedisActive ? (
                         <RedisResultView results={redisResults} />
+                    ) : isMongoActive ? (
+                        <MongoResultView results={mongoResults} />
                     ) : (
                         <>
                             <ResultTabs
@@ -2203,6 +2512,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onChangeAutoBackupInterval={changeAutoBackupInterval}
                         autoBackupPath={autoBackupPath}
                         onPickAutoBackupFolder={() => void pickAutoBackupFolder()}
+                        autoSaveEnabled={autoSaveEnabled}
+                        onToggleAutoSave={toggleAutoSave}
+                        autoSaveIntervalSeconds={autoSaveIntervalSeconds}
+                        onChangeAutoSaveInterval={changeAutoSaveInterval}
                         updateInfo={updateInfo}
                         onOpenRepo={openRepo}
                         onClose={() => setShowSettingsDialog(false)}
@@ -2232,6 +2545,52 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     danger
                     onConfirm={() => runRedisText(activeTabConnection, pendingRedisCommandRun)}
                     onClose={() => setPendingRedisCommandRun(null)}
+                />
+            )}
+            {pendingMongoCommandRun && activeTabConnection && (
+                <ConfirmDialog
+                    title="Comando destructivo"
+                    description="Este script incluye un deleteMany/updateMany con filtro vacío o un drop(), que afecta o elimina datos de forma irreversible. ¿Ejecutar de todas formas?"
+                    confirmLabel="Ejecutar"
+                    danger
+                    onConfirm={() => runMongoText(activeTabConnection, pendingMongoCommandRun)}
+                    onClose={() => setPendingMongoCommandRun(null)}
+                />
+            )}
+            {showMongoWizard && (
+                <MongoFindWizard
+                    connId={activeTabConnection?.id}
+                    database={activeTabConnection ? mongoDbByConn[activeTabConnection.id] : undefined}
+                    onClose={() => setShowMongoWizard(false)}
+                    onGenerate={(query, run) => {
+                        setShowMongoWizard(false)
+                        const conn = activeTabConnection
+                        if (!conn) return
+                        // If the active tab is a mongosh editor bound to this
+                        // connection, insert into it. Otherwise (a MongoDB
+                        // Browser tab, or an editor bound elsewhere), open a
+                        // fresh mongosh editor tab with the generated query — so
+                        // the wizard works from the browser too, not only the
+                        // editor.
+                        if (activeTabData?.kind === 'editor' && activeTabData.connId === conn.id && editorRef.current) {
+                            editorRef.current.dispatch(editorRef.current.state.replaceSelection(query + '\n'))
+                            editorRef.current.focus()
+                        } else {
+                            const tab: EditorTab = {
+                                id: newTabId(),
+                                title: 'Consulta Mongo',
+                                path: null,
+                                content: query + '\n',
+                                dirty: false,
+                                connId: conn.id,
+                                language: 'mongosh',
+                                kind: 'editor',
+                            }
+                            setTabs((prev) => [...prev, tab])
+                            setActiveTabId(tab.id)
+                        }
+                        if (run) runMongoText(conn, query)
+                    }}
                 />
             )}
         </div>

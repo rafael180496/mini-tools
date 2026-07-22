@@ -89,6 +89,8 @@ func FetchSchemaMetadata(ctx context.Context, pool *sql.DB, dbType DBType, schem
 		return fetchPostgresMetadata(ctx, pool, schemas)
 	case DBTypeOracle:
 		return fetchOracleMetadata(ctx, pool, schemas)
+	case DBTypeSQLServer:
+		return fetchSQLServerMetadata(ctx, pool, schemas)
 	default:
 		return nil, fmt.Errorf("db: metadata no soportada para %q", dbType)
 	}
@@ -105,6 +107,8 @@ func ListSchemas(ctx context.Context, pool *sql.DB, dbType DBType) ([]string, er
 		return listPostgresSchemas(ctx, pool)
 	case DBTypeOracle:
 		return listOracleSchemas(ctx, pool)
+	case DBTypeSQLServer:
+		return listSQLServerSchemas(ctx, pool)
 	default:
 		return nil, nil
 	}
@@ -169,7 +173,7 @@ func listOracleSchemas(ctx context.Context, pool *sql.DB) ([]string, error) {
 // in the new-connection dialog right after a successful Test Connection,
 // before the connection has a connID to look up a pool for.
 func ListSchemasForDSN(ctx context.Context, dbType DBType, dsn string) ([]string, error) {
-	if dbType != DBTypePostgres && dbType != DBTypeOracle {
+	if dbType != DBTypePostgres && dbType != DBTypeOracle && dbType != DBTypeSQLServer {
 		return nil, nil
 	}
 
@@ -817,6 +821,240 @@ func fetchOracleOwnerTriggers(ctx context.Context, pool *sql.DB, schemas []strin
 			return nil, fmt.Errorf("db: escaneando trigger oracle: %w", err)
 		}
 		triggers = append(triggers, Trigger{Schema: owner, Name: name, Table: table})
+	}
+	return triggers, rows.Err()
+}
+
+// sqlserverSchemaFilterClause is schemaFilterClause's SQL Server counterpart:
+// go-mssqldb uses ordinal "@pN" placeholders, not Postgres's "$N" or Oracle's
+// ":N". Empty schemas means no restriction, same convention as the others.
+func sqlserverSchemaFilterClause(col string, schemas []string, startAt int) (string, []interface{}) {
+	if len(schemas) == 0 {
+		return "", nil
+	}
+	placeholders := make([]string, len(schemas))
+	args := make([]interface{}, len(schemas))
+	for i, s := range schemas {
+		placeholders[i] = fmt.Sprintf("@p%d", startAt+i)
+		args[i] = s
+	}
+	return fmt.Sprintf("AND %s IN (%s)", col, strings.Join(placeholders, ", ")), args
+}
+
+// listSQLServerSchemas lists user schemas from sys.schemas, excluding the
+// built-in system schemas (sys/INFORMATION_SCHEMA/guest) and the fixed
+// database-role schemas (db_owner, db_datareader, ...) that SQL Server creates
+// in every database — dbo and any user-created schema stay. Not verified
+// against a real SQL Server instance — see
+// .claude/skills/mini-tools-patterns/SKILL.md.
+func listSQLServerSchemas(ctx context.Context, pool *sql.DB) ([]string, error) {
+	rows, err := pool.QueryContext(ctx, `
+		SELECT name FROM sys.schemas
+		WHERE name NOT IN ('sys', 'INFORMATION_SCHEMA', 'guest')
+			AND name NOT LIKE 'db\_%' ESCAPE '\'
+		ORDER BY name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando esquemas sqlserver: %w", err)
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, fmt.Errorf("db: escaneando esquema sqlserver: %w", err)
+		}
+		schemas = append(schemas, s)
+	}
+	return schemas, rows.Err()
+}
+
+// fetchSQLServerMetadata mirrors fetchPostgresMetadata's shape: columns/PK from
+// the portable INFORMATION_SCHEMA views, FKs and routines/triggers from the
+// sys.* catalog views (INFORMATION_SCHEMA's FK views can't map parent→referenced
+// columns cleanly, and sys.foreign_key_columns does it directly). Empty schemas
+// = every user schema; a non-empty list restricts by TABLE_SCHEMA/sys schema
+// name. Not verified against a real SQL Server instance — see
+// .claude/skills/mini-tools-patterns/SKILL.md.
+func fetchSQLServerMetadata(ctx context.Context, pool *sql.DB, schemas []string) (*SchemaMetadata, error) {
+	index := map[string]*Table{}
+	var order []string
+	key := func(schema, table string) string { return schema + "." + table }
+
+	colFilter, colArgs := sqlserverSchemaFilterClause("TABLE_SCHEMA", schemas, 1)
+	rows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA NOT IN ('sys', 'INFORMATION_SCHEMA')
+		%s
+		ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
+	`, colFilter), colArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando columnas sqlserver: %w", err)
+	}
+	for rows.Next() {
+		var schema, table, col, dtype, nullable string
+		if err := rows.Scan(&schema, &table, &col, &dtype, &nullable); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("db: escaneando columna sqlserver: %w", err)
+		}
+		k := key(schema, table)
+		t, ok := index[k]
+		if !ok {
+			t = &Table{Schema: schema, Name: table}
+			index[k] = t
+			order = append(order, k)
+		}
+		t.Columns = append(t.Columns, Column{Name: col, DataType: dtype, Nullable: nullable == "YES"})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	pkFilter, pkArgs := sqlserverSchemaFilterClause("tc.TABLE_SCHEMA", schemas, 1)
+	pkRows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT tc.TABLE_SCHEMA, tc.TABLE_NAME, kcu.COLUMN_NAME
+		FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+		JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+			ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+		WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+		%s
+	`, pkFilter), pkArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando primary keys sqlserver: %w", err)
+	}
+	for pkRows.Next() {
+		var schema, table, col string
+		if err := pkRows.Scan(&schema, &table, &col); err != nil {
+			pkRows.Close()
+			return nil, fmt.Errorf("db: escaneando primary key sqlserver: %w", err)
+		}
+		if t, ok := index[key(schema, table)]; ok {
+			for i := range t.Columns {
+				if t.Columns[i].Name == col {
+					t.Columns[i].IsPrimaryKey = true
+				}
+			}
+		}
+	}
+	pkRows.Close()
+
+	// FKs via sys.foreign_key_columns — it maps parent object/column to
+	// referenced object/column by id directly, which INFORMATION_SCHEMA can't
+	// do without fragile constraint-name joins.
+	fkFilter, fkArgs := sqlserverSchemaFilterClause("sch.name", schemas, 1)
+	fkRows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT sch.name, tp.name, cp.name, rsch.name, rt.name, rc.name
+		FROM sys.foreign_key_columns fkc
+		JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
+		JOIN sys.schemas sch ON tp.schema_id = sch.schema_id
+		JOIN sys.columns cp ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
+		JOIN sys.tables rt ON fkc.referenced_object_id = rt.object_id
+		JOIN sys.schemas rsch ON rt.schema_id = rsch.schema_id
+		JOIN sys.columns rc ON fkc.referenced_object_id = rc.object_id AND fkc.referenced_column_id = rc.column_id
+		WHERE 1 = 1
+		%s
+	`, fkFilter), fkArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando foreign keys sqlserver: %w", err)
+	}
+	for fkRows.Next() {
+		var schema, table, col, refSchema, refTable, refCol string
+		if err := fkRows.Scan(&schema, &table, &col, &refSchema, &refTable, &refCol); err != nil {
+			fkRows.Close()
+			return nil, fmt.Errorf("db: escaneando foreign key sqlserver: %w", err)
+		}
+		if t, ok := index[key(schema, table)]; ok {
+			refName := refTable
+			if refSchema != schema {
+				refName = refSchema + "." + refTable
+			}
+			t.ForeignKeys = append(t.ForeignKeys, ForeignKey{Column: col, ReferencedTable: refName, ReferencedColumn: refCol})
+		}
+	}
+	fkRows.Close()
+
+	tables := make([]Table, 0, len(order))
+	for _, k := range order {
+		tables = append(tables, *index[k])
+	}
+
+	procedures, functions, err := fetchSQLServerRoutines(ctx, pool, schemas)
+	if err != nil {
+		return nil, err
+	}
+	triggers, err := fetchSQLServerTriggers(ctx, pool, schemas)
+	if err != nil {
+		return nil, err
+	}
+
+	// SQL Server has no PL/SQL-style packages — Packages is left empty, same
+	// as Postgres/SQLite.
+	return &SchemaMetadata{Tables: tables, Procedures: procedures, Functions: functions, Triggers: triggers}, nil
+}
+
+// fetchSQLServerRoutines lists stored procedures and functions from sys.objects
+// (type 'P' = stored procedure; 'FN'/'IF'/'TF'/'FS'/'FT' = the scalar/inline/
+// table-valued function variants). Not verified against a real SQL Server
+// instance — see .claude/skills/mini-tools-patterns/SKILL.md.
+func fetchSQLServerRoutines(ctx context.Context, pool *sql.DB, schemas []string) (procedures []Procedure, functions []Function, err error) {
+	filter, args := sqlserverSchemaFilterClause("s.name", schemas, 1)
+	rows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT s.name, o.name, o.type
+		FROM sys.objects o
+		JOIN sys.schemas s ON o.schema_id = s.schema_id
+		WHERE o.type IN ('P', 'FN', 'IF', 'TF', 'FS', 'FT')
+		%s
+		ORDER BY s.name, o.name
+	`, filter), args...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("db: listando procedures/functions sqlserver: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var schema, name, objType string
+		if err := rows.Scan(&schema, &name, &objType); err != nil {
+			return nil, nil, fmt.Errorf("db: escaneando rutina sqlserver: %w", err)
+		}
+		if strings.TrimSpace(objType) == "P" {
+			procedures = append(procedures, Procedure{Schema: schema, Name: name})
+		} else {
+			functions = append(functions, Function{Schema: schema, Name: name})
+		}
+	}
+	return procedures, functions, rows.Err()
+}
+
+// fetchSQLServerTriggers uses sys.triggers joined to sys.tables so the sidebar
+// can show which table each trigger belongs to (same reasoning as the Postgres
+// pg_trigger→pg_class join). Database-level (DDL) triggers, whose parent_id is
+// 0, are excluded — they aren't attached to a table.
+func fetchSQLServerTriggers(ctx context.Context, pool *sql.DB, schemas []string) ([]Trigger, error) {
+	filter, args := sqlserverSchemaFilterClause("s.name", schemas, 1)
+	rows, err := pool.QueryContext(ctx, fmt.Sprintf(`
+		SELECT s.name, tr.name, t.name
+		FROM sys.triggers tr
+		JOIN sys.tables t ON tr.parent_id = t.object_id
+		JOIN sys.schemas s ON t.schema_id = s.schema_id
+		WHERE tr.parent_id <> 0
+		%s
+		ORDER BY s.name, tr.name
+	`, filter), args...)
+	if err != nil {
+		return nil, fmt.Errorf("db: listando triggers sqlserver: %w", err)
+	}
+	defer rows.Close()
+
+	var triggers []Trigger
+	for rows.Next() {
+		var schema, name, table string
+		if err := rows.Scan(&schema, &name, &table); err != nil {
+			return nil, fmt.Errorf("db: escaneando trigger sqlserver: %w", err)
+		}
+		triggers = append(triggers, Trigger{Schema: schema, Name: name, Table: table})
 	}
 	return triggers, rows.Err()
 }

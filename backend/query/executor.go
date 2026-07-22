@@ -139,10 +139,12 @@ func (e *Executor) BeginTransaction(ctx context.Context, connID string, dbType d
 	}
 
 	// Oracle has no explicit BEGIN — a transaction starts implicitly with
-	// the first statement on the session. Postgres/SQLite need one opened
-	// explicitly for auto-commit to actually be off from here on.
-	if dbType != db.DBTypeOracle {
-		if _, err := conn.ExecContext(ctx, "BEGIN"); err != nil {
+	// the first statement on the session. Postgres/SQLite open one with plain
+	// "BEGIN"; SQL Server's "BEGIN" starts a T-SQL block, not a transaction,
+	// so it needs "BEGIN TRANSACTION" instead (COMMIT/ROLLBACK in
+	// endTransaction are valid T-SQL for both engines, no change needed there).
+	if beginStmt := transactionBeginStmt(dbType); beginStmt != "" {
+		if _, err := conn.ExecContext(ctx, beginStmt); err != nil {
 			conn.Close()
 			return fmt.Errorf("query: iniciando transacción: %w", err)
 		}
@@ -173,6 +175,21 @@ func (e *Executor) endTransaction(ctx context.Context, connID, stmt string) erro
 		return fmt.Errorf("query: %s: %w", stmt, err)
 	}
 	return nil
+}
+
+// transactionBeginStmt returns the statement that opens an explicit
+// transaction for dbType, or "" if the engine starts one implicitly on the
+// first statement (Oracle). SQL Server needs "BEGIN TRANSACTION" because a
+// bare "BEGIN" opens a T-SQL statement block, not a transaction.
+func transactionBeginStmt(dbType db.DBType) string {
+	switch dbType {
+	case db.DBTypeOracle:
+		return ""
+	case db.DBTypeSQLServer:
+		return "BEGIN TRANSACTION"
+	default:
+		return "BEGIN"
+	}
 }
 
 func (e *Executor) CommitTransaction(ctx context.Context, connID string) error {

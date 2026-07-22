@@ -16,3 +16,18 @@ func quoteIdents(names []string) []string {
 	}
 	return out
 }
+
+// quoteBracket bracket-quotes a SQL Server identifier ([Name] style),
+// doubling any embedded closing bracket — used by the SQL Server DDL
+// reconstruction, where [] is the idiomatic delimiter rather than "".
+func quoteBracket(name string) string {
+	return "[" + strings.ReplaceAll(name, "]", "]]") + "]"
+}
+
+func quoteBrackets(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = quoteBracket(n)
+	}
+	return out
+}

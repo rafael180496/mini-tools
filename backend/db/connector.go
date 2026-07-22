@@ -6,9 +6,10 @@ import "fmt"
 type DBType string
 
 const (
-	DBTypeSQLite   DBType = "sqlite"
-	DBTypePostgres DBType = "postgres"
-	DBTypeOracle   DBType = "oracle"
+	DBTypeSQLite    DBType = "sqlite"
+	DBTypePostgres  DBType = "postgres"
+	DBTypeOracle    DBType = "oracle"
+	DBTypeSQLServer DBType = "sqlserver"
 	// DBTypeRedis is the one deliberate exception to "all engines go
 	// through database/sql" (.claude/rules/technical.md point 2, exception
 	// documented there) — Redis isn't relational and go-redis's client
@@ -16,7 +17,15 @@ const (
 	// RedisPoolManager (redis_pool.go) instead of PoolManager. See
 	// .claude/skills/mini-tools-patterns/SKILL.md's Redis section.
 	DBTypeRedis DBType = "redis"
-	// DBTypeSSH is a second deliberate exception to the same rule, same
+	// DBTypeMongo is a further deliberate exception to the same rule, same
+	// reasoning as DBTypeRedis (approved explicitly, not assumed — see
+	// .claude/rules/technical.md point 2): MongoDB is document-oriented, not
+	// relational, and the official go.mongodb.org/mongo-driver/v2 doesn't
+	// implement database/sql interfaces, so it's driven by MongoPoolManager
+	// (mongo_pool.go) + backend/mongoquery instead of PoolManager/query. See
+	// .claude/skills/mini-tools-patterns/SKILL.md's MongoDB section.
+	DBTypeMongo DBType = "mongodb"
+	// DBTypeSSH is a further deliberate exception to the same rule, same
 	// reasoning as DBTypeRedis: an SSH session is not a relational
 	// database/sql connection at all, so it's driven by
 	// sshconn.SessionManager instead of PoolManager. Unlike Redis it has no
@@ -39,6 +48,8 @@ func (t DBType) DriverName() string {
 		return "pgx"
 	case DBTypeOracle:
 		return "oracle"
+	case DBTypeSQLServer:
+		return "sqlserver"
 	default:
 		return ""
 	}
@@ -69,8 +80,12 @@ func ConnectorFor(t DBType) (Connector, error) {
 		return postgresConnector{}, nil
 	case DBTypeOracle:
 		return oracleConnector{}, nil
+	case DBTypeSQLServer:
+		return sqlserverConnector{}, nil
 	case DBTypeRedis:
 		return redisConnector{}, nil
+	case DBTypeMongo:
+		return mongoConnector{}, nil
 	case DBTypeSSH:
 		return sshConnector{}, nil
 	default:
