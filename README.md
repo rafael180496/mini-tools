@@ -147,7 +147,7 @@ cd mini-tools
 ```bash
 ./scripts/install.sh      # toolchain (Wails CLI si falta) + deps de Go y frontend
 ./scripts/start-dev.sh    # wails dev — backend Go + frontend Vite con hot reload
-./scripts/build.sh        # wails build -clean — build de producción, binario objetivo <45MB
+./scripts/build.sh        # wails build -clean — build de producción, binario objetivo <80MB
 ./scripts/start.sh        # corre el binario ya compilado en build/bin/, sin recompilar
 ./scripts/clean.sh        # borra build/bin + frontend/dist (--all también node_modules y cache de Go)
 ```

@@ -144,7 +144,7 @@ Decisión explícita del proyecto (no un default de conveniencia): cada
 `.dmg`/`.exe` se commitea al repo en vez de excluirse por `.gitignore` —
 así el link de descarga del README funciona directo desde GitHub, sin
 depender de un flujo aparte (GitHub Releases, USB, etc.). El costo aceptado
-es que cada versión empaquetada suma ~15-45MB permanentes por SO al
+es que cada versión empaquetada suma ~20-52MB permanentes por SO al
 historial de git.
 
 ## Ver también
