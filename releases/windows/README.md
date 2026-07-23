@@ -10,17 +10,17 @@ ningún lado — solo empaqueta el `.exe` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.4.0 |
-| Archivo | `mini-tools-v0.4.0-windows-amd64.exe` |
-| Tamaño | ~52 MB |
-| SHA-256 | `3c9017fee6a1e161eabc4e78bcc3fd6650ca342b864acc6e16603770ed581b38` |
+| Versión | 0.5.0 |
+| Archivo | `mini-tools-v0.5.0-windows-amd64.exe` |
+| Tamaño | ~51 MB |
+| SHA-256 | `2f962f071bc24965a39d279ceafea8763bcd08a2a7fa7de78abcb15953cbeea3` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v0.4.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v0.5.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -29,9 +29,9 @@ Get-FileHash mini-tools-v0.4.0-windows-amd64.exe -Algorithm SHA256
 Este `.exe` se cross-compila desde macOS (ninguno de los conectores de
 base de datos —PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni
 `go-redis` usan CGO, así que no hace falta un toolchain de
-Windows/mingw), pero **no se distribuye solo porque compile**: desde la
-versión 0.4.0 el binario se corrió en **Windows 10 y Windows 11 reales**
-antes de publicarlo, y la app arranca y funciona en ambos.
+Windows/mingw), pero **no se distribuye solo porque compile**: esta
+versión (0.5.0) se corrió en **Windows 10 y Windows 11 reales** antes de
+publicarla, y la app arranca y funciona en ambos.
 
 Lo que se confirmó ahí y no se puede confirmar cross-compilando:
 
@@ -72,7 +72,7 @@ falta de firma Authenticode — ver abajo.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v0.4.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v0.5.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

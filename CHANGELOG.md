@@ -4,6 +4,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-22
+
 ### Agregado
 
 - **Módulo Git**: cliente Git integrado, estilo Sublime Merge, como tercer módulo del sidebar junto a Conexiones y SSH. Se agrega un repositorio que ya existe en disco (si elegís una subcarpeta, registra el repositorio completo) y doble-click lo abre en su propia pestaña. Cada repositorio se expande en el sidebar mostrando **ramas, remotos, tags y stashes**, cargados solo al expandirlo. Click derecho sobre un remoto: fetch, renombrar, cambiar URL, copiar URL y eliminar.
@@ -23,17 +25,28 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
   - *Tokens*: guarda un Personal Access Token **por servidor** (un token de github.com sirve para todos tus repos de ahí, no hay que repetirlo por proyecto). Se puede pegar la URL completa del repo: se normaliza al host, incluyendo formas `git@host:owner/repo` y URLs que ya traen un token embebido.
 - **Los tokens guardados se usan solos**: fetch, pull, push, push de tags y borrado de ramas/tags remotos resuelven la credencial mirando el host del remoto. Si no hay ninguna guardada, git sigue resolviendo como siempre (llavero del sistema, credential helper, ssh-agent) — no guardar nada es una opción válida, no un error.
 - Los diálogos destructivos explican qué se pierde y qué no: `reset --hard` aclara que lo no commiteado no queda en el reflog; borrar un tag distingue local de remoto; borrar una rama remota aclara que borra en el servidor, no tu copia.
+- **Carpetas para organizar los repositorios Git**, igual que en Conexiones y SSH: botón de nueva carpeta en el header del módulo, carpetas anidables con contador, y "mover a carpeta" por repo. Reutiliza la tabla `folders` compartida con un scope nuevo (`'git'`), independiente de los árboles de DB/SSH aunque compartan nombre. Eliminar una carpeta reubica sus repos a la contenedora, nunca los quita ni borra nada del disco.
+- **Visor de diff configurable**, persistido en el vault: líneas de contexto (git `-U`, ± en la barra), *ignorar espacios* (`-w`, para cuando un reformateo tapa el cambio real) y ajuste de línea. Al seleccionar un commit se auto-selecciona su primer archivo, así el diff aparece de una en vez de dejar el panel vacío.
+- **Paneles de la pestaña Git redimensionables**, con el ancho guardado (arrastre de las divisiones izquierda/derecha). El arrastre escucha en `window` para no cortarse al salir de la franja, guarda solo al soltar, y clampea el ancho en el backend para que un panel arrastrado a cero no quede inutilizable tras reiniciar.
+- **`git status` en vivo**: mientras la pestaña Git está activa y la ventana enfocada, relee el estado del working tree cada pocos segundos, así los cambios hechos por fuera de la app (editar un archivo en otro editor) se reflejan en el contador "Cambios (N)" —ahora con badge de color— sin tocar Refrescar. Solo status, nunca el grafo, así no parpadea; pausado cuando la ventana no tiene foco.
+- **"Ocultar rama" en el menú de commit**, para sacar ramas ruidosas del grafo sin borrarlas (un chip "N ocultas" en la barra las restaura), y **"Agregar remoto"** desde el header de REMOTOS del sidebar.
+- **Estados de carga con spinner y color** (historial, diff, detalle del sidebar, "ejecutando git …"), consistentes con el resto de la app en vez del texto gris apagado anterior.
 
 ### Notas técnicas
 
-- El motor es el **binario `git` del sistema vía `os/exec`, no `go-git`**: cero dependencias nuevas (el binario pasó de 47.2 a 47.4 MB, todo frontend), y el `git` del sistema ya resuelve credential helpers del SO, ssh-agent y PATs —que `go-git` no cubre— correctamente en cada plataforma. A cambio, requiere git instalado: el módulo lo detecta al arrancar y muestra un estado degradado explícito en vez de fallar operación por operación.
+- El motor es el **binario `git` del sistema vía `os/exec`, no `go-git`**: cero dependencias nuevas (el binario pasó de 47.2 a 47.5 MB, todo frontend), y el `git` del sistema ya resuelve credential helpers del SO, ssh-agent y PATs —que `go-git` no cubre— correctamente en cada plataforma. A cambio, requiere git instalado: el módulo lo detecta al arrancar y muestra un estado degradado explícito en vez de fallar operación por operación.
 - Un token **nunca** viaja por la línea de comandos ni por la URL del remote. `GIT_ASKPASS`/`SSH_ASKPASS` apuntan al propio binario de mini-tools re-ejecutado, que responde el prompt y sale.
 - Las URLs de remoto se **redactan** antes de llegar al frontend: un remote configurado como `https://<token>@github.com/...` guarda el PAT en texto plano en `.git/config`, y mostrarlo pondría la credencial en la UI. La única excepción es "Copiar URL", donde el valor real es lo que se pidió.
 - `vault.db` migración 18: tabla `git_repos` con rutas y nombres únicamente, sin credenciales. Quitar un repositorio del sidebar no toca nada en disco.
 - `vault.db` migración 19: tabla `git_credentials`. A diferencia de `git_repos`, esta **sí** guarda un secreto, así que el token va cifrado a nivel de columna con AES-256-GCM (`encrypted_token` + `nonce`), el mismo esquema que `connections.encrypted_dsn`. Verificado en un vault sandboxeado: el token no aparece en texto plano en el archivo. El struct que cruza al frontend no tiene campo de token — solo host y usuario.
+- `vault.db` migraciones 20 y 21: anchos de los paneles de la pestaña Git (`git_side_width`/`git_diff_width`, clampeados) y preferencias del visor de diff (`git_diff_context`/`git_diff_ignore_ws`/`git_diff_wrap`). Todas aditivas, con DEFAULT que preserva el layout previo.
+- El módulo Git sumó apenas ~0.3 MB al binario (de 47.2 a 47.5 MB), casi todo frontend — la decisión de `exec` sobre `go-git` mantiene `go.mod` sin dependencias nuevas. Medición 0.5.0: macOS `arm64` ~19 MB (`.dmg`), Windows `amd64` ~51 MB (`.exe`), lejos del techo de 80 MB.
 
 ### Corregido
 
+- **Pantalla en blanco al abrir un repositorio / desplegar el árbol Git.** Varias funciones del backend devolvían slices `nil` de Go, que cruzan el binding como `null` en JS; el primer `.map` sobre uno de ellos tiraba abajo todo el árbol de React sin ningún mensaje. Ahora ninguna devuelve `nil` (siempre `[]`), con defensas `?? []` en el frontend y un *error boundary* alrededor del módulo Git para que un fallo de un panel no se lleve toda la app.
+- **El diff no se veía al seleccionar un commit.** Bug de flexbox anidado: la raíz de la pestaña no tenía `min-w-0`, así que no encogía y empujaba el panel de diff (520 px, fijo) fuera de la ventana, donde el `overflow-hidden` lo recortaba. Con `min-w-0` en la cadena de flex el panel queda siempre dentro (verificado midiendo el layout headless).
+- **Diff obsoleto tras descartar/rollback un archivo.** El working tree quedaba limpio pero el panel seguía mostrando el diff viejo. Ahora, en la vista de Cambios, cuando el estado cambia se revalida la selección: si el archivo ya no tiene cambios se limpia el diff, y si sigue teniéndolos se refresca en silencio (sin parpadeo).
 - `SchemaObjectsList.tsx` usaba el ícono `inventory_2`, que no existe en el subset de Material Symbols que embebe la app y por lo tanto se renderizaba como texto roto. (Detectado al validar los íconos del módulo Git contra la fuente; **el ícono en sí sigue sin corregirse** — se documenta acá para que no se pierda.)
 
 ## [0.4.0] - 2026-07-22
