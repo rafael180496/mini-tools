@@ -5,6 +5,7 @@ import {vault} from '../models';
 import {explain} from '../models';
 import {db} from '../models';
 import {main} from '../models';
+import {git} from '../models';
 import {sftpx} from '../models';
 
 export function AddRedisSetMember(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -100,6 +101,124 @@ export function GetRedisStats(arg1:string):Promise<db.RedisStats>;
 export function GetSchemaMetadata(arg1:string,arg2:boolean):Promise<db.SchemaMetadata>;
 
 export function GetSettings():Promise<vault.Settings>;
+
+export function GitAbort(arg1:string,arg2:string):Promise<void>;
+
+export function GitAddRemote(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function GitAddRepo(arg1:string):Promise<vault.GitRepo>;
+
+export function GitApplyPatch(arg1:string,arg2:string,arg3:boolean,arg4:boolean):Promise<void>;
+
+export function GitBranches(arg1:string,arg2:boolean):Promise<Array<git.Branch>>;
+
+export function GitChangedFiles(arg1:string,arg2:string):Promise<Array<git.FileDiff>>;
+
+export function GitCheckout(arg1:string,arg2:string):Promise<void>;
+
+export function GitCherryPick(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function GitCloneRepo(arg1:string,arg2:string,arg3:git.AuthConfig):Promise<vault.GitRepo>;
+
+export function GitCommit(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function GitCreateBranch(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
+
+export function GitCreateTag(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function GitDeleteBranch(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function GitDeleteCredential(arg1:string):Promise<void>;
+
+export function GitDeleteRemoteBranch(arg1:string,arg2:string,arg3:git.AuthConfig):Promise<string>;
+
+export function GitDeleteRemoteTag(arg1:string,arg2:string,arg3:string,arg4:git.AuthConfig):Promise<string>;
+
+export function GitDeleteTag(arg1:string,arg2:string):Promise<void>;
+
+export function GitDiff(arg1:string,arg2:git.DiffTarget):Promise<git.FileDiff>;
+
+export function GitDiscard(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function GitFetch(arg1:string,arg2:git.FetchOptions,arg3:git.AuthConfig):Promise<string>;
+
+export function GitFileAtCommit(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function GitIdentity(arg1:string):Promise<git.Identity>;
+
+export function GitInProgress(arg1:string):Promise<string>;
+
+export function GitListCredentials():Promise<Array<vault.GitCredential>>;
+
+export function GitListRepos():Promise<Array<vault.GitRepo>>;
+
+export function GitLog(arg1:string,arg2:git.LogOptions):Promise<Array<git.CommitInfo>>;
+
+export function GitMerge(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function GitMoveRepoToFolder(arg1:string,arg2:string):Promise<void>;
+
+export function GitPickRepoFolder():Promise<string>;
+
+export function GitProbe():Promise<git.Availability>;
+
+export function GitPull(arg1:string,arg2:git.PullOptions,arg3:git.AuthConfig):Promise<string>;
+
+export function GitPush(arg1:string,arg2:git.PushOptions,arg3:git.AuthConfig):Promise<string>;
+
+export function GitPushTag(arg1:string,arg2:string,arg3:string,arg4:git.AuthConfig):Promise<string>;
+
+export function GitRefreshProbe():Promise<git.Availability>;
+
+export function GitRemoteURLForCopy(arg1:string,arg2:string):Promise<string>;
+
+export function GitRemotes(arg1:string):Promise<Array<git.Remote>>;
+
+export function GitRemoveRemote(arg1:string,arg2:string):Promise<void>;
+
+export function GitRemoveRepo(arg1:string):Promise<void>;
+
+export function GitRenameBranch(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function GitRenameRemote(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function GitRenameRepo(arg1:string,arg2:string):Promise<void>;
+
+export function GitReset(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function GitRevert(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function GitSaveCredential(arg1:string,arg2:string,arg3:string):Promise<vault.GitCredential>;
+
+export function GitSetDiffPrefs(arg1:number,arg2:boolean,arg3:boolean):Promise<void>;
+
+export function GitSetIdentity(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
+
+export function GitSetPaneWidths(arg1:number,arg2:number):Promise<void>;
+
+export function GitSetRemoteURL(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function GitSetUpstream(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function GitStage(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function GitStageAll(arg1:string):Promise<void>;
+
+export function GitStashApply(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function GitStashDrop(arg1:string,arg2:string):Promise<void>;
+
+export function GitStashPush(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
+export function GitStashes(arg1:string):Promise<Array<git.Stash>>;
+
+export function GitStatus(arg1:string):Promise<git.RepoStatus>;
+
+export function GitTags(arg1:string):Promise<Array<git.Tag>>;
+
+export function GitUnsetUpstream(arg1:string,arg2:string):Promise<void>;
+
+export function GitUnstage(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function HasOpenTransaction(arg1:string):Promise<boolean>;
 

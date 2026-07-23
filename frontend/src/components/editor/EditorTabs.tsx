@@ -22,7 +22,11 @@ export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 // 'sftp' is the dual-pane file-transfer explorer (see SftpTab.tsx) — likewise
 // a full-tab view with the editor fields unused; connId marks the host it was
 // launched from (for the tab strip icon / dedupe), not a bound query engine.
-export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp'
+// 'git-repo' is the Git client's three-panel repository view (see
+// GitRepoTab.tsx) — same unused-placeholder-fields treatment, but it is the
+// one kind bound to a repoId instead of a connId, since a repository is not a
+// database connection.
+export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp' | 'git-repo'
 
 export interface EditorTab {
     id: string
@@ -42,6 +46,13 @@ export interface EditorTab {
     // redis-cli for redis) rather than trusting a stale manual pick.
     language: TabLanguage
     kind: TabKind
+    // Which registered git repository this tab shows — set only for
+    // kind === 'git-repo', undefined everywhere else. It gets its own field
+    // rather than reusing connId because the two address different registries
+    // (vault.git_repos vs vault.connections); overloading connId would make
+    // every `connections.find(c => c.id === tab.connId)` in Workspace silently
+    // miss and render the tab as "sin conexión vinculada".
+    repoId?: string
 }
 
 interface EditorTabsProps {
@@ -94,6 +105,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
     const isBrowserTab = tab.kind === 'redis-browser'
     const isSshTab = tab.kind === 'ssh-terminal'
     const isSftpTab = tab.kind === 'sftp'
+    const isGitTab = tab.kind === 'git-repo'
 
     // Posiciona el menú vía viewport coords + un portal a document.body, no
     // position:absolute dentro de esta fila — la fila de pestañas tiene
@@ -147,6 +159,13 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
                 >
                     <Icon name="swap_horiz" size={12} />
+                </span>
+            ) : isGitTab ? (
+                <span
+                    title="Repositorio Git — no se vincula a una conexión de base de datos"
+                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
+                >
+                    <Icon name="commit" size={12} />
                 </span>
             ) : (
                 <button

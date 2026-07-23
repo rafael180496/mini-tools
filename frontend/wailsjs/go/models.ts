@@ -493,6 +493,430 @@ export namespace explain {
 
 }
 
+export namespace git {
+	
+	export class AuthConfig {
+	    mode: string;
+	    sshKeyPath: string;
+	    sshKeyPassphrase: string;
+	    username: string;
+	    token: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AuthConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.sshKeyPath = source["sshKeyPath"];
+	        this.sshKeyPassphrase = source["sshKeyPassphrase"];
+	        this.username = source["username"];
+	        this.token = source["token"];
+	    }
+	}
+	export class Availability {
+	    available: boolean;
+	    version: string;
+	    path: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Availability(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.version = source["version"];
+	        this.path = source["path"];
+	        this.error = source["error"];
+	    }
+	}
+	export class Branch {
+	    name: string;
+	    hash: string;
+	    upstream: string;
+	    ahead: number;
+	    behind: number;
+	    isCurrent: boolean;
+	    isRemote: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Branch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.hash = source["hash"];
+	        this.upstream = source["upstream"];
+	        this.ahead = source["ahead"];
+	        this.behind = source["behind"];
+	        this.isCurrent = source["isCurrent"];
+	        this.isRemote = source["isRemote"];
+	    }
+	}
+	export class DiffStat {
+	    filesChanged: number;
+	    insertions: number;
+	    deletions: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiffStat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filesChanged = source["filesChanged"];
+	        this.insertions = source["insertions"];
+	        this.deletions = source["deletions"];
+	    }
+	}
+	export class CommitInfo {
+	    hash: string;
+	    shortHash: string;
+	    author: string;
+	    email: string;
+	    date: string;
+	    subject: string;
+	    body: string;
+	    parents: string[];
+	    branches: string[];
+	    tags: string[];
+	    isHead: boolean;
+	    stats: DiffStat;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommitInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hash = source["hash"];
+	        this.shortHash = source["shortHash"];
+	        this.author = source["author"];
+	        this.email = source["email"];
+	        this.date = source["date"];
+	        this.subject = source["subject"];
+	        this.body = source["body"];
+	        this.parents = source["parents"];
+	        this.branches = source["branches"];
+	        this.tags = source["tags"];
+	        this.isHead = source["isHead"];
+	        this.stats = this.convertValues(source["stats"], DiffStat);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class DiffTarget {
+	    mode: string;
+	    commit: string;
+	    path: string;
+	    contextLines: number;
+	    ignoreWhitespace: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiffTarget(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.commit = source["commit"];
+	        this.path = source["path"];
+	        this.contextLines = source["contextLines"];
+	        this.ignoreWhitespace = source["ignoreWhitespace"];
+	    }
+	}
+	export class FetchOptions {
+	    remote: string;
+	    all: boolean;
+	    tags: boolean;
+	    prune: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FetchOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remote = source["remote"];
+	        this.all = source["all"];
+	        this.tags = source["tags"];
+	        this.prune = source["prune"];
+	    }
+	}
+	export class FileDiff {
+	    path: string;
+	    origPath: string;
+	    patch: string;
+	    isBinary: boolean;
+	    stat: DiffStat;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileDiff(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.origPath = source["origPath"];
+	        this.patch = source["patch"];
+	        this.isBinary = source["isBinary"];
+	        this.stat = this.convertValues(source["stat"], DiffStat);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class FileStatus {
+	    path: string;
+	    origPath: string;
+	    indexStatus: string;
+	    workStatus: string;
+	    staged: boolean;
+	    untracked: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.origPath = source["origPath"];
+	        this.indexStatus = source["indexStatus"];
+	        this.workStatus = source["workStatus"];
+	        this.staged = source["staged"];
+	        this.untracked = source["untracked"];
+	    }
+	}
+	export class Identity {
+	    localName: string;
+	    localEmail: string;
+	    globalName: string;
+	    globalEmail: string;
+	    effectiveName: string;
+	    effectiveEmail: string;
+	    usingGlobal: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Identity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.localName = source["localName"];
+	        this.localEmail = source["localEmail"];
+	        this.globalName = source["globalName"];
+	        this.globalEmail = source["globalEmail"];
+	        this.effectiveName = source["effectiveName"];
+	        this.effectiveEmail = source["effectiveEmail"];
+	        this.usingGlobal = source["usingGlobal"];
+	    }
+	}
+	export class LogOptions {
+	    maxCount: number;
+	    skip: number;
+	    rev: string;
+	    revs: string[];
+	    all: boolean;
+	    path: string;
+	    withStats: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.maxCount = source["maxCount"];
+	        this.skip = source["skip"];
+	        this.rev = source["rev"];
+	        this.revs = source["revs"];
+	        this.all = source["all"];
+	        this.path = source["path"];
+	        this.withStats = source["withStats"];
+	    }
+	}
+	export class PullOptions {
+	    remote: string;
+	    branch: string;
+	    ffOnly: boolean;
+	    rebase: boolean;
+	    autostash: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remote = source["remote"];
+	        this.branch = source["branch"];
+	        this.ffOnly = source["ffOnly"];
+	        this.rebase = source["rebase"];
+	        this.autostash = source["autostash"];
+	    }
+	}
+	export class PushOptions {
+	    remote: string;
+	    branch: string;
+	    force: boolean;
+	    forceWithLease: boolean;
+	    noVerify: boolean;
+	    setUpstream: boolean;
+	    tags: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PushOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remote = source["remote"];
+	        this.branch = source["branch"];
+	        this.force = source["force"];
+	        this.forceWithLease = source["forceWithLease"];
+	        this.noVerify = source["noVerify"];
+	        this.setUpstream = source["setUpstream"];
+	        this.tags = source["tags"];
+	    }
+	}
+	export class Remote {
+	    name: string;
+	    fetchUrl: string;
+	    pushUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Remote(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.fetchUrl = source["fetchUrl"];
+	        this.pushUrl = source["pushUrl"];
+	    }
+	}
+	export class RepoStatus {
+	    branch: string;
+	    upstream: string;
+	    ahead: number;
+	    behind: number;
+	    detached: boolean;
+	    files: FileStatus[];
+	    hasChanges: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.branch = source["branch"];
+	        this.upstream = source["upstream"];
+	        this.ahead = source["ahead"];
+	        this.behind = source["behind"];
+	        this.detached = source["detached"];
+	        this.files = this.convertValues(source["files"], FileStatus);
+	        this.hasChanges = source["hasChanges"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Stash {
+	    ref: string;
+	    index: number;
+	    branch: string;
+	    message: string;
+	    date: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Stash(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ref = source["ref"];
+	        this.index = source["index"];
+	        this.branch = source["branch"];
+	        this.message = source["message"];
+	        this.date = source["date"];
+	    }
+	}
+	export class Tag {
+	    name: string;
+	    hash: string;
+	    annotated: boolean;
+	    message: string;
+	    taggerDate: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Tag(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.hash = source["hash"];
+	        this.annotated = source["annotated"];
+	        this.message = source["message"];
+	        this.taggerDate = source["taggerDate"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
 	export class ConnectionEditInfo {
@@ -772,6 +1196,46 @@ export namespace vault {
 	        this.scope = source["scope"];
 	    }
 	}
+	export class GitCredential {
+	    id: string;
+	    host: string;
+	    username: string;
+	    createdAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitCredential(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.host = source["host"];
+	        this.username = source["username"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class GitRepo {
+	    id: string;
+	    name: string;
+	    path: string;
+	    folderId?: string;
+	    sortOrder: number;
+	    createdAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitRepo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.folderId = source["folderId"];
+	        this.sortOrder = source["sortOrder"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class HistoryEntry {
 	    id: string;
 	    connectionId: string;
@@ -835,6 +1299,11 @@ export namespace vault {
 	    openTabs: OpenTabInfo[];
 	    sidebarCollapsed: boolean;
 	    editorHeight: number;
+	    gitSideWidth: number;
+	    gitDiffWidth: number;
+	    gitDiffContext: number;
+	    gitDiffIgnoreWs: boolean;
+	    gitDiffWrap: boolean;
 	    rememberMasterKey: boolean;
 	    editorTheme: string;
 	    collapsedSidebarModules: string[];
@@ -855,6 +1324,11 @@ export namespace vault {
 	        this.openTabs = this.convertValues(source["openTabs"], OpenTabInfo);
 	        this.sidebarCollapsed = source["sidebarCollapsed"];
 	        this.editorHeight = source["editorHeight"];
+	        this.gitSideWidth = source["gitSideWidth"];
+	        this.gitDiffWidth = source["gitDiffWidth"];
+	        this.gitDiffContext = source["gitDiffContext"];
+	        this.gitDiffIgnoreWs = source["gitDiffIgnoreWs"];
+	        this.gitDiffWrap = source["gitDiffWrap"];
 	        this.rememberMasterKey = source["rememberMasterKey"];
 	        this.editorTheme = source["editorTheme"];
 	        this.collapsedSidebarModules = source["collapsedSidebarModules"];

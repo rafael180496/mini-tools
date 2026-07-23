@@ -190,6 +190,242 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function GitAbort(arg1, arg2) {
+  return window['go']['main']['App']['GitAbort'](arg1, arg2);
+}
+
+export function GitAddRemote(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitAddRemote'](arg1, arg2, arg3);
+}
+
+export function GitAddRepo(arg1) {
+  return window['go']['main']['App']['GitAddRepo'](arg1);
+}
+
+export function GitApplyPatch(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitApplyPatch'](arg1, arg2, arg3, arg4);
+}
+
+export function GitBranches(arg1, arg2) {
+  return window['go']['main']['App']['GitBranches'](arg1, arg2);
+}
+
+export function GitChangedFiles(arg1, arg2) {
+  return window['go']['main']['App']['GitChangedFiles'](arg1, arg2);
+}
+
+export function GitCheckout(arg1, arg2) {
+  return window['go']['main']['App']['GitCheckout'](arg1, arg2);
+}
+
+export function GitCherryPick(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitCherryPick'](arg1, arg2, arg3);
+}
+
+export function GitCloneRepo(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitCloneRepo'](arg1, arg2, arg3);
+}
+
+export function GitCommit(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitCommit'](arg1, arg2, arg3);
+}
+
+export function GitCreateBranch(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitCreateBranch'](arg1, arg2, arg3, arg4);
+}
+
+export function GitCreateTag(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitCreateTag'](arg1, arg2, arg3, arg4);
+}
+
+export function GitDeleteBranch(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitDeleteBranch'](arg1, arg2, arg3);
+}
+
+export function GitDeleteCredential(arg1) {
+  return window['go']['main']['App']['GitDeleteCredential'](arg1);
+}
+
+export function GitDeleteRemoteBranch(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitDeleteRemoteBranch'](arg1, arg2, arg3);
+}
+
+export function GitDeleteRemoteTag(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitDeleteRemoteTag'](arg1, arg2, arg3, arg4);
+}
+
+export function GitDeleteTag(arg1, arg2) {
+  return window['go']['main']['App']['GitDeleteTag'](arg1, arg2);
+}
+
+export function GitDiff(arg1, arg2) {
+  return window['go']['main']['App']['GitDiff'](arg1, arg2);
+}
+
+export function GitDiscard(arg1, arg2) {
+  return window['go']['main']['App']['GitDiscard'](arg1, arg2);
+}
+
+export function GitFetch(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitFetch'](arg1, arg2, arg3);
+}
+
+export function GitFileAtCommit(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitFileAtCommit'](arg1, arg2, arg3);
+}
+
+export function GitIdentity(arg1) {
+  return window['go']['main']['App']['GitIdentity'](arg1);
+}
+
+export function GitInProgress(arg1) {
+  return window['go']['main']['App']['GitInProgress'](arg1);
+}
+
+export function GitListCredentials() {
+  return window['go']['main']['App']['GitListCredentials']();
+}
+
+export function GitListRepos() {
+  return window['go']['main']['App']['GitListRepos']();
+}
+
+export function GitLog(arg1, arg2) {
+  return window['go']['main']['App']['GitLog'](arg1, arg2);
+}
+
+export function GitMerge(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitMerge'](arg1, arg2, arg3);
+}
+
+export function GitMoveRepoToFolder(arg1, arg2) {
+  return window['go']['main']['App']['GitMoveRepoToFolder'](arg1, arg2);
+}
+
+export function GitPickRepoFolder() {
+  return window['go']['main']['App']['GitPickRepoFolder']();
+}
+
+export function GitProbe() {
+  return window['go']['main']['App']['GitProbe']();
+}
+
+export function GitPull(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitPull'](arg1, arg2, arg3);
+}
+
+export function GitPush(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitPush'](arg1, arg2, arg3);
+}
+
+export function GitPushTag(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitPushTag'](arg1, arg2, arg3, arg4);
+}
+
+export function GitRefreshProbe() {
+  return window['go']['main']['App']['GitRefreshProbe']();
+}
+
+export function GitRemoteURLForCopy(arg1, arg2) {
+  return window['go']['main']['App']['GitRemoteURLForCopy'](arg1, arg2);
+}
+
+export function GitRemotes(arg1) {
+  return window['go']['main']['App']['GitRemotes'](arg1);
+}
+
+export function GitRemoveRemote(arg1, arg2) {
+  return window['go']['main']['App']['GitRemoveRemote'](arg1, arg2);
+}
+
+export function GitRemoveRepo(arg1) {
+  return window['go']['main']['App']['GitRemoveRepo'](arg1);
+}
+
+export function GitRenameBranch(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitRenameBranch'](arg1, arg2, arg3);
+}
+
+export function GitRenameRemote(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitRenameRemote'](arg1, arg2, arg3);
+}
+
+export function GitRenameRepo(arg1, arg2) {
+  return window['go']['main']['App']['GitRenameRepo'](arg1, arg2);
+}
+
+export function GitReset(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitReset'](arg1, arg2, arg3);
+}
+
+export function GitRevert(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitRevert'](arg1, arg2, arg3);
+}
+
+export function GitSaveCredential(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitSaveCredential'](arg1, arg2, arg3);
+}
+
+export function GitSetDiffPrefs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitSetDiffPrefs'](arg1, arg2, arg3);
+}
+
+export function GitSetIdentity(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitSetIdentity'](arg1, arg2, arg3, arg4);
+}
+
+export function GitSetPaneWidths(arg1, arg2) {
+  return window['go']['main']['App']['GitSetPaneWidths'](arg1, arg2);
+}
+
+export function GitSetRemoteURL(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitSetRemoteURL'](arg1, arg2, arg3);
+}
+
+export function GitSetUpstream(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitSetUpstream'](arg1, arg2, arg3);
+}
+
+export function GitStage(arg1, arg2) {
+  return window['go']['main']['App']['GitStage'](arg1, arg2);
+}
+
+export function GitStageAll(arg1) {
+  return window['go']['main']['App']['GitStageAll'](arg1);
+}
+
+export function GitStashApply(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitStashApply'](arg1, arg2, arg3);
+}
+
+export function GitStashDrop(arg1, arg2) {
+  return window['go']['main']['App']['GitStashDrop'](arg1, arg2);
+}
+
+export function GitStashPush(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitStashPush'](arg1, arg2, arg3);
+}
+
+export function GitStashes(arg1) {
+  return window['go']['main']['App']['GitStashes'](arg1);
+}
+
+export function GitStatus(arg1) {
+  return window['go']['main']['App']['GitStatus'](arg1);
+}
+
+export function GitTags(arg1) {
+  return window['go']['main']['App']['GitTags'](arg1);
+}
+
+export function GitUnsetUpstream(arg1, arg2) {
+  return window['go']['main']['App']['GitUnsetUpstream'](arg1, arg2);
+}
+
+export function GitUnstage(arg1, arg2) {
+  return window['go']['main']['App']['GitUnstage'](arg1, arg2);
+}
+
 export function HasOpenTransaction(arg1) {
   return window['go']['main']['App']['HasOpenTransaction'](arg1);
 }

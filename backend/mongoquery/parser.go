@@ -12,7 +12,7 @@ type command struct {
 	raw        string
 	collection string
 	method     string
-	args       []string     // raw per-argument source (each convertible via toExtJSON)
+	args       []string // raw per-argument source (each convertible via toExtJSON)
 	chain      []chainCall
 }
 
@@ -48,7 +48,7 @@ type scanner struct {
 	i int
 }
 
-func (sc *scanner) eof() bool  { return sc.i >= len(sc.s) }
+func (sc *scanner) eof() bool { return sc.i >= len(sc.s) }
 func (sc *scanner) peek() rune {
 	if sc.i < len(sc.s) {
 		return sc.s[sc.i]

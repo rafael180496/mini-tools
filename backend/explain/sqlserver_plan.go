@@ -49,14 +49,14 @@ func SQLServerPlan(ctx context.Context, pool *sql.DB, query string, analyze bool
 	}
 
 	type planRow struct {
-		nodeID, parent      int64
-		hasParent           bool
-		stmtText            string
-		physicalOp          string
-		logicalOp           string
-		argument            string
-		estimateRows        float64
-		totalSubtreeCost    float64
+		nodeID, parent   int64
+		hasParent        bool
+		stmtText         string
+		physicalOp       string
+		logicalOp        string
+		argument         string
+		estimateRows     float64
+		totalSubtreeCost float64
 	}
 	var parsed []planRow
 	var rawLines []string

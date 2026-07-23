@@ -223,6 +223,90 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 18,
+		desc:    "agrega git_repos (repositorios del módulo Git) — solo rutas y nombres, ninguna credencial",
+		apply: func(tx *sql.Tx) error {
+			// Deliberately holds no credential of any kind: auth for a git
+			// remote is resolved by the OS credential helper / ssh-agent at
+			// operation time (backend/git/auth.go), so there is nothing to
+			// persist here and no encrypted column is needed. This table is
+			// as organizational as `folders` — path, name, grouping, order.
+			//
+			// folder_id reuses the existing `folders` table with a new scope
+			// ('git'), exactly like migration 12 did for SSH and 14 for
+			// snippets, instead of introducing a parallel tree.
+			_, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS git_repos (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL,
+					path TEXT NOT NULL UNIQUE,
+					folder_id TEXT,
+					sort_order INTEGER NOT NULL DEFAULT 0,
+					created_at INTEGER NOT NULL
+				)
+			`)
+			return err
+		},
+	},
+	{
+		version: 19,
+		desc:    "agrega git_credentials — tokens (PAT) por host para el módulo Git, con el token cifrado a nivel de columna",
+		apply: func(tx *sql.Tx) error {
+			// Unlike git_repos (migration 18), this table DOES hold a secret,
+			// so it follows the same column-level AES-256-GCM pattern as
+			// connections.encrypted_dsn (.claude/rules/technical.md point 3):
+			// encrypted_token + its own nonce, never a plaintext column.
+			//
+			// Keyed by host rather than by repository because that is how the
+			// credential actually scopes — one github.com token serves every
+			// repository cloned from github.com, and storing it per repository
+			// would make the user paste the same PAT once per project and keep
+			// N copies of it in sync.
+			_, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS git_credentials (
+					id TEXT PRIMARY KEY,
+					host TEXT NOT NULL UNIQUE,
+					username TEXT NOT NULL,
+					encrypted_token BLOB NOT NULL,
+					nonce BLOB NOT NULL,
+					created_at INTEGER NOT NULL
+				)
+			`)
+			return err
+		},
+	},
+	{
+		version: 20,
+		desc:    "agrega settings.git_side_width/git_diff_width para persistir el ancho de los paneles de la pestaña Git",
+		apply: func(tx *sql.Tx) error {
+			// Same shape as editor_height (migration 4): a dragged pixel size
+			// persisted so the layout survives a restart. DEFAULTs match the
+			// hardcoded widths the panels shipped with, so an existing install
+			// opens looking exactly as it did before the columns existed.
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_side_width INTEGER NOT NULL DEFAULT 224`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_diff_width INTEGER NOT NULL DEFAULT 520`)
+			return err
+		},
+	},
+	{
+		version: 21,
+		desc:    "agrega settings.git_diff_context/git_diff_ignore_ws/git_diff_wrap — preferencias del visor de diff",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT 3 is git's own default context; the other two default off
+			// so an existing install sees exactly the diff it saw before.
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_diff_context INTEGER NOT NULL DEFAULT 3`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_diff_ignore_ws INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_diff_wrap INTEGER NOT NULL DEFAULT 1`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

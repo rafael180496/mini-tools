@@ -26,10 +26,10 @@ type MongoCollectionInfo struct {
 // KeysJSON is the index key spec as relaxed Extended JSON (e.g. {"email":1}),
 // preserving field order.
 type MongoIndex struct {
-	Name    string `json:"name"`
+	Name     string `json:"name"`
 	KeysJSON string `json:"keysJson"`
-	Unique  bool   `json:"unique"`
-	Sparse  bool   `json:"sparse"`
+	Unique   bool   `json:"unique"`
+	Sparse   bool   `json:"sparse"`
 }
 
 // ListMongoDatabases lists every database on the server (including admin/

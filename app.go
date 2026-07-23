@@ -10,14 +10,15 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 
 	"mini-tools/backend/autobackup"
 	"mini-tools/backend/claudemd"
 	"mini-tools/backend/db"
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
+	"mini-tools/backend/git"
 	"mini-tools/backend/mongoquery"
 	"mini-tools/backend/query"
 	"mini-tools/backend/redisquery"
@@ -70,6 +71,14 @@ type App struct {
 	sftpBrowse    *sftpx.BrowseManager
 	sftpTransfers *sftpx.TransferManager
 
+	// gitRunner is the Git module's engine — the system `git` binary driven
+	// through os/exec, another native parallel path like sshSessions/sftpx
+	// above (a repository is not a database/sql connection). It holds no
+	// per-repository state, so unlike the pool managers there is nothing to
+	// tear down in shutdown. Bindings live in app_git.go; see backend/git's
+	// package doc for why exec rather than go-git.
+	gitRunner *git.Runner
+
 	// autoBackup ticks a periodic vault.Backup while the app is open,
 	// gated by the settings.auto_backup_* columns — see
 	// backend/autobackup's package doc.
@@ -107,6 +116,7 @@ func NewApp() *App {
 		redisPools:    db.NewRedisPoolManager(),
 		mongoPools:    db.NewMongoPoolManager(),
 		sftpBrowse:    sftpx.NewBrowseManager(),
+		gitRunner:     git.NewRunner(),
 		metadataCache: make(map[string]*db.SchemaMetadata),
 	}
 }

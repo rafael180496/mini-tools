@@ -21,6 +21,9 @@ import MongoBrowserTab from './mongo/MongoBrowserTab'
 import MongoFindWizard from './mongo/MongoFindWizard'
 import SshTerminalTab, {closeSshTerminalSession} from './ssh/SshTerminalTab'
 import SftpTab from './sftp/SftpTab'
+import GitErrorBoundary from './git/GitErrorBoundary'
+import GitRepoTab from './git/GitRepoTab'
+import GitRepoTree from './git/GitRepoTree'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
 import {
     BackupVault,
@@ -51,6 +54,7 @@ import {
     ListConnections,
     ListFolders,
     ListQueryHistory,
+    GitMoveRepoToFolder,
     MoveConnectionToFolder,
     OpenSQLFileDialog,
     OpenSQLFilePath,
@@ -277,9 +281,18 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // connections' (vault.Folder.Scope, schema_migrations version 12) —
     // ConnectionTree.tsx and SshConnectionTree.tsx each wire this with
     // their own fixed scope below, never let the user pick it.
-    function createFolder(name: string, parentId: string, scope: 'db' | 'ssh') {
+    function createFolder(name: string, parentId: string, scope: 'db' | 'ssh' | 'git') {
         CreateFolder(name, parentId, scope)
             .then(() => setReloadToken((n) => n + 1))
+            .catch((err) => setStatusMessage(String(err)))
+    }
+
+    function moveGitRepoToFolder(repoId: string, folderId: string) {
+        GitMoveRepoToFolder(repoId, folderId)
+            .then(() => {
+                setReloadToken((n) => n + 1)
+                notifyGitChanged()
+            })
             .catch((err) => setStatusMessage(String(err)))
     }
 
@@ -503,6 +516,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const EDITOR_HEIGHT_DEFAULT = 256
     const EDITOR_HEIGHT_MIN = 120
     const EDITOR_HEIGHT_MAX = 900
+    const [gitSyncToken, setGitSyncToken] = useState(0)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
     const [editorHeight, setEditorHeightState] = useState(EDITOR_HEIGHT_DEFAULT)
     // "Recordar clave" toggle — whether the vault auto-unlocks from the OS
@@ -1550,6 +1564,40 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         setActiveTabId(tab.id)
     }
 
+    // Opens (or focuses) a repository's Git tab. Same dedupe-or-focus shape as
+    // openSshTerminal/openSftp, keyed on repoId instead of connId — a
+    // repository is registered in vault.git_repos, not vault.connections.
+    // Bumped after any Git mutation (checkout, commit, fetch…) from either the
+    // sidebar module or a repo tab. Everything Git-related reloads off it, so a
+    // checkout done in one place is reflected in the other without either
+    // component knowing the other exists.
+    function notifyGitChanged() {
+        setGitSyncToken((n) => n + 1)
+    }
+
+    function openGitRepo(repo: vault.GitRepo) {
+        const existing = tabs.find((t) => t.kind === 'git-repo' && t.repoId === repo.id)
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: `Git — ${repo.name}`,
+            path: null,
+            content: '',
+            dirty: false,
+            connId: null,
+            // language is a placeholder here, same as the ssh-terminal and
+            // sftp kinds — this tab has no CodeMirror document of its own.
+            language: 'sql',
+            kind: 'git-repo',
+            repoId: repo.id,
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
     // Double-clicking a key in the sidebar's inline RedisKeyTree used to
     // open a read-only modal (RedisValueInspector) — now it opens/focuses
     // that connection's Redis Browser tab with the key pre-selected in the
@@ -1759,6 +1807,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const isBrowserTabActive = activeTabData?.kind === 'redis-browser' || activeTabData?.kind === 'mongo-browser'
     const isSshTerminalTabActive = activeTabData?.kind === 'ssh-terminal'
     const isSftpTabActive = activeTabData?.kind === 'sftp'
+    const isGitTabActive = activeTabData?.kind === 'git-repo'
 
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-background font-sans text-on-background">
@@ -1799,6 +1848,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 onReorderFolder={reorderFolder}
                 onMoveConnectionToFolder={moveConnectionToFolder}
                 extraModules={
+                    <>
                     <SshConnectionTree
                         onNewConnection={() => setConnectionDialog('new-ssh')}
                         onEditConnection={(conn) => setConnectionDialog(conn.id)}
@@ -1818,6 +1868,24 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onReorderFolder={reorderFolder}
                         onMoveConnectionToFolder={moveConnectionToFolder}
                     />
+                    <GitErrorBoundary label="sidebar Git">
+                    <GitRepoTree
+                        moduleCollapsed={collapsedModules.has('git-repos')}
+                        onToggleModuleCollapsed={() => toggleModuleCollapsed('git-repos')}
+                        onOpenRepo={openGitRepo}
+                        activeTabRepoId={activeTabData?.repoId ?? null}
+                        reloadToken={reloadToken}
+                        syncToken={gitSyncToken}
+                        onChanged={notifyGitChanged}
+                        folders={folders}
+                        onCreateFolder={(name, parentId) => createFolder(name, parentId, 'git')}
+                        onRenameFolder={renameFolder}
+                        onDeleteFolder={deleteFolder}
+                        onReorderFolder={reorderFolder}
+                        onMoveRepoToFolder={moveGitRepoToFolder}
+                    />
+                    </GitErrorBoundary>
+                    </>
                 }
             />
 
@@ -2107,7 +2175,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
-                    {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && (
+                    {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
                         <button
                             onClick={() => void saveActiveTab()}
@@ -2193,7 +2261,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
 
                 <div
                     className="min-w-0 border-b border-outline-variant"
-                    style={{height: editorHeight, display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive ? 'none' : undefined}}
+                    style={{height: editorHeight, display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive || isGitTabActive ? 'none' : undefined}}
                 >
                     {/* Always mounted, even behind a Redis Browser tab —
                         CodeMirrorTabbedEditor caches every other open
@@ -2307,7 +2375,34 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         </div>
                     ))}
 
-                {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && (
+                {/* Same never-unmount-just-hide treatment as the tabs above:
+                    a Git tab holds a selected commit, a selected file, the
+                    scroll position of a long history, and a CodeMirror diff
+                    view — remounting on every tab switch would throw all of
+                    that away and re-run four git invocations. */}
+                {tabs
+                    .filter((t) => t.kind === 'git-repo' && t.repoId)
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex min-h-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <GitErrorBoundary label={t.title}>
+                                <GitRepoTab
+                                    repoId={t.repoId as string}
+                                    repoName={t.title.replace(/^Git — /, '')}
+                                    editorThemeId={editorThemeId}
+                                    appTheme={theme}
+                                    syncToken={gitSyncToken}
+                                    onChanged={notifyGitChanged}
+                                    active={activeTabId === t.id}
+                                />
+                            </GitErrorBoundary>
+                        </div>
+                    ))}
+
+                {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && (
                     <>
                         {/* Drag handle: resizes the editor pane against the
                             results grid below. Persisted on mouseup, see

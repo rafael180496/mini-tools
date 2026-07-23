@@ -4,6 +4,38 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **Módulo Git**: cliente Git integrado, estilo Sublime Merge, como tercer módulo del sidebar junto a Conexiones y SSH. Se agrega un repositorio que ya existe en disco (si elegís una subcarpeta, registra el repositorio completo) y doble-click lo abre en su propia pestaña. Cada repositorio se expande en el sidebar mostrando **ramas, remotos, tags y stashes**, cargados solo al expandirlo. Click derecho sobre un remoto: fetch, renombrar, cambiar URL, copiar URL y eliminar.
+- **Pestaña de repositorio en tres paneles**: a la izquierda el conmutador Commits/Cambios más la lista de ramas (doble-click hace checkout); al centro el **grafo de commits** con carriles de colores, badges de rama/tag y marca de HEAD; a la derecha el detalle del commit (autor, fecha, hash, padres), sus archivos con `+/−` por archivo, y el **visor de diff**. La pestaña conserva su estado al cambiar de pestaña —commit elegido, archivo, scroll— igual que las de SSH y SFTP.
+- **Vista de cambios y commit**: lista de archivos staged y sin stagear con su código de estado de git explicado en el tooltip, stage/unstage por archivo o todo junto, descarte de cambios (con confirmación que aclara que no queda en el reflog) y caja de mensaje para commitear.
+- **Menús de operaciones remotas** con las variantes completas y una explicación al lado de cada una: `fetch` (`--all`, `--tags`, `--prune`), `pull` (`--ff-only`, `--rebase`, `--rebase --autostash`) y `push` (`--set-upstream`, `--tags`, `--force-with-lease`, `--force`, `--no-verify`, estas tres marcadas como destructivas).
+- **Visor de diff con dos modos, sin dependencias nuevas**: *unificado* sobre CodeMirror 6 (líneas agregadas/borradas y cabeceras de hunk coloreadas con los tokens del tema, sigue claro/oscuro) y *lado a lado*, que reagrupa el mismo parche en dos columnas alineadas — una corrida de borrados seguida de una de agregados se empareja línea a línea, así una línea modificada se lee como modificación y no como un borrado suelto más un agregado suelto; el lado más corto se rellena para que las columnas no se desalineen. Los archivos binarios se avisan como tales en vez de intentar mostrarse como texto.
+- **Menús contextuales (click derecho) en todo el árbol**:
+  - *Ramas locales*: checkout, merge en la rama actual, renombrar, set/unset upstream, copiar nombre, borrar.
+  - *Ramas remotas*: checkout, copiar, borrar en el servidor.
+  - *Commits*: crear rama acá, crear tag acá (con mensaje opcional → tag anotado), checkout del commit, revert, cherry-pick, copiar hash, y los tres resets (`--soft`, `--mixed`, `--hard`) listados por separado, de menos a más destructivo.
+  - *Tags*: crear rama desde el tag, checkout, copiar, push, borrar local y borrar de origin como acciones **separadas**.
+  - *Stashes*: aplicar, pop, descartar.
+- **Salida de conflictos**: si el repositorio queda a medio merge, cherry-pick o revert, aparece un aviso con botón para abortar y volver al estado anterior — sin eso, un conflicto dejaba al usuario sin salida dentro de la app.
+- **Configuración de Git por repositorio** (ícono de engranaje en la barra de la pestaña), con dos secciones:
+  - *Identidad*: muestra arriba de todo **qué nombre y email va a llevar tu próximo commit y de dónde sale** — si el repositorio tiene identidad propia o está heredando la global. Esa distinción es justamente la causa habitual de "¿por qué este commit quedó con el email equivocado?". Se edita eligiendo explícitamente el alcance: solo este repositorio (`.git/config`) o global (`~/.gitconfig`). Vaciar un campo **borra** la clave en vez de guardarla en blanco, así el repo vuelve a heredar el valor global — guardar un email vacío produce commits que todos los forges rechazan.
+  - *Tokens*: guarda un Personal Access Token **por servidor** (un token de github.com sirve para todos tus repos de ahí, no hay que repetirlo por proyecto). Se puede pegar la URL completa del repo: se normaliza al host, incluyendo formas `git@host:owner/repo` y URLs que ya traen un token embebido.
+- **Los tokens guardados se usan solos**: fetch, pull, push, push de tags y borrado de ramas/tags remotos resuelven la credencial mirando el host del remoto. Si no hay ninguna guardada, git sigue resolviendo como siempre (llavero del sistema, credential helper, ssh-agent) — no guardar nada es una opción válida, no un error.
+- Los diálogos destructivos explican qué se pierde y qué no: `reset --hard` aclara que lo no commiteado no queda en el reflog; borrar un tag distingue local de remoto; borrar una rama remota aclara que borra en el servidor, no tu copia.
+
+### Notas técnicas
+
+- El motor es el **binario `git` del sistema vía `os/exec`, no `go-git`**: cero dependencias nuevas (el binario pasó de 47.2 a 47.4 MB, todo frontend), y el `git` del sistema ya resuelve credential helpers del SO, ssh-agent y PATs —que `go-git` no cubre— correctamente en cada plataforma. A cambio, requiere git instalado: el módulo lo detecta al arrancar y muestra un estado degradado explícito en vez de fallar operación por operación.
+- Un token **nunca** viaja por la línea de comandos ni por la URL del remote. `GIT_ASKPASS`/`SSH_ASKPASS` apuntan al propio binario de mini-tools re-ejecutado, que responde el prompt y sale.
+- Las URLs de remoto se **redactan** antes de llegar al frontend: un remote configurado como `https://<token>@github.com/...` guarda el PAT en texto plano en `.git/config`, y mostrarlo pondría la credencial en la UI. La única excepción es "Copiar URL", donde el valor real es lo que se pidió.
+- `vault.db` migración 18: tabla `git_repos` con rutas y nombres únicamente, sin credenciales. Quitar un repositorio del sidebar no toca nada en disco.
+- `vault.db` migración 19: tabla `git_credentials`. A diferencia de `git_repos`, esta **sí** guarda un secreto, así que el token va cifrado a nivel de columna con AES-256-GCM (`encrypted_token` + `nonce`), el mismo esquema que `connections.encrypted_dsn`. Verificado en un vault sandboxeado: el token no aparece en texto plano en el archivo. El struct que cruza al frontend no tiene campo de token — solo host y usuario.
+
+### Corregido
+
+- `SchemaObjectsList.tsx` usaba el ícono `inventory_2`, que no existe en el subset de Material Symbols que embebe la app y por lo tanto se renderizaba como texto roto. (Detectado al validar los íconos del módulo Git contra la fuente; **el ícono en sí sigue sin corregirse** — se documenta acá para que no se pierda.)
+
 ## [0.4.0] - 2026-07-22
 
 ### Agregado

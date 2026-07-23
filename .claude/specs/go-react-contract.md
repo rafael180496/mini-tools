@@ -119,3 +119,86 @@ Módulo de transferencia de archivos por SFTP que **reutiliza las conexiones SSH
 **Permisos (chmod):** `SftpPathPermissions(sessionID, path)` devuelve `sftpx.PermInfo` (bits de permiso `0..0o777` + owner/group best-effort) y `ChmodSftpPath(sessionID, path, mode)` aplica el chmod (`os.FileMode(mode) & os.ModePerm`). La propiedad es **solo lectura**: SFTP solo expone UID/GID numéricos, y solo la máquina local los resuelve a nombres (helper con build-tag `unix`, `fs_owner_unix.go`/`fs_owner_other.go` — Windows muestra en blanco); no hay `chown` (frágil sobre SFTP, suele requerir root). En el frontend `SftpPermissionsDialog.tsx` mapea los bits a toggles owner/group/other × rwx y muestra el preview octal/simbólico.
 
 Frontend: `components/sftp/` — `SftpTab.tsx` (contenedor de doble panel + cola de transferencias con barras de % y botón cancelar + cleanup en unmount que cierra sesiones y cancela transferencias; banner de error y errores de transferencia mostrados completos, con wrap), `SftpPane.tsx` (host picker, listado, drag&drop, **menú contextual** con Enviar/Renombrar/Eliminar/Refrescar/Nueva carpeta/Editar permisos), `SftpPermissionsDialog.tsx` (chmod), `types.ts` (tipos + helpers de path agnósticos de separador). Se abre desde el botón `swap_horiz` en `SshConnectionTree.tsx` (`TabKind` `'sftp'`, una pestaña por host, dedupe como la terminal). Limitación conocida v1: las transferencias sobrescriben en destino sin preguntar, y las carpetas vacías no se recrean (los archivos llevan sus directorios padre vía `Create`+`MkdirAll`).
+
+## Módulo Git (post-lanzamiento)
+
+Cliente Git estilo Sublime Merge. Backend: `backend/git`, bindings en
+**`app_git.go`** (archivo propio en vez de engordar los ~2500 renglones de
+`app.go`; Wails bindea todo método exportado de `*App` sin importar el archivo,
+así que es la misma superficie de binding que documenta este spec).
+
+**Motor: `os/exec` sobre el binario `git` del sistema, NO `go-git`.** Decisión
+explícita, no camino de menor resistencia:
+
+- **Tamaño de binario** (regla técnica 8): `go-git` arrastra un árbol de
+  dependencias grande. `exec` suma **0 bytes** — `go.mod` no cambió.
+- **Dependencias mínimas** (regla 12): ningún módulo nuevo.
+- **Auth, el factor decisivo**: se necesitan credential helpers del SO, ssh-agent
+  y PATs. El binario `git` implementa los tres correctamente y por plataforma;
+  `go-git` no soporta credential helpers del SO en absoluto y su soporte de
+  ssh-agent es parcial. Usarlo significaría reimplementar la parte más difícil
+  del módulo con peor resultado.
+- **Velocidad**: para grafos de commits y diffs grandes, git-en-C gana.
+
+El costo es una **dependencia dura de que `git` esté instalado**, expuesta
+honestamente en vez de escondida: `GitProbe()`/`GitRefreshProbe()` reportan
+disponibilidad y versión, y el frontend renderiza un estado degradado en vez de
+fallar operación por operación.
+
+**Los secretos nunca tocan argv ni la URL del remote.** Un PAT en la línea de
+comandos queda en la tabla de procesos; en la URL del remote queda en texto
+plano dentro de `.git/config`. En su lugar, `GIT_ASKPASS`/`SSH_ASKPASS` apuntan
+al **propio binario de mini-tools** re-ejecutado: `main()` chequea
+`git.IsAskpassInvocation()` **antes de todo lo demás** (antes de abrir ventana,
+tocar el vault o escribir en appdata) y delega en `git.AskpassMain()`, que
+responde el prompt por stdout y sale. No hay que shippear ni escribir a disco un
+helper aparte, y el secreto nunca aterriza en un archivo temporal.
+
+`GIT_TERMINAL_PROMPT=0` es load-bearing, no higiene: sin eso, un `git` que
+necesita credenciales se cuelga esperando una terminal que no existe dentro del
+webview, y la UI muestra un spinner eterno en vez de un error accionable.
+`LC_ALL=C` fija el idioma de los mensajes de error de git para que el parseo no
+dependa del locale. `GIT_PAGER=cat` evita que git espere a un pager sin tty.
+
+**Redacción de credenciales (regla técnica 9).** `GetRemotes` pasa cada URL por
+`redactURL` antes de cruzar el binding: un remote configurado como
+`https://<token>@github.com/...` guarda el PAT en texto plano en `.git/config` y
+`git remote -v` lo imprime. Devolverlo crudo pondría una credencial viva en el
+estado de React y en cualquier tooltip renderizado. **Esto se encontró en vivo
+en el propio repo de mini-tools durante la implementación** — no es higiene
+hipotética. El placeholder es alfanumérico (`REDACTED`) porque `url.String()`
+percent-encodea cualquier otra cosa (`***` → `%2A%2A%2A`).
+`GitRemoteURLForCopy` es la única excepción deliberada: copiar una URL es un
+pedido explícito del valor real, y devolver la forma redactada entregaría
+silenciosamente un string roto. Nunca alimenta la UI.
+
+**Inyección de flags.** No hay shell (los argumentos van directo a `exec`), así
+que un nombre de rama con metacaracteres es inerte. El vector que queda es un
+argumento que empieza con `-` y se lee como flag: `checkRefArg` lo rechaza y las
+rutas van siempre después de `--`.
+
+**Vault — migración 18, `git_repos`.** Solo rutas, nombres, agrupación y orden:
+**ninguna credencial**, así que no hay columna cifrada (a diferencia de
+`connections`). El auth se resuelve en tiempo de operación por el credential
+helper del SO / ssh-agent, no hay nada que persistir. `folder_id` reusa la tabla
+`folders` compartida con un scope nuevo (`'git'`), igual que hicieron las
+migraciones 12 (SSH) y 14 (snippets), en vez de un cuarto árbol paralelo.
+`path` es UNIQUE — agregar dos veces el mismo repo da un error claro en lugar de
+duplicar la entrada del sidebar. `RemoveGitRepo` **nunca** toca el working tree
+en disco: quitar un proyecto de una lista jamás puede borrar el código del
+usuario, mismo principio que `DeleteFolder` no borrando lo que contiene.
+
+Todo binding pasa por `requireUnlocked` sin excepción, salvo `GitProbe`/
+`GitRefreshProbe` (no revelan nada del usuario y el frontend los necesita para
+decidir si renderizar el módulo). El frontend direcciona repos por **ID opaco**,
+nunca por path — `App.gitRepo(repoID)` es el único lugar donde un ID se
+convierte en una ruta de filesystem, espejando la indirección por `connID` que
+ya usa el resto de la app.
+
+**Bug real encontrado implementando:** git emite el bloque `--numstat`
+**después** del separador de registro del `--pretty=format`, no antes. Con el
+separador al final (lo intuitivo), los stats de cada commit caían en el registro
+siguiente y `Stats` daba siempre `{0,0,0}`. Por eso `logFormat` **encabeza** con
+el separador en vez de cerrarlo, a costa de un chunk vacío inicial. Verificado
+contra este repo: v0.4.0 da 72 archivos, +6393/-203, idéntico a lo que reporta
+Fork.

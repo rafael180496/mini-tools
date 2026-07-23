@@ -45,6 +45,17 @@ type Settings struct {
 	// the resize handle between the editor and the results grid — see
 	// SetEditorHeight. Defaults to 256 (the old fixed h-64 Tailwind class).
 	EditorHeight int `json:"editorHeight"`
+	// GitSideWidth/GitDiffWidth are the Git tab's left (branches) and right
+	// (diff) pane widths in pixels, dragged by the user — same "persist a
+	// dragged size" pattern as EditorHeight. Clamped on write, not here.
+	GitSideWidth int `json:"gitSideWidth"`
+	GitDiffWidth int `json:"gitDiffWidth"`
+	// Diff viewer preferences. GitDiffContext is the number of unchanged lines
+	// shown around each change (git's -U); GitDiffIgnoreWs drops
+	// whitespace-only changes; GitDiffWrap toggles line wrapping.
+	GitDiffContext  int  `json:"gitDiffContext"`
+	GitDiffIgnoreWs bool `json:"gitDiffIgnoreWs"`
+	GitDiffWrap     bool `json:"gitDiffWrap"`
 	// RememberMasterKey reflects the "Recordar clave" toggle — whether
 	// TryAutoUnlock should try the OS keychain at startup. The flag itself
 	// is harmless to read while locked (it's just an on/off preference);
@@ -130,10 +141,12 @@ func (s *Store) GetSettings() (Settings, error) {
 	var autoBackupPath string
 	var autoSaveEnabled bool
 	var autoSaveIntervalSeconds int
+	var gitSideWidth, gitDiffWidth, gitDiffContext int
+	var gitDiffIgnoreWs, gitDiffWrap bool
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -168,11 +181,16 @@ func (s *Store) GetSettings() (Settings, error) {
 		Theme: theme, OpenTabs: openTabs, SidebarCollapsed: sidebarCollapsed,
 		EditorHeight: editorHeight, RememberMasterKey: rememberMasterKey,
 		EditorTheme: editorTheme, CollapsedSidebarModules: collapsedModules,
-		SshTerminalTheme: sshTerminalTheme,
+		SshTerminalTheme:  sshTerminalTheme,
 		AutoBackupEnabled: autoBackupEnabled, AutoBackupIntervalHours: autoBackupIntervalHours,
 		AutoBackupPath:          autoBackupPath,
 		AutoSaveEnabled:         autoSaveEnabled,
 		AutoSaveIntervalSeconds: autoSaveIntervalSeconds,
+		GitSideWidth:            gitSideWidth,
+		GitDiffWidth:            gitDiffWidth,
+		GitDiffContext:          gitDiffContext,
+		GitDiffIgnoreWs:         gitDiffIgnoreWs,
+		GitDiffWrap:             gitDiffWrap,
 	}, nil
 }
 
@@ -208,6 +226,61 @@ func (s *Store) SetOpenTabs(tabs []OpenTabInfo) error {
 func (s *Store) SetSidebarCollapsed(collapsed bool) error {
 	if _, err := s.db.Exec(`UPDATE settings SET sidebar_collapsed = ? WHERE id = 1`, collapsed); err != nil {
 		return fmt.Errorf("vault: guardando sidebar_collapsed: %w", err)
+	}
+	return nil
+}
+
+// Bounds for the Git tab's draggable panes. Clamping here rather than trusting
+// the frontend is what stops a stored width from making a pane unusable: a
+// dragged-to-zero pane cannot be dragged back, and one wider than the window
+// hides everything else — both would persist across restarts and leave the user
+// with no way to recover short of editing the database.
+const (
+	MinGitPaneWidth = 160
+	MaxGitPaneWidth = 1200
+)
+
+func clampGitPane(w int) int {
+	if w < MinGitPaneWidth {
+		return MinGitPaneWidth
+	}
+	if w > MaxGitPaneWidth {
+		return MaxGitPaneWidth
+	}
+	return w
+}
+
+// SetGitPaneWidths persists both Git tab pane widths in one write — they are
+// always adjusted from the same layout, and a single UPDATE avoids a half-saved
+// layout if the app exits between two calls.
+func (s *Store) SetGitPaneWidths(sideWidth, diffWidth int) error {
+	if _, err := s.db.Exec(
+		`UPDATE settings SET git_side_width = ?, git_diff_width = ? WHERE id = 1`,
+		clampGitPane(sideWidth), clampGitPane(diffWidth),
+	); err != nil {
+		return fmt.Errorf("vault: guardando anchos de paneles git: %w", err)
+	}
+	return nil
+}
+
+// SetGitDiffPrefs persists the diff viewer's display preferences.
+//
+// context is clamped to a sane window: 0 is a valid git value (no context at
+// all) but makes a diff nearly unreadable, and an unbounded upper value just
+// re-renders the whole file slower than asking for the file. 200 is well past
+// "show me the surrounding function" without being a footgun.
+func (s *Store) SetGitDiffPrefs(context int, ignoreWs, wrap bool) error {
+	if context < 1 {
+		context = 1
+	}
+	if context > 200 {
+		context = 200
+	}
+	if _, err := s.db.Exec(
+		`UPDATE settings SET git_diff_context = ?, git_diff_ignore_ws = ?, git_diff_wrap = ? WHERE id = 1`,
+		context, ignoreWs, wrap,
+	); err != nil {
+		return fmt.Errorf("vault: guardando preferencias de diff: %w", err)
 	}
 	return nil
 }

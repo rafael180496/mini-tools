@@ -27,6 +27,7 @@
   /mongoquery   executor.go (dispatch de db.<coll>.<método>()) + parser.go (parser de statements mongosh) + extjson.go (conversor lenient mongosh→Extended JSON: claves sin comillas, comillas simples, ObjectId()/ISODate()/NumberLong()) — mismo patrón que /query, path nativo paralelo (no database/sql)
   /sshconn      terminal SSH interactivo (SessionManager, PTY) + ping.go + dial.go (Dial() exportado: dial reusable que reusa parseDSN/clientConfig) — path nativo paralelo (no database/sql)
   /sftpx        transferencia de archivos SFTP: fs.go (abstracción local/remoto) + browse.go (BrowseManager, sesiones por panel) + transfer.go (TransferManager, pool de workers, ctx-cancel, progreso) — dialea vía sshconn.Dial, dep github.com/pkg/sftp, path nativo paralelo
+  /git          cliente Git: runner.go (exec sobre el binario git del sistema, probe, hardening de env) + types.go + auth.go (askpass re-exec, redacción de URLs) + log.go + refs.go + diff.go + ops.go — path nativo paralelo, sin dependencias nuevas (ver .claude/specs/go-react-contract.md para el porqué de exec y no go-git)
   /explain      EXPLAIN PLAN por motor → árbol común (SQL únicamente, no aplica a Redis)
   /export       CSV/JSON/XLSX/DDL/config export
   /claudemd     generador de CLAUDE.md + .claude/{skills,specs,rules} para proyectos DE TERCEROS abiertos en la app (schemas SQL únicamente, no aplica a Redis)

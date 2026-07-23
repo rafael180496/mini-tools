@@ -7,6 +7,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+
+	"mini-tools/backend/git"
 )
 
 //go:embed all:frontend/dist
@@ -18,6 +20,16 @@ var assets embed.FS
 var appVersion = "dev"
 
 func main() {
+	// git re-executes this same binary as its GIT_ASKPASS/SSH_ASKPASS helper
+	// to collect a PAT or key passphrase (see backend/git/auth.go). That run
+	// must answer on stdout and exit — it is not an app launch, so it has to
+	// be handled before anything else here opens a window, touches the vault,
+	// or writes to appdata.
+	if git.IsAskpassInvocation() {
+		git.AskpassMain()
+		return
+	}
+
 	// Create an instance of the app structure
 	app := NewApp()
 
