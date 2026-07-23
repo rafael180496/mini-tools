@@ -92,11 +92,18 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
    también esos links ahí.
 7. **Actualizar `CHANGELOG.md`** (formato [Keep a
    Changelog](https://keepachangelog.com/en/1.1.0/), ver cabecera del
-   archivo — SemVer, fuente de verdad en `VERSION`):
+   archivo — SemVer, fuente de verdad en `VERSION`). Este paso es la
+   contraparte de la regla "todo cambio se acumula en `[Unreleased]`
+   primero" de [conventions.md](../rules/conventions.md): si esa regla se
+   respetó durante el ciclo, acá solo hay que mover lo ya escrito:
    - Mover **todo** el contenido actual de `## [Unreleased]` a una sección
      nueva `## [X.Y.Z] - AAAA-MM-DD` (la versión recién bumpeada en el
      paso 0, fecha real del día del empaquetado — nunca inventada ni
      copiada de un ejemplo).
+   - **Nunca escribir en la sección de una versión ya publicada.** Si
+     aparecen cambios posteriores a un release ya commiteado, van a
+     `[Unreleased]` y salen en la versión siguiente — ver el caso real
+     documentado en conventions.md.
    - Agregar ahí mismo cualquier feature/fix de la sesión actual que
      todavía no estuviera listado en `[Unreleased]` — no es solo
      "renombrar la sección", es la oportunidad de dejar el changelog al

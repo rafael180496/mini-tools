@@ -307,6 +307,16 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 22,
+		desc:    "agrega settings.query_page_size — cuántas filas trae cada página de resultados (0 = todas)",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT 500 = el mismo valor que usaba la constante, así una
+			// instalación existente no cambia de comportamiento al migrar.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN query_page_size INTEGER NOT NULL DEFAULT 500`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

@@ -155,6 +155,11 @@ func (a *App) startup(ctx context.Context) {
 		_ = a.vault.RecordQueryHistory(connID, sqlText, status, rowsAffected, durationMs, errMsg)
 	}
 	a.executor = query.NewExecutor(ctx, a.pools, emit, history)
+	// Restaura el tamaño de página elegido por el usuario (migración 22); si el
+	// vault todavía no se puede leer, queda el default del executor.
+	if settings, err := a.vault.GetSettings(); err == nil {
+		a.executor.SetPageSize(settings.QueryPageSize)
+	}
 	a.redisExecutor = redisquery.NewExecutor(ctx, a.redisPools, emit, history)
 	a.mongoExecutor = mongoquery.NewExecutor(ctx, a.mongoPools, emit, history)
 	a.sshSessions = sshconn.NewSessionManager(emit)
@@ -941,6 +946,43 @@ func (a *App) CancelQuery(queryID string) error {
 		return err
 	}
 	a.executor.Cancel(queryID)
+	return nil
+}
+
+// SetQueryPageSize cambia cuántas filas trae cada página de resultados y lo
+// deja guardado como preferencia. 0 = "All" (sin paginar). Aplica desde la
+// próxima página/consulta; los resultados ya en pantalla no se re-consultan.
+func (a *App) SetQueryPageSize(n int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if err := a.vault.SetQueryPageSize(n); err != nil {
+		return err
+	}
+	a.executor.SetPageSize(n)
+	return nil
+}
+
+// FetchMoreRows delivers the next page of a SELECT whose result set was paused
+// after the first page (see backend/query/paging.go). Results arrive as the
+// same streamed events the first page used, under the same queryID, so the
+// frontend appends them to the tab that is already open.
+func (a *App) FetchMoreRows(queryID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	a.executor.FetchMore(queryID)
+	return nil
+}
+
+// ReleasePagedResult drops a paused result set the frontend no longer needs
+// (tab closed, result discarded), returning the pooled connection its open
+// cursor was holding.
+func (a *App) ReleasePagedResult(queryID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	a.executor.CancelPaging(queryID)
 	return nil
 }
 

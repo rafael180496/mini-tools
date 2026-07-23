@@ -84,6 +84,8 @@ export function ExportSchemaDDL(arg1:string,arg2:string):Promise<string>;
 
 export function ExportTableDDL(arg1:string,arg2:string,arg3:string):Promise<string>;
 
+export function FetchMoreRows(arg1:string):Promise<void>;
+
 export function GenerateProjectDocs(arg1:string,arg2:string,arg3:string):Promise<boolean>;
 
 export function GetConnectionForEdit(arg1:string):Promise<main.ConnectionEditInfo>;
@@ -286,6 +288,8 @@ export function PushRedisListValue(arg1:string,arg2:string,arg3:string):Promise<
 
 export function RegenerateProjectDocs(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function ReleasePagedResult(arg1:string):Promise<void>;
+
 export function RemoveRedisListIndex(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function RemoveRedisSetMember(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -333,6 +337,8 @@ export function SetEditorHeight(arg1:number):Promise<void>;
 export function SetEditorTheme(arg1:string):Promise<void>;
 
 export function SetOpenTabs(arg1:Array<vault.OpenTabInfo>):Promise<void>;
+
+export function SetQueryPageSize(arg1:number):Promise<void>;
 
 export function SetRedisHashField(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

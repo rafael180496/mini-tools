@@ -4,6 +4,21 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-23
+
+### Agregado
+
+- **Crear y modificar ramas locales desde el sidebar**: botón `+` en la sección RAMAS (crea la rama en HEAD y hace checkout) y menú contextual por rama con checkout, renombrar (`git branch -m`, preserva reflog y upstream), copiar y borrar.
+- **Crear tags desde el sidebar**: botón `+` en la sección TAGS (crea en HEAD; con mensaje queda anotado, sin mensaje liviano) y, al crearlo, ofrece pushearlo a origin en el mismo flujo.
+- **La consola pasa a ser un historial acumulado** (estilo Output de DataGrip): ya no se limpia en cada ejecución, cada statement se agrega con su timestamp. Tope de 500 entradas y botón "Limpiar consola".
+- **Paginación de resultados estilo DataGrip**: un `SELECT` trae una primera página (500 filas por defecto) y el resto se pide con "Cargar más" desde una barra al pie de la grilla, que muestra "N+ filas". El **tamaño de página es configurable** (10/100/250/500/1000/5000 o "Todas") y se guarda como preferencia. La carga de cada página **se puede cancelar** sin perder las filas ya traídas, y cada tanda se registra en la consola. Antes un `SELECT * FROM tabla_enorme` intentaba traer la tabla entera a la UI. **No se re-ejecuta la consulta por página**: se mantiene abierto el cursor original y se lee el siguiente tramo — con `LIMIT/OFFSET` el resultado sería dialecto-específico y, sin un `ORDER BY` total, podría repetir o saltear filas entre páginas. Como un cursor abierto retiene una conexión del pool, se acota con tres reglas: un solo cursor pausado por conexión (una consulta nueva libera el anterior), cierre por TTL de 5 min de inactividad, y cierre explícito al cancelar o cerrar la app.
+
+### Corregido
+
+- **El grafo de commits tapaba los mensajes en repos muy ramificados.** El ancho del grafo se calculaba sin tope; con 30 carriles concurrentes (caso real) llegaba a 440 px y empujaba mensaje, autor y hash fuera del panel — se veían las líneas pero ningún texto. Ahora el gutter está acotado (12 carriles) y los carriles extra se recortan, con un degradado que lo indica.
+- **Los resultados mostraban filas de la consulta anterior.** Al arrancar una consulta no se daba de baja la suscripción de eventos de la anterior, y su handler seguía inyectando filas en el estado recién limpiado — por eso el resultado "variaba" (a veces mezclado, a veces el viejo entero). Ahora se hace teardown de la suscripción previa y cada handler descarta eventos cuyo `queryId` ya no es el actual. Aplicado a SQL, Redis y MongoDB.
+- **Cambiar la URL de un remoto rompía la autenticación.** El diálogo pre-rellenaba con la URL redactada (`https://REDACTED@…`), así que guardar sin retipear escribía ese literal en `.git/config`. Ahora pre-rellena con la URL real.
+
 ## [0.5.1] - 2026-07-22
 
 ### Agregado

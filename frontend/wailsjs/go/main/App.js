@@ -154,6 +154,10 @@ export function ExportTableDDL(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportTableDDL'](arg1, arg2, arg3);
 }
 
+export function FetchMoreRows(arg1) {
+  return window['go']['main']['App']['FetchMoreRows'](arg1);
+}
+
 export function GenerateProjectDocs(arg1, arg2, arg3) {
   return window['go']['main']['App']['GenerateProjectDocs'](arg1, arg2, arg3);
 }
@@ -558,6 +562,10 @@ export function RegenerateProjectDocs(arg1, arg2, arg3) {
   return window['go']['main']['App']['RegenerateProjectDocs'](arg1, arg2, arg3);
 }
 
+export function ReleasePagedResult(arg1) {
+  return window['go']['main']['App']['ReleasePagedResult'](arg1);
+}
+
 export function RemoveRedisListIndex(arg1, arg2, arg3) {
   return window['go']['main']['App']['RemoveRedisListIndex'](arg1, arg2, arg3);
 }
@@ -652,6 +660,10 @@ export function SetEditorTheme(arg1) {
 
 export function SetOpenTabs(arg1) {
   return window['go']['main']['App']['SetOpenTabs'](arg1);
+}
+
+export function SetQueryPageSize(arg1) {
+  return window['go']['main']['App']['SetQueryPageSize'](arg1);
 }
 
 export function SetRedisHashField(arg1, arg2, arg3, arg4) {

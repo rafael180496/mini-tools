@@ -16,6 +16,11 @@ interface CommitGraphProps {
 const ROW_HEIGHT = 44
 const LANE_WIDTH = 14
 const GRAPH_PAD = 10
+// Most lanes the graph gutter will ever occupy. Beyond this the extra lanes are
+// clipped so the commit-message column never gets pushed off-screen — see the
+// note in CommitGraph. 12 lanes ≈ a 188px gutter, comfortable in the center
+// panel while still showing the mainline and its immediate branches.
+const MAX_GUTTER_LANES = 12
 
 // Lane colors, cycled by lane index. Kept as explicit CSS variables rather than
 // Tailwind classes because they are consumed by SVG stroke/fill attributes,
@@ -114,7 +119,18 @@ function assignLanes(commits: git.CommitInfo[]): PlacedCommit[] {
 export default function CommitGraph({commits, selectedHash, onSelect, onContextMenu, loading}: CommitGraphProps) {
     const placed = useMemo(() => assignLanes(commits), [commits])
     const laneCount = useMemo(() => placed.reduce((max, p) => Math.max(max, p.lane + 1, ...p.edges.map((e) => e.to + 1)), 1), [placed])
-    const graphWidth = GRAPH_PAD * 2 + laneCount * LANE_WIDTH
+
+    // The SVG is drawn at its true width (every lane), but the gutter it lives
+    // in is capped: a busy repository can reach 30+ concurrent lanes (a real
+    // case — a chatwoot-style repo hit exactly that), and an ungated gutter
+    // then grows to ~440px and pushes the commit messages/author/hash entirely
+    // off the panel. Capping the gutter and clipping the extra lanes keeps the
+    // commit text always visible — which is what the panel is for. The far
+    // lanes (usually old side branches) are hidden past the cap; a commit whose
+    // dot sits beyond it still shows its row, just not its dot.
+    const fullGraphWidth = GRAPH_PAD * 2 + laneCount * LANE_WIDTH
+    const gutterWidth = GRAPH_PAD * 2 + Math.min(laneCount, MAX_GUTTER_LANES) * LANE_WIDTH
+    const clipped = laneCount > MAX_GUTTER_LANES
 
     if (loading) {
         return (
@@ -132,12 +148,17 @@ export default function CommitGraph({commits, selectedHash, onSelect, onContextM
         <div className="relative h-full overflow-y-auto">
             {/* The lane graph is one absolutely-positioned SVG behind the rows
                 rather than a per-row SVG, so an edge can span the boundary
-                between two rows without being clipped by either. */}
-            <svg
-                width={graphWidth}
-                height={placed.length * ROW_HEIGHT}
-                className="pointer-events-none absolute left-0 top-0"
+                between two rows without being clipped by either. It lives in a
+                gutter of capped width with overflow-hidden, so lanes past the
+                cap are clipped instead of overlapping the commit text. */}
+            <div
+                style={{width: gutterWidth}}
+                className="pointer-events-none absolute left-0 top-0 h-full overflow-hidden"
                 aria-hidden="true"
+            >
+            <svg
+                width={fullGraphWidth}
+                height={placed.length * ROW_HEIGHT}
             >
                 {placed.map((p, rowIndex) =>
                     p.edges.map((edge, i) => {
@@ -170,8 +191,12 @@ export default function CommitGraph({commits, selectedHash, onSelect, onContextM
                     />
                 ))}
             </svg>
+            {/* A subtle fade at the gutter's right edge hints that lanes were
+                clipped, so a hidden dot does not read as a rendering glitch. */}
+            {clipped && <div className="absolute right-0 top-0 h-full w-3 bg-linear-to-l from-surface to-transparent" />}
+            </div>
 
-            <div style={{paddingLeft: graphWidth}}>
+            <div style={{paddingLeft: gutterWidth}}>
                 {placed.map((p) => (
                     <CommitRow
                         key={p.commit.hash}

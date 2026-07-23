@@ -40,6 +40,8 @@ import {
     DisconnectConnection,
     ExecuteMongoQuery,
     ExecuteQuery,
+    FetchMoreRows,
+    SetQueryPageSize,
     ExecuteRedisCommand,
     ExplainQuery,
     ExportConnectionConfig,
@@ -96,7 +98,7 @@ const HistoryPanel = lazy(() => import('./HistoryPanel'))
 const SettingsDialog = lazy(() => import('./SettingsDialog'))
 
 interface QueryEvent {
-    type: 'columns' | 'rows' | 'done' | 'cancelled' | 'error'
+    type: 'columns' | 'rows' | 'page' | 'done' | 'cancelled' | 'error'
     statementIndex: number
     totalStatements: number
     sqlText?: string
@@ -106,6 +108,9 @@ interface QueryEvent {
     durationMs?: number
     error?: string
     dbmsOutput?: string[]
+    // Llega en 'done' y 'page': quedan filas sin traer y FetchMoreRows(queryId)
+    // entrega la próxima página (ver backend/query/paging.go).
+    hasMore?: boolean
 }
 
 // Mirrors backend/redisquery.Event's JSON shape (see runRedisText below).
@@ -143,12 +148,19 @@ interface ResultSet {
     sourceSql: string
     sortColumn: string | null
     sortDirection: 'asc' | 'desc' | null
+    // hasMore: el backend dejó el cursor abierto porque quedan filas (ver
+    // backend/query/paging.go). loadingMore: hay un FetchMore en vuelo.
+    hasMore: boolean
+    loadingMore: boolean
 }
+
+// Ceiling for the running console history — see the setConsoleLog cap.
+const MAX_CONSOLE_ENTRIES = 500
 
 function emptyResultSet(): ResultSet {
     return {
         columns: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: [],
-        sourceSql: '', sortColumn: null, sortDirection: null,
+        sourceSql: '', sortColumn: null, sortDirection: null, hasMore: false, loadingMore: false,
     }
 }
 
@@ -462,6 +474,14 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const [historyError, setHistoryError] = useState('')
 
     const queryIdRef = useRef<string | null>(null)
+    // Unsubscribe fn of the run currently streaming, so starting a new run can
+    // tear the old one down. Without this a superseded run's handler stays
+    // registered and keeps appending ITS rows into the result state the new run
+    // just cleared — the "me muestra el resultado del SQL anterior" bug, which
+    // looked intermittent because it only shows when the old run is still
+    // streaming (or its terminal event is still in flight) as the new one
+    // starts. Every run function below sets it.
+    const unsubscribeRef = useRef<(() => void) | null>(null)
     const editorRef = useRef<EditorView | null>(null)
     const tabsRef = useRef(tabs)
     tabsRef.current = tabs
@@ -516,6 +536,9 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const EDITOR_HEIGHT_DEFAULT = 256
     const EDITOR_HEIGHT_MIN = 120
     const EDITOR_HEIGHT_MAX = 900
+    // Tamaño de página de resultados (0 = "All"). Se restaura de settings y se
+    // persiste al cambiarlo — ver backend/query/paging.go.
+    const [pageSize, setPageSize] = useState(500)
     const [gitSyncToken, setGitSyncToken] = useState(0)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
     const [editorHeight, setEditorHeightState] = useState(EDITOR_HEIGHT_DEFAULT)
@@ -552,6 +575,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 if (cancelled) return
                 setSidebarCollapsed(!!settings.sidebarCollapsed)
                 setRememberMasterKeyState(!!settings.rememberMasterKey)
+                // 0 es "All", un valor válido — por eso se compara con
+                // undefined/null en vez de usar un truthy check.
+                if (settings.queryPageSize !== undefined && settings.queryPageSize !== null) {
+                    setPageSize(settings.queryPageSize)
+                }
                 if (settings.editorTheme) {
                     setEditorThemeIdState(settings.editorTheme)
                 }
@@ -994,13 +1022,16 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         (connection: vault.ConnectionSummary, sqlText: string) => {
             if (running || !sqlText.trim()) return
 
+            // Drop any subscription still live from a previous run before
+            // claiming the state — see unsubscribeRef.
+            unsubscribeRef.current?.()
+
             const queryId = newQueryId()
             queryIdRef.current = queryId
             setRunning(true)
             setRunProgress(null)
             setResultSets([])
             setActiveResultTab(0)
-            setConsoleLog([])
 
             // Per-run scratch state, captured by this closure (a fresh Set/
             // flag every time runText is called, never shared across runs).
@@ -1013,6 +1044,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             let switchedToConsole = false
 
             const unsubscribe = EventsOn(queryId, (event: QueryEvent) => {
+                // Second line of defence behind the teardown above: a late
+                // event from a superseded run must never touch the current
+                // run's state.
+                if (queryIdRef.current !== queryId) return
+
                 setRunProgress({current: event.statementIndex + 1, total: event.totalStatements})
 
                 // A multi-statement script lands on "Consola" instead of
@@ -1044,8 +1080,16 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         case 'rows':
                             cur.rows = [...cur.rows, ...(event.rows ?? [])]
                             break
+                        case 'page':
+                            // Página adicional entregada por FetchMore: solo
+                            // actualiza el contador y si quedan más.
+                            cur.rowsAffected = event.rowsAffected ?? cur.rowsAffected
+                            cur.hasMore = !!event.hasMore
+                            cur.loadingMore = false
+                            break
                         case 'done':
                             cur.status = 'done'
+                            cur.hasMore = !!event.hasMore
                             cur.rowsAffected = event.rowsAffected ?? 0
                             cur.durationMs = event.durationMs ?? 0
                             cur.dbmsOutput = event.dbmsOutput ?? []
@@ -1063,8 +1107,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     return next
                 })
 
-                if (event.type === 'done' || event.type === 'error' || event.type === 'cancelled') {
-                    const terminalStatus = event.type
+                if (event.type === 'page' || event.type === 'done' || event.type === 'error' || event.type === 'cancelled') {
+                    // 'page' = una tanda extra traída por "Cargar 500 más";
+                    // se loguea como 'done' para que la consola muestre el
+                    // acumulado, igual que el Output de DataGrip.
+                    const terminalStatus = event.type === 'page' ? 'done' : event.type
                     const newEntry: ConsoleLogEntry = {
                         index: event.statementIndex,
                         total: event.totalStatements,
@@ -1077,8 +1124,20 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         dbmsOutput: event.dbmsOutput ?? [],
                         timestamp: Date.now(),
                     }
-                    setConsoleLog((prev) => [...prev, newEntry])
+                    // The console is a running history now (it is no longer
+                    // cleared per run), so it needs a ceiling: a long session
+                    // running thousands of statements would otherwise grow
+                    // without bound. Keeps the most recent entries, like any
+                    // output pane; "Limpiar consola" empties it on demand.
+                    setConsoleLog((prev) => {
+                        const next = [...prev, newEntry]
+                        return next.length > MAX_CONSOLE_ENTRIES ? next.slice(-MAX_CONSOLE_ENTRIES) : next
+                    })
                 }
+
+                // La última página cierra la suscripción que se mantuvo viva
+                // para paginar (ver el `if (!event.hasMore)` de abajo).
+                if (event.type === 'page' && !event.hasMore) unsubscribe()
 
                 if (
                     event.type === 'cancelled' ||
@@ -1086,7 +1145,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 ) {
                     setRunning(false)
                     setRunProgress(null)
-                    unsubscribe()
+                    // Solo se corta la suscripción si NO quedan páginas: las
+                    // que entrega FetchMore llegan por este mismo queryId, y
+                    // desuscribirse acá dejaba el botón "Cargar más" colgado en
+                    // "Cargando…" porque nadie recibía las filas.
+                    if (!event.hasMore) unsubscribe()
                     // History is recorded backend-side before this terminal
                     // event is emitted (see executor.go), so the row for
                     // what just ran is guaranteed to already exist here.
@@ -1094,7 +1157,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 }
             })
 
+            unsubscribeRef.current = unsubscribe
+
             ExecuteQuery(connection.id, queryId, sqlText, dbmsOutputEnabled).catch((err) => {
+                if (queryIdRef.current !== queryId) return
                 setResultSets([{...emptyResultSet(), status: 'error', error: String(err)}])
                 setRunning(false)
                 setRunProgress(null)
@@ -1112,6 +1178,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         (connection: vault.ConnectionSummary, commandText: string) => {
             if (running || !commandText.trim()) return
 
+            unsubscribeRef.current?.()
+
             const queryId = newQueryId()
             queryIdRef.current = queryId
             setRunning(true)
@@ -1119,6 +1187,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             setRedisResults([])
 
             const unsubscribe = EventsOn(queryId, (event: RedisQueryEvent) => {
+                if (queryIdRef.current !== queryId) return
                 setRunProgress({current: event.commandIndex + 1, total: event.totalCommands})
                 setRedisResults((prev) => {
                     const next = [...prev]
@@ -1147,6 +1216,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 }
             })
 
+            unsubscribeRef.current = unsubscribe
+
             ExecuteRedisCommand(connection.id, queryId, commandText).catch((err) => {
                 setRedisResults([{commandText, status: 'error', durationMs: 0, error: String(err)}])
                 setRunning(false)
@@ -1171,6 +1242,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 return
             }
 
+            unsubscribeRef.current?.()
+
             const queryId = newQueryId()
             queryIdRef.current = queryId
             setRunning(true)
@@ -1178,6 +1251,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             setMongoResults([])
 
             const unsubscribe = EventsOn(queryId, (event: MongoQueryEvent) => {
+                if (queryIdRef.current !== queryId) return
                 setRunProgress({current: event.commandIndex + 1, total: event.totalCommands})
                 setMongoResults((prev) => {
                     const next = [...prev]
@@ -1205,6 +1279,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     if (activeBottomTab === 'history') loadHistory()
                 }
             })
+
+            unsubscribeRef.current = unsubscribe
 
             ExecuteMongoQuery(connection.id, queryId, database, commandText).catch((err) => {
                 setMongoResults([{commandText, status: 'error', error: String(err)}])
@@ -1351,6 +1427,30 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // wrapped query becomes the new (single-statement) run, so other result
     // tabs from the original script are replaced — same trade-off as any
     // other re-run.
+    // Pide la próxima página al cursor que el backend dejó abierto. Las filas
+    // llegan por los mismos eventos del run original (mismo queryId), así que
+    // se agregan a la pestaña ya abierta — ver backend/query/paging.go.
+    function fetchMoreRows() {
+        const queryId = queryIdRef.current
+        if (!queryId) return
+        setResultSets((prev) => {
+            const next = [...prev]
+            if (next[activeResultTab]) {
+                next[activeResultTab] = {...next[activeResultTab], loadingMore: true}
+            }
+            return next
+        })
+        FetchMoreRows(queryId).catch((err) => {
+            setResultSets((prev) => {
+                const next = [...prev]
+                if (next[activeResultTab]) {
+                    next[activeResultTab] = {...next[activeResultTab], loadingMore: false, error: String(err)}
+                }
+                return next
+            })
+        })
+    }
+
     function sortActiveResult(column: string) {
         const rs = resultSets[activeResultTab]
         if (!rs || !rs.sourceSql || running || !activeTabConnection) return
@@ -2502,6 +2602,64 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 onSort={sortActiveResult}
                                 tableNameHint={activeTabConnection?.name}
                             />
+
+                            {/* Barra de paginación, estilo DataGrip: el backend
+                                entrega la primera página y deja el cursor
+                                abierto si quedan filas (ver paging.go). */}
+                            {activeResult && activeResult.rows.length > 0 && (
+                                <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant bg-surface-container-low px-2 py-1 text-[11px] text-on-surface-variant">
+                                    <span>
+                                        Mostrando <span className="font-mono text-on-surface">{activeResult.rows.length.toLocaleString()}</span>
+                                        {activeResult.hasMore ? '+' : ''} filas
+                                    </span>
+
+                                    {activeResult.hasMore && !activeResult.loadingMore && (
+                                        <button
+                                            onClick={fetchMoreRows}
+                                            title="Traer las próximas filas del mismo resultado — no vuelve a ejecutar la consulta, sigue leyendo el cursor abierto"
+                                            className="rounded bg-surface-variant px-2 py-0.5 text-on-surface-variant hover:bg-surface-container-highest"
+                                        >
+                                            Cargar {pageSize === 0 ? 'todo' : pageSize.toLocaleString()} más
+                                        </button>
+                                    )}
+                                    {activeResult.loadingMore && (
+                                        <>
+                                            <span className="flex items-center gap-1 text-primary">
+                                                <span aria-hidden className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent border-primary" />
+                                                Cargando más…
+                                            </span>
+                                            <button
+                                                onClick={cancelQuery}
+                                                title="Cancelar la carga de esta página — las filas ya traídas se conservan"
+                                                className="rounded bg-error-container px-2 py-0.5 text-on-error-container hover:opacity-90"
+                                            >
+                                                Cancelar
+                                            </button>
+                                        </>
+                                    )}
+                                    {!activeResult.hasMore && <span className="opacity-70">— resultado completo</span>}
+
+                                    <label className="ml-auto flex items-center gap-1" title="Cuántas filas trae cada página. 'Todas' desactiva la paginación — cuidado con tablas grandes. Se guarda como preferencia.">
+                                        Filas por página
+                                        <select
+                                            value={pageSize}
+                                            onChange={(e) => {
+                                                const n = Number(e.target.value)
+                                                setPageSize(n)
+                                                void SetQueryPageSize(n).catch(() => {})
+                                            }}
+                                            className="rounded border-none bg-surface-container-highest px-1 py-0.5 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                        >
+                                            {[10, 100, 250, 500, 1000, 5000].map((n) => (
+                                                <option key={n} value={n}>
+                                                    {n.toLocaleString()}
+                                                </option>
+                                            ))}
+                                            <option value={0}>Todas</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            )}
 
                             {activeResult && activeResult.dbmsOutput.length > 0 && (
                                 <div className="border-t border-outline-variant bg-surface-container-lowest">

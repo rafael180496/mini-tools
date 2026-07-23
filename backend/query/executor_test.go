@@ -135,14 +135,21 @@ func TestExecutorUnknownConnectionEmitsError(t *testing.T) {
 func TestExecutorCancelStopsLongRunningQuery(t *testing.T) {
 	exec, events := newTestExecutor(t)
 
-	// A recursive CTE that would otherwise run for a very long time —
-	// long enough that Cancel must actually interrupt it for the test to
-	// pass quickly instead of timing out.
-	slowQuery := `WITH RECURSIVE cnt(x) AS (
-		SELECT 1
-		UNION ALL
-		SELECT x + 1 FROM cnt WHERE x < 100000000
-	) SELECT x FROM cnt`
+	// A query that is slow to produce its FIRST row — the aggregate forces the
+	// whole recursive CTE to be computed before anything can be returned.
+	//
+	// It used to select the CTE's rows directly, but since result sets are
+	// paged (paging.go) that variant now returns its first 500 rows
+	// immediately and finishes before Cancel can land, which tested nothing.
+	// Cancellation still matters for exactly this shape: a statement that
+	// blocks before the first row.
+	slowQuery := `SELECT count(*) FROM (
+		WITH RECURSIVE cnt(x) AS (
+			SELECT 1
+			UNION ALL
+			SELECT x + 1 FROM cnt WHERE x < 100000000
+		) SELECT x FROM cnt
+	)`
 
 	exec.Execute("conn-1", "q4", slowQuery, true)
 	time.Sleep(50 * time.Millisecond) // let it actually start running

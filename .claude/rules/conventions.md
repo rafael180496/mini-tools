@@ -39,6 +39,37 @@
 
 - Este repo tiene `.codegraph/` (índice de símbolos/edges). Después de agregar o eliminar un archivo de código, correr `codegraph sync` para mantener el índice al día antes de seguir trabajando.
 
+## CHANGELOG — todo cambio se acumula en `[Unreleased]` primero
+
+- **Regla dura: todo feature, fix o mejora se anota en `CHANGELOG.md` bajo
+  `## [Unreleased]` en el momento en que se hace, como parte de la misma
+  tarea** — no al final, no "cuando se empaquete", y **nunca directamente
+  bajo una sección de versión**. `[Unreleased]` es el changelog temporal
+  donde se junta todo lo que todavía no salió.
+- **Al sacar una versión, ese contenido se mueve** (no se copia) de
+  `[Unreleased]` a una sección nueva `## [X.Y.Z] - AAAA-MM-DD`, y
+  `[Unreleased]` queda como encabezado vacío para la próxima tanda. Ese
+  volcado es el paso 7 del proceso de [releases.md](../specs/releases.md);
+  esta regla es la otra mitad: lo que garantiza que haya algo correcto
+  para volcar.
+- **Una sección de versión ya publicada no se toca nunca más.** Si la
+  versión ya está commiteada/tageada, su sección es historia: un cambio
+  posterior va a `[Unreleased]`, aunque la versión sea de hace cinco
+  minutos y todavía no se haya pusheado.
+- **Por qué existe esta regla (error real, no hipotético):** en la sesión
+  de 0.5.0 se agregaron features *después* de empaquetar y commitear esa
+  versión, y se escribieron directamente bajo `## [0.5.0]` en vez de
+  `[Unreleased]`. Resultado: la sección de una versión ya publicada
+  decía cosas que ese binario no tenía, y hubo que reconstruir a mano qué
+  entraba en 0.5.0 y qué en 0.5.1 leyendo el historial de git. Anotar en
+  `[Unreleased]` sobre la marcha hace que el corte de versión sea mecánico
+  en vez de arqueológico.
+- Formato de cada entrada: una línea por feature/fix, agrupada bajo
+  `### Agregado` / `### Corregido` / `### Mejorado` según corresponda, con
+  el mismo nivel de detalle que las entradas existentes (qué cambió y por
+  qué le importa a quien lo lee) — nunca "varias mejoras" ni "fixes
+  varios".
+
 ## Releases
 
 - **Cualquier mención de "empaquetar"/"empaquetá"/"empaquete" u "oficial" en el contexto de compilar es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye bumpear la versión (`bump-version.sh patch` por default, ya no es opcional en este flujo), armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), reflejar esos datos (con link directo al `.dmg`) en el `README.md` raíz, **y volcar `CHANGELOG.md` (mover `[Unreleased]` a `[X.Y.Z] - fecha`, con los features/fixes nuevos de la sesión)**.

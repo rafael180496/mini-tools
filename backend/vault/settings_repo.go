@@ -56,6 +56,9 @@ type Settings struct {
 	GitDiffContext  int  `json:"gitDiffContext"`
 	GitDiffIgnoreWs bool `json:"gitDiffIgnoreWs"`
 	GitDiffWrap     bool `json:"gitDiffWrap"`
+	// QueryPageSize es cuántas filas trae cada página de resultados; 0 = todas
+	// (sin paginar). Ver backend/query/paging.go.
+	QueryPageSize int `json:"queryPageSize"`
 	// RememberMasterKey reflects the "Recordar clave" toggle — whether
 	// TryAutoUnlock should try the OS keychain at startup. The flag itself
 	// is harmless to read while locked (it's just an on/off preference);
@@ -143,10 +146,11 @@ func (s *Store) GetSettings() (Settings, error) {
 	var autoSaveIntervalSeconds int
 	var gitSideWidth, gitDiffWidth, gitDiffContext int
 	var gitDiffIgnoreWs, gitDiffWrap bool
+	var queryPageSize int
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -191,6 +195,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		GitDiffContext:          gitDiffContext,
 		GitDiffIgnoreWs:         gitDiffIgnoreWs,
 		GitDiffWrap:             gitDiffWrap,
+		QueryPageSize:           queryPageSize,
 	}, nil
 }
 
@@ -259,6 +264,22 @@ func (s *Store) SetGitPaneWidths(sideWidth, diffWidth int) error {
 		clampGitPane(sideWidth), clampGitPane(diffWidth),
 	); err != nil {
 		return fmt.Errorf("vault: guardando anchos de paneles git: %w", err)
+	}
+	return nil
+}
+
+// SetQueryPageSize persiste cuántas filas trae cada página. Se acota a un
+// máximo sano: una página gigantesca anula el propósito de paginar y puede
+// tumbar la UI. 0 ("All") se acepta tal cual — es una elección explícita.
+func (s *Store) SetQueryPageSize(n int) error {
+	if n < 0 {
+		n = 0
+	}
+	if n > 100000 {
+		n = 100000
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET query_page_size = ? WHERE id = 1`, n); err != nil {
+		return fmt.Errorf("vault: guardando query_page_size: %w", err)
 	}
 	return nil
 }

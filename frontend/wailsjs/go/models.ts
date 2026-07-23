@@ -1304,6 +1304,7 @@ export namespace vault {
 	    gitDiffContext: number;
 	    gitDiffIgnoreWs: boolean;
 	    gitDiffWrap: boolean;
+	    queryPageSize: number;
 	    rememberMasterKey: boolean;
 	    editorTheme: string;
 	    collapsedSidebarModules: string[];
@@ -1329,6 +1330,7 @@ export namespace vault {
 	        this.gitDiffContext = source["gitDiffContext"];
 	        this.gitDiffIgnoreWs = source["gitDiffIgnoreWs"];
 	        this.gitDiffWrap = source["gitDiffWrap"];
+	        this.queryPageSize = source["queryPageSize"];
 	        this.rememberMasterKey = source["rememberMasterKey"];
 	        this.editorTheme = source["editorTheme"];
 	        this.collapsedSidebarModules = source["collapsedSidebarModules"];

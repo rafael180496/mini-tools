@@ -20,7 +20,7 @@ import (
 // own columns/rows/done-or-error sequence tagged with StatementIndex, so
 // the frontend can render one result-tab per statement.
 type Event struct {
-	Type            string `json:"type"` // "columns" | "rows" | "done" | "cancelled" | "error"
+	Type            string `json:"type"` // "columns" | "rows" | "page" | "done" | "cancelled" | "error"
 	StatementIndex  int    `json:"statementIndex"`
 	TotalStatements int    `json:"totalStatements"`
 	// SQLText is this statement's own source text. Sent on "columns" so the
@@ -38,6 +38,11 @@ type Event struct {
 	DurationMs   int64           `json:"durationMs,omitempty"`
 	Error        string          `json:"error,omitempty"`
 	DBMSOutput   []string        `json:"dbmsOutput,omitempty"`
+	// HasMore rides on "done" and "page" events for a paged SELECT: true means
+	// the result set still has rows and FetchMore(queryID) will deliver the
+	// next page. RowsAffected carries how many rows have been delivered so far,
+	// so the UI can show "1–500 de 500+".
+	HasMore bool `json:"hasMore,omitempty"`
 }
 
 const rowsPerChunk = 200
@@ -70,7 +75,14 @@ type Executor struct {
 	parentCtx context.Context
 	pools     *db.PoolManager
 	emit      EmitFunc
-	history   HistorySink
+	// cursors holds result sets paused mid-stream awaiting FetchMore — see
+	// paging.go for the lifecycle rules that keep them from pinning the pool.
+	cursors *cursors
+	// pageSize/pageMu: cuántas filas trae cada página (0 = "All", sin paginar).
+	// Configurable en caliente desde la UI — ver SetPageSize.
+	pageMu   sync.Mutex
+	pageSize int
+	history  HistorySink
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
@@ -95,11 +107,16 @@ type Executor struct {
 // emit is how results actually reach the frontend; history records each
 // statement's terminal outcome (pass a no-op func if not needed).
 func NewExecutor(parentCtx context.Context, pools *db.PoolManager, emit EmitFunc, history HistorySink) *Executor {
-	return &Executor{
+	e := &Executor{
 		parentCtx: parentCtx, pools: pools, emit: emit, history: history,
 		cancels: make(map[string]context.CancelFunc),
 		txns:    make(map[string]*sql.Conn),
+		cursors: newCursors(), pageSize: defaultPageSize,
 	}
+	// Releases paused cursors (and their pooled connections) that nobody came
+	// back for — see paging.go.
+	e.startCursorJanitor()
+	return e
 }
 
 // txConn returns connID's reserved connection if a transaction is open, or
@@ -231,7 +248,10 @@ func (e *Executor) Execute(connID, queryID, sqlText string, captureDBMSOutput bo
 // Cancel cancels the in-flight script registered under queryID, if any —
 // stops before running any further statements, and interrupts the
 // statement currently in flight. The pool itself is left open and healthy.
+// Cancel also drops any cursor paused under queryID — cancelling a result the
+// user no longer wants must release its connection too.
 func (e *Executor) Cancel(queryID string) {
+	e.cursors.closeQuery(queryID)
 	e.mu.Lock()
 	cancel, ok := e.cancels[queryID]
 	e.mu.Unlock()
@@ -241,6 +261,11 @@ func (e *Executor) Cancel(queryID string) {
 }
 
 func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool) {
+	// A new run on this connection supersedes whatever result set was paused
+	// on it, freeing the pooled connection that cursor was pinning (see
+	// paging.go's "one paused cursor per connection" rule).
+	e.cursors.closeConn(connID)
+
 	pool, err := e.pools.Get(connID)
 	if err != nil {
 		e.emit(queryID, Event{Type: "error", Error: err.Error()})
@@ -266,7 +291,15 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool) 
 	ctx, cancel := context.WithCancel(e.parentCtx)
 	e.registerCancel(queryID, cancel)
 	defer e.clearCancel(queryID)
-	defer cancel()
+	// Not a plain `defer cancel()`: if this run left a result set paused for
+	// paging, the cursor is still open and database/sql would close it the
+	// moment this context is cancelled. In that case ownership of cancel moves
+	// to the cursor, which calls it when IT closes (see paging.go).
+	defer func() {
+		if !e.cursors.attachCancel(queryID, cancel) {
+			cancel()
+		}
+	}()
 
 	for idx, stmt := range statements {
 		if ctx.Err() != nil {
@@ -316,7 +349,15 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
 	}
-	defer rows.Close()
+	// NOT a plain `defer rows.Close()`: when the result set turns out to have
+	// more than one page, the cursor is handed to the registry still open so
+	// FetchMore can resume it. closeRows is flipped off in exactly that case.
+	closeRows := true
+	defer func() {
+		if closeRows {
+			rows.Close()
+		}
+	}()
 
 	columns, err := rows.Columns()
 	if err != nil {
@@ -342,7 +383,12 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 		batch = nil
 	}
 
-	for rows.Next() {
+	// Read at most one page. Stopping here is what keeps `SELECT * FROM
+	// tabla_enorme` from streaming the whole table into the UI; the rest is
+	// delivered by FetchMore from the still-open cursor (see paging.go).
+	limit := e.pageLimit()
+	hasMore := false
+	for (limit == PageSizeAll || rowCount < int64(limit)) && rows.Next() {
 		if err := rows.Scan(scanArgs...); err != nil {
 			e.emitError(connID, queryID, sqlText, err, idx, total)
 			return
@@ -366,6 +412,26 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 		return
 	}
 
+	// A full page means there may be more. Scanning one row past it both
+	// answers that and, when true, keeps the row as the next page's first
+	// (Next() already consumed it).
+	if limit != PageSizeAll && rowCount == int64(limit) && rows.Next() {
+		if err := rows.Scan(scanArgs...); err != nil {
+			e.emitError(connID, queryID, sqlText, err, idx, total)
+			return
+		}
+		pending := make([]interface{}, len(columns))
+		for i, v := range values {
+			pending[i] = normalizeValue(v)
+		}
+		hasMore = true
+		closeRows = false // handed to the registry, still open
+		e.cursors.put(queryID, &pausedCursor{
+			rows: rows, connID: connID, sqlText: sqlText, columns: columns,
+			pending: pending, fetched: rowCount, idx: idx, total: total,
+		})
+	}
+
 	durationMs := time.Since(start).Milliseconds()
 	// History is recorded before the terminal event is emitted (not after)
 	// so that by the time the frontend receives "done" and, say, refreshes
@@ -373,7 +439,11 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 	// otherwise that refresh could race the write and miss the statement
 	// that just finished.
 	e.recordHistory(connID, sqlText, "done", rowCount, durationMs, "")
-	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: rowCount, DurationMs: durationMs, SQLText: sqlText})
+	e.emit(queryID, Event{
+		Type: "done", StatementIndex: idx, TotalStatements: total,
+		RowsAffected: rowCount, DurationMs: durationMs, SQLText: sqlText,
+		HasMore: hasMore,
+	})
 }
 
 func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, queryID, sqlText string, idx, total int, start time.Time) {

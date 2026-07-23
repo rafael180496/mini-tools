@@ -7,7 +7,10 @@ import {
     GitBranches,
     GitCheckout,
     GitCreateBranch,
+    GitCreateTag,
+    GitDeleteBranch,
     GitDeleteRemoteTag,
+    GitRenameBranch,
     GitDeleteTag,
     GitFetch,
     GitPushTag,
@@ -127,6 +130,10 @@ export default function GitRepoTree({
     const [confirmRemoveRemote, setConfirmRemoveRemote] = useState<{repoId: string; name: string} | null>(null)
     const [prompt, setPrompt] = useState<PromptSpec | null>(null)
     const [confirmTag, setConfirmTag] = useState<{repoId: string; name: string; remote: boolean} | null>(null)
+    // After creating a tag from the sidebar, offer to push it — "crear tags y
+    // pushearlo" as one flow, but with the network step kept explicit.
+    const [confirmPushTag, setConfirmPushTag] = useState<{repoId: string; name: string} | null>(null)
+    const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{repoId: string; name: string} | null>(null)
     const [confirmStash, setConfirmStash] = useState<{repoId: string; ref: string; message: string} | null>(null)
 
     // Folder UI state, mirroring SshConnectionTree's.
@@ -192,6 +199,70 @@ export default function GitRepoTree({
         } catch (e) {
             setError(String(e))
         }
+    }
+
+    // Right-click menu for a LOCAL branch in the sidebar — checkout, rename,
+    // delete. A trimmed version of the repo tab's branch menu (no merge/
+    // upstream here; those belong to the tab's working context).
+    function localBranchMenuItems(repoId: string, b: git.Branch): (DropdownItem | 'separator')[] {
+        return [
+            {
+                label: `Checkout ${b.name}`,
+                icon: 'check',
+                disabled: b.isCurrent,
+                hint: b.isCurrent ? 'Ya estás en esta rama' : undefined,
+                onSelect: () => void checkout(repoId, b.name),
+            },
+            {
+                label: `Renombrar ${b.name}…`,
+                icon: 'edit',
+                onSelect: () =>
+                    setPrompt({
+                        title: `Renombrar la rama "${b.name}"`,
+                        label: 'Nuevo nombre',
+                        initial: b.name,
+                        description: 'Renombrar solo afecta tu repositorio local (preserva el reflog y el upstream). Si la rama ya está publicada, el nombre viejo sigue en el remoto hasta que lo borres.',
+                        onSubmit: async (v) => {
+                            try {
+                                await GitRenameBranch(repoId, b.name, v)
+                                onChanged()
+                            } catch (e) {
+                                setError(String(e))
+                            }
+                        },
+                    }),
+            },
+            {label: `Copiar '${b.name}'`, icon: 'content_copy', onSelect: () => void navigator.clipboard.writeText(b.name)},
+            'separator',
+            {
+                label: `Borrar ${b.name}`,
+                icon: 'delete',
+                danger: true,
+                disabled: b.isCurrent,
+                hint: b.isCurrent ? 'No podés borrar la rama en la que estás' : undefined,
+                onSelect: () => setConfirmDeleteBranch({repoId, name: b.name}),
+            },
+        ]
+    }
+
+    // Create a new local branch from HEAD (optionally checking it out).
+    function startCreateBranch(repoId: string) {
+        setPrompt({
+            title: 'Crear rama',
+            label: 'Nombre de la rama',
+            placeholder: 'mi-rama',
+            confirmLabel: 'Crear y cambiar',
+            description: 'La rama nueva se crea en el commit actual (HEAD) y se hace checkout.',
+            onSubmit: async (name) => {
+                try {
+                    // startPoint vacío = HEAD, checkout = true
+                    await GitCreateBranch(repoId, name, '', true)
+                    onChanged()
+                } catch (e) {
+                    setError(String(e))
+                }
+            },
+        })
     }
 
     function toggleRepo(repoId: string) {
@@ -288,15 +359,25 @@ export default function GitRepoTree({
             {
                 label: 'Cambiar URL',
                 icon: 'link',
-                onSelect: () =>
+                onSelect: async () => {
+                    // Prefill with the REAL URL (token included), not the
+                    // redacted one shown in the list: prefilling "REDACTED"
+                    // meant that saving without retyping would write the
+                    // literal `https://REDACTED@…` and break auth. The user
+                    // explicitly wants to see/keep the embedded token here.
+                    // Falls back to the redacted form only if the raw fetch
+                    // fails, in which case they must retype.
+                    let initial = remote.fetchUrl
+                    try {
+                        const real = await GitRemoteURLForCopy(repoId, remote.name)
+                        if (real) initial = real
+                    } catch {
+                        // keep the redacted fallback
+                    }
                     setPrompt({
                         title: `URL de "${remote.name}"`,
                         label: 'Nueva URL',
-                        // The redacted URL is shown rather than the real one on
-                        // purpose — if the remote embeds a token, prefilling it
-                        // would put the secret back on screen. The user types a
-                        // fresh URL.
-                        initial: remote.fetchUrl,
+                        initial,
                         onSubmit: async (v: string) => {
                             try {
                                 await GitSetRemoteURL(repoId, remote.name, v)
@@ -305,7 +386,8 @@ export default function GitRepoTree({
                                 setError(String(e))
                             }
                         },
-                    }),
+                    })
+                },
             },
             {
                 label: 'Copiar URL',
@@ -684,27 +766,36 @@ export default function GitRepoTree({
             <>
                 <TreeSection
                     label="Ramas"
-                                                    icon="account_tree"
-                                                    count={detail.branches.filter((b) => !b.isRemote).length}
-                                                    open={openSections.has(`${repo.id}:branches`)}
-                                                    onToggle={() => toggleSection(`${repo.id}:branches`)}
-                                                >
-                                                    {detail.branches
-                                                        .filter((b) => !b.isRemote)
-                                                        .map((b) => (
-                                                            <TreeLeaf
-                                                                key={b.name}
-                                                                label={b.name}
-                                                                title={
-                                                                    b.isCurrent
-                                                                        ? `"${b.name}" es la rama actual${b.upstream ? ` — sigue a ${b.upstream}` : ''}`
-                                                                        : `Doble click para hacer checkout de "${b.name}"${b.upstream ? ` — sigue a ${b.upstream}` : ' — sin upstream configurado'}`
-                                                                }
-                                                                bold={b.isCurrent}
-                                                                onDoubleClick={() => void checkout(repo.id, b.name)}
-                                                            />
-                                                        ))}
-                                                </TreeSection>
+                    icon="account_tree"
+                    count={detail.branches.filter((b) => !b.isRemote).length}
+                    open={openSections.has(`${repo.id}:branches`)}
+                    onToggle={() => toggleSection(`${repo.id}:branches`)}
+                    action={{
+                        icon: 'add',
+                        title: 'Crear una rama local nueva en el commit actual (HEAD)',
+                        onClick: () => startCreateBranch(repo.id),
+                    }}
+                >
+                    {detail.branches
+                        .filter((b) => !b.isRemote)
+                        .map((b) => (
+                            <TreeLeaf
+                                key={b.name}
+                                label={b.name}
+                                title={
+                                    b.isCurrent
+                                        ? `"${b.name}" es la rama actual${b.upstream ? ` — sigue a ${b.upstream}` : ''}. Click derecho para renombrar o borrar`
+                                        : `Doble click para hacer checkout de "${b.name}"${b.upstream ? ` — sigue a ${b.upstream}` : ' — sin upstream configurado'}. Click derecho para más acciones`
+                                }
+                                bold={b.isCurrent}
+                                onDoubleClick={() => void checkout(repo.id, b.name)}
+                                onContextMenu={(e) => {
+                                    e.preventDefault()
+                                    setMenu({x: e.clientX, y: e.clientY, items: localBranchMenuItems(repo.id, b)})
+                                }}
+                            />
+                        ))}
+                </TreeSection>
                                                 <TreeSection
                                                     label="Remotos"
                                                     icon="cloud"
@@ -766,6 +857,30 @@ export default function GitRepoTree({
                                                     count={detail.tags.length}
                                                     open={openSections.has(`${repo.id}:tags`)}
                                                     onToggle={() => toggleSection(`${repo.id}:tags`)}
+                                                    action={{
+                                                        icon: 'add',
+                                                        title: 'Crear un tag nuevo en el commit actual (HEAD)',
+                                                        onClick: () =>
+                                                            setPrompt({
+                                                                title: 'Crear tag',
+                                                                label: 'Nombre del tag',
+                                                                placeholder: 'v1.0.0',
+                                                                secondLabel: 'Mensaje (opcional)',
+                                                                secondPlaceholder: 'Con mensaje crea un tag anotado; sin mensaje, uno liviano.',
+                                                                confirmLabel: 'Crear tag',
+                                                                description: 'El tag se crea en el commit actual (HEAD), local. Después te pregunto si querés pushearlo.',
+                                                                onSubmit: async (name, msg) => {
+                                                                    try {
+                                                                        // ref vacío = HEAD
+                                                                        await GitCreateTag(repo.id, name, '', msg)
+                                                                        await loadDetail(repo.id)
+                                                                        setConfirmPushTag({repoId: repo.id, name})
+                                                                    } catch (e) {
+                                                                        setError(String(e))
+                                                                    }
+                                                                },
+                                                            }),
+                                                    }}
                                                 >
                                                     {detail.tags.map((t) => (
                                                         <TreeLeaf
@@ -863,6 +978,41 @@ export default function GitRepoTree({
                         }
                     }}
                     onClose={() => setConfirmTag(null)}
+                />
+            )}
+
+            {confirmDeleteBranch && (
+                <ConfirmDialog
+                    title="Borrar rama local"
+                    description={`Esto borra la rama "${confirmDeleteBranch.name}" de tu repositorio local. Si tiene commits que no están en ninguna otra rama, quedan accesibles solo por el reflog hasta que expire. La copia en el remoto (si la hay) no se toca.`}
+                    confirmLabel="Borrar"
+                    danger
+                    onConfirm={async () => {
+                        try {
+                            await GitDeleteBranch(confirmDeleteBranch.repoId, confirmDeleteBranch.name, true)
+                            onChanged()
+                        } catch (e) {
+                            setError(String(e))
+                        }
+                    }}
+                    onClose={() => setConfirmDeleteBranch(null)}
+                />
+            )}
+
+            {confirmPushTag && (
+                <ConfirmDialog
+                    title="Pushear tag"
+                    description={`Se creó el tag "${confirmPushTag.name}" localmente. ¿Pushearlo a origin ahora? (Se usa el token guardado del host si hay uno; si no, git resuelve las credenciales como siempre.)`}
+                    confirmLabel="Pushear"
+                    onConfirm={async () => {
+                        try {
+                            await GitPushTag(confirmPushTag.repoId, 'origin', confirmPushTag.name, new git.AuthConfig({}))
+                            await loadDetail(confirmPushTag.repoId)
+                        } catch (e) {
+                            setError(String(e))
+                        }
+                    }}
+                    onClose={() => setConfirmPushTag(null)}
                 />
             )}
 
