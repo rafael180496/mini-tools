@@ -110,6 +110,10 @@ export function DeleteSshSnippet(arg1) {
   return window['go']['main']['App']['DeleteSshSnippet'](arg1);
 }
 
+export function DetectSQLiteEncryption(arg1) {
+  return window['go']['main']['App']['DetectSQLiteEncryption'](arg1);
+}
+
 export function DisconnectConnection(arg1) {
   return window['go']['main']['App']['DisconnectConnection'](arg1);
 }
@@ -282,6 +286,10 @@ export function GitInProgress(arg1) {
   return window['go']['main']['App']['GitInProgress'](arg1);
 }
 
+export function GitInitRepo(arg1) {
+  return window['go']['main']['App']['GitInitRepo'](arg1);
+}
+
 export function GitListCredentials() {
   return window['go']['main']['App']['GitListCredentials']();
 }
@@ -300,6 +308,10 @@ export function GitMerge(arg1, arg2, arg3) {
 
 export function GitMoveRepoToFolder(arg1, arg2) {
   return window['go']['main']['App']['GitMoveRepoToFolder'](arg1, arg2);
+}
+
+export function GitPickFolder(arg1) {
+  return window['go']['main']['App']['GitPickFolder'](arg1);
 }
 
 export function GitPickRepoFolder() {
@@ -524,6 +536,10 @@ export function OpenSftpBrowse(arg1, arg2) {
 
 export function PickAutoBackupFolder() {
   return window['go']['main']['App']['PickAutoBackupFolder']();
+}
+
+export function PickSQLiteFile() {
+  return window['go']['main']['App']['PickSQLiteFile']();
 }
 
 export function PickVaultBackupFile(arg1) {

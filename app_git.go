@@ -190,6 +190,37 @@ func (a *App) GitPickRepoFolder() (string, error) {
 	})
 }
 
+// GitPickFolder is the generic folder picker for "new repository" (where to
+// init) and "clone" (the destination parent) — the chosen folder need not be a
+// repository, unlike GitPickRepoFolder's intent. title labels the native
+// dialog so the two flows read differently.
+func (a *App) GitPickFolder(title string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	if title == "" {
+		title = "Elegir carpeta"
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
+}
+
+// GitInitRepo runs `git init` at path and registers the resulting repository.
+// path is the folder to turn into a repository; it is created if missing.
+func (a *App) GitInitRepo(path string) (*vault.GitRepo, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	root, err := a.gitRunner.Init(path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := a.gitRunner.OpenRepository(root)
+	if err != nil {
+		return nil, err
+	}
+	return a.vault.AddGitRepo(info.Name, info.Path)
+}
+
 // GitAddRepo validates that path is a git working tree and registers it.
 //
 // The path stored is the working-tree root git itself reports, not what the
@@ -211,6 +242,15 @@ func (a *App) GitAddRepo(path string) (*vault.GitRepo, error) {
 func (a *App) GitCloneRepo(url, targetPath string, auth git.AuthConfig) (*vault.GitRepo, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
+	}
+	// A clone has no repoID yet, so resolveGitAuth (which looks up by repo)
+	// cannot help — resolve the saved token straight from the URL's host
+	// instead, so cloning a private repo uses the same PAT the user stored for
+	// that forge. Empty/explicit auth is passed through unchanged.
+	if auth.Mode == "" {
+		if username, token, err := a.vault.GitToken(vault.NormalizeGitHost(url)); err == nil {
+			auth = git.AuthConfig{Mode: "token", Username: username, Token: token}
+		}
 	}
 	root, err := a.gitRunner.Clone(url, targetPath, auth)
 	if err != nil {

@@ -62,6 +62,8 @@ export function DeleteSftpPath(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteSshSnippet(arg1:string):Promise<void>;
 
+export function DetectSQLiteEncryption(arg1:string):Promise<boolean>;
+
 export function DisconnectConnection(arg1:string):Promise<void>;
 
 export function ExecuteMongoQuery(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
@@ -148,6 +150,8 @@ export function GitIdentity(arg1:string):Promise<git.Identity>;
 
 export function GitInProgress(arg1:string):Promise<string>;
 
+export function GitInitRepo(arg1:string):Promise<vault.GitRepo>;
+
 export function GitListCredentials():Promise<Array<vault.GitCredential>>;
 
 export function GitListRepos():Promise<Array<vault.GitRepo>>;
@@ -157,6 +161,8 @@ export function GitLog(arg1:string,arg2:git.LogOptions):Promise<Array<git.Commit
 export function GitMerge(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function GitMoveRepoToFolder(arg1:string,arg2:string):Promise<void>;
+
+export function GitPickFolder(arg1:string):Promise<string>;
 
 export function GitPickRepoFolder():Promise<string>;
 
@@ -269,6 +275,8 @@ export function OpenSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<voi
 export function OpenSftpBrowse(arg1:string,arg2:string):Promise<string>;
 
 export function PickAutoBackupFolder():Promise<string>;
+
+export function PickSQLiteFile():Promise<string>;
 
 export function PickVaultBackupFile(arg1:string):Promise<string>;
 

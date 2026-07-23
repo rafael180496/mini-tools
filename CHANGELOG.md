@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-22
+
+### Agregado
+
+- **Abrir / Nuevo / Clonar en el módulo Git**: el botón `+` del sidebar (y una pantalla inicial cuando el módulo está vacío) ofrece las tres formas de sumar un repositorio — **abrir** uno que ya existe en disco, **crear** uno nuevo (`git init` en una carpeta elegida), o **clonar** desde una URL. El diálogo de clonar deriva el nombre de la carpeta del URL y usa automáticamente el token guardado del host para repos privados.
+- **Soporte de SQLite cifrada con SQLCipher** (solo lectura): toggle "Base cifrada (SQLCipher)" + campo de clave en el diálogo de conexión SQLite. Detecta automáticamente SQLCipher 3 y 4, acepta passphrase o clave raw (`x'…'`), y "Test Connection" verifica la clave antes de guardar. **Sin cgo** — el driver clásico de SQLCipher lo requiere y está prohibido por la regla técnica (rompería el cross-compile de Windows desde Mac); en su lugar se descifra en Go puro (solo stdlib: PBKDF2 + AES-256-CBC) a una copia temporal de solo lectura que abre el `modernc.org/sqlite` normal, borrada al cerrar la conexión. La clave viaja cifrada en el DSN del vault, nunca en texto plano ni al frontend. Cripto verificada byte a byte contra el CLI real de SQLCipher 4.17.
+- **Selector de archivo + auto-detección de cifrado en SQLite**: botón "Elegir…" que abre el diálogo nativo del SO (filtrado a `.db/.sqlite/.sqlite3/.db3`) en vez de tener que tipear la ruta. Al elegir (o escribir) un archivo, la app detecta sola si está cifrado con SQLCipher —leyendo solo los primeros 16 bytes, un archivo SQLite normal empieza con `SQLite format 3\0` y uno cifrado no— y prende el toggle de cifrado en consecuencia.
+
 ## [0.5.0] - 2026-07-22
 
 ### Agregado

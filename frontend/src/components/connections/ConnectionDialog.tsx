@@ -1,7 +1,9 @@
 import {FormEvent, useEffect, useState} from 'react'
 import {
+    DetectSQLiteEncryption,
     GetConnectionForEdit,
     ListSchemasForNewConnection,
+    PickSQLiteFile,
     SaveConnection,
     SetConnectionSchemas,
     TestConnection,
@@ -145,6 +147,10 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                 if (mode && info.dbType === 'redis') setRedisMode(mode as RedisMode)
                 if (mode && info.dbType === 'mongodb') setMongoMode(mode as MongoMode)
                 if (auth && info.dbType === 'ssh') setSshAuthMethod(auth as SSHAuthMethod)
+                // An encrypted SQLite comes back with the sqlcipher_encrypted
+                // marker (never the key itself); flip the toggle on so the form
+                // shows the key field as already-set, blank.
+                if (rest.sqlcipher_encrypted === '1') rest.sqlcipher_on = 'true'
                 setParams(rest)
             })
             .catch((err) => setError(String(err)))
@@ -154,6 +160,38 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
 
     function setParam(key: string, value: string) {
         setParams((prev) => ({...prev, [key]: value}))
+    }
+
+    // Pick a SQLite file with the native dialog, then auto-detect whether it's
+    // SQLCipher-encrypted and set the toggle accordingly — the user shouldn't
+    // have to know, or type the path.
+    async function pickSqliteFile() {
+        try {
+            const path = await PickSQLiteFile()
+            if (!path) return
+            const enc = await DetectSQLiteEncryption(path).catch(() => false)
+            setParams((prev) => ({
+                ...prev,
+                path,
+                // A freshly-picked encrypted file needs its own key, so drop
+                // any "keep existing" marker inherited from an edit.
+                sqlcipher_on: enc ? 'true' : '',
+                sqlcipher_encrypted: '',
+                sqlcipher_key: enc ? (prev.sqlcipher_key ?? '') : '',
+            }))
+        } catch {
+            // Cancelling or a dialog error is a no-op — nothing to surface.
+        }
+    }
+
+    // Re-detect when the user types/pastes a path by hand (on blur), so the
+    // toggle also reflects a manually-entered encrypted file.
+    async function redetectOnBlur() {
+        const path = params.path
+        if (!path || params.sqlcipher_encrypted === '1') return
+        const enc = await DetectSQLiteEncryption(path).catch(() => null)
+        if (enc === null) return
+        setParam('sqlcipher_on', enc ? 'true' : '')
     }
 
     function changeDbType(next: DBType) {
@@ -450,15 +488,54 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                 )}
 
                 {dbType === 'sqlite' && (
-                    <label className={labelClass}>
-                        Archivo (.db / .sqlite)
-                        <input
-                            value={params.path ?? ''}
-                            onChange={(e) => setParam('path', e.target.value)}
-                            placeholder="/ruta/a/archivo.db"
-                            className={inputClass}
-                        />
-                    </label>
+                    <>
+                        <label className={labelClass}>
+                            Archivo (.db / .sqlite)
+                            <div className="flex gap-2">
+                                <input
+                                    value={params.path ?? ''}
+                                    onChange={(e) => setParam('path', e.target.value)}
+                                    onBlur={redetectOnBlur}
+                                    placeholder="/ruta/a/archivo.db"
+                                    className={`${inputClass} min-w-0 flex-1`}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={pickSqliteFile}
+                                    title="Elegir el archivo con el explorador — detecta solo si está cifrado con SQLCipher"
+                                    className="shrink-0 rounded bg-surface-variant px-3 text-xs text-on-surface-variant hover:bg-surface-container-highest"
+                                >
+                                    Elegir…
+                                </button>
+                            </div>
+                        </label>
+                        <div
+                            className="flex items-center gap-2.5 text-xs text-on-surface-variant"
+                            title="Activá esto si el archivo está cifrado con SQLCipher — se descifra a una copia temporal de solo lectura para abrirlo (los datos cifrados no se modifican). Detecta SQLCipher 3 y 4 automáticamente."
+                        >
+                            <Toggle
+                                checked={params.sqlcipher_on === 'true'}
+                                onChange={(c) => {
+                                    setParam('sqlcipher_on', c ? 'true' : '')
+                                    if (!c) setParam('sqlcipher_key', '')
+                                }}
+                                ariaLabel="Base cifrada con SQLCipher"
+                            />
+                            Base cifrada (SQLCipher)
+                        </div>
+                        {params.sqlcipher_on === 'true' && (
+                            <label className={labelClass}>
+                                Clave / passphrase de SQLCipher
+                                <input
+                                    type="password"
+                                    value={params.sqlcipher_key ?? ''}
+                                    onChange={(e) => setParam('sqlcipher_key', e.target.value)}
+                                    placeholder={params.sqlcipher_encrypted === '1' ? 'Dejá en blanco para conservar la actual' : "passphrase, o clave raw x'…'"}
+                                    className={inputClass}
+                                />
+                            </label>
+                        )}
+                    </>
                 )}
 
                 {dbType === 'postgres' && (

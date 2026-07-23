@@ -16,6 +16,7 @@ import (
 	"mini-tools/backend/autobackup"
 	"mini-tools/backend/claudemd"
 	"mini-tools/backend/db"
+	"mini-tools/backend/db/sqlcipher"
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
 	"mini-tools/backend/git"
@@ -418,6 +419,44 @@ func (a *App) CheckForUpdate() updatecheck.Info {
 	return updatecheck.Check(appVersion)
 }
 
+// PickSQLiteFile opens the native file picker for a SQLite/SQLCipher database
+// and returns the chosen path (or "" if cancelled), so the connection dialog
+// does not force the user to type the path by hand.
+func (a *App) PickSQLiteFile() (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Elegir base SQLite",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "SQLite / SQLCipher (*.db;*.sqlite;*.sqlite3;*.db3)", Pattern: "*.db;*.sqlite;*.sqlite3;*.db3"},
+			{DisplayName: "Todos los archivos", Pattern: "*.*"},
+		},
+	})
+}
+
+// DetectSQLiteEncryption reports whether the file at path looks like a
+// SQLCipher-encrypted database, so the dialog can pre-set the "Base cifrada"
+// toggle when a file is picked or its path typed. It only reads the file's
+// first 16 bytes and never touches the key — see sqlcipher.LooksEncrypted.
+//
+// A missing/unreadable path returns false with no error: the file may just not
+// exist yet (a new SQLite DB is created on first connect), which is not a
+// detection failure the UI should surface.
+func (a *App) DetectSQLiteEncryption(path string) (bool, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return false, err
+	}
+	if path == "" {
+		return false, nil
+	}
+	enc, err := sqlcipher.LooksEncrypted(path)
+	if err != nil {
+		return false, nil
+	}
+	return enc, nil
+}
+
 // TestConnection builds a DSN from cfg and pings it, without saving
 // anything. Used by the "Test Connection" button before a connection is
 // persisted.
@@ -566,6 +605,15 @@ func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
 	// every other engine, whose params never have these keys.
 	delete(params, "privateKey")
 	delete(params, "passphrase")
+	// The SQLCipher key is a credential too; strip it like a password. The
+	// dialog re-shows the "encrypted" toggle from the marker below and leaves
+	// the key field blank — blank on save means "keep the existing key".
+	if _, encrypted := params["sqlcipher_key"]; encrypted {
+		delete(params, "sqlcipher_key")
+		// A non-secret marker so the edit form knows to show the key field as
+		// already-set, the same way a password field shows as "unchanged".
+		params["sqlcipher_encrypted"] = "1"
+	}
 
 	return &ConnectionEditInfo{Name: name, DBType: string(dbType), Params: params, Color: color}, nil
 }
@@ -598,11 +646,19 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	sshKeyAuth := dbType == db.DBTypeSSH && cfg.Params["auth"] == db.SSHAuthKey
 	needsPasswordMerge := !sshKeyAuth && cfg.Params["password"] == ""
 	needsKeyMerge := sshKeyAuth && (cfg.Params["privateKey"] == "" || cfg.Params["passphrase"] == "")
-	if needsPasswordMerge || needsKeyMerge {
+	// An encrypted SQLite edited with a blank key field but the "encrypted"
+	// toggle still on means "keep the existing SQLCipher key" — same rule as a
+	// blank password. The marker distinguishes it from turning encryption off
+	// (toggle off → no merge, the key is intentionally dropped).
+	needsSqlcipherMerge := dbType == db.DBTypeSQLite && cfg.Params["sqlcipher_encrypted"] == "1" && cfg.Params["sqlcipher_key"] == ""
+	if needsPasswordMerge || needsKeyMerge || needsSqlcipherMerge {
 		if _, existingDSN, err := a.vault.ConnectionDSN(id); err == nil {
 			if existingParams, err := connector.ParseDSN(existingDSN); err == nil {
 				if needsPasswordMerge {
 					cfg.Params["password"] = existingParams["password"]
+				}
+				if needsSqlcipherMerge {
+					cfg.Params["sqlcipher_key"] = existingParams["sqlcipher_key"]
 				}
 				if needsKeyMerge {
 					if cfg.Params["privateKey"] == "" {
@@ -615,6 +671,9 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 			}
 		}
 	}
+	// The marker is a UI-only flag, never a DSN param — drop it before BuildDSN
+	// so it does not leak into the stored DSN.
+	delete(cfg.Params, "sqlcipher_encrypted")
 
 	dsn, err := connector.BuildDSN(cfg.Params)
 	if err != nil {

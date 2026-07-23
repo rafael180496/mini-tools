@@ -2,6 +2,8 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import {
     GitAddRemote,
     GitAddRepo,
+    GitInitRepo,
+    GitPickFolder,
     GitBranches,
     GitCheckout,
     GitCreateBranch,
@@ -31,6 +33,7 @@ import MoveToFolderMenu, {flattenForMenu} from '../sidebar/MoveToFolderMenu'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
 import ContextMenu from './ContextMenu'
 import PromptDialog from './PromptDialog'
+import GitCloneDialog from './GitCloneDialog'
 import type {DropdownItem} from './DropdownMenu'
 
 interface GitRepoTreeProps {
@@ -133,6 +136,7 @@ export default function GitRepoTree({
     const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
     const [renameFolderName, setRenameFolderName] = useState('')
     const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<vault.Folder | null>(null)
+    const [showClone, setShowClone] = useState(false)
 
     useEffect(() => {
         GitProbe().then(setProbe).catch(() => setProbe(null))
@@ -212,7 +216,8 @@ export default function GitRepoTree({
         })
     }
 
-    async function addRepo() {
+    // Open an existing repository already on disk.
+    async function openRepo() {
         setError(null)
         try {
             const path = await GitPickRepoFolder()
@@ -223,6 +228,27 @@ export default function GitRepoTree({
             setError(String(e))
         }
     }
+
+    // Create a brand-new repository (`git init`) in a chosen folder.
+    async function newRepo() {
+        setError(null)
+        try {
+            const path = await GitPickFolder('Elegir la carpeta del repositorio nuevo')
+            if (!path) return
+            await GitInitRepo(path)
+            refresh()
+        } catch (e) {
+            setError(String(e))
+        }
+    }
+
+    // The "+" menu: the three ways to get a repository into the sidebar, same
+    // trio a standalone Git client offers on its start screen.
+    const addMenuItems: DropdownItem[] = [
+        {label: 'Abrir repositorio…', icon: 'folder_open', hint: 'Uno que ya existe en tu disco', onSelect: () => void openRepo()},
+        {label: 'Nuevo repositorio…', icon: 'create_new_folder', hint: 'git init en una carpeta', onSelect: () => void newRepo()},
+        {label: 'Clonar…', icon: 'cloud_download', hint: 'Desde una URL', onSelect: () => setShowClone(true)},
+    ]
 
     // Remote right-click menu — the actions from the reference client, plus a
     // fetch shortcut since it is the one people reach for most.
@@ -571,9 +597,12 @@ export default function GitRepoTree({
                             <Icon name="create_new_folder" size={18} />
                         </button>
                         <button
-                            onClick={addRepo}
+                            onClick={(e) => {
+                                const r = e.currentTarget.getBoundingClientRect()
+                                setMenu({x: r.right - 200, y: r.bottom + 4, items: addMenuItems})
+                            }}
                             disabled={!probe?.available}
-                            title={probe?.available ? 'Agregar un repositorio Git que ya existe en tu disco' : 'Requiere que git esté instalado'}
+                            title={probe?.available ? 'Abrir, crear (init) o clonar un repositorio' : 'Requiere que git esté instalado'}
                             className="rounded p-1 text-primary hover:bg-surface-variant disabled:opacity-40"
                         >
                             <Icon name="add" size={18} />
@@ -614,10 +643,16 @@ export default function GitRepoTree({
                 {creatingFolderParentId === '' && <div className="px-3 pt-1">{newFolderInput()}</div>}
 
                 <div className="mt-2 flex-1 overflow-y-auto py-1">
-                    {!hasAnything && (
-                        <p className="p-3 text-xs text-on-surface-variant/60">
-                            {q ? `Sin coincidencias para "${filter}".` : 'Sin repositorios todavía. Usá + para agregar uno o la carpeta para organizarlos.'}
-                        </p>
+                    {!hasAnything && q && <p className="p-3 text-xs text-on-surface-variant/60">Sin coincidencias para "{filter}".</p>}
+                    {/* Empty state: the three ways to add a repository, as a
+                        standalone Git client offers on its start screen. */}
+                    {!hasAnything && !q && probe?.available && (
+                        <div className="space-y-1.5 px-3 py-2">
+                            <p className="pb-1 text-[11px] text-on-surface-variant/70">Todavía no agregaste ningún repositorio.</p>
+                            <EmptyAction icon="folder_open" label="Abrir repositorio" desc="Uno que ya existe en tu disco" onClick={() => void openRepo()} />
+                            <EmptyAction icon="create_new_folder" label="Nuevo repositorio" desc="git init en una carpeta" onClick={() => void newRepo()} />
+                            <EmptyAction icon="cloud_download" label="Clonar…" desc="Desde una URL" onClick={() => setShowClone(true)} />
+                        </div>
                     )}
                     {visibleFolderNodes.map((node) => renderFolderNode(node, 0))}
                     {rootRepos.map((repo) => renderRepoRow(repo, 0))}
@@ -850,9 +885,37 @@ export default function GitRepoTree({
             )}
 
             {prompt && <PromptDialog {...prompt} onClose={() => setPrompt(null)} />}
+            {showClone && (
+                <GitCloneDialog
+                    onClose={() => setShowClone(false)}
+                    onCloned={(repo) => {
+                        refresh()
+                        onOpenRepo(repo)
+                    }}
+                />
+            )}
             </>
         )
     }
+}
+
+// EmptyAction is one row of the empty-state start screen — an icon, a label
+// and a one-line description, the same shape a standalone Git client uses for
+// Open / New / Clone.
+function EmptyAction({icon, label, desc, onClick}: {icon: string; label: string; desc: string; onClick: () => void}) {
+    return (
+        <button
+            onClick={onClick}
+            title={`${label} — ${desc}`}
+            className="flex w-full items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-2.5 py-2 text-left hover:bg-surface-variant/50"
+        >
+            <Icon name={icon} size={18} className="shrink-0 text-primary" />
+            <span className="min-w-0">
+                <span className="block truncate text-xs text-on-surface">{label}</span>
+                <span className="block truncate text-[10px] text-on-surface-variant/70">{desc}</span>
+            </span>
+        </button>
+    )
 }
 
 function TreeSection({label, icon, count, open, onToggle, children, action}: {label: string; icon: string; count: number; open: boolean; onToggle: () => void; children: React.ReactNode; action?: {icon: string; title: string; onClick: () => void}}) {

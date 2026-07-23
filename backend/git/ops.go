@@ -57,6 +57,37 @@ func (r *Runner) Clone(url, targetPath string, auth AuthConfig) (string, error) 
 	return abs, nil
 }
 
+// Init creates a new empty repository at path, running `git init` there. The
+// directory is created if it does not exist. Returns the working-tree root git
+// reports, so the caller registers the canonical path.
+//
+// A path that is already a git repository is reported as such rather than
+// silently re-init'd — `git init` on an existing repo is a no-op that would
+// leave the user thinking they made a fresh one.
+func (r *Runner) Init(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("la carpeta del repositorio no puede estar vacía")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("carpeta inválida %q: %w", path, err)
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return "", fmt.Errorf("no se pudo crear la carpeta %q: %w", abs, err)
+	}
+	if r.IsRepository(abs) {
+		return "", fmt.Errorf("%q ya es un repositorio git", abs)
+	}
+
+	// git init runs against the target directory via -C rather than by setting
+	// the process working directory, so it behaves the same whether or not the
+	// directory existed a moment ago.
+	if _, err := r.runLocal("", "init", abs); err != nil {
+		return "", err
+	}
+	return r.resolveRepo(abs)
+}
+
 // Fetch updates remote-tracking refs. Mirrors the fetch dropdown.
 func (r *Runner) Fetch(repoPath string, opts FetchOptions, auth AuthConfig) (string, error) {
 	root, err := r.resolveRepo(repoPath)

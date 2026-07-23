@@ -71,6 +71,12 @@ func parseBranchHeader(h string, st *RepoStatus) {
 		st.Detached = true
 		return
 	}
+	// A fresh repository with no commits reports "## No commits yet on main".
+	// Without this the branch name would render as the whole sentence.
+	if rest, ok := strings.CutPrefix(h, "No commits yet on "); ok {
+		st.Branch = rest
+		return
+	}
 
 	track := ""
 	if i := strings.Index(h, " ["); i >= 0 {
