@@ -4,7 +4,7 @@
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
 
-Cliente de escritorio para **Oracle, PostgreSQL, SQLite, SQL Server, Redis y MongoDB**, más **terminal SSH** y **transferencia de archivos por SFTP** — tipo DataGrip + RedisInsight + Termius, pero minimalista y en un solo binario nativo. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron, sin JVM, sin telemetría.
+Cliente de escritorio para **Oracle, PostgreSQL, SQLite, SQL Server, Redis y MongoDB**, más **terminal SSH**, **transferencia de archivos por SFTP** y un **cliente Git** integrado estilo Sublime Merge — tipo DataGrip + RedisInsight + Termius + Sublime Merge, pero minimalista y en un solo binario nativo. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron, sin JVM, sin telemetría.
 
 > El spec funcional completo vive en [docs/SPEC.md](docs/SPEC.md); la arquitectura y convenciones actuales del código en [CLAUDE.md](CLAUDE.md).
 
@@ -30,6 +30,29 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
 </p>
 
 <p align="center"><em>Redis Browser: pestaña de ventana completa por conexión Redis — filtro por tipo con badges de color, stats de keys/memoria, selección múltiple con exportación a JSON/CSV, y edición inline del valor (string, JSON, hash, list, set, zset) preservando el TTL.</em></p>
+
+### 🌿 Cliente Git integrado <sub>· nuevo en 0.5.0</sub>
+
+> **Cliente Git completo estilo Sublime Merge, como tercer módulo del sidebar junto a Conexiones y SSH.** Usa el `git` del sistema (vía `os/exec`, cero dependencias nuevas y sin reimplementar credential helpers ni ssh-agent). Cada repositorio abre en su propia pestaña con **grafo de commits** (carriles de colores, badges de rama/tag, marca de HEAD), detalle del commit y **visor de diff** unificado o lado a lado con contexto, ignorar-espacios y wrap configurables. Fetch/Pull/Push con todas sus variantes, y menús contextuales para checkout, merge, rebase, revert, cherry-pick, reset, tags y stashes. **`git status` en vivo** (detecta cambios hechos por fuera de la app), tokens (PAT) guardados **cifrados** por servidor y usados automáticamente, e identidad (`user.name`/`user.email`) configurable por repo o global.
+
+<p align="center">
+  <img src="docs/screenshots/git-repo-tab.png" width="900" alt="Pestaña de repositorio Git en tres paneles: ramas locales y remotas a la izquierda, grafo de commits al centro, y a la derecha el detalle del commit con su lista de archivos y el diff coloreado">
+</p>
+
+<p align="center"><em>Pestaña de repositorio en tres paneles: ramas (local/remotas) con checkout por doble-click, grafo de commits al centro, y a la derecha el commit seleccionado con Autor/Fecha/Hash/Padre, sus archivos con <code>+/−</code>, y el diff con la barra de Unificado/Lado a lado y control de contexto.</em></p>
+
+<table>
+  <tr>
+    <td align="center" width="66%">
+      <img src="docs/screenshots/git-commit-graph.png" width="560" alt="Grafo de commits con carriles de colores mostrando ramas y merges, cada commit con su autor, fecha, hash corto y badges de rama/tag"><br>
+      <sub>Grafo de commits con carriles de colores por rama y merges reales dibujados como diagonales — cada fila con autor, fecha, hash y badges de las ramas/tags que apuntan ahí. "Ocultar rama" saca ramas ruidosas del grafo sin borrarlas.</sub>
+    </td>
+    <td align="center" width="34%">
+      <img src="docs/screenshots/git-sidebar-folders.png" width="260" alt="Módulo Git del sidebar con una carpeta 'Sigeme' que contiene el repositorio MicroFOCUS anidado, con chevron para desplegar"><br>
+      <sub>Módulo Git en el sidebar: repositorios organizables en <strong>carpetas</strong> anidables (mismo patrón que Conexiones y SSH), cada repo expande sus ramas, remotos, tags y stashes.</sub>
+    </td>
+  </tr>
+</table>
 
 ### 🖥️ Terminal SSH, temas y consola de ejecución
 
@@ -70,8 +93,8 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
       <sub>Conexiones organizadas en carpetas, ícono real por motor (Oracle/PostgreSQL/SQLite/Redis), y tablas/procedures/functions/triggers en categorías colapsables y ordenadas — probado en vivo con un schema de 342 tablas</sub>
     </td>
     <td align="center" width="66%">
-      <img src="docs/screenshots/new-connection.png" width="560" alt="Diálogo de nueva conexión con los 4 motores soportados, selector visual de tipo y color, y detección de connection string"><br>
-      <sub>Nueva conexión: pegá una connection string y se completa sola, elegí motor (incluido Redis: standalone/cluster/sentinel) con un click y ponele un color propio</sub>
+      <img src="docs/screenshots/new-connection.png" width="480" alt="Diálogo de nueva conexión con los 6 motores soportados (SQLite, PostgreSQL, Oracle, SQL Server, MongoDB, Redis), selector visual de tipo y color, y detección de connection string"><br>
+      <sub>Nueva conexión: pegá una connection string y se completa sola, elegí motor entre los 6 (SQLite/PostgreSQL/Oracle/SQL Server/MongoDB/Redis) con un click y ponele un color propio</sub>
     </td>
   </tr>
 </table>
@@ -89,7 +112,7 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
   </tr>
 </table>
 
-> Los diálogos de nueva conexión (SQL y SSH) y la pantalla de desbloqueo son ejemplos ficticios. El editor, el árbol de conexiones, el Redis Browser y la terminal SSH muestran datos reales con nombres de tabla/conexión difuminados y, en el Redis Browser, los nombres de key y el valor de la key seleccionada pixelados a propósito (esa captura en particular exponía una key con un secreto real) — el resto de la interfaz (toolbar, tabs, badges de tipo, ícono por motor, colores) es exactamente como se ve en uso normal.
+> Los diálogos de nueva conexión (SQL y SSH) y la pantalla de desbloqueo son ejemplos ficticios. El editor, el árbol de conexiones, el Redis Browser, la terminal SSH y el cliente Git muestran datos reales con nombres de tabla/conexión difuminados y, en el Redis Browser, los nombres de key y el valor de la key seleccionada pixelados a propósito (esa captura en particular exponía una key con un secreto real) — el resto de la interfaz (toolbar, tabs, badges de tipo, ícono por motor, colores) es exactamente como se ve en uso normal.
 
 ## Por qué
 
