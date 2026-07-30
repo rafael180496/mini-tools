@@ -1,4 +1,5 @@
 import {useLayoutEffect, useRef, useState} from 'react'
+import type {ReactNode} from 'react'
 import {createPortal} from 'react-dom'
 import Icon from './Icon'
 
@@ -7,6 +8,11 @@ export interface SelectOption {
     label: string
     // Optional secondary line (e.g. an engine name under a connection name).
     hint?: string
+    // Optional leading visual, shown both in the menu row and on the trigger
+    // once the option is selected. A node rather than an icon name because
+    // the callers that need one use real product logos (DbTypeIcon's SVGs),
+    // not Material Symbols — a name-based API could not express those.
+    icon?: ReactNode
     disabled?: boolean
 }
 
@@ -81,6 +87,7 @@ export default function Select({value, options, onChange, placeholder, disabled,
                 aria-expanded={open}
                 className={`flex items-center gap-2 rounded-md border border-outline-variant bg-surface text-on-surface transition-colors hover:border-primary/60 disabled:cursor-not-allowed disabled:opacity-50 ${sizeClasses} ${className ?? ''}`}
             >
+                {current?.icon}
                 <span className={`min-w-0 flex-1 truncate text-left ${current ? '' : 'text-on-surface-variant'}`}>{label}</span>
                 <Icon name="expand_more" size={18} className={`shrink-0 text-on-surface-variant transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
@@ -118,6 +125,7 @@ export default function Select({value, options, onChange, placeholder, disabled,
                                     }`}
                                 >
                                     <Icon name="check" size={16} className={`shrink-0 ${o.value === value ? '' : 'invisible'}`} />
+                                    {o.icon}
                                     <span className="min-w-0 flex-1">
                                         <span className="block truncate">{o.label}</span>
                                         {o.hint && <span className="block truncate text-xs text-on-surface-variant">{o.hint}</span>}

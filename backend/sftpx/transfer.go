@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mini-tools/backend/sshconn"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,6 +33,10 @@ const (
 type Endpoint struct {
 	Local bool
 	DSN   string
+	// ConnID keys the shared SSH connection pool, so a transfer rides the
+	// same connection the terminal and the file panes are already using
+	// instead of opening a third one.
+	ConnID string
 }
 
 // Item is one thing the user asked to transfer — a file or a directory (which
@@ -50,6 +55,10 @@ type Request struct {
 	Dst    Endpoint
 	DstDir string
 	Items  []Item
+	// OnConflict is what to do when a destination name already exists. See
+	// conflict.go — an empty value behaves as overwrite, which is what
+	// every existing caller did before this field existed.
+	OnConflict string
 }
 
 // ProgressEvent is emitted on the transfer's ID-named event. One "start", many
@@ -72,15 +81,24 @@ type TransferManager struct {
 	mu        sync.Mutex
 	transfers map[string]*transfer
 	emit      EmitFunc
+	// pool is the shared SSH connection pool — a transfer borrows the
+	// host's existing connection instead of dialling a third one alongside
+	// the terminal and the file pane.
+	pool *sshconn.ClientPool
 }
 
-func NewTransferManager(emit EmitFunc) *TransferManager {
-	return &TransferManager{transfers: make(map[string]*transfer), emit: emit}
+func NewTransferManager(emit EmitFunc, pool *sshconn.ClientPool) *TransferManager {
+	if pool == nil {
+		pool = sshconn.NewClientPool()
+	}
+	return &TransferManager{transfers: make(map[string]*transfer), emit: emit, pool: pool}
 }
 
 type fileJob struct {
 	srcPath string
 	rel     []string // path components under DstDir, so the dest tree mirrors the source
+	// modTime is what the "only if newer" policy compares against.
+	modTime int64
 	size    int64
 }
 
@@ -95,6 +113,7 @@ type transfer struct {
 	dst fileSystem
 
 	dstDir     string
+	onConflict string
 	jobs       []fileJob
 	totalFiles int
 	bytesTotal int64
@@ -119,12 +138,12 @@ func (m *TransferManager) Start(req Request) error {
 		return fmt.Errorf("sftpx: falta el id de la transferencia")
 	}
 
-	src, err := openEndpoint(req.Src)
+	src, err := openEndpoint(m.pool, req.Src)
 	if err != nil {
 		m.emit(req.ID, ProgressEvent{Type: "error", Error: err.Error()})
 		return err
 	}
-	dst, err := openEndpoint(req.Dst)
+	dst, err := openEndpoint(m.pool, req.Dst)
 	if err != nil {
 		src.Close()
 		m.emit(req.ID, ProgressEvent{Type: "error", Error: err.Error()})
@@ -134,7 +153,7 @@ func (m *TransferManager) Start(req Request) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &transfer{
 		id: req.ID, ctx: ctx, cancel: cancel, emit: m.emit, mgr: m,
-		src: src, dst: dst, dstDir: req.DstDir,
+		src: src, dst: dst, dstDir: req.DstDir, onConflict: req.OnConflict,
 	}
 
 	if err := t.enumerate(req.Items); err != nil {
@@ -190,11 +209,11 @@ func (m *TransferManager) CancelAll() {
 	}
 }
 
-func openEndpoint(e Endpoint) (fileSystem, error) {
+func openEndpoint(pool *sshconn.ClientPool, e Endpoint) (fileSystem, error) {
 	if e.Local {
 		return newLocalFS(), nil
 	}
-	return dialRemote(e.DSN)
+	return dialRemote(pool, e.ConnID, e.DSN)
 }
 
 // watchConn cancels the transfer if a remote connection closes underneath it.
@@ -209,7 +228,7 @@ func watchConn(fs fileSystem, onLost func()) {
 		// the remote host dropping it or by our own Close() at cleanup. In both
 		// cases we signal; failConn is a no-op once the transfer is terminal, so
 		// a normal close does not produce a spurious error event.
-		_ = r.ssh.Wait()
+		_ = r.lease.Client.Wait()
 		onLost()
 	}()
 }
@@ -237,9 +256,17 @@ func (t *transfer) walk(p string, isDir bool, rel []string) error {
 		if err != nil {
 			return err
 		}
-		t.jobs = append(t.jobs, fileJob{srcPath: p, rel: rel, size: info.Size})
-		t.bytesTotal += info.Size
-		return nil
+		// Trust the filesystem over the caller's flag. Items selected in a
+		// pane carry a correct IsDir, but paths dropped from Finder/Explorer
+		// arrive as bare strings with no type — and opening a directory as a
+		// file fails with an error that says nothing about the real cause.
+		if info.IsDir {
+			isDir = true
+		} else {
+			t.jobs = append(t.jobs, fileJob{srcPath: p, rel: rel, size: info.Size, modTime: info.ModTime})
+			t.bytesTotal += info.Size
+			return nil
+		}
 	}
 	entries, err := t.src.ReadDir(p)
 	if err != nil {
@@ -253,7 +280,7 @@ func (t *transfer) walk(p string, isDir bool, rel []string) error {
 			}
 			continue
 		}
-		t.jobs = append(t.jobs, fileJob{srcPath: e.Path, rel: childRel, size: e.Size})
+		t.jobs = append(t.jobs, fileJob{srcPath: e.Path, rel: childRel, size: e.Size, modTime: e.ModTime})
 		t.bytesTotal += e.Size
 	}
 	return nil
@@ -307,13 +334,30 @@ func (t *transfer) transferOne(job fileJob) error {
 	}
 	defer in.Close()
 
-	dstPath := t.dst.Join(append([]string{t.dstDir}, job.rel...)...)
+	name := job.rel[len(job.rel)-1]
+
+	// Resolve the collision policy against the file's REAL parent directory,
+	// not the transfer root: a directory being copied recursively collides
+	// per file, and renaming the top-level folder would not help the file
+	// three levels down.
+	parent := t.dst.Join(append([]string{t.dstDir}, job.rel[:len(job.rel)-1]...)...)
+	dstPath, skip, err := resolveConflict(t.dst, parent, name, t.onConflict, job.modTime)
+	if err != nil {
+		return err
+	}
+	if skip {
+		// A skipped file still counts as done: otherwise the progress bar
+		// would stop short of 100% and look stuck.
+		atomic.AddInt64(&t.filesDone, 1)
+		t.emit(t.id, t.snapshot("file-done", name))
+		return nil
+	}
+
 	out, err := t.dst.Create(dstPath)
 	if err != nil {
 		return err
 	}
 
-	name := job.rel[len(job.rel)-1]
 	if err := t.copy(out, in, name); err != nil {
 		out.Close()
 		return err

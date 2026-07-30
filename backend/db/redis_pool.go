@@ -45,6 +45,19 @@ func (m *RedisPoolManager) Get(connID string) (redis.UniversalClient, error) {
 	return c, nil
 }
 
+// ActiveIDs returns the connection ids with an open client right now — same
+// purpose as PoolManager.ActiveIDs.
+func (m *RedisPoolManager) ActiveIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ids := make([]string, 0, len(m.clients))
+	for id := range m.clients {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // Open opens (or returns the already-open) client for connID against the
 // given DSN, pinging it once before caching it. redis.NewUniversalClient
 // picks the concrete client type (single-node/Cluster/Sentinel-backed

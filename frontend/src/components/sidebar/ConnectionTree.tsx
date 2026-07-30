@@ -9,10 +9,18 @@ import RedisKeyTree from '../redis/RedisKeyTree'
 import MongoCollectionTree from '../mongo/MongoCollectionTree'
 import SidebarModule from './SidebarModule'
 import SchemaObjectsList from './SchemaObjectsList'
-import MoveToFolderMenu, {flattenForMenu} from './MoveToFolderMenu'
+import {flattenForMenu} from './MoveToFolderMenu'
+import ConnectionRowMenu from './ConnectionRowMenu'
 import type {DDLObjectType} from '../DDLViewerModal'
 import {likeToRegExp} from '../../lib/likePattern'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
+import {environmentStyle} from '../../lib/environments'
+
+// envStyleOf resolves a connection's environment marking to its colours. See
+// lib/environments.ts — an unmarked connection renders exactly as before.
+function envStyleOf(c: vault.ConnectionSummary) {
+    return environmentStyle(c.environment)
+}
 
 interface ConnectionTreeProps {
     selectedId: string | null
@@ -55,6 +63,10 @@ interface ConnectionTreeProps {
     onExportConnectionConfig: (connId: string) => void
     onExportTableDDL: (table: string, schema?: string) => void
     onExportSchemaDDL: (connId: string) => void
+    // connIds with an open pool/client right now (App.ActiveConnectionIds).
+    // Drives both the dot next to the name and whether the disconnect button
+    // exists at all.
+    liveConnIds: Set<string>
     onDisconnect: (connId: string) => void
     // Permanently removes the saved connection from the vault — destructive,
     // gated behind a ConfirmDialog here (never window.confirm, see
@@ -123,6 +135,7 @@ export default function ConnectionTree({
     onExportConnectionConfig,
     onExportTableDDL,
     onExportSchemaDDL,
+    liveConnIds,
     onDisconnect,
     onDeleteConnection,
     onConfigureSchemas,
@@ -364,6 +377,7 @@ export default function ConnectionTree({
 
     function renderConnectionRow(c: vault.ConnectionSummary, depth: number) {
         const isSelected = c.id === selectedId
+        const isLive = liveConnIds.has(c.id)
         const isExpanded = !collapsed && isSelected && collapsedId !== c.id
         return (
             <div key={c.id} className="mb-0.5">
@@ -416,25 +430,27 @@ export default function ConnectionTree({
                                 />
                             )}
                             <span className="truncate font-medium">{c.name}</span>
+                            {isLive && (
+                                <span
+                                    aria-hidden
+                                    title="Hay una conexión abierta contra este servidor"
+                                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                                />
+                            )}
+                            {envStyleOf(c) && (
+                                <span
+                                    title={`Entorno: ${envStyleOf(c)!.label}`}
+                                    className={`shrink-0 rounded px-1 py-px text-[9px] leading-tight font-semibold tracking-wide ${envStyleOf(c)!.badge}`}
+                                >
+                                    {envStyleOf(c)!.short}
+                                </span>
+                            )}
                         </button>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                onEditConnection(c)
-                            }}
-                            title="Editar conexión"
-                            className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
-                        >
-                            <Icon name="edit" size={15} />
-                        </button>
-                        <MoveToFolderMenu connId={c.id} flatFolders={flatFoldersForMenu} onMove={onMoveConnectionToFolder} />
-                        <button
-                            onClick={() => onExportConnectionConfig(c.id)}
-                            title="Exportar configuración (sin password)"
-                            className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
-                        >
-                            <Icon name="output" size={15} />
-                        </button>
+                        {/* Only the engine's own "open in a tab" action stays
+                            on the row; the rest moved into ConnectionRowMenu.
+                            Eight unlabelled icons in a sidebar this narrow were
+                            indistinguishable, with "eliminar" a few pixels from
+                            whatever you meant to click. */}
                         {c.dbType === 'redis' && (
                             <button
                                 onClick={(e) => {
@@ -459,50 +475,60 @@ export default function ConnectionTree({
                                 <Icon name="open_in_new" size={15} />
                             </button>
                         )}
-                        {isSelected && c.dbType !== 'redis' && c.dbType !== 'mongodb' && (
+                        {/* Disconnect only while there IS an open pool. Shown
+                            without hovering, because a live connection is state
+                            worth seeing and not only an action. */}
+                        {isLive && (
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    onExportSchemaDDL(c.id)
+                                    onDisconnect(c.id)
                                 }}
-                                title="Exporta a un archivo el DDL (CREATE TABLE, etc.) del schema activo de esta conexión"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                                title="Cerrar la conexión abierta contra este servidor — la conexión guardada queda intacta"
+                                className="shrink-0 rounded p-0.5 text-error opacity-80 hover:bg-error-container/40 hover:opacity-100"
                             >
-                                <Icon name="code" size={15} />
+                                <Icon name="power_settings_new" size={15} />
                             </button>
                         )}
-                        {(c.dbType === 'postgres' || c.dbType === 'oracle' || c.dbType === 'sqlserver') && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    onConfigureSchemas(c)
-                                }}
-                                title="Elegir qué esquemas escanear"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
-                            >
-                                <Icon name="schema" size={15} />
-                            </button>
-                        )}
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                onDisconnect(c.id)
-                            }}
-                            title="Desconectar (mantiene la conexión guardada)"
-                            className="hidden shrink-0 rounded p-0.5 opacity-70 hover:text-error hover:opacity-100 group-hover:block"
-                        >
-                            <Icon name="power_settings_new" size={15} />
-                        </button>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                setConfirmDelete(c)
-                            }}
-                            title="Eliminar esta conexión guardada permanentemente — las pestañas del editor vinculadas a ella quedan sin conexión, pero su contenido no se toca"
-                            className="hidden shrink-0 rounded p-0.5 opacity-70 hover:text-error hover:opacity-100 group-hover:block"
-                        >
-                            <Icon name="delete" size={15} />
-                        </button>
+                        <ConnectionRowMenu
+                            flatFolders={flatFoldersForMenu}
+                            onMoveToFolder={(folderId) => onMoveConnectionToFolder(c.id, folderId)}
+                            items={[
+                                {icon: 'edit', label: 'Editar conexión', onSelect: () => onEditConnection(c)},
+                                {
+                                    icon: 'output',
+                                    label: 'Exportar configuración',
+                                    title: 'Guarda host, puerto y usuario en un archivo — nunca la contraseña',
+                                    onSelect: () => onExportConnectionConfig(c.id),
+                                },
+                                ...(isSelected && c.dbType !== 'redis' && c.dbType !== 'mongodb'
+                                    ? [
+                                          {
+                                              icon: 'code',
+                                              label: 'Exportar DDL del esquema',
+                                              title: 'Exporta a un archivo el DDL (CREATE TABLE, etc.) del schema activo de esta conexión',
+                                              onSelect: () => onExportSchemaDDL(c.id),
+                                          },
+                                      ]
+                                    : []),
+                                ...(c.dbType === 'postgres' || c.dbType === 'oracle' || c.dbType === 'sqlserver'
+                                    ? [
+                                          {
+                                              icon: 'schema',
+                                              label: 'Elegir qué esquemas escanear',
+                                              onSelect: () => onConfigureSchemas(c),
+                                          },
+                                      ]
+                                    : []),
+                                {
+                                    icon: 'delete',
+                                    label: 'Eliminar conexión',
+                                    danger: true,
+                                    title: 'Las pestañas del editor vinculadas a ella quedan sin conexión, pero su contenido no se toca',
+                                    onSelect: () => setConfirmDelete(c),
+                                },
+                            ]}
+                        />
                     </div>
                 )}
 

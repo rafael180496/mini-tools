@@ -51,8 +51,17 @@ func (sshConnector) BuildDSN(params map[string]string) (string, error) {
 	case SSHAuthPassword:
 		q.Set("password", params["password"])
 	case SSHAuthKey:
+		// Two shapes are accepted: the key material inline (the original), or
+		// a reference to a key held in the vault's central store. The
+		// reference is resolved to material just before dialling
+		// (App.resolveSSHDSN) so the key exists in exactly one place and
+		// rotating it does not mean editing every connection that uses it.
+		if keyID := params["keyId"]; keyID != "" {
+			q.Set("keyId", keyID)
+			break
+		}
 		if params["privateKey"] == "" {
-			return "", fmt.Errorf("ssh: falta el parámetro 'privateKey' para auth=key")
+			return "", fmt.Errorf("ssh: falta el parámetro 'privateKey' (o 'keyId') para auth=key")
 		}
 		q.Set("privateKey", params["privateKey"])
 		if passphrase := params["passphrase"]; passphrase != "" {
@@ -97,6 +106,9 @@ func (sshConnector) ParseDSN(dsn string) (map[string]string, error) {
 	}
 	if v := q.Get("passphrase"); v != "" {
 		params["passphrase"] = v
+	}
+	if v := q.Get("keyId"); v != "" {
+		params["keyId"] = v
 	}
 	if q.Get("agentForwarding") == "1" {
 		params["agentForwarding"] = "1"

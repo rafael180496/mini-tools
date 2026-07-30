@@ -2,6 +2,16 @@ import {useEffect, useRef, useState} from 'react'
 import {DeleteSftpPath, ListSftpDir, MakeSftpDir, RenameSftpPath} from '../../../wailsjs/go/main/App'
 import {sftpx, vault} from '../../../wailsjs/go/models'
 import {formatBytes} from '../../lib/formatBytes'
+import {registerDropZone} from '../../lib/desktopFileDrop'
+import {
+    currentCwd,
+    isTerminalLive,
+    publishCwd,
+    subscribeCwd,
+    subscribeTerminalLive,
+    type SessionContext,
+} from '../../lib/sshSessionContext'
+import {WriteSSHTerminal} from '../../../wailsjs/go/main/App'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import SftpPermissionsDialog from './SftpPermissionsDialog'
@@ -16,6 +26,10 @@ interface SftpPaneProps {
     otherLabel: string
     onPickHost: (host: PaneHost) => void
     onNavigate: (dir: string) => void
+    // Opens a remote file in an in-app editor tab. Optional: a pane rendered
+    // somewhere without an editor to open into simply does not pass it, and
+    // double-clicking a file stays a no-op there.
+    onOpenFile?: (path: string) => void
     onError: (msg: string) => void
     // Begins a transfer of items from THIS pane to the other one (drag→drop
     // onto the other pane, or the explicit transfer button).
@@ -23,6 +37,10 @@ interface SftpPaneProps {
     // Shared drag payload: set on dragstart here, read on drop in the other
     // pane. A ref (not state) so a drag never re-renders either pane.
     dragRef: React.MutableRefObject<TransferItem[] | null>
+    // Files dragged in from Finder/Explorer and dropped on this pane. Optional
+    // for the same reason as onOpenFile — a pane rendered without it simply
+    // does not accept OS drops.
+    onDropFromDesktop?: (paths: string[]) => void
 }
 
 function entryItems(entries: sftpx.FileEntry[]): TransferItem[] {
@@ -117,17 +135,61 @@ export default function SftpPane({
     otherLabel,
     onPickHost,
     onNavigate,
+    onOpenFile,
     onError,
     onTransfer,
     dragRef,
+    onDropFromDesktop,
 }: SftpPaneProps) {
     const [entries, setEntries] = useState<sftpx.FileEntry[]>([])
     const [loading, setLoading] = useState(false)
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [hostMenuOpen, setHostMenuOpen] = useState(false)
     const [dragOver, setDragOver] = useState(false)
+    // Root element, registered as an OS drop zone below.
+    const rootRef = useRef<HTMLDivElement | null>(null)
     const [newFolder, setNewFolder] = useState('')
     const [creatingFolder, setCreatingFolder] = useState(false)
+    // Following the terminal is OFF by default, per pane. That default is
+    // what keeps a standalone SFTP tab behaving exactly as before: with
+    // nobody subscribed, the terminal's publishing is a no-op.
+    const [followTerminal, setFollowTerminal] = useState(false)
+    const [lastCtx, setLastCtx] = useState<SessionContext | null>(null)
+    // Whether this host has an interactive shell open right now. The three
+    // terminal-sync buttons below are meaningless without one: there is
+    // nothing to follow, no path to pull, and nowhere to send a cd.
+    const [shellLive, setShellLive] = useState(false)
+
+    useEffect(() => {
+        const connId = host.connId
+        if (host.kind !== 'remote' || !connId) {
+            setShellLive(false)
+            return
+        }
+        setShellLive(isTerminalLive(connId))
+        return subscribeTerminalLive(connId, setShellLive)
+    }, [host.kind, host.connId])
+
+    // Subscribe only while the toggle is on AND this pane is pointed at a
+    // real host — a local pane has no terminal to follow.
+    useEffect(() => {
+        const connId = host.connId
+        if (!followTerminal || !shellLive || host.kind !== 'remote' || !connId) return
+
+        // Jump to wherever the shell already is, so turning the switch on
+        // does something immediately instead of waiting for the next cd.
+        const now = currentCwd(connId)
+        if (now) {
+            setLastCtx(now)
+            onNavigate(now.cwd)
+        }
+
+        return subscribeCwd(connId, (ctx) => {
+            setLastCtx(ctx)
+            onNavigate(ctx.cwd)
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [followTerminal, shellLive, host.kind, host.connId])
     const [renaming, setRenaming] = useState<sftpx.FileEntry | null>(null)
     const [renameValue, setRenameValue] = useState('')
     const [confirmDelete, setConfirmDelete] = useState<TransferItem[] | null>(null)
@@ -150,6 +212,18 @@ export default function SftpPane({
     // Guards against a slow ListSftpDir resolving after the pane has already
     // navigated elsewhere and overwriting the newer listing (classic stale
     // async race — same generation-token idea as the WS anti-zombie guards).
+    // Accept files dragged from Finder/Explorer. The handler is kept in a ref
+    // so the zone is registered ONCE per mount: re-registering on every render
+    // (which a prop dependency would cause) would tear down and reinstall the
+    // native drop handler mid-drag.
+    const dropHandlerRef = useRef(onDropFromDesktop)
+    dropHandlerRef.current = onDropFromDesktop
+    useEffect(() => {
+        const el = rootRef.current
+        if (!el) return
+        return registerDropZone(el, (paths) => dropHandlerRef.current?.(paths))
+    }, [])
+
     const loadGen = useRef(0)
 
     useEffect(() => {
@@ -246,7 +320,7 @@ export default function SftpPane({
     const showParent = canAct && parent !== currentDir
 
     return (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col border-outline-variant">
+        <div ref={rootRef} className="flex min-h-0 min-w-0 flex-1 flex-col border-outline-variant">
             {/* Host bar */}
             <div className="relative flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container-low px-2 py-1.5">
                 <button
@@ -264,6 +338,74 @@ export default function SftpPane({
                     </span>
                 )}
                 <div className="ml-auto flex items-center gap-0.5">
+                    {host.kind === 'remote' && host.connId && (
+                        <>
+                            <button
+                                onClick={() => setFollowTerminal((v) => !v)}
+                                disabled={!shellLive}
+                                title={
+                                    !shellLive
+                                        ? 'No hay una consola abierta contra este servidor. Abrí la sesión combinada (o una pestaña de terminal de este host) y el botón se activa.'
+                                        : !followTerminal
+                                        ? 'Seguir a la terminal: cuando hagas cd en la consola, este panel navega a la misma carpeta. Desactivado, el panel no reacciona a la consola.'
+                                        : !lastCtx
+                                          ? 'Siguiendo a la terminal — todavía no sabe dónde está parada la consola. Se moverá con el próximo cd que escribas. Si tu shell anuncia la ruta (OSC 7) será exacta; si no, se deduce del cd.'
+                                          : lastCtx.source === 'guess'
+                                            ? 'Siguiendo a la terminal. La ruta se dedujo del cd que escribiste: si usás alias o un script que cambia de carpeta, puede quedar desfasada — usá «Traer ruta de la terminal» para corregirla.'
+                                            : 'Siguiendo a la terminal. La ruta la anuncia el propio shell, así que es exacta.'
+                                }
+                                className={`relative rounded p-1 disabled:opacity-40 disabled:hover:bg-transparent ${
+                                    followTerminal && shellLive
+                                        ? 'bg-primary/15 text-primary'
+                                        : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                                }`}
+                            >
+                                <Icon name="link" size={16} />
+                                {/* Following but with nothing to follow yet is
+                                    the state that reads as "the button did
+                                    nothing". Marked explicitly instead. */}
+                                {followTerminal && shellLive && !lastCtx && (
+                                    <span
+                                        aria-hidden
+                                        className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400"
+                                    />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const ctx = currentCwd(host.connId!)
+                                    if (ctx) onNavigate(ctx.cwd)
+                                }}
+                                disabled={!shellLive}
+                                title={
+                                    shellLive
+                                        ? 'Traer la ruta actual de la terminal una sola vez, sin activar el seguimiento. Es la salida cuando la detección automática no acierta (alias, shells no estándar, scripts que cambian de carpeta).'
+                                        : 'No hay una consola abierta contra este servidor. Abrí la sesión combinada (o una pestaña de terminal de este host) y el botón se activa.'
+                                }
+                                className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40 disabled:hover:bg-transparent"
+                            >
+                                <Icon name="download" size={16} />
+                            </button>
+                            <button
+                                onClick={() => {
+                                    // Send the cd to the shell AND record it,
+                                    // so the two sides agree without waiting
+                                    // for the echo to be parsed back.
+                                    void WriteSSHTerminal(host.connId!, `cd ${shellQuotePath(currentDir)}\n`)
+                                    publishCwd(host.connId!, currentDir, 'manual')
+                                }}
+                                disabled={!canAct || !shellLive}
+                                title={
+                                    shellLive
+                                        ? 'Manda «cd» a la terminal para que la consola se pare en esta misma carpeta'
+                                        : 'No hay una consola abierta contra este servidor. Abrí la sesión combinada (o una pestaña de terminal de este host) y el botón se activa.'
+                                }
+                                className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40 disabled:hover:bg-transparent"
+                            >
+                                <Icon name="upload" size={16} />
+                            </button>
+                        </>
+                    )}
                     <button
                         onClick={() => canAct && setCreatingFolder(true)}
                         disabled={!canAct}
@@ -386,7 +528,7 @@ export default function SftpPane({
                                     draggable
                                     onDragStart={() => startDrag(e)}
                                     onClick={() => toggle(e.path)}
-                                    onDoubleClick={() => e.isDir && onNavigate(e.path)}
+                                    onDoubleClick={() => (e.isDir ? onNavigate(e.path) : onOpenFile?.(e.path))}
                                     onContextMenu={(ev) => {
                                         ev.preventDefault()
                                         setMenu({x: ev.clientX, y: ev.clientY, entry: e})
@@ -571,4 +713,12 @@ export default function SftpPane({
             )}
         </div>
     )
+}
+
+// shellQuotePath wraps a path in single quotes for the remote shell,
+// escaping any single quote inside it the POSIX way ('\'' closes, escapes,
+// reopens). Paths with spaces are ordinary; sending one unquoted would make
+// the shell read it as several arguments.
+function shellQuotePath(path: string): string {
+    return "'" + path.replace(/'/g, "'\\''") + "'"
 }

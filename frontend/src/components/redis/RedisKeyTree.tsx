@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useMemo, useRef, useState} from 'react'
 import {GetRedisStats, ListRedisKeys} from '../../../wailsjs/go/main/App'
 import {db} from '../../../wailsjs/go/models'
 import {setActiveRedisKeys} from '../../codemirror/redisKeysStore'
@@ -30,6 +30,14 @@ interface RedisKeyTreeProps {
     selectable?: boolean
     selectedKeys?: ReadonlySet<string>
     onToggleSelect?: (key: string) => void
+    // Selects/deselects a batch at once (the "select everything visible"
+    // action). Separate from onToggleSelect so the parent can replace the
+    // whole set in one render instead of N.
+    onSelectMany?: (keys: string[], selected: boolean) => void
+    // Pattern pushed in from outside (the namespace tree clicking a
+    // prefix). Changing it re-runs the server-side SCAN — the quick filter
+    // could not do this, since the matching keys may not be loaded at all.
+    externalPattern?: string
 }
 
 const PAGE_SIZE = 100
@@ -51,6 +59,8 @@ export default function RedisKeyTree({
     selectable,
     selectedKeys,
     onToggleSelect,
+    onSelectMany,
+    externalPattern,
 }: RedisKeyTreeProps) {
     const [keys, setKeys] = useState<db.RedisKeyEntry[]>([])
     const [cursor, setCursor] = useState('')
@@ -60,6 +70,24 @@ export default function RedisKeyTree({
     const [error, setError] = useState('')
     const [stats, setStats] = useState<db.RedisStats | null>(null)
     const [statsLoading, setStatsLoading] = useState(false)
+    // Quick filter: narrows the keys ALREADY loaded, in the browser, without
+    // touching Redis. Kept apart from the pattern box above it on purpose —
+    // that one re-runs the SCAN server-side, this one is instant and only
+    // ever sees the pages you have pulled. The placeholder says which is
+    // which, because confusing them means thinking a key does not exist
+    // when it simply was not fetched yet.
+    const [quick, setQuick] = useState('')
+    // Auto-load the next page when the sentinel at the bottom becomes
+    // visible — the "Cargar más" button stays as the fallback and as the
+    // signal that there IS more.
+    const [autoLoad, setAutoLoad] = useState(true)
+    const sentinelRef = useRef<HTMLDivElement>(null)
+
+    const visible = useMemo(() => {
+        const q = quick.trim().toLowerCase()
+        if (q === '') return keys
+        return keys.filter((k) => k.key.toLowerCase().includes(q))
+    }, [keys, quick])
 
     async function loadFirstPage(pattern: string, type: string) {
         setLoading(true)
@@ -102,9 +130,35 @@ export default function RedisKeyTree({
         }
     }
 
+    // A prefix picked in the namespace tree replaces the pattern and
+    // re-scans server-side — the quick filter could not do this, since the
+    // matching keys may not be loaded at all.
+    useEffect(() => {
+        if (externalPattern === undefined) return
+        setMatch(externalPattern)
+        void loadFirstPage(externalPattern, typeFilter)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [externalPattern])
+
+    // Infinite scroll: pull the next page when the bottom sentinel scrolls
+    // into view. Guarded on `loading` so a fast scroll cannot stack
+    // requests, and on `cursor` so it stops at the end of the keyspace.
+    useEffect(() => {
+        if (!autoLoad || !cursor || loading) return
+        const node = sentinelRef.current
+        if (!node) return
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0]?.isIntersecting) void loadMore()
+        })
+        observer.observe(node)
+        return () => observer.disconnect()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoLoad, cursor, loading])
+
     useEffect(() => {
         setMatch('')
         setTypeFilter('')
+        setQuick('')
         void loadFirstPage('', '')
         void loadStats()
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,7 +237,52 @@ export default function RedisKeyTree({
 
             {keys.length === 0 && !loading && !error && <p className="px-1 py-1 text-xs text-on-surface-variant/60">Sin keys.</p>}
 
-            {keys.map((k) => {
+            <div className="mb-1 flex items-center gap-1.5 px-1">
+                <div className="relative min-w-0 flex-1">
+                    <Icon name="filter_alt" size={13} className="pointer-events-none absolute left-1.5 top-1.5 text-on-surface-variant/60" />
+                    <input
+                        value={quick}
+                        onChange={(e) => setQuick(e.target.value)}
+                        placeholder="filtrar lo ya cargado"
+                        title="Filtra al instante las claves YA cargadas, sin consultar Redis. Para buscar en todo el keyspace usá el patrón de arriba, que vuelve a correr el SCAN en el servidor."
+                        className="w-full rounded border border-outline-variant bg-surface-container-low py-0.5 pl-6 pr-5 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    {quick && (
+                        <button
+                            onClick={() => setQuick('')}
+                            title="Limpia el filtro rápido"
+                            className="absolute right-1 top-1 text-on-surface-variant hover:text-on-surface"
+                        >
+                            <Icon name="close" size={12} />
+                        </button>
+                    )}
+                </div>
+                {selectable && visible.length > 0 && (
+                    <button
+                        onClick={() => {
+                            const ids = visible.map((k) => k.key)
+                            const allSelected = ids.every((id) => selectedKeys?.has(id))
+                            onSelectMany?.(ids, !allSelected)
+                        }}
+                        title="Selecciona (o deselecciona) todas las claves visibles en la lista — solo las cargadas y que pasan el filtro rápido, nunca el keyspace entero"
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        Todas
+                    </button>
+                )}
+                <label className="flex shrink-0 items-center gap-1 text-[11px] text-on-surface-variant" title="Carga la página siguiente sola al llegar al final de la lista. Desactivalo si preferís controlar cada lote a mano.">
+                    <input type="checkbox" checked={autoLoad} onChange={(e) => setAutoLoad(e.target.checked)} className="accent-primary" />
+                    auto
+                </label>
+            </div>
+
+            {quick && (
+                <p className="px-1 pb-1 text-[10px] text-on-surface-variant/70">
+                    {visible.length} de {keys.length} cargadas coinciden — el filtro rápido no consulta Redis
+                </p>
+            )}
+
+            {visible.map((k) => {
                 const style = redisTypeStyle(k.type)
                 return (
                     <div
@@ -213,7 +312,7 @@ export default function RedisKeyTree({
                             </span>
                         )}
                         <Icon name="key" size={14} className="shrink-0 opacity-60" />
-                        <span className="flex-1 truncate">{k.key}</span>
+                        <span className="flex-1 truncate">{quick ? highlightMatch(k.key, quick) : k.key}</span>
                         <span className={`shrink-0 flex items-center gap-1 rounded px-1 py-0.5 text-[10px] uppercase ${style.badgeClass}`}>
                             <Icon name={style.icon} size={10} />
                             {style.label}
@@ -229,6 +328,8 @@ export default function RedisKeyTree({
                 </div>
             )}
 
+            <div ref={sentinelRef} aria-hidden className="h-px" />
+
             {!loading && cursor && (
                 <button
                     onClick={() => void loadMore()}
@@ -240,4 +341,29 @@ export default function RedisKeyTree({
             )}
         </div>
     )
+}
+
+// highlightMatch marks where the quick filter matched, so a long key shows
+// WHY it is in the list rather than leaving the user to scan for it.
+function highlightMatch(text: string, needle: string) {
+    const q = needle.trim()
+    if (q === '') return text
+    const lower = text.toLowerCase()
+    const target = q.toLowerCase()
+
+    const parts: React.ReactNode[] = []
+    let from = 0
+    let at = lower.indexOf(target)
+    while (at >= 0) {
+        if (at > from) parts.push(text.slice(from, at))
+        parts.push(
+            <mark key={at} className="rounded-sm bg-tertiary/30 text-on-surface">
+                {text.slice(at, at + q.length)}
+            </mark>,
+        )
+        from = at + q.length
+        at = lower.indexOf(target, from)
+    }
+    if (from < text.length) parts.push(text.slice(from))
+    return parts
 }

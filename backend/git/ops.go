@@ -537,3 +537,48 @@ func (r *Runner) LastCommitDate(repoPath string) (time.Time, error) {
 	}
 	return time.Parse(time.RFC3339, strings.TrimSpace(out))
 }
+
+// StashDiff returns the patch a stash entry would apply, so it can be
+// reviewed BEFORE popping it.
+//
+// This is the whole point of the stash panel: `git stash pop` is not
+// reversible in any obvious way once it conflicts, and the entry it came
+// from is gone. Seeing what is inside first turns "I think this is the one"
+// into a decision.
+//
+// includeUntracked adds the untracked files the stash captured, which
+// `git stash show` omits by default — a stash pushed with -u looks empty
+// without it, which reads as "the stash lost my files".
+func (r *Runner) StashDiff(repoPath, ref string, includeUntracked bool) (string, error) {
+	root, err := r.resolveRepo(repoPath)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(ref) == "" {
+		return "", fmt.Errorf("falta la referencia del stash")
+	}
+	if err := checkRefArg("stash", ref); err != nil {
+		return "", err
+	}
+
+	args := []string{"stash", "show", "--patch", "--no-color"}
+	if includeUntracked {
+		args = append(args, "--include-untracked")
+	}
+	args = append(args, ref)
+
+	out, err := r.runLocal(root, args...)
+	if err != nil {
+		return "", err
+	}
+
+	// A stash holding ONLY untracked files produces an EMPTY patch and exits
+	// zero — it does not fail, which is what an earlier version of this
+	// assumed. Verified against real git, not deduced: the retry has to
+	// trigger on empty output, or a `git stash push -u` of new files shows
+	// up as "this stash is empty" and looks like the stash lost them.
+	if strings.TrimSpace(out) == "" && !includeUntracked {
+		return r.StashDiff(repoPath, ref, true)
+	}
+	return out, nil
+}

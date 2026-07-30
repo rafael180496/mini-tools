@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -26,6 +27,10 @@ type GitRepo struct {
 	FolderID  string `json:"folderId,omitempty"`
 	SortOrder int    `json:"sortOrder"`
 	CreatedAt int64  `json:"createdAt"`
+	// PinnedBranches are the branches the user keeps at the top of the
+	// sidebar. Per repository, not global: "develop" is the trunk in one
+	// project and does not exist in another.
+	PinnedBranches []string `json:"pinnedBranches"`
 }
 
 // AddGitRepo registers a repository at root. path is expected to be the
@@ -67,7 +72,7 @@ func (s *Store) AddGitRepo(name, path string) (*GitRepo, error) {
 // way ConnectionTree and the snippet tree already work.
 func (s *Store) ListGitRepos() ([]GitRepo, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, path, COALESCE(folder_id, ''), sort_order, created_at
+		SELECT id, name, path, COALESCE(folder_id, ''), sort_order, created_at, COALESCE(pinned_branches, '[]')
 		FROM git_repos
 		ORDER BY sort_order, name
 	`)
@@ -79,9 +84,11 @@ func (s *Store) ListGitRepos() ([]GitRepo, error) {
 	repos := []GitRepo{}
 	for rows.Next() {
 		var r GitRepo
-		if err := rows.Scan(&r.ID, &r.Name, &r.Path, &r.FolderID, &r.SortOrder, &r.CreatedAt); err != nil {
+		var pinned string
+		if err := rows.Scan(&r.ID, &r.Name, &r.Path, &r.FolderID, &r.SortOrder, &r.CreatedAt, &pinned); err != nil {
 			return nil, fmt.Errorf("vault: leyendo repositorio: %w", err)
 		}
+		r.PinnedBranches = decodePinned(pinned)
 		repos = append(repos, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -155,4 +162,38 @@ func (s *Store) RemoveGitRepo(id string) error {
 		return fmt.Errorf("vault: repositorio %q no encontrado", id)
 	}
 	return nil
+}
+
+// SetGitRepoPinnedBranches replaces a repository's pinned branch list.
+//
+// Stored as JSON in one column rather than as a child table: it is a short
+// ordered list read and written whole, never queried across repositories,
+// and the same shape settings.open_tabs already uses.
+func (s *Store) SetGitRepoPinnedBranches(id string, branches []string) error {
+	if branches == nil {
+		branches = []string{}
+	}
+	encoded, err := json.Marshal(branches)
+	if err != nil {
+		return fmt.Errorf("vault: serializando ramas ancladas: %w", err)
+	}
+	if _, err := s.db.Exec(`UPDATE git_repos SET pinned_branches = ? WHERE id = ?`, string(encoded), id); err != nil {
+		return fmt.Errorf("vault: guardando ramas ancladas: %w", err)
+	}
+	return nil
+}
+
+// decodePinned reads the JSON column, degrading to an empty list rather than
+// failing: a malformed value costs the user their pinned list, which they can
+// redo in two clicks, while an error would make the whole repository list
+// unreadable.
+func decodePinned(raw string) []string {
+	if raw == "" {
+		return []string{}
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return []string{}
+	}
+	return out
 }

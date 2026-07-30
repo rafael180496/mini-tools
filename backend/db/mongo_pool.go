@@ -40,6 +40,19 @@ func (m *MongoPoolManager) Get(connID string) (*mongo.Client, error) {
 	return client, nil
 }
 
+// ActiveIDs returns the connection ids with an open client right now — same
+// purpose as PoolManager.ActiveIDs.
+func (m *MongoPoolManager) ActiveIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ids := make([]string, 0, len(m.clients))
+	for id := range m.clients {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // Open opens (or returns the already-open) client for connID from dsn, pinging
 // it once before caching. Unlike PoolManager.Open it takes no dbType — it's
 // always MongoDB, same as RedisPoolManager.Open.

@@ -1,9 +1,13 @@
 import {useEffect, useState} from 'react'
-import {DeleteRedisKey, ExportRedisKeys, ExportResult} from '../../../wailsjs/go/main/App'
+import {DeleteRedisKeys, ExportRedisKeys, ExportResult} from '../../../wailsjs/go/main/App'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import RedisKeyDetailPanel from './RedisKeyDetailPanel'
 import RedisKeyTree from './RedisKeyTree'
+import RedisPrefixTree from './RedisPrefixTree'
+import RedisMetricsPanel from './RedisMetricsPanel'
+import RedisLiveMonitor from './RedisLiveMonitor'
+import RedisLuaPanel from './RedisLuaPanel'
 
 interface RedisBrowserTabProps {
     connId: string
@@ -32,6 +36,14 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
     const [bulkDeleting, setBulkDeleting] = useState(false)
     const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
     const [statusMessage, setStatusMessage] = useState('')
+    // Pattern chosen in the namespace tree, pushed down to the key list.
+    const [prefixPattern, setPrefixPattern] = useState('')
+    // The health dashboard replaces the value panel rather than sitting
+    // beside it: both want the full right-hand width, and nobody reads a
+    // key's value and the server's memory pressure at the same moment.
+    const [showMetrics, setShowMetrics] = useState(false)
+    const [showMonitor, setShowMonitor] = useState(false)
+    const [showLua, setShowLua] = useState(false)
 
     useEffect(() => {
         if (initialKey) setSelectedKey(initialKey)
@@ -44,6 +56,7 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
     useEffect(() => {
         setSelectedKey(null)
         setSelectedKeys(new Set())
+        setPrefixPattern('')
     }, [connId])
 
     function toggleSelect(key: string) {
@@ -81,17 +94,34 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
         }
     }
 
+    function selectMany(keys: string[], selected: boolean) {
+        setSelectedKeys((prev) => {
+            const next = new Set(prev)
+            for (const k of keys) {
+                if (selected) next.add(k)
+                else next.delete(k)
+            }
+            return next
+        })
+    }
+
+    // One batched call instead of a round trip per key: deleting 500 keys
+    // used to be 500 sequential IPC hops, each waiting for the previous.
+    // The backend chunks them, and falls back to one-at-a-time on a cluster
+    // where a single DEL cannot span slots.
     async function bulkDelete() {
         setBulkDeleting(true)
         try {
-            for (const key of selectedKeys) {
-                await DeleteRedisKey(connId, key)
-            }
+            const deleted = await DeleteRedisKeys(connId, Array.from(selectedKeys))
             if (selectedKey && selectedKeys.has(selectedKey)) setSelectedKey(null)
             setSelectedKeys(new Set())
             setReloadToken((n) => n + 1)
+            setStatusMessage(`${deleted} clave(s) eliminada(s)`)
         } catch (err) {
+            // The error text carries how many were already deleted — a
+            // partial destructive operation is unusable without that.
             setStatusMessage(`Error: ${String(err)}`)
+            setReloadToken((n) => n + 1)
         } finally {
             setBulkDeleting(false)
         }
@@ -134,6 +164,51 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                     </div>
                 )}
                 {statusMessage && <p className="border-b border-outline-variant px-2 py-1 text-[11px] text-on-surface-variant">{statusMessage}</p>}
+                <div className="flex items-center gap-1 border-b border-outline-variant px-2 py-1">
+                    <button
+                        onClick={() => {
+                            setShowMetrics((v) => !v)
+                            setShowMonitor(false)
+                            setShowLua(false)
+                        }}
+                        title="Muestra el estado del servidor: memoria contra su límite, aciertos de caché, clientes conectados, operaciones por segundo y CPU — lo que hoy hay que ir a mirar con redis-cli INFO"
+                        className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${
+                            showMetrics ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name="monitoring" size={14} />
+                        Estado del servidor
+                    </button>
+                    <button
+                        onClick={() => {
+                            setShowMonitor((v) => !v)
+                            setShowMetrics(false)
+                            setShowLua(false)
+                        }}
+                        title="Escucha canales de Pub/Sub o consume un stream en vivo, sin salir a una terminal aparte. Usa una conexión dedicada mientras esté activo."
+                        className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${
+                            showMonitor ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name="sensors" size={14} />
+                        Monitor en vivo
+                    </button>
+                    <button
+                        onClick={() => {
+                            setShowLua((v) => !v)
+                            setShowMetrics(false)
+                            setShowMonitor(false)
+                        }}
+                        title="Escribí y probá un script Lua, validándolo antes de mandarlo. Un script de Redis es atómico: mientras corre, el servidor no atiende a nadie más."
+                        className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${
+                            showLua ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name="code" size={14} />
+                        Script Lua
+                    </button>
+                </div>
+                <RedisPrefixTree connId={connId} onSelectPrefix={setPrefixPattern} activePattern={prefixPattern} />
                 <div className="flex-1 overflow-y-auto">
                     <RedisKeyTree
                         connId={connId}
@@ -143,11 +218,22 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                         selectable
                         selectedKeys={selectedKeys}
                         onToggleSelect={toggleSelect}
+                        onSelectMany={selectMany}
+                        externalPattern={prefixPattern || undefined}
                     />
                 </div>
             </div>
             <div className="min-w-0 flex-1 overflow-hidden">
-                {selectedKey ? (
+                {showMetrics ? (
+                    <RedisMetricsPanel connId={connId} onClose={() => setShowMetrics(false)} />
+                ) : showLua ? (
+                    <RedisLuaPanel connId={connId} onClose={() => setShowLua(false)} />
+                ) : showMonitor ? (
+                    // Keyed by connId so switching connections tears the
+                    // subscription down instead of leaving it bound to the
+                    // previous one.
+                    <RedisLiveMonitor key={connId} connId={connId} onClose={() => setShowMonitor(false)} />
+                ) : selectedKey ? (
                     <RedisKeyDetailPanel
                         key={selectedKey}
                         connId={connId}

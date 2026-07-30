@@ -28,6 +28,7 @@
   /sshconn      terminal SSH interactivo (SessionManager, PTY) + ping.go + dial.go (Dial() exportado: dial reusable que reusa parseDSN/clientConfig) — path nativo paralelo (no database/sql)
   /sftpx        transferencia de archivos SFTP: fs.go (abstracción local/remoto) + browse.go (BrowseManager, sesiones por panel) + transfer.go (TransferManager, pool de workers, ctx-cancel, progreso) — dialea vía sshconn.Dial, dep github.com/pkg/sftp, path nativo paralelo
   /git          cliente Git: runner.go (exec sobre el binario git del sistema, probe, hardening de env) + types.go + auth.go (askpass re-exec, redacción de URLs) + log.go + refs.go + diff.go + ops.go — path nativo paralelo, sin dependencias nuevas (ver .claude/specs/go-react-contract.md para el porqué de exec y no go-git)
+  /sqlintel     motor de IntelliSense SQL: token.go (tokenizer tolerante a fallos) + context.go (resolución de alcance en el cursor: cláusula, alias, subconsultas) + index.go/fuzzy.go (índice de esquema en memoria + matching difuso) + join.go (condición ON derivada de las FK) + dialect.go y dialect_{oracle,postgres,sqlite,sqlserver}.go (funciones/keywords/snippets por motor) + engine.go (ranking) + manager.go (índice async por conexión). Sin handle de base de datos: se alimenta del *db.SchemaMetadata que ya trae backend/db
   /explain      EXPLAIN PLAN por motor → árbol común (SQL únicamente, no aplica a Redis)
   /export       CSV/JSON/XLSX/DDL/config export
   /claudemd     generador de CLAUDE.md + .claude/{skills,specs,rules} para proyectos DE TERCEROS abiertos en la app (schemas SQL únicamente, no aplica a Redis)
@@ -47,7 +48,7 @@ main.go         bootstrap de Wails, embed de frontend/dist
 /frontend/src
   /hooks        useTheme.ts (única fuente de verdad del tema, llamado una vez en App.tsx) — no hay stores de Zustand, ver la nota de desviación abajo
   /lib          detección/formato/lint de SQL y Redis en cliente + likePattern.ts (búsqueda tipo LIKE, ver SKILL) — sin wrapper de wailsClient, los componentes importan ../../wailsjs/go/main/App directo
-  /monaco       Monaco recortado a SQL (sin CDN) + lenguaje 'redis-cli' hand-written (redisLanguage.ts, sin contribution nativa de Monaco); completion/hover providers para ambos lenguajes + redisKeysStore.ts (mismo patrón mutable-holder que metadataStore.ts, para sugerir keys conocidas)
+  /codemirror   CodeMirror 6 (reemplazó a /monaco): sqlSchema.ts (dialecto por motor + hover) + sqlIntel.ts (CompletionSource y ghost text servidos por backend/sqlintel vía Wails) + redisLanguage.ts/mongoLanguage.ts (hand-written, sin paquete oficial) + redisKeysStore.ts/mongoCollectionsStore.ts + themes.ts + lintAdapter.ts
   /components   lock, sidebar, connections, editor (EditorTabs.tsx + MonacoTabbedEditor.tsx — un solo editor Monaco con un modelo por pestaña, ver SKILL), results, explain, redis (RedisKeyTree/RedisValueInspector) — sin carpeta /layout ni /settings dedicadas (el toggle de tema vive inline en el toolbar de Workspace.tsx, no hay un SettingsDialog separado)
 ```
 

@@ -20,12 +20,15 @@ import RedisBrowserTab from './redis/RedisBrowserTab'
 import MongoBrowserTab from './mongo/MongoBrowserTab'
 import MongoFindWizard from './mongo/MongoFindWizard'
 import SshTerminalTab, {closeSshTerminalSession} from './ssh/SshTerminalTab'
+import SshHybridTab from './ssh/SshHybridTab'
 import SftpTab from './sftp/SftpTab'
+import type {PaneHost} from './sftp/types'
 import GitErrorBoundary from './git/GitErrorBoundary'
 import GitRepoTab from './git/GitRepoTab'
 import GitRepoTree from './git/GitRepoTree'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
 import {
+    ActiveConnectionIds,
     BackupVault,
     BeginTransaction,
     CancelMongoQuery,
@@ -43,7 +46,10 @@ import {
     FetchMoreRows,
     SetQueryPageSize,
     ExecuteRedisCommand,
+    CheckSQLMutation,
     ExplainQuery,
+    ReadSftpFileForEdit,
+    WriteSftpFileFromEdit,
     ExportConnectionConfig,
     ExportSchemaDDL,
     ExportTableDDL,
@@ -421,6 +427,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // (see .claude/rules/conventions.md), holding the script text until the
     // user confirms or cancels.
     const [pendingRedisCommandRun, setPendingRedisCommandRun] = useState<string | null>(null)
+    // Explain Analyze on a mutating statement: confirmed first, same themed
+    // ConfirmDialog pattern as pendingRedisCommandRun. The dialog is the
+    // courtesy; the guarantee is that the backend wraps a mutating analyzed
+    // run in a transaction it always rolls back.
+    const [pendingAnalyzeRun, setPendingAnalyzeRun] = useState<string | null>(null)
     // A double-click on a key in the sidebar's inline RedisKeyTree (via
     // ConnectionTree's onOpenRedisKey) opens/focuses that connection's
     // Redis Browser tab with this key pre-selected in the detail panel —
@@ -443,6 +454,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // Seeded from the connection's DSN default, updated when a collection is
     // opened from the tree, or via the toolbar db selector.
     const [mongoDbByConn, setMongoDbByConn] = useState<Record<string, string>>({})
+    // Last collection the user opened per connection, so the query wizard
+    // starts on it instead of on an empty field. Kept apart from
+    // mongoDbByConn because a database can be selected without any
+    // collection having been opened yet.
+    const [mongoCollByConn, setMongoCollByConn] = useState<Record<string, string>>({})
     // Database names per Mongo connection, feeding the toolbar's active-db
     // selector — fetched when the connection becomes the active tab's.
     const [mongoDatabasesByConn, setMongoDatabasesByConn] = useState<Record<string, string[]>>({})
@@ -455,11 +471,17 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const [statusMessage, setStatusMessage] = useState('')
 
     const [showMongoWizard, setShowMongoWizard] = useState(false)
+    // A remote save refused because the file changed on the server. Held
+    // here until the user decides, instead of overwriting or discarding.
+    const [remoteConflict, setRemoteConflict] = useState<{tabId: string; path: string; connName: string} | null>(null)
 
     const [showExplain, setShowExplain] = useState(false)
     const [explainPlan, setExplainPlan] = useState<explain.Plan | null>(null)
     const [explainLoading, setExplainLoading] = useState(false)
     const [explainError, setExplainError] = useState('')
+    // Surfaced on the tab itself so a critical finding is visible without
+    // having to switch to the plan first.
+    const explainCriticalCount = (explainPlan?.insights ?? []).filter((i) => i.severity === 'critical').length
 
     // "Resultados"/"Consola"/"Historial" are tabs sharing one bottom panel —
     // tab-style like EditorTabs above, not docked panels stacked on top of
@@ -468,7 +490,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // instead (see runText) so the per-statement log is what you land on,
     // matching the DataGrip-style console this mirrors. Switching to
     // "history" is what triggers its first load.
-    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'console' | 'history'>('results')
+    // "explain" only exists while there is a plan to show: it is opened by
+    // the Explain buttons and closed with its own X, like a result tab —
+    // rather than a fourth panel docked under everything else, which is
+    // what it used to be.
+    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'console' | 'history' | 'explain'>('results')
     const [historyEntries, setHistoryEntries] = useState<vault.HistoryEntry[]>([])
     const [historyLoading, setHistoryLoading] = useState(false)
     const [historyError, setHistoryError] = useState('')
@@ -1359,12 +1385,39 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         confirmAndRun(activeTabData?.content ?? '')
     }
 
+    // Explain is free: it only asks the planner, nothing runs. Explain
+    // Analyze really executes the statement, so a script that writes gets a
+    // confirmation first — asked of Go rather than a local regex, because
+    // "-- delete this" and "SELECT 'DELETE'" are not deletes and a
+    // "WITH x AS (…) DELETE …" is one.
     async function runExplain(analyze: boolean) {
         if (!activeTabConnection) return
         const text = activeTabData?.content ?? ''
         if (!text.trim()) return
 
+        if (analyze) {
+            let mutating = false
+            try {
+                mutating = await CheckSQLMutation(text)
+            } catch {
+                // Unreachable in practice (the vault is unlocked to get
+                // here), but if the check itself fails, confirm rather than
+                // assume the script is read-only.
+                mutating = true
+            }
+            if (mutating) {
+                setPendingAnalyzeRun(text)
+                return
+            }
+        }
+
+        await executeExplain(text, analyze)
+    }
+
+    async function executeExplain(text: string, analyze: boolean) {
+        if (!activeTabConnection) return
         setShowExplain(true)
+        setActiveBottomTab('explain')
         setExplainLoading(true)
         setExplainError('')
         try {
@@ -1387,9 +1440,19 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             .finally(() => setHistoryLoading(false))
     }
 
-    function selectBottomTab(tab: 'results' | 'console' | 'history') {
+    function selectBottomTab(tab: 'results' | 'console' | 'history' | 'explain') {
         if (tab === 'history' && activeBottomTab !== 'history') loadHistory()
         setActiveBottomTab(tab)
+    }
+
+    // Closing the plan tab drops the plan with it: keeping a stale plan
+    // around invisibly would make the tab reappear with old data the next
+    // time something switched to it.
+    function closeExplain() {
+        setShowExplain(false)
+        setExplainPlan(null)
+        setExplainError('')
+        setActiveBottomTab('results')
     }
 
     async function clearHistory() {
@@ -1575,6 +1638,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // (pendingMongoBrowser + token, same pattern as pendingBrowserKey for Redis).
     function openMongoCollection(connId: string, database: string, collection: string) {
         setMongoDbByConn((prev) => ({...prev, [connId]: database}))
+        setMongoCollByConn((prev) => ({...prev, [connId]: collection}))
         const token = ++pendingMongoBrowserTokenRef.current
         setPendingMongoBrowser({connId, database, collection, token})
 
@@ -1605,6 +1669,20 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // generic "is a connection bound to this tab" dot every other tab kind
     // uses.
     const [liveSshConnIds, setLiveSshConnIds] = useState<Set<string>>(new Set())
+    // Which DB/Redis/Mongo connections have an open pool. Unlike SSH there is
+    // no event to subscribe to: a pool is opened lazily by whatever needs it
+    // first (a query, a metadata scan, the key tree), so the truth lives in the
+    // backend's pool managers and is re-read after the actions that can change
+    // it (selecting a connection, disconnecting, deleting, reloading).
+    const [liveDbConnIds, setLiveDbConnIds] = useState<Set<string>>(new Set())
+    function refreshLiveConnections() {
+        ActiveConnectionIds()
+            .then((ids) => setLiveDbConnIds(new Set(ids ?? [])))
+            .catch(() => {
+                // A failure here only means the dot and the disconnect button
+                // are missing for a moment; it must not surface as an error.
+            })
+    }
     function setSshConnected(connId: string, connected: boolean) {
         setLiveSshConnIds((prev) => {
             const next = new Set(prev)
@@ -1635,6 +1713,31 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             connId: conn.id,
             language: 'sql',
             kind: 'ssh-terminal',
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
+    // Opens (or focuses) the combined terminal + files tab for a host.
+    //
+    // A THIRD way to open the same two components, never a replacement:
+    // openSshTerminal and openSftp above are untouched, so anyone who
+    // prefers the separate tabs keeps them exactly as they were.
+    function openSshHybrid(conn: vault.ConnectionSummary) {
+        const existing = tabs.find((t) => t.kind === 'ssh-hybrid' && t.connId === conn.id)
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: `Sesión — ${conn.name}`,
+            path: null,
+            content: '',
+            dirty: false,
+            connId: conn.id,
+            language: 'sql',
+            kind: 'ssh-hybrid',
         }
         setTabs((prev) => [...prev, tab])
         setActiveTabId(tab.id)
@@ -1728,6 +1831,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     async function disconnectConnection(connId: string) {
         try {
             await DisconnectConnection(connId)
+            refreshLiveConnections()
             if (selected?.id === connId) {
                 setSelected(null)
             }
@@ -1745,6 +1849,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     async function deleteConnection(connId: string) {
         try {
             await DeleteConnection(connId)
+            refreshLiveConnections()
             setReloadToken((n) => n + 1)
             if (selected?.id === connId) setSelected(null)
             setTabs((prev) => prev.map((t) => (t.connId === connId ? {...t, connId: null} : t)))
@@ -1818,6 +1923,14 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         const tab = tabsRef.current.find((t) => t.id === activeTabIdRef.current)
         if (!tab) return
 
+        // A remote file saves over SFTP, never to the user's disk. It is a
+        // separate branch rather than a smarter `path` because conflating
+        // the two would make Ctrl+S write a server file locally.
+        if (tab.kind === 'remote-file' && tab.remote) {
+            await saveRemoteTab(tab, tab.remote.modTimeUnix)
+            return
+        }
+
         try {
             if (tab.path) {
                 await SaveSQLFile(tab.path, tab.content)
@@ -1830,6 +1943,74 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     )
                 }
             }
+        } catch (err) {
+            setStatusMessage(String(err))
+        }
+    }
+
+    // saveRemoteTab uploads an edited server file. expectedMtime is what the
+    // editor loaded; passing 0 is the deliberate "overwrite anyway" the
+    // conflict dialog sends after telling the user.
+    async function saveRemoteTab(tab: EditorTab, expectedMtime: number) {
+        if (!tab.remote) return
+        try {
+            const newMtime = await WriteSftpFileFromEdit(tab.remote.sessionId, tab.remote.path, tab.content, expectedMtime)
+            setTabs((prev) =>
+                prev.map((t) =>
+                    t.id === tab.id && t.remote ? {...t, dirty: false, remote: {...t.remote, modTimeUnix: newMtime}} : t,
+                ),
+            )
+            setStatusMessage(`Guardado ${tab.remote.path} en ${tab.remote.connName}`)
+        } catch (err) {
+            const message = String(err)
+            if (message.includes('cambió en el servidor')) {
+                // Never overwrite silently: somebody else's change would
+                // disappear with nobody noticing.
+                setRemoteConflict({tabId: tab.id, path: tab.remote.path, connName: tab.remote.connName})
+                return
+            }
+            setStatusMessage(message)
+        }
+    }
+
+    // openRemoteFile loads a server file into its own editor tab, or focuses
+    // the tab already editing it — reopening would silently discard unsaved
+    // edits.
+    async function openRemoteFile(host: PaneHost, path: string) {
+        if (host.kind !== 'remote') return
+
+        const existing = tabsRef.current.find(
+            (t) => t.kind === 'remote-file' && t.remote?.sessionId === host.sessionId && t.remote?.path === path,
+        )
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+
+        try {
+            const file = await ReadSftpFileForEdit(host.sessionId, path)
+            if (file.binary) {
+                setStatusMessage(`"${path}" es un archivo binario — no se puede editar como texto.`)
+                return
+            }
+            if (file.tooLarge) {
+                setStatusMessage(`"${path}" es demasiado grande para abrirlo en el editor.`)
+                return
+            }
+
+            const tab: EditorTab = {
+                id: newTabId(),
+                title: path.split('/').pop() || path,
+                path: null,
+                content: file.content,
+                dirty: false,
+                connId: host.connId,
+                language: 'sql',
+                kind: 'remote-file',
+                remote: {sessionId: host.sessionId, path, connName: host.connName, modTimeUnix: file.modTimeUnix},
+            }
+            setTabs((prev) => [...prev, tab])
+            setActiveTabId(tab.id)
         } catch (err) {
             setStatusMessage(String(err))
         }
@@ -1896,6 +2077,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTabConnection])
 
+    // Re-read which pools are open after anything that could have opened one.
+    // Selecting a connection or switching the active tab's binding is what
+    // triggers the lazy open, and reloadToken covers create/import.
+    useEffect(refreshLiveConnections, [selected, activeTabConnection, reloadToken])
+
     const activeResult = resultSets[activeResultTab]
     const isSqlActive =
         !!activeTabConnection &&
@@ -1907,12 +2093,18 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const isBrowserTabActive = activeTabData?.kind === 'redis-browser' || activeTabData?.kind === 'mongo-browser'
     const isSshTerminalTabActive = activeTabData?.kind === 'ssh-terminal'
     const isSftpTabActive = activeTabData?.kind === 'sftp'
+    const isHybridTabActive = activeTabData?.kind === 'ssh-hybrid'
     const isGitTabActive = activeTabData?.kind === 'git-repo'
+    // A remote file is edited in the same CodeMirror as everything else, but
+    // it has nothing to run — so the results panel below would sit there
+    // permanently empty. The editor takes the whole height instead.
+    const isRemoteFileActive = activeTabData?.kind === 'remote-file'
 
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-background font-sans text-on-background">
             <ConnectionTree
                 selectedId={selected?.id ?? null}
+                liveConnIds={liveDbConnIds}
                 onSelect={setSelected}
                 onNewConnection={() => setConnectionDialog('new')}
                 onEditConnection={(conn) => setConnectionDialog(conn.id)}
@@ -1954,8 +2146,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onEditConnection={(conn) => setConnectionDialog(conn.id)}
                         onOpenSshTerminal={openSshTerminal}
                         onOpenSftp={openSftp}
+                        onOpenSshHybrid={openSshHybrid}
                         activeTabConnectionId={activeTabConnection?.id ?? null}
                         onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
+                        liveConnIds={liveSshConnIds}
                         onDisconnect={(connId) => void disconnectConnection(connId)}
                         onDeleteConnection={(connId) => void deleteConnection(connId)}
                         reloadToken={reloadToken}
@@ -2275,7 +2469,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
-                    {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && (
+                    {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
                         <button
                             onClick={() => void saveActiveTab()}
@@ -2331,14 +2525,21 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     <Icon name="query_stats" size={16} />
                                     Explain
                                 </button>
+                                {/* Visually distinct from Explain on purpose: this
+                                    one RUNS the query. The tertiary tint and the
+                                    "ejecuta" badge are what keep the two from
+                                    looking like the same harmless button. */}
                                 <button
                                     onClick={() => void runExplain(true)}
                                     disabled={!activeTabConnection}
-                                    title="Ejecuta el query de verdad y muestra el plan con tiempos reales (EXPLAIN ANALYZE) — a diferencia de Explain, sí corre el query"
-                                    className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-50"
+                                    title="Ejecuta el query de verdad contra la base y muestra el plan con filas y tiempos REALES (EXPLAIN ANALYZE). A diferencia de Explain, sí corre la consulta: si modifica datos se te pide confirmación y la ejecución se envuelve en una transacción que se revierte."
+                                    className="flex items-center gap-1.5 rounded-md border border-tertiary/40 bg-tertiary/10 px-3 py-1.5 text-xs font-medium text-tertiary transition-colors hover:bg-tertiary/20 disabled:opacity-50"
                                 >
                                     <Icon name="analytics" size={16} />
                                     Explain Analyze
+                                    <span className="rounded-sm bg-tertiary/20 px-1 text-[9px] font-semibold uppercase tracking-wide">
+                                        ejecuta
+                                    </span>
                                 </button>
 
                                 <Divider />
@@ -2361,7 +2562,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
 
                 <div
                     className="min-w-0 border-b border-outline-variant"
-                    style={{height: editorHeight, display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive || isGitTabActive ? 'none' : undefined}}
+                    style={{
+                        height: isRemoteFileActive ? '100%' : editorHeight,
+                        display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive ? 'none' : undefined,
+                    }}
                 >
                     {/* Always mounted, even behind a Redis Browser tab —
                         CodeMirrorTabbedEditor caches every other open
@@ -2379,6 +2583,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             editorRef.current = view
                         }}
                         dbType={activeTabConnection?.dbType ?? null}
+                        connId={activeTabConnection?.id ?? null}
                         schemaMetadata={filteredEditorMetadata}
                         editorThemeId={editorThemeId}
                         appTheme={theme}
@@ -2424,6 +2629,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 initialDatabase={pendingMongoBrowser?.connId === t.connId ? pendingMongoBrowser.database : undefined}
                                 initialCollection={pendingMongoBrowser?.connId === t.connId ? pendingMongoBrowser.collection : undefined}
                                 initialToken={pendingMongoBrowser?.token}
+                                onSelectCollection={(database, collection) => {
+                                    const id = t.connId as string
+                                    setMongoDbByConn((prev) => ({...prev, [id]: database}))
+                                    setMongoCollByConn((prev) => ({...prev, [id]: collection}))
+                                }}
+                                onOpenWizard={() => setShowMongoWizard(true)}
                             />
                         </div>
                     ))}
@@ -2453,6 +2664,29 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         </div>
                     ))}
 
+                {/* Combined terminal + files. Same never-unmount treatment:
+                    the shell inside must survive switching tabs. */}
+                {tabs
+                    .filter((t) => t.kind === 'ssh-hybrid' && t.connId)
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex min-h-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <SshHybridTab
+                                connId={t.connId as string}
+                                connName={connections.find((c) => c.id === t.connId)?.name ?? ''}
+                                connections={connections.filter((c) => c.dbType === 'ssh')}
+                                theme={theme}
+                                terminalThemeId={terminalThemeId}
+                                onChangeTerminalTheme={changeTerminalTheme}
+                                onConnectedChange={(connected) => setSshConnected(t.connId as string, connected)}
+                                onOpenRemoteFile={(host, path) => void openRemoteFile(host, path)}
+                            />
+                        </div>
+                    ))}
+
                 {/* Same "never unmount, just hide" treatment as the SSH
                     terminal / Redis Browser tabs above — each SFTP explorer
                     keeps its two browse sessions and any in-flight transfers
@@ -2471,6 +2705,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 tabId={t.id}
                                 initialConnId={t.connId as string}
                                 connections={connections.filter((c) => c.dbType === 'ssh')}
+                                onOpenRemoteFile={(host, path) => void openRemoteFile(host, path)}
                             />
                         </div>
                     ))}
@@ -2502,7 +2737,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         </div>
                     ))}
 
-                {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && (
+                {/* The bottom panel belongs to the SQL editor. A remote-file or
+                    hybrid-session tab has nothing to run, so it would sit there
+                    permanently empty while stealing height from the terminal
+                    and the file drawer, which is exactly the space they need. */}
+                {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && (
                     <>
                         {/* Drag handle: resizes the editor pane against the
                             results grid below. Persisted on mouseup, see
@@ -2568,6 +2807,40 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 <Icon name="history" size={14} className="opacity-70" />
                                 Historial
                             </button>
+                            {showExplain && (
+                                <button
+                                    onClick={() => selectBottomTab('explain')}
+                                    title="Plan de ejecución de la última consulta explicada, con métricas y diagnóstico. Se cierra con la X, como una pestaña de resultados."
+                                    className={`flex items-center gap-1.5 rounded-t-xs py-1 pl-3 pr-1.5 text-xs ${
+                                        activeBottomTab === 'explain'
+                                            ? 'bg-surface text-on-surface'
+                                            : 'text-on-surface-variant hover:text-on-surface'
+                                    }`}
+                                >
+                                    <Icon name="query_stats" size={14} className="opacity-70" />
+                                    {explainPlan?.analyzed ? 'Explain Analyze' : 'Explain'}
+                                    {explainCriticalCount > 0 && (
+                                        <span
+                                            className="rounded-full bg-error/20 px-1 text-[9px] font-semibold text-error"
+                                            title={`${explainCriticalCount} problema(s) crítico(s) detectado(s) en el plan`}
+                                        >
+                                            {explainCriticalCount}
+                                        </span>
+                                    )}
+                                    <span
+                                        role="button"
+                                        tabIndex={-1}
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            closeExplain()
+                                        }}
+                                        title="Cierra el plan de ejecución"
+                                        className="ml-0.5 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                    >
+                                        <Icon name="close" size={12} />
+                                    </span>
+                                </button>
+                            )}
                         </div>
 
                         {activeBottomTab === 'results' ? (
@@ -2676,6 +2949,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     )
                 ) : activeBottomTab === 'console' ? (
                     <ExecutionConsole entries={consoleLog} running={running} onClear={() => setConsoleLog([])} />
+                ) : activeBottomTab === 'explain' ? (
+                    <Suspense fallback={null}>
+                        <ExplainPlanPanel plan={explainPlan} loading={explainLoading} error={explainError} />
+                    </Suspense>
                 ) : (
                     <Suspense fallback={null}>
                         <HistoryPanel
@@ -2685,17 +2962,6 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             onRefresh={loadHistory}
                             onClear={() => void clearHistory()}
                             onDeleteEntry={(id) => void deleteHistoryEntry(id)}
-                        />
-                    </Suspense>
-                )}
-
-                {showExplain && (
-                    <Suspense fallback={null}>
-                        <ExplainPlanPanel
-                            plan={explainPlan}
-                            loading={explainLoading}
-                            error={explainError}
-                            onClose={() => setShowExplain(false)}
                         />
                     </Suspense>
                 )}
@@ -2800,6 +3066,16 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     onClose={() => setPendingRedisCommandRun(null)}
                 />
             )}
+            {pendingAnalyzeRun && activeTabConnection && (
+                <ConfirmDialog
+                    title="Explain Analyze ejecuta la consulta"
+                    description="Este script modifica datos o estructura (INSERT/UPDATE/DELETE/DDL). EXPLAIN ANALYZE lo ejecuta de verdad para poder medirlo. Se correrá dentro de una transacción que se revierte al terminar, así que no deberían quedar cambios aplicados — pero los disparadores, secuencias y efectos fuera de la transacción sí ocurren."
+                    confirmLabel="Ejecutar y medir"
+                    danger
+                    onConfirm={() => void executeExplain(pendingAnalyzeRun, true)}
+                    onClose={() => setPendingAnalyzeRun(null)}
+                />
+            )}
             {pendingMongoCommandRun && activeTabConnection && (
                 <ConfirmDialog
                     title="Comando destructivo"
@@ -2810,10 +3086,26 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     onClose={() => setPendingMongoCommandRun(null)}
                 />
             )}
+            {remoteConflict && (
+                <ConfirmDialog
+                    title="El archivo cambió en el servidor"
+                    description={`"${remoteConflict.path}" fue modificado en ${remoteConflict.connName} desde que lo abriste. Si continuás, tus cambios reemplazan los que están ahora en el servidor y esos se pierden. Cancelá si preferís volver a abrirlo y comparar primero.`}
+                    confirmLabel="Sobrescribir igual"
+                    danger
+                    onConfirm={() => {
+                        const tab = tabsRef.current.find((t) => t.id === remoteConflict.tabId)
+                        // mtime 0 = saltear la comprobación, a propósito.
+                        if (tab) void saveRemoteTab(tab, 0)
+                    }}
+                    onClose={() => setRemoteConflict(null)}
+                />
+            )}
+
             {showMongoWizard && (
                 <MongoFindWizard
                     connId={activeTabConnection?.id}
                     database={activeTabConnection ? mongoDbByConn[activeTabConnection.id] : undefined}
+                    initialCollection={activeTabConnection ? mongoCollByConn[activeTabConnection.id] : undefined}
                     onClose={() => setShowMongoWizard(false)}
                     onGenerate={(query, run) => {
                         setShowMongoWizard(false)

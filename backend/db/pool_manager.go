@@ -97,6 +97,22 @@ func (m *PoolManager) Type(connID string) (DBType, bool) {
 	return pc.dbType, true
 }
 
+// ActiveIDs returns the connection ids with an open pool right now.
+//
+// Used to decide whether "desconectar" is even an available action for a
+// connection: offering it when there is nothing open makes the button look
+// broken when clicking it does nothing.
+func (m *PoolManager) ActiveIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ids := make([]string, 0, len(m.pools))
+	for id := range m.pools {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // Open opens (or returns the already-open) pool for connID against the
 // given engine/DSN, pinging it once before caching it.
 func (m *PoolManager) Open(connID string, dbType DBType, dsn string) (*sql.DB, error) {

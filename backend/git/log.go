@@ -68,6 +68,21 @@ type LogOptions struct {
 	// roughly doubles the cost of the walk and the graph does not need it
 	// until a commit is selected.
 	WithStats bool `json:"withStats"`
+
+	// Author filters by author name or email, as a substring (git's own
+	// --author semantics). Filtering happens in GIT, not after the fact:
+	// a repository the graph pages 500 commits at a time through would
+	// otherwise only ever search the page on screen, which reads as
+	// "the search is broken" the moment a match is one page back.
+	Author string `json:"author"`
+
+	// Grep filters by commit message, case-insensitively.
+	Grep string `json:"grep"`
+
+	// Since/Until bound the walk by date. Anything git's --since/--until
+	// accept works, including relative forms ("2 weeks ago").
+	Since string `json:"since"`
+	Until string `json:"until"`
 }
 
 const defaultLogLimit = 500
@@ -118,6 +133,26 @@ func (r *Runner) GetCommitLog(repoPath string, opts LogOptions) ([]CommitInfo, e
 		}
 		args = append(args, opts.Rev)
 	}
+	// Filters go before the revision list; git accepts them in any order,
+	// but keeping them together makes the assembled command readable in the
+	// command log.
+	if opts.Author != "" {
+		args = append(args, "--author="+opts.Author)
+	}
+	if opts.Grep != "" {
+		// --regexp-ignore-case applies to --grep; --fixed-strings keeps a
+		// message containing regex metacharacters (very common: "fix(a[b])")
+		// from being read as a pattern and either erroring or matching
+		// something else entirely.
+		args = append(args, "--grep="+opts.Grep, "--regexp-ignore-case", "--fixed-strings")
+	}
+	if opts.Since != "" {
+		args = append(args, "--since="+opts.Since)
+	}
+	if opts.Until != "" {
+		args = append(args, "--until="+opts.Until)
+	}
+
 	if opts.Path != "" {
 		// "--" is what stops a path that happens to match a branch name from
 		// being resolved as a revision.

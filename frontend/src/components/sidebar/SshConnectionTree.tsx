@@ -5,8 +5,16 @@ import ConfirmDialog from '../ConfirmDialog'
 import DbTypeIcon from '../DbTypeIcon'
 import Icon from '../Icon'
 import SidebarModule from './SidebarModule'
-import MoveToFolderMenu, {flattenForMenu} from './MoveToFolderMenu'
+import {flattenForMenu} from './MoveToFolderMenu'
+import SshRowMenu from './SshRowMenu'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
+import {environmentStyle} from '../../lib/environments'
+
+// envStyleOf resolves a connection's environment marking to its colours. See
+// lib/environments.ts — an unmarked connection renders exactly as before.
+function envStyleOf(c: vault.ConnectionSummary) {
+    return environmentStyle(c.environment)
+}
 
 interface SshConnectionTreeProps {
     onNewConnection: () => void
@@ -20,12 +28,18 @@ interface SshConnectionTreeProps {
     // Opens (or focuses) the dual-pane SFTP file-transfer explorer seeded with
     // this host — reuses the same saved SSH connection as the terminal.
     onOpenSftp: (conn: vault.ConnectionSummary) => void
+    // Opens terminal and files together in one tab. Additive: the two
+    // buttons above keep opening their standalone tabs exactly as before.
+    onOpenSshHybrid: (conn: vault.ConnectionSummary) => void
     // Highlights whichever row's terminal is the ACTIVE editor tab right
     // now — this module has no "selected connection" concept of its own
     // (see ConnectionTree's selectedId), so it borrows the tab system's own
     // notion of "current" instead.
     activeTabConnectionId: string | null
     onExportConnectionConfig: (connId: string) => void
+    // connIds with a live remote session right now. Drives both the dot next
+    // to the name and whether the disconnect button exists at all.
+    liveConnIds: Set<string>
     onDisconnect: (connId: string) => void
     onDeleteConnection: (connId: string) => void
     reloadToken: number
@@ -54,8 +68,10 @@ export default function SshConnectionTree({
     onEditConnection,
     onOpenSshTerminal,
     onOpenSftp,
+    onOpenSshHybrid,
     activeTabConnectionId,
     onExportConnectionConfig,
+    liveConnIds,
     onDisconnect,
     onDeleteConnection,
     reloadToken,
@@ -167,13 +183,14 @@ export default function SshConnectionTree({
 
     function renderConnectionRow(c: vault.ConnectionSummary, depth: number) {
         const isActive = c.id === activeTabConnectionId
+        const isLive = liveConnIds.has(c.id)
         return (
             <div key={c.id} className="mb-0.5">
                 <div
                     style={{paddingLeft: `${8 + depth * 14}px`}}
                     className={`group flex w-full items-center gap-1 py-1.5 pr-3 text-left text-sm transition-colors ${
                         isActive ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
-                    }`}
+                    } ${envStyleOf(c)?.border ?? ''}`}
                 >
                     {/* No schema/keys to browse for an SSH connection — no
                         expand chevron, just a same-size spacer so the row's
@@ -196,35 +213,27 @@ export default function SshConnectionTree({
                             />
                         )}
                         <span className="truncate font-medium">{c.name}</span>
+                        {isLive && (
+                            <span
+                                aria-hidden
+                                title="Hay una sesión SSH abierta contra este servidor"
+                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                            />
+                        )}
+                        {envStyleOf(c) && (
+                            <span
+                                title={`Entorno: ${envStyleOf(c)!.label}`}
+                                className={`shrink-0 rounded px-1 py-px text-[9px] leading-tight font-semibold tracking-wide ${envStyleOf(c)!.badge}`}
+                            >
+                                {envStyleOf(c)!.short}
+                            </span>
+                        )}
                     </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onEditConnection(c)
-                        }}
-                        title="Editar conexión"
-                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
-                    >
-                        <Icon name="edit" size={15} />
-                    </button>
-                    <MoveToFolderMenu connId={c.id} flatFolders={flatFoldersForMenu} onMove={onMoveConnectionToFolder} />
-                    <button
-                        onClick={() => onExportConnectionConfig(c.id)}
-                        title="Exportar configuración (sin password)"
-                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
-                    >
-                        <Icon name="output" size={15} />
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onOpenSshTerminal(c)
-                        }}
-                        title="Abrir en una pestaña — terminal interactiva SSH"
-                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
-                    >
-                        <Icon name="open_in_new" size={15} />
-                    </button>
+                    {/* Only the actions with a distinct verb stay on the row.
+                        Everything else moved into SshRowMenu — seven unlabelled
+                        icons crammed into a sidebar this narrow were impossible
+                        to tell apart, with "eliminar" a few pixels from the one
+                        you meant to click. */}
                     <button
                         onClick={(e) => {
                             e.stopPropagation()
@@ -238,23 +247,38 @@ export default function SshConnectionTree({
                     <button
                         onClick={(e) => {
                             e.stopPropagation()
-                            onDisconnect(c.id)
+                            onOpenSshHybrid(c)
                         }}
-                        title="Cerrar la terminal activa (mantiene la conexión guardada)"
-                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:text-error hover:opacity-100 group-hover:block"
+                        title="Abrir sesión combinada — consola y explorador de archivos del mismo servidor en una sola pestaña, sobre una única conexión SSH (Ctrl+Shift+F muestra u oculta los archivos)"
+                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
                     >
-                        <Icon name="power_settings_new" size={15} />
+                        <Icon name="vertical_split" size={15} />
                     </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            setConfirmDelete(c)
-                        }}
-                        title="Eliminar esta conexión guardada permanentemente — cualquier terminal abierta contra ella se cierra"
-                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:text-error hover:opacity-100 group-hover:block"
-                    >
-                        <Icon name="delete" size={15} />
-                    </button>
+                    {/* Disconnect only exists while there IS something to
+                        disconnect: on a connection with no live session the
+                        button did nothing, which made it read as broken. It
+                        also stays visible without hovering — a live session is
+                        state worth seeing, not just an action. */}
+                    {isLive && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                onDisconnect(c.id)
+                            }}
+                            title="Cerrar la sesión de terminal abierta contra este servidor — la conexión guardada queda intacta"
+                            className="shrink-0 rounded p-0.5 text-error opacity-80 hover:bg-error-container/40 hover:opacity-100"
+                        >
+                            <Icon name="power_settings_new" size={15} />
+                        </button>
+                    )}
+                    <SshRowMenu
+                        flatFolders={flatFoldersForMenu}
+                        onOpenTerminal={() => onOpenSshTerminal(c)}
+                        onEdit={() => onEditConnection(c)}
+                        onMoveToFolder={(folderId) => onMoveConnectionToFolder(c.id, folderId)}
+                        onExport={() => onExportConnectionConfig(c.id)}
+                        onDelete={() => setConfirmDelete(c)}
+                    />
                 </div>
             </div>
         )

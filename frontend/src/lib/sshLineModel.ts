@@ -26,6 +26,18 @@ export class SshLineModel {
         return ''
     }
 
+    // currentLine returns the reconstructed line, or '' when the
+    // reconstruction is not trustworthy.
+    //
+    // The desynced check is the whole point: after a Tab completion or a
+    // history recall the real line changed out from under us, so `line` is a
+    // guess. Callers use this to read a `cd` out of what was typed, and
+    // publishing a directory from an unreliable line would send the file
+    // pane somewhere the shell never went — worse than not following at all.
+    currentLine(): string {
+        return this.desynced ? '' : this.line
+    }
+
     // accept records that the ghost suffix was accepted (its bytes are sent to
     // the PTY separately by the caller), advancing the reconstructed line.
     accept(ghost: string): void {

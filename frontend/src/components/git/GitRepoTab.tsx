@@ -1,6 +1,8 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {
     GitAbort,
+    GitApplyPatch,
+    GitBlame,
     GitBranches,
     GitCherryPick,
     GitCreateBranch,
@@ -17,22 +19,48 @@ import {
     GitChangedFiles,
     GitCheckout,
     GitCommit,
+    GitContinue,
     GitDiff,
     GitDiscard,
     GitFetch,
+    GitForgeInfo,
+    GitOpenInBrowser,
+    GitRemoveWorktree,
+    GitWorktrees,
+    GitListRepos,
     GitLog,
     GitPull,
     GitPush,
     GitStage,
+    GitStashApply,
+    GitStashDrop,
+    GitStashes,
+    GitStashPush,
     GitStageAll,
     GitSetDiffPrefs,
     GitSetPaneWidths,
+    GitSetPinnedBranches,
     GitStatus,
     GitUnstage,
 } from '../../../wailsjs/go/main/App'
 import {GetSettings} from '../../../wailsjs/go/main/App'
 import {git} from '../../../wailsjs/go/models'
 import type {Theme} from '../../hooks/useTheme'
+import {
+    applyPrefix,
+    buildCommitPrefix,
+    COMMIT_TYPES,
+    currentPrefixOf,
+    extractTicket,
+} from '../../lib/gitCommitMessage'
+import {
+    describeSearch,
+    EMPTY_SEARCH,
+    GIT_SEARCH_HELP,
+    isEmptySearch,
+    parseGitSearch,
+    type GitSearch,
+} from '../../lib/gitSearch'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import CommitGraph from './CommitGraph'
@@ -40,6 +68,10 @@ import ContextMenu from './ContextMenu'
 import DiffViewer from './DiffViewer'
 import DropdownMenu, {type DropdownItem} from './DropdownMenu'
 import GitSettingsDialog from './GitSettingsDialog'
+import GitConflictResolver from './GitConflictResolver'
+import GitCommandLogDrawer from './GitCommandLog'
+import GitRebaseDialog from './GitRebaseDialog'
+import GitStashPanel from './GitStashPanel'
 import PromptDialog from './PromptDialog'
 
 // Everything PromptDialog takes except onClose, which this component owns.
@@ -55,15 +87,19 @@ interface PromptSpec {
     onSubmit: (value: string, second: string) => void
 }
 
-// A destructive action pending confirmation. Carrying the copy alongside the
-// action keeps each ConfirmDialog's wording next to the operation it guards,
-// instead of one dialog with a switch over an action enum.
+// An action pending confirmation. Carrying the copy alongside the action
+// keeps each ConfirmDialog's wording next to the operation it guards, instead
+// of one dialog with a switch over an action enum. Defaults to danger since
+// every existing use is destructive (delete branch, delete remote branch) —
+// set it to false for a confirm that is merely "are you sure", like the
+// missing-upstream push offer.
 interface PendingConfirm {
     title: string
     description: string
     confirmLabel: string
     run: () => Promise<unknown>
     label: string
+    danger?: boolean
 }
 
 interface GitRepoTabProps {
@@ -86,7 +122,7 @@ interface GitRepoTabProps {
 // Which of the two center views is showing. "commits" is the history graph;
 // "changes" is the working tree — the same Commits/Files split the sidebar of
 // a Sublime Merge tab has.
-type CenterView = 'commits' | 'changes'
+type CenterView = 'commits' | 'changes' | 'stash' | 'conflicts'
 
 const LOG_PAGE = 200
 
@@ -100,6 +136,109 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
     const [selectedCommit, setSelectedCommit] = useState<git.CommitInfo | null>(null)
     const [changedFiles, setChangedFiles] = useState<git.FileDiff[]>([])
     const [selectedPath, setSelectedPath] = useState<string | null>(null)
+    // Branch the user last clicked in the sidebar, highlighted there so it is
+    // clear which one the graph was scrolled to. Purely a selection — it is not
+    // the checked-out branch, which is branch.isCurrent.
+    const [selectedBranch, setSelectedBranch] = useState<string | null>(null)
+    // Commit the graph should scroll to, with a token so clicking the same
+    // branch twice scrolls again after the user has scrolled away.
+    const [reveal, setReveal] = useState<{hash: string; token: number} | null>(null)
+    const revealSeq = useRef(0)
+    const [branchFilter, setBranchFilter] = useState('')
+    // Commit search. Parsed into real git log filters (author/grep/path/
+    // date/rev) rather than filtering the loaded page: the graph pages a few
+    // hundred commits at a time, so a client-side filter would only ever
+    // search what happens to be on screen.
+    const [searchText, setSearchText] = useState('')
+    const [search, setSearch] = useState<GitSearch>(EMPTY_SEARCH)
+    const [showSearchHelp, setShowSearchHelp] = useState(false)
+    // Focus mode walks only the current branch plus the trunks, instead of
+    // every ref. On a repository with 350 remote branches that is the
+    // difference between a readable graph and a wall of lanes.
+    const [focusMode, setFocusMode] = useState(false)
+    const [pinned, setPinned] = useState<string[]>([])
+    // A hunk-level discard is destructive and irreversible, so it goes
+    // through the same confirmation as discarding a whole file — the patch
+    // is held here until the user confirms.
+    const [confirmDiscardPatch, setConfirmDiscardPatch] = useState<string | null>(null)
+    const [rebaseBase, setRebaseBase] = useState<{hash: string; label: string} | null>(null)
+    const [showCommandLog, setShowCommandLog] = useState(false)
+    const [logToken, setLogToken] = useState(0)
+    const [worktrees, setWorktrees] = useState<git.Worktree[]>([])
+    const [showWorktrees, setShowWorktrees] = useState(false)
+    const [forge, setForge] = useState<git.ForgeInfo | null>(null)
+
+    // The forge link depends on the checked-out branch, so it is resolved
+    // whenever the branch changes rather than on every render.
+    useEffect(() => {
+        const branch = status?.branch
+        if (!branch) {
+            setForge(null)
+            return
+        }
+        let cancelled = false
+        GitForgeInfo(repoId, 'origin', branch, '')
+            .then((f) => {
+                if (!cancelled) setForge(f)
+            })
+            .catch(() => {
+                if (!cancelled) setForge(null)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [repoId, status?.branch])
+
+    useEffect(() => {
+        if (!showWorktrees) return
+        GitWorktrees(repoId)
+            .then((w) => setWorktrees(w ?? []))
+            .catch(() => setWorktrees([]))
+    }, [repoId, showWorktrees, logToken])
+    // Blame is opt-in: it is a full-file walk per file, and nobody wants it
+    // running on every diff they click through.
+    const [blame, setBlame] = useState<git.BlameLine[] | null>(null)
+    useEffect(() => {
+        // Blame belongs to one file at one revision — keeping it across a
+        // selection change would attribute the wrong lines to the wrong
+        // people, which is worse than showing nothing.
+        setBlame(null)
+    }, [selectedPath, view])
+    // Loaded by reload() below rather than by an effect of its own: every
+    // mutating action already funnels through reload, so the tab badge stays
+    // right without a second refresh path to keep in sync.
+    const [stashes, setStashes] = useState<git.Stash[]>([])
+
+    // Pinned branches come from the repository record (vault), not from
+    // component state: they have to survive closing the tab, and they are
+    // per repository — "develop" is the trunk in one project and does not
+    // exist in another.
+    useEffect(() => {
+        let cancelled = false
+        GitListRepos()
+            .then((repos) => {
+                if (cancelled) return
+                const repo = (repos ?? []).find((r) => r.id === repoId)
+                setPinned(repo?.pinnedBranches ?? [])
+            })
+            .catch(() => {})
+        return () => {
+            cancelled = true
+        }
+    }, [repoId])
+
+    async function togglePinned(name: string) {
+        const next = pinned.includes(name) ? pinned.filter((p) => p !== name) : [...pinned, name]
+        setPinned(next)
+        try {
+            await GitSetPinnedBranches(repoId, next)
+        } catch (e) {
+            // Roll the optimistic update back rather than leaving the star
+            // showing a state the vault does not have.
+            setPinned(pinned)
+            setError(String(e))
+        }
+    }
 
     const [diff, setDiff] = useState<git.FileDiff | null>(null)
     const [loadingDiff, setLoadingDiff] = useState(false)
@@ -195,15 +334,31 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
             // known before choosing the walk.
             const brs = await GitBranches(repoId, true)
             const visibleRefs = (brs ?? []).map((b) => b.name).filter((n) => !hidden.has(n))
-            const logOpts =
-                hidden.size > 0
-                    ? new git.LogOptions({maxCount: LOG_PAGE, revs: visibleRefs, withStats: false})
-                    : new git.LogOptions({maxCount: LOG_PAGE, all: true, withStats: false})
-            const [log, st, prog] = await Promise.all([
+
+            // Focus mode narrows the walk to the current branch plus whatever
+            // trunks exist, and takes precedence over hidden branches: both
+            // are ways of saying "show me less", and the narrower one wins.
+            const focusRefs = focusMode ? focusRefsOf(brs ?? [], pinned) : []
+
+            const base = {maxCount: LOG_PAGE, withStats: false, ...searchToLogOptions(search)}
+            // Precedence matters and is not obvious: GetCommitLog checks
+            // Revs, then All, then Rev — so setting `all` alongside a hash
+            // search would silently ignore the hash. A hash is the narrowest
+            // thing the user can ask for, so it wins outright.
+            const logOpts = search.rev
+                ? new git.LogOptions({...base, all: false})
+                : focusRefs.length > 0
+                  ? new git.LogOptions({...base, revs: focusRefs})
+                  : hidden.size > 0
+                    ? new git.LogOptions({...base, revs: visibleRefs})
+                    : new git.LogOptions({...base, all: true})
+            const [log, st, prog, stash] = await Promise.all([
                 GitLog(repoId, logOpts),
                 GitStatus(repoId),
                 GitInProgress(repoId),
+                GitStashes(repoId),
             ])
+            setStashes(stash ?? [])
             setCommits(log ?? [])
             setBranches(brs ?? [])
             setStatus(st)
@@ -214,7 +369,7 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
         } finally {
             setLoadingLog(false)
         }
-    }, [repoId, hidden])
+    }, [repoId, hidden, focusMode, search, pinned])
 
     useEffect(() => {
         void reload()
@@ -223,9 +378,14 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
     // run wraps every mutating operation: single-flight (busy gates the
     // toolbar), errors surfaced in the banner instead of thrown into the void,
     // and a reload afterwards so the UI reflects what actually happened rather
-    // than what was requested.
+    // than what was requested. Returns whether fn succeeded, so a caller that
+    // needs to chain a follow-up only on success (e.g. re-selecting the branch
+    // just checked out) doesn't have to duplicate the try/catch.
+    // onError lets a specific caller intercept a failure it knows how to
+    // recover from (see the plain "push" item's missing-upstream offer)
+    // instead of the default error banner — return true once handled.
     const run = useCallback(
-        async (label: string, fn: () => Promise<unknown>) => {
+        async (label: string, fn: () => Promise<unknown>, onError?: (e: unknown) => boolean) => {
             setBusy(label)
             setError(null)
             setNotice(null)
@@ -237,8 +397,15 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                 // reloading here as well would run every git command twice per
                 // action and flash the loading state.
                 onChanged()
+                // The command drawer reads off this token, so it shows what
+                // just ran without polling.
+                setLogToken((n) => n + 1)
+                return true
             } catch (e) {
-                setError(String(e))
+                if (!onError?.(e)) setError(String(e))
+                // A failed command is exactly the one worth seeing in the log.
+                setLogToken((n) => n + 1)
+                return false
             } finally {
                 setBusy(null)
             }
@@ -312,6 +479,41 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
 
     const copy = (text: string) => void navigator.clipboard.writeText(text)
 
+    // Single click on a branch: jump the graph to that branch's tip commit and
+    // select it, which is what clicking a branch is expected to do — checkout
+    // stays on double click and the context menu. The tip is Branch.Hash, so no
+    // extra git call is needed while the commit is in the loaded window.
+    const selectBranch = useCallback(
+        async (b: git.Branch) => {
+            setSelectedBranch(b.name)
+            setView('commits')
+            setSelectedPath(null)
+
+            const tip = commits.find((c) => c.hash === b.hash)
+            if (tip) {
+                setSelectedCommit(tip)
+                setReveal({hash: tip.hash, token: ++revealSeq.current})
+                return
+            }
+
+            // The tip is older than the LOG_PAGE commits currently graphed — the
+            // normal case for a long-lived branch thousands of commits behind.
+            // There is no row to scroll to, so load the commit itself and show
+            // it in the detail pane instead of silently doing nothing.
+            try {
+                const [outside] = (await GitLog(repoId, new git.LogOptions({maxCount: 1, rev: b.name, withStats: false}))) ?? []
+                if (!outside) return
+                setSelectedCommit(outside)
+                setNotice(
+                    `El último commit de "${b.name}" (${outside.shortHash}) queda fuera de los ${LOG_PAGE} commits cargados en el grafo, así que no hay fila a la que saltar. Lo tenés a la derecha.`,
+                )
+            } catch (e) {
+                setError(String(e))
+            }
+        },
+        [commits, repoId],
+    )
+
     // Right-click menu for a branch row. Local and remote branches get
     // different entries because they support genuinely different operations —
     // a remote branch has no upstream to set and cannot be renamed locally.
@@ -321,7 +523,12 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
             // the remote prefix (first path segment), keep any nested name.
             const localName = b.name.slice(b.name.indexOf('/') + 1)
             return [
-                {label: `Checkout ${b.name}`, icon: 'check', hint: 'Crea una rama local que la sigue', onSelect: () => run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name))},
+                {
+                    label: `Checkout ${b.name}`,
+                    icon: 'check',
+                    hint: 'Crea una rama local que la sigue',
+                    onSelect: () => void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => { if (ok) void selectBranch(b) }),
+                },
                 {
                     label: `Crear rama local '${localName}'`,
                     icon: 'account_tree',
@@ -355,7 +562,13 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
 
         const remoteCandidates = branches.filter((x) => x.isRemote).map((x) => x.name)
         return [
-            {label: `Checkout ${b.name}`, icon: 'check', disabled: b.isCurrent, hint: b.isCurrent ? 'Ya estás en esta rama' : undefined, onSelect: () => run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name))},
+            {
+                label: `Checkout ${b.name}`,
+                icon: 'check',
+                disabled: b.isCurrent,
+                hint: b.isCurrent ? 'Ya estás en esta rama' : undefined,
+                onSelect: () => void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => { if (ok) void selectBranch(b) }),
+            },
             {
                 label: `Merge ${b.name} en ${current?.name ?? 'la rama actual'}`,
                 icon: 'merge',
@@ -421,6 +634,15 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
     function commitMenuItems(c: git.CommitInfo): (DropdownItem | 'separator')[] {
         const short = c.shortHash
         return [
+            {
+                label: 'Reordenar y combinar desde acá…',
+                icon: 'low_priority',
+                // Rebases onto this commit, so THIS one is the base and
+                // everything after it is what gets rewritten — which is what
+                // "desde acá" has to mean for the action to be predictable.
+                onSelect: () => setRebaseBase({hash: c.hash, label: short}),
+            },
+            'separator',
             {
                 label: 'Crear rama acá…',
                 icon: 'account_tree',
@@ -628,7 +850,33 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
     ]
 
     const pushItems: (DropdownItem | 'separator')[] = [
-        {label: 'push', hint: 'Publica tus commits', icon: 'upload', onSelect: () => run('push', () => GitPush(repoId, new git.PushOptions({}), new git.AuthConfig({})))},
+        {
+            label: 'push',
+            hint: 'Publica tus commits',
+            icon: 'upload',
+            // The common failure the first time a branch is published: git
+            // refuses a plain push with no upstream to compare against
+            // instead of guessing a remote. Offer the fix inline via confirm
+            // rather than making the user find "push --set-upstream" in this
+            // same menu after reading the error banner.
+            onSelect: () =>
+                void run(
+                    'push',
+                    () => GitPush(repoId, new git.PushOptions({}), new git.AuthConfig({})),
+                    (e) => {
+                        if (!current?.name || !String(e).includes('no upstream branch')) return false
+                        setConfirm({
+                            title: 'Publicar y vincular la rama',
+                            description: `"${current.name}" todavía no tiene upstream configurado, así que un push simple no sabe a dónde publicarla. ¿Publicarla en "origin" y vincularla (--set-upstream)?`,
+                            confirmLabel: 'Publicar y vincular',
+                            label: 'push --set-upstream',
+                            danger: false,
+                            run: () => GitPush(repoId, new git.PushOptions({setUpstream: true, remote: 'origin', branch: current.name}), new git.AuthConfig({})),
+                        })
+                        return true
+                    },
+                ),
+        },
         {
             label: 'push --set-upstream',
             hint: 'Publica y vincula la rama',
@@ -654,6 +902,20 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
 
     const staged = status?.files?.filter((f) => f.staged) ?? []
     const unstaged = status?.files?.filter((f) => !f.staged) ?? []
+
+    // Case-insensitive substring — a branch filter is for finding "9595" or
+    // "hotfix" in a list of a hundred, not for pattern matching.
+    const branchQuery = branchFilter.trim().toLowerCase()
+    const matchesFilter = (b: git.Branch) => !branchQuery || b.name.toLowerCase().includes(branchQuery)
+    // Pinned branches float to the top of their section. Sorting rather than
+    // a separate list keeps one place to look for a branch — a pinned
+    // "develop" moving out of "Ramas" into a third section is exactly the
+    // kind of thing that makes people scroll looking for it.
+    const pinnedFirst = (list: git.Branch[]) =>
+        [...list].sort((a, b) => Number(pinned.includes(b.name)) - Number(pinned.includes(a.name)))
+
+    const localBranches = pinnedFirst(branches.filter((b) => !b.isRemote && matchesFilter(b)))
+    const remoteBranches = pinnedFirst(branches.filter((b) => b.isRemote && matchesFilter(b)))
 
     return (
         // min-w-0 is load-bearing, not cosmetic: without it this root's
@@ -726,6 +988,13 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                     <span className="min-w-0 flex-1">
                         Hay un <span className="font-mono">{inProgress}</span> en curso, probablemente con conflictos. Resolvé los archivos en conflicto y commiteá, o abortá para volver al estado anterior.
                     </span>
+                    <button
+                        onClick={() => setView('conflicts')}
+                        title="Abre el resolutor de conflictos: muestra las dos versiones lado a lado y permite elegir bloque por bloque, sin editar los marcadores a mano"
+                        className="shrink-0 rounded bg-primary px-2 py-0.5 text-on-primary hover:opacity-90"
+                    >
+                        Resolver conflictos
+                    </button>
                     {inProgress !== 'rebase' && (
                         <button
                             onClick={() => run(`${inProgress} --abort`, () => GitAbort(repoId, inProgress))}
@@ -738,6 +1007,69 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                     )}
                 </div>
             )}
+            <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-[11px]">
+                {forge?.compareUrl && (
+                    <button
+                        onClick={() => void GitOpenInBrowser(forge.compareUrl)}
+                        title={`Abre en el navegador la página de ${forge.provider} para crear el pull request de "${status?.branch}". No usa ningún token: se apoya en la sesión que ya tenés abierta.`}
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-primary hover:bg-surface-variant"
+                    >
+                        <Icon name="call_merge" size={13} />
+                        Crear pull request
+                    </button>
+                )}
+                <button
+                    onClick={() => setShowWorktrees((v) => !v)}
+                    title="Worktrees: tener varias ramas revisadas a la vez, en carpetas distintas, sin stashear ni cambiar de contexto"
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${showWorktrees ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                >
+                    <Icon name="dashboard" size={13} />
+                    Worktrees
+                </button>
+                <button
+                    onClick={() => setShowCommandLog((v) => !v)}
+                    title="Muestra el comando git exacto que se ejecutó por debajo y su salida — para entender un fallo sin tener que reproducirlo en una terminal"
+                    className={`ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 ${showCommandLog ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                >
+                    <Icon name="terminal" size={13} />
+                    Comandos
+                </button>
+            </div>
+
+            {showWorktrees && (
+                <div className="shrink-0 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+                    {worktrees.length === 0 ? (
+                        <p className="text-on-surface-variant">Solo hay un checkout de este repositorio.</p>
+                    ) : (
+                        worktrees.map((w) => (
+                            <div key={w.path} className="flex items-center gap-2 py-0.5">
+                                <Icon name={w.isMain ? 'home' : 'dashboard'} size={12} className="shrink-0 text-on-surface-variant" />
+                                <span className="shrink-0 font-mono text-on-surface">{w.branch || w.head.slice(0, 7)}</span>
+                                <span className="min-w-0 flex-1 truncate text-on-surface-variant/70" title={w.path}>
+                                    {w.path}
+                                </span>
+                                {w.prunable && (
+                                    <span className="shrink-0 text-tertiary" title={w.reason || 'La carpeta ya no existe'}>
+                                        carpeta ausente
+                                    </span>
+                                )}
+                                {w.isMain ? (
+                                    <span className="shrink-0 text-on-surface-variant/60">principal</span>
+                                ) : (
+                                    <button
+                                        onClick={() => void run('worktree remove', () => GitRemoveWorktree(repoId, w.path, false))}
+                                        title="Elimina este worktree. Si tiene cambios sin commitear, git se niega — es el comportamiento correcto."
+                                        className="shrink-0 rounded px-1 text-error hover:bg-error-container"
+                                    >
+                                        Quitar
+                                    </button>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+
             {error && <Banner kind="error" text={error} onClose={() => setError(null)} />}
             {notice && <Banner kind="info" text={notice} onClose={() => setNotice(null)} />}
 
@@ -757,28 +1089,134 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                             badge={status?.files.length ?? 0}
                             title="Ver los archivos modificados en el working tree y armar un commit"
                         />
+                        <ViewTab
+                            active={view === 'stash'}
+                            onClick={() => setView('stash')}
+                            icon="inventory_2"
+                            label="Stash"
+                            badge={stashes.length}
+                            title="Ver los cambios apartados en stashes, con su contenido, antes de aplicarlos"
+                        />
+                    </div>
+                    {/* Commit search. Distinct from the branch filter below:
+                        this one goes to git and narrows the HISTORY, that one
+                        narrows the branch list on screen. Keeping them apart
+                        matters — confusing the two means concluding a commit
+                        does not exist when it simply is not on this page. */}
+                    <div className="shrink-0 border-b border-outline-variant p-1">
+                        <div className="flex items-center gap-1 rounded bg-surface-container px-1.5 py-1 focus-within:ring-1 focus-within:ring-primary">
+                            <Icon name="manage_search" size={13} className="shrink-0 text-on-surface-variant/60" />
+                            <input
+                                value={searchText}
+                                onChange={(e) => setSearchText(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') setSearch(parseGitSearch(searchText))
+                                    if (e.key === 'Escape') {
+                                        setSearchText('')
+                                        setSearch(EMPTY_SEARCH)
+                                    }
+                                }}
+                                onBlur={() => setSearch(parseGitSearch(searchText))}
+                                placeholder="Buscar commits: autor: mensaje: archivo:…"
+                                title={`Busca en TODO el historial, no solo en lo cargado — el filtro lo aplica git.\n\n${GIT_SEARCH_HELP}`}
+                                className="min-w-0 flex-1 bg-transparent text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                            />
+                            <button
+                                onClick={() => setShowSearchHelp((v) => !v)}
+                                title="Ver los prefijos de búsqueda disponibles"
+                                className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
+                            >
+                                <Icon name="help" size={13} />
+                            </button>
+                            {searchText && (
+                                <button
+                                    onClick={() => {
+                                        setSearchText('')
+                                        setSearch(EMPTY_SEARCH)
+                                    }}
+                                    title="Limpiar la búsqueda"
+                                    className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
+                                >
+                                    <Icon name="close" size={13} />
+                                </button>
+                            )}
+                        </div>
+
+                        {showSearchHelp && (
+                            <pre className="mt-1 whitespace-pre-wrap rounded bg-surface-container px-1.5 py-1 text-[10px] leading-relaxed text-on-surface-variant">
+                                {GIT_SEARCH_HELP}
+                            </pre>
+                        )}
+
+                        {/* The active filter, spelled out. A search that
+                            silently narrows history is how people conclude a
+                            commit disappeared. */}
+                        {!isEmptySearch(search) && (
+                            <p className="mt-1 px-0.5 text-[10px] text-tertiary">Filtrado por {describeSearch(search)}</p>
+                        )}
+
+                        <label
+                            className="mt-1 flex items-center gap-1 px-0.5 text-[10px] text-on-surface-variant"
+                            title="Muestra solo la rama actual, los troncos (main/master/develop) y las ramas que ancles. En un repo con cientos de ramas remotas es la diferencia entre un grafo legible y una pared de carriles."
+                        >
+                            <input type="checkbox" checked={focusMode} onChange={(e) => setFocusMode(e.target.checked)} className="accent-primary" />
+                            Solo mi trabajo
+                        </label>
+                    </div>
+
+                    {/* A repository with a hundred remote branches (the normal
+                        case on a shared repo) makes the list unusable without a
+                        filter — and finding a branch is now the entry point to
+                        jumping around the graph, not just to checkout. */}
+                    <div className="shrink-0 border-b border-outline-variant p-1">
+                        <div className="flex items-center gap-1 rounded bg-surface-container px-1.5 py-1 focus-within:ring-1 focus-within:ring-primary">
+                            <Icon name="search" size={13} className="shrink-0 text-on-surface-variant/60" />
+                            <input
+                                value={branchFilter}
+                                onChange={(e) => setBranchFilter(e.target.value)}
+                                placeholder="Filtrar ramas…"
+                                title="Filtra por nombre, en las ramas locales y remotas a la vez"
+                                className="min-w-0 flex-1 bg-transparent text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                            />
+                            {branchFilter && (
+                                <button onClick={() => setBranchFilter('')} title="Limpiar el filtro" className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface">
+                                    <Icon name="close" size={13} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto p-1">
-                        <SectionLabel>Ramas</SectionLabel>
-                        {branches.filter((b) => !b.isRemote).map((b) => (
+                        <SectionLabel count={localBranches.length}>Ramas</SectionLabel>
+                        {localBranches.map((b) => (
                             <BranchRow
+                                isPinned={pinned.includes(b.name)}
+                                onTogglePin={() => void togglePinned(b.name)}
                                 key={b.name}
                                 branch={b}
+                                selected={selectedBranch === b.name}
                                 disabled={!!busy}
-                                onCheckout={() => run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name))}
+                                onSelect={() => void selectBranch(b)}
+                                onCheckout={() => void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => { if (ok) void selectBranch(b) })}
                                 onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: branchMenuItems(b)})}
                             />
                         ))}
-                        <SectionLabel>Remotas</SectionLabel>
-                        {branches.filter((b) => b.isRemote).map((b) => (
+                        <SectionLabel count={remoteBranches.length}>Remotas</SectionLabel>
+                        {remoteBranches.map((b) => (
                             <BranchRow
+                                isPinned={pinned.includes(b.name)}
+                                onTogglePin={() => void togglePinned(b.name)}
                                 key={b.name}
                                 branch={b}
+                                selected={selectedBranch === b.name}
                                 disabled={!!busy}
-                                onCheckout={() => run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name))}
+                                onSelect={() => void selectBranch(b)}
+                                onCheckout={() => void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => { if (ok) void selectBranch(b) })}
                                 onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: branchMenuItems(b)})}
                             />
                         ))}
+                        {branchFilter && localBranches.length === 0 && remoteBranches.length === 0 && (
+                            <p className="px-2 py-3 text-[11px] text-on-surface-variant/70">Ninguna rama coincide con «{branchFilter}».</p>
+                        )}
                     </div>
                 </div>
 
@@ -786,14 +1224,39 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
 
                 {/* Center: graph or working-tree changes */}
                 <div className="flex min-w-0 flex-1 flex-col">
-                    {view === 'commits' ? (
+                    {view === 'conflicts' ? (
+                        <GitConflictResolver
+                            repoId={repoId}
+                            operation={inProgress || 'merge'}
+                            busy={!!busy}
+                            onContinue={() => void run(`${inProgress} --continue`, () => GitContinue(repoId, inProgress))}
+                            onAbort={() => void run(`${inProgress} --abort`, () => GitAbort(repoId, inProgress))}
+                            onResolved={() => void reload()}
+                            onClose={() => setView('commits')}
+                        />
+                    ) : view === 'stash' ? (
+                        <GitStashPanel
+                            repoId={repoId}
+                            stashes={stashes}
+                            busy={!!busy}
+                            onApply={(ref, drop) => void run(drop ? 'stash pop' : 'stash apply', () => GitStashApply(repoId, ref, drop))}
+                            onDrop={(ref) => void run('stash drop', () => GitStashDrop(repoId, ref))}
+                            onPush={() => void run('stash push', () => GitStashPush(repoId, '', true))}
+                            onClose={() => setView('commits')}
+                        />
+                    ) : view === 'commits' ? (
                         <CommitGraph
                             commits={commits}
                             selectedHash={selectedCommit?.hash ?? null}
                             onSelect={(c) => {
                                 setSelectedCommit(c)
                                 setSelectedPath(null)
+                                // Picking a commit by hand invalidates the
+                                // sidebar highlight — the graph is no longer
+                                // sitting on that branch's tip.
+                                setSelectedBranch(null)
                             }}
+                            reveal={reveal}
                             onContextMenu={(c, e) => {
                                 e.preventDefault()
                                 setMenu({x: e.clientX, y: e.clientY, items: commitMenuItems(c)})
@@ -807,6 +1270,7 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                             selectedPath={selectedPath}
                             busy={!!busy}
                             commitMessage={commitMessage}
+                            branchName={status?.branch ?? ''}
                             onSelectPath={setSelectedPath}
                             onStage={(paths) => run('add', () => GitStage(repoId, paths))}
                             onStageAll={() => run('add --all', () => GitStageAll(repoId))}
@@ -842,6 +1306,42 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                                 ignoreWs={diffIgnoreWs}
                                 wrap={diffWrap}
                                 onChangePrefs={persistDiffPrefs}
+                                // Only the working-tree/index views can be
+                                // staged from. A commit's diff is history:
+                                // there is nothing to prepare.
+                                staged={view === 'changes' && stagedPaths(status).includes(selectedPath)}
+                                blame={blame ?? undefined}
+                                // A commit's diff is blamed AT that commit, so
+                                // its added lines belong to it and map to the
+                                // new side. A working-tree diff is blamed at
+                                // HEAD, where the added lines do not exist yet.
+                                blameSide={view === 'commits' ? 'new' : 'old'}
+                                onToggleBlame={() => {
+                                    if (blame) {
+                                        setBlame(null)
+                                        return
+                                    }
+                                    if (!selectedPath) return
+                                    GitBlame(repoId, selectedPath, view === 'commits' ? (selectedCommit?.hash ?? '') : '')
+                                        .then((b) => setBlame(b ?? []))
+                                        .catch((e) => setError(String(e)))
+                                }}
+                                onApplyPatch={
+                                    view === 'changes'
+                                        ? (patch, action) => {
+                                              if (action === 'discard') {
+                                                  setConfirmDiscardPatch(patch)
+                                                  return
+                                              }
+                                              // stage = apply to the index;
+                                              // unstage = the same patch,
+                                              // applied to the index in reverse.
+                                              void run(action === 'stage' ? 'apply --cached' : 'apply --cached --reverse', () =>
+                                                  GitApplyPatch(repoId, patch, true, action === 'unstage'),
+                                              )
+                                          }
+                                        : undefined
+                                }
                             />
                         ) : (
                             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -865,9 +1365,34 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                     title={confirm.title}
                     description={confirm.description}
                     confirmLabel={confirm.confirmLabel}
-                    danger
+                    danger={confirm.danger ?? true}
                     onConfirm={() => run(confirm.label, confirm.run)}
                     onClose={() => setConfirm(null)}
+                />
+            )}
+
+            {showCommandLog && <GitCommandLogDrawer reloadToken={logToken} onClose={() => setShowCommandLog(false)} />}
+
+            {rebaseBase && (
+                <GitRebaseDialog
+                    repoId={repoId}
+                    base={rebaseBase.hash}
+                    baseLabel={rebaseBase.label}
+                    onClose={() => setRebaseBase(null)}
+                    onDone={() => void reload()}
+                />
+            )}
+
+            {confirmDiscardPatch && (
+                <ConfirmDialog
+                    title="Descartar este bloque"
+                    description="Esto revierte solo el bloque seleccionado en el working tree y lo devuelve al estado del último commit. A diferencia de un commit o un stash, NO queda en el reflog: no hay forma de recuperarlo después."
+                    confirmLabel="Descartar bloque"
+                    danger
+                    onConfirm={() =>
+                        run('apply --reverse', () => GitApplyPatch(repoId, confirmDiscardPatch, false, true))
+                    }
+                    onClose={() => setConfirmDiscardPatch(null)}
                 />
             )}
 
@@ -955,32 +1480,88 @@ function ViewTab({active, onClick, icon, label, title, badge}: {active: boolean;
     )
 }
 
-function SectionLabel({children}: {children: React.ReactNode}) {
-    return <p className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">{children}</p>
+function SectionLabel({children, count}: {children: React.ReactNode; count?: number}) {
+    return (
+        <p className="flex items-baseline gap-1.5 px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">
+            {children}
+            {count != null && <span className="font-mono text-[9px] font-normal tabular-nums opacity-70">{count}</span>}
+        </p>
+    )
 }
 
-function BranchRow({branch, disabled, onCheckout, onContextMenu}: {branch: git.Branch; disabled: boolean; onCheckout: () => void; onContextMenu: (e: React.MouseEvent) => void}) {
+function BranchRow({
+    branch,
+    selected,
+    disabled,
+    onSelect,
+    onCheckout,
+    onContextMenu,
+    isPinned,
+    onTogglePin,
+}: {
+    branch: git.Branch
+    selected: boolean
+    disabled: boolean
+    onSelect: () => void
+    onCheckout: () => void
+    onContextMenu: (e: React.MouseEvent) => void
+    // Pinning keeps a branch at the top of its section and includes it in
+    // Focus Mode. Optional so the row still renders in contexts that do not
+    // offer pinning.
+    isPinned?: boolean
+    onTogglePin?: () => void
+}) {
     return (
         <button
+            onClick={onSelect}
             onDoubleClick={onCheckout}
             onContextMenu={(e) => {
                 e.preventDefault()
                 onContextMenu(e)
             }}
             disabled={disabled}
-            title={
+            title={`Click para ir al último commit de "${branch.name}". ${
                 branch.isCurrent
-                    ? `"${branch.name}" es la rama actual. Click derecho para merge, upstream o borrar`
-                    : `Doble click para hacer checkout de "${branch.name}"${branch.isRemote ? ' (crea una rama local que la sigue)' : ''}. Click derecho para más acciones`
-            }
-            className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] disabled:opacity-40 ${
-                branch.isCurrent ? 'bg-primary-container/60 text-on-primary-container' : 'text-on-surface hover:bg-surface-variant'
+                    ? 'Ya es la rama actual'
+                    : `Doble click para hacer checkout${branch.isRemote ? ' (crea una rama local que la sigue)' : ''}`
+            }. Click derecho para más acciones`}
+            className={`group relative flex w-full items-center gap-1.5 rounded px-2 py-1 pl-2.5 text-left text-[11px] transition-colors disabled:opacity-40 ${
+                // Three states that must stay distinguishable at a glance:
+                // checked out (primary), pointed at by the graph (a secondary
+                // tint + accent bar, quiet enough for a long list), and plain.
+                // isCurrent wins the background so checking out a branch you
+                // had just clicked (the common double-click path — the click
+                // half fires first and sets `selected`) still visibly flips to
+                // "you are here" instead of staying stuck on the selection
+                // tint; the accent bar below still marks `selected` on its own.
+                branch.isCurrent ? 'bg-primary-container/60 text-on-primary-container' : selected ? 'bg-secondary-container/25 text-on-surface' : 'text-on-surface hover:bg-surface-variant'
             }`}
         >
+            {selected && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-secondary" />}
+            <span
+                role="button"
+                tabIndex={-1}
+                onClick={(e) => {
+                    e.stopPropagation()
+                    onTogglePin?.()
+                }}
+                title={
+                    isPinned
+                        ? `Desanclar "${branch.name}" — dejará de quedar arriba de la lista`
+                        : `Anclar "${branch.name}" para que quede siempre arriba de la lista, y se incluya en "Solo mi trabajo"`
+                }
+                className={`shrink-0 ${isPinned ? 'text-tertiary' : 'text-on-surface-variant/30 opacity-0 group-hover:opacity-100'}`}
+            >
+                <Icon name="star" size={12} filled={isPinned} />
+            </span>
             <Icon name={branch.isRemote ? 'cloud' : 'account_tree'} size={13} className="shrink-0 opacity-70" />
             <span className="truncate">{branch.name}</span>
+            {/* The checked-out branch keeps a marker of its own even when
+                another branch is the one selected in the graph — otherwise
+                clicking around the sidebar loses track of where HEAD is. */}
+            {branch.isCurrent && <Icon name="check" size={12} className="ml-auto shrink-0 opacity-80" />}
             {(branch.ahead > 0 || branch.behind > 0) && (
-                <span className="ml-auto shrink-0 text-[9px] text-on-surface-variant/70">
+                <span className={`shrink-0 font-mono text-[9px] opacity-70 ${branch.isCurrent ? '' : 'ml-auto'}`}>
                     {branch.ahead > 0 && `↑${branch.ahead}`}
                     {branch.behind > 0 && `↓${branch.behind}`}
                 </span>
@@ -1041,6 +1622,7 @@ function ChangesPanel({
     selectedPath,
     busy,
     commitMessage,
+    branchName,
     onSelectPath,
     onStage,
     onStageAll,
@@ -1054,6 +1636,9 @@ function ChangesPanel({
     selectedPath: string | null
     busy: boolean
     commitMessage: string
+    // The checked-out branch, used only to read the ticket id out of its
+    // name for the commit helper.
+    branchName: string
     onSelectPath: (p: string) => void
     onStage: (paths: string[]) => void
     onStageAll: () => void
@@ -1093,6 +1678,44 @@ function ChangesPanel({
                 >
                     Stagear todo
                 </button>
+
+                {/* Commit helper. The ticket half is what actually saves
+                    typing: the branch already states which ticket the work
+                    belongs to, and re-typing it into every message is both
+                    tedious and the thing people forget — which is exactly
+                    when the traceability the convention exists for breaks. */}
+                <div className="flex items-center gap-1">
+                    <select
+                        value={currentPrefixOf(commitMessage).type}
+                        onChange={(e) => {
+                            const type = e.target.value
+                            const scope = currentPrefixOf(commitMessage).scope || extractTicket(branchName)
+                            onChangeMessage(type ? applyPrefix(commitMessage, buildCommitPrefix(type, scope)) : commitMessage)
+                        }}
+                        title="Prefijo de Conventional Commits. Cambiarlo reemplaza el que ya tenga el mensaje, no apila uno nuevo."
+                        className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container px-1 py-0.5 text-[11px] text-on-surface"
+                    >
+                        <option value="">tipo…</option>
+                        {COMMIT_TYPES.map((t) => (
+                            <option key={t.value} value={t.value} title={t.hint}>
+                                {t.label}
+                            </option>
+                        ))}
+                    </select>
+                    {!!extractTicket(branchName) && (
+                        <button
+                            onClick={() => {
+                                const {type} = currentPrefixOf(commitMessage)
+                                onChangeMessage(applyPrefix(commitMessage, buildCommitPrefix(type || 'feat', extractTicket(branchName))))
+                            }}
+                            title={`Usa "${extractTicket(branchName)}" como scope, leído del nombre de la rama (${branchName})`}
+                            className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 font-mono text-[10px] text-on-surface-variant hover:text-on-surface"
+                        >
+                            {extractTicket(branchName)}
+                        </button>
+                    )}
+                </div>
+
                 <textarea
                     value={commitMessage}
                     onChange={(e) => onChangeMessage(e.target.value)}
@@ -1191,4 +1814,45 @@ function StatusChip({file}: {file: git.FileStatus}) {
             {code}
         </span>
     )
+}
+
+// searchToLogOptions maps the parsed search onto git log flags. Everything
+// here is applied by git, which is what makes the search cover the whole
+// history instead of the page on screen.
+function searchToLogOptions(s: GitSearch) {
+    return {
+        author: s.author,
+        grep: s.grep,
+        path: s.path,
+        since: s.since,
+        until: s.until,
+        // A hash narrows the walk to that commit's ancestry, which is what
+        // "show me from here back" means — and it has to override --all, so
+        // it is returned as `rev` and the caller drops `all` when set.
+        rev: s.rev,
+    }
+}
+
+// focusRefsOf is the ref set Focus Mode walks: the current branch, the
+// trunks that actually exist in this repository, and whatever the user
+// pinned. Pinned branches are included because pinning already says "this
+// one matters to me" — having to un-focus to see it would make the two
+// features fight each other.
+function focusRefsOf(branches: git.Branch[], pinned: string[]): string[] {
+    const TRUNKS = ['main', 'master', 'develop', 'development']
+    const names = new Set(branches.map((b) => b.name))
+    const refs = new Set<string>()
+
+    const current = branches.find((b) => b.isCurrent)
+    if (current) refs.add(current.name)
+    for (const t of TRUNKS) {
+        if (names.has(t)) refs.add(t)
+    }
+    for (const p of pinned) {
+        if (names.has(p)) refs.add(p)
+    }
+
+    // Never return an empty set: git would then walk HEAD only, which on a
+    // detached HEAD is a single commit and looks like the graph broke.
+    return refs.size > 0 ? [...refs] : []
 }

@@ -17,7 +17,14 @@ import {
 } from '../../../wailsjs/go/main/App'
 import {db} from '../../../wailsjs/go/models'
 import {looksBinary} from '../../lib/binaryPreview'
-import {tryPrettyPrintJSON} from '../../lib/prettyPrintJSON'
+import RedisTTLControl from './RedisTTLControl'
+import RedisValueTable, {
+    HASH_COLUMNS, LIST_COLUMNS, SET_COLUMNS, ZSET_COLUMNS, STREAM_COLUMNS,
+    hashRows, listRows, setRows, zsetRows, streamRows,
+} from './RedisValueTable'
+import {formatError, formatValue, REDIS_FORMATS, type RedisFormat} from '../../lib/redisFormat'
+import RedisStagingBar from './RedisStagingBar'
+import RedisValueDrawer from './RedisValueDrawer'
 import {formatBytes} from '../../lib/formatBytes'
 import {redisTypeStyle} from '../../lib/redisTypeStyle'
 import ConfirmDialog from '../ConfirmDialog'
@@ -48,28 +55,6 @@ interface ValuePage {
     cursor?: string
 }
 
-function ttlLabel(ttlSeconds: number): string {
-    if (ttlSeconds === -1) return 'sin expiración'
-    if (ttlSeconds === -2) return 'no existe (expiró)'
-    return `${ttlSeconds}s`
-}
-
-// Renders a scalar value (a string field/member/element from any Redis
-// type), unless it looks binary/non-printable — a marshaled object or a
-// Sidekiq-style lock value stored as raw bytes renders as a confusing
-// "tofu" box (the browser's missing-glyph placeholder) otherwise, since the
-// value already went through lossy UTF-8 replacement on the backend (see
-// lib/binaryPreview.ts) before it ever reaches this component. Binary
-// values are shown read-only even for types that are otherwise editable —
-// there's no safe text editor round-trip for bytes that already lost
-// information going through UTF-8 replacement.
-function renderScalar(raw: string) {
-    if (looksBinary(raw)) {
-        return <span className="italic text-on-surface-variant">contenido binario / no imprimible ({raw.length} caracteres)</span>
-    }
-    return <>{raw}</>
-}
-
 // The Redis Browser tab's detail panel — shows type/TTL/size and a
 // type-shaped, paginated rendering of a key's value (see db.GetRedisValue),
 // same fetch/pagination logic RedisValueInspector.tsx used, but embeddable
@@ -95,28 +80,148 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
     const [copyHint, setCopyHint] = useState('')
     const [saving, setSaving] = useState(false)
 
+    // How to render values. Redis stores bytes: the same key can hold a JSON
+    // document, a marshaled object or a lock token that is not text at all,
+    // so one rendering cannot serve them. 'auto' picks per value; the rest
+    // are the override for when it guesses wrong.
+    const [format, setFormat] = useState<RedisFormat>('auto')
+
+    // Staged edits and deletions, keyed by row id (hash field, list index,
+    // set/zset member). NOTHING here has been written to Redis: the whole
+    // point is that a mistyped value is a Discard away instead of gone.
+    // Redis has no undo and the UI holds no transaction open, so the buffer
+    // is the only safety net there is.
+    const [pendingEdits, setPendingEdits] = useState<Record<string, string>>({})
+    const [pendingDeletes, setPendingDeletes] = useState<string[]>([])
+    const [applying, setApplying] = useState(false)
+    const [drawer, setDrawer] = useState<{rowId: string; value: string; readOnly: boolean} | null>(null)
+
+    function stageEdit(rowId: string, value: string) {
+        setPendingEdits((prev) => ({...prev, [rowId]: value}))
+    }
+
+    function revertEdit(rowId: string) {
+        setPendingEdits((prev) => {
+            const next = {...prev}
+            delete next[rowId]
+            return next
+        })
+    }
+
+    function toggleDelete(rowId: string) {
+        setPendingDeletes((prev) => (prev.includes(rowId) ? prev.filter((id) => id !== rowId) : [...prev, rowId]))
+        // A row on its way out has no use for a pending edit.
+        revertEdit(rowId)
+    }
+
+    // Adding an element writes immediately and then reloads, which would
+    // wipe the staged buffer along with it. Rather than silently losing that
+    // work, the add row is blocked while anything is pending.
+    const hasStaged = Object.keys(pendingEdits).length > 0 || pendingDeletes.length > 0
+    const stagedBlockTitle = 'Guardá o descartá los cambios pendientes antes de agregar: agregar recarga la clave y perdería lo que tenés sin aplicar.'
+
+    function discardStaged() {
+        setPendingEdits({})
+        setPendingDeletes([])
+    }
+
+    // applyStaged writes the buffer to Redis, one command per change —
+    // Redis has no multi-key transaction the UI is holding open, so this is
+    // a sequence, not an atomic apply. Ordering matters in two ways and
+    // both are load-bearing:
+    //
+    //  1. Edits run BEFORE deletes. For a list, an edit addresses a
+    //     position (LSET index), and deleting first would shift every
+    //     position after it — the edit would then land on the wrong element.
+    //  2. List deletes run from the HIGHEST index down. Removing index 2
+    //     shifts 3 into 2, so deleting ascending removes the wrong elements
+    //     from the second one onward. Descending leaves the not-yet-deleted
+    //     indices untouched.
+    //
+    // The other types key by name (hash field, set/zset member), where
+    // neither concern applies.
+    async function applyStaged() {
+        if (!info) return
+        setApplying(true)
+        setError('')
+        try {
+            for (const [rowId, value] of Object.entries(pendingEdits)) {
+                switch (info.type) {
+                    case 'hash':
+                        await SetRedisHashField(connId, keyName, rowId, value)
+                        break
+                    case 'list':
+                        await SetRedisListIndex(connId, keyName, Number(rowId), value)
+                        break
+                    case 'zset':
+                        await AddRedisZSetMember(connId, keyName, rowId, Number(value) || 0)
+                        break
+                }
+            }
+
+            const deletions =
+                info.type === 'list'
+                    ? [...pendingDeletes].sort((a, b) => Number(b) - Number(a))
+                    : pendingDeletes
+
+            for (const rowId of deletions) {
+                switch (info.type) {
+                    case 'hash':
+                        await DeleteRedisHashField(connId, keyName, rowId)
+                        break
+                    case 'list':
+                        await RemoveRedisListIndex(connId, keyName, Number(rowId))
+                        break
+                    case 'set':
+                        await RemoveRedisSetMember(connId, keyName, rowId)
+                        break
+                    case 'zset':
+                        await RemoveRedisZSetMember(connId, keyName, rowId)
+                        break
+                }
+            }
+
+            discardStaged()
+            await load()
+        } catch (e) {
+            // The buffer is deliberately NOT cleared on failure: some
+            // commands may have gone through and some not, and dropping the
+            // rest would hide what is still unapplied.
+            setError(`No se pudieron aplicar todos los cambios: ${e}`)
+        } finally {
+            setApplying(false)
+        }
+    }
+
+    // Shared staging props for the value tables. `editable` is the column a
+    // cell edit changes — a set has none, since its member IS its identity.
+    function stagingProps(editableColumn?: string) {
+        return {
+            editableColumn,
+            pendingEdits,
+            pendingDeletes,
+            onEdit: editableColumn ? stageEdit : undefined,
+            onRevertEdit: editableColumn ? revertEdit : undefined,
+            onToggleDelete: toggleDelete,
+        }
+    }
+
     // string/JSON: whole-value textarea edit.
     const [editingWhole, setEditingWhole] = useState(false)
     const [wholeDraft, setWholeDraft] = useState('')
     const [wholeError, setWholeError] = useState('')
 
     // hash: per-field inline edit + "add field" row.
-    const [editingHashField, setEditingHashField] = useState<string | null>(null)
-    const [hashFieldDraft, setHashFieldDraft] = useState('')
     const [newHashField, setNewHashField] = useState('')
     const [newHashValue, setNewHashValue] = useState('')
 
     // list: per-index inline edit + "push" row.
-    const [editingListIndex, setEditingListIndex] = useState<number | null>(null)
-    const [listItemDraft, setListItemDraft] = useState('')
     const [newListValue, setNewListValue] = useState('')
 
     // set: "add member" row (removal has no inline edit, only delete).
     const [newSetMember, setNewSetMember] = useState('')
 
-    // zset: per-member score inline edit + "add member" row.
-    const [editingZsetMember, setEditingZsetMember] = useState<string | null>(null)
-    const [zsetScoreDraft, setZsetScoreDraft] = useState('')
+    // zset: "add member" row.
     const [newZsetMember, setNewZsetMember] = useState('')
     const [newZsetScore, setNewZsetScore] = useState('0')
 
@@ -125,9 +230,12 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
         setError('')
         setValue(null)
         setEditingWhole(false)
-        setEditingHashField(null)
-        setEditingListIndex(null)
-        setEditingZsetMember(null)
+        // Reloading the key means the staged buffer no longer describes what
+        // is on screen — a pending edit on hash field "x" is meaningless once
+        // the values were re-read. Dropping it beats applying it blind.
+        setPendingEdits({})
+        setPendingDeletes([])
+        setDrawer(null)
         try {
             const keyInfo = await GetRedisKeyInfo(connId, keyName)
             setInfo(keyInfo)
@@ -274,7 +382,27 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                                 </span>
                             )
                         })()}
-                        <span title="Tiempo de vida restante — -1 sin expiración, -2 la key ya no existe">TTL: {ttlLabel(info.ttlSeconds)}</span>
+                        <RedisTTLControl
+                            connId={connId}
+                            keyName={keyName}
+                            ttlSeconds={info.ttlSeconds}
+                            onChanged={() => void load()}
+                            onError={setError}
+                        />
+                        <label className="flex items-center gap-1" title="Cómo interpretar el contenido de los valores">
+                            Formato
+                            <select
+                                value={format}
+                                onChange={(e) => setFormat(e.target.value as RedisFormat)}
+                                className="rounded border border-outline-variant bg-surface-container-low px-1 py-0.5 text-xs text-on-surface"
+                            >
+                                {REDIS_FORMATS.map((f) => (
+                                    <option key={f.value} value={f.value} title={f.hint}>
+                                        {f.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
                         {!!info.sizeBytes && (
                             <span title="Estimación de MEMORY USAGE — memoria aproximada que ocupa esta key">
                                 Tamaño: {formatBytes(info.sizeBytes)}
@@ -300,7 +428,15 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-auto rounded-lg border border-outline-variant bg-surface p-2 font-mono text-xs">
+                    <RedisStagingBar
+                        editCount={Object.keys(pendingEdits).length}
+                        deleteCount={pendingDeletes.length}
+                        saving={applying}
+                        onSave={() => void applyStaged()}
+                        onDiscard={discardStaged}
+                    />
+
+                    <div className="relative flex-1 overflow-auto rounded-lg border border-outline-variant bg-surface p-2 font-mono text-xs">
                         {(info.type === 'string' || info.type === 'ReJSON-RL') &&
                             (editingWhole ? (
                                 <div className="flex h-full flex-col gap-2">
@@ -345,411 +481,155 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                                             Editar
                                         </button>
                                     </div>
-                                    <pre className="flex-1 whitespace-pre-wrap break-all">{tryPrettyPrintJSON(value?.stringVal ?? '')}</pre>
+                                    {formatError(value?.stringVal ?? '', format) && (
+                                        <p className="text-[11px] text-tertiary">{formatError(value?.stringVal ?? '', format)}</p>
+                                    )}
+                                    <pre className="flex-1 whitespace-pre-wrap break-all">{formatValue(value?.stringVal ?? '', format)}</pre>
                                 </div>
                             ))}
 
                         {info.type === 'hash' && (
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="text-on-surface-variant">
-                                        <th className="pb-1 pr-2">Field</th>
-                                        <th className="pb-1">Value</th>
-                                        <th className="w-16 pb-1" />
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(value?.hashPairs ?? []).map((p) => (
-                                        <tr key={p.field} className="align-top">
-                                            <td className="pr-2 text-on-surface-variant">{renderScalar(p.field)}</td>
-                                            <td className="break-all">
-                                                {editingHashField === p.field ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <input
-                                                            value={hashFieldDraft}
-                                                            onChange={(e) => setHashFieldDraft(e.target.value)}
-                                                            autoFocus
-                                                            className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                                        />
-                                                        <button
-                                                            onClick={() =>
-                                                                void mutate(async () => {
-                                                                    await SetRedisHashField(connId, keyName, p.field, hashFieldDraft)
-                                                                }).then((ok) => ok && setEditingHashField(null))
-                                                            }
-                                                            title="Guardar"
-                                                            className="rounded p-0.5 text-primary hover:bg-surface-variant"
-                                                        >
-                                                            <Icon name="check" size={14} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setEditingHashField(null)}
-                                                            title="Cancelar"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant"
-                                                        >
-                                                            <Icon name="close" size={14} />
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    renderScalar(p.value)
-                                                )}
-                                            </td>
-                                            <td className="whitespace-nowrap text-right">
-                                                {editingHashField !== p.field && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => {
-                                                                setEditingHashField(p.field)
-                                                                setHashFieldDraft(p.value)
-                                                            }}
-                                                            title="Editar valor de este field"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-primary"
-                                                        >
-                                                            <Icon name="edit" size={13} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() =>
-                                                                void mutate(async () => {
-                                                                    await DeleteRedisHashField(connId, keyName, p.field)
-                                                                })
-                                                            }
-                                                            title="Eliminar este field (HDEL)"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error"
-                                                        >
-                                                            <Icon name="delete" size={13} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    <tr>
-                                        <td className="pr-2 pt-2">
-                                            <input
-                                                value={newHashField}
-                                                onChange={(e) => setNewHashField(e.target.value)}
-                                                placeholder="field nuevo"
-                                                className="w-full rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                            />
-                                        </td>
-                                        <td className="pt-2">
-                                            <input
-                                                value={newHashValue}
-                                                onChange={(e) => setNewHashValue(e.target.value)}
-                                                placeholder="value"
-                                                className="w-full rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                            />
-                                        </td>
-                                        <td className="pt-2 text-right">
-                                            <button
-                                                onClick={() =>
-                                                    void mutate(async () => {
-                                                        await SetRedisHashField(connId, keyName, newHashField, newHashValue)
-                                                    }).then((ok) => {
-                                                        if (ok) {
-                                                            setNewHashField('')
-                                                            setNewHashValue('')
-                                                        }
-                                                    })
-                                                }
-                                                disabled={!newHashField}
-                                                title="Agregar field (HSET)"
-                                                className="rounded p-0.5 text-primary hover:bg-surface-variant disabled:opacity-40"
-                                            >
-                                                <Icon name="add" size={14} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <>
+                                <RedisValueTable
+                                    columns={HASH_COLUMNS}
+                                    rows={hashRows(value?.hashPairs ?? [])}
+                                    format={format}
+                                    emptyLabel="Este hash no tiene campos."
+                                    {...stagingProps('value')}
+                                    onExpand={(rowId, v) => setDrawer({rowId, value: v, readOnly: false})}
+                                    rowActions={(row) => (
+                                        <DeleteToggle
+                                            staged={pendingDeletes.includes(row.id)}
+                                            onToggle={() => toggleDelete(row.id)}
+                                            label="campo (HDEL)"
+                                        />
+                                    )}
+                                />
+                                <AddRow
+                                    inputs={[
+                                        {value: newHashField, onChange: setNewHashField, placeholder: 'campo nuevo'},
+                                        {value: newHashValue, onChange: setNewHashValue, placeholder: 'valor'},
+                                    ]}
+                                    disabled={!newHashField || hasStaged}
+                                    title={hasStaged ? stagedBlockTitle : "Agrega un campo al hash (HSET)"}
+                                    onAdd={() =>
+                                        void mutate(async () => {
+                                            await SetRedisHashField(connId, keyName, newHashField, newHashValue)
+                                        }).then((ok) => {
+                                            if (ok) {
+                                                setNewHashField('')
+                                                setNewHashValue('')
+                                            }
+                                        })
+                                    }
+                                />
+                            </>
                         )}
 
                         {info.type === 'list' && (
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="text-on-surface-variant">
-                                        <th className="w-10 pb-1 pr-2">#</th>
-                                        <th className="pb-1">Value</th>
-                                        <th className="w-16 pb-1" />
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(value?.listItems ?? []).map((v, i) => (
-                                        <tr key={i} className="align-top">
-                                            <td className="pr-2 text-on-surface-variant">{i}</td>
-                                            <td className="break-all">
-                                                {editingListIndex === i ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <input
-                                                            value={listItemDraft}
-                                                            onChange={(e) => setListItemDraft(e.target.value)}
-                                                            autoFocus
-                                                            className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                                        />
-                                                        <button
-                                                            onClick={() =>
-                                                                void mutate(async () => {
-                                                                    await SetRedisListIndex(connId, keyName, i, listItemDraft)
-                                                                }).then((ok) => ok && setEditingListIndex(null))
-                                                            }
-                                                            title="Guardar"
-                                                            className="rounded p-0.5 text-primary hover:bg-surface-variant"
-                                                        >
-                                                            <Icon name="check" size={14} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setEditingListIndex(null)}
-                                                            title="Cancelar"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant"
-                                                        >
-                                                            <Icon name="close" size={14} />
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    renderScalar(v)
-                                                )}
-                                            </td>
-                                            <td className="whitespace-nowrap text-right">
-                                                {editingListIndex !== i && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => {
-                                                                setEditingListIndex(i)
-                                                                setListItemDraft(v)
-                                                            }}
-                                                            title="Editar este elemento (LSET)"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-primary"
-                                                        >
-                                                            <Icon name="edit" size={13} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() =>
-                                                                void mutate(async () => {
-                                                                    await RemoveRedisListIndex(connId, keyName, i)
-                                                                })
-                                                            }
-                                                            title="Eliminar este elemento"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error"
-                                                        >
-                                                            <Icon name="delete" size={13} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    <tr>
-                                        <td className="pt-2 text-on-surface-variant">+</td>
-                                        <td className="pt-2">
-                                            <input
-                                                value={newListValue}
-                                                onChange={(e) => setNewListValue(e.target.value)}
-                                                placeholder="nuevo elemento (se agrega al final)"
-                                                className="w-full rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                            />
-                                        </td>
-                                        <td className="pt-2 text-right">
-                                            <button
-                                                onClick={() =>
-                                                    void mutate(async () => {
-                                                        await PushRedisListValue(connId, keyName, newListValue)
-                                                    }).then((ok) => ok && setNewListValue(''))
-                                                }
-                                                disabled={!newListValue}
-                                                title="Agregar al final (RPUSH)"
-                                                className="rounded p-0.5 text-primary hover:bg-surface-variant disabled:opacity-40"
-                                            >
-                                                <Icon name="add" size={14} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <>
+                                <RedisValueTable
+                                    columns={LIST_COLUMNS}
+                                    rows={listRows(value?.listItems ?? [], 0)}
+                                    format={format}
+                                    emptyLabel="Esta lista está vacía."
+                                    {...stagingProps('value')}
+                                    onExpand={(rowId, v) => setDrawer({rowId, value: v, readOnly: false})}
+                                    rowActions={(row) => (
+                                        <DeleteToggle
+                                            staged={pendingDeletes.includes(row.id)}
+                                            onToggle={() => toggleDelete(row.id)}
+                                            label="elemento de la lista"
+                                        />
+                                    )}
+                                />
+                                <AddRow
+                                    inputs={[{value: newListValue, onChange: setNewListValue, placeholder: 'nuevo elemento (se agrega al final)'}]}
+                                    disabled={!newListValue || hasStaged}
+                                    title={hasStaged ? stagedBlockTitle : "Agrega el elemento al final de la lista (RPUSH)"}
+                                    onAdd={() =>
+                                        void mutate(async () => {
+                                            await PushRedisListValue(connId, keyName, newListValue)
+                                        }).then((ok) => ok && setNewListValue(''))
+                                    }
+                                />
+                            </>
                         )}
 
                         {info.type === 'set' && (
                             <>
-                                <ul className="list-none">
-                                    {(value?.setMembers ?? []).map((m) => (
-                                        <li key={m} className="flex items-center gap-2 break-all py-0.5">
-                                            <span className="flex-1">{renderScalar(m)}</span>
-                                            <button
-                                                onClick={() =>
-                                                    void mutate(async () => {
-                                                        await RemoveRedisSetMember(connId, keyName, m)
-                                                    })
-                                                }
-                                                title="Eliminar este member (SREM)"
-                                                className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error"
-                                            >
-                                                <Icon name="delete" size={13} />
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                                <div className="mt-2 flex items-center gap-1">
-                                    <input
-                                        value={newSetMember}
-                                        onChange={(e) => setNewSetMember(e.target.value)}
-                                        placeholder="member nuevo"
-                                        className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                    />
-                                    <button
-                                        onClick={() =>
-                                            void mutate(async () => {
-                                                await AddRedisSetMember(connId, keyName, newSetMember)
-                                            }).then((ok) => ok && setNewSetMember(''))
-                                        }
-                                        disabled={!newSetMember}
-                                        title="Agregar member (SADD)"
-                                        className="rounded p-0.5 text-primary hover:bg-surface-variant disabled:opacity-40"
-                                    >
-                                        <Icon name="add" size={14} />
-                                    </button>
-                                </div>
+                                <RedisValueTable
+                                    columns={SET_COLUMNS}
+                                    rows={setRows(value?.setMembers ?? [])}
+                                    format={format}
+                                    emptyLabel="Este conjunto está vacío."
+                                    {...stagingProps()}
+                                    onExpand={(rowId, v) => setDrawer({rowId, value: v, readOnly: true})}
+                                    rowActions={(row) => (
+                                        <DeleteToggle
+                                            staged={pendingDeletes.includes(row.id)}
+                                            onToggle={() => toggleDelete(row.id)}
+                                            label="miembro del conjunto (SREM)"
+                                        />
+                                    )}
+                                />
+                                <AddRow
+                                    inputs={[{value: newSetMember, onChange: setNewSetMember, placeholder: 'miembro nuevo'}]}
+                                    disabled={!newSetMember || hasStaged}
+                                    title={hasStaged ? stagedBlockTitle : "Agrega un miembro al conjunto (SADD)"}
+                                    onAdd={() =>
+                                        void mutate(async () => {
+                                            await AddRedisSetMember(connId, keyName, newSetMember)
+                                        }).then((ok) => ok && setNewSetMember(''))
+                                    }
+                                />
                             </>
                         )}
 
                         {info.type === 'zset' && (
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="text-on-surface-variant">
-                                        <th className="pb-1 pr-2">Member</th>
-                                        <th className="pb-1">Score</th>
-                                        <th className="w-16 pb-1" />
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(value?.zsetItems ?? []).map((z) => (
-                                        <tr key={z.member} className="align-top">
-                                            <td className="break-all pr-2">{renderScalar(z.member)}</td>
-                                            <td className="text-on-surface-variant">
-                                                {editingZsetMember === z.member ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <input
-                                                            value={zsetScoreDraft}
-                                                            onChange={(e) => setZsetScoreDraft(e.target.value)}
-                                                            type="number"
-                                                            autoFocus
-                                                            className="w-20 rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                                        />
-                                                        <button
-                                                            onClick={() =>
-                                                                void mutate(async () => {
-                                                                    await AddRedisZSetMember(connId, keyName, z.member, Number(zsetScoreDraft) || 0)
-                                                                }).then((ok) => ok && setEditingZsetMember(null))
-                                                            }
-                                                            title="Guardar"
-                                                            className="rounded p-0.5 text-primary hover:bg-surface-variant"
-                                                        >
-                                                            <Icon name="check" size={14} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setEditingZsetMember(null)}
-                                                            title="Cancelar"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant"
-                                                        >
-                                                            <Icon name="close" size={14} />
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    z.score
-                                                )}
-                                            </td>
-                                            <td className="whitespace-nowrap text-right">
-                                                {editingZsetMember !== z.member && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => {
-                                                                setEditingZsetMember(z.member)
-                                                                setZsetScoreDraft(String(z.score))
-                                                            }}
-                                                            title="Editar score (ZADD)"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-primary"
-                                                        >
-                                                            <Icon name="edit" size={13} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() =>
-                                                                void mutate(async () => {
-                                                                    await RemoveRedisZSetMember(connId, keyName, z.member)
-                                                                })
-                                                            }
-                                                            title="Eliminar este member (ZREM)"
-                                                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error"
-                                                        >
-                                                            <Icon name="delete" size={13} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    <tr>
-                                        <td className="pr-2 pt-2">
-                                            <input
-                                                value={newZsetMember}
-                                                onChange={(e) => setNewZsetMember(e.target.value)}
-                                                placeholder="member nuevo"
-                                                className="w-full rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                            />
-                                        </td>
-                                        <td className="pt-2">
-                                            <input
-                                                value={newZsetScore}
-                                                onChange={(e) => setNewZsetScore(e.target.value)}
-                                                type="number"
-                                                className="w-20 rounded border border-outline-variant bg-surface-container-lowest px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
-                                            />
-                                        </td>
-                                        <td className="pt-2 text-right">
-                                            <button
-                                                onClick={() =>
-                                                    void mutate(async () => {
-                                                        await AddRedisZSetMember(connId, keyName, newZsetMember, Number(newZsetScore) || 0)
-                                                    }).then((ok) => {
-                                                        if (ok) {
-                                                            setNewZsetMember('')
-                                                            setNewZsetScore('0')
-                                                        }
-                                                    })
-                                                }
-                                                disabled={!newZsetMember}
-                                                title="Agregar member (ZADD)"
-                                                className="rounded p-0.5 text-primary hover:bg-surface-variant disabled:opacity-40"
-                                            >
-                                                <Icon name="add" size={14} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <>
+                                <RedisValueTable
+                                    columns={ZSET_COLUMNS}
+                                    rows={zsetRows(value?.zsetItems ?? [])}
+                                    format={format}
+                                    emptyLabel="Este sorted set está vacío."
+                                    {...stagingProps('score')}
+                                    rowActions={(row) => (
+                                        <DeleteToggle
+                                            staged={pendingDeletes.includes(row.id)}
+                                            onToggle={() => toggleDelete(row.id)}
+                                            label="miembro del sorted set (ZREM)"
+                                        />
+                                    )}
+                                />
+                                <AddRow
+                                    inputs={[
+                                        {value: newZsetMember, onChange: setNewZsetMember, placeholder: 'miembro nuevo'},
+                                        {value: newZsetScore, onChange: setNewZsetScore, placeholder: 'score', numeric: true},
+                                    ]}
+                                    disabled={!newZsetMember || hasStaged}
+                                    title={hasStaged ? stagedBlockTitle : "Agrega un miembro con su score (ZADD)"}
+                                    onAdd={() =>
+                                        void mutate(async () => {
+                                            await AddRedisZSetMember(connId, keyName, newZsetMember, Number(newZsetScore) || 0)
+                                        }).then((ok) => {
+                                            if (ok) {
+                                                setNewZsetMember('')
+                                                setNewZsetScore('0')
+                                            }
+                                        })
+                                    }
+                                />
+                            </>
                         )}
 
                         {info.type === 'stream' && (
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="text-on-surface-variant">
-                                        <th className="pb-1 pr-2">ID</th>
-                                        <th className="pb-1">Fields</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(value?.streamEntries ?? []).map((entry) => (
-                                        <tr key={entry.id} className="align-top">
-                                            <td className="pr-2 text-on-surface-variant">{entry.id}</td>
-                                            <td className="break-all">
-                                                {Object.entries(entry.fields ?? {}).map(([k, v], i, arr) => (
-                                                    <span key={k}>
-                                                        {k}={renderScalar(v)}
-                                                        {i < arr.length - 1 ? ', ' : ''}
-                                                    </span>
-                                                ))}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <RedisValueTable
+                                columns={STREAM_COLUMNS}
+                                rows={streamRows(value?.streamEntries ?? [])}
+                                format={format}
+                                emptyLabel="Este stream no tiene entradas."
+                            />
                         )}
                     </div>
 
@@ -766,6 +646,19 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                 </>
             )}
 
+                        {drawer && (
+                            <RedisValueDrawer
+                                title={`${keyName} · ${drawer.rowId}`}
+                                value={drawer.value}
+                                readOnly={drawer.readOnly}
+                                onSave={(v) => {
+                                    stageEdit(drawer.rowId, v)
+                                    setDrawer(null)
+                                }}
+                                onClose={() => setDrawer(null)}
+                            />
+                        )}
+
             {confirmDelete && (
                 <ConfirmDialog
                     title="Eliminar key"
@@ -776,6 +669,60 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                     onClose={() => setConfirmDelete(false)}
                 />
             )}
+        </div>
+    )
+}
+
+// DeleteToggle marks a row for removal instead of removing it. The write
+// happens when the staging bar is saved, which is what makes a mis-click
+// recoverable — Redis has no undo.
+function DeleteToggle({staged, onToggle, label}: {staged: boolean; onToggle: () => void; label: string}) {
+    return (
+        <button
+            onClick={onToggle}
+            title={staged ? `Cancela la baja pendiente de este ${label}` : `Marca este ${label} para eliminar. Se borra recién al guardar los cambios.`}
+            className={`rounded p-0.5 ${staged ? 'text-error' : 'text-on-surface-variant hover:bg-surface-variant hover:text-error'}`}
+        >
+            <Icon name={staged ? 'undo' : 'delete'} size={13} />
+        </button>
+    )
+}
+
+// AddRow is the "add an element" strip under each table.
+function AddRow({
+    inputs,
+    onAdd,
+    disabled,
+    title,
+}: {
+    inputs: {value: string; onChange: (v: string) => void; placeholder: string; numeric?: boolean}[]
+    onAdd: () => void
+    disabled: boolean
+    title: string
+}) {
+    return (
+        <div className="mt-2 flex items-center gap-1.5">
+            <Icon name="add" size={14} className="shrink-0 text-on-surface-variant" />
+            {inputs.map((input, i) => (
+                <input
+                    key={i}
+                    value={input.value}
+                    onChange={(e) => input.onChange(e.target.value)}
+                    type={input.numeric ? 'number' : 'text'}
+                    placeholder={input.placeholder}
+                    className={`min-w-0 rounded border border-outline-variant bg-surface-container-lowest px-1.5 py-0.5 font-mono text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary ${
+                        input.numeric ? 'w-24 shrink-0' : 'flex-1'
+                    }`}
+                />
+            ))}
+            <button
+                onClick={onAdd}
+                disabled={disabled}
+                title={title}
+                className="shrink-0 rounded bg-primary px-2 py-0.5 text-[11px] text-on-primary disabled:opacity-40"
+            >
+                Agregar
+            </button>
         </div>
     )
 }

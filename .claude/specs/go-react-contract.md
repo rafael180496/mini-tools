@@ -118,7 +118,17 @@ Módulo de transferencia de archivos por SFTP que **reutiliza las conexiones SSH
 
 **Permisos (chmod):** `SftpPathPermissions(sessionID, path)` devuelve `sftpx.PermInfo` (bits de permiso `0..0o777` + owner/group best-effort) y `ChmodSftpPath(sessionID, path, mode)` aplica el chmod (`os.FileMode(mode) & os.ModePerm`). La propiedad es **solo lectura**: SFTP solo expone UID/GID numéricos, y solo la máquina local los resuelve a nombres (helper con build-tag `unix`, `fs_owner_unix.go`/`fs_owner_other.go` — Windows muestra en blanco); no hay `chown` (frágil sobre SFTP, suele requerir root). En el frontend `SftpPermissionsDialog.tsx` mapea los bits a toggles owner/group/other × rwx y muestra el preview octal/simbólico.
 
-Frontend: `components/sftp/` — `SftpTab.tsx` (contenedor de doble panel + cola de transferencias con barras de % y botón cancelar + cleanup en unmount que cierra sesiones y cancela transferencias; banner de error y errores de transferencia mostrados completos, con wrap), `SftpPane.tsx` (host picker, listado, drag&drop, **menú contextual** con Enviar/Renombrar/Eliminar/Refrescar/Nueva carpeta/Editar permisos), `SftpPermissionsDialog.tsx` (chmod), `types.ts` (tipos + helpers de path agnósticos de separador). Se abre desde el botón `swap_horiz` en `SshConnectionTree.tsx` (`TabKind` `'sftp'`, una pestaña por host, dedupe como la terminal). Limitación conocida v1: las transferencias sobrescriben en destino sin preguntar, y las carpetas vacías no se recrean (los archivos llevan sus directorios padre vía `Create`+`MkdirAll`).
+Frontend: `components/sftp/` — `SftpTab.tsx` (contenedor de doble panel + cola de transferencias con barras de % y botón cancelar + cleanup en unmount que cierra sesiones y cancela transferencias; banner de error y errores de transferencia mostrados completos, con wrap), `SftpPane.tsx` (host picker, listado, drag&drop, **menú contextual** con Enviar/Renombrar/Eliminar/Refrescar/Nueva carpeta/Editar permisos), `SftpPermissionsDialog.tsx` (chmod), `types.ts` (tipos + helpers de path agnósticos de separador). Se abre desde el botón `swap_horiz` en `SshConnectionTree.tsx` (`TabKind` `'sftp'`, una pestaña por host, dedupe como la terminal). Las carpetas vacías no se recrean (los archivos llevan sus directorios padre vía `Create`+`MkdirAll`).
+
+### Ampliaciones del módulo SSH/SFTP (6 fases, post-Git)
+
+- **Conexión compartida** — `sshconn.ClientPool` (`app.go: a.sshPool`) reparte `ClientLease`s con refcount; `sshconn.NewSessionManager(emit, pool)`, `sftpx.NewBrowseManager(pool)` y `sftpx.NewTransferManager(emit, pool)` piden leases en vez de dialear. `sftpx.Endpoint` gana `ConnID` para poder unirse a la conexión del host. En `shutdown` el pool se cierra **después** de los tres managers.
+- **Editor remoto** — `ReadFileForEdit(sessionID, path) sftpx.RemoteFile` y `WriteFileFromEdit(sessionID, path, content, expectedModTimeUnix) (int64, error)`; concurrencia optimista por mtime, `0` = sobrescribir igual. `TabKind` suma `'remote-file'` y `'ssh-hybrid'`; `EditorTab.remote?: RemoteFileRef`.
+- **Conflictos de transferencia** — `CheckSftpConflicts(SftpTransferInput) []sftpx.Conflict` (pre-vuelo) y `SftpTransferInput.onConflict` (`""`=overwrite | `"newer"` | `"skip"` | `"rename"`). Velocidad y ETA NO viajan en `ProgressEvent`: se derivan en `lib/transferRate.ts`.
+- **Drag & drop del escritorio** — `DragAndDrop{EnableFileDrop, CSSDropProperty:"--wails-drop-target", CSSDropValue:"drop"}` en `main.go`. `OnFileDrop` es un único callback global: se registra una sola vez en `lib/desktopFileDrop.ts` y se rutea por hit-test.
+- **Entornos** — `connections.environment` (migración 24, `""`/`prod`/`staging`/`dev`) en `ConnectionSummary`/`ConnectionInput`/`ConnectionEditInfo`, más `ConnectionEnvironment(connID) string` para la terminal. Espejo TS en `lib/environments.ts`.
+- **Key vault SSH** — tabla `ssh_keys` (migración 25). Bindings: `ListSSHKeys`, `SaveSSHKey(name, privateKey, passphrase)`, `RenameSSHKey`, `SSHKeyUsage(id) []string`, `DeleteSSHKey`. `vault.SSHKeySummary` **nunca** lleva material (misma regla que el DSN). El DSN SSH acepta `?keyId=` como alternativa a `privateKey`, resuelto por `App.resolveSSHKeyRef` justo antes de dialear (`a.sshDSN(connID)` es la vía única).
+- **Production Guard** — enteramente frontend (`lib/productionGuard.ts` + `ProductionGuardDialog.tsx`), sin binding: es una confirmación de UX y corre en cada Enter.
 
 ## Módulo Git (post-lanzamiento)
 
@@ -202,3 +212,178 @@ siguiente y `Stats` daba siempre `{0,0,0}`. Por eso `logFormat` **encabeza** con
 el separador en vez de cerrarlo, a costa de un chunk vacío inicial. Verificado
 contra este repo: v0.4.0 da 72 archivos, +6393/-203, idéntico a lo que reporta
 Fork.
+
+## IntelliSense del editor SQL (`backend/sqlintel`)
+
+Seis bindings nuevos, todos detrás de `requireUnlocked` (el índice se arma a
+partir del esquema de una conexión guardada: es dato gateado por la clave
+maestra, no una preferencia de UI como el tema).
+
+| Binding | Devuelve | Cuándo lo llama el frontend |
+|---|---|---|
+| `PrimeSchemaIndex(connID)` | `sqlintel.Status` | Al vincular una pestaña a una conexión (`CodeMirrorTabbedEditor`), y de nuevo si una respuesta llega con `indexing: true` |
+| `GetSchemaIndexStatus(connID)` | `sqlintel.Status` | Indicador de estado |
+| `CompleteSQL(sqlintel.Request)` | `sqlintel.Response` | Cada vez que CodeMirror abre/reabre el popup de completado |
+| `SuggestInlineSQL(sqlintel.Request)` | `string` | Ghost text, 180 ms después de que el cursor se queda quieto |
+| `RecordCompletionUse(connID, kind, name)` | `error` | Al aceptar una sugerencia de tabla/columna/esquema/rutina |
+| `ResolveJoinCondition(connID, left, leftAlias, right, rightAlias)` | `[]sqlintel.JoinCondition` | "¿Cómo se unen estas dos tablas?" sin cursor de por medio |
+
+Evento Wails: **`sqlintel:index`** con un `sqlintel.Status` cuando termina una
+extracción en segundo plano.
+
+**El índice es asíncrono por diseño, y el completado nunca depende de que
+esté listo.** `PrimeSchemaIndex` retorna al instante con `state: "loading"` y
+la extracción corre en una goroutine — es una consulta de catálogo contra una
+base posiblemente remota, y la UI no puede esperarla. Mientras tanto
+`CompleteSQL` responde igual, degradado a keywords/funciones/snippets del
+dialecto, y marca `indexing: true` para que el frontend sepa por qué todavía
+no ve tablas. Nunca devuelve error por "índice no listo".
+
+**`CompleteSQL` no falla con SQL inválido, y eso es deliberado.** La entrada
+normal es un statement a medio escribir: el motor está escrito para degradar
+a una lista más corta, jamás para errorear. Lo único que devuelve vacío a
+propósito es un cursor dentro de un literal o de un comentario.
+
+**Los offsets son unidades de código UTF-16, no bytes ni runas** — es lo que
+son las posiciones de CodeMirror (índices de string de JavaScript).
+`backend/sqlintel/offsets.go` convierte en ambas direcciones; `Response.from`
+vuelve en UTF-16 para que el editor lo use directo. Un acento en un
+comentario alcanza para que un offset en bytes quede mal, y un emoji para
+que uno en runas quede mal — por eso se convierte exacto en vez de asumir
+ASCII.
+
+**Las claves JSON de `sqlintel.Item` son de una letra** (`l`/`k`/`d`/`a`/`i`/
+`s`) a propósito: una respuesta lleva hasta 60 ítems y los nombres de campo
+serían la mayor parte del payload que cruza el puente. Es la única estructura
+del contrato con este criterio, justamente por su volumen; el resto
+(`Request`, `Status`, `JoinCondition`) usa nombres normales.
+
+**`SuggestInlineSQL` existe separado de `CompleteSQL` por payload, no por
+lógica** — los dos corren el mismo motor. El ghost text se recalcula con cada
+movimiento de cursor, no solo con el popup abierto, así que responderlo con
+un string suelto en vez de la lista completa de ítems es lo que lo hace
+viable como llamada frecuente.
+
+**`RecordCompletionUse` es solo memoria de sesión, nunca se persiste.** Es una
+pista de ranking (lo que esta sesión viene usando sube en la lista): perderla
+al cerrar la app no cuesta nada y persistirla exigiría una migración de vault
+para algo que se reaprende en tres clicks.
+
+## EXPLAIN enriquecido (`backend/explain`)
+
+Un binding nuevo, `CheckSQLMutation(sqlText) → bool`, detrás de
+`requireUnlocked`. Responde si el script escribe algo (datos o esquema) para
+que el frontend confirme antes de un Explain Analyze — que, a diferencia de
+Explain, ejecuta la consulta de verdad.
+
+Se resuelve en Go y no con un regex en el frontend porque reusa
+`query.SplitStatements`, que ya entiende comillas, comentarios y
+dollar-quoting: `-- delete esto` y `SELECT 'DELETE'` no son deletes, y
+`WITH x AS (…) DELETE FROM …` sí lo es pese a empezar con `WITH`. Un regex
+del lado del cliente se equivoca en los tres.
+
+**La confirmación es la cortesía, no la garantía.** `explain.PostgresPlan`
+envuelve un ANALYZE de un statement mutante en `BEGIN`/`ROLLBACK` sobre una
+conexión reservada, siempre, y devuelve `Plan.RolledBack` para que la UI lo
+diga. Aunque el usuario confirme, no se aplican cambios.
+
+`explain.Plan` creció con métricas de cabecera (`planningTimeMs`,
+`executionTimeMs`, `totalCost`, `estimatedRows`/`actualRows`, `nodeCount`,
+`buffers`), el motor de origen (`engine`), si trae mediciones reales
+(`analyzed`) y una lista de `insights` accionables. `explain.PlanNode` creció
+con `actualRows`/`loops`, `selfTimeMs`/`selfCost`/`impactPct` (calculados,
+no reportados por el motor), `rowsRatio`, `severity`, `isBottleneck`,
+`indexName` y `filter`.
+
+**`severity` no es "es un full scan sí/no"** — es qué tan fuerte debe
+mostrarlo la UI, graduado por filas leídas y peso dentro del plan. Un
+recorrido completo de una tabla de diez filas llega como `info`; el frontend
+lo etiqueta pero no lo alarma. Los campos calculados los llena
+`explain.Analyze`, que corre al final del builder de los cuatro motores;
+ningún motor debe escribirlos.
+
+`Insight.sql`, cuando viene, es una sentencia lista para copiar
+(`CREATE INDEX …`, `ANALYZE …`). **Nunca se ejecuta desde la app** — crear un
+índice es una escritura real con costo en disco y en escrituras, y el orden
+correcto de las columnas depende de conocimiento que el backend no tiene.
+
+## Muestreo de esquema MongoDB (`SampleMongoFields`)
+
+`SampleMongoFields(connID, database, collection) → []db.MongoFieldInfo`,
+detrás de `requireUnlocked` como el resto de los métodos de Mongo.
+
+MongoDB no tiene catálogo que consultar, así que este binding **lee
+documentos**: un `find().limit(50)` y un recorrido recursivo (hasta 3
+niveles) de las claves. Es una aproximación por construcción — un campo
+presente solo en documentos viejos puede no aparecer — y por eso el
+resultado no es una lista de nombres sino, por cada ruta, `count`,
+`frequency` (0-1) y `types` (los tipos BSON vistos, más común primero).
+
+Ambos datos son para decidir, no decorativos: el frontend rankea por
+frecuencia y **marca los campos con más de un tipo**, que es la causa más
+común de un filtro que devuelve cero sin explicar por qué.
+
+**Es un `find().limit(N)` y no un `$sample` a propósito:** `$sample` sobre
+una colección grande escanea o depende de un cursor aleatorio interno, y
+esto corre interactivamente cada vez que el usuario elige una colección en
+el asistente. Es un autocompletado, no un trabajo estadístico.
+
+Las rutas dentro de arrays de subdocumentos se registran **sin índice
+numérico** (`pedidos.sku`, no `pedidos.0.sku`) porque así es como se
+escribe el filtro correspondiente en Mongo.
+
+## Redis: bindings de las 6 fases post-lanzamiento
+
+Todos detrás de `requireUnlocked`.
+
+| Binding | Fase | Nota |
+|---|---|---|
+| `SetRedisKeyTTL(connID, key, seconds)` | F1 | Rechaza 0/negativos: `EXPIRE 0` **borra** la clave en Redis |
+| `PersistRedisKey(connID, key)` | F1 | Quitar el vencimiento es explícito, nunca un TTL centinela |
+| `AnalyzeRedisPrefixes(connID, sep, sampleLimit, withMemory)` | F3 | Muestreo acotado por SCAN; devuelve `sampled` y `totalKeys` para que la UI no lo presente como censo |
+| `DeleteRedisKeys(connID, keys)` | F3 | Chunkeado; el error informa cuántas ya se borraron |
+| `GetRedisServerInfo(connID)` | F4 | Parseo de `INFO`; el frontend decide cuándo refrescar |
+| `SubscribeRedisChannels(connID, monitorID, channels, patterns)` | F5 | Mensajes por evento Wails llamado `monitorID`, **en lotes** |
+| `ReadRedisStream(connID, monitorID, key, fromID)` | F5 | `$` = solo lo nuevo, `0` = desde el principio |
+| `StopRedisMonitor(monitorID)` | F5 | Detener uno inexistente **no** es error (la UI lo llama al desmontar) |
+| `BeginRedisTransaction(connID)` | F6 | Reserva una conexión; rechaza Cluster |
+| `ExecRedisTransaction(connID)` / `DiscardRedisTransaction(connID)` | F6 | Liberan la conexión reservada |
+| `RedisTransactionStatus(connID)` | F6 | `{open, queued}` para el indicador |
+| `CheckRedisLuaScript(connID, script)` | F6 | `SCRIPT LOAD`: compila **sin ejecutar** |
+| `RunRedisLuaScript(connID, script, keys, args)` | F6 | Valida y ejecuta; se despacha por el runner de la transacción |
+
+**Los payloads de F5 no tienen modelo TS generado.** Wails solo genera modelos para tipos que aparecen en la **firma** de un binding, y `redisquery.StreamEvent`/`StreamMessage` únicamente viajan como eventos emitidos — se espejan a mano en `RedisLiveMonitor.tsx`, igual que `Workspace.tsx` ya espeja `redisquery.Event` y `mongoquery.Event`.
+
+**El frontend genera el `monitorID` y se suscribe al evento ANTES de llamar al backend**, misma carrera que ya evita el executor de queries: si el backend generara el id, el primer lote podría emitirse antes de que exista el listener.
+
+**Con una transacción abierta, `ExecuteRedisCommand` encola en la conexión reservada.** No es un modo aparte: el executor rutea por `TxManager.Runner`, así que el mismo binding de siempre hace lo correcto. Cualquier binding nuevo que ejecute un comando Redis tiene que pasar por ese runner.
+
+## Git: bindings de las 6 fases post-lanzamiento
+
+Todos detrás de `requireUnlocked` y direccionando el repo por **ID opaco**,
+nunca por path — `gitRepo(repoID)` sigue siendo el único lugar donde un ID
+se convierte en una ruta.
+
+| Binding | Fase | Nota |
+|---|---|---|
+| `GitLog` (campos nuevos en `LogOptions`) | F1 | `author`/`grep`/`since`/`until`; el filtro lo aplica git, no el cliente |
+| `GitSetPinnedBranches(repoID, branches)` | F1 | Migración 23, `git_repos.pinned_branches`; solo nombres, ninguna credencial |
+| `GitApplyPatch` (ya existía) | F2 | El patch parcial lo arma el frontend (`lib/gitPatch.ts`) |
+| `GitStashDiff(repoID, ref)` | F3 | Reintenta con `--include-untracked` ante salida **vacía**, no ante error |
+| `GitBlame(repoID, path, rev)` | F3 | `rev` vacío blamea el working tree |
+| `GitConflictedFiles` / `GitReadConflictFile` / `GitResolveConflictFile` | F4 | Resolver **escribe y stagea** en un solo paso |
+| `GitContinue(repoID, op)` | F4 | `op` es lo que reportó `GitInProgress`; nunca se adivina |
+| `GitRebaseTodo` / `GitRebaseApply` | F5 | La lista va **oldest-first**, como el archivo de git |
+| `GitWorktrees` / `GitAddWorktree` / `GitRemoveWorktree` / `GitPruneWorktrees` | F6 | — |
+| `GitCommandLog` / `GitClearCommandLog` | F6 | Argumentos, **nunca** el entorno |
+| `GitForgeInfo` / `GitOpenInBrowser` | F6 | Solo construcción de URL; `GitOpenInBrowser` restringe a http/https |
+
+**`safeWorkingPath` (backend/git/conflict.go) es el único lugar del módulo
+que escribe en una ruta que nombra el frontend.** Valida sobre la ruta
+**resuelta**, no sobre el string: rechazar `..` textualmente se le escapa un
+symlink que apunta afuera del árbol.
+
+**`main()` despacha DOS re-exec antes de abrir la ventana**: el askpass de
+`auth.go` y el sequence editor de `rebase.go`. Cualquier helper nuevo que git
+tenga que re-ejecutar sigue ese mismo patrón y debe chequearse ahí, antes de
+tocar el vault o appdata.

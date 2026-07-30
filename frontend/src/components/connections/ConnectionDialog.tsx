@@ -2,6 +2,7 @@ import {FormEvent, useEffect, useState} from 'react'
 import {
     DetectSQLiteEncryption,
     GetConnectionForEdit,
+    ListSSHKeys,
     ListSchemasForNewConnection,
     PickSQLiteFile,
     SaveConnection,
@@ -9,11 +10,13 @@ import {
     TestConnection,
     UpdateConnection,
 } from '../../../wailsjs/go/main/App'
-import {main} from '../../../wailsjs/go/models'
+import {main, vault} from '../../../wailsjs/go/models'
 import {parseConnectionString} from '../../lib/connStringParser'
+import {ENVIRONMENTS, type EnvironmentId} from '../../lib/environments'
 import DbTypeIcon, {DB_TYPES, dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
 import Select from '../Select'
+import SshKeyVaultDialog from './SshKeyVaultDialog'
 import Toggle from '../Toggle'
 
 interface ConnectionDialogProps {
@@ -95,6 +98,10 @@ function normalizeNodeList(raw: string): string {
 export default function ConnectionDialog({editingId, onClose, onSaved, initialDbType}: ConnectionDialogProps) {
     const [name, setName] = useState('')
     const [color, setColor] = useState('#60a5fa')
+    // Environment marking. '' = unmarked, which is the default on purpose:
+    // see the migration 24 comment — marking production by default would make
+    // the confirmation dialog routine, and a routine confirmation is noise.
+    const [environment, setEnvironment] = useState('')
     const [dbType, setDbType] = useState<DBType>(initialDbType ?? 'sqlite')
     // Type-locked dialog: hides the generic Tipo picker + "pegar connection
     // string" box, shows a plain "Motor: X" badge instead. True for a NEW
@@ -112,6 +119,13 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
     const [redisMode, setRedisMode] = useState<RedisMode>('standalone')
     const [mongoMode, setMongoMode] = useState<MongoMode>('standard')
     const [sshAuthMethod, setSshAuthMethod] = useState<SSHAuthMethod>('password')
+    // Where the private key comes from when auth is 'key': pasted into this
+    // form ('inline', the original behaviour) or referenced from the central
+    // store ('stored'). Both are auth=key on the wire — the DSN carries a
+    // keyId instead of the material, resolved at dial time.
+    const [sshKeySource, setSshKeySource] = useState<'inline' | 'stored'>('inline')
+    const [sshKeys, setSshKeys] = useState<vault.SSHKeySummary[]>([])
+    const [showKeyVault, setShowKeyVault] = useState(false)
     const [params, setParams] = useState<Record<string, string>>({})
     const [pingStatus, setPingStatus] = useState<'idle' | 'testing' | 'ok' | 'failed'>('idle')
     const [error, setError] = useState('')
@@ -131,6 +145,15 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
     const [schemasLoading, setSchemasLoading] = useState(false)
     const [schemaSearch, setSchemaSearch] = useState('')
 
+    // The stored keys, for the picker below. Loaded only for the SSH form —
+    // every other engine has no use for them.
+    useEffect(() => {
+        if (dbType !== 'ssh') return
+        ListSSHKeys()
+            .then(setSshKeys)
+            .catch(() => setSshKeys([]))
+    }, [dbType])
+
     // Pre-fill from the saved connection when editing. Password never comes
     // back from GetConnectionForEdit (see its doc comment) — the field
     // stays blank, meaning "keep the existing one" on save, not "clear it".
@@ -142,11 +165,16 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                 setName(info.name)
                 setDbType(info.dbType as DBType)
                 if (info.color) setColor(info.color)
+                setEnvironment(info.environment ?? '')
                 const {mode, auth, ...rest} = info.params
                 if (mode && info.dbType === 'oracle') setOracleMode(mode as OracleMode)
                 if (mode && info.dbType === 'redis') setRedisMode(mode as RedisMode)
                 if (mode && info.dbType === 'mongodb') setMongoMode(mode as MongoMode)
                 if (auth && info.dbType === 'ssh') setSshAuthMethod(auth as SSHAuthMethod)
+                // A saved keyId is what tells us this connection uses a stored
+                // key rather than an inline one — the material itself never
+                // comes back from GetConnectionForEdit.
+                if (info.dbType === 'ssh' && info.params.keyId) setSshKeySource('stored')
                 // An encrypted SQLite comes back with the sqlcipher_encrypted
                 // marker (never the key itself); flip the toggle on so the form
                 // shows the key field as already-set, blank.
@@ -253,12 +281,25 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
             effectiveParams = {...params, mode: mongoMode}
         } else if (dbType === 'ssh') {
             effectiveParams = {...params, auth: sshAuthMethod}
+            // Only one of the two shapes is ever submitted. Sending both would
+            // let a leftover pasted key from before the switch win over the
+            // stored one the user just picked.
+            if (sshAuthMethod === 'key' && sshKeySource === 'stored') {
+                delete effectiveParams.privateKey
+                delete effectiveParams.passphrase
+            } else {
+                delete effectiveParams.keyId
+            }
         }
-        return new main.ConnectionInput({name, dbType, params: effectiveParams, color})
+        return new main.ConnectionInput({name, dbType, params: effectiveParams, color, environment})
     }
 
     const missing = requiredFields(dbType, oracleMode, redisMode).filter((f) => !(params[f] ?? '').trim())
-    const canSubmit = name.trim() !== '' && missing.length === 0 && !busy && !loadingEdit
+    // A stored-key connection with no key chosen would build a DSN that
+    // cannot authenticate, so it is blocked here rather than failing at
+    // connect time.
+    const storedKeyMissing = dbType === 'ssh' && sshAuthMethod === 'key' && sshKeySource === 'stored' && !(params.keyId ?? '').trim()
+    const canSubmit = name.trim() !== '' && missing.length === 0 && !storedKeyMissing && !busy && !loadingEdit
     // Editing with a blank password means "keep the existing one" on save
     // (UpdateConnection merges it server-side) — but Test Connection has no
     // such merge, so it would falsely fail against an empty password.
@@ -275,7 +316,13 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
     // method actually uses.
     const sshCredentialBlank =
         dbType === 'ssh' &&
-        (sshAuthMethod === 'password' ? !(params.password ?? '').trim() : !(params.privateKey ?? '').trim())
+        (sshAuthMethod === 'password'
+            ? !(params.password ?? '').trim()
+            : sshKeySource === 'stored'
+              // A stored key is never blank-while-editing: the reference IS the
+              // credential and it round-trips, so Test Connection can run.
+              ? false
+              : !(params.privateKey ?? '').trim())
     const passwordUnknownWhileEditing =
         !!editingId &&
         ((dbType === 'postgres' || dbType === 'oracle' || dbType === 'sqlserver')
@@ -426,6 +473,29 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             className="h-9 w-full cursor-pointer rounded-lg border border-outline bg-surface p-1"
                         />
                     </label>
+                </div>
+
+                <div className={labelClass}>
+                    Entorno
+                    <Select
+                        value={environment}
+                        options={[
+                            {value: '', label: 'Sin marcar'},
+                            {value: 'prod', label: 'Producción'},
+                            {value: 'staging', label: 'Staging / QA'},
+                            {value: 'dev', label: 'Desarrollo'},
+                        ]}
+                        onChange={setEnvironment}
+                        title="Tiñe la conexión en la lista según el entorno. En SSH, marcarla como Producción además hace que la terminal pida confirmación antes de ejecutar comandos destructivos (rm -rf, mkfs, dd, systemctl stop…)."
+                        ariaLabel="Entorno"
+                        className="w-full"
+                    />
+                    {environment !== '' && (
+                        <span className="mt-1 flex items-center gap-1.5 text-[11px] text-on-surface-variant">
+                            <span className={`h-2 w-2 shrink-0 rounded-full ${ENVIRONMENTS[environment as EnvironmentId].dot}`} />
+                            {ENVIRONMENTS[environment as EnvironmentId].description}
+                        </span>
+                    )}
                 </div>
 
                 {!typeLocked && (
@@ -1043,6 +1113,55 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                         )}
 
                         {sshAuthMethod === 'key' && (
+                            <div className={labelClass}>
+                                Origen de la llave
+                                <Select
+                                    value={sshKeySource}
+                                    options={[
+                                        {value: 'stored', label: 'Llave guardada en el vault'},
+                                        {value: 'inline', label: 'Pegar la llave acá'},
+                                    ]}
+                                    onChange={(v) => setSshKeySource(v as 'inline' | 'stored')}
+                                    title="Guardada: la llave vive una sola vez en el gestor de llaves y esta conexión la referencia — rotarla no obliga a editar cada conexión que la use. Pegada: la llave queda dentro de esta conexión, como hasta ahora."
+                                    ariaLabel="Origen de la llave"
+                                    className="w-full"
+                                />
+                            </div>
+                        )}
+
+                        {sshAuthMethod === 'key' && sshKeySource === 'stored' && (
+                            <div className={labelClass}>
+                                Llave
+                                <div className="flex items-center gap-2">
+                                    <Select
+                                        value={params.keyId ?? ''}
+                                        options={[
+                                            {value: '', label: sshKeys.length ? 'Elegir llave…' : 'No hay llaves guardadas'},
+                                            ...sshKeys.map((k) => ({value: k.id, label: `${k.name} · ${k.keyType}`})),
+                                        ]}
+                                        onChange={(v) => setParam('keyId', v)}
+                                        ariaLabel="Llave guardada"
+                                        className="min-w-0 flex-1"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowKeyVault(true)}
+                                        title="Agregar, renombrar o eliminar llaves guardadas"
+                                        className="flex shrink-0 items-center gap-1 rounded-lg border border-outline px-2.5 py-1.5 text-xs text-on-surface hover:bg-surface-variant"
+                                    >
+                                        <Icon name="key" size={14} />
+                                        Gestionar
+                                    </button>
+                                </div>
+                                {params.keyId && (
+                                    <span className="mt-1 block truncate font-mono text-[10px] text-on-surface-variant">
+                                        {sshKeys.find((k) => k.id === params.keyId)?.fingerprint ?? ''}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {sshAuthMethod === 'key' && sshKeySource === 'inline' && (
                             <>
                                 <label className={labelClass}>
                                     Private key
@@ -1205,6 +1324,19 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                     </button>
                 </div>
             </form>
+
+            {showKeyVault && (
+                <SshKeyVaultDialog
+                    onClose={() => setShowKeyVault(false)}
+                    onChanged={() => {
+                        // Refresh the picker so a key added (or removed) in the
+                        // manager is immediately selectable here.
+                        ListSSHKeys()
+                            .then(setSshKeys)
+                            .catch(() => setSshKeys([]))
+                    }}
+                />
+            )}
         </div>
     )
 }

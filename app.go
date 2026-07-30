@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"mini-tools/backend/query"
 	"mini-tools/backend/redisquery"
 	"mini-tools/backend/sftpx"
+	"mini-tools/backend/sqlintel"
 	"mini-tools/backend/sshconn"
 	"mini-tools/backend/updatecheck"
 	"mini-tools/backend/vault"
@@ -48,6 +50,11 @@ type App struct {
 	// .claude/skills/mini-tools-patterns/SKILL.md's Redis section.
 	redisPools    *db.RedisPoolManager
 	redisExecutor *redisquery.Executor
+	// redisStreams is Redis's live-monitor path (Pub/Sub subscriptions and
+	// stream tails). Separate from redisExecutor on purpose: a subscription
+	// has no result and no end, so it cannot share the command→result
+	// contract. See backend/redisquery/stream.go.
+	redisStreams *redisquery.StreamManager
 
 	// mongoPools/mongoExecutor are MongoDB's native parallel path — same
 	// deliberate, documented exception as Redis (.claude/rules/technical.md
@@ -61,6 +68,13 @@ type App struct {
 	// redisPools/redisExecutor above, but with no separate "pool" step: an
 	// interactive terminal session is opened, streamed, and closed as one
 	// unit (see backend/sshconn's package doc).
+	// sshPool is the ONE SSH connection per host, shared by the terminal,
+	// the file panes and the transfers. Before it, a terminal plus an SFTP
+	// pane against the same server meant two sockets and two
+	// authentications for the same work; SSH multiplexes channels over one
+	// connection by design. Refcounted, so closing either half never drops
+	// the other. See backend/sshconn/pool.go.
+	sshPool     *sshconn.ClientPool
 	sshSessions *sshconn.SessionManager
 
 	// sftpBrowse/sftpTransfers are the SFTP file-transfer parallel path,
@@ -87,6 +101,13 @@ type App struct {
 
 	metadataMu    sync.Mutex
 	metadataCache map[string]*db.SchemaMetadata
+
+	// sqlIntel is the editor's IntelliSense engine: one compiled schema
+	// index per connection plus this session's usage counters. It is fed
+	// from the same metadata the sidebar uses (every path that produces a
+	// *db.SchemaMetadata calls Set), and can also build its own index in
+	// the background via PrimeSchemaIndex. See backend/sqlintel.
+	sqlIntel *sqlintel.Manager
 }
 
 // FileContent is what OpenSQLFileDialog returns: the path (so Ctrl+S knows
@@ -107,18 +128,25 @@ type ConnectionInput struct {
 	// Color is a user-chosen hex string for ConnectionTree.tsx — purely
 	// visual, never interpreted server-side.
 	Color string `json:"color"`
+	// Environment is "prod", "staging", "dev" or "" — see
+	// vault.ConnectionSummary.Environment. Unlike Color it is interpreted.
+	Environment string `json:"environment"`
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
+	sshPool := sshconn.NewClientPool()
 	return &App{
-		gate:          vaultgate.New(),
-		pools:         db.NewPoolManager(),
-		redisPools:    db.NewRedisPoolManager(),
-		mongoPools:    db.NewMongoPoolManager(),
-		sftpBrowse:    sftpx.NewBrowseManager(),
+		gate:       vaultgate.New(),
+		sshPool:    sshPool,
+		sftpBrowse: sftpx.NewBrowseManager(sshPool),
+		pools:      db.NewPoolManager(),
+		redisPools: db.NewRedisPoolManager(),
+		mongoPools: db.NewMongoPoolManager(),
+
 		gitRunner:     git.NewRunner(),
 		metadataCache: make(map[string]*db.SchemaMetadata),
+		sqlIntel:      sqlintel.NewManager(),
 	}
 }
 
@@ -161,9 +189,10 @@ func (a *App) startup(ctx context.Context) {
 		a.executor.SetPageSize(settings.QueryPageSize)
 	}
 	a.redisExecutor = redisquery.NewExecutor(ctx, a.redisPools, emit, history)
+	a.redisStreams = redisquery.NewStreamManager(ctx, a.redisPools, emit)
 	a.mongoExecutor = mongoquery.NewExecutor(ctx, a.mongoPools, emit, history)
-	a.sshSessions = sshconn.NewSessionManager(emit)
-	a.sftpTransfers = sftpx.NewTransferManager(emit)
+	a.sshSessions = sshconn.NewSessionManager(emit, a.sshPool)
+	a.sftpTransfers = sftpx.NewTransferManager(emit, a.sshPool)
 }
 
 // shutdown closes every open connection pool, checkpoints and closes the
@@ -187,11 +216,26 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	a.executor.RollbackAll(ctx)
 	a.pools.CloseAll()
+	// Stop every live monitor BEFORE closing the pools: a subscription
+	// holds its own dedicated connection, which CloseAll does not reach.
+	if a.redisStreams != nil {
+		a.redisStreams.StopAll()
+	}
+	// Same for a reserved transaction connection — it was checked OUT of
+	// the pool, so closing the pool never reaches it and it would leak.
+	if a.redisExecutor != nil {
+		a.redisExecutor.Transactions().ReleaseAll(a.ctx)
+	}
 	a.redisPools.CloseAll()
 	a.mongoPools.CloseAll()
 	a.sshSessions.CloseAll()
 	a.sftpTransfers.CancelAll()
 	a.sftpBrowse.CloseAll()
+	// LAST of the SSH group: the three above hold leases on the shared
+	// connections, and the pool only drops a connection once its last
+	// holder lets go. Closing it first would leave them releasing leases on
+	// a pool that no longer has the entry.
+	a.sshPool.CloseAll()
 	a.gate.Lock()
 	if a.vault != nil {
 		_ = a.vault.Close()
@@ -552,7 +596,7 @@ func (a *App) SaveConnection(cfg ConnectionInput, force bool) (*vault.Connection
 		}
 	}
 
-	return a.vault.SaveConnection(cfg.Name, dbType, dsn, cfg.Color)
+	return a.vault.SaveConnection(cfg.Name, dbType, dsn, cfg.Color, cfg.Environment)
 }
 
 // ConnectionEditInfo pre-fills the "editar conexión" form. Params never
@@ -560,10 +604,11 @@ func (a *App) SaveConnection(cfg ConnectionInput, force bool) (*vault.Connection
 // dialog shows it blank; leaving it blank on save means "keep the existing
 // password" (see UpdateConnection), not "set an empty password".
 type ConnectionEditInfo struct {
-	Name   string            `json:"name"`
-	DBType string            `json:"dbType"`
-	Params map[string]string `json:"params"`
-	Color  string            `json:"color"`
+	Name        string            `json:"name"`
+	DBType      string            `json:"dbType"`
+	Params      map[string]string `json:"params"`
+	Color       string            `json:"color"`
+	Environment string            `json:"environment"`
 }
 
 // GetConnectionForEdit decrypts id's saved DSN and parses it back into the
@@ -578,12 +623,13 @@ func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	var name, color string
+	var name, color, environment string
 	found := false
 	for _, c := range conns {
 		if c.ID == id {
 			name = c.Name
 			color = c.Color
+			environment = c.Environment
 			found = true
 			break
 		}
@@ -620,7 +666,7 @@ func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
 		params["sqlcipher_encrypted"] = "1"
 	}
 
-	return &ConnectionEditInfo{Name: name, DBType: string(dbType), Params: params, Color: color}, nil
+	return &ConnectionEditInfo{Name: name, DBType: string(dbType), Params: params, Color: color, Environment: environment}, nil
 }
 
 // UpdateConnection rebuilds id's DSN from cfg and overwrites the saved
@@ -650,7 +696,11 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	// now-irrelevant stale credential forward into the rebuilt DSN.
 	sshKeyAuth := dbType == db.DBTypeSSH && cfg.Params["auth"] == db.SSHAuthKey
 	needsPasswordMerge := !sshKeyAuth && cfg.Params["password"] == ""
-	needsKeyMerge := sshKeyAuth && (cfg.Params["privateKey"] == "" || cfg.Params["passphrase"] == "")
+	// A connection pointing at a stored key has no inline material to merge:
+	// merging the previous DSN's privateKey back in would silently re-inline
+	// the old key and defeat the whole point of the central store.
+	usesStoredKey := sshKeyAuth && cfg.Params["keyId"] != ""
+	needsKeyMerge := sshKeyAuth && !usesStoredKey && (cfg.Params["privateKey"] == "" || cfg.Params["passphrase"] == "")
 	// An encrypted SQLite edited with a blank key field but the "encrypted"
 	// toggle still on means "keep the existing SQLCipher key" — same rule as a
 	// blank password. The marker distinguishes it from turning encryption off
@@ -691,7 +741,7 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 		}
 	}
 
-	if err := a.vault.UpdateConnection(id, cfg.Name, dbType, dsn, cfg.Color); err != nil {
+	if err := a.vault.UpdateConnection(id, cfg.Name, dbType, dsn, cfg.Color, cfg.Environment); err != nil {
 		return nil, err
 	}
 
@@ -702,6 +752,11 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	// Harmless no-op on whichever pool/session manager doesn't actually own
 	// id — closing all three unconditionally means callers never need to
 	// know which engine id used to be before this update.
+	// A reserved transaction connection and a live monitor's connection
+	// were both checked OUT of the pool, so Close never reaches them.
+	if a.redisExecutor != nil {
+		a.redisExecutor.Transactions().Release(a.ctx, id)
+	}
 	if err := a.redisPools.Close(id); err != nil {
 		return nil, err
 	}
@@ -711,9 +766,7 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	if err := a.sshSessions.Close(id); err != nil {
 		return nil, err
 	}
-	a.metadataMu.Lock()
-	delete(a.metadataCache, id)
-	a.metadataMu.Unlock()
+	a.dropCachedMetadata(id)
 	// The DSN may now point at a different database entirely — both
 	// persisted caches (tables and the schema name list) could reflect a
 	// target that no longer exists behind this connID.
@@ -828,6 +881,11 @@ func (a *App) DeleteConnection(id string) error {
 	if err := a.pools.Close(id); err != nil {
 		return err
 	}
+	// A reserved transaction connection and a live monitor's connection
+	// were both checked OUT of the pool, so Close never reaches them.
+	if a.redisExecutor != nil {
+		a.redisExecutor.Transactions().Release(a.ctx, id)
+	}
 	if err := a.redisPools.Close(id); err != nil {
 		return err
 	}
@@ -846,6 +904,11 @@ func (a *App) DeleteConnection(id string) error {
 	if err := a.vault.DeleteMongoCollectionCache(id); err != nil {
 		return err
 	}
+	// The in-memory metadata and the compiled completion index were left
+	// behind here before: harmless while nothing else read them, but an
+	// editor tab still bound to the deleted connection would have kept
+	// autocompleting against its schema for the rest of the session.
+	a.dropCachedMetadata(id)
 	return a.vault.DeleteConnection(id)
 }
 
@@ -862,6 +925,11 @@ func (a *App) DisconnectConnection(id string) error {
 	if err := a.pools.Close(id); err != nil {
 		return err
 	}
+	// A reserved transaction connection and a live monitor's connection
+	// were both checked OUT of the pool, so Close never reaches them.
+	if a.redisExecutor != nil {
+		a.redisExecutor.Transactions().Release(a.ctx, id)
+	}
 	if err := a.redisPools.Close(id); err != nil {
 		return err
 	}
@@ -871,9 +939,7 @@ func (a *App) DisconnectConnection(id string) error {
 	if err := a.sshSessions.Close(id); err != nil {
 		return err
 	}
-	a.metadataMu.Lock()
-	delete(a.metadataCache, id)
-	a.metadataMu.Unlock()
+	a.dropCachedMetadata(id)
 	return nil
 }
 
@@ -1152,6 +1218,26 @@ func (a *App) GetMongoIndexes(connID, database, collection string) ([]db.MongoIn
 	return db.GetMongoIndexes(ctx, client, database, collection)
 }
 
+// SampleMongoFields discovers a collection's field paths by reading a sample
+// of its documents, so the query wizard can autocomplete real field names
+// (nested ones included) instead of asking the user to remember them.
+//
+// MongoDB has no catalog to ask, which is why this samples documents rather
+// than reading metadata like the SQL engines do. The result carries how
+// often each path appeared and which BSON types were seen there — both
+// matter to the user: a field in 3% of documents is worth offering but not
+// worth ranking first, and a path holding both string and int is a trap
+// worth seeing BEFORE writing a filter against it.
+func (a *App) SampleMongoFields(connID, database, collection string) ([]db.MongoFieldInfo, error) {
+	client, err := a.mongoClientFor(connID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := a.mongoOpCtx()
+	defer cancel()
+	return db.SampleMongoFields(ctx, client, database, collection, 0)
+}
+
 // ListMongoDocuments returns a page of a collection's documents (Extended JSON),
 // optionally filtered — feeds the browser panel.
 func (a *App) ListMongoDocuments(connID, database, collection, filterJSON string, skip, limit int64) ([]string, error) {
@@ -1206,7 +1292,7 @@ func (a *App) OpenSSHTerminal(connID string, cols, rows int) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	_, dsn, err := a.vault.ConnectionDSN(connID)
+	dsn, err := a.sshDSN(connID)
 	if err != nil {
 		return err
 	}
@@ -1302,6 +1388,11 @@ type SftpTransferInput struct {
 	Dst        SftpEndpointInput `json:"dst"`
 	DstDir     string            `json:"dstDir"`
 	Items      []sftpx.Item      `json:"items"`
+	// OnConflict is the policy for destination names that already exist:
+	// "overwrite", "newer", "skip" or "rename" (see backend/sftpx/conflict.go).
+	// Empty means overwrite, which is what this call did before the policy
+	// existed.
+	OnConflict string `json:"onConflict"`
 }
 
 // OpenSftpBrowse opens a persistent SFTP browse session for a remote
@@ -1312,11 +1403,13 @@ func (a *App) OpenSftpBrowse(sessionID, connID string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
 	}
-	_, dsn, err := a.vault.ConnectionDSN(connID)
+	dsn, err := a.sshDSN(connID)
 	if err != nil {
 		return "", err
 	}
-	return a.sftpBrowse.Open(sessionID, dsn)
+	// connID (not sessionID) keys the shared connection: two panes and a
+	// terminal on the same server all ride one SSH connection.
+	return a.sftpBrowse.Open(sessionID, connID, dsn)
 }
 
 // ListSftpDir lists dir for a pane. sessionID == "local" (sftpx.LocalSession)
@@ -1379,6 +1472,33 @@ func (a *App) ChmodSftpPath(sessionID, path string, mode int) error {
 	return a.sftpBrowse.Chmod(sessionID, path, mode)
 }
 
+// ReadSftpFileForEdit loads a remote file's contents for editing inside the
+// app. Reports (rather than errors on) a binary or oversized file so the UI
+// can explain why it will not open it.
+//
+// Nothing is written to the user's machine: the content goes straight into
+// an editor buffer, which is why there is no temp directory to clean up.
+func (a *App) ReadSftpFileForEdit(sessionID, path string) (sftpx.RemoteFile, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return sftpx.RemoteFile{}, err
+	}
+	return a.sftpBrowse.ReadFileForEdit(sessionID, path)
+}
+
+// WriteSftpFileFromEdit saves an edited file back, refusing when the remote
+// copy changed since it was read.
+//
+// expectedModTimeUnix is the mtime the editor loaded; 0 means "overwrite
+// anyway", which is what the conflict dialog sends after telling the user.
+// Returns the new mtime so the next save compares against the right value
+// instead of the stale one.
+func (a *App) WriteSftpFileFromEdit(sessionID, path, content string, expectedModTimeUnix int64) (int64, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return 0, err
+	}
+	return a.sftpBrowse.WriteFileFromEdit(sessionID, path, content, expectedModTimeUnix)
+}
+
 // CloseSftpBrowse tears down a pane's remote session (when it switches hosts
 // or its SFTP tab closes). No-op for the local pane.
 func (a *App) CloseSftpBrowse(sessionID string) error {
@@ -1405,12 +1525,31 @@ func (a *App) StartSftpTransfer(in SftpTransferInput) error {
 		return err
 	}
 	return a.sftpTransfers.Start(sftpx.Request{
-		ID:     in.TransferID,
-		Src:    src,
-		Dst:    dst,
-		DstDir: in.DstDir,
-		Items:  in.Items,
+		ID:         in.TransferID,
+		Src:        src,
+		Dst:        dst,
+		DstDir:     in.DstDir,
+		Items:      in.Items,
+		OnConflict: in.OnConflict,
 	})
+}
+
+// CheckSftpConflicts reports which of the items already exist under dstDir,
+// with both sides' size and mtime, so the UI can ask ONCE up front instead of
+// interrupting a running transfer file by file.
+func (a *App) CheckSftpConflicts(in SftpTransferInput) ([]sftpx.Conflict, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	src, err := a.resolveSftpEndpoint(in.Src)
+	if err != nil {
+		return nil, err
+	}
+	dst, err := a.resolveSftpEndpoint(in.Dst)
+	if err != nil {
+		return nil, err
+	}
+	return a.sftpTransfers.CheckConflicts(src, dst, in.DstDir, in.Items)
 }
 
 // CancelSftpTransfer stops an in-flight transfer; its terminal event will be
@@ -1429,11 +1568,160 @@ func (a *App) resolveSftpEndpoint(e SftpEndpointInput) (sftpx.Endpoint, error) {
 	if e.Local {
 		return sftpx.Endpoint{Local: true}, nil
 	}
-	_, dsn, err := a.vault.ConnectionDSN(e.ConnID)
+	dsn, err := a.sshDSN(e.ConnID)
 	if err != nil {
 		return sftpx.Endpoint{}, err
 	}
-	return sftpx.Endpoint{DSN: dsn}, nil
+	// ConnID travels with the DSN so the transfer joins the host's existing
+	// connection instead of opening one of its own.
+	return sftpx.Endpoint{DSN: dsn, ConnID: e.ConnID}, nil
+}
+
+// sshDSN decrypts connID's DSN and, when it references a key from the central
+// store instead of carrying one inline, substitutes the real material.
+//
+// This is the ONLY place the substitution happens, and it happens as late as
+// possible: the resolved DSN exists in memory for the duration of a dial and
+// is never persisted, so rotating a key in the store takes effect on the next
+// connection of every connection that uses it, with nothing to re-save.
+func (a *App) sshDSN(connID string) (string, error) {
+	_, dsn, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return "", err
+	}
+	return a.resolveSSHKeyRef(dsn)
+}
+
+// resolveSSHKeyRef replaces a ?keyId= reference with the key it points at.
+// A DSN without one is returned untouched, so every pre-existing connection
+// takes exactly the same path it did before.
+func (a *App) resolveSSHKeyRef(dsn string) (string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", fmt.Errorf("app: parseando DSN ssh: %w", err)
+	}
+	q := u.Query()
+	keyID := q.Get("keyId")
+	if keyID == "" {
+		return dsn, nil
+	}
+
+	privateKey, passphrase, err := a.vault.SSHKeyMaterial(keyID)
+	if err != nil {
+		return "", err
+	}
+
+	q.Del("keyId")
+	q.Set("privateKey", privateKey)
+	if passphrase != "" {
+		q.Set("passphrase", passphrase)
+	}
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
+// ListSSHKeys returns the stored keys' names, types and fingerprints. No key
+// material is ever included — see vault.SSHKeySummary.
+func (a *App) ListSSHKeys() ([]vault.SSHKeySummary, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListSSHKeys()
+}
+
+// SaveSSHKey validates and stores a private key encrypted under the vault's
+// master key. privateKey is the file's full contents (never a path — a path
+// would break the moment the file moves, and would leave the key unprotected
+// on disk, which is what this store exists to avoid).
+func (a *App) SaveSSHKey(name, privateKey, passphrase string) (*vault.SSHKeySummary, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.SaveSSHKey(name, privateKey, passphrase)
+}
+
+// RenameSSHKey relabels a stored key.
+func (a *App) RenameSSHKey(id, name string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.RenameSSHKey(id, name)
+}
+
+// SSHKeyUsage lists the names of the connections that authenticate with id.
+//
+// Needed because the reference lives INSIDE each connection's encrypted DSN,
+// so there is no foreign key to consult: answering "what breaks if I delete
+// this" means decrypting every SSH connection. Called before deleting, since
+// deleting a key in use leaves those servers unreachable with no undo.
+func (a *App) SSHKeyUsage(id string) ([]string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	conns, err := a.vault.ListConnections()
+	if err != nil {
+		return nil, err
+	}
+	connector, err := db.ConnectorFor(db.DBTypeSSH)
+	if err != nil {
+		return nil, err
+	}
+
+	var users []string
+	for _, c := range conns {
+		if c.DBType != string(db.DBTypeSSH) {
+			continue
+		}
+		_, dsn, err := a.vault.ConnectionDSN(c.ID)
+		if err != nil {
+			continue
+		}
+		params, err := connector.ParseDSN(dsn)
+		if err != nil {
+			continue
+		}
+		if params["keyId"] == id {
+			users = append(users, c.Name)
+		}
+	}
+	return users, nil
+}
+
+// DeleteSSHKey removes a stored key. The caller is expected to have shown
+// SSHKeyUsage first.
+func (a *App) DeleteSSHKey(id string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.DeleteSSHKey(id)
+}
+
+// ActiveConnectionIds returns the connection ids that currently have an open
+// pool or client — SQL, Redis and Mongo together.
+//
+// The sidebar uses it to show "desconectar" only where there IS something to
+// disconnect. It reads the pool managers rather than tracking the state in the
+// frontend because a pool is opened lazily by whatever needs it first (a
+// query, a metadata scan, the key tree), not by an explicit connect action the
+// UI could observe.
+func (a *App) ActiveConnectionIds() ([]string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	ids := a.pools.ActiveIDs()
+	ids = append(ids, a.redisPools.ActiveIDs()...)
+	ids = append(ids, a.mongoPools.ActiveIDs()...)
+	return ids, nil
+}
+
+// ConnectionEnvironment returns connID's environment marking ("prod",
+// "staging", "dev" or ""). The SSH terminal reads it to decide whether to
+// confirm destructive commands.
+func (a *App) ConnectionEnvironment(connID string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	return a.vault.ConnectionEnvironment(connID)
 }
 
 // ListRedisKeys pages through connID's keyspace via SCAN — never KEYS *,
@@ -1537,6 +1825,178 @@ func (a *App) redisClientFor(connID string) (redis.UniversalClient, error) {
 		return nil, err
 	}
 	return a.redisPools.Get(connID)
+}
+
+// BeginRedisTransaction opens an interactive MULTI on connID, reserving a
+// connection for it.
+//
+// While it is open, EVERY command run against this connection is queued on
+// that same reserved connection — which is the whole point: MULTI opens a
+// transaction ON A CONNECTION, and queueing on one while sending EXEC on
+// another runs an empty transaction with no error and no way to notice.
+// See backend/redisquery/tx.go.
+func (a *App) BeginRedisTransaction(connID string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return a.redisExecutor.Transactions().Begin(a.ctx, connID, client)
+}
+
+// ExecRedisTransaction sends EXEC and releases the reserved connection,
+// returning the replies of the queued commands.
+func (a *App) ExecRedisTransaction(connID string) (interface{}, error) {
+	if _, err := a.redisClientFor(connID); err != nil {
+		return nil, err
+	}
+	return a.redisExecutor.Transactions().Exec(a.ctx, connID)
+}
+
+// DiscardRedisTransaction sends DISCARD, throwing away every queued command.
+func (a *App) DiscardRedisTransaction(connID string) error {
+	if _, err := a.redisClientFor(connID); err != nil {
+		return err
+	}
+	return a.redisExecutor.Transactions().Discard(a.ctx, connID)
+}
+
+// RedisTransactionStatus reports whether connID has a transaction open and
+// how many commands are queued in it — the toolbar's indicator.
+func (a *App) RedisTransactionStatus(connID string) (map[string]interface{}, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	open, queued := a.redisExecutor.Transactions().Open(connID)
+	return map[string]interface{}{"open": open, "queued": queued}, nil
+}
+
+// CheckRedisLuaScript compiles a Lua script WITHOUT running it (SCRIPT
+// LOAD), returning its SHA — the "validate before sending" step. Worth its
+// own binding because a Redis script is atomic: while it runs it blocks
+// every other client, so finding a syntax error before that is not a
+// nicety.
+func (a *App) CheckRedisLuaScript(connID, script string) (redisquery.LuaResult, error) {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return redisquery.LuaResult{}, err
+	}
+	return redisquery.CheckLuaScript(a.ctx, client, script)
+}
+
+// RunRedisLuaScript validates and then runs a Lua script. keys and args map
+// to Lua's KEYS[] and ARGV[]; the split is not cosmetic (Redis routes and
+// validates a script by the KEYS it declares, so a key passed through ARGV
+// breaks the day the deployment is sharded).
+func (a *App) RunRedisLuaScript(connID, script string, keys, args []string) (redisquery.LuaResult, error) {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return redisquery.LuaResult{}, err
+	}
+	// Dispatched through the transaction manager so a script runs INSIDE an
+	// open MULTI when there is one, rather than silently beside it.
+	runner := a.redisExecutor.Transactions().Runner(connID, client)
+	return redisquery.RunLuaScript(a.ctx, runner, client, script, keys, args)
+}
+
+// SubscribeRedisChannels starts a live Pub/Sub monitor under monitorID.
+// Messages arrive as Wails events named after monitorID, in batches — a
+// busy channel can produce thousands per second and one event each would
+// saturate the bridge (see backend/redisquery/stream.go's flushInterval).
+//
+// The frontend generates monitorID and subscribes to the event BEFORE
+// calling this, same race-avoidance the query executor already relies on.
+func (a *App) SubscribeRedisChannels(connID, monitorID string, channels, patterns []string) error {
+	if _, err := a.redisClientFor(connID); err != nil {
+		return err
+	}
+	return a.redisStreams.Subscribe(connID, monitorID, channels, patterns)
+}
+
+// ReadRedisStream tails a Redis stream under monitorID. fromID is "$" for
+// only what arrives from now on, or "0" to replay from the beginning.
+func (a *App) ReadRedisStream(connID, monitorID, key, fromID string) error {
+	if _, err := a.redisClientFor(connID); err != nil {
+		return err
+	}
+	return a.redisStreams.ReadStream(connID, monitorID, key, fromID)
+}
+
+// StopRedisMonitor ends a live monitor. Stopping one that is not running is
+// deliberately not an error, so the UI can call it on unmount without
+// tracking whether the start succeeded.
+func (a *App) StopRedisMonitor(monitorID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	a.redisStreams.Stop(monitorID)
+	return nil
+}
+
+// GetRedisServerInfo returns the health snapshot the metrics dashboard
+// renders: memory against its limit, cache hit rate, connected clients,
+// ops/sec and CPU, parsed out of INFO.
+//
+// Read-only and manual: nothing here polls on its own. The frontend decides
+// when to refresh, because a dashboard that quietly issues a command per
+// second against a production instance is exactly what this app avoids
+// everywhere else.
+func (a *App) GetRedisServerInfo(connID string) (db.RedisServerInfo, error) {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return db.RedisServerInfo{}, err
+	}
+	return db.GetRedisServerInfo(a.ctx, client)
+}
+
+// AnalyzeRedisPrefixes groups a bounded SCAN sample into a namespace tree
+// (session:*, cache:*, cart:*) with key counts and estimated memory.
+//
+// Bounded and sampled on purpose: this runs against production instances,
+// and walking a whole keyspace is what SCAN exists to avoid. The report
+// carries both the sample size and DBSIZE so the UI can present it as the
+// estimate it is, never as a census.
+func (a *App) AnalyzeRedisPrefixes(connID, separator string, sampleLimit int64, withMemory bool) (db.RedisPrefixReport, error) {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return db.RedisPrefixReport{}, err
+	}
+	return db.AnalyzeRedisPrefixes(a.ctx, client, separator, sampleLimit, withMemory)
+}
+
+// DeleteRedisKeys removes several keys at once, returning how many actually
+// existed. Chunked server-side; on a failure it reports how many were
+// already deleted, since a partial destructive operation is unusable
+// information otherwise.
+func (a *App) DeleteRedisKeys(connID string, keys []string) (int64, error) {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return 0, err
+	}
+	return db.DeleteRedisKeys(a.ctx, client, keys)
+}
+
+// SetRedisKeyTTL gives key an expiry of seconds from now (EXPIRE).
+//
+// A non-positive value is rejected rather than forwarded: Redis reads
+// EXPIRE 0 as "delete this key now", which is not what someone typing a 0
+// into a TTL box means. Removing an expiry is PersistRedisKey.
+func (a *App) SetRedisKeyTTL(connID, key string, seconds int64) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.SetRedisKeyTTL(a.ctx, client, key, seconds)
+}
+
+// PersistRedisKey removes key's expiry (PERSIST), making it permanent.
+// Succeeds silently when the key was already permanent — asking for a state
+// something is already in is not an error.
+func (a *App) PersistRedisKey(connID, key string) error {
+	client, err := a.redisClientFor(connID)
+	if err != nil {
+		return err
+	}
+	return db.PersistRedisKey(a.ctx, client, key)
 }
 
 // SetRedisStringValue overwrites key's whole string value, preserving any
@@ -2082,9 +2542,7 @@ func (a *App) SetConnectionSchemas(connID string, schemas []string) error {
 	if err := a.vault.DeleteSchemaMetadataCache(connID); err != nil {
 		return err
 	}
-	a.metadataMu.Lock()
-	delete(a.metadataCache, connID)
-	a.metadataMu.Unlock()
+	a.dropCachedMetadata(connID)
 	return nil
 }
 
@@ -2095,10 +2553,130 @@ func (a *App) cachedMetadata(connID string) (*db.SchemaMetadata, bool) {
 	return meta, ok
 }
 
+// setCachedMetadata is the single choke point where fresh metadata becomes
+// visible to the rest of the app, so it is also where the editor's schema
+// index is rebuilt. Compiling the index here rather than lazily on the
+// first completion means the sidebar and the autocomplete can never
+// disagree about what the schema holds, and a per-schema sync updates both
+// in one step.
 func (a *App) setCachedMetadata(connID string, meta *db.SchemaMetadata) {
 	a.metadataMu.Lock()
-	defer a.metadataMu.Unlock()
 	a.metadataCache[connID] = meta
+	a.metadataMu.Unlock()
+	a.sqlIntel.Set(connID, meta)
+}
+
+// dropCachedMetadata forgets everything derived from a connection's schema:
+// the in-memory metadata and the compiled completion index. Both have to go
+// together — an index outliving its metadata would keep suggesting tables
+// from a database this connection no longer points at.
+func (a *App) dropCachedMetadata(connID string) {
+	a.metadataMu.Lock()
+	delete(a.metadataCache, connID)
+	a.metadataMu.Unlock()
+	a.sqlIntel.Drop(connID)
+}
+
+// --- Editor IntelliSense (backend/sqlintel) -------------------------------
+
+// sqlIntelIndexEvent is the Wails event the frontend listens on to know a
+// background schema extraction finished, so a completion that arrived while
+// the index was still building can be retried.
+const sqlIntelIndexEvent = "sqlintel:index"
+
+// PrimeSchemaIndex makes sure connID's completion index exists, building it
+// in the background if it does not, and reports the state right now.
+//
+// Asynchronous by design: extraction is a catalog query against a possibly
+// remote database, and it must never block the UI or a query the user is
+// running. The call returns immediately with "loading"; the frontend gets
+// the final state through the sqlintel:index event and re-requests
+// completions then. Completion works throughout — until the index lands it
+// simply degrades to keywords, functions and snippets.
+//
+// Called when an editor tab binds to a connection, so the schema is usually
+// indexed before the first character is typed.
+func (a *App) PrimeSchemaIndex(connID string) (*sqlintel.Status, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+
+	status := a.sqlIntel.Prime(connID,
+		func() (*db.SchemaMetadata, error) {
+			// Reuses the normal resolution order (memory → vault cache →
+			// live fetch), so priming an already-synced connection costs a
+			// cache read rather than another catalog scan. GetSchemaMetadata
+			// feeds the index itself via setCachedMetadata; returning the
+			// metadata here is what makes Prime's own state machine settle.
+			return a.GetSchemaMetadata(connID, false)
+		},
+		func(st sqlintel.Status) {
+			runtime.EventsEmit(a.ctx, sqlIntelIndexEvent, st)
+		})
+
+	return &status, nil
+}
+
+// GetSchemaIndexStatus reports whether connID's completion index is ready,
+// for the editor's status indicator.
+func (a *App) GetSchemaIndexStatus(connID string) (*sqlintel.Status, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	status := a.sqlIntel.Status(connID)
+	return &status, nil
+}
+
+// CompleteSQL answers "what can go at this cursor position?" — the single
+// entry point behind the editor's completion popup. Everything the answer
+// depends on (statement parsing, scope resolution, dialect catalog,
+// ranking) lives in backend/sqlintel; the frontend only renders what comes
+// back.
+//
+// It never fails on malformed SQL: half-typed input is the normal case, and
+// the engine is written to degrade to a shorter list rather than error.
+func (a *App) CompleteSQL(req sqlintel.Request) (*sqlintel.Response, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	resp := sqlintel.Complete(a.sqlIntel.Index(req.ConnID), req, a.sqlIntel.UsageFor(req.ConnID))
+	return &resp, nil
+}
+
+// SuggestInlineSQL returns just the ghost-text continuation for the cursor.
+// Separate from CompleteSQL because the ghost text updates on every cursor
+// move, not only while the popup is open: answering it with a bare string
+// keeps that frequent call's payload at a few bytes instead of the full
+// item list.
+func (a *App) SuggestInlineSQL(req sqlintel.Request) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	return sqlintel.InlineOnly(a.sqlIntel.Index(req.ConnID), req), nil
+}
+
+// RecordCompletionUse counts an accepted suggestion so the ranking learns
+// what this session actually uses. Session-only and never persisted — it is
+// a ranking hint, not user data.
+func (a *App) RecordCompletionUse(connID, kind, name string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	a.sqlIntel.RecordUse(connID, kind, name)
+	return nil
+}
+
+// ResolveJoinCondition answers "how do these two tables join?" from the
+// declared foreign keys, without needing a cursor or a half-written query —
+// what the sidebar's "join with…" action uses. Aliases are optional and
+// default to the table names. An empty result means the schema declares no
+// foreign key between them, not that the join is impossible.
+func (a *App) ResolveJoinCondition(connID, leftTable, leftAlias, rightTable, rightAlias string) ([]sqlintel.JoinCondition, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	idx := a.sqlIntel.Index(connID)
+	return sqlintel.ResolveJoinBetween(idx, leftTable, leftAlias, rightTable, rightAlias), nil
 }
 
 // OpenSQLFileDialog prompts for a .sql file, reads it, and records it in
@@ -2504,6 +3082,25 @@ func (a *App) ExplainQuery(connID, sqlText string, analyze bool) (*explain.Plan,
 	// user already has.
 	_ = a.vault.RecordExplainPlan(connID, sqlText, analyze, plan)
 	return plan, nil
+}
+
+// CheckSQLMutation reports whether sqlText writes anything (data or
+// schema), so the frontend can confirm before running Explain Analyze —
+// which, unlike Explain, really executes the statement.
+//
+// Answered in Go rather than with a regex in the frontend because the
+// splitter here is quote- and comment-aware: "-- delete this later" and
+// "SELECT 'DELETE'" are not deletes, and a "WITH t AS (…) DELETE FROM …"
+// is one despite starting with WITH. A frontend regex gets all three wrong.
+//
+// The confirmation is a UX courtesy, not the safety mechanism: the actual
+// guarantee is that PostgresPlan wraps a mutating analyzed run in a
+// transaction it always rolls back.
+func (a *App) CheckSQLMutation(sqlText string) (bool, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return false, err
+	}
+	return query.ContainsMutation(sqlText), nil
 }
 
 // ListExplainHistory returns the most recent EXPLAIN results for connID.

@@ -103,6 +103,9 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
                 extensions: [
                     basicSetup,
                     baseTheme,
+                    // null connId: highlighting only. This viewer is
+                    // read-only, so schema completion and ghost text would
+                    // be bridge traffic with nowhere to land.
                     sqlLanguageExtension(dbType, null),
                     resolveEditorTheme(editorThemeId, appTheme),
                     EditorView.editable.of(false),

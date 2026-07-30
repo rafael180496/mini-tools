@@ -103,5 +103,11 @@ func OraclePlan(ctx context.Context, pool *sql.DB, query string) (*Plan, error) 
 		}
 	}
 
-	return &Plan{Root: root, RawText: strings.Join(rawLines, "\n")}, nil
+	plan := &Plan{Root: root, RawText: strings.Join(rawLines, "\n")}
+	// analyze is always false: EXPLAIN PLAN FOR only plans, it never runs
+	// the statement, so Oracle has no real row counts or timings to report
+	// here. The analysis pass still grades the full scans and derives index
+	// suggestions from cost and cardinality.
+	Analyze(plan, "oracle", false)
+	return plan, nil
 }

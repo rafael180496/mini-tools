@@ -317,6 +317,64 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 23,
+		desc:    "agrega git_repos.pinned_branches — ramas ancladas por repositorio (JSON), para que las importantes queden arriba del panel",
+		apply: func(tx *sql.Tx) error {
+			// Columna en git_repos y no en settings porque anclar es por
+			// repositorio: 'develop' importa en uno y no existe en otro.
+			// DEFAULT '[]' = ningún repo existente cambia de comportamiento.
+			// Solo nombres de rama, ninguna credencial — misma condición que
+			// el resto de git_repos (migración 18).
+			_, err := tx.Exec(`ALTER TABLE git_repos ADD COLUMN pinned_branches TEXT NOT NULL DEFAULT '[]'`)
+			return err
+		},
+	},
+	{
+		version: 24,
+		desc:    "agrega connections.environment — producción/staging/desarrollo, para teñir la conexión y activar la confirmación de comandos destructivos",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT '' = ninguna conexión existente queda marcada como
+			// producción por accidente. Que una conexión de verdad crítica
+			// aparezca sin marcar es un problema que el usuario ve y corrige;
+			// lo contrario —marcar producción por defecto— entrenaría a
+			// aceptar el diálogo sin leerlo, que es exactamente lo que esta
+			// función existe para evitar.
+			_, err := tx.Exec(`ALTER TABLE connections ADD COLUMN environment TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
+	{
+		version: 25,
+		desc:    "crea ssh_keys — llaves privadas cifradas bajo la clave maestra, vinculables a varias conexiones sin duplicar el material",
+		apply: func(tx *sql.Tx) error {
+			// El material va cifrado con el mismo esquema que encrypted_dsn en
+			// connections (AES-GCM bajo la clave del vault, nonce por columna):
+			// una llave privada no merece menos protección que un DSN, y no
+			// hay razón para inventar un segundo mecanismo.
+			//
+			// name es UNIQUE porque la llave se elige por nombre en el
+			// formulario de conexión, y dos "id_rsa del server viejo" hacen
+			// imposible saber cuál se está vinculando.
+			//
+			// fingerprint y key_type se derivan al guardar y se almacenan en
+			// claro a propósito: son públicos por definición (un fingerprint
+			// es lo que se publica para verificar una llave) y son lo único
+			// que permite reconocer una llave en la lista sin descifrarla.
+			_, err := tx.Exec(`CREATE TABLE ssh_keys (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL UNIQUE,
+				key_type TEXT NOT NULL DEFAULT '',
+				fingerprint TEXT NOT NULL DEFAULT '',
+				encrypted_key BLOB NOT NULL,
+				key_nonce BLOB NOT NULL,
+				encrypted_passphrase BLOB,
+				passphrase_nonce BLOB,
+				created_at INTEGER NOT NULL
+			)`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

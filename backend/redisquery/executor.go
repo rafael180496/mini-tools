@@ -48,13 +48,24 @@ type Executor struct {
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+
+	// txs routes commands to a reserved connection while the user has a
+	// MULTI open on that connID. See tx.go — dispatching to the pool
+	// instead would queue the commands on one connection and EXEC on
+	// another, which runs an empty transaction with no error.
+	txs *TxManager
 }
+
+// Transactions exposes the transaction manager so app.go can drive
+// begin/exec/discard without a second registry.
+func (e *Executor) Transactions() *TxManager { return e.txs }
 
 // NewExecutor builds an Executor — same shape as query.NewExecutor.
 func NewExecutor(parentCtx context.Context, pools *db.RedisPoolManager, emit EmitFunc, history HistorySink) *Executor {
 	return &Executor{
 		parentCtx: parentCtx, pools: pools, emit: emit, history: history,
 		cancels: make(map[string]context.CancelFunc),
+		txs:     NewTxManager(),
 	}
 }
 
@@ -117,9 +128,17 @@ func (e *Executor) run(connID, queryID, commandText string) {
 			args[i] = t
 		}
 
+		// Route through the transaction manager, never straight at the
+		// pool: with a MULTI open this MUST land on the reserved
+		// connection, or the command is queued nowhere.
+		runner := e.txs.Runner(connID, client)
+
 		start := time.Now()
-		result, err := client.Do(ctx, args...).Result()
+		result, err := runner.Do(ctx, args...).Result()
 		durationMs := time.Since(start).Milliseconds()
+		if err == nil {
+			e.txs.NoteQueued(connID)
+		}
 
 		if err != nil {
 			if err == redis.Nil {

@@ -33,7 +33,20 @@ type ConnectionSummary struct {
 	// FolderID is which folders.id this connection is organized under —
 	// empty means root (schema_migrations version 10). See folders_repo.go.
 	FolderID string `json:"folderId,omitempty"`
+	// Environment is "prod", "staging", "dev" or "" (unmarked). Unlike Color
+	// it IS interpreted: an SSH connection marked "prod" gets the destructive
+	// command confirmation in the terminal (schema_migrations version 24).
+	Environment string `json:"environment,omitempty"`
 }
+
+// Environment values. Anything else is stored as-is but treated as unmarked,
+// so an older build writing a value this one does not know cannot accidentally
+// disable a guard — only fail to enable one.
+const (
+	EnvProd    = "prod"
+	EnvStaging = "staging"
+	EnvDev     = "dev"
+)
 
 func splitSchemas(raw sql.NullString) []string {
 	if !raw.Valid || raw.String == "" {
@@ -46,7 +59,7 @@ func splitSchemas(raw sql.NullString) []string {
 // name/db_type. dsn must already be a fully-built DSN (see
 // db.Connector.BuildDSN) — this method only ever sees it in memory, right
 // before encrypting it.
-func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string, color string) (*ConnectionSummary, error) {
+func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string, color, environment string) (*ConnectionSummary, error) {
 	key, err := s.gate.Key()
 	if err != nil {
 		return nil, err
@@ -64,13 +77,13 @@ func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string, color 
 	createdAt := time.Now().Unix()
 
 	if _, err := s.db.Exec(
-		`INSERT INTO connections (id, name, db_type, encrypted_dsn, nonce, created_at, color) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, name, string(dbType), ciphertext, nonce, createdAt, nullableString(color),
+		`INSERT INTO connections (id, name, db_type, encrypted_dsn, nonce, created_at, color, environment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, name, string(dbType), ciphertext, nonce, createdAt, nullableString(color), environment,
 	); err != nil {
 		return nil, fmt.Errorf("vault: saving connection: %w", err)
 	}
 
-	return &ConnectionSummary{ID: id, Name: name, DBType: string(dbType), CreatedAt: createdAt, Color: color}, nil
+	return &ConnectionSummary{ID: id, Name: name, DBType: string(dbType), CreatedAt: createdAt, Color: color, Environment: environment}, nil
 }
 
 // nullableString turns an empty string into SQL NULL — "no color set"
@@ -86,7 +99,7 @@ func nullableString(s string) interface{} {
 // name/db_type/encrypted_dsn in place — same "dsn must already be built"
 // contract as SaveConnection. Does NOT touch metadata_schemas (that's
 // SetConnectionSchemas' job) or created_at. Fails if id doesn't exist.
-func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, color string) error {
+func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, color, environment string) error {
 	key, err := s.gate.Key()
 	if err != nil {
 		return err
@@ -98,8 +111,8 @@ func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, 
 	}
 
 	res, err := s.db.Exec(
-		`UPDATE connections SET name = ?, db_type = ?, encrypted_dsn = ?, nonce = ?, color = ? WHERE id = ?`,
-		name, string(dbType), ciphertext, nonce, nullableString(color), id,
+		`UPDATE connections SET name = ?, db_type = ?, encrypted_dsn = ?, nonce = ?, color = ?, environment = ? WHERE id = ?`,
+		name, string(dbType), ciphertext, nonce, nullableString(color), environment, id,
 	)
 	if err != nil {
 		return fmt.Errorf("vault: updating connection: %w", err)
@@ -117,7 +130,7 @@ func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, 
 // ListConnections returns every saved connection, without DSNs, ordered by
 // name for the sidebar tree.
 func (s *Store) ListConnections() ([]ConnectionSummary, error) {
-	rows, err := s.db.Query(`SELECT id, name, db_type, created_at, metadata_schemas, color, folder_id FROM connections ORDER BY name`)
+	rows, err := s.db.Query(`SELECT id, name, db_type, created_at, metadata_schemas, color, folder_id, environment FROM connections ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: listing connections: %w", err)
 	}
@@ -127,12 +140,14 @@ func (s *Store) ListConnections() ([]ConnectionSummary, error) {
 	for rows.Next() {
 		var c ConnectionSummary
 		var schemas, color, folderID sql.NullString
-		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt, &schemas, &color, &folderID); err != nil {
+		var environment sql.NullString
+		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt, &schemas, &color, &folderID, &environment); err != nil {
 			return nil, fmt.Errorf("vault: scanning connection: %w", err)
 		}
 		c.MetadataSchemas = splitSchemas(schemas)
 		c.Color = color.String
 		c.FolderID = folderID.String
+		c.Environment = environment.String
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -195,6 +210,21 @@ func (s *Store) ConnectionMetadataSchemas(id string) ([]string, error) {
 		return nil, fmt.Errorf("vault: leyendo esquemas de conexión: %w", err)
 	}
 	return splitSchemas(schemas), nil
+}
+
+// ConnectionEnvironment returns id's environment marking ("" when unmarked).
+// Read on its own — the terminal needs it per connection without pulling the
+// whole list.
+func (s *Store) ConnectionEnvironment(id string) (string, error) {
+	var env sql.NullString
+	err := s.db.QueryRow(`SELECT environment FROM connections WHERE id = ?`, id).Scan(&env)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("vault: conexión %q no encontrada", id)
+	}
+	if err != nil {
+		return "", fmt.Errorf("vault: leyendo entorno de conexión: %w", err)
+	}
+	return env.String, nil
 }
 
 // DeleteConnection removes a saved connection. The caller is responsible for

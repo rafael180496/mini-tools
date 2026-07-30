@@ -30,6 +30,15 @@ func main() {
 		return
 	}
 
+	// Same shape as askpass above: git re-executes this binary as its
+	// sequence editor during an interactive rebase, hands it the todo file
+	// as argv[1], and uses whatever is left there. It must write and exit
+	// before anything else here opens a window or touches the vault.
+	if git.IsSequenceEditorInvocation() {
+		git.SequenceEditorMain()
+		return
+	}
+
 	// Create an instance of the app structure
 	app := NewApp()
 
@@ -52,6 +61,17 @@ func main() {
 			// Explicit (matches the zero-value default) so the native
 			// green title-bar button stays enabled for maximize/fullscreen.
 			DisableZoom: false,
+		},
+		// Lets files be dragged from Finder/Explorer onto the SFTP pane.
+		// CSSDropProperty/CSSDropValue mark WHICH elements accept a drop:
+		// without a drop target the whole window would swallow every drag,
+		// including ones meant for the editor. Only elements carrying
+		// `--wails-drop-target: drop` receive the paths.
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop:     true,
+			CSSDropProperty:    "--wails-drop-target",
+			CSSDropValue:       "drop",
+			DisableWebViewDrop: false,
 		},
 		OnStartup:  app.startup,
 		OnShutdown: app.shutdown,

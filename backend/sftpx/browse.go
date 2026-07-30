@@ -2,6 +2,7 @@ package sftpx
 
 import (
 	"fmt"
+	"mini-tools/backend/sshconn"
 	"os"
 	"sync"
 )
@@ -23,10 +24,16 @@ type BrowseManager struct {
 	mu       sync.Mutex
 	sessions map[string]*remoteFS
 	local    fileSystem
+	// pool is the shared SSH connection pool: a browse pane borrows the
+	// host's existing connection instead of dialling its own.
+	pool *sshconn.ClientPool
 }
 
-func NewBrowseManager() *BrowseManager {
-	return &BrowseManager{sessions: make(map[string]*remoteFS), local: newLocalFS()}
+func NewBrowseManager(pool *sshconn.ClientPool) *BrowseManager {
+	if pool == nil {
+		pool = sshconn.NewClientPool()
+	}
+	return &BrowseManager{sessions: make(map[string]*remoteFS), local: newLocalFS(), pool: pool}
 }
 
 // Open dials dsn and stores the resulting SFTP session under sessionID,
@@ -34,11 +41,11 @@ func NewBrowseManager() *BrowseManager {
 // open under sessionID is closed first (a pane switching hosts). dsn is
 // resolved by app.go from an opaque connID — this package never sees the
 // vault or a persisted DSN.
-func (m *BrowseManager) Open(sessionID, dsn string) (string, error) {
+func (m *BrowseManager) Open(sessionID, connID, dsn string) (string, error) {
 	if sessionID == LocalSession {
 		return "", fmt.Errorf("sftpx: %q está reservado para la máquina local", LocalSession)
 	}
-	fs, err := dialRemote(dsn)
+	fs, err := dialRemote(m.pool, connID, dsn)
 	if err != nil {
 		return "", err
 	}

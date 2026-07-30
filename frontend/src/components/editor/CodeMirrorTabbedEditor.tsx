@@ -7,6 +7,7 @@ import {basicSetup} from 'codemirror'
 import {db} from '../../../wailsjs/go/models'
 import type {EditorTab, TabLanguage} from './EditorTabs'
 import {sqlLanguageExtension, sqlSchemaHover} from '../../codemirror/sqlSchema'
+import {primeSchemaIndex} from '../../codemirror/sqlIntel'
 import {redisCli} from '../../codemirror/redisLanguage'
 import {mongosh} from '../../codemirror/mongoLanguage'
 import {lintExtension} from '../../codemirror/lintAdapter'
@@ -26,10 +27,18 @@ const baseTheme = EditorView.theme({
     '.cm-scroller': {fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace", overflow: 'auto'},
 })
 
-function languageExtensions(language: TabLanguage, dbType: string | null, meta: db.SchemaMetadata | null): Extension[] {
+function languageExtensions(
+    language: TabLanguage,
+    dbType: string | null,
+    connId: string | null,
+    meta: db.SchemaMetadata | null,
+): Extension[] {
     if (language === 'redis-cli') return [redisCli(), lintExtension(language)]
     if (language === 'mongosh') return [mongosh(), lintExtension(language)]
-    return [sqlLanguageExtension(dbType, meta), sqlSchemaHover(meta), lintExtension(language)]
+    // connId drives completion (answered by backend/sqlintel, keyed by
+    // connection); meta drives the hover, which is still resolved locally
+    // from the metadata the workspace already holds.
+    return [sqlLanguageExtension(dbType, connId), sqlSchemaHover(meta), lintExtension(language)]
 }
 
 interface CodeMirrorTabbedEditorProps {
@@ -42,6 +51,11 @@ interface CodeMirrorTabbedEditorProps {
     // activeDbTypeStore.ts singletons, now consumed directly as props
     // instead (no global mutable store, see the module comment above).
     dbType: string | null
+    // connId is the active tab's bound connection. It is what makes SQL
+    // completion schema-aware — the Go engine looks its compiled schema
+    // index up under this id — and null means "unbound tab", which gets
+    // dialect highlighting but no schema suggestions.
+    connId: string | null
     schemaMetadata: db.SchemaMetadata | null
     editorThemeId: string
     appTheme: Theme
@@ -65,6 +79,7 @@ export default function CodeMirrorTabbedEditor({
     onChangeContent,
     onMount,
     dbType,
+    connId,
     schemaMetadata,
     editorThemeId,
     appTheme,
@@ -85,7 +100,7 @@ export default function CodeMirrorTabbedEditor({
                 baseTheme,
                 search(),
                 keymap.of([indentWithTab]),
-                languageCompartment.of(languageExtensions(tab.language, dbType, schemaMetadata)),
+                languageCompartment.of(languageExtensions(tab.language, dbType, connId, schemaMetadata)),
                 themeCompartment.of(theme),
                 EditorView.updateListener.of((update) => {
                     statesRef.current.set(tab.id, update.state)
@@ -154,8 +169,16 @@ export default function CodeMirrorTabbedEditor({
     useEffect(() => {
         const view = viewRef.current
         if (!view || !activeLanguage) return
-        view.dispatch({effects: languageCompartment.reconfigure(languageExtensions(activeLanguage, dbType, schemaMetadata))})
-    }, [activeTabId, dbType, schemaMetadata, activeLanguage])
+        view.dispatch({effects: languageCompartment.reconfigure(languageExtensions(activeLanguage, dbType, connId, schemaMetadata))})
+    }, [activeTabId, dbType, connId, schemaMetadata, activeLanguage])
+
+    // Build the connection's schema index in the background as soon as a
+    // tab binds to it, so completion is already schema-aware by the time
+    // the first character is typed instead of warming up on the first
+    // request. Idempotent — an index that already exists is not rebuilt.
+    useEffect(() => {
+        primeSchemaIndex(connId)
+    }, [connId])
 
     // Theme changes are app-wide, not per-tab — reconfigure every cached
     // state (not just the active one) so a tab switched back to later

@@ -4,6 +4,15 @@ import {Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate}
 import {basicSetup} from 'codemirror'
 import {resolveEditorTheme} from '../../codemirror/themes'
 import type {Theme} from '../../hooks/useTheme'
+import {git} from '../../../wailsjs/go/models'
+import {
+    buildPatch,
+    docLineMap,
+    hunkSummary,
+    parsePatch,
+    selectionFromDocLines,
+    type PatchSelection,
+} from '../../lib/gitPatch'
 import Icon from '../Icon'
 import {parseSplitDiff, type SplitRow} from './splitDiff'
 
@@ -26,6 +35,23 @@ interface DiffViewerProps {
     ignoreWs: boolean
     wrap: boolean
     onChangePrefs: (context: number, ignoreWs: boolean, wrap: boolean) => void
+    // Applies a partial patch built from this diff. Absent for read-only
+    // contexts (a commit's diff, where there is nothing to stage).
+    // The action tells the caller which git flags to use — this component
+    // builds the patch, it does not decide what --cached/--reverse mean.
+    onApplyPatch?: (patch: string, action: 'stage' | 'unstage' | 'discard') => void
+    // Blame for the file, keyed by line number in the revision it was taken
+    // at. Absent means the blame gutter is off.
+    blame?: git.BlameLine[]
+    // blameSide says which side of the diff the blame line numbers refer to:
+    // 'new' for a commit's diff (blamed AT that commit, so added lines belong
+    // to it), 'old' for a working-tree diff (blamed at HEAD, where the added
+    // lines do not exist yet).
+    blameSide?: 'old' | 'new'
+    onToggleBlame?: () => void
+    // staged marks this as the index-vs-HEAD diff, where the only action
+    // that makes sense is unstaging.
+    staged?: boolean
 }
 
 const baseTheme = EditorView.theme({
@@ -112,11 +138,94 @@ const diffHighlighter: Extension = ViewPlugin.fromClass(
 // document, it is never edited, and it is fully replaced whenever the user
 // selects a different file. Recreating the view is simpler and cheap enough at
 // this size.
-export default function DiffViewer({patch, isBinary, path, loading, error, editorThemeId, appTheme, context, ignoreWs, wrap, onChangePrefs}: DiffViewerProps) {
+export default function DiffViewer({
+    patch,
+    isBinary,
+    path,
+    loading,
+    error,
+    editorThemeId,
+    appTheme,
+    context,
+    ignoreWs,
+    wrap,
+    onChangePrefs,
+    onApplyPatch,
+    staged,
+    blame,
+    blameSide = 'old',
+    onToggleBlame,
+}: DiffViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    const viewRef = useRef<EditorView | null>(null)
     const [mode, setMode] = useState<ViewMode>('unified')
+    // Document lines currently selected in the editor, so "stage these
+    // lines" knows what the user actually highlighted. Kept in state (not a
+    // ref) because the button's enabled state depends on it.
+    const [selectedDocLines, setSelectedDocLines] = useState<number[]>([])
 
     const rows = useMemo(() => (mode === 'split' && patch ? parseSplitDiff(patch) : []), [mode, patch])
+
+    // Parsed once per patch and shared by the hunk strip and the
+    // selection mapping — both have to agree on hunk/line indices, and
+    // deriving them twice is how they drift apart.
+    const parsed = useMemo(() => (patch ? parsePatch(patch) : {headers: [], hunks: []}), [patch])
+    const lineMap = useMemo(() => (patch ? docLineMap(patch) : []), [patch])
+
+    // Blame is rendered as its own column next to the patch text rather than
+    // injected into the CodeMirror document: the document IS the patch, and
+    // adding characters to it would break every line index the staging
+    // selection depends on.
+    const blameRows = useMemo(() => {
+        if (!blame || blame.length === 0 || !patch) return []
+        const byLine = new Map(blame.map((b) => [b.line, b]))
+        const out: (git.BlameLine | null)[] = []
+
+        // Walk the patch tracking both side's line numbers, so each row can
+        // be attributed to the revision the blame was actually taken at.
+        let oldLine = 0
+        let newLine = 0
+
+        for (const raw of patch.split('\n')) {
+            const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw)
+            if (m) {
+                oldLine = Number(m[1])
+                newLine = Number(m[2])
+                out.push(null)
+                continue
+            }
+            const kind = raw[0]
+            if (kind === ' ') {
+                out.push(byLine.get(blameSide === 'new' ? newLine : oldLine) ?? null)
+                oldLine++
+                newLine++
+            } else if (kind === '+') {
+                // In a working-tree diff an added line has no commit yet, so
+                // there is deliberately nothing to attribute it to.
+                out.push(blameSide === 'new' ? (byLine.get(newLine) ?? null) : null)
+                newLine++
+            } else if (kind === '-') {
+                out.push(blameSide === 'old' ? (byLine.get(oldLine) ?? null) : null)
+                oldLine++
+            } else {
+                out.push(null)
+            }
+        }
+        return out
+    }, [blame, patch, blameSide])
+
+    // Whole-file actions and per-hunk actions mean different things
+    // depending on which side is being shown: in the staged view the only
+    // sensible verb is "unstage", in the working-tree view it is "stage"
+    // (plus discard, which is destructive and confirmed by the caller).
+    const canApply = !!onApplyPatch && !isBinary && !!patch
+
+    function applySelection(selection: PatchSelection, action: 'stage' | 'unstage' | 'discard') {
+        if (!onApplyPatch) return
+        const built = buildPatch(parsed, selection)
+        if (!built) return
+        onApplyPatch(built, action)
+    }
 
     useEffect(() => {
         if (mode !== 'unified' || loading || error || isBinary || !patch || !containerRef.current) return
@@ -131,12 +240,30 @@ export default function DiffViewer({patch, isBinary, path, loading, error, edito
                     resolveEditorTheme(editorThemeId, appTheme),
                     EditorView.editable.of(false),
                     EditorState.readOnly.of(true),
+                    // Read-only still allows selecting, which is exactly what
+                    // line-level staging needs: the document IS the patch, so
+                    // a highlighted document line is a patch line.
+                    EditorView.updateListener.of((update) => {
+                        if (!update.selectionSet && !update.docChanged) return
+                        const lines = new Set<number>()
+                        for (const range of update.state.selection.ranges) {
+                            const from = update.state.doc.lineAt(range.from).number
+                            const to = update.state.doc.lineAt(range.to).number
+                            for (let n = from; n <= to; n++) lines.add(n - 1)
+                        }
+                        setSelectedDocLines([...lines])
+                    }),
                     ...(wrap ? [EditorView.lineWrapping] : []),
                 ],
             }),
             parent: containerRef.current,
         })
-        return () => view.destroy()
+        viewRef.current = view
+        setSelectedDocLines([])
+        return () => {
+            viewRef.current = null
+            view.destroy()
+        }
     }, [mode, patch, isBinary, loading, error, editorThemeId, appTheme, wrap])
 
     if (loading) {
@@ -159,11 +286,94 @@ export default function DiffViewer({patch, isBinary, path, loading, error, edito
 
     return (
         <div className="flex h-full min-h-0 flex-col">
+            {canApply && mode === 'unified' && (
+                <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+                    <span className="text-on-surface-variant">
+                        {parsed.hunks.length} {parsed.hunks.length === 1 ? 'bloque' : 'bloques'}
+                    </span>
+                    <button
+                        onClick={() =>
+                            applySelection(
+                                selectionFromDocLines(parsed, lineMap, selectedDocLines),
+                                staged ? 'unstage' : 'stage',
+                            )
+                        }
+                        disabled={selectedDocLines.length === 0}
+                        title={
+                            selectedDocLines.length === 0
+                                ? 'Seleccioná líneas en el diff (con el mouse) para preparar solo esas'
+                                : staged
+                                  ? 'Saca del stage solo las líneas seleccionadas. Las líneas de contexto se ignoran.'
+                                  : 'Prepara solo las líneas seleccionadas — así se arma un commit limpio de una sola tarea aunque el archivo tenga varias.'
+                        }
+                        className="ml-auto rounded border border-outline-variant px-1.5 py-0.5 text-on-surface hover:bg-surface-container-high disabled:opacity-40"
+                    >
+                        {staged ? 'Quitar líneas seleccionadas' : 'Preparar líneas seleccionadas'}
+                    </button>
+                </div>
+            )}
+
+            {canApply && mode === 'unified' && parsed.hunks.length > 0 && (
+                <div className="flex max-h-24 shrink-0 flex-col overflow-y-auto border-b border-outline-variant">
+                    {parsed.hunks.map((hunk, i) => {
+                        const {added, removed} = hunkSummary(hunk)
+                        return (
+                            <div key={i} className="flex items-center gap-2 px-2 py-0.5 text-[11px] hover:bg-surface-variant/40">
+                                <button
+                                    onClick={() => {
+                                        // Scroll the editor to this hunk so the
+                                        // strip is navigation, not just buttons.
+                                        const view = viewRef.current
+                                        if (!view) return
+                                        const docLine = lineMap.findIndex((m) => m?.hunk === i)
+                                        if (docLine < 0) return
+                                        const pos = view.state.doc.line(docLine + 1).from
+                                        view.dispatch({selection: {anchor: pos}, scrollIntoView: true})
+                                    }}
+                                    title={`Ir a este bloque en el diff (${hunk.header})`}
+                                    className="min-w-0 flex-1 truncate text-left font-mono text-on-surface-variant hover:text-on-surface"
+                                >
+                                    {hunk.header}
+                                </button>
+                                <span className="shrink-0 font-mono text-[10px]">
+                                    <span className="text-secondary">+{added}</span> <span className="text-error">−{removed}</span>
+                                </span>
+                                <button
+                                    onClick={() => applySelection({hunks: new Set([i])}, staged ? 'unstage' : 'stage')}
+                                    title={staged ? 'Saca este bloque del stage' : 'Prepara este bloque completo para el commit'}
+                                    className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 text-on-surface hover:bg-surface-container-high"
+                                >
+                                    {staged ? 'Quitar' : 'Preparar'}
+                                </button>
+                                {!staged && (
+                                    <button
+                                        onClick={() => applySelection({hunks: new Set([i])}, 'discard')}
+                                        title="Revierte SOLO este bloque en el working tree. Es destructivo y no se puede deshacer."
+                                        className="shrink-0 rounded px-1 py-0.5 text-error hover:bg-error-container"
+                                    >
+                                        Descartar
+                                    </button>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
             <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-outline-variant bg-surface-container-low px-2 py-1">
                 <ModeTab active={mode === 'unified'} onClick={() => setMode('unified')} icon="notes" label="Unificado" title="Ver el diff como un parche unificado, con las líneas agregadas y borradas intercaladas" />
                 <ModeTab active={mode === 'split'} onClick={() => setMode('split')} icon="vertical_split" label="Lado a lado" title="Ver el archivo antes y después en dos columnas alineadas" />
 
                 <div className="mx-1 h-4 w-px bg-outline-variant" />
+
+                {onToggleBlame && (
+                    <IconToggle
+                        active={!!blame}
+                        onClick={onToggleBlame}
+                        icon="person_search"
+                        title="Mostrar quién tocó cada línea por última vez, con su commit y su fecha. En un diff del working tree las líneas agregadas todavía no tienen commit, así que aparecen vacías."
+                    />
+                )}
 
                 <IconToggle
                     active={ignoreWs}
@@ -202,7 +412,36 @@ export default function DiffViewer({patch, isBinary, path, loading, error, edito
                 </button>
             </div>
             {mode === 'unified' ? (
+                <div className="flex min-h-0 flex-1">
+                {blameRows.length > 0 && mode === 'unified' && (
+                    <div className="w-52 shrink-0 overflow-hidden border-r border-outline-variant bg-surface-container-lowest">
+                        {/* Aligned to the editor by matching its line height;
+                            the column scrolls with the patch because both live
+                            in the same scroll container height. */}
+                        {blameRows.map((b, i) => (
+                            <div
+                                key={i}
+                                title={
+                                    b
+                                        ? `${b.author} · ${b.shortHash} · ${b.date}\n${b.summary}`
+                                        : 'Sin commit: la línea todavía no está en el historial'
+                                }
+                                className="h-[18px] truncate px-1.5 text-[10px] leading-[18px] text-on-surface-variant/60"
+                            >
+                                {b ? (
+                                    <>
+                                        <span className="font-mono text-on-surface-variant/80">{b.uncommitted ? 'local' : b.shortHash}</span>{' '}
+                                        <span>{b.uncommitted ? 'sin commitear' : b.author}</span>
+                                    </>
+                                ) : (
+                                    ''
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
                 <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" />
+            </div>
             ) : (
                 <SplitView rows={rows} wrap={wrap} />
             )}

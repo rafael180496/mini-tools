@@ -1,61 +1,65 @@
 # mini-tools — release Windows
 
 Artefacto de distribución local generado con `./scripts/package-windows.sh`,
-**cross-compilado desde macOS** y **verificado corriendo en Windows 10 y
-Windows 11**. No es un release firmado ni se publica automáticamente a
-ningún lado — solo empaqueta el `.exe` para distribuirlo manualmente
-(GitHub Releases, USB, red interna, etc.).
+**cross-compilado desde macOS** y **corrido en Windows 10 y Windows 11
+reales** antes de publicarlo. No es un release firmado ni se publica
+automáticamente a ningún lado — solo empaqueta el `.exe` para distribuirlo
+manualmente (GitHub Releases, USB, red interna, etc.).
 
 ## Versión actual
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.5.2 |
-| Archivo | `mini-tools-v0.5.2-windows-amd64.exe` |
-| Tamaño | ~51 MB |
-| SHA-256 | `c08f2156de52827281d250963f64f2878f5138342af78b1687557b15430f7db2` |
+| Versión | 1.0.0 |
+| Archivo | `mini-tools-v1.0.0-windows-amd64.exe` |
+| Tamaño | ~53 MB |
+| SHA-256 | `aeeb2dccb51b9517c2731888d3ec33adf4da533a656d95640f7e3461afe1e46f` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v0.5.2-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v1.0.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
-## Verificado en Windows real
+## Estado de verificación en Windows real
 
 Este `.exe` se cross-compila desde macOS (ninguno de los conectores de
 base de datos —PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni
 `go-redis` usan CGO, así que no hace falta un toolchain de
-Windows/mingw), pero **no se distribuye solo porque compile**: esta
-versión (0.5.2) se corrió en **Windows 10 y Windows 11 reales** antes de
-publicarla, y la app arranca y funciona en ambos.
+Windows/mingw), pero **no se distribuye solo porque compile**: la 1.0.0 se
+corrió en **Windows 10 y Windows 11 reales**, y la app arranca y se usa en
+ambos.
 
-Lo que se confirmó ahí y no se puede confirmar cross-compilando:
+Confirmado ahí, que es lo que no se puede confirmar cross-compilando:
 
 - **WebView2 arranca sin instalar nada.** En los dos equipos de prueba
-  —Windows 11 y Windows 10— la app abrió directo, sin instalar el
-  WebView2 Runtime aparte. Ver la nota de compatibilidad abajo sobre qué
-  pasa en un Windows 10 sin actualizar.
-- **DPI scaling, tamaño y posición de ventana** correctos.
-- **Diálogos nativos** (abrir/guardar archivo, backup del vault) vía la
-  API de Windows.
-- **Ícono y manifest** embebidos por Wails.
+  —Windows 10 y Windows 11— la app abrió directo, sin instalar el WebView2
+  Runtime aparte. Ver la nota de compatibilidad abajo sobre qué pasa en un
+  Windows 10 sin actualizar.
 
-Sin problemas conocidos abiertos en Windows al momento de esta versión.
+Probado en esas dos versiones pero **sin revisar punto por punto**, así que
+se listan como no confirmados explícitamente:
+
+- **DPI scaling, tamaño y posición de ventana.**
+- **Diálogos nativos** (abrir/guardar archivo, backup del vault).
+- **Arrastrar archivos desde el Explorador de Windows al panel SFTP** —
+  funcionalidad nueva en esta versión, apoyada en el drag & drop nativo de
+  Wails.
+
 Lo único que sigue molestando al primer arranque es SmartScreen, por la
 falta de firma Authenticode — ver abajo.
 
 ## Compatibilidad del sistema
 
-- **Windows 10 y Windows 11** — ambos verificados corriendo la app (ver
+- **Windows 10 y Windows 11** — ambos verificados arrancando la app (ver
   arriba). Wails v2 en Windows depende del WebView2 Runtime de Microsoft:
-  Windows 11 lo trae preinstalado y los Windows 10 con Edge al día
-  también (llega con las actualizaciones de Edge), que fue el caso en las
-  pruebas. Un Windows 10 viejo o sin actualizar puede no tenerlo — ahí se
-  instala aparte, gratis
+  Windows 11 lo trae preinstalado y los Windows 10 con Edge al día también
+  (llega con las actualizaciones de Edge), que fue el caso en las pruebas.
+  Un Windows 10 viejo o sin actualizar puede no tenerlo — ahí se instala
+  aparte, gratis
   ([enlace oficial](https://developer.microsoft.com/microsoft-edge/webview2/)).
 - **Solo `amd64` (x86-64).** No se generó build `arm64` (Windows on ARM)
   — se puede agregar cross-compilando con `-platform windows/arm64` si
@@ -72,7 +76,7 @@ falta de firma Authenticode — ver abajo.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v0.5.2-windows-amd64.exe`.
+1. Descargar `mini-tools-v1.0.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

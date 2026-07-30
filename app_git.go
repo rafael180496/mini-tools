@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -298,6 +299,19 @@ func (a *App) GitLog(repoID string, opts git.LogOptions) ([]git.CommitInfo, erro
 		return nil, err
 	}
 	return a.gitRunner.GetCommitLog(path, opts)
+}
+
+// GitSetPinnedBranches replaces a repository's pinned branch list — the
+// branches kept at the top of the sidebar.
+//
+// Per repository rather than global: "develop" is the trunk in one project
+// and does not exist in another. Only branch names are stored, never a
+// credential, same as the rest of git_repos.
+func (a *App) GitSetPinnedBranches(repoID string, branches []string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetGitRepoPinnedBranches(repoID, branches)
 }
 
 func (a *App) GitBranches(repoID string, includeRemote bool) ([]git.Branch, error) {
@@ -666,6 +680,188 @@ func (a *App) GitApplyPatch(repoID, patch string, cached, reverse bool) error {
 		return err
 	}
 	return a.gitRunner.ApplyPatch(path, patch, cached, reverse)
+}
+
+// GitStashDiff returns the patch a stash entry holds, for review before
+// applying it. Popping a stash is not reversible once it conflicts, and the
+// entry is gone — seeing what is inside first is what makes the choice
+// informed instead of hopeful.
+func (a *App) GitStashDiff(repoID, ref string) (string, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return "", err
+	}
+	return a.gitRunner.StashDiff(path, ref, false)
+}
+
+// GitBlame reports which commit last touched each line of a file at rev.
+// rev empty blames the working tree; a commit blames the file as of it.
+func (a *App) GitBlame(repoID, path, rev string) ([]git.BlameLine, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return nil, err
+	}
+	return a.gitRunner.Blame(root, path, rev)
+}
+
+// GitConflictedFiles lists the paths git currently reports as unmerged.
+func (a *App) GitConflictedFiles(repoID string) ([]string, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return nil, err
+	}
+	return a.gitRunner.ConflictedFiles(path)
+}
+
+// GitReadConflictFile returns a conflicted file's working-tree contents,
+// markers included — the raw text the resolver parses into blocks.
+func (a *App) GitReadConflictFile(repoID, path string) (string, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return "", err
+	}
+	return a.gitRunner.ReadConflictFile(root, path)
+}
+
+// GitResolveConflictFile writes the resolved contents AND stages the file.
+// Both together on purpose: a file written but not staged still counts as
+// unmerged, so continuing would refuse while the file looks fixed.
+func (a *App) GitResolveConflictFile(repoID, path, content string) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.ResolveConflictFile(root, path, content)
+}
+
+// GitContinue resumes the merge/rebase/cherry-pick/revert in progress. op is
+// what GitInProgress reported, so the caller never guesses which one to run.
+func (a *App) GitContinue(repoID, op string) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.ContinueOperation(root, op)
+}
+
+// GitRebaseTodo returns the default todo list for base..HEAD — every commit
+// picked, OLDEST FIRST, matching git's own file.
+func (a *App) GitRebaseTodo(repoID, base string) ([]git.RebaseAction, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return nil, err
+	}
+	return a.gitRunner.RebaseTodoFrom(path, base)
+}
+
+// GitRebaseApply runs an interactive rebase with the given action list.
+//
+// Rewrites history: every commit from base onward gets a new hash, so a
+// branch already pushed will need a force push afterwards. The UI says so
+// before calling this.
+func (a *App) GitRebaseApply(repoID, base string, actions []git.RebaseAction) error {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.RebaseTodo(path, base, actions)
+}
+
+// --- Worktrees --------------------------------------------------------------
+
+func (a *App) GitWorktrees(repoID string) ([]git.Worktree, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return nil, err
+	}
+	return a.gitRunner.ListWorktrees(path)
+}
+
+// GitAddWorktree checks out branch in its own directory. createBranch makes
+// a new branch instead of checking out an existing one — different commands,
+// and the wrong one either fails or checks out something else.
+func (a *App) GitAddWorktree(repoID, path, branch string, createBranch bool) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.AddWorktree(root, path, branch, createBranch)
+}
+
+// GitRemoveWorktree deletes a checkout. force is required when it has
+// uncommitted changes; git refusing without it is the right default.
+func (a *App) GitRemoveWorktree(repoID, path string, force bool) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.RemoveWorktree(root, path, force)
+}
+
+func (a *App) GitPruneWorktrees(repoID string) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.PruneWorktrees(root)
+}
+
+// --- Command log ------------------------------------------------------------
+
+// GitCommandLog returns the recent git invocations, newest first — what the
+// module actually ran, so a failure can be understood without reproducing it
+// in a terminal.
+//
+// Arguments only, never the environment: credentials travel through the
+// askpass helper's env, so logging that would be logging secrets.
+func (a *App) GitCommandLog() ([]git.CommandEntry, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.gitRunner.CommandLog(), nil
+}
+
+func (a *App) GitClearCommandLog() error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	a.gitRunner.ClearCommandLog()
+	return nil
+}
+
+// --- Pull requests ----------------------------------------------------------
+
+// GitForgeInfo builds the provider's own "create pull request" URL for a
+// branch, without any API or token: opening the page in the browser reaches
+// the same place using whatever session the user already has, where an API
+// integration would mean a new stored credential per forge for one button.
+func (a *App) GitForgeInfo(repoID, remote, branch, base string) (git.ForgeInfo, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return git.ForgeInfo{}, err
+	}
+	if remote == "" {
+		remote = "origin"
+	}
+	rawURL, err := a.gitRunner.RemoteHost(path, remote)
+	if err != nil {
+		return git.ForgeInfo{}, err
+	}
+	return git.ForgeForRemote(rawURL, branch, base), nil
+}
+
+// GitOpenInBrowser opens a forge URL. Restricted to http/https so a crafted
+// remote cannot turn this into "open an arbitrary scheme on the user's
+// machine".
+func (a *App) GitOpenInBrowser(target string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if !strings.HasPrefix(target, "https://") && !strings.HasPrefix(target, "http://") {
+		return fmt.Errorf("solo se pueden abrir URLs http o https")
+	}
+	runtime.BrowserOpenURL(a.ctx, target)
+	return nil
 }
 
 func (a *App) GitCommit(repoID, message string, amend bool) error {

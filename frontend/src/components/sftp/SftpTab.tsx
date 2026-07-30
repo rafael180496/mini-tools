@@ -1,15 +1,19 @@
 import {useEffect, useRef, useState} from 'react'
 import {
     CancelSftpTransfer,
+    CheckSftpConflicts,
     CloseSftpBrowse,
     OpenSftpBrowse,
     SftpHomeDir,
     StartSftpTransfer,
 } from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
-import {main, vault} from '../../../wailsjs/go/models'
+import {main, sftpx, vault} from '../../../wailsjs/go/models'
 import {formatBytes} from '../../lib/formatBytes'
+import {setSessionHome} from '../../lib/sshSessionContext'
+import {forget as forgetRate, formatEta, formatRate, observe} from '../../lib/transferRate'
 import Icon from '../Icon'
+import SftpConflictDialog, {type ConflictPolicy} from './SftpConflictDialog'
 import SftpPane from './SftpPane'
 import {LOCAL_SESSION, type PaneHost, type ProgressEvent, type TransferItem} from './types'
 
@@ -21,6 +25,9 @@ interface SftpTabProps {
     // SSH connections only (filtered by Workspace) — the host picker offers
     // Local + these; DB/Redis connections have no SFTP surface.
     connections: vault.ConnectionSummary[]
+    // Opens a remote file in an editor tab. Optional so this component keeps
+    // working exactly as before wherever it is rendered without one.
+    onOpenRemoteFile?: (host: PaneHost, path: string) => void
 }
 
 type Side = 'left' | 'right'
@@ -41,6 +48,23 @@ interface QueueItem {
     bytesDone: number
     bytesTotal: number
     error?: string
+    // Derived on this side from consecutive progress events — see
+    // lib/transferRate.ts. etaSeconds is -1 while it cannot be estimated.
+    bytesPerSec: number
+    etaSeconds: number
+}
+
+// Where a transfer's files come from: a pane, or the OS file manager (a
+// desktop drop, which is always the local machine and belongs to no pane).
+type Source = {kind: 'pane'; side: Side} | {kind: 'desktop'}
+
+// A transfer waiting on the conflict dialog's answer: everything launch()
+// needs, held until a policy is chosen.
+interface PendingTransfer {
+    src: Source
+    toSide: Side
+    items: TransferItem[]
+    conflicts: sftpx.Conflict[]
 }
 
 const NONE_HOST: PaneHost = {kind: 'none', connId: null, connName: '', sessionId: ''}
@@ -60,13 +84,14 @@ function other(side: Side): Side {
     return side === 'left' ? 'right' : 'left'
 }
 
-export default function SftpTab({tabId, initialConnId, connections}: SftpTabProps) {
+export default function SftpTab({tabId, initialConnId, connections, onOpenRemoteFile}: SftpTabProps) {
     const [panes, setPanes] = useState<{left: PaneState; right: PaneState}>({
         left: {host: LOCAL_HOST, dir: '', reload: 0},
         right: {host: NONE_HOST, dir: '', reload: 0},
     })
     const [error, setError] = useState<string | null>(null)
     const [queue, setQueue] = useState<QueueItem[]>([])
+    const [pending, setPending] = useState<PendingTransfer | null>(null)
 
     // Live subscriptions + open remote browse sessions, tracked in refs so the
     // unmount cleanup tears them ALL down regardless of the latest render's
@@ -118,6 +143,10 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
             } else {
                 dir = await OpenSftpBrowse(host.sessionId, host.connId as string)
                 openSessions.current.add(host.sessionId)
+                // The browse session is told the account's home directory when
+                // it opens; share it so the terminal can resolve `cd`, `cd ~`
+                // and `cd ~/algo`, which it otherwise cannot.
+                setSessionHome(host.connId as string, dir)
             }
             setPanes((p) => ({...p, [side]: {host, dir, reload: p[side].reload + 1}}))
         } catch (err) {
@@ -133,9 +162,16 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
         setQueue((q) => q.map((it) => (it.id === id ? {...it, ...patch} : it)))
     }
 
-    function transfer(fromSide: Side, items: TransferItem[]) {
-        const toSide = other(fromSide)
-        const from = panes[fromSide]
+    // Source of a transfer: a pane, or the OS file manager (a desktop drop,
+    // which is always the local machine and belongs to no pane).
+    function sourceHost(src: Source): PaneHost {
+        return src.kind === 'desktop' ? LOCAL_HOST : panes[src.side].host
+    }
+
+    // Step 1: check whether anything would be overwritten, and ask before
+    // touching the destination. Only then does the transfer start.
+    async function beginTransfer(src: Source, toSide: Side, items: TransferItem[]) {
+        setError(null)
         const to = panes[toSide]
         if (to.host.kind === 'none') {
             setError('Elegí un host de destino en el otro panel primero')
@@ -143,8 +179,39 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
         }
         if (items.length === 0) return
 
+        const from = sourceHost(src)
+        try {
+            const conflicts = await CheckSftpConflicts(
+                new main.SftpTransferInput({
+                    transferId: '',
+                    src: endpoint(from),
+                    dst: endpoint(to.host),
+                    dstDir: to.dir,
+                    items,
+                }),
+            )
+            if (conflicts && conflicts.length > 0) {
+                setPending({src, toSide, items, conflicts})
+                return
+            }
+        } catch (err) {
+            // A failed pre-flight must not block the transfer: the check is a
+            // courtesy, and the copy itself reports any real problem with a
+            // far more specific message. Worst case the user gets the previous
+            // behaviour (plain overwrite) instead of a dialog.
+            console.warn('sftp: no se pudo comprobar conflictos', err)
+        }
+        launch(src, toSide, items, '')
+    }
+
+    // Step 2: subscribe, enqueue and start. onConflict is '' when nothing
+    // collided, which the backend reads as overwrite.
+    function launch(src: Source, toSide: Side, items: TransferItem[], onConflict: ConflictPolicy | '') {
+        const from = sourceHost(src)
+        const to = panes[toSide]
         const id = newId()
-        const label = `${from.host.connName} → ${to.host.connName}`
+        const label = `${src.kind === 'desktop' ? 'Escritorio' : from.connName} → ${to.host.connName}`
+
         // Subscribe BEFORE StartSftpTransfer so the first emitted event can't
         // race the subscription — same contract as the SSH terminal.
         const unsub = EventsOn(id, (ev: ProgressEvent) => {
@@ -157,7 +224,10 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
                     bytesDone: ev.bytesDone,
                     bytesTotal: ev.bytesTotal,
                     error: ev.error,
+                    bytesPerSec: 0,
+                    etaSeconds: -1,
                 })
+                forgetRate(id)
                 const un = subs.current.get(id)
                 if (un) {
                     un()
@@ -165,38 +235,65 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
                 }
                 refresh(toSide) // surface transferred (or partial) files
             } else {
+                const rate = observe(id, ev.bytesDone, ev.bytesTotal, performance.now())
                 updateQueue(id, {
                     percent: ev.percent,
                     filesDone: ev.filesDone,
                     totalFiles: ev.totalFiles,
                     bytesDone: ev.bytesDone,
                     bytesTotal: ev.bytesTotal,
+                    bytesPerSec: rate.bytesPerSec,
+                    etaSeconds: rate.etaSeconds,
                 })
             }
         })
         subs.current.set(id, unsub)
 
         setQueue((q) => [
-            {id, label, status: 'running', percent: 0, filesDone: 0, totalFiles: 0, bytesDone: 0, bytesTotal: 0},
+            {
+                id,
+                label,
+                status: 'running',
+                percent: 0,
+                filesDone: 0,
+                totalFiles: 0,
+                bytesDone: 0,
+                bytesTotal: 0,
+                bytesPerSec: 0,
+                etaSeconds: -1,
+            },
             ...q,
         ])
 
         StartSftpTransfer(
             new main.SftpTransferInput({
                 transferId: id,
-                src: endpoint(from.host),
+                src: endpoint(from),
                 dst: endpoint(to.host),
                 dstDir: to.dir,
                 items,
+                onConflict,
             }),
         ).catch((err) => {
             updateQueue(id, {status: 'error', error: String(err)})
+            forgetRate(id)
             const un = subs.current.get(id)
             if (un) {
                 un()
                 subs.current.delete(id)
             }
         })
+    }
+
+    // Files dropped from Finder/Explorer land on a pane and are uploaded from
+    // the local machine. isDir is left false: the backend stats every source
+    // path anyway and corrects it, because an OS drop carries no type.
+    function dropFromDesktop(side: Side, paths: string[]) {
+        void beginTransfer(
+            {kind: 'desktop'},
+            side,
+            paths.map((path) => ({path, isDir: false})),
+        )
     }
 
     const dragRef = useRef<TransferItem[] | null>(null)
@@ -224,8 +321,10 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
                         otherLabel={panes.right.host.kind === 'none' ? 'destino' : panes.right.host.connName}
                         onPickHost={(h) => void pickHost('left', h)}
                         onNavigate={(dir) => updatePane('left', {dir})}
+                        onOpenFile={(path) => onOpenRemoteFile?.(panes.left.host, path)}
                         onError={setError}
-                        onTransfer={(items) => transfer('left', items)}
+                        onTransfer={(items) => void beginTransfer({kind: 'pane', side: 'left'}, 'right', items)}
+                        onDropFromDesktop={(paths) => dropFromDesktop('left', paths)}
                         dragRef={dragRef}
                     />
                 </div>
@@ -238,8 +337,10 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
                         otherLabel={panes.left.host.kind === 'none' ? 'destino' : panes.left.host.connName}
                         onPickHost={(h) => void pickHost('right', h)}
                         onNavigate={(dir) => updatePane('right', {dir})}
+                        onOpenFile={(path) => onOpenRemoteFile?.(panes.right.host, path)}
                         onError={setError}
-                        onTransfer={(items) => transfer('right', items)}
+                        onTransfer={(items) => void beginTransfer({kind: 'pane', side: 'right'}, 'left', items)}
+                        onDropFromDesktop={(paths) => dropFromDesktop('right', paths)}
                         dragRef={dragRef}
                     />
                 </div>
@@ -288,9 +389,16 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
                                         {it.label}
                                     </span>
                                     <span className="ml-auto shrink-0 text-[11px] text-on-surface-variant">
-                                        {it.totalFiles > 0 && `${it.filesDone}/${it.totalFiles} · `}
+                                        {it.totalFiles > 0 && `${it.filesDone}/${it.totalFiles} archivos · `}
                                         {formatBytes(it.bytesDone)}
                                         {it.bytesTotal > 0 && ` / ${formatBytes(it.bytesTotal)}`}
+                                        {it.status === 'running' && it.bytesPerSec > 0 && (
+                                            <>
+                                                {' · '}
+                                                <span className="text-primary">{formatRate(it.bytesPerSec)}</span>
+                                                {it.etaSeconds >= 0 && ` · faltan ${formatEta(it.etaSeconds)}`}
+                                            </>
+                                        )}
                                     </span>
                                 </div>
                                 <div className="mt-1 h-1 overflow-hidden rounded-full bg-surface-container-highest">
@@ -321,6 +429,18 @@ export default function SftpTab({tabId, initialConnId, connections}: SftpTabProp
                         </div>
                     ))}
                 </div>
+            )}
+
+            {pending && (
+                <SftpConflictDialog
+                    conflicts={pending.conflicts}
+                    destLabel={`${panes[pending.toSide].host.connName}: ${panes[pending.toSide].dir}`}
+                    onChoose={(policy) => {
+                        launch(pending.src, pending.toSide, pending.items, policy)
+                        setPending(null)
+                    }}
+                    onCancel={() => setPending(null)}
+                />
             )}
         </div>
     )

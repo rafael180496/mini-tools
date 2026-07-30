@@ -26,7 +26,18 @@ export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 // GitRepoTab.tsx) — same unused-placeholder-fields treatment, but it is the
 // one kind bound to a repoId instead of a connId, since a repository is not a
 // database connection.
-export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp' | 'git-repo'
+export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp' | 'git-repo' | 'remote-file' | 'ssh-hybrid'
+
+// RemoteFileRef identifies a file being edited on a server: which browse
+// session to reach it through, its path, and the modification time it was
+// loaded with — that last one is what makes saving detect somebody else
+// having changed the file meanwhile instead of blindly overwriting it.
+export interface RemoteFileRef {
+    sessionId: string
+    path: string
+    connName: string
+    modTimeUnix: number
+}
 
 export interface EditorTab {
     id: string
@@ -46,6 +57,11 @@ export interface EditorTab {
     // redis-cli for redis) rather than trusting a stale manual pick.
     language: TabLanguage
     kind: TabKind
+    // Set only for kind === 'remote-file': the server-side file this tab is
+    // editing. Its own field rather than reusing `path`, which means a LOCAL
+    // filesystem path everywhere else — conflating the two would make Ctrl+S
+    // write a remote file to the user's disk.
+    remote?: RemoteFileRef
     // Which registered git repository this tab shows — set only for
     // kind === 'git-repo', undefined everywhere else. It gets its own field
     // rather than reusing connId because the two address different registries
@@ -239,9 +255,20 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                     value={tab.connId ?? ''}
                                     options={[
                                         {value: '', label: 'Sin conexión'},
+                                        // The engine logo, not just its name: this
+                                        // list mixes SQL, Redis and MongoDB
+                                        // connections, and the icon is what makes
+                                        // the right one findable at a glance —
+                                        // same visual the sidebar tree already
+                                        // uses for the very same connections.
                                         ...connections
                                             .filter((c) => c.dbType !== 'ssh')
-                                            .map((c) => ({value: c.id, label: c.name, hint: dbTypeLabel(c.dbType)})),
+                                            .map((c) => ({
+                                                value: c.id,
+                                                label: c.name,
+                                                hint: dbTypeLabel(c.dbType),
+                                                icon: <DbTypeIcon dbType={c.dbType} size={16} />,
+                                            })),
                                     ]}
                                     onChange={(v) => {
                                         onChangeTabConnection(tab.id, v || null)

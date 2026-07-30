@@ -35,6 +35,11 @@ type Runner struct {
 	path    string
 	version string
 	err     error
+
+	// log records every invocation for the command drawer. See
+	// commandlog.go — arguments only, never the environment, because that
+	// is where credentials travel.
+	log commandLog
 }
 
 // Availability is what the frontend needs to decide between rendering the Git
@@ -160,8 +165,11 @@ func (r *Runner) runRaw(ctx context.Context, repoPath string, env []string, args
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	started := time.Now()
+
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
+		r.record(repoPath, args, started, true, msg)
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("git %s: la operación excedió el tiempo límite", args[0])
 		}
@@ -173,6 +181,7 @@ func (r *Runner) runRaw(ctx context.Context, repoPath string, env []string, args
 		// argv, so they cannot appear here.
 		return nil, fmt.Errorf("git %s: %s", args[0], msg)
 	}
+	r.record(repoPath, args, started, false, "")
 	return stdout.Bytes(), nil
 }
 

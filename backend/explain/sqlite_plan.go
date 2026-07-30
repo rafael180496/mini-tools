@@ -42,7 +42,9 @@ func SQLitePlan(ctx context.Context, pool *sql.DB, query string) (*Plan, error) 
 	for _, r := range parsed {
 		nodesByID[r.id] = &PlanNode{
 			Operation:  firstWord(r.detail),
+			ObjectName: sqliteScanTarget(r.detail),
 			Detail:     r.detail,
+			Filter:     sqliteFilter(r.detail),
 			IsFullScan: isSQLiteFullScan(r.detail),
 		}
 		parentByID[r.id] = r.parent
@@ -55,7 +57,45 @@ func SQLitePlan(ctx context.Context, pool *sql.DB, query string) (*Plan, error) 
 		parent.Children = append(parent.Children, nodesByID[r.id])
 	}
 
-	return &Plan{Root: nodesByID[0], RawText: strings.Join(rawLines, "\n")}, nil
+	plan := &Plan{Root: nodesByID[0], RawText: strings.Join(rawLines, "\n")}
+	// analyze is always false: EXPLAIN QUERY PLAN never executes the query,
+	// so there are no real measurements to grade against. The analysis pass
+	// still runs, for the full-scan grading and the index suggestions.
+	Analyze(plan, "sqlite", false)
+	return plan, nil
+}
+
+// sqliteScanTarget pulls the table name out of a plan line. SQLite writes
+// "SCAN people", "SCAN people USING INDEX ix", "SEARCH people USING ..." —
+// the word after the verb is the relation, and an alias ("SCAN people AS p")
+// is skipped so the suggestion names the real table.
+func sqliteScanTarget(detail string) string {
+	fields := strings.Fields(detail)
+	if len(fields) < 2 {
+		return ""
+	}
+	verb := strings.ToUpper(fields[0])
+	if verb != "SCAN" && verb != "SEARCH" {
+		return ""
+	}
+	name := fields[1]
+	if strings.EqualFold(name, "SUBQUERY") || strings.EqualFold(name, "CONSTANT") {
+		return ""
+	}
+	return name
+}
+
+// sqliteFilter extracts the predicate SQLite reports inside a SEARCH line
+// ("SEARCH t USING INDEX ix (col=?)"). A bare SCAN reports no predicate at
+// all, which is why a SQLite full scan usually yields no index suggestion —
+// honest, rather than guessing at columns the engine never mentioned.
+func sqliteFilter(detail string) string {
+	open := strings.LastIndex(detail, "(")
+	closeIdx := strings.LastIndex(detail, ")")
+	if open < 0 || closeIdx <= open {
+		return ""
+	}
+	return detail[open+1 : closeIdx]
 }
 
 func firstWord(s string) string {

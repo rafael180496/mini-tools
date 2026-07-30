@@ -25,7 +25,6 @@ import (
 	"strconv"
 
 	"github.com/pkg/sftp"
-	"golang.org/x/crypto/ssh"
 
 	"mini-tools/backend/sshconn"
 )
@@ -165,24 +164,29 @@ func (localFS) Create(p string) (io.WriteCloser, error) {
 // --- remote host over SFTP -------------------------------------------------
 
 type remoteFS struct {
-	ssh  *ssh.Client
-	sftp *sftp.Client
+	// lease is a borrowed reference to the SHARED SSH connection for this
+	// host (backend/sshconn's pool), not a connection of our own. An SFTP
+	// subsystem is just another channel on it, which is what SSH was
+	// designed for — and it means closing a file pane never drops the
+	// terminal that is sharing the same host.
+	lease *sshconn.ClientLease
+	sftp  *sftp.Client
 }
 
 // dialRemote opens a fresh SSH connection for dsn and an SFTP subsystem over
 // it. The caller owns the result and must Close() it (which tears down both
 // the SFTP client and the underlying SSH connection).
-func dialRemote(dsn string) (*remoteFS, error) {
-	client, err := sshconn.Dial(dsn)
+func dialRemote(pool *sshconn.ClientPool, connID, dsn string) (*remoteFS, error) {
+	lease, err := pool.Acquire(connID, dsn)
 	if err != nil {
 		return nil, err
 	}
-	sc, err := sftp.NewClient(client)
+	sc, err := sftp.NewClient(lease.Client)
 	if err != nil {
-		client.Close()
+		lease.Close()
 		return nil, err
 	}
-	return &remoteFS{ssh: client, sftp: sc}, nil
+	return &remoteFS{lease: lease, sftp: sc}, nil
 }
 
 func (r *remoteFS) ReadDir(dir string) ([]FileEntry, error) {
@@ -286,10 +290,9 @@ func (r *remoteFS) Remove(p string) error {
 }
 
 func (r *remoteFS) Close() error {
+	// Close the subsystem channel, then let go of the shared connection.
+	// Never close the client itself: someone else may still be on it.
 	sftpErr := r.sftp.Close()
-	sshErr := r.ssh.Close()
-	if sftpErr != nil {
-		return sftpErr
-	}
-	return sshErr
+	r.lease.Close()
+	return sftpErr
 }

@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useState} from 'react'
-import {ListMongoDocuments, CountMongoDocuments, ReplaceMongoDocument, DeleteMongoDocument} from '../../../wailsjs/go/main/App'
+import {ListMongoDocuments, CountMongoDocuments, ReplaceMongoDocument, DeleteMongoDocument, SampleMongoFields} from '../../../wailsjs/go/main/App'
+import {db} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import JsonView from '../results/JsonView'
 import JsonEditor from './JsonEditor'
@@ -7,11 +8,10 @@ import ConfirmDialog from '../ConfirmDialog'
 import MongoFilterInput from './MongoFilterInput'
 import MongoFilterWizard from './MongoFilterWizard'
 import MongoDocTable from '../results/MongoDocTable'
+import MongoPager from './MongoPager'
 import {mongoResultToTable} from '../../lib/mongoResultToTable'
 import {fieldKey} from '../../lib/mongoFilter'
 import {deriveFieldModel, valueToLiteral} from '../../lib/mongoFields'
-
-const PAGE_SIZE = 20
 
 interface MongoDocumentPanelProps {
     connId: string
@@ -29,6 +29,7 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
     const [docs, setDocs] = useState<string[]>([])
     const [total, setTotal] = useState(0)
     const [page, setPage] = useState(0)
+    const [pageSize, setPageSize] = useState(20)
     const [filter, setFilter] = useState('')
     const [appliedFilter, setAppliedFilter] = useState('')
     const [loading, setLoading] = useState(false)
@@ -40,14 +41,21 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
     const [pendingDelete, setPendingDelete] = useState<string | null>(null)
     const [viewMode, setViewMode] = useState<'json' | 'table'>('json')
     const [showWizard, setShowWizard] = useState(false)
+    // Field paths sampled server-side (App.SampleMongoFields): unlike the
+    // client-side model derived from the page on screen, this sees the whole
+    // sample and carries each path's BSON type and frequency — which is what
+    // lets the filter wizard warn "este campo es objectId y estás filtrando
+    // como texto" before the query comes back empty.
+    const [sampledFields, setSampledFields] = useState<db.MongoFieldInfo[]>([])
+    const [sampling, setSampling] = useState(false)
 
     const load = useCallback(
-        async (pageArg: number, filterArg: string) => {
+        async (pageArg: number, filterArg: string, sizeArg: number) => {
             setLoading(true)
             setError('')
             try {
                 const [list, count] = await Promise.all([
-                    ListMongoDocuments(connId, database, collection, filterArg, pageArg * PAGE_SIZE, PAGE_SIZE),
+                    ListMongoDocuments(connId, database, collection, filterArg, pageArg * sizeArg, sizeArg),
                     CountMongoDocuments(connId, database, collection, filterArg),
                 ])
                 setDocs(list ?? [])
@@ -66,8 +74,29 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
         setPage(0)
         setAppliedFilter('')
         setFilter('')
-        void load(0, '')
+        void load(0, '', pageSize)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [connId, database, collection, load])
+
+    // Sample the collection's schema once per collection — the filter
+    // wizard's autocomplete and its type warnings both feed off this.
+    useEffect(() => {
+        let cancelled = false
+        setSampling(true)
+        SampleMongoFields(connId, database, collection)
+            .then((res) => {
+                if (!cancelled) setSampledFields(res ?? [])
+            })
+            .catch(() => {
+                if (!cancelled) setSampledFields([])
+            })
+            .finally(() => {
+                if (!cancelled) setSampling(false)
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [connId, database, collection])
 
     // Field paths (nested included) + sample values of the loaded documents —
     // feeds the filter autocomplete (fields in key position, values in value
@@ -77,7 +106,7 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
     function runFilter(f: string) {
         setPage(0)
         setAppliedFilter(f)
-        void load(0, f)
+        void load(0, f, pageSize)
     }
 
     function applyFilter() {
@@ -96,10 +125,18 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
         runFilter(built)
     }
 
-    function changePage(delta: number) {
-        const next = Math.max(0, page + delta)
+    function goToPage(next: number) {
         setPage(next)
-        void load(next, appliedFilter)
+        void load(next, appliedFilter, pageSize)
+    }
+
+    // Changing the page size lands back on page 1: keeping the index would
+    // jump to a different part of the collection, since page 40 of 20 and
+    // page 40 of 200 are nowhere near each other.
+    function changePageSize(size: number) {
+        setPageSize(size)
+        setPage(0)
+        void load(0, appliedFilter, size)
     }
 
     async function saveEdit() {
@@ -107,7 +144,7 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
         try {
             await ReplaceMongoDocument(connId, database, collection, draft)
             setMessage('Documento actualizado')
-            void load(page, appliedFilter)
+            void load(page, appliedFilter, pageSize)
         } catch (e) {
             setError(`No se pudo guardar: ${e}`)
         }
@@ -127,7 +164,7 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
         try {
             await DeleteMongoDocument(connId, database, collection, doc)
             setMessage('Documento eliminado')
-            void load(page, appliedFilter)
+            void load(page, appliedFilter, pageSize)
         } catch (e) {
             setError(`No se pudo eliminar: ${e}`)
         }
@@ -251,21 +288,19 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
                 )}
             </div>
 
-            <div className="flex items-center justify-between border-t border-outline-variant p-2 text-xs">
-                <button onClick={() => changePage(-1)} disabled={page === 0 || loading} className="rounded px-2 py-1 text-on-surface-variant disabled:opacity-40 hover:text-on-surface">
-                    ← Anterior
-                </button>
-                <span className="text-on-surface-variant">
-                    Página {page + 1} de {Math.max(1, Math.ceil(total / PAGE_SIZE))}
-                </span>
-                <button onClick={() => changePage(1)} disabled={(page + 1) * PAGE_SIZE >= total || loading} className="rounded px-2 py-1 text-on-surface-variant disabled:opacity-40 hover:text-on-surface">
-                    Siguiente →
-                </button>
-            </div>
+            <MongoPager
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                loading={loading}
+                onPage={goToPage}
+                onPageSize={changePageSize}
+            />
 
             {showWizard && (
                 <MongoFilterWizard
-                    fields={fieldModel.fields}
+                    fields={sampledFields}
+                    sampling={sampling}
                     onApply={(f) => {
                         setShowWizard(false)
                         setFilter(f)

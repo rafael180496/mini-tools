@@ -84,6 +84,24 @@ export namespace db {
 	        this.empty = source["empty"];
 	    }
 	}
+	export class MongoFieldInfo {
+	    path: string;
+	    types: string[];
+	    count: number;
+	    frequency: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MongoFieldInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.types = source["types"];
+	        this.count = source["count"];
+	        this.frequency = source["frequency"];
+	    }
+	}
 	export class MongoIndex {
 	    name: string;
 	    keysJson: string;
@@ -196,6 +214,84 @@ export namespace db {
 	        this.sizeBytes = source["sizeBytes"];
 	    }
 	}
+	export class RedisPrefixNode {
+	    prefix: string;
+	    segment: string;
+	    keys: number;
+	    bytes?: number;
+	    children?: RedisPrefixNode[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisPrefixNode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.prefix = source["prefix"];
+	        this.segment = source["segment"];
+	        this.keys = source["keys"];
+	        this.bytes = source["bytes"];
+	        this.children = this.convertValues(source["children"], RedisPrefixNode);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RedisPrefixReport {
+	    roots: RedisPrefixNode[];
+	    sampled: number;
+	    totalKeys: number;
+	    truncated?: boolean;
+	    memorySampled?: boolean;
+	    separator: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisPrefixReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.roots = this.convertValues(source["roots"], RedisPrefixNode);
+	        this.sampled = source["sampled"];
+	        this.totalKeys = source["totalKeys"];
+	        this.truncated = source["truncated"];
+	        this.memorySampled = source["memorySampled"];
+	        this.separator = source["separator"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RedisScanPage {
 	    keys: RedisKeyEntry[];
 	    cursor?: string;
@@ -240,6 +336,64 @@ export namespace db {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.member = source["member"];
 	        this.score = source["score"];
+	    }
+	}
+	export class RedisServerInfo {
+	    version: string;
+	    mode: string;
+	    role: string;
+	    uptimeSeconds: number;
+	    usedMemoryBytes: number;
+	    peakMemoryBytes: number;
+	    maxMemoryBytes: number;
+	    maxMemoryPolicy?: string;
+	    fragmentationRatio?: number;
+	    connectedClients: number;
+	    blockedClients: number;
+	    maxClients?: number;
+	    keyspaceHits: number;
+	    keyspaceMisses: number;
+	    hitRatePct: number;
+	    opsPerSecond: number;
+	    totalCommandsProcessed: number;
+	    totalConnections: number;
+	    expiredKeys: number;
+	    evictedKeys: number;
+	    rejectedConnections: number;
+	    usedCpuSys?: number;
+	    usedCpuUser?: number;
+	    nodes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RedisServerInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.mode = source["mode"];
+	        this.role = source["role"];
+	        this.uptimeSeconds = source["uptimeSeconds"];
+	        this.usedMemoryBytes = source["usedMemoryBytes"];
+	        this.peakMemoryBytes = source["peakMemoryBytes"];
+	        this.maxMemoryBytes = source["maxMemoryBytes"];
+	        this.maxMemoryPolicy = source["maxMemoryPolicy"];
+	        this.fragmentationRatio = source["fragmentationRatio"];
+	        this.connectedClients = source["connectedClients"];
+	        this.blockedClients = source["blockedClients"];
+	        this.maxClients = source["maxClients"];
+	        this.keyspaceHits = source["keyspaceHits"];
+	        this.keyspaceMisses = source["keyspaceMisses"];
+	        this.hitRatePct = source["hitRatePct"];
+	        this.opsPerSecond = source["opsPerSecond"];
+	        this.totalCommandsProcessed = source["totalCommandsProcessed"];
+	        this.totalConnections = source["totalConnections"];
+	        this.expiredKeys = source["expiredKeys"];
+	        this.evictedKeys = source["evictedKeys"];
+	        this.rejectedConnections = source["rejectedConnections"];
+	        this.usedCpuSys = source["usedCpuSys"];
+	        this.usedCpuUser = source["usedCpuUser"];
+	        this.nodes = source["nodes"];
 	    }
 	}
 	export class RedisStats {
@@ -412,14 +566,66 @@ export namespace db {
 
 export namespace explain {
 	
+	export class BufferStats {
+	    hit: number;
+	    read: number;
+	    dirtied?: number;
+	    written?: number;
+	    hitRatePct: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BufferStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hit = source["hit"];
+	        this.read = source["read"];
+	        this.dirtied = source["dirtied"];
+	        this.written = source["written"];
+	        this.hitRatePct = source["hitRatePct"];
+	    }
+	}
+	export class Insight {
+	    kind: string;
+	    severity: string;
+	    title: string;
+	    detail: string;
+	    node?: string;
+	    sql?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Insight(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.severity = source["severity"];
+	        this.title = source["title"];
+	        this.detail = source["detail"];
+	        this.node = source["node"];
+	        this.sql = source["sql"];
+	    }
+	}
 	export class PlanNode {
 	    operation: string;
 	    objectName?: string;
 	    cost?: number;
 	    rows?: number;
+	    actualRows?: number;
+	    loops?: number;
 	    actualTimeMs?: number;
 	    isFullScan?: boolean;
+	    indexName?: string;
+	    filter?: string;
 	    detail?: string;
+	    selfTimeMs?: number;
+	    selfCost?: number;
+	    impactPct?: number;
+	    rowsRatio?: number;
+	    severity?: string;
+	    isBottleneck?: boolean;
 	    children?: PlanNode[];
 	
 	    static createFrom(source: any = {}) {
@@ -432,9 +638,19 @@ export namespace explain {
 	        this.objectName = source["objectName"];
 	        this.cost = source["cost"];
 	        this.rows = source["rows"];
+	        this.actualRows = source["actualRows"];
+	        this.loops = source["loops"];
 	        this.actualTimeMs = source["actualTimeMs"];
 	        this.isFullScan = source["isFullScan"];
+	        this.indexName = source["indexName"];
+	        this.filter = source["filter"];
 	        this.detail = source["detail"];
+	        this.selfTimeMs = source["selfTimeMs"];
+	        this.selfCost = source["selfCost"];
+	        this.impactPct = source["impactPct"];
+	        this.rowsRatio = source["rowsRatio"];
+	        this.severity = source["severity"];
+	        this.isBottleneck = source["isBottleneck"];
 	        this.children = this.convertValues(source["children"], PlanNode);
 	    }
 	
@@ -460,6 +676,17 @@ export namespace explain {
 	    root?: PlanNode;
 	    rawText: string;
 	    durationMs?: number;
+	    engine?: string;
+	    analyzed?: boolean;
+	    rolledBack?: boolean;
+	    planningTimeMs?: number;
+	    executionTimeMs?: number;
+	    totalCost?: number;
+	    estimatedRows?: number;
+	    actualRows?: number;
+	    nodeCount?: number;
+	    buffers?: BufferStats;
+	    insights?: Insight[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Plan(source);
@@ -470,6 +697,17 @@ export namespace explain {
 	        this.root = this.convertValues(source["root"], PlanNode);
 	        this.rawText = source["rawText"];
 	        this.durationMs = source["durationMs"];
+	        this.engine = source["engine"];
+	        this.analyzed = source["analyzed"];
+	        this.rolledBack = source["rolledBack"];
+	        this.planningTimeMs = source["planningTimeMs"];
+	        this.executionTimeMs = source["executionTimeMs"];
+	        this.totalCost = source["totalCost"];
+	        this.estimatedRows = source["estimatedRows"];
+	        this.actualRows = source["actualRows"];
+	        this.nodeCount = source["nodeCount"];
+	        this.buffers = this.convertValues(source["buffers"], BufferStats);
+	        this.insights = this.convertValues(source["insights"], Insight);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -533,6 +771,32 @@ export namespace git {
 	        this.error = source["error"];
 	    }
 	}
+	export class BlameLine {
+	    line: number;
+	    hash: string;
+	    shortHash: string;
+	    author: string;
+	    email: string;
+	    date: string;
+	    summary: string;
+	    uncommitted: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlameLine(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.line = source["line"];
+	        this.hash = source["hash"];
+	        this.shortHash = source["shortHash"];
+	        this.author = source["author"];
+	        this.email = source["email"];
+	        this.date = source["date"];
+	        this.summary = source["summary"];
+	        this.uncommitted = source["uncommitted"];
+	    }
+	}
 	export class Branch {
 	    name: string;
 	    hash: string;
@@ -555,6 +819,28 @@ export namespace git {
 	        this.behind = source["behind"];
 	        this.isCurrent = source["isCurrent"];
 	        this.isRemote = source["isRemote"];
+	    }
+	}
+	export class CommandEntry {
+	    command: string;
+	    dir: string;
+	    atMs: number;
+	    durationMs: number;
+	    failed: boolean;
+	    output?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommandEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.command = source["command"];
+	        this.dir = source["dir"];
+	        this.atMs = source["atMs"];
+	        this.durationMs = source["durationMs"];
+	        this.failed = source["failed"];
+	        this.output = source["output"];
 	    }
 	}
 	export class DiffStat {
@@ -724,6 +1010,22 @@ export namespace git {
 	        this.untracked = source["untracked"];
 	    }
 	}
+	export class ForgeInfo {
+	    provider: string;
+	    webUrl: string;
+	    compareUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ForgeInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.webUrl = source["webUrl"];
+	        this.compareUrl = source["compareUrl"];
+	    }
+	}
 	export class Identity {
 	    localName: string;
 	    localEmail: string;
@@ -756,6 +1058,10 @@ export namespace git {
 	    all: boolean;
 	    path: string;
 	    withStats: boolean;
+	    author: string;
+	    grep: string;
+	    since: string;
+	    until: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LogOptions(source);
@@ -770,6 +1076,10 @@ export namespace git {
 	        this.all = source["all"];
 	        this.path = source["path"];
 	        this.withStats = source["withStats"];
+	        this.author = source["author"];
+	        this.grep = source["grep"];
+	        this.since = source["since"];
+	        this.until = source["until"];
 	    }
 	}
 	export class PullOptions {
@@ -814,6 +1124,24 @@ export namespace git {
 	        this.noVerify = source["noVerify"];
 	        this.setUpstream = source["setUpstream"];
 	        this.tags = source["tags"];
+	    }
+	}
+	export class RebaseAction {
+	    command: string;
+	    hash: string;
+	    subject: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RebaseAction(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.command = source["command"];
+	        this.hash = source["hash"];
+	        this.subject = source["subject"];
+	        this.message = source["message"];
 	    }
 	}
 	export class Remote {
@@ -914,6 +1242,32 @@ export namespace git {
 	        this.taggerDate = source["taggerDate"];
 	    }
 	}
+	export class Worktree {
+	    path: string;
+	    branch: string;
+	    head: string;
+	    isMain: boolean;
+	    detached: boolean;
+	    locked: boolean;
+	    prunable: boolean;
+	    reason?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Worktree(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.branch = source["branch"];
+	        this.head = source["head"];
+	        this.isMain = source["isMain"];
+	        this.detached = source["detached"];
+	        this.locked = source["locked"];
+	        this.prunable = source["prunable"];
+	        this.reason = source["reason"];
+	    }
+	}
 
 }
 
@@ -924,6 +1278,7 @@ export namespace main {
 	    dbType: string;
 	    params: Record<string, string>;
 	    color: string;
+	    environment: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionEditInfo(source);
@@ -935,6 +1290,7 @@ export namespace main {
 	        this.dbType = source["dbType"];
 	        this.params = source["params"];
 	        this.color = source["color"];
+	        this.environment = source["environment"];
 	    }
 	}
 	export class ConnectionInput {
@@ -942,6 +1298,7 @@ export namespace main {
 	    dbType: string;
 	    params: Record<string, string>;
 	    color: string;
+	    environment: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionInput(source);
@@ -953,6 +1310,7 @@ export namespace main {
 	        this.dbType = source["dbType"];
 	        this.params = source["params"];
 	        this.color = source["color"];
+	        this.environment = source["environment"];
 	    }
 	}
 	export class FileContent {
@@ -989,6 +1347,7 @@ export namespace main {
 	    dst: SftpEndpointInput;
 	    dstDir: string;
 	    items: sftpx.Item[];
+	    onConflict: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SftpTransferInput(source);
@@ -1001,6 +1360,7 @@ export namespace main {
 	        this.dst = this.convertValues(source["dst"], SftpEndpointInput);
 	        this.dstDir = source["dstDir"];
 	        this.items = this.convertValues(source["items"], sftpx.Item);
+	        this.onConflict = source["onConflict"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1024,8 +1384,53 @@ export namespace main {
 
 }
 
+export namespace redisquery {
+	
+	export class LuaResult {
+	    sha?: string;
+	    kind?: string;
+	    value?: any;
+	    durationMs?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LuaResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sha = source["sha"];
+	        this.kind = source["kind"];
+	        this.value = source["value"];
+	        this.durationMs = source["durationMs"];
+	    }
+	}
+
+}
+
 export namespace sftpx {
 	
+	export class Conflict {
+	    name: string;
+	    srcSize: number;
+	    dstSize: number;
+	    srcModTime: number;
+	    dstModTime: number;
+	    isDir: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Conflict(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.srcSize = source["srcSize"];
+	        this.dstSize = source["dstSize"];
+	        this.srcModTime = source["srcModTime"];
+	        this.dstModTime = source["dstModTime"];
+	        this.isDir = source["isDir"];
+	    }
+	}
 	export class FileEntry {
 	    name: string;
 	    path: string;
@@ -1082,6 +1487,153 @@ export namespace sftpx {
 	        this.group = source["group"];
 	    }
 	}
+	export class RemoteFile {
+	    path: string;
+	    content: string;
+	    size: number;
+	    modTimeUnix: number;
+	    binary: boolean;
+	    tooLarge: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.content = source["content"];
+	        this.size = source["size"];
+	        this.modTimeUnix = source["modTimeUnix"];
+	        this.binary = source["binary"];
+	        this.tooLarge = source["tooLarge"];
+	    }
+	}
+
+}
+
+export namespace sqlintel {
+	
+	export class Item {
+	    l: string;
+	    k: string;
+	    d?: string;
+	    a?: string;
+	    i?: string;
+	    s: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Item(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.l = source["l"];
+	        this.k = source["k"];
+	        this.d = source["d"];
+	        this.a = source["a"];
+	        this.i = source["i"];
+	        this.s = source["s"];
+	    }
+	}
+	export class JoinCondition {
+	    condition: string;
+	    left: string;
+	    right: string;
+	    viaPrimaryKey?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new JoinCondition(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.condition = source["condition"];
+	        this.left = source["left"];
+	        this.right = source["right"];
+	        this.viaPrimaryKey = source["viaPrimaryKey"];
+	    }
+	}
+	export class Request {
+	    connId: string;
+	    dbType: string;
+	    sql: string;
+	    offset: number;
+	    explicit: boolean;
+	    limit: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Request(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connId = source["connId"];
+	        this.dbType = source["dbType"];
+	        this.sql = source["sql"];
+	        this.offset = source["offset"];
+	        this.explicit = source["explicit"];
+	        this.limit = source["limit"];
+	    }
+	}
+	export class Response {
+	    from: number;
+	    items: Item[];
+	    inline?: string;
+	    clause?: string;
+	    truncated?: boolean;
+	    indexing?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Response(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.from = source["from"];
+	        this.items = this.convertValues(source["items"], Item);
+	        this.inline = source["inline"];
+	        this.clause = source["clause"];
+	        this.truncated = source["truncated"];
+	        this.indexing = source["indexing"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Status {
+	    connId: string;
+	    state: string;
+	    tables: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connId = source["connId"];
+	        this.state = source["state"];
+	        this.tables = source["tables"];
+	        this.error = source["error"];
+	    }
+	}
 
 }
 
@@ -1118,6 +1670,7 @@ export namespace vault {
 	    metadataSchemas: string[];
 	    color?: string;
 	    folderId?: string;
+	    environment?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionSummary(source);
@@ -1132,6 +1685,7 @@ export namespace vault {
 	        this.metadataSchemas = source["metadataSchemas"];
 	        this.color = source["color"];
 	        this.folderId = source["folderId"];
+	        this.environment = source["environment"];
 	    }
 	}
 	export class ExplainHistoryEntry {
@@ -1221,6 +1775,7 @@ export namespace vault {
 	    folderId?: string;
 	    sortOrder: number;
 	    createdAt: number;
+	    pinnedBranches: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new GitRepo(source);
@@ -1234,6 +1789,7 @@ export namespace vault {
 	        this.folderId = source["folderId"];
 	        this.sortOrder = source["sortOrder"];
 	        this.createdAt = source["createdAt"];
+	        this.pinnedBranches = source["pinnedBranches"];
 	    }
 	}
 	export class HistoryEntry {
@@ -1292,6 +1848,28 @@ export namespace vault {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
 	        this.openedAt = source["openedAt"];
+	    }
+	}
+	export class SSHKeySummary {
+	    id: string;
+	    name: string;
+	    keyType: string;
+	    fingerprint: string;
+	    hasPassphrase: boolean;
+	    createdAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SSHKeySummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.keyType = source["keyType"];
+	        this.fingerprint = source["fingerprint"];
+	        this.hasPassphrase = source["hasPassphrase"];
+	        this.createdAt = source["createdAt"];
 	    }
 	}
 	export class Settings {

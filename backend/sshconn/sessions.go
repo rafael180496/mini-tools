@@ -36,7 +36,11 @@ type Event struct {
 const readChunkSize = 4096
 
 type session struct {
-	client    *ssh.Client
+	// lease is a borrowed reference to the SHARED client for this
+	// connection (see pool.go) — the terminal no longer owns a connection
+	// of its own, so closing the terminal cannot drop an SFTP pane that is
+	// still using the same host, and vice versa.
+	lease     *ClientLease
 	sshSess   *ssh.Session
 	stdin     io.WriteCloser
 	agentConn net.Conn // non-nil only when agent forwarding is active
@@ -48,10 +52,16 @@ type SessionManager struct {
 	mu       sync.Mutex
 	sessions map[string]*session
 	emit     EmitFunc
+	pool     *ClientPool
 }
 
-func NewSessionManager(emit EmitFunc) *SessionManager {
-	return &SessionManager{sessions: make(map[string]*session), emit: emit}
+// NewSessionManager takes the shared client pool so a terminal and an SFTP
+// pane against the same host ride one SSH connection instead of two.
+func NewSessionManager(emit EmitFunc, pool *ClientPool) *SessionManager {
+	if pool == nil {
+		pool = NewClientPool()
+	}
+	return &SessionManager{sessions: make(map[string]*session), emit: emit, pool: pool}
 }
 
 // Open dials dsn, requests a PTY-backed shell, and starts a goroutine that
@@ -62,23 +72,22 @@ func NewSessionManager(emit EmitFunc) *SessionManager {
 func (m *SessionManager) Open(connID, dsn string, cols, rows int) error {
 	_ = m.Close(connID)
 
+	// parseDSN is still needed for the terminal-only options (agent
+	// forwarding); the connection itself comes from the pool.
 	cp, err := parseDSN(dsn)
 	if err != nil {
 		return err
 	}
-	config, err := clientConfig(cp)
+
+	lease, err := m.pool.Acquire(connID, dsn)
 	if err != nil {
 		return err
 	}
-
-	client, err := ssh.Dial("tcp", cp.addr, config)
-	if err != nil {
-		return fmt.Errorf("sshconn: conectando: %w", err)
-	}
+	client := lease.Client
 
 	sshSess, err := client.NewSession()
 	if err != nil {
-		client.Close()
+		lease.Close()
 		return fmt.Errorf("sshconn: abriendo sesión: %w", err)
 	}
 
@@ -87,7 +96,7 @@ func (m *SessionManager) Open(connID, dsn string, cols, rows int) error {
 		agentConn, err = forwardAgent(client, sshSess)
 		if err != nil {
 			sshSess.Close()
-			client.Close()
+			lease.Close()
 			return err
 		}
 	}
@@ -99,7 +108,7 @@ func (m *SessionManager) Open(connID, dsn string, cols, rows int) error {
 	}); err != nil {
 		closeAgentConn(agentConn)
 		sshSess.Close()
-		client.Close()
+		lease.Close()
 		return fmt.Errorf("sshconn: solicitando pty: %w", err)
 	}
 
@@ -107,7 +116,7 @@ func (m *SessionManager) Open(connID, dsn string, cols, rows int) error {
 	if err != nil {
 		closeAgentConn(agentConn)
 		sshSess.Close()
-		client.Close()
+		lease.Close()
 		return fmt.Errorf("sshconn: abriendo stdin: %w", err)
 	}
 	// With a PTY allocated, the remote shell's controlling terminal already
@@ -118,19 +127,19 @@ func (m *SessionManager) Open(connID, dsn string, cols, rows int) error {
 	if err != nil {
 		closeAgentConn(agentConn)
 		sshSess.Close()
-		client.Close()
+		lease.Close()
 		return fmt.Errorf("sshconn: abriendo stdout: %w", err)
 	}
 
 	if err := sshSess.Shell(); err != nil {
 		closeAgentConn(agentConn)
 		sshSess.Close()
-		client.Close()
+		lease.Close()
 		return fmt.Errorf("sshconn: iniciando shell: %w", err)
 	}
 
 	m.mu.Lock()
-	m.sessions[connID] = &session{client: client, sshSess: sshSess, stdin: stdin, agentConn: agentConn}
+	m.sessions[connID] = &session{lease: lease, sshSess: sshSess, stdin: stdin, agentConn: agentConn}
 	m.mu.Unlock()
 
 	go m.streamOutput(connID, stdout)
@@ -188,7 +197,10 @@ func (m *SessionManager) Close(connID string) error {
 	m.mu.Unlock()
 
 	s.sshSess.Close()
-	s.client.Close()
+	// Release the lease, never close the client: the connection is shared,
+	// and an SFTP pane on the same host may still be holding it. The pool
+	// drops it when the last holder lets go.
+	s.lease.Close()
 	closeAgentConn(s.agentConn)
 	return nil
 }

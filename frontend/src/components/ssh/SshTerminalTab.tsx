@@ -2,14 +2,27 @@ import {useEffect, useRef, useState} from 'react'
 import {Terminal} from '@xterm/xterm'
 import {FitAddon} from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import {CloseSSHTerminal, OpenSSHTerminal, ResizeSSHTerminal, WriteSSHTerminal} from '../../../wailsjs/go/main/App'
+import {CloseSSHTerminal, ConnectionEnvironment, OpenSSHTerminal, ResizeSSHTerminal, WriteSSHTerminal} from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
 import type {Theme} from '../../hooks/useTheme'
 import {resolveTerminalTheme, type TerminalThemeId} from '../../xterm/terminalThemes'
+import ProductionGuardDialog from './ProductionGuardDialog'
 import SshSnippetsPanel from './SshSnippetsPanel'
 import SshTerminalThemePicker from './SshTerminalThemePicker'
 import Icon from '../Icon'
 import {SshLineModel} from '../../lib/sshLineModel'
+import {
+    forgetSession,
+    parseCdCommand,
+    parseOsc7,
+    publishCwd,
+    currentCwd,
+    markShellUsed,
+    sessionHome,
+    setTerminalLive,
+} from '../../lib/sshSessionContext'
+import {inspect, splitCommandLines, type Risk} from '../../lib/productionGuard'
+import {environmentStyle} from '../../lib/environments'
 
 interface SshTerminalTabProps {
     connId: string
@@ -61,10 +74,27 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
     // Reconstructs the current input line from raw keystrokes to drive the
     // ghost autocomplete suggestion (see lib/sshLineModel.ts). One per session.
     const modelRef = useRef(new SshLineModel())
+    // The previous directory is what `cd -` resolves against. A ref, not
+    // state: it is read inside the once-registered onData handler, where a
+    // stale closure would resolve against an old value. (Home comes from
+    // sessionHome() — it is shared with the file pane, which is what learns it
+    // when its browse session opens.)
+    const previousCwdRef = useRef('')
     const [ghostText, setGhostText] = useState('')
     const [ghostPos, setGhostPos] = useState<{left: number; top: number; cellH: number} | null>(null)
     const [showSnippets, setShowSnippets] = useState(false)
     const [showThemePicker, setShowThemePicker] = useState(false)
+    // Environment marking of this connection. Kept in BOTH a ref and state:
+    // the ref is what the once-registered onData handler reads (a state value
+    // captured there would stay at its mount-time ''), the state is what
+    // renders the banner.
+    const [environment, setEnvironment] = useState('')
+    const envRef = useRef('')
+    // A command held back by the production guard, waiting for confirmation.
+    const [held, setHeld] = useState<{data: string; commands: {command: string; risks: Risk[]}[]} | null>(null)
+    // Sends the held input for real. Assigned inside the mount effect, where
+    // the terminal and its line model live.
+    const deliverRef = useRef<(data: string) => void>(() => {})
 
     useEffect(() => {
         const container = containerRef.current
@@ -115,13 +145,25 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
 
         const unsubscribe = EventsOn(connId, (event: SshEvent) => {
             if (event.type === 'data' && event.data) {
-                term.write(base64ToBytes(event.data), () => positionGhost())
+                const bytes = base64ToBytes(event.data)
+                // OSC 7 is the shell ANNOUNCING its directory — authoritative,
+                // unlike parsing what was typed. Shells that emit it (bash and
+                // zsh with the usual prompt setup) make the cd heuristic below
+                // unnecessary; plenty do not, which is why both exist.
+                const announced = parseOsc7(new TextDecoder().decode(bytes))
+                if (announced) publishCwd(connId, announced, 'shell')
+                term.write(bytes, () => positionGhost())
             } else if (event.type === 'closed') {
+                // Drop the shared context so a pane that reconnects later does
+                // not follow a path from a session that no longer exists.
+                forgetSession(connId)
+                setTerminalLive(connId, false)
                 term.write('\r\n\x1b[90m[sesión cerrada]\x1b[0m\r\n')
                 setGhostText('')
                 setGhostPos(null)
                 onConnectedChange(false)
             } else if (event.type === 'error') {
+                setTerminalLive(connId, false)
                 term.write(`\r\n\x1b[31m[error] ${event.error ?? 'desconocido'}\x1b[0m\r\n`)
                 setGhostText('')
                 setGhostPos(null)
@@ -144,16 +186,90 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
                     return
                 }
             }
+            // Enter commits the line; that is the moment a `cd` can be read
+            // out of it. Published as a GUESS — it cannot know about aliases,
+            // symlinks or scripts that move on their own, so the file pane
+            // labels it as inferred and keeps a manual sync button.
+            if (data === '\r' || data === '\n') {
+                // From here on the shell may be anywhere, so "it is still in
+                // its home" stops being assertable — see markShellUsed.
+                markShellUsed(connId)
+                const line = model.currentLine()
+                const ctx = currentCwd(connId)
+                const guessed = parseCdCommand(line, ctx?.cwd ?? '', sessionHome(connId), previousCwdRef.current)
+                if (guessed) {
+                    previousCwdRef.current = ctx?.cwd ?? ''
+                    publishCwd(connId, guessed, 'guess')
+                }
+            }
+
+            // Production guard. Only a chunk that would EXECUTE something is
+            // inspected — a chunk with no newline is still being typed, and
+            // warning about a half-written command would fire on every letter.
+            if (envRef.current === 'prod' && /[\r\n]/.test(data)) {
+                // The line model holds what was typed before this chunk, so a
+                // guarded command is caught whether it was typed and entered
+                // or pasted whole.
+                const lines = splitCommandLines(model.currentLine() + data)
+                // A trailing fragment with no newline after it is not run yet.
+                const executed = /[\r\n]$/.test(data) ? lines : lines.slice(0, -1)
+                const flagged = executed
+                    .map((command) => ({command, risks: inspect(command)}))
+                    .filter((c) => c.risks.length > 0)
+                if (flagged.length > 0) {
+                    // Nothing is sent and nothing enters the line model: a
+                    // cancelled paste must not half-apply.
+                    setHeld({data, commands: flagged})
+                    return
+                }
+            }
+
+            deliver(data)
+        })
+
+        // deliver applies input to the local line model and forwards it to the
+        // remote shell. Split out from onData so the guard's "confirmar" can
+        // replay exactly what was held back.
+        function deliver(data: string) {
+            const model = modelRef.current
             model.process(data)
             setGhostText(model.suggestion())
             void WriteSSHTerminal(connId, data)
-        })
+        }
+        deliverRef.current = deliver
+
+        // Read once per session: the marking changes only when the user edits
+        // the connection, and re-reading it per keystroke would put a binding
+        // call in the terminal's input path.
+        ConnectionEnvironment(connId)
+            .then((env) => {
+                envRef.current = env
+                setEnvironment(env)
+            })
+            .catch(() => {
+                // An unreadable marking is treated as unmarked rather than as
+                // production: a guard that fires on a connection the user never
+                // marked teaches them to dismiss it.
+                envRef.current = ''
+            })
 
         OpenSSHTerminal(connId, term.cols, term.rows)
-            .then(() => onConnectedChange(true))
+            .then(() => {
+                onConnectedChange(true)
+                setTerminalLive(connId, true)
+                // A shell starts in its own home, so this is the one moment
+                // where that can be asserted rather than guessed. Without it a
+                // relative first command (`cd ..`, `cd fuentes`) has no base to
+                // resolve against and the file pane never moves — the case that
+                // also reappears after a reconnect, since closing the session
+                // clears the recorded position but not the home.
+                const home = sessionHome(connId)
+                if (home && !currentCwd(connId)) publishCwd(connId, home, 'guess')
+            })
             .catch((err) => {
                 term.write(`\r\n\x1b[31m[error] ${String(err)}\x1b[0m\r\n`)
                 onConnectedChange(false)
+                setTerminalLive(connId, false)
             })
 
         const resizeObserver = new ResizeObserver(() => {
@@ -169,6 +285,7 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
             term.dispose()
             termRef.current = null
             onConnectedChange(false)
+            setTerminalLive(connId, false)
         }
         // Deliberately connId-only — this effect must run exactly once per
         // mounted session (see the component doc comment above), not
@@ -188,9 +305,22 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
         if (termRef.current) termRef.current.options.theme = resolveTerminalTheme(terminalThemeId, theme)
     }, [theme, terminalThemeId])
 
+    const envStyle = environmentStyle(environment)
+
     return (
         <div className="flex h-full min-h-0 w-full">
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {envStyle && (
+                    <div className={`flex shrink-0 items-center gap-2 border-b px-3 py-1 text-[11px] font-medium ${envStyle.banner}`}>
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${envStyle.dot}`} />
+                        {envStyle.label}
+                        {envStyle.id === 'prod' && (
+                            <span className="font-normal opacity-80">
+                                — los comandos destructivos piden confirmación antes de ejecutarse
+                            </span>
+                        )}
+                    </div>
+                )}
                 <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 py-1">
                     <div className="flex-1" />
                     <button
@@ -251,6 +381,17 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
                     appTheme={theme}
                     onChange={(id) => onChangeTerminalTheme(id)}
                     onClose={() => setShowThemePicker(false)}
+                />
+            )}
+            {held && (
+                <ProductionGuardDialog
+                    commands={held.commands}
+                    onConfirm={() => {
+                        const data = held.data
+                        setHeld(null)
+                        deliverRef.current(data)
+                    }}
+                    onCancel={() => setHeld(null)}
                 />
             )}
         </div>
