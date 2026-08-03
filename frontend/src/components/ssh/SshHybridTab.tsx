@@ -13,6 +13,9 @@ interface SshHybridTabProps {
     connections: vault.ConnectionSummary[]
     theme: Theme
     terminalThemeId: string
+    // Se pasa tal cual a la terminal de esta sesión — ver
+    // SshTerminalTabProps.terminalFontSize.
+    terminalFontSize: number
     onChangeTerminalTheme: (id: TerminalThemeId) => void
     onConnectedChange: (connected: boolean) => void
     onOpenRemoteFile: (host: PaneHost, path: string) => void
@@ -35,6 +38,7 @@ export default function SshHybridTab({
     connections,
     theme,
     terminalThemeId,
+    terminalFontSize,
     onChangeTerminalTheme,
     onConnectedChange,
     onOpenRemoteFile,
@@ -115,6 +119,7 @@ export default function SshHybridTab({
                     connId={connId}
                     theme={theme}
                     terminalThemeId={terminalThemeId}
+                    terminalFontSize={terminalFontSize}
                     onChangeTerminalTheme={onChangeTerminalTheme}
                     onConnectedChange={onConnectedChange}
                 />

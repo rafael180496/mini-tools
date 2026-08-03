@@ -24,6 +24,11 @@ interface SelectProps {
     disabled?: boolean
     // 'md' (default) for forms/dialogs, 'sm' for compact toolbar controls.
     size?: 'sm' | 'md'
+    // 'outlined' (default) for forms/dialogs, where the box is what tells you
+    // it's editable. 'ghost' drops the border/background until hover, for a
+    // dense toolbar row where a boxed control reads as heavier than the plain
+    // text around it — see Workspace's context row (schema / Mongo database).
+    variant?: 'outlined' | 'ghost'
     // Extra classes for the trigger button (width, etc.).
     className?: string
     ariaLabel?: string
@@ -39,8 +44,23 @@ interface SelectProps {
 // for the latter: React portals bubble events via the React tree, so without
 // it a pointerdown here would reach an ancestor draggable and start a drag
 // (see the EditorTabs tab-chip bug). Keyboard: Escape closes.
-export default function Select({value, options, onChange, placeholder, disabled, size = 'md', className, ariaLabel, title}: SelectProps) {
+export default function Select({
+    value,
+    options,
+    onChange,
+    placeholder,
+    disabled,
+    size = 'md',
+    variant = 'outlined',
+    className,
+    ariaLabel,
+    title,
+}: SelectProps) {
     const sizeClasses = size === 'sm' ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'
+    const variantClasses =
+        variant === 'ghost'
+            ? 'border border-transparent bg-transparent hover:bg-surface-variant'
+            : 'border border-outline-variant bg-surface hover:border-primary/60'
     const [open, setOpen] = useState(false)
     const [pos, setPos] = useState({top: 0, left: 0, width: 0})
     const btnRef = useRef<HTMLButtonElement>(null)
@@ -85,7 +105,7 @@ export default function Select({value, options, onChange, placeholder, disabled,
                 title={title}
                 aria-haspopup="listbox"
                 aria-expanded={open}
-                className={`flex items-center gap-2 rounded-md border border-outline-variant bg-surface text-on-surface transition-colors hover:border-primary/60 disabled:cursor-not-allowed disabled:opacity-50 ${sizeClasses} ${className ?? ''}`}
+                className={`flex items-center gap-2 rounded-md text-on-surface transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses} ${sizeClasses} ${className ?? ''}`}
             >
                 {current?.icon}
                 <span className={`min-w-0 flex-1 truncate text-left ${current ? '' : 'text-on-surface-variant'}`}>{label}</span>

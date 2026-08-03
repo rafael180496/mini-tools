@@ -1,3 +1,42 @@
+export namespace agents {
+	
+	export class Agent {
+	    id: string;
+	    label: string;
+	    vendor: string;
+	    command: string;
+	    defaultCommand: string;
+	    path: string;
+	    available: boolean;
+	    keyEnv: string;
+	    hasKey: boolean;
+	    loginHint: string;
+	    note: string;
+	    docsUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Agent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.vendor = source["vendor"];
+	        this.command = source["command"];
+	        this.defaultCommand = source["defaultCommand"];
+	        this.path = source["path"];
+	        this.available = source["available"];
+	        this.keyEnv = source["keyEnv"];
+	        this.hasKey = source["hasKey"];
+	        this.loginHint = source["loginHint"];
+	        this.note = source["note"];
+	        this.docsUrl = source["docsUrl"];
+	    }
+	}
+
+}
+
 export namespace db {
 	
 	export class Column {
@@ -1271,6 +1310,33 @@ export namespace git {
 
 }
 
+export namespace localterm {
+	
+	export class Shell {
+	    id: string;
+	    label: string;
+	    path: string;
+	    args: string[];
+	    available: boolean;
+	    note: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Shell(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.path = source["path"];
+	        this.args = source["args"];
+	        this.available = source["available"];
+	        this.note = source["note"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
 	export class ConnectionEditInfo {
@@ -1768,6 +1834,22 @@ export namespace vault {
 	        this.createdAt = source["createdAt"];
 	    }
 	}
+	export class GitPanelSession {
+	    kind: string;
+	    agentId?: string;
+	    title: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitPanelSession(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.agentId = source["agentId"];
+	        this.title = source["title"];
+	    }
+	}
 	export class GitRepo {
 	    id: string;
 	    name: string;
@@ -1887,6 +1969,14 @@ export namespace vault {
 	    editorTheme: string;
 	    collapsedSidebarModules: string[];
 	    sshTerminalTheme: string;
+	    localShell: string;
+	    gitTermDock: string;
+	    gitTermSize: number;
+	    gitPanelTab: string;
+	    gitPanelSessions: GitPanelSession[];
+	    gitSideHidden: boolean;
+	    gitDiffHidden: boolean;
+	    terminalFontSize: number;
 	    autoBackupEnabled: boolean;
 	    autoBackupIntervalHours: number;
 	    autoBackupPath: string;
@@ -1913,6 +2003,14 @@ export namespace vault {
 	        this.editorTheme = source["editorTheme"];
 	        this.collapsedSidebarModules = source["collapsedSidebarModules"];
 	        this.sshTerminalTheme = source["sshTerminalTheme"];
+	        this.localShell = source["localShell"];
+	        this.gitTermDock = source["gitTermDock"];
+	        this.gitTermSize = source["gitTermSize"];
+	        this.gitPanelTab = source["gitPanelTab"];
+	        this.gitPanelSessions = this.convertValues(source["gitPanelSessions"], GitPanelSession);
+	        this.gitSideHidden = source["gitSideHidden"];
+	        this.gitDiffHidden = source["gitDiffHidden"];
+	        this.terminalFontSize = source["terminalFontSize"];
 	        this.autoBackupEnabled = source["autoBackupEnabled"];
 	        this.autoBackupIntervalHours = source["autoBackupIntervalHours"];
 	        this.autoBackupPath = source["autoBackupPath"];

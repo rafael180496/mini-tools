@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react'
+import {useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import {
     GitAbort,
     GitApplyPatch,
@@ -43,9 +43,11 @@ import {
     GitStatus,
     GitUnstage,
 } from '../../../wailsjs/go/main/App'
-import {GetSettings} from '../../../wailsjs/go/main/App'
-import {git} from '../../../wailsjs/go/models'
+import {GetSettings, ListAgents, SetGitLayout, SetGitPanelSessions} from '../../../wailsjs/go/main/App'
+import {agents as agentsModel, git} from '../../../wailsjs/go/models'
 import type {Theme} from '../../hooks/useTheme'
+import type {TerminalThemeId} from '../../xterm/terminalThemes'
+import {buildBranchTree, countBranches, expandedForBranch, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
 import {
     applyPrefix,
     buildCommitPrefix,
@@ -72,6 +74,9 @@ import GitConflictResolver from './GitConflictResolver'
 import GitCommandLogDrawer from './GitCommandLog'
 import GitRebaseDialog from './GitRebaseDialog'
 import GitStashPanel from './GitStashPanel'
+import LocalTerminalPanel from '../terminal/LocalTerminalPanel'
+import TerminalThemeMenu from '../terminal/TerminalThemeMenu'
+import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../../xterm/terminalFont'
 import PromptDialog from './PromptDialog'
 
 // Everything PromptDialog takes except onClose, which this component owns.
@@ -107,6 +112,20 @@ interface GitRepoTabProps {
     repoName: string
     editorThemeId: string
     appTheme: Theme
+    // Tema de colores de xterm.js — el MISMO prop global que reciben las
+    // pestañas SSH (Workspace.tsx). La terminal de este panel es una
+    // terminal más de la app, no un widget con su propia paleta.
+    terminalThemeId: string
+    onChangeTerminalTheme: (id: TerminalThemeId) => void
+    // Cuerpo de fuente de las terminales (settings.terminalFontSize), también
+    // global: se ajusta desde la barra de la terminal y desde Configuración,
+    // y los dos lugares escriben el mismo valor.
+    terminalFontSize: number
+    onChangeTerminalFontSize: (px: number) => void
+    // Shell elegido en Configuración → Terminal (settings.localShell). Se
+    // pasa hacia abajo para que cambiarlo reinicie la sesión en el acto;
+    // el backend lo relee del vault igual en cada apertura.
+    localShellId: string
     // Bumped by Workspace after any Git mutation anywhere — including from the
     // sidebar module. This tab reloads off it rather than off its own actions,
     // so a checkout done in the sidebar shows up here immediately.
@@ -124,9 +143,70 @@ interface GitRepoTabProps {
 // a Sublime Merge tab has.
 type CenterView = 'commits' | 'changes' | 'stash' | 'conflicts'
 
+// Dónde va anclado el panel de la terminal, y qué solapa muestra. Espejan
+// settings.git_term_dock/git_panel_tab (migración 27); null es la solapa
+// vacía, que en la base es ''.
+type Dock = 'bottom' | 'left' | 'right'
+type PanelTab = 'terminal' | 'commands' | null
+
+// Una sesión abierta del panel. `id` es a la vez el id de sesión del backend
+// y el nombre del evento de Wails por el que llegan sus bytes, así que tiene
+// que ser único por proceso (ver LocalTerminalPanel).
+//
+// `autoStart` distingue una sesión de agente recién creada por un clic —el
+// agente arranca solo— de una restaurada del layout guardado, que abre su
+// shell y espera: relanzar un asistente que consume cuota porque la app se
+// reinició no es algo que nadie haya pedido.
+interface PanelSession {
+    id: string
+    kind: 'shell' | 'agent'
+    agentId?: string
+    title: string
+    autoStart: boolean
+}
+
+// Topes del tamaño del panel. Por debajo de 140 no entra ni la barra con una
+// línea de terminal; el tope superior se calcula contra la ventana en el
+// arrastre, para no poder dejar el grafo reducido a nada.
+const PANEL_MIN = 140
+
 const LOG_PAGE = 200
 
-export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, syncToken, onChanged, active}: GitRepoTabProps) {
+// Contador de sesiones de terminal del proceso. Existe para que dos sesiones
+// —de la misma pestaña o de dos pestañas del MISMO repositorio— nunca
+// compartan id, que además es el nombre de su evento de Wails.
+let terminalSeq = 0
+function nextTerminalSeq() {
+    terminalSeq += 1
+    return terminalSeq
+}
+
+// Anclajes del panel. Tres botones y no un menú: son tres opciones
+// excluyentes y el estado actual se ve de un vistazo.
+const DOCK_BUTTONS = [
+    {id: 'left' as const, icon: 'dock_to_right', title: 'Anclar el panel a la izquierda — útil para tenerlo al lado del grafo en una pantalla ancha'},
+    {id: 'bottom' as const, icon: 'dock_to_bottom', title: 'Anclar el panel abajo, a lo ancho de la pestaña — el lugar clásico, y el que más columnas le da a la terminal'},
+    {id: 'right' as const, icon: 'dock_to_left', title: 'Anclar el panel a la derecha — deja el grafo y las ramas a la izquierda, como en un IDE'},
+]
+
+function newShellSession(repoId: string): PanelSession {
+    return {id: `git-term-${repoId}-${nextTerminalSeq()}`, kind: 'shell', title: 'Terminal', autoStart: false}
+}
+
+export default function GitRepoTab({
+    repoId,
+    repoName,
+    editorThemeId,
+    appTheme,
+    terminalThemeId,
+    onChangeTerminalTheme,
+    terminalFontSize,
+    onChangeTerminalFontSize,
+    localShellId,
+    syncToken,
+    onChanged,
+    active,
+}: GitRepoTabProps) {
     const [view, setView] = useState<CenterView>('commits')
     const [commits, setCommits] = useState<git.CommitInfo[]>([])
     const [branches, setBranches] = useState<git.Branch[]>([])
@@ -145,6 +225,12 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
     const [reveal, setReveal] = useState<{hash: string; token: number} | null>(null)
     const revealSeq = useRef(0)
     const [branchFilter, setBranchFilter] = useState('')
+    // Carpetas del árbol de ramas que están abiertas. Arranca vacío y se
+    // siembra con las que llevan a la rama actual (ver el efecto más abajo):
+    // en un repositorio con 364 remotas, abrir todo por defecto sería la lista
+    // plana de antes con indentación extra.
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+    const seededFoldersRef = useRef(false)
     // Commit search. Parsed into real git log filters (author/grep/path/
     // date/rev) rather than filtering the loaded page: the graph pages a few
     // hundred commits at a time, so a client-side filter would only ever
@@ -162,11 +248,60 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
     // is held here until the user confirms.
     const [confirmDiscardPatch, setConfirmDiscardPatch] = useState<string | null>(null)
     const [rebaseBase, setRebaseBase] = useState<{hash: string; label: string} | null>(null)
-    const [showCommandLog, setShowCommandLog] = useState(false)
+    // Qué solapa del panel está a la vista, o null si está cerrado.
+    // Son dos cosas distintas y complementarias: "commands" es la AUDITORÍA
+    // (qué comando corrió la app por debajo y con qué salida), "terminal" es
+    // una shell de verdad para hacer lo que la UI no cubre. Comparten un
+    // panel en vez de tener uno cada una porque compiten por el mismo
+    // espacio: nadie mira las dos a la vez.
+    const [panelTab, setPanelTab] = useState<PanelTab>(null)
+    // Sesiones del panel: terminales sueltas y sesiones de agente (Claude
+    // Code, Codex, Gemini), cada una con su propio proceso. Una vez creada,
+    // una sesión queda MONTADA aunque se cambie de solapa o se cierre el
+    // panel: desmontarla mataría su proceso y con él el directorio al que
+    // hayas entrado o la conversación con el agente. Por el mismo motivo el
+    // panel se mueve entre anclajes con CSS y NO cambiando de lugar en el
+    // árbol de React: React desmonta y vuelve a montar un subárbol que cambia
+    // de padre, y eso mataría todas las sesiones en cada cambio de dock.
+    const [sessions, setSessions] = useState<PanelSession[]>([])
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+    // Catálogo de agentes de esta máquina, para el menú "+". Se pide una vez:
+    // qué hay instalado no cambia mientras la pestaña está abierta.
+    const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
+    // Anclaje, tamaño y paneles ocultos. Todo esto se persiste en el vault
+    // (migración 27) y se restaura al abrir: la pestaña tiene que volver
+    // exactamente como se dejó, que es la razón de ser de esta configuración.
+    const [dock, setDock] = useState<Dock>('bottom')
+    const [panelSize, setPanelSize] = useState(300)
+    const [sideHidden, setSideHidden] = useState(false)
+    const [diffHidden, setDiffHidden] = useState(false)
+    const [panelDragging, setPanelDragging] = useState(false)
+    const bodyRef = useRef<HTMLDivElement>(null)
     const [logToken, setLogToken] = useState(0)
     const [worktrees, setWorktrees] = useState<git.Worktree[]>([])
     const [showWorktrees, setShowWorktrees] = useState(false)
     const [forge, setForge] = useState<git.ForgeInfo | null>(null)
+
+    // Id de la sesión de terminal de ESTA pestaña. Un ref y no un valor
+    // derivado de repoId: el mismo repositorio puede estar abierto en dos
+    // pestañas, y compartir el id haría que las dos escriban en la misma
+    // shell (el id es además el nombre del evento de Wails, ver
+    // LocalTerminalPanel).
+    const termSessionIdRef = useRef(`git-term-${repoId}-${nextTerminalSeq()}`)
+
+    const toggleFolder = useCallback((path: string) => {
+        setExpandedFolders((prev) => {
+            const next = new Set(prev)
+            if (next.has(path)) next.delete(path)
+            else next.add(path)
+            return next
+        })
+    }, [])
+
+    // Con filtro escrito, todo se muestra abierto: buscar una rama y que el
+    // resultado quede escondido dentro de una carpeta plegada haría parecer
+    // que no existe. Sin filtro manda lo que el usuario abrió a mano.
+    const filtering = branchFilter.trim() !== ''
 
     // The forge link depends on the checked-out branch, so it is resolved
     // whenever the branch changes rather than on every render.
@@ -279,12 +414,197 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                 if (st.gitDiffContext) setDiffContext(st.gitDiffContext)
                 setDiffIgnoreWs(st.gitDiffIgnoreWs)
                 setDiffWrap(st.gitDiffWrap)
+
+                if (st.gitTermDock === 'left' || st.gitTermDock === 'right' || st.gitTermDock === 'bottom') {
+                    setDock(st.gitTermDock)
+                }
+                if (st.gitTermSize) setPanelSize(st.gitTermSize)
+                setSideHidden(!!st.gitSideHidden)
+                setDiffHidden(!!st.gitDiffHidden)
+                // Las sesiones se restauran con autoStart en false: se
+                // recrean sus shells, pero ningún agente arranca solo.
+                const restored: PanelSession[] = (st.gitPanelSessions ?? []).map((p) => ({
+                    id: `git-term-${repoId}-${nextTerminalSeq()}`,
+                    kind: p.kind === 'agent' ? 'agent' : 'shell',
+                    agentId: p.agentId || undefined,
+                    title: p.title || (p.kind === 'agent' ? (p.agentId ?? 'Agente') : 'Terminal'),
+                    autoStart: false,
+                }))
+                // Restaurar la solapa de sesiones implica levantar sus
+                // procesos: dejarla guardada y abrir la pestaña con el panel
+                // vacío sería restaurar el layout a medias. Si quedó abierta
+                // en esa solapa pero no hay sesiones anotadas (una instalación
+                // que viene de la versión de una sola terminal), se abre una
+                // terminal, que es exactamente lo que había antes.
+                const openTab = st.gitPanelTab === 'terminal' || st.gitPanelTab === 'commands' ? st.gitPanelTab : null
+                const initial =
+                    openTab === 'terminal' && restored.length === 0 ? [newShellSession(repoId)] : restored
+                if (openTab) setPanelTab(openTab)
+                setSessions(initial)
+                setActiveSessionId(initial[0]?.id ?? null)
             })
             .catch(() => {
                 // A settings read failure is not worth an error banner — the
                 // panes just keep their defaults.
             })
     }, [])
+
+    // persistLayout guarda TODO el layout de una sola vez. Toma overrides
+    // porque quien lo llama acaba de decidir un campo y los otros cuatro
+    // siguen siendo los del estado: leerlos del closure evita tener que
+    // encadenar setState y guardar en un efecto posterior.
+    const persistLayout = useCallback(
+        (patch: Partial<{dock: Dock; size: number; tab: PanelTab; sideHidden: boolean; diffHidden: boolean}>) => {
+            const next = {dock, size: panelSize, tab: panelTab, sideHidden, diffHidden, ...patch}
+            void SetGitLayout(next.dock, Math.round(next.size), next.tab ?? '', next.sideHidden, next.diffHidden).catch(
+                () => {
+                    // Un fallo al guardar el layout no merece un cartel de
+                    // error: lo que se ve en pantalla ya cambió, y lo único
+                    // que se pierde es que vuelva así la próxima vez.
+                },
+            )
+        },
+        [dock, panelSize, panelTab, sideHidden, diffHidden],
+    )
+
+    // Arrastre del borde del panel. El eje depende del anclaje: abajo se
+    // arrastra en vertical, a los costados en horizontal. Se escucha en
+    // window y no en el handle para que el puntero pueda salirse de la tira
+    // de 6px sin cortar el arrastre.
+    useEffect(() => {
+        if (!panelDragging) return
+        const onMove = (e: MouseEvent) => {
+            const box = bodyRef.current?.getBoundingClientRect()
+            if (!box) return
+            const raw =
+                dock === 'bottom' ? box.bottom - e.clientY : dock === 'left' ? e.clientX - box.left : box.right - e.clientX
+            // El tope superior deja siempre un mínimo del área principal a la
+            // vista: un panel que puede taparlo todo es una forma fácil de
+            // perder el grafo sin entender por qué.
+            const max = (dock === 'bottom' ? box.height : box.width) - 240
+            setPanelSize(Math.max(PANEL_MIN, Math.min(raw, Math.max(PANEL_MIN, max))))
+        }
+        const onUp = () => setPanelDragging(false)
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+        document.body.style.userSelect = 'none'
+        document.body.style.cursor = dock === 'bottom' ? 'row-resize' : 'col-resize'
+        return () => {
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            document.body.style.userSelect = ''
+            document.body.style.cursor = ''
+        }
+    }, [panelDragging, dock])
+
+    // Persistir el tamaño solo al soltar: escribir en cada mousemove serían
+    // cientos de UPDATE en SQLite por un único valor final. Mismo criterio
+    // que el arrastre de los anchos de panel de arriba.
+    const wasDraggingRef = useRef(false)
+    useEffect(() => {
+        if (wasDraggingRef.current && !panelDragging) persistLayout({})
+        wasDraggingRef.current = panelDragging
+    }, [panelDragging, persistLayout])
+
+    // persistSessions guarda la lista de sesiones (la intención, no los
+    // procesos — ver vault.GitPanelSession).
+    const persistSessions = useCallback((list: PanelSession[]) => {
+        void SetGitPanelSessions(
+            list.map((s) => ({kind: s.kind, agentId: s.agentId ?? '', title: s.title})),
+        ).catch(() => {
+            // Igual que con el resto del layout: lo que se ve ya cambió, y lo
+            // único que se pierde es que vuelva así la próxima vez.
+        })
+    }, [])
+
+    const addSession = useCallback(
+        (kind: 'shell' | 'agent', agent?: agentsModel.Agent) => {
+            const session: PanelSession =
+                kind === 'agent' && agent
+                    ? {
+                          id: `git-term-${repoId}-${nextTerminalSeq()}`,
+                          kind: 'agent',
+                          agentId: agent.id,
+                          title: agent.label,
+                          // Creada por un clic acá y ahora: el agente arranca
+                          // solo. Solo las restauradas esperan (ver PanelSession).
+                          autoStart: true,
+                      }
+                    : newShellSession(repoId)
+            const next = [...sessions, session]
+            setSessions(next)
+            setActiveSessionId(session.id)
+            setPanelTab('terminal')
+            persistLayout({tab: 'terminal'})
+            persistSessions(next)
+        },
+        [repoId, sessions, persistLayout, persistSessions],
+    )
+
+    const closeSession = useCallback(
+        (id: string) => {
+            const next = sessions.filter((s) => s.id !== id)
+            setSessions(next)
+            // Al cerrar la activa se pasa a la última que quede, no a la
+            // primera: es la que estaba al lado y la que uno espera ver.
+            setActiveSessionId((current) => (current === id ? (next[next.length - 1]?.id ?? null) : current))
+            persistSessions(next)
+        },
+        [sessions, persistSessions],
+    )
+
+    // openPanel abre una solapa, o cierra el panel si ya estaba en esa misma.
+    const openPanel = useCallback(
+        (tab: Exclude<PanelTab, null>) => {
+            const next = panelTab === tab ? null : tab
+            setPanelTab(next)
+            // Abrir la solapa de sesiones sin ninguna sesión mostraría un
+            // panel vacío: se crea una terminal, que es lo que se estaba
+            // pidiendo al abrirla.
+            if (next === 'terminal' && sessions.length === 0) {
+                const session = newShellSession(repoId)
+                setSessions([session])
+                setActiveSessionId(session.id)
+                persistSessions([session])
+            }
+            persistLayout({tab: next})
+        },
+        [panelTab, sessions.length, repoId, persistLayout, persistSessions],
+    )
+
+    // El catálogo de agentes se pide una vez: qué hay instalado en la máquina
+    // no cambia mientras la pestaña está abierta.
+    useEffect(() => {
+        ListAgents()
+            .then((list) => setAgentList(list ?? []))
+            .catch(() => setAgentList([]))
+    }, [])
+
+    // changeDock mueve el panel de anclaje. El componente de terminal no se
+    // remonta (ver terminalStarted): solo cambian los estilos del contenedor,
+    // así que la shell y el directorio actual sobreviven al cambio.
+    const changeDock = useCallback(
+        (next: Dock) => {
+            setDock(next)
+            persistLayout({dock: next})
+        },
+        [persistLayout],
+    )
+
+    // El valor nuevo se calcula ANTES de setState y no dentro del updater:
+    // React puede ejecutar un updater más de una vez, y persistir desde
+    // adentro convertiría eso en dos escrituras al vault por cada clic.
+    const toggleSide = useCallback(() => {
+        const next = !sideHidden
+        setSideHidden(next)
+        persistLayout({sideHidden: next})
+    }, [sideHidden, persistLayout])
+
+    const toggleDiff = useCallback(() => {
+        const next = !diffHidden
+        setDiffHidden(next)
+        persistLayout({diffHidden: next})
+    }, [diffHidden, persistLayout])
 
     // Drag handling lives on window, not on the handle, so the pointer can
     // leave the 4px strip mid-drag without the resize stopping — the usual
@@ -914,8 +1234,61 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
     const pinnedFirst = (list: git.Branch[]) =>
         [...list].sort((a, b) => Number(pinned.includes(b.name)) - Number(pinned.includes(a.name)))
 
+    // Umbral medido contra el contenido real de la fila: ícono (14) + texto
+    // (~45 a 11px) + relleno, por tres, más los separadores. Por debajo de eso
+    // los tres botones no entran y hay que quedarse con los íconos.
+    const compactTabs = sideWidth < 210
+
     const localBranches = pinnedFirst(branches.filter((b) => !b.isRemote && matchesFilter(b)))
     const remoteBranches = pinnedFirst(branches.filter((b) => b.isRemote && matchesFilter(b)))
+
+    // Las ancladas se dibujan planas arriba de la sección, no dentro del árbol
+    // (ver el comentario en el render). El resto va agrupado por los segmentos
+    // del nombre: `feature/TIGOCHAT-11607` cuelga de una carpeta `feature`.
+    const isPinnedBranch = (b: git.Branch) => pinned.includes(b.name)
+    const pinnedLocal = localBranches.filter(isPinnedBranch)
+    const pinnedRemote = remoteBranches.filter(isPinnedBranch)
+    const localTree = useMemo(
+        () => buildBranchTree(localBranches.filter((b) => !isPinnedBranch(b))),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [localBranches, pinned],
+    )
+    const remoteTree = useMemo(
+        () => buildBranchTree(remoteBranches.filter((b) => !isPinnedBranch(b))),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [remoteBranches, pinned],
+    )
+
+    // Props comunes de cada fila de rama. Están acá y no repetidas en los
+    // cuatro puntos donde se dibuja una (ancladas locales, árbol local,
+    // ancladas remotas, árbol remoto) para que un cambio de comportamiento no
+    // tenga que aplicarse cuatro veces.
+    const branchRowProps = (b: git.Branch) => ({
+        branch: b,
+        isPinned: isPinnedBranch(b),
+        onTogglePin: () => void togglePinned(b.name),
+        selected: selectedBranch === b.name,
+        disabled: !!busy,
+        onSelect: () => void selectBranch(b),
+        onCheckout: () =>
+            void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => {
+                if (ok) void selectBranch(b)
+            }),
+        onContextMenu: (e: ReactMouseEvent) => setMenu({x: e.clientX, y: e.clientY, items: branchMenuItems(b)}),
+    })
+
+    // Abre de entrada solo las carpetas que llevan a la rama actual, una vez
+    // por pestaña. Si se recalculara en cada render volvería a abrirlas
+    // después de que las cierres a mano, que es la clase de "ayuda" que
+    // termina peleando con el usuario.
+    useEffect(() => {
+        if (seededFoldersRef.current) return
+        const current = branches.find((b) => b.isCurrent)
+        if (!current) return
+        seededFoldersRef.current = true
+        const paths = expandedForBranch(buildBranchTree(branches.filter((b) => !b.isRemote)), current.name)
+        if (paths.length > 0) setExpandedFolders((prev) => new Set([...prev, ...paths]))
+    }, [branches])
 
     return (
         // min-w-0 is load-bearing, not cosmetic: without it this root's
@@ -1018,20 +1391,54 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                         Crear pull request
                     </button>
                 )}
+                {/* Los interruptores de paneles viven en un menú y no como
+                    botones sueltos: la fila ya tenía "Crear pull request",
+                    Terminal y Comandos, y tres botones más la desbordaban en
+                    una ventana angosta. Además, un botón permanentemente
+                    resaltado (el estado normal de Ramas y Diff, que están
+                    visibles casi siempre) compite visualmente con los que
+                    marcan algo abierto de verdad. */}
+                <DropdownMenu
+                    label="Vista"
+                    icon="visibility"
+                    title="Mostrar u ocultar los paneles de esta pestaña. Lo que elijas queda guardado y la pestaña vuelve a abrirse así."
+                    width={300}
+                    items={[
+                        {
+                            label: sideHidden ? 'Mostrar el panel de ramas' : 'Ocultar el panel de ramas',
+                            icon: sideHidden ? 'visibility' : 'visibility_off',
+                            hint: sideHidden ? 'Ahora está oculto' : 'Izquierda',
+                            onSelect: toggleSide,
+                        },
+                        {
+                            label: diffHidden ? 'Mostrar el panel de diff' : 'Ocultar el panel de diff',
+                            icon: diffHidden ? 'visibility' : 'visibility_off',
+                            hint: diffHidden ? 'Ahora está oculto' : 'Derecha',
+                            onSelect: toggleDiff,
+                        },
+                        'separator',
+                        {
+                            label: showWorktrees ? 'Ocultar worktrees' : 'Ver worktrees',
+                            icon: 'dashboard',
+                            hint: 'Varias ramas a la vez, en carpetas distintas',
+                            onSelect: () => setShowWorktrees((v) => !v),
+                        },
+                    ]}
+                />
                 <button
-                    onClick={() => setShowWorktrees((v) => !v)}
-                    title="Worktrees: tener varias ramas revisadas a la vez, en carpetas distintas, sin stashear ni cambiar de contexto"
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${showWorktrees ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
-                >
-                    <Icon name="dashboard" size={13} />
-                    Worktrees
-                </button>
-                <button
-                    onClick={() => setShowCommandLog((v) => !v)}
-                    title="Muestra el comando git exacto que se ejecutó por debajo y su salida — para entender un fallo sin tener que reproducirlo en una terminal"
-                    className={`ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 ${showCommandLog ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                    onClick={() => openPanel('terminal')}
+                    title="Abre una terminal de verdad en la raíz de este repositorio: podés hacer cd, correr los tests, un rebase interactivo o cualquier comando que la interfaz no cubra, sin salir de la app. Se puede anclar abajo, a la izquierda o a la derecha, y el intérprete (zsh, bash, PowerShell, Git Bash…) se elige en Configuración → Terminal."
+                    className={`ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'terminal' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
                 >
                     <Icon name="terminal" size={13} />
+                    Terminal
+                </button>
+                <button
+                    onClick={() => openPanel('commands')}
+                    title="Muestra el comando git exacto que se ejecutó por debajo y su salida — para entender un fallo sin tener que reproducirlo en una terminal. Es solo lectura: para ejecutar algo, usá Terminal."
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'commands' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                >
+                    <Icon name="history" size={13} />
                     Comandos
                 </button>
             </div>
@@ -1073,12 +1480,48 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
             {error && <Banner kind="error" text={error} onClose={() => setError(null)} />}
             {notice && <Banner kind="info" text={notice} onClose={() => setNotice(null)} />}
 
-            <div ref={layoutRef} className="flex min-h-0 min-w-0 flex-1">
-                {/* Left: view switch + branches */}
-                <div style={{width: sideWidth}} className="flex shrink-0 flex-col border-r border-outline-variant bg-surface-container-lowest">
+            {/* Cuerpo de la pestaña. El panel de la terminal se dibuja
+                ENCIMA en position:absolute y el área principal le hace lugar
+                con un margen, en vez de ser un hermano en el flujo: así el
+                panel ocupa siempre el mismo lugar del árbol de React sin
+                importar dónde esté anclado, y moverlo de lado no lo remonta
+                (lo que mataría la shell). */}
+            <div ref={bodyRef} className="relative flex min-h-0 min-w-0 flex-1">
+            <div
+                ref={layoutRef}
+                className="flex min-h-0 min-w-0 flex-1"
+                style={
+                    panelTab === null
+                        ? undefined
+                        : {
+                              marginBottom: dock === 'bottom' ? panelSize : undefined,
+                              marginLeft: dock === 'left' ? panelSize : undefined,
+                              marginRight: dock === 'right' ? panelSize : undefined,
+                          }
+                }
+            >
+                {/* Left: view switch + branches.
+
+                    overflow-hidden no es cosmético: `width` fija el ancho de
+                    la columna, pero sus hijos siguen teniendo min-width:auto,
+                    así que cualquier fila cuyo contenido no pueda encogerse
+                    (la de Commits/Cambios/Stash es la que lo hacía) se
+                    dibujaba PASADO el borde, encima del grafo. Clipear acá lo
+                    vuelve imposible; el min-w-0 de las filas es lo que además
+                    hace que se degraden bien en vez de quedar cortadas. */}
+                {!sideHidden && (
+                <div style={{width: sideWidth}} className="flex shrink-0 flex-col overflow-hidden border-r border-outline-variant bg-surface-container-lowest">
                     <div className="flex shrink-0 gap-0.5 border-b border-outline-variant p-1">
-                        <ViewTab active={view === 'commits'} onClick={() => setView('commits')} icon="history" label="Commits" title="Ver el historial de commits del repositorio" />
                         <ViewTab
+                            active={view === 'commits'}
+                            onClick={() => setView('commits')}
+                            icon="history"
+                            label="Commits"
+                            compact={compactTabs}
+                            title="Ver el historial de commits del repositorio"
+                        />
+                        <ViewTab
+                            compact={compactTabs}
                             active={view === 'changes'}
                             onClick={() => setView('changes')}
                             icon="edit_note"
@@ -1090,6 +1533,7 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                             title="Ver los archivos modificados en el working tree y armar un commit"
                         />
                         <ViewTab
+                            compact={compactTabs}
                             active={view === 'stash'}
                             onClick={() => setView('stash')}
                             icon="inventory_2"
@@ -1187,40 +1631,49 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto p-1">
                         <SectionLabel count={localBranches.length}>Ramas</SectionLabel>
-                        {localBranches.map((b) => (
-                            <BranchRow
-                                isPinned={pinned.includes(b.name)}
-                                onTogglePin={() => void togglePinned(b.name)}
-                                key={b.name}
-                                branch={b}
-                                selected={selectedBranch === b.name}
-                                disabled={!!busy}
-                                onSelect={() => void selectBranch(b)}
-                                onCheckout={() => void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => { if (ok) void selectBranch(b) })}
-                                onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: branchMenuItems(b)})}
-                            />
+                        {/* Las ancladas van planas y arriba de todo: anclarlas
+                            existe justamente para sacarlas del montón, así que
+                            volver a meterlas dentro de su carpeta anularía la
+                            función. */}
+                        {pinnedLocal.map((b) => (
+                            <BranchRow {...branchRowProps(b)} key={b.name} />
                         ))}
+                        <BranchTree
+                            node={localTree}
+                            depth={0}
+                            expanded={expandedFolders}
+                            expandAll={filtering}
+                            onToggleFolder={toggleFolder}
+                            renderBranch={(b, folderPath) => (
+                                <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
+                            )}
+                        />
+
                         <SectionLabel count={remoteBranches.length}>Remotas</SectionLabel>
-                        {remoteBranches.map((b) => (
-                            <BranchRow
-                                isPinned={pinned.includes(b.name)}
-                                onTogglePin={() => void togglePinned(b.name)}
-                                key={b.name}
-                                branch={b}
-                                selected={selectedBranch === b.name}
-                                disabled={!!busy}
-                                onSelect={() => void selectBranch(b)}
-                                onCheckout={() => void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => { if (ok) void selectBranch(b) })}
-                                onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: branchMenuItems(b)})}
-                            />
+                        {pinnedRemote.map((b) => (
+                            <BranchRow {...branchRowProps(b)} key={b.name} />
                         ))}
+                        <BranchTree
+                            node={remoteTree}
+                            depth={0}
+                            expanded={expandedFolders}
+                            expandAll={filtering}
+                            onToggleFolder={toggleFolder}
+                            renderBranch={(b, folderPath) => (
+                                <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
+                            )}
+                        />
+
                         {branchFilter && localBranches.length === 0 && remoteBranches.length === 0 && (
                             <p className="px-2 py-3 text-[11px] text-on-surface-variant/70">Ninguna rama coincide con «{branchFilter}».</p>
                         )}
                     </div>
                 </div>
+                )}
 
-                <PaneHandle onStart={() => setDragging('side')} title="Arrastrá para cambiar el ancho del panel de ramas — el tamaño se guarda" />
+                {!sideHidden && (
+                    <PaneHandle onStart={() => setDragging('side')} title="Arrastrá para cambiar el ancho del panel de ramas — el tamaño se guarda" />
+                )}
 
                 {/* Center: graph or working-tree changes */}
                 <div className="flex min-w-0 flex-1 flex-col">
@@ -1287,10 +1740,17 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                     )}
                 </div>
 
-                <PaneHandle onStart={() => setDragging('diff')} title="Arrastrá para cambiar el ancho del panel de diff — el tamaño se guarda" />
+                {!diffHidden && (
+                    <PaneHandle onStart={() => setDragging('diff')} title="Arrastrá para cambiar el ancho del panel de diff — el tamaño se guarda" />
+                )}
 
-                {/* Right: commit detail + file list + diff */}
-                <div style={{width: diffWidth}} className="flex shrink-0 flex-col">
+                {/* Right: commit detail + file list + diff.
+
+                    overflow-hidden por el mismo motivo que la columna de
+                    ramas: ancho fijo + hijos con min-width:auto = contenido
+                    dibujado fuera del panel. */}
+                {!diffHidden && (
+                <div style={{width: diffWidth}} className="flex shrink-0 flex-col overflow-hidden">
                     {view === 'commits' && selectedCommit && <CommitDetail commit={selectedCommit} files={changedFiles} selectedPath={selectedPath} onSelectPath={setSelectedPath} />}
                     <div className="min-h-0 flex-1 overflow-hidden border-t border-outline-variant">
                         {selectedPath ? (
@@ -1353,6 +1813,232 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                         )}
                     </div>
                 </div>
+                )}
+            </div>
+
+            {/* Panel anclado (Sesiones / Comandos). Position absolute sobre
+                el cuerpo de la pestaña, con el tamaño y el lado que diga el
+                layout guardado. */}
+            {(panelTab !== null || sessions.length > 0) && (
+                <div
+                    className="absolute flex flex-col overflow-hidden border-outline-variant bg-surface-container-lowest"
+                    style={{
+                        display: panelTab === null ? 'none' : undefined,
+                        ...(dock === 'bottom'
+                            ? {left: 0, right: 0, bottom: 0, height: panelSize, borderTopWidth: 1}
+                            : dock === 'left'
+                              ? {left: 0, top: 0, bottom: 0, width: panelSize, borderRightWidth: 1}
+                              : {right: 0, top: 0, bottom: 0, width: panelSize, borderLeftWidth: 1}),
+                    }}
+                >
+                    {/* El asa va sobre el borde que da al área principal, que
+                        es el que se mueve al arrastrar. */}
+                    <div
+                        onMouseDown={(e) => {
+                            e.preventDefault()
+                            setPanelDragging(true)
+                        }}
+                        role="separator"
+                        aria-orientation={dock === 'bottom' ? 'horizontal' : 'vertical'}
+                        title={
+                            dock === 'bottom'
+                                ? 'Arrastrá para cambiar el alto del panel — el tamaño queda guardado'
+                                : 'Arrastrá para cambiar el ancho del panel — el tamaño queda guardado'
+                        }
+                        className={`absolute z-10 ${
+                            dock === 'bottom'
+                                ? 'left-0 right-0 top-0 h-1.5 cursor-row-resize'
+                                : dock === 'left'
+                                  ? 'bottom-0 right-0 top-0 w-1.5 cursor-col-resize'
+                                  : 'bottom-0 left-0 top-0 w-1.5 cursor-col-resize'
+                        } hover:bg-primary/30`}
+                    />
+
+                    {/* Barra del panel: solapas Sesiones/Comandos a la
+                        izquierda y los ajustes que valen para TODAS las
+                        terminales (letra, paleta, anclaje) a la derecha —
+                        repetirlos en cada sesión sería repetir un ajuste que
+                        no es de la sesión. */}
+                    <div
+                        className={`flex shrink-0 items-center gap-1 border-b border-outline-variant px-2 py-0.5 text-[11px] ${
+                            dock === 'bottom' ? 'mt-1.5' : dock === 'right' ? 'ml-1.5' : 'mr-1.5'
+                        }`}
+                    >
+                        <button
+                            onClick={() => openPanel('terminal')}
+                            title="Sesiones abiertas: terminales y asistentes de código corriendo en este repositorio"
+                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'terminal' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                        >
+                            <Icon name="terminal" size={13} />
+                            Sesiones
+                        </button>
+                        <button
+                            onClick={() => {
+                                setPanelTab('commands')
+                                persistLayout({tab: 'commands'})
+                            }}
+                            title="Registro de solo lectura de los comandos git que ejecutó la app, con su salida y cuánto tardaron"
+                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'commands' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                        >
+                            <Icon name="history" size={13} />
+                            {dock === 'bottom' ? 'Comandos ejecutados' : 'Comandos'}
+                        </button>
+
+                        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                            <button
+                                onClick={() => onChangeTerminalFontSize(terminalFontSize - 1)}
+                                disabled={terminalFontSize <= TERMINAL_FONT_MIN}
+                                title={
+                                    terminalFontSize <= TERMINAL_FONT_MIN
+                                        ? `Ya estás en el tamaño mínimo (${TERMINAL_FONT_MIN}px) — más chico deja de leerse`
+                                        : `Achicar la letra a ${terminalFontSize - 1}px. Entran más columnas y más líneas; aplica a todas las terminales y queda guardado.`
+                                }
+                                className="rounded px-1 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30 disabled:hover:bg-transparent"
+                            >
+                                <Icon name="text_decrease" size={14} />
+                            </button>
+                            <button
+                                onClick={() => onChangeTerminalFontSize(terminalFontSize + 1)}
+                                disabled={terminalFontSize >= TERMINAL_FONT_MAX}
+                                title={
+                                    terminalFontSize >= TERMINAL_FONT_MAX
+                                        ? `Ya estás en el tamaño máximo (${TERMINAL_FONT_MAX}px) — más grande entran tan pocas columnas que la salida se rompe`
+                                        : `Agrandar la letra a ${terminalFontSize + 1}px. Aplica a todas las terminales y queda guardado.`
+                                }
+                                className="rounded px-1 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30 disabled:hover:bg-transparent"
+                            >
+                                <Icon name="text_increase" size={14} />
+                            </button>
+                            <TerminalThemeMenu value={terminalThemeId} appTheme={appTheme} onChange={onChangeTerminalTheme} />
+                            <span className="mx-0.5 h-4 w-px shrink-0 bg-outline-variant" />
+                            {DOCK_BUTTONS.map((d) => (
+                                <button
+                                    key={d.id}
+                                    onClick={() => changeDock(d.id)}
+                                    title={dock === d.id ? `${d.title} (es donde está ahora)` : d.title}
+                                    className={`rounded px-1 py-0.5 ${
+                                        dock === d.id
+                                            ? 'bg-primary/15 text-primary'
+                                            : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                                    }`}
+                                >
+                                    <Icon name={d.icon} size={14} />
+                                </button>
+                            ))}
+                            <span className="mx-0.5 h-4 w-px shrink-0 bg-outline-variant" />
+                            <button
+                                onClick={() => {
+                                    setPanelTab(null)
+                                    persistLayout({tab: null})
+                                }}
+                                title="Cierra el panel. Las sesiones siguen vivas: al volver a abrirlo seguís en el mismo directorio y con lo mismo en pantalla."
+                                className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                            >
+                                <Icon name="close" size={15} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Tira de sesiones. Solo en la solapa de sesiones: en
+                        Comandos no habría nada que elegir. */}
+                    {panelTab === 'terminal' && (
+                        <div
+                            className={`flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-outline-variant px-1 py-0.5 text-[11px] ${
+                                dock === 'right' ? 'ml-1.5' : dock === 'left' ? 'mr-1.5' : ''
+                            }`}
+                        >
+                            {sessions.map((s) => (
+                                <div
+                                    key={s.id}
+                                    onClick={() => setActiveSessionId(s.id)}
+                                    title={
+                                        s.kind === 'agent'
+                                            ? `Sesión de ${s.title} en este repositorio`
+                                            : 'Terminal en la raíz de este repositorio'
+                                    }
+                                    className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 ${
+                                        activeSessionId === s.id
+                                            ? 'bg-primary/15 text-primary'
+                                            : 'text-on-surface-variant hover:bg-surface-variant'
+                                    }`}
+                                >
+                                    <Icon name={s.kind === 'agent' ? 'smart_toy' : 'terminal'} size={12} className="shrink-0" />
+                                    <span className="max-w-32 truncate">{s.title}</span>
+                                    <span
+                                        role="button"
+                                        tabIndex={-1}
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            closeSession(s.id)
+                                        }}
+                                        title={`Cierra esta sesión y termina su proceso${s.kind === 'agent' ? ` — ${s.title} deja de correr` : ''}`}
+                                        className="shrink-0 rounded opacity-0 hover:bg-surface-variant group-hover:opacity-70"
+                                    >
+                                        <Icon name="close" size={12} />
+                                    </span>
+                                </div>
+                            ))}
+
+                            <DropdownMenu
+                                label="Nueva"
+                                icon="add"
+                                title="Abrir una sesión nueva en este repositorio: una terminal, o un asistente de código (Claude Code, Codex, Gemini)"
+                                width={340}
+                                items={[
+                                    {
+                                        label: 'Terminal',
+                                        icon: 'terminal',
+                                        hint: 'Shell en la raíz del repositorio',
+                                        onSelect: () => addSession('shell'),
+                                    },
+                                    'separator',
+                                    ...agentList.map((a) => ({
+                                        label: a.label,
+                                        icon: 'smart_toy',
+                                        hint: a.available ? a.vendor : 'No está instalado en este equipo',
+                                        disabled: !a.available,
+                                        onSelect: () => addSession('agent', a),
+                                    })),
+                                ]}
+                            />
+                        </div>
+                    )}
+
+                    <div
+                        className={`relative min-h-0 flex-1 ${dock === 'right' ? 'ml-1.5' : dock === 'left' ? 'mr-1.5' : ''}`}
+                    >
+                        {/* Todas las sesiones se renderizan siempre y se
+                            ocultan por CSS: desmontar la inactiva mataría su
+                            proceso. */}
+                        {sessions.map((s) => (
+                            <div
+                                key={s.id}
+                                className="absolute inset-0"
+                                style={{display: panelTab === 'terminal' && activeSessionId === s.id ? undefined : 'none'}}
+                            >
+                                <LocalTerminalPanel
+                                    sessionId={s.id}
+                                    repoId={repoId}
+                                    kind={s.kind}
+                                    agentId={s.agentId}
+                                    agentLabel={s.title}
+                                    autoStart={s.autoStart}
+                                    shellId={localShellId}
+                                    theme={appTheme}
+                                    terminalThemeId={terminalThemeId}
+                                    fontSize={terminalFontSize}
+                                    visible={active && panelTab === 'terminal' && activeSessionId === s.id}
+                                />
+                            </div>
+                        ))}
+                        {panelTab === 'commands' && (
+                            <div className="absolute inset-0">
+                                <GitCommandLogDrawer reloadToken={logToken} />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
             </div>
 
             {showSettings && (
@@ -1371,7 +2057,6 @@ export default function GitRepoTab({repoId, repoName, editorThemeId, appTheme, s
                 />
             )}
 
-            {showCommandLog && <GitCommandLogDrawer reloadToken={logToken} onClose={() => setShowCommandLog(false)} />}
 
             {rebaseBase && (
                 <GitRebaseDialog
@@ -1460,21 +2145,45 @@ function Banner({kind, text, onClose}: {kind: 'error' | 'info'; text: string; on
     )
 }
 
-function ViewTab({active, onClick, icon, label, title, badge}: {active: boolean; onClick: () => void; icon: string; label: string; title: string; badge?: number}) {
+function ViewTab({
+    active,
+    onClick,
+    icon,
+    label,
+    title,
+    badge,
+    compact,
+}: {
+    active: boolean
+    onClick: () => void
+    icon: string
+    label: string
+    title: string
+    badge?: number
+    // Con la columna angosta se muestra solo el ícono. Es mejor que recortar
+    // el texto a "Comm…"/"Camb…", que ocupa casi lo mismo y encima no se
+    // entiende; los tres íconos son distintos entre sí y el tooltip sigue
+    // diciendo qué hace cada uno.
+    compact?: boolean
+}) {
     return (
         <button
             onClick={onClick}
             title={title}
-            className={`flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-[11px] ${
+            // min-w-0 anula el min-width:auto que traen los ítems flex por
+            // defecto — sin él `flex-1` no sirve de nada: el botón se niega a
+            // bajar del ancho de su propio contenido y los tres desbordan la
+            // columna en vez de repartirse lo que hay.
+            className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-[11px] ${
                 active ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
             }`}
         >
-            <Icon name={icon} size={14} />
-            {label}
+            <Icon name={icon} size={14} className="shrink-0" />
+            {!compact && <span className="truncate">{label}</span>}
             {/* secondary is the commit/success role — a live count of pending
                 changes reads as "there is work here", not as an error. */}
             {badge != null && badge > 0 && (
-                <span className="rounded-full bg-secondary px-1.5 text-[10px] font-medium leading-4 text-on-secondary">{badge}</span>
+                <span className="shrink-0 rounded-full bg-secondary px-1.5 text-[10px] font-medium leading-4 text-on-secondary">{badge}</span>
             )}
         </button>
     )
@@ -1489,8 +2198,96 @@ function SectionLabel({children, count}: {children: React.ReactNode; count?: num
     )
 }
 
+// folderDepth es cuántos niveles de indentación le tocan a una rama según la
+// carpeta de la que cuelga. Vive acá porque la comparten el árbol y las filas.
+function folderDepth(folderPath: string): number {
+    return folderPath === '' ? 0 : folderPath.split('/').length
+}
+
+// Fila de carpeta del árbol de ramas: plegable, con el nombre del segmento y
+// cuántas ramas hay adentro (el contador es lo que permite decidir si vale la
+// pena abrirla sin abrirla).
+function BranchFolderRow({
+    node,
+    depth,
+    open,
+    onToggle,
+}: {
+    node: BranchTreeNode
+    depth: number
+    open: boolean
+    onToggle: () => void
+}) {
+    const total = countBranches(node)
+    return (
+        <button
+            onClick={onToggle}
+            title={
+                open
+                    ? `Plegar "${node.path}" — sus ${total} ramas dejan de ocupar la lista`
+                    : `Desplegar "${node.path}" — tiene ${total} ${total === 1 ? 'rama' : 'ramas'}`
+            }
+            style={{paddingLeft: 8 + depth * 12}}
+            className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-[11px] text-on-surface-variant hover:bg-surface-variant"
+        >
+            <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
+            <Icon name={open ? 'folder_open' : 'folder'} size={13} className="shrink-0 opacity-60" />
+            <span className="truncate">{node.label}</span>
+            <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-50">{total}</span>
+        </button>
+    )
+}
+
+// BranchTree dibuja carpetas y ramas recursivamente. No sabe cómo es una fila
+// de rama —la recibe por renderBranch— para que el mismo árbol sirva en la
+// barra lateral de la pestaña y en cualquier otra vista sin arrastrar el
+// diseño de la fila con él.
+function BranchTree({
+    node,
+    depth,
+    expanded,
+    expandAll,
+    onToggleFolder,
+    renderBranch,
+}: {
+    node: BranchTreeNode
+    depth: number
+    expanded: Set<string>
+    // Fuerza todo abierto (el caso del filtro de texto), sin tocar el conjunto
+    // de carpetas que el usuario abrió a mano.
+    expandAll?: boolean
+    onToggleFolder: (path: string) => void
+    renderBranch: (branch: git.Branch, folderPath: string) => React.ReactNode
+}) {
+    return (
+        <>
+            {node.folders.map((folder) => {
+                const open = expandAll || expanded.has(folder.path)
+                return (
+                    <div key={folder.path}>
+                        <BranchFolderRow node={folder} depth={depth} open={open} onToggle={() => onToggleFolder(folder.path)} />
+                        {open && (
+                            <BranchTree
+                                node={folder}
+                                depth={depth + 1}
+                                expanded={expanded}
+                                expandAll={expandAll}
+                                onToggleFolder={onToggleFolder}
+                                renderBranch={renderBranch}
+                            />
+                        )}
+                    </div>
+                )
+            })}
+            {node.branches.map((b) => renderBranch(b, node.path))}
+        </>
+    )
+}
+
 function BranchRow({
     branch,
+    label,
+    depth,
     selected,
     disabled,
     onSelect,
@@ -1500,6 +2297,12 @@ function BranchRow({
     onTogglePin,
 }: {
     branch: git.Branch
+    // Texto a mostrar. Dentro del árbol es el nombre sin el prefijo de su
+    // carpeta; suelto (una rama anclada, o una sin barras) es el nombre
+    // completo. El checkout siempre usa branch.name, nunca esto.
+    label?: string
+    // Nivel de indentación heredado de la carpeta contenedora.
+    depth?: number
     selected: boolean
     disabled: boolean
     onSelect: () => void
@@ -1525,7 +2328,8 @@ function BranchRow({
                     ? 'Ya es la rama actual'
                     : `Doble click para hacer checkout${branch.isRemote ? ' (crea una rama local que la sigue)' : ''}`
             }. Click derecho para más acciones`}
-            className={`group relative flex w-full items-center gap-1.5 rounded px-2 py-1 pl-2.5 text-left text-[11px] transition-colors disabled:opacity-40 ${
+            style={{paddingLeft: 10 + (depth ?? 0) * 12}}
+            className={`group relative flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-[11px] transition-colors disabled:opacity-40 ${
                 // Three states that must stay distinguishable at a glance:
                 // checked out (primary), pointed at by the graph (a secondary
                 // tint + accent bar, quiet enough for a long list), and plain.
@@ -1555,7 +2359,7 @@ function BranchRow({
                 <Icon name="star" size={12} filled={isPinned} />
             </span>
             <Icon name={branch.isRemote ? 'cloud' : 'account_tree'} size={13} className="shrink-0 opacity-70" />
-            <span className="truncate">{branch.name}</span>
+            <span className="truncate">{label ?? branch.name}</span>
             {/* The checked-out branch keeps a marker of its own even when
                 another branch is the one selected in the graph — otherwise
                 clicking around the sidebar loses track of where HEAD is. */}

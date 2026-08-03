@@ -9,6 +9,8 @@ import {sqlintel} from '../models';
 import {vault} from '../models';
 import {explain} from '../models';
 import {git} from '../models';
+import {agents} from '../models';
+import {localterm} from '../models';
 
 export function ActiveConnectionIds():Promise<Array<string>>;
 
@@ -44,9 +46,13 @@ export function CheckSftpConflicts(arg1:main.SftpTransferInput):Promise<Array<sf
 
 export function ChmodSftpPath(arg1:string,arg2:string,arg3:number):Promise<void>;
 
+export function ClearAgentKey(arg1:string):Promise<void>;
+
 export function ClearQueryHistory(arg1:string):Promise<void>;
 
 export function ClearRecentFiles():Promise<void>;
+
+export function CloseLocalTerminal(arg1:string):Promise<void>;
 
 export function CloseSSHTerminal(arg1:string):Promise<void>;
 
@@ -63,6 +69,8 @@ export function CountMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:str
 export function CreateFolder(arg1:string,arg2:string,arg3:string):Promise<vault.Folder>;
 
 export function CreateSshSnippet(arg1:string,arg2:string):Promise<vault.SshSnippet>;
+
+export function DefaultShellID():Promise<string>;
 
 export function DeleteConnection(arg1:string):Promise<void>;
 
@@ -298,6 +306,8 @@ export function InitializeVault(arg1:string):Promise<void>;
 
 export function IsVaultInitialized():Promise<boolean>;
 
+export function ListAgents():Promise<Array<agents.Agent>>;
+
 export function ListConnections():Promise<Array<vault.ConnectionSummary>>;
 
 export function ListExplainHistory(arg1:string,arg2:number):Promise<Array<vault.ExplainHistoryEntry>>;
@@ -324,7 +334,11 @@ export function ListSchemasForNewConnection(arg1:main.ConnectionInput):Promise<A
 
 export function ListSftpDir(arg1:string,arg2:string):Promise<Array<sftpx.FileEntry>>;
 
+export function ListShells():Promise<Array<localterm.Shell>>;
+
 export function ListSshSnippets():Promise<Array<vault.SshSnippet>>;
+
+export function LocalShellLabel(arg1:string):Promise<string>;
 
 export function MakeSftpDir(arg1:string,arg2:string):Promise<void>;
 
@@ -333,6 +347,12 @@ export function MoveConnectionToFolder(arg1:string,arg2:string):Promise<void>;
 export function MoveFolder(arg1:string,arg2:string):Promise<void>;
 
 export function MoveSshSnippetToFolder(arg1:string,arg2:string):Promise<void>;
+
+export function OpenAgentSession(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number,arg6:boolean):Promise<void>;
+
+export function OpenLocalTerminal(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
+
+export function OpenLocalTerminalAt(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function OpenSQLFileDialog():Promise<main.FileContent>;
 
@@ -384,6 +404,8 @@ export function ReorderFolder(arg1:string,arg2:string):Promise<void>;
 
 export function ReplaceMongoDocument(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
+export function ResizeLocalTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+
 export function ResizeSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function ResolveJoinCondition(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<Array<sqlintel.JoinCondition>>;
@@ -410,6 +432,10 @@ export function SaveSQLFileAs(arg1:string,arg2:string):Promise<string>;
 
 export function SaveSSHKey(arg1:string,arg2:string,arg3:string):Promise<vault.SSHKeySummary>;
 
+export function SetAgentCommand(arg1:string,arg2:string):Promise<void>;
+
+export function SetAgentKey(arg1:string,arg2:string):Promise<void>;
+
 export function SetAutoBackupEnabled(arg1:boolean):Promise<void>;
 
 export function SetAutoBackupIntervalHours(arg1:number):Promise<void>;
@@ -425,6 +451,12 @@ export function SetConnectionSchemas(arg1:string,arg2:Array<string>):Promise<voi
 export function SetEditorHeight(arg1:number):Promise<void>;
 
 export function SetEditorTheme(arg1:string):Promise<void>;
+
+export function SetGitLayout(arg1:string,arg2:number,arg3:string,arg4:boolean,arg5:boolean):Promise<void>;
+
+export function SetGitPanelSessions(arg1:Array<vault.GitPanelSession>):Promise<void>;
+
+export function SetLocalShell(arg1:string):Promise<void>;
 
 export function SetOpenTabs(arg1:Array<vault.OpenTabInfo>):Promise<void>;
 
@@ -445,6 +477,8 @@ export function SetRememberMasterKey(arg1:boolean):Promise<void>;
 export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 
 export function SetSshTerminalTheme(arg1:string):Promise<void>;
+
+export function SetTerminalFontSize(arg1:number):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
 
@@ -471,6 +505,8 @@ export function UnlockVault(arg1:string):Promise<void>;
 export function UpdateConnection(arg1:string,arg2:main.ConnectionInput,arg3:boolean):Promise<vault.ConnectionSummary>;
 
 export function UpdateSshSnippet(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function WriteLocalTerminal(arg1:string,arg2:string):Promise<void>;
 
 export function WriteSSHTerminal(arg1:string,arg2:string):Promise<void>;
 

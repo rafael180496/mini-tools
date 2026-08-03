@@ -35,6 +35,10 @@ interface SshTerminalTabProps {
     // from Workspace.tsx.
     terminalThemeId: string
     onChangeTerminalTheme: (id: TerminalThemeId) => void
+    // Cuerpo de fuente, compartido con la terminal local del módulo Git
+    // (settings.terminalFontSize) — es el mismo widget, tener dos tamaños
+    // distintos para "la terminal" no significaría nada para quien la usa.
+    terminalFontSize: number
     // Reports the session's real connected/disconnected state up to
     // Workspace.tsx — used for the "Pestaña vinculada a" status line, which
     // otherwise only knew whether a connection was BOUND to the tab, not
@@ -67,10 +71,14 @@ function base64ToBytes(b64: string): Uint8Array {
 // render block, the same "never unmount" treatment RedisBrowserTab.tsx gets
 // so its state survives switching tabs. That means this component's mount
 // effect below runs exactly once per session, not on every tab-focus.
-export default function SshTerminalTab({connId, theme, terminalThemeId, onChangeTerminalTheme, onConnectedChange}: SshTerminalTabProps) {
+export default function SshTerminalTab({connId, theme, terminalThemeId, onChangeTerminalTheme, terminalFontSize, onConnectedChange}: SshTerminalTabProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const termRef = useRef<Terminal | null>(null)
+    // El FitAddon se guarda en un ref además de usarse dentro del efecto de
+    // montaje: cambiar el cuerpo de fuente obliga a remedir desde afuera de
+    // ese efecto (ver más abajo).
+    const fitRef = useRef<FitAddon | null>(null)
     // Reconstructs the current input line from raw keystrokes to drive the
     // ghost autocomplete suggestion (see lib/sshLineModel.ts). One per session.
     const modelRef = useRef(new SshLineModel())
@@ -102,11 +110,12 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
 
         const term = new Terminal({
             fontFamily: '"JetBrains Mono", monospace',
-            fontSize: 13,
+            fontSize: terminalFontSize,
             cursorBlink: true,
             theme: resolveTerminalTheme(terminalThemeId, theme),
         })
         const fitAddon = new FitAddon()
+        fitRef.current = fitAddon
         term.loadAddon(fitAddon)
         term.open(container)
         fitAddon.fit()
@@ -284,6 +293,7 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
             unsubscribe()
             term.dispose()
             termRef.current = null
+            fitRef.current = null
             onConnectedChange(false)
             setTerminalLive(connId, false)
         }
@@ -304,6 +314,18 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
     useEffect(() => {
         if (termRef.current) termRef.current.options.theme = resolveTerminalTheme(terminalThemeId, theme)
     }, [theme, terminalThemeId])
+
+    // El cuerpo de fuente cambia el tamaño de la celda, así que además de
+    // aplicarlo hay que remedir: el ResizeObserver de arriba no dispara
+    // (el contenedor no cambió de tamaño) y el PTY se quedaría creyendo que
+    // entran las columnas de antes.
+    useEffect(() => {
+        const term = termRef.current
+        if (!term) return
+        term.options.fontSize = terminalFontSize
+        fitRef.current?.fit()
+        void ResizeSSHTerminal(connId, term.cols, term.rows)
+    }, [terminalFontSize, connId])
 
     const envStyle = environmentStyle(environment)
 

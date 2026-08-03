@@ -1,66 +1,76 @@
 # mini-tools — release Windows
 
 Artefacto de distribución local generado con `./scripts/package-windows.sh`,
-**cross-compilado desde macOS** y **corrido en Windows 10 y Windows 11
-reales** antes de publicarlo. No es un release firmado ni se publica
-automáticamente a ningún lado — solo empaqueta el `.exe` para distribuirlo
-manualmente (GitHub Releases, USB, red interna, etc.).
+**cross-compilado desde macOS**. Esta versión **no se corrió en una Windows
+real** antes de publicarla — ver "Estado de verificación" abajo. No es un
+release firmado ni se publica automáticamente a ningún lado — solo empaqueta
+el `.exe` para distribuirlo manualmente (GitHub Releases, USB, red interna,
+etc.).
 
 ## Versión actual
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.0.0 |
-| Archivo | `mini-tools-v1.0.0-windows-amd64.exe` |
+| Versión | 1.1.0 |
+| Archivo | `mini-tools-v1.1.0-windows-amd64.exe` |
 | Tamaño | ~53 MB |
-| SHA-256 | `aeeb2dccb51b9517c2731888d3ec33adf4da533a656d95640f7e3461afe1e46f` |
+| SHA-256 | `2c34edddc876b49625d62fd46d50cb86a4c5db83b0f89e9f44f8c8c35fa88941` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v1.0.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v1.1.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
 ## Estado de verificación en Windows real
 
-Este `.exe` se cross-compila desde macOS (ninguno de los conectores de
-base de datos —PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni
-`go-redis` usan CGO, así que no hace falta un toolchain de
-Windows/mingw), pero **no se distribuye solo porque compile**: la 1.0.0 se
-corrió en **Windows 10 y Windows 11 reales**, y la app arranca y se usa en
-ambos.
+**Esta versión (1.1.0) NO fue verificada en una Windows real.** Lo único
+confirmado es que cross-compila limpio desde macOS (ninguno de los
+conectores de base de datos —PostgreSQL, Oracle, SQLite, SQL Server,
+MongoDB— ni `go-redis` ni el PTY usan CGO, así que no hace falta un
+toolchain de Windows/mingw).
 
-Confirmado ahí, que es lo que no se puede confirmar cross-compilando:
+Que la 1.0.0 sí se haya probado en Windows 10 y 11 **no dice nada de esta
+versión**: 1.1.0 agrega una terminal integrada que en Windows usa un
+mecanismo del sistema operativo distinto al de macOS/Linux, y eso es
+exactamente la clase de cosa que solo se confirma ejecutándola.
 
-- **WebView2 arranca sin instalar nada.** En los dos equipos de prueba
-  —Windows 10 y Windows 11— la app abrió directo, sin instalar el WebView2
-  Runtime aparte. Ver la nota de compatibilidad abajo sobre qué pasa en un
-  Windows 10 sin actualizar.
+Queda sin confirmar en Windows, en orden de riesgo:
 
-Probado en esas dos versiones pero **sin revisar punto por punto**, así que
-se listan como no confirmados explícitamente:
-
+- **La terminal local integrada.** En Windows usa ConPTY (la API de
+  pseudo-consola del sistema) vía `github.com/aymanbagabas/go-pty`, un
+  camino de código completamente distinto al `openpty` de Unix. Sin
+  probarlo no está confirmado que la shell arranque, que el redimensionado
+  reflowe bien, ni que PowerShell/cmd/Git Bash/WSL se detecten y abran como
+  corresponde.
+- **Las sesiones de agentes de código.** Dependen de encontrar los CLIs en
+  las rutas de instalación típicas de Windows (`%APPDATA%\npm`,
+  `~/.bun/bin`), que no se verificaron contra una instalación real.
+- **WebView2 arranca sin instalar nada.** Confirmado en 1.0.0 sobre
+  Windows 10 y 11; es razonable esperar lo mismo acá (no cambió nada del
+  bootstrap), pero no se volvió a comprobar.
 - **DPI scaling, tamaño y posición de ventana.**
 - **Diálogos nativos** (abrir/guardar archivo, backup del vault).
-- **Arrastrar archivos desde el Explorador de Windows al panel SFTP** —
-  funcionalidad nueva en esta versión, apoyada en el drag & drop nativo de
-  Wails.
 
-Lo único que sigue molestando al primer arranque es SmartScreen, por la
-falta de firma Authenticode — ver abajo.
+Si alguien la corre en una Windows real, corresponde reemplazar esta
+sección por lo que se haya confirmado y en qué versiones de Windows — no
+borrarla sin más.
 
 ## Compatibilidad del sistema
 
-- **Windows 10 y Windows 11** — ambos verificados arrancando la app (ver
-  arriba). Wails v2 en Windows depende del WebView2 Runtime de Microsoft:
-  Windows 11 lo trae preinstalado y los Windows 10 con Edge al día también
-  (llega con las actualizaciones de Edge), que fue el caso en las pruebas.
-  Un Windows 10 viejo o sin actualizar puede no tenerlo — ahí se instala
-  aparte, gratis
+- **Windows 10 y Windows 11**, esperado pero **no verificado en esta
+  versión** (ver la sección de arriba). Wails v2 en Windows depende del
+  WebView2 Runtime de Microsoft: Windows 11 lo trae preinstalado y los
+  Windows 10 con Edge al día también (llega con las actualizaciones de
+  Edge). Un Windows 10 viejo o sin actualizar puede no tenerlo — ahí se
+  instala aparte, gratis
   ([enlace oficial](https://developer.microsoft.com/microsoft-edge/webview2/)).
+- **La terminal integrada requiere ConPTY**, presente en Windows 10
+  1809 (octubre de 2018) y posteriores. En un Windows anterior la app
+  debería seguir funcionando, pero el panel de terminal/agentes no.
 - **Solo `amd64` (x86-64).** No se generó build `arm64` (Windows on ARM)
   — se puede agregar cross-compilando con `-platform windows/arm64` si
   hace falta.
@@ -76,7 +86,7 @@ falta de firma Authenticode — ver abajo.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v1.0.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v1.1.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.
@@ -95,8 +105,8 @@ cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 5. Si en vez de abrirse no pasa nada o aparece un error de WebView2, es un
    Windows 10 sin el runtime — instalarlo desde el
    [enlace oficial de Microsoft](https://developer.microsoft.com/microsoft-edge/webview2/)
-   (gratis, "Evergreen Standalone Installer") y reintentar. No pasó en
-   ninguno de los equipos de prueba, pero es el único requisito previo
+   (gratis, "Evergreen Standalone Installer") y reintentar. No pasó en los
+   equipos donde se probó la 1.0.0, pero es el único requisito previo
    posible.
 
 ### Actualizar a una versión nueva
@@ -109,7 +119,7 @@ borra el vault.
 ## Regenerar este artefacto
 
 ```bash
-./scripts/bump-version.sh patch      # opcional, si corresponde una versión nueva
+./scripts/bump-version.sh minor      # patch/minor/major según lo que entre en la versión
 ./scripts/package-windows.sh         # genera build/bin/mini-tools-vX.Y.Z-windows-amd64.exe
 cp build/bin/mini-tools-vX.Y.Z-windows-amd64.exe releases/windows/
 shasum -a 256 releases/windows/mini-tools-vX.Y.Z-windows-amd64.exe   # actualizar la tabla de arriba

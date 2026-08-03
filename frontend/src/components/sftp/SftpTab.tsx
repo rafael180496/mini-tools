@@ -233,7 +233,20 @@ export default function SftpTab({tabId, initialConnId, connections, onOpenRemote
                     un()
                     subs.current.delete(id)
                 }
-                refresh(toSide) // surface transferred (or partial) files
+                // The destination gained files, so it always reloads. The
+                // source is a copy and normally unchanged — except when both
+                // panes happen to be pointed at the same host and folder, where
+                // the "other" pane IS the same folder and would otherwise sit
+                // there stale.
+                refresh(toSide)
+                const fromSide = src.kind === 'pane' ? src.side : null
+                if (
+                    fromSide &&
+                    panes[fromSide].host.sessionId === to.host.sessionId &&
+                    panes[fromSide].dir === to.dir
+                ) {
+                    refresh(fromSide)
+                }
             } else {
                 const rate = observe(id, ev.bytesDone, ev.bytesTotal, performance.now())
                 updateQueue(id, {
@@ -321,6 +334,7 @@ export default function SftpTab({tabId, initialConnId, connections, onOpenRemote
                         otherLabel={panes.right.host.kind === 'none' ? 'destino' : panes.right.host.connName}
                         onPickHost={(h) => void pickHost('left', h)}
                         onNavigate={(dir) => updatePane('left', {dir})}
+                        onRefresh={() => refresh('left')}
                         onOpenFile={(path) => onOpenRemoteFile?.(panes.left.host, path)}
                         onError={setError}
                         onTransfer={(items) => void beginTransfer({kind: 'pane', side: 'left'}, 'right', items)}
@@ -337,6 +351,7 @@ export default function SftpTab({tabId, initialConnId, connections, onOpenRemote
                         otherLabel={panes.left.host.kind === 'none' ? 'destino' : panes.left.host.connName}
                         onPickHost={(h) => void pickHost('right', h)}
                         onNavigate={(dir) => updatePane('right', {dir})}
+                        onRefresh={() => refresh('right')}
                         onOpenFile={(path) => onOpenRemoteFile?.(panes.right.host, path)}
                         onError={setError}
                         onTransfer={(items) => void beginTransfer({kind: 'pane', side: 'right'}, 'left', items)}

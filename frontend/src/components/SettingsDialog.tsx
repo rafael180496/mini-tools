@@ -1,16 +1,32 @@
-import {useEffect, useState} from 'react'
-import {AppVersion} from '../../wailsjs/go/main/App'
-import {updatecheck} from '../../wailsjs/go/models'
+import {useEffect, useMemo, useState} from 'react'
+import {AppVersion, DefaultShellID, ListShells} from '../../wailsjs/go/main/App'
+import {localterm, updatecheck} from '../../wailsjs/go/models'
 import Icon from './Icon'
-import Select from './Select'
+import Select, {type SelectOption} from './Select'
 import Toggle from './Toggle'
 import {EDITOR_THEME_IDS, EDITOR_THEME_LABELS} from '../codemirror/themes'
+import {TERMINAL_THEME_IDS, TERMINAL_THEME_LABELS, type TerminalThemeId} from '../xterm/terminalThemes'
+import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../xterm/terminalFont'
+import AgentSettings from './AgentSettings'
 
 interface SettingsDialogProps {
     rememberMasterKey: boolean
     onToggleRememberMasterKey: (checked: boolean) => void
     editorThemeId: string
     onChangeEditorThemeId: (id: string) => void
+    // Tema de colores compartido por TODAS las terminales de la app (las
+    // sesiones SSH y la terminal local del módulo Git). Hasta ahora solo se
+    // podía cambiar desde el selector de una pestaña SSH abierta, que es un
+    // lugar poco obvio para una preferencia global.
+    terminalThemeId: string
+    onChangeTerminalThemeId: (id: TerminalThemeId) => void
+    // Cuerpo de fuente de todas las terminales. También se ajusta desde la
+    // barra de la propia terminal; los dos lugares escriben el mismo valor.
+    terminalFontSize: number
+    onChangeTerminalFontSize: (px: number) => void
+    // Intérprete que abre la terminal local integrada. "" = automático.
+    localShellId: string
+    onChangeLocalShellId: (id: string) => void
     onBackupVault: () => void
     onRestoreVault: () => void
     autoBackupEnabled: boolean
@@ -29,6 +45,7 @@ interface SettingsDialogProps {
 }
 
 const THEME_OPTIONS = EDITOR_THEME_IDS.map((id) => ({value: id, label: EDITOR_THEME_LABELS[id]}))
+const TERMINAL_THEME_OPTIONS = TERMINAL_THEME_IDS.map((id) => ({value: id, label: TERMINAL_THEME_LABELS[id]}))
 const AUTO_BACKUP_HOUR_OPTIONS = Array.from({length: 23}, (_, i) => i + 1).map((h) => ({
     value: String(h),
     label: h === 1 ? '1 hora' : `${h} horas`,
@@ -49,6 +66,12 @@ export default function SettingsDialog({
     onToggleRememberMasterKey,
     editorThemeId,
     onChangeEditorThemeId,
+    terminalThemeId,
+    onChangeTerminalThemeId,
+    terminalFontSize,
+    onChangeTerminalFontSize,
+    localShellId,
+    onChangeLocalShellId,
     onBackupVault,
     onRestoreVault,
     autoBackupEnabled,
@@ -72,6 +95,49 @@ export default function SettingsDialog({
             .then(setVersion)
             .catch(() => setVersion(''))
     }, [])
+
+    // Shells de ESTE sistema operativo. Se piden a Go y no se hardcodean en
+    // el frontend porque la lista depende de qué hay realmente instalado:
+    // en Windows, Git Bash y WSL están o no según la máquina, y en macOS
+    // fish suele venir de Homebrew.
+    const [shells, setShells] = useState<localterm.Shell[]>([])
+    const [defaultShellId, setDefaultShellId] = useState('')
+    useEffect(() => {
+        ListShells()
+            .then((s) => setShells(s ?? []))
+            .catch(() => setShells([]))
+        DefaultShellID()
+            .then(setDefaultShellId)
+            .catch(() => setDefaultShellId(''))
+    }, [])
+
+    const shellOptions: SelectOption[] = useMemo(() => {
+        const auto = shells.find((s) => s.id === defaultShellId)
+        const options: SelectOption[] = [
+            {
+                value: '',
+                label: 'Automático',
+                // Nombrar cuál va a abrir convierte "Automático" en una
+                // opción informada: sin esto no hay forma de saber qué se
+                // está eligiendo.
+                hint: auto ? `Usa ${auto.label}, el de este equipo` : 'El shell por defecto del sistema',
+            },
+        ]
+        for (const s of shells) {
+            options.push({
+                value: s.id,
+                label: s.label,
+                // Los no instalados se listan igual, deshabilitados: omitirlos
+                // no permitiría distinguir "no existe en este sistema" de "no
+                // lo tenés instalado todavía", y lo segundo es accionable.
+                hint: s.available ? s.path : 'No está instalado en este equipo',
+                disabled: !s.available,
+            })
+        }
+        return options
+    }, [shells, defaultShellId])
+
+    const selectedShell = shells.find((s) => s.id === localShellId)
 
     return (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -280,6 +346,112 @@ export default function SettingsDialog({
                             )}
                         </div>
                     </section>
+
+                    {/* Terminal — sección propia y no dentro de Preferencias:
+                        son los ajustes de una herramienta concreta (la shell
+                        integrada del módulo Git y las sesiones SSH), no
+                        preferencias sueltas de la app. */}
+                    <section className="flex flex-col gap-2">
+                        <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Terminal</h3>
+
+                        {/* Shell */}
+                        <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                            <div className="flex items-center gap-3">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                    <Icon name="terminal" size={18} />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <span className="block text-sm font-medium text-on-surface">Intérprete de comandos</span>
+                                    <span className="block truncate text-xs text-on-surface-variant">
+                                        Qué shell abre la terminal integrada de este equipo.
+                                    </span>
+                                </div>
+                                <Select
+                                    value={localShellId}
+                                    options={shellOptions}
+                                    onChange={onChangeLocalShellId}
+                                    ariaLabel="Intérprete de la terminal local"
+                                    title="Elegí con qué shell se abre la terminal integrada (la del panel inferior de una pestaña Git). Cambiarlo reinicia las terminales abiertas: no se le puede cambiar el intérprete a un proceso que ya está corriendo."
+                                    className="w-52"
+                                />
+                            </div>
+
+                            {/* La nota del shell elegido explica en una línea
+                                para qué sirve — la diferencia entre cmd,
+                                PowerShell y Git Bash no es obvia para quien
+                                abre la app por primera vez. */}
+                            <p className="border-t border-outline-variant pt-3 pl-12 text-xs text-on-surface-variant">
+                                {selectedShell
+                                    ? selectedShell.note
+                                    : 'Automático: se usa el shell que ya tenés configurado en este equipo. Es la opción segura si no sabés cuál elegir.'}
+                            </p>
+                        </div>
+
+                        {/* Tamaño de fuente */}
+                        <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                <Icon name="format_size" size={18} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <span className="block text-sm font-medium text-on-surface">Tamaño de letra</span>
+                                <span className="block truncate text-xs text-on-surface-variant">
+                                    Cuerpo de fuente de la terminal local y de las SSH.
+                                </span>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1 rounded-md border border-outline-variant bg-surface px-1 py-0.5">
+                                <button
+                                    onClick={() => onChangeTerminalFontSize(terminalFontSize - 1)}
+                                    disabled={terminalFontSize <= TERMINAL_FONT_MIN}
+                                    title={
+                                        terminalFontSize <= TERMINAL_FONT_MIN
+                                            ? `Ya estás en el mínimo (${TERMINAL_FONT_MIN}px) — más chico deja de leerse`
+                                            : `Achicar a ${terminalFontSize - 1}px: entran más columnas y más líneas en la misma terminal`
+                                    }
+                                    className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30 disabled:hover:bg-transparent"
+                                >
+                                    <Icon name="text_decrease" size={16} />
+                                </button>
+                                <span className="w-10 text-center font-mono text-xs text-on-surface" title="Tamaño actual, en píxeles">
+                                    {terminalFontSize}px
+                                </span>
+                                <button
+                                    onClick={() => onChangeTerminalFontSize(terminalFontSize + 1)}
+                                    disabled={terminalFontSize >= TERMINAL_FONT_MAX}
+                                    title={
+                                        terminalFontSize >= TERMINAL_FONT_MAX
+                                            ? `Ya estás en el máximo (${TERMINAL_FONT_MAX}px) — más grande entran tan pocas columnas que la salida se rompe`
+                                            : `Agrandar a ${terminalFontSize + 1}px`
+                                    }
+                                    className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30 disabled:hover:bg-transparent"
+                                >
+                                    <Icon name="text_increase" size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Tema de terminal */}
+                        <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                <Icon name="palette" size={18} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <span className="block text-sm font-medium text-on-surface">Tema de terminal</span>
+                                <span className="block truncate text-xs text-on-surface-variant">
+                                    Colores de la terminal local y de las sesiones SSH.
+                                </span>
+                            </div>
+                            <Select
+                                value={terminalThemeId}
+                                options={TERMINAL_THEME_OPTIONS}
+                                onChange={(v) => onChangeTerminalThemeId(v as TerminalThemeId)}
+                                ariaLabel="Tema de terminal"
+                                title="Esquema de colores de todas las terminales de la app. «Automático» sigue el modo claro/oscuro general; el resto son paletas fijas. Se aplica al instante en las terminales abiertas."
+                                className="w-52"
+                            />
+                        </div>
+                    </section>
+
+                    <AgentSettings />
                 </div>
 
                 {/* Footer */}

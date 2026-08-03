@@ -375,6 +375,91 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 26,
+		desc:    "agrega settings.local_shell — qué shell usa la terminal local integrada (zsh/bash/fish en Unix, PowerShell/cmd/Git Bash/WSL en Windows)",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT '' = "el que el sistema ya eligió" (localterm.
+			// DefaultShellID: $SHELL en Unix, el PowerShell más moderno
+			// instalado en Windows). Guardar '' y resolverlo en cada arranque,
+			// en vez de materializar un id acá, es lo que hace que el mismo
+			// vault restaurado en una máquina distinta —o en otro sistema
+			// operativo— siga abriendo un shell que existe. Solo un
+			// identificador de shell, nunca una ruta ni una credencial: no
+			// necesita cifrado de columna.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN local_shell TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
+	{
+		version: 27,
+		desc:    "agrega el layout del panel de la pestaña Git (dock de la terminal, tamaño, solapa abierta, paneles ocultos) y el tamaño de fuente de las terminales",
+		apply: func(tx *sql.Tx) error {
+			// Dónde va anclada la terminal del módulo Git: 'bottom' (el
+			// default histórico), 'left' o 'right'. Los defaults reproducen
+			// exactamente lo que veía una instalación existente antes de esta
+			// migración, así que actualizar no mueve nada de lugar.
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_term_dock TEXT NOT NULL DEFAULT 'bottom'`); err != nil {
+				return err
+			}
+			// Un solo número para las dos orientaciones: es el alto cuando
+			// está abajo y el ancho cuando está a los costados. Guardar dos
+			// columnas obligaría a decidir qué pasa al rotar el dock, y la
+			// respuesta útil ("que quede parecido") sale sola con una sola.
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_term_size INTEGER NOT NULL DEFAULT 300`); err != nil {
+				return err
+			}
+			// Qué solapa del panel quedó abierta: '' (cerrado), 'terminal' o
+			// 'commands'. DEFAULT '' = una instalación que actualiza abre la
+			// pestaña Git igual que siempre, sin un panel que no pidió — y sin
+			// levantar un proceso de shell al arrancar.
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_panel_tab TEXT NOT NULL DEFAULT ''`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_side_hidden INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_diff_hidden INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return err
+			}
+			// Tamaño de fuente compartido por TODAS las terminales (la local y
+			// las sesiones SSH). 13 es el valor que ambas tenían hardcodeado,
+			// así que nadie ve un cambio al migrar.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN terminal_font_size INTEGER NOT NULL DEFAULT 13`)
+			return err
+		},
+	},
+	{
+		version: 28,
+		desc:    "crea agent_configs (comando y API key opcional de cada CLI agéntico) y agrega settings.git_panel_sessions",
+		apply: func(tx *sql.Tx) error {
+			// Una fila por agente configurado, con el id del catálogo
+			// (backend/agents) como clave: no hay id generado porque el
+			// conjunto de agentes lo define la app, no el usuario, y un
+			// agente que la app deje de conocer simplemente queda como una
+			// fila huérfana inofensiva en vez de romper la lectura.
+			//
+			// La API key va cifrada con el MISMO esquema que encrypted_dsn y
+			// que ssh_keys (AES-GCM bajo la clave maestra, nonce por
+			// columna): es una credencial de pago y no merece menos
+			// protección que un DSN. Es opcional a propósito — la vía normal
+			// de estos CLIs es su propio login, y ahí no se guarda nada acá.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS agent_configs (
+				agent_id TEXT PRIMARY KEY,
+				command TEXT NOT NULL DEFAULT '',
+				encrypted_key BLOB,
+				key_nonce BLOB,
+				updated_at INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// Qué sesiones tenía abiertas el panel de la pestaña Git, en JSON
+			// ([{kind, agentId, title}]). DEFAULT '[]' = una instalación que
+			// actualiza abre el panel con una sola terminal, como hasta ahora.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN git_panel_sessions TEXT NOT NULL DEFAULT '[]'`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

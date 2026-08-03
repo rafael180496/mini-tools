@@ -387,3 +387,88 @@ symlink que apunta afuera del árbol.
 `auth.go` y el sequence editor de `rebase.go`. Cualquier helper nuevo que git
 tenga que re-ejecutar sigue ese mismo patrón y debe chequearse ahí, antes de
 tocar el vault o appdata.
+
+## Terminal local integrada (`backend/localterm`, `app_localterm.go`)
+
+Shell interactiva sobre un PTY real en la máquina del usuario, expuesta hoy
+en el cajón inferior de una pestaña Git (solapa "Terminal", hermana de
+"Comandos ejecutados"). La forma de los bindings es **deliberadamente
+idéntica** a la de `OpenSSHTerminal`/`WriteSSHTerminal`/`ResizeSSHTerminal`/
+`CloseSSHTerminal`: el widget xterm.js del frontend es el mismo, y dos
+contratos para el mismo stream de bytes obligarían a escribir dos veces el
+decodificador base64 y el manejo de resize.
+
+| Binding | Nota |
+|---|---|
+| `ListShells()` | Intérpretes del SO actual, instalados o no (`available` los distingue). Nombres y rutas de ejecutables del sistema, nada sensible |
+| `DefaultShellID()` | Lo que usa `local_shell = ''`: `$SHELL` en Unix, el PowerShell más moderno instalado en Windows |
+| `SetLocalShell(id)` | Migración 26, `settings.local_shell`. Sin validar contra una lista fija (mismo criterio "storage only" que `SetEditorTheme`) |
+| `LocalShellLabel(id)` | Etiqueta del shell que **realmente** se abriría — el backend cae al default si el guardado no está instalado, y la barra tiene que decir la verdad |
+| `OpenLocalTerminal(sessionID, repoID, cols, rows)` | `repoID` opaco, nunca una ruta — misma indirección que el resto del módulo Git. `repoID` vacío abre en el home |
+| `WriteLocalTerminal` / `ResizeLocalTerminal` / `CloseLocalTerminal` | Espejo exacto de sus pares SSH |
+
+**Todos pasan por `requireUnlocked`, sin excepción.** Una terminal local no
+lee el vault, pero abre un proceso con todos los permisos del usuario: es la
+superficie más potente que expone la app. La excepción documentada de
+`GetSettings`/`SetTheme` (punto 5 de las reglas técnicas) no aplica acá.
+
+`sessionID` lo genera el frontend, es único por pestaña (dos pestañas del
+mismo repo NO comparten shell) y es a la vez el nombre del evento de Wails:
+suscribirse con `EventsOn` **antes** de llamar a `OpenLocalTerminal` evita la
+carrera contra el primer chunk, mismo contrato que `ExecuteQuery`/`queryID`.
+
+**`local_shell` guarda un id, nunca una ruta**, y `''` significa "el que ya
+usa esta máquina", resuelto en cada apertura. El vault viaja entre máquinas
+(backup/restore) y entre sistemas operativos: un id materializado al
+configurarlo apuntaría a un shell que la otra máquina no tiene.
+
+### Layout persistido de la pestaña Git (migración 27)
+
+| Binding | Nota |
+|---|---|
+| `SetGitLayout(dock, size, tab, sideHidden, diffHidden)` | Un solo UPDATE para los cinco campos, mismo criterio que `GitSetPaneWidths`: se ajustan desde la misma pantalla y guardarlos por separado deja un layout a medio escribir |
+| `SetTerminalFontSize(px)` | Compartido por la terminal local y las SSH — es el mismo widget |
+
+**`SetGitLayout` sanea en vez de rechazar.** Lo escribe la UI en cada
+arrastre y cada clic; devolver un error se traduciría en "el panel no se
+guarda" sin que nada lo explique. Un `dock` desconocido —un vault escrito por
+una versión más nueva— cae a `bottom`, que toda instalación entiende.
+
+**El panel se mueve entre anclajes con CSS, nunca cambiando de lugar en el
+árbol de React.** Está en `position:absolute` sobre el cuerpo de la pestaña y
+el área principal le hace lugar con un margen. Si en cambio fuera un hermano
+en el flujo, cambiar de dock lo movería de padre, React desmontaría el
+subárbol y eso **mataría la shell** — el mismo motivo por el que el panel
+sigue montado (oculto por CSS) cuando se cierra.
+
+### Agentes de código (`backend/agents`, migración 28)
+
+| Binding | Nota |
+|---|---|
+| `ListAgents()` | Catálogo resuelto contra la máquina y la config. **Nunca** la API key, solo `hasKey` — misma regla que `SSHKeySummary` con el material de la llave |
+| `SetAgentCommand(agentID, command)` | Vacío restaura el default del catálogo |
+| `SetAgentKey(agentID, apiKey)` / `ClearAgentKey(agentID)` | AES-GCM bajo la clave maestra, mismo esquema que `encrypted_dsn` y `ssh_keys` |
+| `OpenAgentSession(sessionID, repoID, agentID, cols, rows, runCommand)` | Abre una sesión de `localterm` con el agente adentro. `runCommand=false` la abre sin arrancarlo |
+| `SetGitPanelSessions(sessions)` | Qué sesiones tenía abiertas el panel (intención, no procesos) |
+
+**La API key entra por el ENTORNO del proceso, nunca por la línea de
+comandos** — ahí quedaría visible en `ps` para cualquier proceso de la
+máquina y en el historial del shell. `vault.AgentKey` no tiene binding: solo
+la lee `app.go` para armar ese entorno.
+
+**El agente corre DENTRO del shell, no en lugar del shell.**
+`localterm.OpenWith` escribe el comando en el PTY como si lo hubiera tecleado
+el usuario, tras una espera corta (un shell interactivo todavía está armando
+su prompt cuando `Shell()` retorna, y escribir antes hace que se vea el eco a
+medias). Así, cuando el agente termina, queda la terminal viva en el mismo
+directorio en lugar de una sesión muerta.
+
+**Un agente nunca se relanza al restaurar el layout** (`runCommand=false`):
+consume cuota, y arrancarlo tiene que ser un clic, no un efecto de reabrir la
+app.
+
+**Lo que esta app NO hace: gestionar las cuentas de los agentes.** Cada CLI
+maneja su propio login y guarda sus credenciales donde decida. Leerlas,
+replicarlas o interceptarlas sería frágil y una responsabilidad que nadie
+pidió — la única credencial que la app guarda es la API key opcional de
+arriba, para quien usa el modo por variable de entorno.

@@ -27,6 +27,7 @@ import GitErrorBoundary from './git/GitErrorBoundary'
 import GitRepoTab from './git/GitRepoTab'
 import GitRepoTree from './git/GitRepoTree'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
+import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../xterm/terminalFont'
 import {
     ActiveConnectionIds,
     BackupVault,
@@ -82,7 +83,9 @@ import {
     SetOpenTabs,
     SetRememberMasterKey,
     SetSidebarCollapsed,
+    SetLocalShell,
     SetSshTerminalTheme,
+    SetTerminalFontSize,
     SyncSchemaMetadata,
 } from '../../wailsjs/go/main/App'
 import {BrowserOpenURL, EventsOn} from '../../wailsjs/runtime'
@@ -583,6 +586,15 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // above, just for the SSH terminal. One global setting shared by every
     // open terminal tab (see SshTerminalTab.tsx's terminalThemeId prop).
     const [terminalThemeId, setTerminalThemeIdState] = useState('auto')
+    // Shell que abre la terminal local integrada (settings.localShell, un id
+    // de backend/localterm: "zsh", "pwsh", "gitbash"…). "" = el que ya usa
+    // esta máquina, resuelto en Go en cada apertura — ver
+    // vault.Settings.LocalShell para por qué no se materializa un id acá.
+    const [localShellId, setLocalShellIdState] = useState('')
+    // Cuerpo de fuente de TODAS las terminales (settings.terminalFontSize).
+    // 13 es el valor que las terminales tenían hardcodeado antes de que fuera
+    // configurable, y el default de la migración 27.
+    const [terminalFontSize, setTerminalFontSizeState] = useState(13)
     // "Backup automático" toggle + its two dependent fields — mirrors
     // settings.auto_backup_* (backend/vault/settings_repo.go). The
     // scheduler itself lives in Go (backend/autobackup); this state is only
@@ -612,6 +624,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 if (settings.sshTerminalTheme) {
                     setTerminalThemeIdState(settings.sshTerminalTheme)
                 }
+                // "" es un valor válido (= automático), así que se asigna
+                // siempre en vez de detrás de un truthy check.
+                setLocalShellIdState(settings.localShell ?? '')
+                if (settings.terminalFontSize) setTerminalFontSizeState(settings.terminalFontSize)
                 if (settings.collapsedSidebarModules) {
                     setCollapsedModules(new Set(settings.collapsedSidebarModules))
                 }
@@ -726,6 +742,24 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     function changeTerminalTheme(id: TerminalThemeId) {
         setTerminalThemeIdState(id)
         void SetSshTerminalTheme(id)
+    }
+
+    // Cambiar el shell reinicia las terminales locales abiertas (ver
+    // LocalTerminalPanel): no existe cambiarle el intérprete a un proceso que
+    // ya está corriendo, así que la única forma de que la preferencia se
+    // aplique es levantar una shell nueva.
+    function changeLocalShell(id: string) {
+        setLocalShellIdState(id)
+        void SetLocalShell(id)
+    }
+
+    // Se acota acá además de en Go: el backend corrige el valor al guardar,
+    // pero si el estado local se saliera del rango la UI mostraría un tamaño
+    // que no es el que quedó guardado.
+    function changeTerminalFontSize(px: number) {
+        const clamped = Math.max(TERMINAL_FONT_MIN, Math.min(px, TERMINAL_FONT_MAX))
+        setTerminalFontSizeState(clamped)
+        void SetTerminalFontSize(clamped)
     }
 
     async function toggleAutoBackup(checked: boolean) {
@@ -2270,39 +2304,65 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 <div className="flex flex-col border-b border-outline-variant bg-surface">
                     {/* Context row: which connection/schema/transaction state
                         the ACTIVE TAB is bound to. Kept separate from the
-                        actions row below so neither crowds the other. Each
-                        cluster (connection, schema, transaction, DBMS_OUTPUT)
-                        is its own pill/chip instead of one flat run of
-                        same-weight text+controls — makes the transaction
-                        cluster in particular easy to spot at a glance
-                        (tinted when a transaction is actually open, the
-                        state that most needs to catch your eye). */}
-                    <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high px-2.5 py-1 text-xs text-on-surface-variant">
-                            {isSshTerminalTabActive && activeTabConnection ? (
-                                <>
-                                    <span
-                                        className={`h-2 w-2 shrink-0 rounded-full ${
-                                            liveSshConnIds.has(activeTabConnection.id) ? 'bg-secondary' : 'bg-error'
-                                        }`}
-                                    />
-                                    {activeTabConnection.name} —{' '}
+                        actions row below so neither crowds the other.
+                        Deliberately FLAT: plain text and ghost controls, no
+                        pill/chip per cluster and no label before a value that
+                        already names itself (it used to read "Pestaña
+                        vinculada a: X", "Schema: X", "Base: X" inside three
+                        separate grey capsules — three levels of chrome around
+                        four words). Whitespace separates the clusters; the
+                        long explanation each label used to carry lives in the
+                        `title` of the thing it described.
+                        The ONE exception is an open transaction: that keeps a
+                        tinted chip, because it is the only state in this row
+                        with pending consequences and it has to catch the eye.
+                        Commit/Rollback are mounted only in that state instead
+                        of sitting permanently disabled next to the
+                        auto-commit switch — a disabled button that is dead
+                        99% of the time is pure noise, and its absence already
+                        says "no hay nada que confirmar". */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 text-xs text-on-surface-variant">
+                        {isSshTerminalTabActive && activeTabConnection ? (
+                            <span
+                                className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"
+                                title={
+                                    liveSshConnIds.has(activeTabConnection.id)
+                                        ? `Terminal SSH con sesión abierta contra "${activeTabConnection.name}" — lo que escribas acá corre en ese servidor remoto`
+                                        : `Terminal SSH de "${activeTabConnection.name}" sin sesión activa: se cerró o todavía no se conectó, no hay nada escuchando lo que escribas`
+                                }
+                            >
+                                <span
+                                    aria-hidden
+                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                        liveSshConnIds.has(activeTabConnection.id) ? 'bg-secondary' : 'bg-error'
+                                    }`}
+                                />
+                                <span className="truncate text-on-surface">{activeTabConnection.name}</span>
+                                <span className="truncate">
                                     {liveSshConnIds.has(activeTabConnection.id) ? 'conectado' : 'desconectado'}
-                                </>
-                            ) : (
-                                <>
-                                    <span
-                                        className={`h-2 w-2 shrink-0 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`}
-                                    />
-                                    {activeTabConnection
-                                        ? `Pestaña vinculada a: ${activeTabConnection.name}`
-                                        : 'Pestaña sin conexión — vincularla con el ícono a la izquierda del título'}
-                                </>
-                            )}
-                        </span>
+                                </span>
+                            </span>
+                        ) : (
+                            <span
+                                className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"
+                                title={
+                                    activeTabConnection
+                                        ? `Esta pestaña ejecuta contra la conexión "${activeTabConnection.name}". Para cambiarla, usá el selector de conexión que está a la izquierda del título de la pestaña.`
+                                        : 'Esta pestaña no está vinculada a ninguna conexión, así que todavía no puede ejecutar nada. Vinculala con el ícono que está a la izquierda del título de la pestaña.'
+                                }
+                            >
+                                <span
+                                    aria-hidden
+                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`}
+                                />
+                                <span className={`truncate ${activeTabConnection ? 'text-on-surface' : ''}`}>
+                                    {activeTabConnection ? activeTabConnection.name : 'Sin conexión'}
+                                </span>
+                            </span>
+                        )}
 
                         {activeTabConnection && editorMetadataLoading && (
-                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high px-2.5 py-1 text-xs text-on-surface-variant">
+                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title="Leyendo tablas, columnas y rutinas de la conexión para el autocompletado del editor">
                                 <span
                                     aria-hidden
                                     className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
@@ -2312,94 +2372,95 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         )}
 
                         {!editorMetadataLoading && editorSchemas.length > 0 && (
-                            <div className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
-                                <span>Schema:</span>
-                                <Select
-                                    value={editorActiveSchema ?? ''}
-                                    options={editorSchemas.map((s) => ({value: s, label: s}))}
-                                    onChange={(v) =>
-                                        activeTabConnection && setActiveSchemaByConn((prev) => ({...prev, [activeTabConnection.id]: v}))
-                                    }
-                                    size="sm"
-                                    ariaLabel="Schema activo"
-                                    className="min-w-28"
-                                />
-                            </div>
+                            <Select
+                                value={editorActiveSchema ?? ''}
+                                options={editorSchemas.map((s) => ({value: s, label: s, icon: <Icon name="schema" size={14} />}))}
+                                onChange={(v) =>
+                                    activeTabConnection && setActiveSchemaByConn((prev) => ({...prev, [activeTabConnection.id]: v}))
+                                }
+                                size="sm"
+                                variant="ghost"
+                                ariaLabel="Schema activo"
+                                title="Schema activo de esta conexión: acota el autocompletado del editor y es el que se asume cuando escribís una tabla sin prefijo"
+                                className="max-w-44"
+                            />
                         )}
 
                         {isMongoActive && activeTabConnection && (
-                            <div className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-on-surface-variant">
-                                <span title="Base de datos a la que apunta `db` en el editor mongosh">Base:</span>
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
                                 <Select
                                     value={mongoDbByConn[activeTabConnection.id] ?? ''}
-                                    options={(mongoDatabasesByConn[activeTabConnection.id] ?? []).map((d) => ({value: d, label: d}))}
+                                    options={(mongoDatabasesByConn[activeTabConnection.id] ?? []).map((d) => ({
+                                        value: d,
+                                        label: d,
+                                        icon: <Icon name="database" size={14} />,
+                                    }))}
                                     onChange={(v) => selectMongoDatabase(activeTabConnection.id, v)}
                                     placeholder="elegí una base"
                                     size="sm"
+                                    variant="ghost"
                                     ariaLabel="Base de datos activa de MongoDB"
-                                    className="min-w-32"
+                                    title="Base de datos a la que apunta `db` en el editor mongosh — cambiarla acá reapunta todos los comandos de esta pestaña"
+                                    className="max-w-44"
                                 />
                                 <button
                                     onClick={() => setShowMongoWizard(true)}
                                     disabled={!mongoDbByConn[activeTabConnection.id]}
-                                    title="Asistente de consulta: armá un find() visualmente (colección, condiciones, orden, límite) — se abre en una pestaña de editor y se ejecuta"
-                                    className="flex items-center gap-1 rounded-md border border-outline-variant px-2 py-1 text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-40"
+                                    title={
+                                        mongoDbByConn[activeTabConnection.id]
+                                            ? 'Asistente de consulta: armá un find() visualmente (colección, condiciones, orden, límite) — se abre en una pestaña de editor y se ejecuta'
+                                            : 'Asistente de consulta: elegí primero una base de datos, el asistente necesita saber sobre qué colecciones armar el find()'
+                                    }
+                                    className="rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-40"
                                 >
-                                    <Icon name="auto_awesome" size={14} />
-                                    Asistente
+                                    <Icon name="auto_awesome" size={16} />
                                 </button>
-                            </div>
+                            </span>
                         )}
 
-                        {isSqlActive && (
-                            <div
-                                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full py-1 pl-2.5 pr-1.5 ${
-                                    txOpen ? 'bg-tertiary-container' : 'bg-surface-container-high'
-                                }`}
-                            >
+                        {isSqlActive &&
+                            (txOpen ? (
+                                <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-tertiary-container py-0.5 pl-2.5 pr-1 text-on-tertiary-container">
+                                    <Icon name="warning" size={14} />
+                                    <span className="font-medium">Transacción abierta</span>
+                                    <button
+                                        onClick={() => void commitTransaction()}
+                                        disabled={txBusy}
+                                        title="Confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción actual, y vuelve a auto-commit"
+                                        className="flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-40"
+                                    >
+                                        <Icon name="check_circle" size={14} />
+                                        Commit
+                                    </button>
+                                    <button
+                                        onClick={() => void rollbackTransaction()}
+                                        disabled={txBusy}
+                                        title="Descarta todos los cambios pendientes de la transacción actual, vuelve al estado previo a abrirla y reactiva el auto-commit"
+                                        className="flex items-center gap-1 rounded-full bg-error-container px-2 py-0.5 font-medium text-on-error-container hover:opacity-90 disabled:opacity-40"
+                                    >
+                                        <Icon name="undo" size={14} />
+                                        Rollback
+                                    </button>
+                                </span>
+                            ) : (
                                 <span
-                                    className={`flex items-center gap-1.5 text-xs ${txOpen ? 'text-on-tertiary-container' : 'text-on-surface-variant'}`}
-                                    title="Desactivar: los statements quedan pendientes hasta Commit/Rollback en vez de aplicarse solos"
+                                    className="inline-flex items-center gap-1.5 whitespace-nowrap"
+                                    title="Auto-commit activo: cada statement se aplica solo apenas termina. Desactivalo para abrir una transacción — a partir de ahí los cambios quedan pendientes hasta que hagas Commit o Rollback"
                                 >
                                     <Toggle
-                                        checked={!txOpen}
-                                        disabled={txBusy || txOpen}
+                                        checked
+                                        disabled={txBusy}
                                         onChange={() => void beginTransaction()}
                                         size="sm"
                                         ariaLabel="Auto-commit"
                                     />
                                     Auto-commit
                                 </span>
-                                <button
-                                    onClick={() => void commitTransaction()}
-                                    disabled={!txOpen || txBusy}
-                                    title="Confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción actual"
-                                    className="flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 text-xs font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-40"
-                                >
-                                    <Icon name="check_circle" size={14} />
-                                    Commit
-                                </button>
-                                <button
-                                    onClick={() => void rollbackTransaction()}
-                                    disabled={!txOpen || txBusy}
-                                    title="Descarta todos los cambios pendientes de la transacción actual y vuelve al estado antes de abrirla"
-                                    className="flex items-center gap-1 rounded-full bg-error-container px-2 py-0.5 text-xs font-medium text-on-error-container hover:opacity-90 disabled:opacity-40"
-                                >
-                                    <Icon name="undo" size={14} />
-                                    Rollback
-                                </button>
-                                {txOpen && (
-                                    <span className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-on-tertiary-container">
-                                        <Icon name="warning" size={14} />
-                                        Transacción abierta
-                                    </span>
-                                )}
-                            </div>
-                        )}
+                            ))}
 
                         {isSqlActive && activeTabConnection?.dbType === 'oracle' && (
                             <span
-                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high px-2.5 py-1 text-xs text-on-surface-variant"
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap"
                                 title="Captura el log de DBMS_OUTPUT.PUT_LINE de cada bloque PL/SQL que se ejecute — desactivalo en un script grande con muchos bloques si no necesitás ver la salida, ahorra los round-trips de ENABLE/GET_LINE por bloque"
                             >
                                 <Toggle
@@ -2413,10 +2474,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         )}
 
                         {(statusMessage || backupMessage) && (
-                            <span
-                                className="min-w-0 flex-1 truncate text-xs text-on-surface-variant"
-                                title={statusMessage || backupMessage}
-                            >
+                            <span className="min-w-0 flex-1 truncate" title={statusMessage || backupMessage}>
                                 {statusMessage || backupMessage}
                             </span>
                         )}
@@ -2430,17 +2488,21 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     ? `Configuración — hay una versión nueva disponible (v${updateInfo.latest}), abrí Configuración para ver el link al repositorio`
                                     : 'Configuración: backup del vault, backup automático y si recordar la clave maestra en este equipo'
                             }
-                            className="relative rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant"
+                            className="relative rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-variant"
                         >
                             <Icon name="settings" size={18} />
                             {updateInfo?.available && (
-                                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
                             )}
                         </button>
                         <button
                             onClick={onToggleTheme}
-                            title="Cambiar tema"
-                            className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant"
+                            title={
+                                theme === 'dark'
+                                    ? 'Cambiar al tema claro (se guarda y se aplica también en el próximo arranque)'
+                                    : 'Cambiar al tema oscuro (se guarda y se aplica también en el próximo arranque)'
+                            }
+                            className="rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-variant"
                         >
                             <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} size={18} />
                         </button>
@@ -2659,6 +2721,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 theme={theme}
                                 terminalThemeId={terminalThemeId}
                                 onChangeTerminalTheme={changeTerminalTheme}
+                                terminalFontSize={terminalFontSize}
                                 onConnectedChange={(connected) => setSshConnected(t.connId as string, connected)}
                             />
                         </div>
@@ -2681,6 +2744,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 theme={theme}
                                 terminalThemeId={terminalThemeId}
                                 onChangeTerminalTheme={changeTerminalTheme}
+                                terminalFontSize={terminalFontSize}
                                 onConnectedChange={(connected) => setSshConnected(t.connId as string, connected)}
                                 onOpenRemoteFile={(host, path) => void openRemoteFile(host, path)}
                             />
@@ -2729,6 +2793,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     repoName={t.title.replace(/^Git — /, '')}
                                     editorThemeId={editorThemeId}
                                     appTheme={theme}
+                                    terminalThemeId={terminalThemeId}
+                                    onChangeTerminalTheme={changeTerminalTheme}
+                                    terminalFontSize={terminalFontSize}
+                                    onChangeTerminalFontSize={changeTerminalFontSize}
+                                    localShellId={localShellId}
                                     syncToken={gitSyncToken}
                                     onChanged={notifyGitChanged}
                                     active={activeTabId === t.id}
@@ -3017,6 +3086,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onToggleRememberMasterKey={(checked) => void toggleRememberMasterKey(checked)}
                         editorThemeId={editorThemeId}
                         onChangeEditorThemeId={changeEditorTheme}
+                        terminalThemeId={terminalThemeId}
+                        onChangeTerminalThemeId={changeTerminalTheme}
+                        terminalFontSize={terminalFontSize}
+                        onChangeTerminalFontSize={changeTerminalFontSize}
+                        localShellId={localShellId}
+                        onChangeLocalShellId={changeLocalShell}
                         onBackupVault={() => {
                             setShowSettingsDialog(false)
                             setShowBackupPasswordDialog(true)

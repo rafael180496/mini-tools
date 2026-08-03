@@ -9,17 +9,17 @@ a ningún lado — solo empaqueta el `.dmg` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.0.0 |
-| Archivo | `mini-tools-v1.0.0.dmg` |
+| Versión | 1.1.0 |
+| Archivo | `mini-tools-v1.1.0.dmg` |
 | Tamaño | ~20 MB |
-| SHA-256 | `fcaa481e52b92c9d345529044c2cb6e77aa327a02dd41a8246b6b75260d30ebc` |
+| SHA-256 | `3f2f30b98d0222f910e2d4c244f28ea27fd468886966fc61e6633699b3b4764c` |
 | Arquitectura | `arm64` (Apple Silicon) — verificado con `file` sobre el binario dentro del `.dmg` |
 | Generado | `wails build -clean` (modo producción, sin devtools) |
 
 Verificar la integridad del archivo descargado:
 
 ```bash
-shasum -a 256 mini-tools-v1.0.0.dmg
+shasum -a 256 mini-tools-v1.1.0.dmg
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -46,7 +46,7 @@ shasum -a 256 mini-tools-v1.0.0.dmg
 
 ## Instalación
 
-1. Descargar `mini-tools-v1.0.0.dmg` y abrirlo (doble click).
+1. Descargar `mini-tools-v1.1.0.dmg` y abrirlo (doble click).
 2. Arrastrar `mini-tools.app` al symlink de `Applications` que trae el `.dmg`.
 3. Al abrir la app por primera vez, Gatekeeper bloquea la app sin firma.
    Cualquiera de estas tres opciones lo resuelve:
@@ -57,7 +57,7 @@ shasum -a 256 mini-tools-v1.0.0.dmg
 ## Regenerar este artefacto
 
 ```bash
-./scripts/bump-version.sh patch   # opcional, si corresponde una versión nueva
+./scripts/bump-version.sh minor   # patch/minor/major según lo que entre en la versión
 ./scripts/package-macos.sh        # genera build/bin/mini-tools-vX.Y.Z.dmg
 cp build/bin/mini-tools-vX.Y.Z.dmg releases/macos/
 shasum -a 256 releases/macos/mini-tools-vX.Y.Z.dmg   # actualizar la tabla de arriba

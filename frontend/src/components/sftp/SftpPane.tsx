@@ -26,6 +26,13 @@ interface SftpPaneProps {
     otherLabel: string
     onPickHost: (host: PaneHost) => void
     onNavigate: (dir: string) => void
+    // Reloads this pane's listing without changing directory.
+    //
+    // Separate from onNavigate because navigating to the directory you are
+    // already in changes nothing the loader watches, so it silently does
+    // NOTHING — which is exactly why deleting a file left it on screen until
+    // you clicked away and back.
+    onRefresh: () => void
     // Opens a remote file in an in-app editor tab. Optional: a pane rendered
     // somewhere without an editor to open into simply does not pass it, and
     // double-clicking a file stays a no-op there.
@@ -49,33 +56,91 @@ function entryItems(entries: sftpx.FileEntry[]): TransferItem[] {
 
 type SortCol = 'name' | 'modified' | 'size' | 'kind' | 'perms'
 
-function SortHeader({
+// Column widths in pixels, resizable by dragging the divider in the header.
+//
+// The two panes split a window between them, so the useful width per pane is
+// half of what a file manager normally gets: whichever column matters right now
+// (a long name, or the permissions) has to be able to take space from the
+// others. Fixed proportions cannot do that.
+type ColWidths = Record<SortCol, number>
+
+const DEFAULT_WIDTHS: ColWidths = {name: 260, modified: 150, size: 80, kind: 70, perms: 100}
+
+// MIN_COL_WIDTH stops a column from being dragged to nothing: a zero-width
+// column is unrecoverable, since its own divider is what you would need to grab
+// to bring it back.
+const MIN_COL_WIDTH = 48
+
+function ResizableHeader({
     label,
     col,
     active,
     dir,
     onSort,
+    onResize,
     className,
+    last,
 }: {
     label: string
     col: SortCol
     active: SortCol
     dir: 'asc' | 'desc'
     onSort: (c: SortCol) => void
+    onResize: (col: SortCol, deltaX: number, commit: boolean) => void
     className?: string
+    // The last column has no divider — there is nothing to its right to take
+    // width from, so a handle there would only ever do nothing.
+    last?: boolean
 }) {
     const isActive = active === col
+
+    function startResize(ev: React.MouseEvent) {
+        // Stop the mousedown from reaching the sort button: a resize that also
+        // re-sorts the listing is a drag that ends somewhere unexpected.
+        ev.preventDefault()
+        ev.stopPropagation()
+        const startX = ev.clientX
+
+        function onMove(e: MouseEvent) {
+            onResize(col, e.clientX - startX, false)
+        }
+        function onUp(e: MouseEvent) {
+            onResize(col, e.clientX - startX, true)
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            document.body.style.cursor = ''
+        }
+        // The cursor is forced on the body for the whole drag: without it the
+        // pointer flickers back to the default the moment it leaves the 5px
+        // handle, which it does immediately.
+        document.body.style.cursor = 'col-resize'
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+    }
+
     return (
-        <th className={`px-2 py-1.5 font-medium ${className ?? ''}`}>
+        <th className={`relative px-2 py-1.5 font-medium ${className ?? ''}`}>
             <button
                 type="button"
                 onClick={() => onSort(col)}
-                className={`inline-flex items-center gap-0.5 hover:text-on-surface ${isActive ? 'text-on-surface' : ''}`}
+                className={`inline-flex max-w-full items-center gap-0.5 truncate hover:text-on-surface ${isActive ? 'text-on-surface' : ''}`}
                 title={`Ordenar por ${label.toLowerCase()}`}
             >
-                {label}
-                {isActive && <Icon name={dir === 'asc' ? 'arrow_upward' : 'arrow_downward'} size={13} />}
+                <span className="truncate">{label}</span>
+                {isActive && <Icon name={dir === 'asc' ? 'arrow_upward' : 'arrow_downward'} size={13} className="shrink-0" />}
             </button>
+            {!last && (
+                <div
+                    onMouseDown={startResize}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Arrastrar para cambiar el ancho de la columna. Doble click restaura el ancho original."
+                    onDoubleClick={(e) => {
+                        e.stopPropagation()
+                        onResize(col, NaN, true) // NaN = restaurar el ancho por defecto
+                    }}
+                    className="absolute top-0 -right-[3px] z-20 h-full w-[6px] cursor-col-resize hover:bg-primary/40"
+                />
+            )}
         </th>
     )
 }
@@ -135,6 +200,7 @@ export default function SftpPane({
     otherLabel,
     onPickHost,
     onNavigate,
+    onRefresh,
     onOpenFile,
     onError,
     onTransfer,
@@ -199,6 +265,34 @@ export default function SftpPane({
     const [permsFor, setPermsFor] = useState<sftpx.FileEntry | null>(null)
     const [sortCol, setSortCol] = useState<SortCol>('name')
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+    // Name filter, applied locally over the directory already listed — it never
+    // re-queries the server. A folder with hundreds of entries is unusable
+    // otherwise, and the alternative (a remote glob) would need a round trip
+    // per keystroke to answer something the pane already has in memory.
+    const [filter, setFilter] = useState('')
+    const [colWidths, setColWidths] = useState<ColWidths>(DEFAULT_WIDTHS)
+    // Width at the moment a resize drag started, so the delta is applied to a
+    // fixed base instead of compounding on every mousemove.
+    // Updated on every committed resize, so the next drag starts from where the
+    // previous one ended.
+    const resizeBase = useRef<ColWidths>(DEFAULT_WIDTHS)
+    // The row a Shift+click measures its range from. Refs, not state: it is read
+    // inside the click handler and a re-render in between would be pointless.
+    const anchorRef = useRef<string | null>(null)
+
+    function resizeColumn(col: SortCol, deltaX: number, commit: boolean) {
+        // NaN is the double-click "restore this column" signal.
+        if (Number.isNaN(deltaX)) {
+            setColWidths((w) => ({...w, [col]: DEFAULT_WIDTHS[col]}))
+            resizeBase.current = {...resizeBase.current, [col]: DEFAULT_WIDTHS[col]}
+            return
+        }
+        setColWidths((w) => {
+            const next = {...w, [col]: Math.max(MIN_COL_WIDTH, resizeBase.current[col] + deltaX)}
+            if (commit) resizeBase.current = next
+            return next
+        })
+    }
 
     // Click a header to sort by it; click the active one again to flip the
     // direction (Finder behavior).
@@ -250,7 +344,46 @@ export default function SftpPane({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [host.sessionId, host.kind, currentDir, reloadToken])
 
-    function toggle(path: string) {
+    // Selection, the way a file manager does it.
+    //
+    // Before this, a plain click TOGGLED the row, so the selection grew with
+    // every click and never shrank without clicking each row again. Now:
+    //   - plain click     → select only that row
+    //   - Ctrl/Cmd+click  → add or remove that row, keeping the rest
+    //   - Shift+click     → select the range from the anchor to that row
+    //   - the checkbox    → toggles without disturbing anything else, which is
+    //                       what makes selecting several things possible without
+    //                       having to hold a modifier at all
+    function clickRow(path: string, ev: React.MouseEvent) {
+        const additive = ev.metaKey || ev.ctrlKey
+        const ranged = ev.shiftKey
+
+        if (ranged && anchorRef.current) {
+            const order = visible.map((v) => v.path)
+            const from = order.indexOf(anchorRef.current)
+            const to = order.indexOf(path)
+            if (from >= 0 && to >= 0) {
+                const [lo, hi] = from <= to ? [from, to] : [to, from]
+                const range = order.slice(lo, hi + 1)
+                // Shift EXTENDS an existing selection when combined with Ctrl,
+                // and replaces it otherwise — same as Finder and Explorer.
+                setSelected((prev) => (additive ? new Set([...prev, ...range]) : new Set(range)))
+                return
+            }
+        }
+
+        anchorRef.current = path
+        if (additive) {
+            toggleOne(path)
+            return
+        }
+        // A plain click on the only selected row clears it, so there is a way
+        // back to "nothing selected" without reaching for a modifier.
+        setSelected((prev) => (prev.size === 1 && prev.has(path) ? new Set() : new Set([path])))
+    }
+
+    function toggleOne(path: string) {
+        anchorRef.current = path
         setSelected((prev) => {
             const next = new Set(prev)
             if (next.has(path)) next.delete(path)
@@ -289,7 +422,7 @@ export default function SftpPane({
             .then(() => {
                 setNewFolder('')
                 setCreatingFolder(false)
-                onNavigate(currentDir) // refresh
+                onRefresh()
             })
             .catch((err) => onError(String(err)))
     }
@@ -304,15 +437,49 @@ export default function SftpPane({
         RenameSftpPath(host.sessionId, renaming.path, joinPath(dirname(renaming.path), name))
             .then(() => {
                 setRenaming(null)
-                onNavigate(currentDir)
+                onRefresh()
             })
             .catch((err) => onError(String(err)))
     }
 
     function doDelete(items: TransferItem[]) {
         Promise.all(items.map((it) => DeleteSftpPath(host.sessionId, it.path)))
-            .then(() => onNavigate(currentDir))
+            .then(() => onRefresh())
             .catch((err) => onError(String(err)))
+    }
+
+    // The rows actually on screen: filtered, then sorted. One source for the
+    // rows, the Shift range and the counters — computing them separately is how
+    // "select all" ends up selecting things the filter is hiding.
+    const q = filter.trim().toLowerCase()
+    const visible = sortEntriesBy(
+        q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries,
+        sortCol,
+        sortDir,
+    )
+    const allVisibleSelected = visible.length > 0 && visible.every((e) => selected.has(e.path))
+    // Floor width of the table. 28px is the checkbox column, which is not
+    // resizable; the permissions column has no fixed width at all (it absorbs
+    // whatever is left over, which is also why it has no resize handle), so it
+    // only contributes its default here as a floor.
+    //
+    // The table renders with `width: 100%` and this as `minWidth`, under
+    // `table-layout: fixed`: fixed makes the colgroup widths literal instead of
+    // renegotiated against the content, 100% keeps the sticky header spanning a
+    // wide pane instead of stopping short of the right edge, and minWidth is
+    // what makes it scroll horizontally once the columns no longer fit.
+    const totalWidth =
+        28 + colWidths.name + colWidths.modified + colWidths.size + colWidths.kind + DEFAULT_WIDTHS.perms
+
+    function toggleAllVisible() {
+        setSelected((prev) => {
+            if (allVisibleSelected) {
+                const next = new Set(prev)
+                visible.forEach((e) => next.delete(e.path))
+                return next
+            }
+            return new Set([...prev, ...visible.map((e) => e.path)])
+        })
     }
 
     const canAct = host.kind !== 'none'
@@ -415,7 +582,7 @@ export default function SftpPane({
                         <Icon name="create_new_folder" size={16} />
                     </button>
                     <button
-                        onClick={() => canAct && onNavigate(currentDir)}
+                        onClick={() => canAct && onRefresh()}
                         disabled={!canAct}
                         title="Refrescar"
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
@@ -474,8 +641,34 @@ export default function SftpPane({
                     >
                         <Icon name="delete" size={14} /> Eliminar
                     </button>
-                    <span className="ml-auto text-[11px] text-on-surface-variant">
-                        {selected.size > 0 ? `${selected.size} seleccionado(s)` : `${entries.length} elementos`}
+                    <div className="relative ml-auto flex items-center">
+                        <Icon name="search" size={13} className="pointer-events-none absolute left-1.5 text-on-surface-variant" />
+                        <input
+                            value={filter}
+                            onChange={(ev) => setFilter(ev.target.value)}
+                            onKeyDown={(ev) => {
+                                if (ev.key === 'Escape') setFilter('')
+                            }}
+                            placeholder="Buscar en esta carpeta"
+                            title="Filtra por nombre lo que ya está listado en esta carpeta. No baja a las subcarpetas ni vuelve a consultar el servidor. Esc limpia."
+                            className="w-36 rounded border border-outline bg-surface py-0.5 pr-5 pl-6 text-[11px] text-on-surface placeholder:text-on-surface-variant/60 focus:w-48 focus:outline-none"
+                        />
+                        {filter && (
+                            <button
+                                onClick={() => setFilter('')}
+                                title="Limpiar el filtro"
+                                className="absolute right-1 text-on-surface-variant hover:text-on-surface"
+                            >
+                                <Icon name="close" size={12} />
+                            </button>
+                        )}
+                    </div>
+                    <span className="shrink-0 text-[11px] text-on-surface-variant">
+                        {selected.size > 0
+                            ? `${selected.size} seleccionado(s)`
+                            : q
+                              ? `${visible.length} de ${entries.length}`
+                              : `${entries.length} elementos`}
                     </span>
                 </div>
             )}
@@ -500,44 +693,80 @@ export default function SftpPane({
                 ) : loading ? (
                     <div className="flex h-full items-center justify-center text-xs text-on-surface-variant">Cargando…</div>
                 ) : (
-                    <table className="w-full text-xs">
+                    <table className="text-xs" style={{width: '100%', minWidth: totalWidth, tableLayout: 'fixed'}}>
+                        <colgroup>
+                            <col style={{width: 28}} />
+                            <col style={{width: colWidths.name}} />
+                            <col style={{width: colWidths.modified}} />
+                            <col style={{width: colWidths.size}} />
+                            <col style={{width: colWidths.kind}} />
+                            <col />
+                        </colgroup>
                         <thead className="sticky top-0 z-10 bg-surface-container-low text-on-surface-variant">
                             <tr className="border-b border-outline-variant">
-                                <SortHeader label="Nombre" col="name" active={sortCol} dir={sortDir} onSort={sortBy} className="text-left" />
-                                <SortHeader label="Fecha modificación" col="modified" active={sortCol} dir={sortDir} onSort={sortBy} className="text-left" />
-                                <SortHeader label="Tamaño" col="size" active={sortCol} dir={sortDir} onSort={sortBy} className="text-right" />
-                                <SortHeader label="Kind" col="kind" active={sortCol} dir={sortDir} onSort={sortBy} className="text-left" />
-                                <SortHeader label="Permisos" col="perms" active={sortCol} dir={sortDir} onSort={sortBy} className="text-left" />
+                                <th className="px-2 py-1.5">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={toggleAllVisible}
+                                        title={
+                                            q
+                                                ? 'Seleccionar o deseleccionar todo lo que muestra el filtro'
+                                                : 'Seleccionar o deseleccionar todo'
+                                        }
+                                        className="h-3.5 w-3.5 cursor-pointer accent-primary align-middle"
+                                    />
+                                </th>
+                                <ResizableHeader label="Nombre" col="name" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
+                                <ResizableHeader label="Fecha modificación" col="modified" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
+                                <ResizableHeader label="Tamaño" col="size" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-right" />
+                                <ResizableHeader label="Kind" col="kind" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
+                                <ResizableHeader label="Permisos" col="perms" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" last />
                             </tr>
                         </thead>
                         <tbody>
-                            {showParent && (
+                            {showParent && !q && (
                                 <tr
                                     onDoubleClick={() => onNavigate(parent)}
                                     className="cursor-pointer select-none hover:bg-surface-variant"
                                 >
+                                    <td />
                                     <td className="flex items-center gap-1.5 px-2 py-1 text-on-surface-variant">
                                         <Icon name="drive_folder_upload" size={16} /> ..
                                     </td>
                                     <td colSpan={4} />
                                 </tr>
                             )}
-                            {sortEntriesBy(entries, sortCol, sortDir).map((e) => (
+                            {visible.map((e) => (
                                 <tr
                                     key={e.path}
                                     draggable
                                     onDragStart={() => startDrag(e)}
-                                    onClick={() => toggle(e.path)}
+                                    onClick={(ev) => clickRow(e.path, ev)}
                                     onDoubleClick={() => (e.isDir ? onNavigate(e.path) : onOpenFile?.(e.path))}
                                     onContextMenu={(ev) => {
                                         ev.preventDefault()
+                                        // Right-clicking outside the selection targets that row alone,
+                                        // so the menu never acts on something you cannot see.
+                                        if (!selected.has(e.path)) setSelected(new Set([e.path]))
                                         setMenu({x: ev.clientX, y: ev.clientY, entry: e})
                                     }}
                                     className={`group cursor-pointer select-none ${
                                         selected.has(e.path) ? 'bg-primary/15' : 'hover:bg-surface-variant'
                                     }`}
                                 >
-                                    <td className="max-w-0 px-2 py-1 text-on-surface">
+                                    <td className="px-2 py-1">
+                                        <input
+                                            type="checkbox"
+                                            checked={selected.has(e.path)}
+                                            onChange={() => toggleOne(e.path)}
+                                            // The row handler would otherwise run too and replace the
+                                            // selection the checkbox just added to.
+                                            onClick={(ev) => ev.stopPropagation()}
+                                            className="h-3.5 w-3.5 cursor-pointer accent-primary align-middle"
+                                        />
+                                    </td>
+                                    <td className="px-2 py-1 text-on-surface">
                                         <div className="flex items-center gap-1.5">
                                             <Icon
                                                 name={e.isDir ? 'folder' : 'draft'}
@@ -549,16 +778,23 @@ export default function SftpPane({
                                             </span>
                                         </div>
                                     </td>
-                                    <td className="whitespace-nowrap px-2 py-1 text-on-surface-variant">{formatDate(e.modTime)}</td>
-                                    <td className="whitespace-nowrap px-2 py-1 text-right text-on-surface-variant">
+                                    <td className="truncate px-2 py-1 text-on-surface-variant">{formatDate(e.modTime)}</td>
+                                    <td className="truncate px-2 py-1 text-right text-on-surface-variant">
                                         {e.isDir ? '—' : formatBytes(e.size)}
                                     </td>
-                                    <td className="whitespace-nowrap px-2 py-1 text-on-surface-variant">{kindOf(e)}</td>
-                                    <td className="whitespace-nowrap px-2 py-1 font-mono text-on-surface-variant" title={e.mode}>
+                                    <td className="truncate px-2 py-1 text-on-surface-variant">{kindOf(e)}</td>
+                                    <td className="truncate px-2 py-1 font-mono text-on-surface-variant" title={e.mode}>
                                         {e.mode}
                                     </td>
                                 </tr>
                             ))}
+                            {visible.length === 0 && (
+                                <tr>
+                                    <td colSpan={6} className="px-3 py-6 text-center text-on-surface-variant">
+                                        {q ? `Ningún archivo de esta carpeta coincide con "${filter}"` : 'La carpeta está vacía'}
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 )}
@@ -606,7 +842,7 @@ export default function SftpPane({
                         <div className="my-1 border-t border-outline-variant" />
                         <button
                             onClick={() => {
-                                onNavigate(currentDir)
+                                onRefresh()
                                 setMenu(null)
                             }}
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant"
@@ -641,7 +877,7 @@ export default function SftpPane({
                     path={permsFor.path}
                     name={permsFor.name}
                     onClose={() => setPermsFor(null)}
-                    onSaved={() => onNavigate(currentDir)}
+                    onSaved={() => onRefresh()}
                     onError={onError}
                 />
             )}

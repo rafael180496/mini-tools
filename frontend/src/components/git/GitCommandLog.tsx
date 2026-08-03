@@ -7,17 +7,24 @@ interface GitCommandLogProps {
     // reloadToken changes after every mutating action, so the drawer shows
     // what just ran without polling.
     reloadToken: number
-    onClose: () => void
 }
 
-// Collapsible drawer showing the git commands the module actually ran.
+// Registro de solo lectura de los comandos git que el módulo ejecutó de
+// verdad.
 //
-// Every operation here is a wrapper around a real invocation, so when one
-// fails the useful question is always "what did it run?". Answering it in
-// the app removes the step where somebody reproduces the failure in a
-// terminal to find out — and makes the wrappers auditable instead of
-// magic.
-export default function GitCommandLogDrawer({reloadToken, onClose}: GitCommandLogProps) {
+// Cada operación de la UI es un envoltorio sobre una invocación real, así
+// que cuando una falla la pregunta útil siempre es "¿qué corrió?".
+// Responderla dentro de la app elimina el paso en el que alguien reproduce
+// el fallo en una terminal para averiguarlo, y hace auditables los
+// envoltorios en vez de mágicos.
+//
+// Es SOLO auditoría: no ejecuta nada. Para correr comandos está la solapa
+// hermana "Terminal" (LocalTerminalPanel), que comparte este mismo cajón.
+//
+// El alto y el cierre los maneja el cajón que lo contiene (GitRepoTab), de
+// ahí que este componente ocupe todo lo que le den y no tenga botón de
+// cerrar propio: el título y la X viven en la tira de solapas.
+export default function GitCommandLogDrawer({reloadToken}: GitCommandLogProps) {
     const [entries, setEntries] = useState<git.CommandEntry[]>([])
     const [onlyFailed, setOnlyFailed] = useState(false)
     const [copied, setCopied] = useState('')
@@ -42,11 +49,12 @@ export default function GitCommandLogDrawer({reloadToken, onClose}: GitCommandLo
     }
 
     return (
-        <div className="flex h-56 shrink-0 flex-col border-t border-outline-variant bg-surface-container-lowest">
+        <div className="flex h-full min-h-0 flex-col bg-surface-container-lowest">
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-1 text-[11px]">
-                <Icon name="terminal" size={14} className="shrink-0 text-on-surface-variant" />
-                <span className="font-semibold text-on-surface">Comandos ejecutados</span>
-                <span className="text-on-surface-variant">{entries.length}</span>
+                <Icon name="history" size={14} className="shrink-0 text-on-surface-variant" />
+                <span className="text-on-surface-variant" title="Cuántos comandos git ejecutó la app desde que se abrió">
+                    {entries.length} comandos
+                </span>
                 {failedCount > 0 && (
                     <span className="rounded bg-error/15 px-1.5 text-error" title="Comandos que terminaron con error">
                         {failedCount} con error
@@ -66,9 +74,6 @@ export default function GitCommandLogDrawer({reloadToken, onClose}: GitCommandLo
                     className="rounded px-1.5 py-0.5 text-on-surface-variant hover:text-on-surface"
                 >
                     Limpiar
-                </button>
-                <button onClick={onClose} title="Cierra el panel de comandos" className="rounded p-0.5 text-on-surface-variant hover:text-on-surface">
-                    <Icon name="close" size={15} />
                 </button>
             </div>
 

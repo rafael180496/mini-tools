@@ -21,6 +21,7 @@ import (
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
 	"mini-tools/backend/git"
+	"mini-tools/backend/localterm"
 	"mini-tools/backend/mongoquery"
 	"mini-tools/backend/query"
 	"mini-tools/backend/redisquery"
@@ -85,6 +86,17 @@ type App struct {
 	// closing a pane never kills an in-flight transfer. See backend/sftpx.
 	sftpBrowse    *sftpx.BrowseManager
 	sftpTransfers *sftpx.TransferManager
+
+	// localTerms are interactive shells on THIS machine, over a real PTY —
+	// the local counterpart of sshSessions above, and another native
+	// parallel path (a shell process is not a database/sql connection).
+	// Deliberately a separate manager and not a branch inside sshSessions:
+	// a local session has no DSN, no host, no auth and no pool to share
+	// with an SFTP pane, so merging them would make every sshconn method
+	// start by asking "is this one local?". Bindings live in
+	// app_localterm.go; see backend/localterm's package doc for why the
+	// PTY dependency doesn't break the no-cgo rule.
+	localTerms *localterm.SessionManager
 
 	// gitRunner is the Git module's engine — the system `git` binary driven
 	// through os/exec, another native parallel path like sshSessions/sftpx
@@ -193,6 +205,11 @@ func (a *App) startup(ctx context.Context) {
 	a.mongoExecutor = mongoquery.NewExecutor(ctx, a.mongoPools, emit, history)
 	a.sshSessions = sshconn.NewSessionManager(emit, a.sshPool)
 	a.sftpTransfers = sftpx.NewTransferManager(emit, a.sshPool)
+	// Mismo `emit` que el resto: localterm.EmitFunc es un tipo con nombre
+	// propio pero de firma idéntica a sshconn.EmitFunc, así que el mismo
+	// closure satisface los dos constructores (el nombre del evento es el
+	// id de sesión en ambos casos).
+	a.localTerms = localterm.NewSessionManager(emit)
 }
 
 // shutdown closes every open connection pool, checkpoints and closes the
@@ -231,6 +248,12 @@ func (a *App) shutdown(ctx context.Context) {
 	a.sshSessions.CloseAll()
 	a.sftpTransfers.CancelAll()
 	a.sftpBrowse.CloseAll()
+	// Fuera del grupo SSH: no toma leases del pool compartido, lo que cierra
+	// son procesos de esta máquina. Sin esto quedan shells huérfanas
+	// corriendo después de cerrar la ventana.
+	if a.localTerms != nil {
+		a.localTerms.CloseAll()
+	}
 	// LAST of the SSH group: the three above hold leases on the shared
 	// connections, and the pool only drops a connection once its last
 	// holder lets go. Closing it first would leave them releasing leases on

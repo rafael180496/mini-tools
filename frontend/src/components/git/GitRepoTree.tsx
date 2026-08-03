@@ -38,6 +38,7 @@ import ContextMenu from './ContextMenu'
 import PromptDialog from './PromptDialog'
 import GitCloneDialog from './GitCloneDialog'
 import type {DropdownItem} from './DropdownMenu'
+import {buildBranchTree, countBranches, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
 
 interface GitRepoTreeProps {
     moduleCollapsed: boolean
@@ -776,12 +777,16 @@ export default function GitRepoTree({
                         onClick: () => startCreateBranch(repo.id),
                     }}
                 >
-                    {detail.branches
-                        .filter((b) => !b.isRemote)
-                        .map((b) => (
+                    <SidebarBranchTree
+                        node={buildBranchTree(detail.branches.filter((b) => !b.isRemote))}
+                        depth={0}
+                        isOpen={(path) => openSections.has(`${repo.id}:bf:${path}`)}
+                        onToggle={(path) => toggleSection(`${repo.id}:bf:${path}`)}
+                        renderBranch={(b, folderPath, depth) => (
                             <TreeLeaf
                                 key={b.name}
-                                label={b.name}
+                                label={leafLabel(b, folderPath)}
+                                depth={depth}
                                 title={
                                     b.isCurrent
                                         ? `"${b.name}" es la rama actual${b.upstream ? ` — sigue a ${b.upstream}` : ''}. Click derecho para renombrar o borrar`
@@ -794,7 +799,8 @@ export default function GitRepoTree({
                                     setMenu({x: e.clientX, y: e.clientY, items: localBranchMenuItems(repo.id, b)})
                                 }}
                             />
-                        ))}
+                        )}
+                    />
                 </TreeSection>
                                                 <TreeSection
                                                     label="Remotos"
@@ -838,15 +844,23 @@ export default function GitRepoTree({
                                                                         setMenu({x: e.clientX, y: e.clientY, items: remoteMenuItems(repo.id, r)})
                                                                     }}
                                                                 />
-                                                                {remoteBranches.map((b) => (
-                                                                    <TreeLeaf
-                                                                        key={b.name}
-                                                                        label={b.name.slice(r.name.length + 1)}
-                                                                        indent
-                                                                        title={`Doble click para hacer checkout de "${b.name}" — crea una rama local que la sigue`}
-                                                                        onDoubleClick={() => void checkout(repo.id, b.name)}
-                                                                    />
-                                                                ))}
+                                                                <SidebarBranchTree
+                                                                    node={buildBranchTree(remoteBranches, r.name)}
+                                                                    depth={0}
+                                                                    indent
+                                                                    isOpen={(path) => openSections.has(`${repo.id}:rbf:${r.name}:${path}`)}
+                                                                    onToggle={(path) => toggleSection(`${repo.id}:rbf:${r.name}:${path}`)}
+                                                                    renderBranch={(b, folderPath, depth) => (
+                                                                        <TreeLeaf
+                                                                            key={b.name}
+                                                                            label={leafLabel(b, folderPath, r.name)}
+                                                                            indent
+                                                                            depth={depth}
+                                                                            title={`Doble click para hacer checkout de "${b.name}" — si no tenés la rama local, se crea siguiendo a esta`}
+                                                                            onDoubleClick={() => void checkout(repo.id, b.name)}
+                                                                        />
+                                                                    )}
+                                                                />
                                                             </div>
                                                         )
                                                     })}
@@ -1102,6 +1116,7 @@ function TreeLeaf({
     title,
     bold,
     indent,
+    depth,
     onContextMenu,
     onDoubleClick,
 }: {
@@ -1110,6 +1125,9 @@ function TreeLeaf({
     bold?: boolean
     // One extra level, for a remote's branches nested under the remote itself.
     indent?: boolean
+    // Niveles adicionales de sangría, para las ramas que cuelgan de una
+    // carpeta del árbol (`feature/` y compañía). Se suma a `indent`.
+    depth?: number
     onContextMenu?: (e: React.MouseEvent) => void
     onDoubleClick?: () => void
 }) {
@@ -1118,11 +1136,90 @@ function TreeLeaf({
             onContextMenu={onContextMenu}
             onDoubleClick={onDoubleClick}
             title={title}
-            className={`truncate py-0.5 pr-2 text-[11px] hover:bg-surface-variant/40 ${indent ? 'pl-16' : 'pl-12'} ${
+            style={{paddingLeft: (indent ? 64 : 48) + (depth ?? 0) * 12}}
+            className={`truncate py-0.5 pr-2 text-[11px] hover:bg-surface-variant/40 ${
                 bold ? 'font-semibold text-primary' : 'text-on-surface-variant'
             } ${onDoubleClick ? 'cursor-pointer' : ''}`}
         >
             {label}
         </div>
+    )
+}
+
+// Fila de carpeta del árbol de ramas de la barra lateral. Misma idea que la
+// de la pestaña de repositorio (GitRepoTab), con el diseño denso de este
+// módulo: acá las filas miden la mitad y no tienen iconografía propia.
+function TreeBranchFolder({
+    node,
+    depth,
+    indent,
+    open,
+    onToggle,
+}: {
+    node: BranchTreeNode
+    depth: number
+    indent?: boolean
+    open: boolean
+    onToggle: () => void
+}) {
+    const total = countBranches(node)
+    return (
+        <div
+            onClick={onToggle}
+            title={
+                open
+                    ? `Plegar "${node.path}" — sus ${total} ramas dejan de ocupar la lista`
+                    : `Desplegar "${node.path}" — tiene ${total} ${total === 1 ? 'rama' : 'ramas'}`
+            }
+            style={{paddingLeft: (indent ? 64 : 48) + depth * 12}}
+            className="flex cursor-pointer items-center gap-1 py-0.5 pr-2 text-[11px] text-on-surface-variant hover:bg-surface-variant/40"
+        >
+            <Icon name={open ? 'expand_more' : 'chevron_right'} size={12} className="shrink-0 opacity-60" />
+            <Icon name={open ? 'folder_open' : 'folder'} size={12} className="shrink-0 opacity-60" />
+            <span className="truncate">{node.label}</span>
+            <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-50">{total}</span>
+        </div>
+    )
+}
+
+// Recorre el árbol dibujando carpetas y delegando las ramas en renderBranch,
+// igual que su gemela de GitRepoTab — el árbol no conoce el diseño de la fila.
+function SidebarBranchTree({
+    node,
+    depth,
+    indent,
+    isOpen,
+    onToggle,
+    renderBranch,
+}: {
+    node: BranchTreeNode
+    depth: number
+    indent?: boolean
+    isOpen: (path: string) => boolean
+    onToggle: (path: string) => void
+    renderBranch: (branch: git.Branch, folderPath: string, depth: number) => React.ReactNode
+}) {
+    return (
+        <>
+            {node.folders.map((folder) => {
+                const open = isOpen(folder.path)
+                return (
+                    <div key={folder.path}>
+                        <TreeBranchFolder node={folder} depth={depth} indent={indent} open={open} onToggle={() => onToggle(folder.path)} />
+                        {open && (
+                            <SidebarBranchTree
+                                node={folder}
+                                depth={depth + 1}
+                                indent={indent}
+                                isOpen={isOpen}
+                                onToggle={onToggle}
+                                renderBranch={renderBranch}
+                            />
+                        )}
+                    </div>
+                )
+            })}
+            {node.branches.map((b) => renderBranch(b, node.path, depth))}
+        </>
     )
 }

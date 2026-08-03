@@ -70,12 +70,20 @@ export function ChmodSftpPath(arg1, arg2, arg3) {
   return window['go']['main']['App']['ChmodSftpPath'](arg1, arg2, arg3);
 }
 
+export function ClearAgentKey(arg1) {
+  return window['go']['main']['App']['ClearAgentKey'](arg1);
+}
+
 export function ClearQueryHistory(arg1) {
   return window['go']['main']['App']['ClearQueryHistory'](arg1);
 }
 
 export function ClearRecentFiles() {
   return window['go']['main']['App']['ClearRecentFiles']();
+}
+
+export function CloseLocalTerminal(arg1) {
+  return window['go']['main']['App']['CloseLocalTerminal'](arg1);
 }
 
 export function CloseSSHTerminal(arg1) {
@@ -108,6 +116,10 @@ export function CreateFolder(arg1, arg2, arg3) {
 
 export function CreateSshSnippet(arg1, arg2) {
   return window['go']['main']['App']['CreateSshSnippet'](arg1, arg2);
+}
+
+export function DefaultShellID() {
+  return window['go']['main']['App']['DefaultShellID']();
 }
 
 export function DeleteConnection(arg1) {
@@ -578,6 +590,10 @@ export function IsVaultInitialized() {
   return window['go']['main']['App']['IsVaultInitialized']();
 }
 
+export function ListAgents() {
+  return window['go']['main']['App']['ListAgents']();
+}
+
 export function ListConnections() {
   return window['go']['main']['App']['ListConnections']();
 }
@@ -630,8 +646,16 @@ export function ListSftpDir(arg1, arg2) {
   return window['go']['main']['App']['ListSftpDir'](arg1, arg2);
 }
 
+export function ListShells() {
+  return window['go']['main']['App']['ListShells']();
+}
+
 export function ListSshSnippets() {
   return window['go']['main']['App']['ListSshSnippets']();
+}
+
+export function LocalShellLabel(arg1) {
+  return window['go']['main']['App']['LocalShellLabel'](arg1);
 }
 
 export function MakeSftpDir(arg1, arg2) {
@@ -648,6 +672,18 @@ export function MoveFolder(arg1, arg2) {
 
 export function MoveSshSnippetToFolder(arg1, arg2) {
   return window['go']['main']['App']['MoveSshSnippetToFolder'](arg1, arg2);
+}
+
+export function OpenAgentSession(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['OpenAgentSession'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function OpenLocalTerminal(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['OpenLocalTerminal'](arg1, arg2, arg3, arg4);
+}
+
+export function OpenLocalTerminalAt(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenLocalTerminalAt'](arg1, arg2, arg3);
 }
 
 export function OpenSQLFileDialog() {
@@ -750,6 +786,10 @@ export function ReplaceMongoDocument(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ReplaceMongoDocument'](arg1, arg2, arg3, arg4);
 }
 
+export function ResizeLocalTerminal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResizeLocalTerminal'](arg1, arg2, arg3);
+}
+
 export function ResizeSSHTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSHTerminal'](arg1, arg2, arg3);
 }
@@ -802,6 +842,14 @@ export function SaveSSHKey(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveSSHKey'](arg1, arg2, arg3);
 }
 
+export function SetAgentCommand(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentCommand'](arg1, arg2);
+}
+
+export function SetAgentKey(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentKey'](arg1, arg2);
+}
+
 export function SetAutoBackupEnabled(arg1) {
   return window['go']['main']['App']['SetAutoBackupEnabled'](arg1);
 }
@@ -832,6 +880,18 @@ export function SetEditorHeight(arg1) {
 
 export function SetEditorTheme(arg1) {
   return window['go']['main']['App']['SetEditorTheme'](arg1);
+}
+
+export function SetGitLayout(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SetGitLayout'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function SetGitPanelSessions(arg1) {
+  return window['go']['main']['App']['SetGitPanelSessions'](arg1);
+}
+
+export function SetLocalShell(arg1) {
+  return window['go']['main']['App']['SetLocalShell'](arg1);
 }
 
 export function SetOpenTabs(arg1) {
@@ -872,6 +932,10 @@ export function SetSidebarCollapsed(arg1) {
 
 export function SetSshTerminalTheme(arg1) {
   return window['go']['main']['App']['SetSshTerminalTheme'](arg1);
+}
+
+export function SetTerminalFontSize(arg1) {
+  return window['go']['main']['App']['SetTerminalFontSize'](arg1);
 }
 
 export function SetTheme(arg1) {
@@ -924,6 +988,10 @@ export function UpdateConnection(arg1, arg2, arg3) {
 
 export function UpdateSshSnippet(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateSshSnippet'](arg1, arg2, arg3);
+}
+
+export function WriteLocalTerminal(arg1, arg2) {
+  return window['go']['main']['App']['WriteLocalTerminal'](arg1, arg2);
 }
 
 export function WriteSSHTerminal(arg1, arg2) {

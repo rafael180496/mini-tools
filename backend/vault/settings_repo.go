@@ -84,6 +84,40 @@ type Settings struct {
 	// instead of the SQL editor. One global setting, not per-connection —
 	// same reasoning as EditorTheme.
 	SshTerminalTheme string `json:"sshTerminalTheme"`
+	// LocalShell is which shell the integrated local terminal launches (a
+	// backend/localterm.Shell id: "zsh", "bash", "pwsh", "gitbash", …).
+	// Empty — the default — means "whatever this machine already uses"
+	// ($SHELL on Unix, the newest installed PowerShell on Windows), resolved
+	// at open time rather than materialised here: the vault travels between
+	// machines via backup/restore, so a hardcoded id could name a shell the
+	// current machine doesn't have. See localterm.lookupShell's fallback.
+	LocalShell string `json:"localShell"`
+	// GitTermDock es dónde va anclada la terminal del módulo Git:
+	// "bottom" (default), "left" o "right". Junto con los cuatro campos que
+	// siguen forma el layout de la pestaña Git, que se persiste entero para
+	// que la app abra exactamente como se dejó — ver SetGitLayout.
+	GitTermDock string `json:"gitTermDock"`
+	// GitTermSize es el alto del panel cuando está abajo, o su ancho cuando
+	// está a un costado. Un solo número para las dos orientaciones a
+	// propósito (ver la migración 27).
+	GitTermSize int `json:"gitTermSize"`
+	// GitPanelTab es qué solapa del panel quedó abierta: "" (cerrado),
+	// "terminal" o "commands".
+	GitPanelTab string `json:"gitPanelTab"`
+	// GitPanelSessions son las sesiones que tenía abiertas el panel: una
+	// terminal suelta, o una sesión de un agente de código. Se restaura la
+	// LISTA, no los procesos — ver GitPanelSession.
+	GitPanelSessions []GitPanelSession `json:"gitPanelSessions"`
+	// GitSideHidden/GitDiffHidden ocultan el panel de ramas y el de diff.
+	// Son "oculto" y no "ancho 0" porque el ancho tiene que sobrevivir a
+	// ocultar y volver a mostrar: colapsar un panel no debería perder el
+	// tamaño que le habías dado.
+	GitSideHidden bool `json:"gitSideHidden"`
+	GitDiffHidden bool `json:"gitDiffHidden"`
+	// TerminalFontSize es el cuerpo de la fuente de TODAS las terminales de
+	// la app (la local del módulo Git y las sesiones SSH) — ver
+	// MinTerminalFontSize/MaxTerminalFontSize.
+	TerminalFontSize int `json:"terminalFontSize"`
 	// AutoBackupEnabled reflects the "Backup automático" toggle — whether
 	// backend/autobackup.Scheduler should be ticking for this install. See
 	// SetAutoBackupEnabled.
@@ -109,6 +143,23 @@ type Settings struct {
 	// fires, in seconds (validated in SetAutoSaveIntervalSeconds against the
 	// Min/Max bounds below).
 	AutoSaveIntervalSeconds int `json:"autoSaveIntervalSeconds"`
+}
+
+// GitPanelSession es una pestaña del panel de la pestaña Git: una terminal
+// suelta, o una sesión de un agente de código (backend/agents).
+//
+// Se persiste la INTENCIÓN ("una shell", "una sesión de Claude Code"), nunca
+// un identificador de proceso: un PTY muere con la app, así que al reabrir se
+// crean procesos nuevos. Y el agente no se relanza solo al restaurar — la
+// sesión abre su shell y queda esperando un clic: arrancar un asistente que
+// consume cuota sin que nadie lo haya pedido en ESTA sesión es exactamente la
+// clase de cosa que tiene que ser explícita.
+type GitPanelSession struct {
+	// Kind es "shell" o "agent".
+	Kind string `json:"kind"`
+	// AgentID es el id del catálogo (backend/agents) cuando Kind es "agent".
+	AgentID string `json:"agentId,omitempty"`
+	Title   string `json:"title"`
 }
 
 // AutoBackupIntervalHours must fall within these bounds — the scheduler
@@ -147,10 +198,15 @@ func (s *Store) GetSettings() (Settings, error) {
 	var gitSideWidth, gitDiffWidth, gitDiffContext int
 	var gitDiffIgnoreWs, gitDiffWrap bool
 	var queryPageSize int
+	var localShell string
+	var gitTermDock, gitPanelTab string
+	var gitTermSize, terminalFontSize int
+	var gitSideHidden, gitDiffHidden bool
+	var gitPanelSessionsJSON sql.NullString
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -181,6 +237,17 @@ func (s *Store) GetSettings() (Settings, error) {
 		}
 	}
 
+	// Una lista ilegible se trata como "sin sesiones guardadas" y no como un
+	// error: perder el layout del panel es molesto, pero no poder leer las
+	// settings deja la app entera sin tema, sin pestañas y sin nada.
+	gitPanelSessions := []GitPanelSession{}
+	if gitPanelSessionsJSON.Valid && gitPanelSessionsJSON.String != "" {
+		var parsed []GitPanelSession
+		if err := json.Unmarshal([]byte(gitPanelSessionsJSON.String), &parsed); err == nil {
+			gitPanelSessions = parsed
+		}
+	}
+
 	return Settings{
 		Theme: theme, OpenTabs: openTabs, SidebarCollapsed: sidebarCollapsed,
 		EditorHeight: editorHeight, RememberMasterKey: rememberMasterKey,
@@ -196,6 +263,14 @@ func (s *Store) GetSettings() (Settings, error) {
 		GitDiffIgnoreWs:         gitDiffIgnoreWs,
 		GitDiffWrap:             gitDiffWrap,
 		QueryPageSize:           queryPageSize,
+		LocalShell:              localShell,
+		GitTermDock:             gitTermDock,
+		GitTermSize:             gitTermSize,
+		GitPanelTab:             gitPanelTab,
+		GitSideHidden:           gitSideHidden,
+		GitDiffHidden:           gitDiffHidden,
+		TerminalFontSize:        terminalFontSize,
+		GitPanelSessions:        gitPanelSessions,
 	}, nil
 }
 
@@ -268,6 +343,91 @@ func (s *Store) SetGitPaneWidths(sideWidth, diffWidth int) error {
 	return nil
 }
 
+// TerminalFontSize se acota a un rango donde el widget sigue siendo
+// utilizable: por debajo de 8px el texto deja de leerse y por encima de 32
+// entran tan pocas columnas que un `git log` o una tabla se rompen solos.
+const (
+	MinTerminalFontSize = 8
+	MaxTerminalFontSize = 32
+)
+
+// gitTermDocks son los anclajes válidos del panel de la pestaña Git.
+var gitTermDocks = map[string]bool{"bottom": true, "left": true, "right": true}
+
+// gitPanelTabs son las solapas válidas del panel ("" = cerrado).
+var gitPanelTabs = map[string]bool{"": true, "terminal": true, "commands": true}
+
+// SetGitLayout persiste TODO el layout de la pestaña Git de una sola vez:
+// dónde está anclado el panel, cuánto mide, qué solapa quedó abierta y qué
+// paneles están ocultos.
+//
+// Un solo UPDATE y no un setter por campo, misma razón que
+// SetGitPaneWidths: todos se ajustan desde la misma pantalla y en la misma
+// interacción, y escribirlos por separado deja un layout a medio guardar si
+// la app se cierra entre dos llamadas.
+//
+// Los valores fuera de rango se corrigen en vez de rechazarse: esto lo
+// escribe la UI en cada arrastre y cada clic, y un error acá se traduciría
+// en "el panel no se guarda" sin que nada lo explique. Un dock desconocido
+// —el caso de un vault escrito por una versión más nueva de la app— cae a
+// "bottom", que es el layout que toda instalación entiende.
+func (s *Store) SetGitLayout(dock string, size int, tab string, sideHidden, diffHidden bool) error {
+	if !gitTermDocks[dock] {
+		dock = "bottom"
+	}
+	if !gitPanelTabs[tab] {
+		tab = ""
+	}
+	if size < 140 {
+		size = 140
+	}
+	if size > 2000 {
+		size = 2000
+	}
+	if _, err := s.db.Exec(
+		`UPDATE settings SET git_term_dock = ?, git_term_size = ?, git_panel_tab = ?, git_side_hidden = ?, git_diff_hidden = ? WHERE id = 1`,
+		dock, size, tab, sideHidden, diffHidden,
+	); err != nil {
+		return fmt.Errorf("vault: guardando layout de la pestaña git: %w", err)
+	}
+	return nil
+}
+
+// SetGitPanelSessions persiste qué sesiones tenía abiertas el panel de la
+// pestaña Git. Se guarda la lista tal cual la manda el frontend: son
+// descriptores de intención (ver GitPanelSession), no referencias a nada que
+// haya que validar contra el sistema — un agente que ya no esté instalado
+// aparece como una sesión que no arranca, con su motivo, en vez de
+// desaparecer sin explicación.
+func (s *Store) SetGitPanelSessions(sessions []GitPanelSession) error {
+	if sessions == nil {
+		sessions = []GitPanelSession{}
+	}
+	blob, err := json.Marshal(sessions)
+	if err != nil {
+		return fmt.Errorf("vault: serializando las sesiones del panel git: %w", err)
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET git_panel_sessions = ? WHERE id = 1`, string(blob)); err != nil {
+		return fmt.Errorf("vault: guardando las sesiones del panel git: %w", err)
+	}
+	return nil
+}
+
+// SetTerminalFontSize persiste el cuerpo de fuente de todas las terminales,
+// acotado a Min/MaxTerminalFontSize.
+func (s *Store) SetTerminalFontSize(size int) error {
+	if size < MinTerminalFontSize {
+		size = MinTerminalFontSize
+	}
+	if size > MaxTerminalFontSize {
+		size = MaxTerminalFontSize
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET terminal_font_size = ? WHERE id = 1`, size); err != nil {
+		return fmt.Errorf("vault: guardando terminal_font_size: %w", err)
+	}
+	return nil
+}
+
 // SetQueryPageSize persiste cuántas filas trae cada página. Se acota a un
 // máximo sano: una página gigantesca anula el propósito de paginar y puede
 // tumbar la UI. 0 ("All") se acepta tal cual — es una elección explícita.
@@ -334,6 +494,18 @@ func (s *Store) SetEditorTheme(theme string) error {
 func (s *Store) SetSshTerminalTheme(theme string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET ssh_terminal_theme = ? WHERE id = 1`, theme); err != nil {
 		return fmt.Errorf("vault: guardando ssh_terminal_theme: %w", err)
+	}
+	return nil
+}
+
+// SetLocalShell persists which shell the integrated local terminal opens.
+// Storage only, same reasoning as SetEditorTheme/SetSshTerminalTheme — the
+// registry of valid ids is backend/localterm's, and an id that doesn't
+// resolve on this machine falls back to the system default at open time
+// rather than being rejected here (see Settings.LocalShell).
+func (s *Store) SetLocalShell(id string) error {
+	if _, err := s.db.Exec(`UPDATE settings SET local_shell = ? WHERE id = 1`, id); err != nil {
+		return fmt.Errorf("vault: guardando local_shell: %w", err)
 	}
 	return nil
 }

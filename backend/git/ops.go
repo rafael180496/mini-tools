@@ -196,6 +196,21 @@ func (r *Runner) Push(repoPath string, opts PushOptions, auth AuthConfig) (strin
 
 // CheckoutBranch switches the working tree to an existing branch, tag, or
 // commit.
+//
+// Cuando name es una rama REMOTA ("origin/feature/X") no se hace checkout de
+// la ref remota: eso deja el repositorio en HEAD desacoplado (detached HEAD),
+// un estado del que la mayoría de la gente sale perdiendo trabajo. En su
+// lugar se crea —si no existe ya— la rama local correspondiente siguiendo a
+// la remota, que es lo que quiere decir "quiero trabajar en esta rama", y si
+// ya existe simplemente se cambia a ella.
+//
+// La detección se hace con datos, no probando comandos: se listan los
+// remotos y se pregunta por la rama local con `git branch --list`, dos
+// invocaciones que SIEMPRE salen con código 0. Sondear con
+// `rev-parse --verify --quiet` habría sido más corto, pero sale con código 1
+// cuando la ref no existe, y eso llenaría de entradas en rojo el panel
+// "Comandos ejecutados" en el caso normal — un log de auditoría que marca
+// errores donde no los hubo deja de servir para encontrar los de verdad.
 func (r *Runner) CheckoutBranch(repoPath, name string) error {
 	root, err := r.resolveRepo(repoPath)
 	if err != nil {
@@ -204,8 +219,61 @@ func (r *Runner) CheckoutBranch(repoPath, name string) error {
 	if err := checkRefArg("rama", name); err != nil {
 		return err
 	}
+
+	if short, ok := r.localNameForRemoteBranch(root, name); ok {
+		if r.localBranchExists(root, short) {
+			_, err = r.runLocal(root, "checkout", short)
+			return err
+		}
+		_, err = r.runLocal(root, "checkout", "-b", short, "--track", name)
+		return err
+	}
+
 	_, err = r.runLocal(root, "checkout", name)
 	return err
+}
+
+// localNameForRemoteBranch decide si name es una rama remota y, si lo es,
+// devuelve el nombre que tendría su rama local ("origin/feature/X" →
+// "feature/X").
+//
+// Solo se le quita el PRIMER segmento, y únicamente si coincide con un remoto
+// configurado: una rama local puede llamarse "origin/algo" perfectamente, y
+// una remota puede tener todas las barras que quiera. Comparar contra la
+// lista real de remotos es lo único que distingue los dos casos.
+func (r *Runner) localNameForRemoteBranch(root, name string) (string, bool) {
+	out, err := r.runLocal(root, "remote")
+	if err != nil {
+		// Sin lista de remotos no se puede afirmar que sea una rama remota;
+		// se sigue por el camino de siempre en vez de adivinar.
+		return "", false
+	}
+	for _, remote := range strings.Fields(out) {
+		prefix := remote + "/"
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		short := strings.TrimPrefix(name, prefix)
+		// "origin/HEAD" es un puntero simbólico a la rama por defecto del
+		// remoto, no una rama: crear una local llamada "HEAD" sería un
+		// desastre silencioso.
+		if short == "" || short == "HEAD" {
+			return "", false
+		}
+		return short, true
+	}
+	return "", false
+}
+
+// localBranchExists usa `git branch --list`, que sale con código 0 exista o
+// no la rama (la respuesta es la salida vacía o no), a diferencia de los
+// comandos de verificación de refs. Ver la nota de CheckoutBranch.
+func (r *Runner) localBranchExists(root, name string) bool {
+	out, err := r.runLocal(root, "branch", "--list", name)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(out) != ""
 }
 
 // CreateBranch creates a branch and optionally checks it out. startPoint
