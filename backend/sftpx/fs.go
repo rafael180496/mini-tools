@@ -181,7 +181,29 @@ func dialRemote(pool *sshconn.ClientPool, connID, dsn string) (*remoteFS, error)
 	if err != nil {
 		return nil, err
 	}
-	sc, err := sftp.NewClient(lease.Client)
+	// El cliente se creaba con las opciones por defecto de pkg/sftp: paquetes
+	// de 32 KB y lecturas de a una. Sobre un enlace con latencia real —un
+	// servidor remoto, no localhost— eso es lo que decide cuánto tarda tanto
+	// bajar un archivo como listar una carpeta grande, porque el costo no está
+	// en el ancho de banda sino en la cantidad de idas y vueltas.
+	//
+	// 256 KB es el máximo que acepta el sftp-server de OpenSSH; pedir más hace
+	// que rechace el paquete, así que este número es un tope del otro lado, no
+	// una preferencia. Las lecturas concurrentes dejan que un archivo se baje
+	// con varias peticiones en vuelo en vez de una atrás de la otra.
+	//
+	// Sobre el listado de carpetas, con honestidad: SSH_FXP_READDIR es
+	// secuencial por diseño (el servidor mantiene un cursor sobre el handle) y
+	// el sftp-server de OpenSSH devuelve como mucho unas 100 entradas por
+	// respuesta, así que una carpeta de miles de archivos son decenas de idas
+	// y vueltas que NO se pueden paralelizar desde acá. Un paquete más grande
+	// ayuda con los servidores que sí empaquetan más, y no empeora nada con
+	// los que no.
+	sc, err := sftp.NewClient(lease.Client,
+		sftp.MaxPacket(256*1024),
+		sftp.UseConcurrentReads(true),
+		sftp.UseConcurrentWrites(true),
+	)
 	if err != nil {
 		lease.Close()
 		return nil, err

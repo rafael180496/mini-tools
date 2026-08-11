@@ -16,7 +16,7 @@ import {sql, PostgreSQL, SQLite, PLSQL, MSSQL, StandardSQL, type SQLDialect} fro
 import {hoverTooltip} from '@codemirror/view'
 import type {Extension} from '@codemirror/state'
 import {db} from '../../wailsjs/go/models'
-import {sqlIntelCompletionSource, sqlInlineSuggestions} from './sqlIntel'
+import {sqlIntelCompletionSource, sqlInlineSuggestions, sqlCompletionTheme} from './sqlIntel'
 
 // Real dialects from @codemirror/lang-sql instead of a hand-rolled keyword
 // list per engine (see the retired frontend/src/monaco/sqlLanguage.ts) —
@@ -102,6 +102,10 @@ export function sqlLanguageExtension(dbType: string | null | undefined, connId: 
         // clause-blind suggestions this engine exists to replace. Its
         // keyword completion and its highlighting are unaffected.
         sql({dialect, upperCaseKeywords: true}),
+        // Applied even to an unbound tab: lang-sql's own keyword completion
+        // still opens a popup there, and it should look like the rest of the
+        // app rather than like CodeMirror's default.
+        sqlCompletionTheme,
     ]
     if (!connId) return base
 

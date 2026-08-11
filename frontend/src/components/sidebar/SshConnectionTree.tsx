@@ -5,9 +5,10 @@ import ConfirmDialog from '../ConfirmDialog'
 import DbTypeIcon from '../DbTypeIcon'
 import Icon from '../Icon'
 import SidebarModule from './SidebarModule'
+import {RailGroup, RailItem} from './SidebarRail'
 import {flattenForMenu} from './MoveToFolderMenu'
 import SshRowMenu from './SshRowMenu'
-import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
+import {buildFolderTree, countConnectionsIn, type FolderNode} from '../../lib/folderTree'
 import {environmentStyle} from '../../lib/environments'
 
 // envStyleOf resolves a connection's environment marking to its colours. See
@@ -45,6 +46,11 @@ interface SshConnectionTreeProps {
     reloadToken: number
     moduleCollapsed: boolean
     onToggleModuleCollapsed: () => void
+    // rail: la barra entera está minimizada, así que este módulo se dibuja
+    // como un grupo de íconos en vez de como un módulo con encabezado,
+    // buscador y carpetas. Antes no se dibujaba de ninguna forma: minimizar
+    // escondía SSH por completo. Ver components/sidebar/SidebarRail.tsx.
+    rail?: boolean
     // Full flat list (both scopes) — filtered internally to scope==='ssh'
     // (vault.Folder.Scope), same "unfiltered prop, component filters its
     // own slice" pattern ConnectionTree.tsx uses for `connections`. This
@@ -55,6 +61,12 @@ interface SshConnectionTreeProps {
     onRenameFolder: (id: string, name: string) => void
     onDeleteFolder: (id: string) => void
     onReorderFolder: (id: string, direction: 'up' | 'down') => void
+    // Búsqueda compartida por los tres módulos de la barra. Cuando llega, el
+    // módulo la usa y NO dibuja su propia caja: tres cajas "Buscar…" apiladas
+    // gastaban un tercio del alto útil de la barra y obligaban a elegir de
+    // antemano en cuál de los tres buscar algo que uno recuerda por el nombre.
+    sharedFilter?: string
+    onSharedFilterChange?: (v: string) => void
     onMoveConnectionToFolder: (connId: string, folderId: string) => void
 }
 
@@ -77,15 +89,24 @@ export default function SshConnectionTree({
     reloadToken,
     moduleCollapsed,
     onToggleModuleCollapsed,
+    rail,
     folders,
     onCreateFolder,
     onRenameFolder,
     onDeleteFolder,
     onReorderFolder,
+    sharedFilter,
+    onSharedFilterChange,
     onMoveConnectionToFolder,
 }: SshConnectionTreeProps) {
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
-    const [filter, setFilter] = useState('')
+    // El filtro puede venir de afuera: la barra tiene UN buscador arriba que
+    // filtra los tres módulos a la vez (ver ConnectionTree). El estado local
+    // queda como respaldo para cuando el módulo se use suelto, sin que nadie
+    // le pase `sharedFilter`.
+    const [ownFilter, setOwnFilter] = useState('')
+    const filter = sharedFilter ?? ownFilter
+    const setFilter = onSharedFilterChange ?? setOwnFilter
     const [confirmDelete, setConfirmDelete] = useState<vault.ConnectionSummary | null>(null)
     const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<vault.Folder | null>(null)
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -291,6 +312,7 @@ export default function SshConnectionTree({
         const isRenaming = renamingFolderId === node.folder.id
         const ownConnections = connections.filter((c) => c.folderId === node.folder.id && connectionMatches(c))
         const isCreatingHere = creatingFolderParentId === node.folder.id
+        const total = countConnectionsIn(node, connections, connectionMatches)
 
         return (
             <div key={node.folder.id} className="mb-0.5">
@@ -319,7 +341,17 @@ export default function SshConnectionTree({
                             className="min-w-0 flex-1 rounded border-none bg-surface-container-highest px-1 py-0.5 text-xs text-on-surface outline-none"
                         />
                     ) : (
-                        <span className="min-w-0 flex-1 truncate font-medium">{node.folder.name}</span>
+                        <>
+                            <span className="min-w-0 flex-1 truncate font-medium">{node.folder.name}</span>
+                            {/* Ver ConnectionTree: el contador se esconde al
+                                pasar el mouse para dejarle el lugar a los
+                                botones de la fila. */}
+                            {total > 0 && (
+                                <span className="shrink-0 font-mono text-[10px] tabular-nums text-on-surface-variant/45 group-hover/folder:hidden">
+                                    {total}
+                                </span>
+                            )}
+                        </>
                     )}
                     {!isRenaming && (
                         <>
@@ -396,10 +428,34 @@ export default function SshConnectionTree({
         )
     }
 
+    // Minimizada: solo los íconos, sin carpetas. Plano a propósito — el rail
+    // tiene 56px de ancho y una jerarquía de carpetas ahí no se puede ni
+    // dibujar ni leer; lo que hace falta es llegar al servidor de una.
+    if (rail) {
+        return (
+            <RailGroup icon="terminal" title={`SSH — ${connections.length} ${connections.length === 1 ? 'servidor' : 'servidores'}`} count={connections.length}>
+                {connections.map((c) => (
+                    <RailItem
+                        key={c.id}
+                        onClick={() => onOpenSshTerminal(c)}
+                        title={`${c.name}${envStyleOf(c) ? ` · ${envStyleOf(c)!.label}` : ''}${liveConnIds.has(c.id) ? ' · sesión abierta' : ''} — abrir terminal SSH`}
+                        active={c.id === activeTabConnectionId}
+                        live={liveConnIds.has(c.id)}
+                        color={c.color}
+                        environment={c.environment}
+                    >
+                        <DbTypeIcon dbType={c.dbType} size={18} />
+                    </RailItem>
+                ))}
+            </RailGroup>
+        )
+    }
+
     return (
         <>
             <SidebarModule
                 title="SSH"
+                matchCount={q ? rootConnections.length + visibleFolderNodes.length : null}
                 collapsed={moduleCollapsed}
                 onToggleCollapsed={onToggleModuleCollapsed}
                 actions={
@@ -421,17 +477,21 @@ export default function SshConnectionTree({
                     </div>
                 }
             >
-                <div className="px-3">
-                    <input
-                        value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
-                        placeholder="Buscar..."
-                        title="Busca por nombre de conexión SSH o de carpeta — una carpeta que contenga una coincidencia se expande automáticamente"
-                        className="w-full rounded-lg border-none bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
-                    />
-                </div>
+                {/* Solo cuando el módulo no recibe la búsqueda compartida
+                    de la barra (ver sharedFilter). */}
+                {sharedFilter === undefined && (
+                    <div className="px-3">
+                        <input
+                            value={filter}
+                            onChange={(e) => setFilter(e.target.value)}
+                            placeholder="Buscar..."
+                            title="Busca por nombre de conexión SSH o de carpeta — una carpeta que contenga una coincidencia se expande automáticamente"
+                            className="w-full rounded-lg border-none bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
+                        />
+                    </div>
+                )}
                 {creatingFolderParentId === '' && <div className="px-3 pt-1">{renderNewFolderInput()}</div>}
-                <div className="mt-2 flex-1 overflow-y-auto py-1">
+                <div className="mt-0.5 flex-1 overflow-y-auto pb-1">
                     {rootConnections.length === 0 && visibleFolderNodes.length === 0 && (
                         <p className="p-3 text-xs text-on-surface-variant/60">
                             {q ? `Sin coincidencias para "${filter}".` : 'Sin conexiones SSH todavía.'}

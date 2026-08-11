@@ -87,6 +87,11 @@ type Context struct {
 	// LeftRefs are the references that precede JoinTarget in the same query
 	// block, i.e. the candidates the join condition can point back at.
 	LeftRefs []TableRef
+	// Script are the tables the edited buffer declares itself — a CREATE
+	// TABLE further up the file, a CTE of this statement. They exist only in
+	// the text and will never be in the catalog index, which is exactly why
+	// the engine has to read them out of the buffer to know about them.
+	Script []*TableEntry `json:"-"`
 }
 
 // Analyze resolves the cursor's context inside src. cursor is a rune offset.
@@ -108,7 +113,7 @@ func Analyze(src []rune, cursor int) Context {
 	}
 
 	tokens := Code(all)
-	lo, hi := statementRange(tokens, cursor)
+	lo, hi := statementRange(src, tokens, cursor)
 	stmt := tokens[lo:hi]
 
 	ctx.Prefix, ctx.From = cursorWord(stmt, cursor)
@@ -120,22 +125,61 @@ func Analyze(src []rune, cursor int) Context {
 	ctx.Clause = an.cursorClause
 	ctx.Refs = an.visibleRefs()
 	ctx.JoinTarget, ctx.LeftRefs = an.pendingJoin()
+	ctx.Script = ScriptTables(tokens, stmt)
 	return ctx
+}
+
+// stmtStarters are the words that can begin a statement of their own. Used
+// only by the blank-line rule in statementRange — a word here is never a
+// boundary on its own, it has to be separated from what precedes it.
+var stmtStarters = map[string]bool{
+	"SELECT": true, "WITH": true, "INSERT": true, "UPDATE": true,
+	"DELETE": true, "MERGE": true, "CREATE": true, "ALTER": true,
+	"DROP": true, "TRUNCATE": true, "GRANT": true, "REVOKE": true,
+	"COMMENT": true, "CALL": true, "EXEC": true, "EXECUTE": true,
+}
+
+// continuations are the words after which a statement starter is NOT a new
+// statement but the continuation of the current one: "UNION (blank line)
+// SELECT" is one query, and so is "INSERT INTO t (a, b) (blank line)
+// SELECT". Everything else that can precede a top-level SELECT is either a
+// ";" (already a boundary) or the end of a previous statement.
+var continuations = map[string]bool{
+	"UNION": true, "INTERSECT": true, "EXCEPT": true, "MINUS": true,
+	"ALL": true, "AS": true, "IS": true, "EXISTS": true, "IN": true,
+	"RETURNING": true, "THEN": true, "ELSE": true, "BEGIN": true,
 }
 
 // statementRange narrows tokens to the statement containing cursor, so a
 // multi-statement script does not leak the previous statement's FROM into
-// this one's scope. Splitting is on top-level ";" only, with a BEGIN/END
-// depth counter so a PL/SQL block's internal semicolons do not split it —
-// the same rule backend/query/splitter.go uses, minus its DECLARE-section
+// this one's scope. Splitting is on top-level ";", with a BEGIN/END depth
+// counter so a PL/SQL block's internal semicolons do not split it — the
+// same rule backend/query/splitter.go uses, minus its DECLARE-section
 // tracking (a mis-split here costs one imprecise suggestion, not a broken
 // execution, so the cheaper approximation is the right trade).
-func statementRange(tokens []Token, cursor int) (int, int) {
+//
+// A blank line before a statement-starting keyword is a boundary too, and
+// that second rule is what makes the engine usable in the file people
+// actually have open: a scratch or install script where half a dozen ad-hoc
+// SELECTs sit stacked without a single semicolon between them. Without it,
+// every query in the buffer is one statement, so a cursor in the last one
+// sees the tables of all the others and offers their columns as if they
+// were in scope — the suggestion list stops describing the query under the
+// cursor. Requiring the blank line (rather than treating any top-level
+// SELECT as a boundary) is what keeps a legitimately multi-line statement,
+// wrapped across lines the way anyone writes one, in one piece.
+func statementRange(src []rune, tokens []Token, cursor int) (int, int) {
 	lo, hi := 0, len(tokens)
-	depth := 0
+	depth, paren := 0, 0
 
 	for i, t := range tokens {
 		switch {
+		case t.Kind == TokenPunct && t.Text == "(":
+			paren++
+		case t.Kind == TokenPunct && t.Text == ")":
+			if paren > 0 {
+				paren--
+			}
 		case t.Is("BEGIN"):
 			depth++
 		case t.Is("END"):
@@ -148,12 +192,45 @@ func statementRange(tokens []Token, cursor int) (int, int) {
 			if t.End <= cursor {
 				lo = i + 1
 			} else {
-				hi = i
-				return lo, hi
+				return lo, i
+			}
+		case depth == 0 && paren == 0 && i > lo && stmtStarters[t.Upper()] &&
+			!continuesPrevious(tokens[i-1]) && blankLineBetween(src, tokens[i-1].End, t.Start):
+			// The starter itself belongs to the new statement, so the range
+			// opens AT it rather than after it (unlike the ";" case).
+			if t.Start <= cursor {
+				lo = i
+			} else {
+				return lo, i
 			}
 		}
 	}
 	return lo, hi
+}
+
+func continuesPrevious(prev Token) bool {
+	if prev.Kind == TokenPunct {
+		return prev.Text == "(" || prev.Text == "," || prev.Text == ")"
+	}
+	return continuations[prev.Upper()]
+}
+
+// blankLineBetween reports whether the source between two tokens holds an
+// empty line — two newlines, whatever indentation sits between them.
+func blankLineBetween(src []rune, from, to int) bool {
+	if from < 0 || to > len(src) {
+		return false
+	}
+	newlines := 0
+	for i := from; i < to; i++ {
+		if src[i] == '\n' {
+			newlines++
+			if newlines == 2 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func followsWith(tokens []Token, i int, words ...string) bool {

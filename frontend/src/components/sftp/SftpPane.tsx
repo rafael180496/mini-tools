@@ -1,4 +1,5 @@
-import {useEffect, useRef, useState} from 'react'
+import {useEffect, useMemo, useRef, useState} from 'react'
+import {useVirtualizer} from '@tanstack/react-virtual'
 import {DeleteSftpPath, ListSftpDir, MakeSftpDir, RenameSftpPath} from '../../../wailsjs/go/main/App'
 import {sftpx, vault} from '../../../wailsjs/go/models'
 import {formatBytes} from '../../lib/formatBytes'
@@ -70,6 +71,17 @@ const DEFAULT_WIDTHS: ColWidths = {name: 260, modified: 150, size: 80, kind: 70,
 // column is unrecoverable, since its own divider is what you would need to grab
 // to bring it back.
 const MIN_COL_WIDTH = 48
+
+// Alto de fila del listado. Fijo porque el virtualizador necesita saber cuánto
+// mide una fila sin medirla: `px-2 py-1` sobre texto de 12px da 26px, y el
+// ícono de 16px no lo empuja más allá. Si cambia el padding de las celdas, este
+// número cambia con él.
+const ROW_HEIGHT = 26
+
+// Cuántos listados de carpeta se recuerdan por panel. Suficiente para que ir y
+// volver por un árbol de trabajo sea instantáneo, chico para que no crezca sin
+// límite mientras alguien pasea por un servidor entero.
+const MAX_CACHED_DIRS = 40
 
 function ResizableHeader({
     label,
@@ -153,27 +165,48 @@ function kindOf(e: sftpx.FileEntry): string {
     return dot > 0 && dot < e.name.length - 1 ? e.name.slice(dot + 1).toLowerCase() : 'archivo'
 }
 
+// El formateador se construye UNA vez, no por fila.
+//
+// `date.toLocaleString(locale, opciones)` parece barato y no lo es: cada
+// llamada arma un Intl.DateTimeFormat nuevo, y ese constructor es de los más
+// caros de la plataforma (~50-100µs). Con una carpeta de mil archivos eso son
+// decenas de milisegundos de trabajo puro de formateo en CADA render — y esta
+// tabla se vuelve a dibujar con cada click de selección y cada tecla del
+// filtro. Reusar una instancia lo baja a un `format()` por celda.
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+})
+
 function formatDate(unixSeconds: number): string {
     if (!unixSeconds) return '—'
-    return new Date(unixSeconds * 1000).toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'numeric',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-    })
+    return dateFormat.format(unixSeconds * 1000)
 }
+
+// Comparador de texto reusado por la misma razón que el formateador de fecha:
+// `a.localeCompare(b)` sin instancia arma un Intl.Collator por llamada, y un
+// sort hace n·log(n) llamadas.
+const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'})
 
 // Folders always sort before files (standard file-manager behavior); within
 // each group, by the chosen column and direction.
 function sortEntriesBy(entries: sftpx.FileEntry[], col: SortCol, dir: 'asc' | 'desc'): sftpx.FileEntry[] {
     const sign = dir === 'asc' ? 1 : -1
+
+    // Ordenar por "kind" calculaba la extensión dentro del comparador, o sea
+    // n·log(n) veces por elemento en vez de una. Se precalcula solo cuando esa
+    // es la columna activa.
+    const kinds = col === 'kind' ? new Map(entries.map((e) => [e.path, kindOf(e)])) : null
+
     return [...entries].sort((a, b) => {
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
         let r = 0
         switch (col) {
             case 'name':
-                r = a.name.localeCompare(b.name)
+                r = collator.compare(a.name, b.name)
                 break
             case 'modified':
                 r = a.modTime - b.modTime
@@ -182,14 +215,23 @@ function sortEntriesBy(entries: sftpx.FileEntry[], col: SortCol, dir: 'asc' | 'd
                 r = a.size - b.size
                 break
             case 'kind':
-                r = kindOf(a).localeCompare(kindOf(b))
+                r = collator.compare(kinds!.get(a.path)!, kinds!.get(b.path)!)
                 break
             case 'perms':
-                r = a.mode.localeCompare(b.mode)
+                r = collator.compare(a.mode, b.mode)
                 break
         }
-        return r === 0 ? a.name.localeCompare(b.name) * sign : r * sign
+        return r === 0 ? collator.compare(a.name, b.name) * sign : r * sign
     })
+}
+
+// Dirección natural de cada columna la primera vez que se hace click en ella.
+// Para una fecha o un tamaño, "lo más nuevo / lo más grande primero" es lo que
+// alguien quiere decir al ordenar; para un nombre, alfabético. Arrancar todo
+// en ascendente obligaba a dos clicks en las dos columnas donde el orden
+// interesante es el otro.
+function defaultDirFor(col: SortCol): 'asc' | 'desc' {
+    return col === 'modified' || col === 'size' ? 'desc' : 'asc'
 }
 
 export default function SftpPane({
@@ -214,6 +256,10 @@ export default function SftpPane({
     const [dragOver, setDragOver] = useState(false)
     // Root element, registered as an OS drop zone below.
     const rootRef = useRef<HTMLDivElement | null>(null)
+    // El contenedor con overflow del listado — el elemento contra el que mide
+    // el virtualizador. Separado de rootRef, que es el panel entero (incluye
+    // barra de ruta, toolbar y contador, que no scrollean).
+    const scrollRef = useRef<HTMLDivElement | null>(null)
     const [newFolder, setNewFolder] = useState('')
     const [creatingFolder, setCreatingFolder] = useState(false)
     // Following the terminal is OFF by default, per pane. That default is
@@ -263,8 +309,14 @@ export default function SftpPane({
     // permissions dialog it can open.
     const [menu, setMenu] = useState<{x: number; y: number; entry: sftpx.FileEntry} | null>(null)
     const [permsFor, setPermsFor] = useState<sftpx.FileEntry | null>(null)
-    const [sortCol, setSortCol] = useState<SortCol>('name')
-    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+    // Por defecto, lo más reciente arriba. Un panel SFTP se abre casi siempre
+    // para ver qué dejó el último proceso —un log, una salida de batch, un
+    // archivo que se acaba de subir—, y ordenado por nombre eso queda enterrado
+    // en el medio de una carpeta con cientos de archivos. Alfabético sigue a un
+    // click de distancia; lo que no puede costar un click es la pregunta que se
+    // hace siempre.
+    const [sortCol, setSortCol] = useState<SortCol>('modified')
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
     // Name filter, applied locally over the directory already listed — it never
     // re-queries the server. A folder with hundreds of entries is unusable
     // otherwise, and the alternative (a remote glob) would need a round trip
@@ -300,7 +352,7 @@ export default function SftpPane({
         if (col === sortCol) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
         else {
             setSortCol(col)
-            setSortDir('asc')
+            setSortDir(defaultDirFor(col))
         }
     }
     // Guards against a slow ListSftpDir resolving after the pane has already
@@ -320,6 +372,22 @@ export default function SftpPane({
 
     const loadGen = useRef(0)
 
+    // Listados ya vistos, por sesión y carpeta. Acotado para que una sesión
+    // larga paseando por un servidor no se quede con todo en memoria: son
+    // listados enteros, no ids. Al pasarse del tope se descarta el más viejo
+    // (Map conserva el orden de inserción, así que la primera clave es esa).
+    const dirCache = useRef(new Map<string, sftpx.FileEntry[]>())
+    const lastReloadToken = useRef(reloadToken)
+
+    function rememberDir(key: string, entries: sftpx.FileEntry[]) {
+        const cache = dirCache.current
+        cache.delete(key) // reinsertar lo mueve al final: el más usado sobrevive
+        cache.set(key, entries)
+        while (cache.size > MAX_CACHED_DIRS) {
+            cache.delete(cache.keys().next().value as string)
+        }
+    }
+
     useEffect(() => {
         if (host.kind === 'none') {
             setEntries([])
@@ -327,15 +395,55 @@ export default function SftpPane({
             return
         }
         const gen = ++loadGen.current
-        setLoading(true)
+        // Caché de carpetas ya visitadas, mostrada al instante mientras el
+        // servidor confirma.
+        //
+        // Navegar es entrar a una carpeta, mirar, volver arriba y entrar a
+        // otra — y hasta ahora cada uno de esos pasos borraba la tabla, ponía
+        // "Cargando…" y esperaba un ReadDir completo por SSH, incluso para una
+        // carpeta que se acababa de listar hace cinco segundos. La espera no
+        // era de red evitable en la primera visita, pero sí lo era en todas
+        // las siguientes.
+        //
+        // Se muestra lo cacheado de inmediato y se pide igual al servidor: el
+        // listado se reemplaza cuando llega. Es "stale-while-revalidate", no
+        // una caché que sirva datos viejos y se quede — lo que se ve puede
+        // estar unos cientos de milisegundos desactualizado, nunca más que el
+        // tiempo que tarda la respuesta que ya está en camino.
+        //
+        // Un refresh explícito (reloadToken: F5, borrar, renombrar, fin de una
+        // transferencia) NO usa la caché: ahí el usuario está preguntando por
+        // el estado real, y contestarle con lo guardado sería contestarle lo
+        // que él mismo acaba de cambiar.
+        const key = `${host.sessionId} ${currentDir}`
+        const cached = reloadToken === lastReloadToken.current ? dirCache.current.get(key) : undefined
+        lastReloadToken.current = reloadToken
+
+        if (cached) {
+            setEntries(cached)
+            setSelected(new Set())
+            setLoading(false)
+        } else {
+            setLoading(true)
+        }
+
         ListSftpDir(host.sessionId, currentDir)
             .then((res) => {
                 if (gen !== loadGen.current) return
-                setEntries(res ?? [])
-                setSelected(new Set())
+                const entries = res ?? []
+                setEntries(entries)
+                // La selección solo se limpia si no se limpió ya al servir de
+                // la caché — si no, un click hecho mientras llegaba la
+                // respuesta se perdería.
+                if (!cached) setSelected(new Set())
+                rememberDir(key, entries)
             })
             .catch((err) => {
                 if (gen !== loadGen.current) return
+                // Una carpeta que ya no existe (o a la que se perdió el
+                // acceso) no puede quedarse en la caché mostrándose como si
+                // estuviera bien.
+                dirCache.current.delete(key)
                 onError(String(err))
             })
             .finally(() => {
@@ -451,12 +559,42 @@ export default function SftpPane({
     // The rows actually on screen: filtered, then sorted. One source for the
     // rows, the Shift range and the counters — computing them separately is how
     // "select all" ends up selecting things the filter is hiding.
+    //
+    // Memorizado: sin esto, filtrar y ordenar la carpeta entera se rehacía en
+    // cada render — o sea con cada tecla del filtro, cada click de selección y
+    // cada apertura de menú, aunque el listado no hubiera cambiado. En una
+    // carpeta grande es una copia del array más un sort completo por
+    // interacción.
     const q = filter.trim().toLowerCase()
-    const visible = sortEntriesBy(
-        q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries,
-        sortCol,
-        sortDir,
+    const visible = useMemo(
+        () => sortEntriesBy(q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries, sortCol, sortDir),
+        [entries, q, sortCol, sortDir],
     )
+    // Virtualización del listado.
+    //
+    // Una carpeta de servidor con miles de archivos (un directorio de logs, un
+    // spool de batch) dibujaba un <tr> con seis <td> por archivo: decenas de
+    // miles de nodos DOM de una sentada, la mayoría fuera de la pantalla. Es lo
+    // que hacía que abrir esa carpeta se sintiera trabado aunque el listado ya
+    // hubiera llegado del servidor — el tiempo no estaba en la red, estaba en
+    // el render. Ahora se dibujan solo las filas visibles, con la misma técnica
+    // de filas de relleno que usa ResultGrid para el grid de resultados.
+    const rowVirtualizer = useVirtualizer({
+        count: visible.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: () => ROW_HEIGHT,
+        overscan: 12,
+        // La fila ".." va antes de la lista virtualizada dentro del MISMO
+        // contenedor con scroll, así que el virtualizador tiene que saber que
+        // el índice 0 no empieza en scrollTop 0. Sin esto la ventana queda
+        // corrida una fila — invisible con overscan, pero mal igual.
+        scrollMargin: host.kind !== 'none' && dirname(currentDir) !== currentDir && !q ? ROW_HEIGHT : 0,
+    })
+    const virtualItems = rowVirtualizer.getVirtualItems()
+    const totalHeight = rowVirtualizer.getTotalSize()
+    const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
+    const paddingBottom = virtualItems.length > 0 ? totalHeight - virtualItems[virtualItems.length - 1].end : 0
+
     const allVisibleSelected = visible.length > 0 && visible.every((e) => selected.has(e.path))
     // Floor width of the table. 28px is the checkbox column, which is not
     // resizable; the permissions column has no fixed width at all (it absorbs
@@ -683,6 +821,7 @@ export default function SftpPane({
                 }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={onDrop}
+                ref={scrollRef}
                 className={`min-h-0 flex-1 overflow-auto ${dragOver ? 'bg-primary/10 ring-2 ring-inset ring-primary' : ''}`}
             >
                 {host.kind === 'none' ? (
@@ -737,10 +876,23 @@ export default function SftpPane({
                                     <td colSpan={4} />
                                 </tr>
                             )}
-                            {visible.map((e) => (
+                            {/* Relleno de arriba: la altura de las filas que
+                                existen pero no se dibujan. Mismo truco que
+                                ResultGrid — con `table-layout: fixed` un <tr>
+                                vacío de altura N sustituye a N/24 filas sin
+                                romper el ancho de las columnas. */}
+                            {paddingTop > 0 && (
+                                <tr aria-hidden>
+                                    <td colSpan={6} style={{height: paddingTop, padding: 0}} />
+                                </tr>
+                            )}
+                            {virtualItems.map((vi) => {
+                                const e = visible[vi.index]
+                                return (
                                 <tr
                                     key={e.path}
                                     draggable
+                                    style={{height: ROW_HEIGHT}}
                                     onDragStart={() => startDrag(e)}
                                     onClick={(ev) => clickRow(e.path, ev)}
                                     onDoubleClick={() => (e.isDir ? onNavigate(e.path) : onOpenFile?.(e.path))}
@@ -787,7 +939,13 @@ export default function SftpPane({
                                         {e.mode}
                                     </td>
                                 </tr>
-                            ))}
+                                )
+                            })}
+                            {paddingBottom > 0 && (
+                                <tr aria-hidden>
+                                    <td colSpan={6} style={{height: paddingBottom, padding: 0}} />
+                                </tr>
+                            )}
                             {visible.length === 0 && (
                                 <tr>
                                     <td colSpan={6} className="px-3 py-6 text-center text-on-surface-variant">

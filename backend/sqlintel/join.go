@@ -1,6 +1,7 @@
 package sqlintel
 
 import (
+	"strconv"
 	"strings"
 
 	"mini-tools/backend/db"
@@ -60,6 +61,35 @@ func ResolveJoinBetween(idx *SchemaIndex, leftName, leftAlias, rightName, rightA
 	left := TableRef{Name: leftName, Alias: leftAlias}
 	right := TableRef{Name: rightName, Alias: rightAlias}
 	return ResolveJoin(idx, right, []TableRef{left})
+}
+
+// uniqueAlias invents the alias a generated JOIN clause will use: the
+// initials of the name's underscore-separated segments, which is what people
+// write by hand ("film_actor" → fa, "AN_TRABPEND_AF" → ata, "codigos" → c).
+// A collision with an identifier the query already uses is resolved by
+// numbering rather than by picking a different scheme, so the alias stays
+// predictable.
+func uniqueAlias(name string, taken map[string]bool) string {
+	var initials strings.Builder
+	for _, part := range strings.Split(name, "_") {
+		if part == "" {
+			continue
+		}
+		initials.WriteString(strings.ToLower(part[:1]))
+	}
+	base := initials.String()
+	if base == "" {
+		base = "t"
+	}
+	if !taken[base] {
+		return base
+	}
+	for n := 2; ; n++ {
+		candidate := base + strconv.Itoa(n)
+		if !taken[candidate] {
+			return candidate
+		}
+	}
 }
 
 // conditionsFrom builds the conditions declared by child's foreign keys

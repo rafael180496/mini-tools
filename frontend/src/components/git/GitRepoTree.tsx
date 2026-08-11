@@ -32,6 +32,7 @@ import {git, vault} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import SidebarModule from '../sidebar/SidebarModule'
+import {RailGroup, RailItem, RailMonogram} from '../sidebar/SidebarRail'
 import MoveToFolderMenu, {flattenForMenu} from '../sidebar/MoveToFolderMenu'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
 import ContextMenu from './ContextMenu'
@@ -42,6 +43,9 @@ import {buildBranchTree, countBranches, leafLabel, type BranchTreeNode} from '..
 
 interface GitRepoTreeProps {
     moduleCollapsed: boolean
+    // rail: la barra entera está minimizada — este módulo se dibuja como un
+    // grupo de íconos. Ver components/sidebar/SidebarRail.tsx.
+    rail?: boolean
     onToggleModuleCollapsed: () => void
     // Opens (or focuses) a repository's tab — double-click on a row, matching
     // SshConnectionTree's single action-per-row model.
@@ -68,6 +72,12 @@ interface GitRepoTreeProps {
     onRenameFolder: (id: string, name: string) => void
     onDeleteFolder: (id: string) => void
     onReorderFolder: (id: string, direction: 'up' | 'down') => void
+    // Búsqueda compartida por los tres módulos de la barra. Cuando llega, el
+    // módulo la usa y NO dibuja su propia caja: tres cajas "Buscar…" apiladas
+    // gastaban un tercio del alto útil de la barra y obligaban a elegir de
+    // antemano en cuál de los tres buscar algo que uno recuerda por el nombre.
+    sharedFilter?: string
+    onSharedFilterChange?: (v: string) => void
     onMoveRepoToFolder: (repoId: string, folderId: string) => void
 }
 
@@ -105,6 +115,7 @@ interface RepoDetail {
 export default function GitRepoTree({
     moduleCollapsed,
     onToggleModuleCollapsed,
+    rail,
     onOpenRepo,
     activeTabRepoId,
     reloadToken,
@@ -115,11 +126,19 @@ export default function GitRepoTree({
     onRenameFolder,
     onDeleteFolder,
     onReorderFolder,
+    sharedFilter,
+    onSharedFilterChange,
     onMoveRepoToFolder,
 }: GitRepoTreeProps) {
     const [repos, setRepos] = useState<vault.GitRepo[]>([])
     const [probe, setProbe] = useState<git.Availability | null>(null)
-    const [filter, setFilter] = useState('')
+    // El filtro puede venir de afuera: la barra tiene UN buscador arriba que
+    // filtra los tres módulos a la vez (ver ConnectionTree). El estado local
+    // queda como respaldo para cuando el módulo se use suelto, sin que nadie
+    // le pase `sharedFilter`.
+    const [ownFilter, setOwnFilter] = useState('')
+    const filter = sharedFilter ?? ownFilter
+    const setFilter = onSharedFilterChange ?? setOwnFilter
     const [expanded, setExpanded] = useState<Set<string>>(new Set())
     const [openSections, setOpenSections] = useState<Set<string>>(new Set())
     const [details, setDetails] = useState<Record<string, RepoDetail>>({})
@@ -664,10 +683,32 @@ export default function GitRepoTree({
         )
     }
 
+    // Minimizada: un ícono por repositorio, plano y sin el árbol de
+    // ramas/tags/stashes — ese detalle se carga bajo demanda al expandir un
+    // repo y no tendría dónde dibujarse en 56px. Un click abre la pestaña del
+    // repositorio, que es donde ese detalle sí entra.
+    if (rail) {
+        return (
+            <RailGroup icon="commit" title={`Git — ${repos.length} ${repos.length === 1 ? 'repositorio' : 'repositorios'}`} count={repos.length}>
+                {repos.map((repo) => (
+                    <RailItem
+                        key={repo.id}
+                        onClick={() => onOpenRepo(repo)}
+                        title={`${repo.name} — abrir el repositorio en una pestaña (${repo.path})`}
+                        active={activeTabRepoId === repo.id}
+                    >
+                        <RailMonogram name={repo.name} />
+                    </RailItem>
+                ))}
+            </RailGroup>
+        )
+    }
+
     return (
         <>
             <SidebarModule
                 title="Git"
+                matchCount={q ? rootRepos.length + visibleFolderNodes.length : null}
                 collapsed={moduleCollapsed}
                 onToggleCollapsed={onToggleModuleCollapsed}
                 actions={
@@ -704,15 +745,19 @@ export default function GitRepoTree({
                     </div>
                 )}
 
-                <div className="px-3">
-                    <input
-                        value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
-                        placeholder="Buscar..."
-                        title="Busca por nombre de repositorio o por ruta en disco"
-                        className="w-full rounded-lg border-none bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
-                    />
-                </div>
+                {/* Solo cuando el módulo no recibe la búsqueda compartida
+                    de la barra (ver sharedFilter). */}
+                {sharedFilter === undefined && (
+                    <div className="px-3">
+                        <input
+                            value={filter}
+                            onChange={(e) => setFilter(e.target.value)}
+                            placeholder="Buscar..."
+                            title="Busca por nombre de repositorio o por ruta en disco"
+                            className="w-full rounded-lg border-none bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
+                        />
+                    </div>
+                )}
 
                 {error && (
                     <div className="mx-3 mt-2 flex items-start gap-1 rounded bg-error-container/40 p-1.5 text-[10px] text-on-error-container">
@@ -725,7 +770,7 @@ export default function GitRepoTree({
 
                 {creatingFolderParentId === '' && <div className="px-3 pt-1">{newFolderInput()}</div>}
 
-                <div className="mt-2 flex-1 overflow-y-auto py-1">
+                <div className="mt-0.5 flex-1 overflow-y-auto pb-1">
                     {!hasAnything && q && <p className="p-3 text-xs text-on-surface-variant/60">Sin coincidencias para "{filter}".</p>}
                     {/* Empty state: the three ways to add a repository, as a
                         standalone Git client offers on its start screen. */}

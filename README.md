@@ -12,8 +12,8 @@ Cliente de escritorio para **Oracle, PostgreSQL, SQLite, SQL Server, Redis y Mon
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v1.1.0.dmg](releases/macos/mini-tools-v1.1.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v1.1.0-windows-amd64.exe](releases/windows/mini-tools-v1.1.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v1.2.0.dmg](releases/macos/mini-tools-v1.2.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v1.2.0-windows-amd64.exe](releases/windows/mini-tools-v1.2.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**, ver [detalle](releases/windows/README.md). |
 
 Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -218,11 +218,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.1.0 |
+| Versión | 1.2.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v1.1.0.dmg](releases/macos/mini-tools-v1.1.0.dmg)** |
-| SHA-256 | `3f2f30b98d0222f910e2d4c244f28ea27fd468886966fc61e6633699b3b4764c` |
+| Archivo | **[⬇ Descargar mini-tools-v1.2.0.dmg](releases/macos/mini-tools-v1.2.0.dmg)** |
+| SHA-256 | `901f55803c417fc2367ed6084303b08f461ab279190fe4af0a2cda6d7ed1067e` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -234,7 +234,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **La 1.1.0 NO se corrió en una Windows real** — solo se confirmó que cross-compila limpio. Lo más expuesto es la terminal integrada, que en Windows usa ConPTY (un camino de código distinto al de macOS/Linux) y solo se puede confirmar ejecutándola. La 1.0.0 sí se verificó en Windows 10 y 11, pero eso no dice nada de esta versión. Detalle de qué queda sin confirmar en [releases/windows/README.md](releases/windows/README.md).
+> ⚠️ **La 1.2.0 NO se corrió en una Windows real** — solo se confirmó que cross-compila limpio. Lo más expuesto acá es la migración 29 del vault, que al primer arranque toca el `vault.db` que ya está en la máquina, y la terminal integrada, que en Windows usa ConPTY (un camino de código distinto al de macOS/Linux). La 1.2.0 tampoco se verificó, así que lo pendiente se acumula: lo último que corrió de verdad en Windows 10 y 11 fue la 1.0.0. Detalle de qué queda sin confirmar en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -242,10 +242,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.1.0 |
+| Versión | 1.2.0 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS y **no verificado** en una Windows real |
-| Archivo | **[⬇ Descargar mini-tools-v1.1.0-windows-amd64.exe](releases/windows/mini-tools-v1.1.0-windows-amd64.exe)** |
-| SHA-256 | `2c34edddc876b49625d62fd46d50cb86a4c5db83b0f89e9f44f8c8c35fa88941` |
+| Archivo | **[⬇ Descargar mini-tools-v1.2.0-windows-amd64.exe](releases/windows/mini-tools-v1.2.0-windows-amd64.exe)** |
+| SHA-256 | `dcffd3b83e10b9320f8f136141c04cb23a12928c0af0334e20e87a0cbb4c3036` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

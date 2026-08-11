@@ -22,6 +22,10 @@ export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
 
+export function AppendSshHistory(arg1, arg2) {
+  return window['go']['main']['App']['AppendSshHistory'](arg1, arg2);
+}
+
 export function BackupVault(arg1) {
   return window['go']['main']['App']['BackupVault'](arg1);
 }
@@ -74,12 +78,20 @@ export function ClearAgentKey(arg1) {
   return window['go']['main']['App']['ClearAgentKey'](arg1);
 }
 
+export function ClearAllSshHistory() {
+  return window['go']['main']['App']['ClearAllSshHistory']();
+}
+
 export function ClearQueryHistory(arg1) {
   return window['go']['main']['App']['ClearQueryHistory'](arg1);
 }
 
 export function ClearRecentFiles() {
   return window['go']['main']['App']['ClearRecentFiles']();
+}
+
+export function ClearSshHistory(arg1) {
+  return window['go']['main']['App']['ClearSshHistory'](arg1);
 }
 
 export function CloseLocalTerminal(arg1) {
@@ -650,6 +662,10 @@ export function ListShells() {
   return window['go']['main']['App']['ListShells']();
 }
 
+export function ListSshHistory(arg1, arg2) {
+  return window['go']['main']['App']['ListSshHistory'](arg1, arg2);
+}
+
 export function ListSshSnippets() {
   return window['go']['main']['App']['ListSshSnippets']();
 }
@@ -930,6 +946,10 @@ export function SetSidebarCollapsed(arg1) {
   return window['go']['main']['App']['SetSidebarCollapsed'](arg1);
 }
 
+export function SetSshHistoryEnabled(arg1) {
+  return window['go']['main']['App']['SetSshHistoryEnabled'](arg1);
+}
+
 export function SetSshTerminalTheme(arg1) {
   return window['go']['main']['App']['SetSshTerminalTheme'](arg1);
 }
@@ -948,6 +968,10 @@ export function SftpHomeDir(arg1) {
 
 export function SftpPathPermissions(arg1, arg2) {
   return window['go']['main']['App']['SftpPathPermissions'](arg1, arg2);
+}
+
+export function SshHistoryEnabled() {
+  return window['go']['main']['App']['SshHistoryEnabled']();
 }
 
 export function StartSftpTransfer(arg1) {

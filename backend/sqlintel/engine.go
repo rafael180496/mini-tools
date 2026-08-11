@@ -80,6 +80,19 @@ type Response struct {
 
 const defaultLimit = 60
 
+const (
+	// maxJoinTemplates caps the whole-clause JOIN suggestions. A hub table
+	// (a users or a codigos everything points at) can be linked from dozens
+	// of tables, and past the first screenful the list stops being a
+	// shortcut and becomes something to scroll through.
+	maxJoinTemplates = 24
+	// joinTemplateBonus keeps a JOIN template just under a plain table of the
+	// same name: typing "j" ranks the clauses first (nothing else starts with
+	// it), while typing a table name ranks that table first, which is what
+	// someone writing "FROM cod…" means.
+	joinTemplateBonus = 250
+)
+
 // UsageFunc reports how many times an item was accepted in this session,
 // feeding the frequency component of the ranking.
 type UsageFunc func(kind, name string) int
@@ -101,6 +114,10 @@ func Complete(idx *SchemaIndex, req Request, usage UsageFunc) Response {
 	text := []rune(req.SQL)
 	cursor := RuneOffset(text, req.Offset)
 	ctx := Analyze(text, cursor)
+	// Everything below resolves names against the catalog AND the buffer, so
+	// the overlay is attached once, here, rather than threaded through every
+	// lookup as a second argument.
+	idx = idx.withScript(ctx.Script)
 
 	resp := Response{
 		From:     UTF16Offset(text, ctx.From),
@@ -114,14 +131,19 @@ func Complete(idx *SchemaIndex, req Request, usage UsageFunc) Response {
 	dialect := DialectFor(req.DBType)
 	prefix := strings.ToLower(ctx.Prefix)
 
-	// An empty prefix on an implicit trigger would dump the entire scope on
-	// every keystroke; only an explicit request (Ctrl-Space) or a qualified
-	// position ("u.") is allowed to list everything.
-	if prefix == "" && !req.Explicit && ctx.DotPrefix == "" && ctx.JoinTarget == nil {
+	// An empty prefix on an implicit trigger cannot be answered the same way
+	// as a typed one: with nothing to match on, the whole dialect would come
+	// along for the ride. It is still the position where suggestions are most
+	// wanted — right after "FROM ", "WHERE ", "SELECT a, " nobody has typed a
+	// letter yet — so a clause specific enough to name its own candidates
+	// opens anyway, restricted to what the schema holds (tables, schemas,
+	// columns). Anything vaguer than that stays silent until Ctrl-Space.
+	autoOpen := prefix == "" && !req.Explicit && ctx.DotPrefix == "" && ctx.JoinTarget == nil
+	if autoOpen && !opensOnEmptyPrefix(ctx.Clause) {
 		return resp
 	}
 
-	c := &collector{prefix: prefix, usage: usage, clause: ctx.Clause}
+	c := &collector{prefix: prefix, usage: usage, clause: ctx.Clause, schemaOnly: autoOpen}
 
 	if ctx.DotPrefix != "" {
 		c.qualified(idx, ctx)
@@ -130,6 +152,7 @@ func Complete(idx *SchemaIndex, req Request, usage UsageFunc) Response {
 	}
 
 	c.joins(idx, ctx)
+	c.joinTemplates(idx, ctx)
 
 	sort.SliceStable(c.items, func(i, j int) bool {
 		if c.items[i].Score != c.items[j].Score {
@@ -162,12 +185,34 @@ func InlineOnly(idx *SchemaIndex, req Request) string {
 	return inlineSuggestion(idx, ctx, nil)
 }
 
+// opensOnEmptyPrefix reports whether a clause pins the cursor down well
+// enough to be worth opening the popup with nothing typed yet. The list is
+// exactly the clauses whose candidates come from the schema: a FROM wants a
+// table, a WHERE wants a column. ClauseUnknown (start of a statement) and
+// ClauseValues are left out — there the answer is a keyword or a literal,
+// and offering it unprompted is noise on every space bar.
+func opensOnEmptyPrefix(cl Clause) bool {
+	switch cl {
+	case ClauseFrom, ClauseJoin, ClauseSelect, ClauseWhere, ClauseOn,
+		ClauseGroupBy, ClauseHaving, ClauseOrderBy, ClauseSet, ClauseInsertColumns:
+		return true
+	default:
+		return false
+	}
+}
+
 // collector accumulates scored items for one request.
 type collector struct {
 	prefix string
 	clause Clause
 	usage  UsageFunc
 	items  []Item
+	// schemaOnly drops the dialect's own vocabulary — keywords, built-in
+	// functions, snippets — and the connection's routines from the result.
+	// Set for the auto-opened, nothing-typed popup, where every one of those
+	// matches the empty prefix and would bury the handful of tables or
+	// columns the position is actually about.
+	schemaOnly bool
 }
 
 // add scores a candidate and keeps it if it matches the typed prefix.
@@ -255,16 +300,109 @@ func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context)
 func (c *collector) tables(idx *SchemaIndex) { c.tablesWithBonus(idx, 300) }
 
 func (c *collector) tablesWithBonus(idx *SchemaIndex, bonus int) {
-	if idx == nil {
-		return
-	}
-	for _, t := range idx.Tables {
+	idx.AllTables(func(t *TableEntry) {
 		detail := t.Qualified
 		if len(t.Columns) > 0 {
 			detail += " · " + strconv.Itoa(len(t.Columns)) + " col"
 		}
-		c.add(t.Name, KindTable, detail, "", "", bonus)
+		extra := 0
+		if t.FromScript {
+			detail += " · declarada en el script"
+			// Just written by hand a few lines up: more likely to be what is
+			// meant than any one table out of a catalog of thousands.
+			extra = 60
+		}
+		c.add(t.Name, KindTable, detail, "", "", bonus+extra)
+	})
+}
+
+// joinTemplates offers whole JOIN clauses — table, alias and ON condition in
+// a single item — for the tables a foreign key connects to what the query
+// already names. It is the suggestion that saves the most typing in the
+// place it is hardest to get right from memory, and the schema knows the
+// answer exactly: the FK is declared.
+//
+// Candidates come from the FK graph (both directions), never from a sweep of
+// the catalog, so the cost is proportional to how connected the tables in
+// scope are rather than to how many tables the database has.
+func (c *collector) joinTemplates(idx *SchemaIndex, ctx Context) {
+	if idx == nil || ctx.DotPrefix != "" {
+		return
 	}
+	// A JOIN whose table is already named is the other predictor's job
+	// (joins, above): there the missing piece is the ON, not the whole clause.
+	if ctx.JoinTarget != nil {
+		return
+	}
+	// ClauseOn is included for the chained case: after "JOIN b ON b.x = a.x"
+	// the clause is still ON, and the next thing typed is very often another
+	// JOIN. It is only reached once the target is gone, which happens exactly
+	// when the condition has been written — so this never competes with the
+	// prediction of the ON currently being typed.
+	if ctx.Clause != ClauseFrom && ctx.Clause != ClauseJoin && ctx.Clause != ClauseOn {
+		return
+	}
+
+	scope, taken := resolvedScope(idx, ctx.Refs)
+	if len(scope) == 0 {
+		return
+	}
+
+	inScope := map[*TableEntry]bool{}
+	for _, ref := range scope {
+		if t, ok := idx.Resolve(ref); ok {
+			inScope[t] = true
+		}
+	}
+
+	offered := 0
+	for _, ref := range scope {
+		base, ok := idx.Resolve(ref)
+		if !ok {
+			continue
+		}
+		for _, cand := range idx.RelatedTables(base) {
+			if inScope[cand] || offered >= maxJoinTemplates {
+				continue
+			}
+			inScope[cand] = true // one set of templates per table, not one per link
+
+			alias := uniqueAlias(cand.Name, taken)
+			target := TableRef{Schema: cand.Schema, Name: cand.Name, Alias: alias}
+			for _, cond := range ResolveJoin(idx, target, scope) {
+				clause := "JOIN " + cand.Qualified + " " + alias + " ON " + cond.Condition
+				// The label already spells the condition out, so the detail
+				// answers the thing it does not: where the joined table
+				// lives, and how trustworthy the guess is.
+				detail := cand.Qualified
+				if cond.ViaPrimaryKey {
+					detail += " · FK → PK"
+				} else {
+					detail += " · FK"
+				}
+				c.add(clause, KindJoin, detail, clause,
+					"Cláusula JOIN completa, con alias, derivada de la llave foránea declarada en el esquema.",
+					joinTemplateBonus)
+				offered++
+			}
+		}
+	}
+}
+
+// resolvedScope keeps the references that name a real table and collects the
+// identifiers already spoken for, so a generated alias never collides with
+// one the query is using.
+func resolvedScope(idx *SchemaIndex, refs []TableRef) (scope []TableRef, taken map[string]bool) {
+	taken = map[string]bool{}
+	for _, ref := range refs {
+		if _, ok := idx.Resolve(ref); !ok {
+			continue
+		}
+		scope = append(scope, ref)
+		taken[strings.ToLower(ref.Label())] = true
+		taken[strings.ToLower(ref.Name)] = true
+	}
+	return scope, taken
 }
 
 func (c *collector) schemas(idx *SchemaIndex) {
@@ -287,7 +425,11 @@ func (c *collector) columnsInScope(idx *SchemaIndex, ctx Context) {
 	found := false
 	for _, ref := range ctx.Refs {
 		t, ok := idx.Resolve(ref)
-		if !ok {
+		if !ok || len(t.Columns) == 0 {
+			// A resolved table with no columns is a CTE the shallow script
+			// pass could not name the output of. Treating it as "found"
+			// would answer a query whose FROM the engine understood with an
+			// empty list — worse than the broad fallback below.
 			continue
 		}
 		found = true
@@ -305,13 +447,15 @@ func (c *collector) columnsInScope(idx *SchemaIndex, ctx Context) {
 		return
 	}
 	seen := make(map[string]bool, len(idx.Columns))
-	for _, col := range idx.Columns {
-		if seen[col.Lower] {
-			continue
+	idx.AllTables(func(t *TableEntry) {
+		for _, col := range t.Columns {
+			if seen[col.Lower] {
+				continue
+			}
+			seen[col.Lower] = true
+			c.add(col.Name, KindColumn, columnDetail(col), "", "", 250)
 		}
-		seen[col.Lower] = true
-		c.add(col.Name, KindColumn, columnDetail(col), "", "", 250)
-	}
+	})
 }
 
 func (c *collector) columnsOf(t *TableEntry, bonus int) {
@@ -329,6 +473,9 @@ func (c *collector) columnsOf(t *TableEntry, bonus int) {
 }
 
 func (c *collector) functions(d *Dialect, clause Clause) {
+	if c.schemaOnly {
+		return
+	}
 	aggregateOK := clause == ClauseSelect || clause == ClauseHaving ||
 		clause == ClauseOrderBy || clause == ClauseGroupBy
 	for _, f := range d.AllFunctions() {
@@ -349,7 +496,7 @@ func (c *collector) functions(d *Dialect, clause Clause) {
 // routines offers the connection's own stored procedures and functions,
 // scored just under the dialect built-ins.
 func (c *collector) routines(idx *SchemaIndex) {
-	if idx == nil {
+	if idx == nil || c.schemaOnly {
 		return
 	}
 	for _, r := range idx.Routines {
@@ -368,12 +515,18 @@ func (c *collector) routines(idx *SchemaIndex) {
 }
 
 func (c *collector) keywords(d *Dialect, bonus int) {
+	if c.schemaOnly {
+		return
+	}
 	for _, k := range d.AllKeywords() {
 		c.add(k, KindKeyword, "", "", "", bonus)
 	}
 }
 
 func (c *collector) snippets(d *Dialect) {
+	if c.schemaOnly {
+		return
+	}
 	for _, s := range d.AllSnippets() {
 		c.add(s.Label, KindSnippet, s.Detail, s.Body, "", 400)
 	}

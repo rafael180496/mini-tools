@@ -2036,6 +2036,22 @@ export namespace vault {
 		    return a;
 		}
 	}
+	export class SshHistoryEntry {
+	    id: number;
+	    command: string;
+	    ranAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SshHistoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.command = source["command"];
+	        this.ranAt = source["ranAt"];
+	    }
+	}
 	export class SshSnippet {
 	    id: string;
 	    name: string;

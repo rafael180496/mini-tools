@@ -27,3 +27,19 @@ export function buildFolderTree(folders: vault.Folder[]): FolderNode[] {
 
     return build('')
 }
+
+// countConnectionsIn es cuántas conexiones cuelgan de una carpeta contando sus
+// subcarpetas — el número que la fila de carpeta muestra plegada, que es lo que
+// permite decidir si vale la pena abrirla sin abrirla.
+//
+// Recibe el predicado de coincidencia en vez de aplicarlo adentro para que sirva
+// igual con y sin búsqueda activa: con un filtro puesto, el número pasa a ser
+// cuántas COINCIDENCIAS hay adentro, que es lo que interesa en ese momento.
+export function countConnectionsIn<T extends {folderId?: string}>(
+    node: FolderNode,
+    items: T[],
+    matches: (item: T) => boolean,
+): number {
+    const own = items.filter((c) => c.folderId === node.folder.id && matches(c)).length
+    return own + node.children.reduce((sum, child) => sum + countConnectionsIn(child, items, matches), 0)
+}

@@ -1360,6 +1360,69 @@ func (a *App) ListSshSnippets() ([]vault.SshSnippet, error) {
 	return a.vault.ListSshSnippets()
 }
 
+// --- Historial de comandos SSH ---------------------------------------------
+//
+// Ver backend/vault/ssh_history_repo.go para el porqué del cifrado y del
+// filtro de secretos. Acá solo va el guardado de siempre: requireUnlocked y
+// delegar.
+
+// AppendSshHistory registra un comando ejecutado en una terminal SSH. Devuelve
+// si se guardó: `false` sin error significa que la línea se descartó por
+// parecer traer una credencial, o que el registro está apagado.
+func (a *App) AppendSshHistory(connID, command string) (bool, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return false, err
+	}
+	// El interruptor se consulta acá y no en el frontend para que apagarlo
+	// valga aunque una pestaña vieja siga mandando: el registro se corta en el
+	// único lugar por el que pasa todo.
+	enabled, err := a.vault.SshHistoryEnabled()
+	if err != nil {
+		return false, err
+	}
+	if !enabled {
+		return false, nil
+	}
+	return a.vault.AppendSshHistory(connID, command)
+}
+
+func (a *App) ListSshHistory(connID string, limit int) ([]vault.SshHistoryEntry, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListSshHistory(connID, limit)
+}
+
+// ClearSshHistory borra el historial de una conexión y devuelve cuántos
+// comandos se borraron.
+func (a *App) ClearSshHistory(connID string) (int64, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return 0, err
+	}
+	return a.vault.ClearSshHistory(connID)
+}
+
+func (a *App) ClearAllSshHistory() (int64, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return 0, err
+	}
+	return a.vault.ClearAllSshHistory()
+}
+
+func (a *App) SshHistoryEnabled() (bool, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return false, err
+	}
+	return a.vault.SshHistoryEnabled()
+}
+
+func (a *App) SetSshHistoryEnabled(enabled bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetSshHistoryEnabled(enabled)
+}
+
 // CreateSshSnippet saves a new reusable command/script.
 func (a *App) CreateSshSnippet(name, script string) (*vault.SshSnippet, error) {
 	if err := a.requireUnlocked(); err != nil {

@@ -2,12 +2,13 @@ import {useEffect, useRef, useState} from 'react'
 import {Terminal} from '@xterm/xterm'
 import {FitAddon} from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import {CloseSSHTerminal, ConnectionEnvironment, OpenSSHTerminal, ResizeSSHTerminal, WriteSSHTerminal} from '../../../wailsjs/go/main/App'
+import {AppendSshHistory, CloseSSHTerminal, ConnectionEnvironment, ListSshHistory, OpenSSHTerminal, ResizeSSHTerminal, WriteSSHTerminal} from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
 import type {Theme} from '../../hooks/useTheme'
 import {resolveTerminalTheme, type TerminalThemeId} from '../../xterm/terminalThemes'
 import ProductionGuardDialog from './ProductionGuardDialog'
 import SshSnippetsPanel from './SshSnippetsPanel'
+import SshHistoryPanel from './SshHistoryPanel'
 import SshTerminalThemePicker from './SshTerminalThemePicker'
 import Icon from '../Icon'
 import {SshLineModel} from '../../lib/sshLineModel'
@@ -26,6 +27,11 @@ import {environmentStyle} from '../../lib/environments'
 
 interface SshTerminalTabProps {
     connId: string
+    // Nombre visible del servidor. Se usa solo para redactar los textos del
+    // panel de historial: "limpiar el historial de PRODMAIN" dice qué se va a
+    // borrar, y "limpiar el historial" obliga a acordarse de en qué pestaña
+    // estabas parado.
+    connName: string
     theme: Theme
     // xterm.js color theme id (frontend/src/xterm/terminalThemes.ts's
     // registry) — one global setting shared by every open terminal tab,
@@ -71,7 +77,7 @@ function base64ToBytes(b64: string): Uint8Array {
 // render block, the same "never unmount" treatment RedisBrowserTab.tsx gets
 // so its state survives switching tabs. That means this component's mount
 // effect below runs exactly once per session, not on every tab-focus.
-export default function SshTerminalTab({connId, theme, terminalThemeId, onChangeTerminalTheme, terminalFontSize, onConnectedChange}: SshTerminalTabProps) {
+export default function SshTerminalTab({connId, connName, theme, terminalThemeId, onChangeTerminalTheme, terminalFontSize, onConnectedChange}: SshTerminalTabProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const termRef = useRef<Terminal | null>(null)
@@ -90,6 +96,7 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
     const previousCwdRef = useRef('')
     const [ghostText, setGhostText] = useState('')
     const [ghostPos, setGhostPos] = useState<{left: number; top: number; cellH: number} | null>(null)
+    const [showHistory, setShowHistory] = useState(false)
     const [showSnippets, setShowSnippets] = useState(false)
     const [showThemePicker, setShowThemePicker] = useState(false)
     // Environment marking of this connection. Kept in BOTH a ref and state:
@@ -103,6 +110,34 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
     // Sends the held input for real. Assigned inside the mount effect, where
     // the terminal and its line model live.
     const deliverRef = useRef<(data: string) => void>(() => {})
+
+    // El historial persistido cumple dos funciones y por eso se engancha acá,
+    // una sola vez por sesión:
+    //
+    //  - lo que se ejecuta se guarda (onCommit → AppendSshHistory). El backend
+    //    decide si corresponde: descarta lo que parece traer un secreto y
+    //    respeta el interruptor de registro, así que desde acá se manda todo y
+    //    no hay dos lugares que puedan discrepar sobre qué se guarda.
+    //  - lo ya guardado precarga las sugerencias (seedHistory), para que la
+    //    terminal recién abierta ya sepa completar el comando largo de ayer en
+    //    vez de tener que volver a aprenderlo desde cero.
+    useEffect(() => {
+        const model = modelRef.current
+        model.onCommit = (command) => {
+            // Fire and forget: guardar el historial nunca puede demorar ni
+            // romper la ejecución del comando, que ya salió hacia el PTY.
+            AppendSshHistory(connId, command).catch(() => {})
+        }
+        ListSshHistory(connId, 500)
+            // El backend los devuelve del más reciente al más viejo y
+            // seedHistory espera el orden inverso (la sugerencia recorre desde
+            // el final, o sea desde lo más nuevo).
+            .then((list) => model.seedHistory((list ?? []).map((e) => e.command).reverse()))
+            .catch(() => {})
+        return () => {
+            model.onCommit = null
+        }
+    }, [connId])
 
     useEffect(() => {
         const container = containerRef.current
@@ -347,6 +382,22 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
                     <div className="flex-1" />
                     <button
                         onClick={() => {
+                            setShowHistory((v) => !v)
+                            if (!showHistory) {
+                                setShowSnippets(false)
+                                setShowThemePicker(false)
+                            }
+                        }}
+                        title="Historial: los comandos que ejecutaste en este servidor, buscables y reutilizables. Se guarda cifrado y se puede limpiar o apagar desde el panel."
+                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
+                            showHistory ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
+                        }`}
+                    >
+                        <Icon name="history" size={14} />
+                        Historial
+                    </button>
+                    <button
+                        onClick={() => {
                             setShowSnippets((v) => !v)
                             if (!showSnippets) setShowThemePicker(false)
                         }}
@@ -396,6 +447,21 @@ export default function SshTerminalTab({connId, theme, terminalThemeId, onChange
                     )}
                 </div>
             </div>
+            {showHistory && (
+                <SshHistoryPanel
+                    connId={connId}
+                    connName={connName}
+                    onClose={() => setShowHistory(false)}
+                    // Pegar deja la línea escrita pero sin ejecutar: reusar un
+                    // comando del historial casi siempre es reusarlo con un
+                    // argumento distinto, y ejecutar de un click lo que puede
+                    // ser un `rm -rf` de la semana pasada no es un atajo, es
+                    // una trampa. Ejecutar es un gesto aparte (doble click o
+                    // el botón ▶).
+                    onPaste={(cmd) => void WriteSSHTerminal(connId, cmd)}
+                    onRun={(cmd) => void WriteSSHTerminal(connId, cmd + '\r')}
+                />
+            )}
             {showSnippets && <SshSnippetsPanel connId={connId} onClose={() => setShowSnippets(false)} />}
             {showThemePicker && (
                 <SshTerminalThemePicker

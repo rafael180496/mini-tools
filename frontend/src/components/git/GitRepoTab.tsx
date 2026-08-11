@@ -9,6 +9,10 @@ import {
     GitCreateTag,
     GitDeleteBranch,
     GitDeleteRemoteBranch,
+    GitDeleteRemoteTag,
+    GitDeleteTag,
+    GitPushTag,
+    GitTags,
     GitRenameBranch,
     GitInProgress,
     GitMerge,
@@ -48,6 +52,7 @@ import {agents as agentsModel, git} from '../../../wailsjs/go/models'
 import type {Theme} from '../../hooks/useTheme'
 import type {TerminalThemeId} from '../../xterm/terminalThemes'
 import {buildBranchTree, countBranches, expandedForBranch, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
+import {groupTags} from '../../lib/tagGroups'
 import {
     applyPrefix,
     buildCommitPrefix,
@@ -210,6 +215,11 @@ export default function GitRepoTab({
     const [view, setView] = useState<CenterView>('commits')
     const [commits, setCommits] = useState<git.CommitInfo[]>([])
     const [branches, setBranches] = useState<git.Branch[]>([])
+    // Tags live in the same panel as branches because they answer the same
+    // question — "which point in history do I want to look at?" — and until
+    // now the only place to see them was the sidebar tree, which cannot
+    // reveal a commit on this tab's graph.
+    const [tags, setTags] = useState<git.Tag[]>([])
     const [status, setStatus] = useState<git.RepoStatus | null>(null)
     const [loadingLog, setLoadingLog] = useState(true)
 
@@ -672,15 +682,17 @@ export default function GitRepoTab({
                   : hidden.size > 0
                     ? new git.LogOptions({...base, revs: visibleRefs})
                     : new git.LogOptions({...base, all: true})
-            const [log, st, prog, stash] = await Promise.all([
+            const [log, st, prog, stash, tgs] = await Promise.all([
                 GitLog(repoId, logOpts),
                 GitStatus(repoId),
                 GitInProgress(repoId),
                 GitStashes(repoId),
+                GitTags(repoId),
             ])
             setStashes(stash ?? [])
             setCommits(log ?? [])
             setBranches(brs ?? [])
+            setTags(tgs ?? [])
             setStatus(st)
             setInProgress(prog ?? '')
             setError(null)
@@ -834,6 +846,37 @@ export default function GitRepoTab({
         [commits, repoId],
     )
 
+    // Single click on a tag: same contract as clicking a branch — the graph
+    // jumps to the commit it marks. A tag pointing at something older than the
+    // loaded window is the norm (that is what a release tag from six months
+    // ago is), so the out-of-window path is not an edge case here, it is the
+    // usual one.
+    const revealCommit = useCallback(
+        async (hash: string) => {
+            setView('commits')
+            setSelectedPath(null)
+            setSelectedBranch(null)
+
+            const known = commits.find((c) => c.hash === hash)
+            if (known) {
+                setSelectedCommit(known)
+                setReveal({hash: known.hash, token: ++revealSeq.current})
+                return
+            }
+            try {
+                const [outside] = (await GitLog(repoId, new git.LogOptions({maxCount: 1, rev: hash, withStats: false}))) ?? []
+                if (!outside) return
+                setSelectedCommit(outside)
+                setNotice(
+                    `El commit ${outside.shortHash} queda fuera de los ${LOG_PAGE} commits cargados en el grafo, así que no hay fila a la que saltar. Lo tenés a la derecha.`,
+                )
+            } catch (e) {
+                setError(String(e))
+            }
+        },
+        [commits, repoId],
+    )
+
     // Right-click menu for a branch row. Local and remote branches get
     // different entries because they support genuinely different operations —
     // a remote branch has no upstream to set and cannot be renamed locally.
@@ -945,6 +988,82 @@ export default function GitRepoTab({
                         confirmLabel: 'Borrar',
                         label: 'branch -D',
                         run: () => GitDeleteBranch(repoId, b.name, true),
+                    }),
+            },
+        ]
+    }
+
+    // Right-click menu for a tag row. Mirrors the sidebar tree's tag menu
+    // (GitRepoTree.tagMenuItems) so the same right-click does the same thing
+    // in both places, with two differences this panel can afford: it knows
+    // which commit the graph is showing, and its confirmations go through
+    // this tab's own setConfirm/setPrompt.
+    function tagMenuItems(t: git.Tag): (DropdownItem | 'separator')[] {
+        const short = t.hash.slice(0, 8)
+        return [
+            {
+                label: `Crear rama desde ${t.name}…`,
+                icon: 'account_tree',
+                // Offered above checkout on purpose: checking a tag out leaves
+                // the repository in detached HEAD, which is where people lose
+                // commits. Branching from it is what someone who wants to work
+                // from a release almost always actually means.
+                hint: 'Lo que casi siempre querés en vez de un checkout',
+                onSelect: () =>
+                    setPrompt({
+                        title: `Crear rama desde el tag "${t.name}"`,
+                        label: 'Nombre de la rama',
+                        initial: '',
+                        description: `La rama nueva arranca en el commit ${short}, al que apunta el tag. El tag no se modifica.`,
+                        onSubmit: (v) => run(`checkout -b ${v} ${t.name}`, () => GitCreateBranch(repoId, v, t.name, true)),
+                    }),
+            },
+            {
+                label: `Checkout ${t.name}`,
+                icon: 'check',
+                hint: 'Deja el repo en HEAD desacoplado',
+                onSelect: () => run(`checkout ${t.name}`, () => GitCheckout(repoId, t.name)),
+            },
+            {label: `Copiar '${t.name}'`, icon: 'content_copy', onSelect: () => copy(t.name)},
+            {label: `Copiar el commit ${short}`, icon: 'content_copy', onSelect: () => copy(t.hash)},
+            'separator',
+            {
+                label: `Push ${t.name} a origin`,
+                icon: 'upload',
+                hint: 'Un tag no viaja solo con un push normal',
+                onSelect: () => run(`push origin ${t.name}`, () => GitPushTag(repoId, 'origin', t.name, new git.AuthConfig({}))),
+            },
+            'separator',
+            // Local y remoto van separados a propósito: borrar un tag local lo
+            // deja vivo en el servidor y viceversa, y es la sorpresa número uno
+            // que da trabajar con tags. Un solo "Borrar" tendría que elegir por
+            // el usuario cuál de las dos cosas hace.
+            {
+                label: `Borrar ${t.name}`,
+                icon: 'delete',
+                danger: true,
+                hint: 'Solo local',
+                onSelect: () =>
+                    setConfirm({
+                        title: 'Borrar tag local',
+                        description: `Esto borra el tag "${t.name}" de tu repositorio local. La copia en el remoto (si la hay) sigue existiendo, y un fetch con tags te lo vuelve a traer. El commit ${short} no se toca.`,
+                        confirmLabel: 'Borrar',
+                        label: 'tag -d',
+                        run: () => GitDeleteTag(repoId, t.name),
+                    }),
+            },
+            {
+                label: `Borrar ${t.name} de origin`,
+                icon: 'delete_forever',
+                danger: true,
+                hint: 'Solo en el remoto',
+                onSelect: () =>
+                    setConfirm({
+                        title: 'Borrar tag del remoto',
+                        description: `Esto borra el tag "${t.name}" en el servidor, no tu copia local. Si el tag marca una versión publicada, cualquiera que dependa de él lo pierde. El commit ${short} no se toca.`,
+                        confirmLabel: 'Borrar del remoto',
+                        label: 'push --delete',
+                        run: () => GitDeleteRemoteTag(repoId, 'origin', t.name, new git.AuthConfig({})),
                     }),
             },
         ]
@@ -1248,6 +1367,15 @@ export default function GitRepoTab({
     const isPinnedBranch = (b: git.Branch) => pinned.includes(b.name)
     const pinnedLocal = localBranches.filter(isPinnedBranch)
     const pinnedRemote = remoteBranches.filter(isPinnedBranch)
+    // El filtro de la caja de arriba es uno solo a propósito: buscar "1.31" o
+    // "TIGOCHAT" sin tener que decidir de antemano si eso es una rama o un tag
+    // es justamente lo que uno quiere de un buscador de referencias.
+    const visibleTags = useMemo(
+        () => tags.filter((t) => !branchQuery || t.name.toLowerCase().includes(branchQuery)),
+        [tags, branchQuery],
+    )
+    const tagGroups = useMemo(() => groupTags(visibleTags), [visibleTags])
+
     const localTree = useMemo(
         () => buildBranchTree(localBranches.filter((b) => !isPinnedBranch(b))),
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1618,8 +1746,8 @@ export default function GitRepoTab({
                             <input
                                 value={branchFilter}
                                 onChange={(e) => setBranchFilter(e.target.value)}
-                                placeholder="Filtrar ramas…"
-                                title="Filtra por nombre, en las ramas locales y remotas a la vez"
+                                placeholder="Filtrar ramas y tags…"
+                                title="Filtra por nombre en las ramas locales, las remotas y los tags a la vez — no hace falta decidir de antemano qué de las tres cosas estás buscando"
                                 className="min-w-0 flex-1 bg-transparent text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
                             />
                             {branchFilter && (
@@ -1664,8 +1792,49 @@ export default function GitRepoTab({
                             )}
                         />
 
-                        {branchFilter && localBranches.length === 0 && remoteBranches.length === 0 && (
-                            <p className="px-2 py-3 text-[11px] text-on-surface-variant/70">Ninguna rama coincide con «{branchFilter}».</p>
+                        {/* Tags. Hasta ahora solo estaban en el árbol de la
+                            barra lateral, que no puede llevar el grafo a
+                            ningún lado: para mirar qué entró en una versión
+                            había que buscar el tag ahí, copiar el nombre y
+                            filtrar el log a mano. Acá un click lo revela en
+                            el grafo, igual que una rama. */}
+                        {tags.length > 0 && (
+                            <>
+                                <SectionLabel count={visibleTags.length}>Tags</SectionLabel>
+                                {tagGroups.groups.map((group) => {
+                                    const key = `tag:${group.key}`
+                                    const open = filtering || expandedFolders.has(key)
+                                    return (
+                                        <div key={key}>
+                                            <button
+                                                onClick={() => toggleFolder(key)}
+                                                title={
+                                                    open
+                                                        ? `Plegar "${group.key}" — sus ${group.tags.length} tags dejan de ocupar la lista`
+                                                        : `Desplegar "${group.key}" — tiene ${group.tags.length} tags`
+                                                }
+                                                className="flex w-full items-center gap-1 rounded py-1 pl-2 pr-2 text-left text-[11px] text-on-surface-variant hover:bg-surface-variant"
+                                            >
+                                                <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
+                                                <Icon name="sell" size={13} className="shrink-0 opacity-60" />
+                                                <span className="truncate">{group.key}</span>
+                                                <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-50">{group.tags.length}</span>
+                                            </button>
+                                            {open &&
+                                                group.tags.map((t) => (
+                                                    <TagRow key={t.name} tag={t} depth={1} onSelect={() => revealCommit(t.hash)} onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: tagMenuItems(t)})} />
+                                                ))}
+                                        </div>
+                                    )
+                                })}
+                                {tagGroups.loose.map((t) => (
+                                    <TagRow key={t.name} tag={t} depth={0} onSelect={() => revealCommit(t.hash)} onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: tagMenuItems(t)})} />
+                                ))}
+                            </>
+                        )}
+
+                        {branchFilter && localBranches.length === 0 && remoteBranches.length === 0 && visibleTags.length === 0 && (
+                            <p className="px-2 py-3 text-[11px] text-on-surface-variant/70">Ninguna rama ni tag coincide con «{branchFilter}».</p>
                         )}
                     </div>
                 </div>
@@ -2281,6 +2450,46 @@ function BranchTree({
             })}
             {node.branches.map((b) => renderBranch(b, node.path))}
         </>
+    )
+}
+
+// Fila de tag. Más chata que la de rama a propósito: un tag no tiene estado
+// (no es la actual, no está adelante ni atrás, no se ancla), así que lo único
+// que aporta además del nombre es a qué commit apunta y de cuándo es.
+function TagRow({
+    tag,
+    depth,
+    onSelect,
+    onContextMenu,
+}: {
+    tag: git.Tag
+    depth: number
+    onSelect: () => void
+    onContextMenu: (e: ReactMouseEvent) => void
+}) {
+    const date = tag.taggerDate ? tag.taggerDate.slice(0, 10) : ''
+    return (
+        <button
+            onClick={onSelect}
+            onContextMenu={(e) => {
+                e.preventDefault()
+                onContextMenu(e)
+            }}
+            title={[
+                `Tag "${tag.name}" → commit ${tag.hash.slice(0, 8)}`,
+                tag.annotated ? 'Anotado' : 'Ligero (sin mensaje ni autor propios)',
+                tag.message ? `\n${tag.message}` : '',
+                '\nClick: llevar el grafo a ese commit. Click derecho: crear rama desde el tag, push, borrar…',
+            ]
+                .filter(Boolean)
+                .join(' · ')}
+            style={{paddingLeft: 8 + depth * 12}}
+            className="flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-[11px] text-on-surface-variant hover:bg-surface-variant"
+        >
+            <Icon name="sell" size={13} className="shrink-0 opacity-50" />
+            <span className="truncate">{tag.name}</span>
+            {date && <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-45">{date}</span>}
+        </button>
     )
 }
 

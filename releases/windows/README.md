@@ -11,44 +11,54 @@ etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.1.0 |
-| Archivo | `mini-tools-v1.1.0-windows-amd64.exe` |
+| Versión | 1.2.0 |
+| Archivo | `mini-tools-v1.2.0-windows-amd64.exe` |
 | Tamaño | ~53 MB |
-| SHA-256 | `2c34edddc876b49625d62fd46d50cb86a4c5db83b0f89e9f44f8c8c35fa88941` |
+| SHA-256 | `dcffd3b83e10b9320f8f136141c04cb23a12928c0af0334e20e87a0cbb4c3036` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v1.1.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v1.2.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
 ## Estado de verificación en Windows real
 
-**Esta versión (1.1.0) NO fue verificada en una Windows real.** Lo único
+**Esta versión (1.2.0) NO fue verificada en una Windows real.** Lo único
 confirmado es que cross-compila limpio desde macOS (ninguno de los
 conectores de base de datos —PostgreSQL, Oracle, SQLite, SQL Server,
 MongoDB— ni `go-redis` ni el PTY usan CGO, así que no hace falta un
 toolchain de Windows/mingw).
 
-Que la 1.0.0 sí se haya probado en Windows 10 y 11 **no dice nada de esta
-versión**: 1.1.0 agrega una terminal integrada que en Windows usa un
-mecanismo del sistema operativo distinto al de macOS/Linux, y eso es
-exactamente la clase de cosa que solo se confirma ejecutándola.
+Importante, porque se acumula: **la 1.1.0 tampoco se verificó**, así que
+todo lo que quedó pendiente de confirmar en aquella versión sigue
+pendiente acá — no se reinicia la lista con cada release. Lo último que
+corrió de verdad sobre Windows 10 y 11 fue la 1.0.0.
 
 Queda sin confirmar en Windows, en orden de riesgo:
 
-- **La terminal local integrada.** En Windows usa ConPTY (la API de
-  pseudo-consola del sistema) vía `github.com/aymanbagabas/go-pty`, un
-  camino de código completamente distinto al `openpty` de Unix. Sin
-  probarlo no está confirmado que la shell arranque, que el redimensionado
-  reflowe bien, ni que PowerShell/cmd/Git Bash/WSL se detecten y abran como
-  corresponde.
-- **Las sesiones de agentes de código.** Dependen de encontrar los CLIs en
-  las rutas de instalación típicas de Windows (`%APPDATA%\npm`,
-  `~/.bun/bin`), que no se verificaron contra una instalación real.
+- **La migración 29 del vault, nueva en esta versión.** Al primer arranque
+  crea la tabla `ssh_command_history` y agrega una columna a `settings`
+  sobre el `vault.db` que ya existe en la máquina. Es SQLite puro y el
+  camino es el mismo en todos los SO, pero una migración que falle deja la
+  app sin arrancar, así que es lo primero a mirar si alguien la prueba.
+- **La terminal local integrada** (pendiente desde 1.1.0). En Windows usa
+  ConPTY (la API de pseudo-consola del sistema) vía
+  `github.com/aymanbagabas/go-pty`, un camino de código completamente
+  distinto al `openpty` de Unix. Sin probarlo no está confirmado que la
+  shell arranque, que el redimensionado reflowe bien, ni que
+  PowerShell/cmd/Git Bash/WSL se detecten y abran como corresponde.
+- **Las sesiones de agentes de código** (pendiente desde 1.1.0). Dependen
+  de encontrar los CLIs en las rutas de instalación típicas de Windows
+  (`%APPDATA%\npm`, `~/.bun/bin`), que no se verificaron contra una
+  instalación real.
+- **Las transferencias SFTP con la configuración nueva del cliente.** Esta
+  versión sube el tamaño de paquete a 256 KB y activa lecturas/escrituras
+  concurrentes. Es código Go idéntico en todos los SO, pero el rendimiento
+  real depende de la red y no se midió desde Windows.
 - **WebView2 arranca sin instalar nada.** Confirmado en 1.0.0 sobre
   Windows 10 y 11; es razonable esperar lo mismo acá (no cambió nada del
   bootstrap), pero no se volvió a comprobar.
@@ -86,7 +96,7 @@ borrarla sin más.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v1.1.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v1.2.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

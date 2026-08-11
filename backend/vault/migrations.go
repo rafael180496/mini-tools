@@ -460,6 +460,48 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 29,
+		desc:    "crea ssh_command_history (comandos ejecutados en cada terminal SSH, cifrados) y agrega settings.ssh_history_enabled",
+		apply: func(tx *sql.Tx) error {
+			// Historial de comandos por conexión SSH.
+			//
+			// Cifrado con el MISMO esquema que encrypted_dsn, ssh_keys y las
+			// API keys de agentes (AES-GCM bajo la clave maestra, nonce por
+			// fila), y no por exceso de celo: hasta ahora este historial vivía
+			// solo en memoria y se tiraba al cerrar la pestaña, precisamente
+			// porque una línea de comando puede llevar un secreto adentro
+			// (`mysql -pXXX`, `export TOKEN=…`). Persistirlo en claro sería
+			// cambiar esa decisión sin decirlo. El repositorio además descarta
+			// las líneas que parecen traer una credencial — ver
+			// ssh_history_repo.go — así que el cifrado es la segunda línea de
+			// defensa, no la única.
+			//
+			// ON DELETE CASCADE: borrar la conexión se lleva su historial. Un
+			// historial huérfano no se puede ni mostrar ni limpiar desde la
+			// interfaz, que es la definición de basura que se acumula.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS ssh_command_history (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				conn_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+				encrypted_cmd BLOB NOT NULL,
+				nonce BLOB NOT NULL,
+				ran_at INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// El índice es por (conexión, fecha desc): toda lectura es "los
+			// últimos N de esta conexión", y sin él una tabla que crece con
+			// cada Enter obliga a un scan completo para responderla.
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_ssh_history_conn ON ssh_command_history (conn_id, ran_at DESC)`); err != nil {
+				return err
+			}
+			// Registrar el historial se puede apagar. Arranca en 1 porque es
+			// una función que el usuario pidió, pero apagarlo tiene que estar
+			// a un click y sin explicaciones: es su terminal.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN ssh_history_enabled INTEGER NOT NULL DEFAULT 1`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

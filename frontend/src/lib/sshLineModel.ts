@@ -45,6 +45,14 @@ export class SshLineModel {
         this.cursor = this.line.length
     }
 
+    // onCommit, cuando se le asigna, recibe cada comando que el modelo pudo
+    // reconstruir con confianza. Es el único punto de la app que sabe qué se
+    // ejecutó de verdad en una terminal, así que es también el que alimenta el
+    // historial persistido. Se deja como gancho en vez de llamar al binding
+    // directo para que este archivo siga sin depender de Wails ni del vault:
+    // es un modelo de texto, y así se lo puede razonar (y probar) suelto.
+    onCommit: ((command: string) => void) | null = null
+
     private commit(): void {
         // Only record the command when the line was tracked confidently. If
         // desynced (a Tab completion or history recall changed the real line
@@ -54,8 +62,23 @@ export class SshLineModel {
         if (!this.desynced && cmd && this.history[this.history.length - 1] !== cmd) {
             this.history.push(cmd)
             if (this.history.length > 500) this.history.shift()
+            this.onCommit?.(cmd)
         }
         this.reset()
+    }
+
+    // seedHistory precarga comandos de sesiones anteriores, del más viejo al
+    // más nuevo, para que la sugerencia fantasma sirva desde el primer Enter
+    // de una terminal recién abierta en vez de tener que aprenderlo todo otra
+    // vez cada vez. Lo ya cargado en esta sesión gana: se agrega adelante.
+    seedHistory(commands: string[]): void {
+        const known = new Set(this.history)
+        const seed = commands.filter((c) => c && !known.has(c))
+        this.history = [...seed, ...this.history]
+        // Mismo tope que commit(), aplicado desde el frente: si el historial
+        // viejo es enorme, lo que se descarta es lo más antiguo, no lo de esta
+        // sesión, que es lo más probable que se repita.
+        if (this.history.length > 500) this.history = this.history.slice(this.history.length - 500)
     }
 
     private reset(): void {

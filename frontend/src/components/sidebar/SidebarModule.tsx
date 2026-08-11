@@ -9,6 +9,12 @@ interface SidebarModuleProps {
     // button) rendered to the right of the title, always visible
     // regardless of collapsed state.
     actions?: ReactNode
+    // Cuántas coincidencias tiene este módulo con la búsqueda activa. Se
+    // muestra junto al título — y en particular SIGUE visible con el módulo
+    // colapsado, que es donde importa: con un buscador único para los tres
+    // módulos, uno colapsado escondería sus resultados sin ninguna señal de
+    // que los tiene.
+    matchCount?: number | null
     children: ReactNode
 }
 
@@ -20,7 +26,7 @@ interface SidebarModuleProps {
 // this only hides ONE module's body; the header stays visible so it can be
 // re-expanded, which is the whole point ("no se vea saturado" without
 // losing discoverability).
-export default function SidebarModule({title, collapsed, onToggleCollapsed, actions, children}: SidebarModuleProps) {
+export default function SidebarModule({title, collapsed, onToggleCollapsed, actions, matchCount, children}: SidebarModuleProps) {
     return (
         // Collapsed: shrink-0, just its header row (see the first bug fixed
         // here — collapsing one module used to still leave it holding an
@@ -42,8 +48,22 @@ export default function SidebarModule({title, collapsed, onToggleCollapsed, acti
         // and hand off to its children's own overflow-y-auto when content
         // genuinely doesn't fit (a long connection list still scrolls
         // internally instead of blowing out the sidebar's fixed height).
-        <div className={`flex flex-col ${collapsed ? 'shrink-0' : 'min-h-0 flex-initial'}`}>
-            <div className="flex items-center justify-between gap-1 px-3 pb-2 pt-3">
+        // Separación entre módulos: una línea, no aire.
+        //
+        // Antes cada encabezado traía 12px arriba y 8px abajo de relleno, más
+        // el margen de la lista: con tres módulos apilados eso era casi un
+        // tercio de la barra en blanco, y sin embargo el límite entre uno y
+        // otro se leía peor — espacio vacío separa menos que un borde. Ahora
+        // el relleno baja y el corte lo marca la línea de arriba.
+        //
+        // La línea va en TODOS los módulos, incluido el primero, y no con un
+        // `first:border-t-0`: los tres módulos son hermanos del encabezado y
+        // del buscador dentro del mismo <aside> (SSH y Git llegan como
+        // fragmentos, que no crean nodo), así que `:first-child` sería el
+        // encabezado y la regla no se aplicaría a ninguno. En el primer módulo
+        // la línea igual sirve: lo separa del buscador de arriba.
+        <div className={`flex flex-col border-t border-outline-variant/50 ${collapsed ? 'shrink-0' : 'min-h-0 flex-initial'}`}>
+            <div className="flex items-center justify-between gap-1 px-3 pb-1 pt-2">
                 <button
                     onClick={onToggleCollapsed}
                     title={collapsed ? `Expandir el módulo "${title}"` : `Colapsar el módulo "${title}"`}
@@ -51,6 +71,16 @@ export default function SidebarModule({title, collapsed, onToggleCollapsed, acti
                 >
                     <Icon name={collapsed ? 'chevron_right' : 'expand_more'} size={16} className="shrink-0 opacity-70" />
                     <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">{title}</span>
+                    {matchCount != null && (
+                        <span
+                            title={matchCount === 0 ? `Sin coincidencias en ${title}` : `${matchCount} en ${title} coinciden con la búsqueda`}
+                            className={`shrink-0 rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${
+                                matchCount === 0 ? 'text-on-surface-variant/40' : 'bg-primary/15 text-primary'
+                            }`}
+                        >
+                            {matchCount}
+                        </span>
+                    )}
                 </button>
                 {actions}
             </div>

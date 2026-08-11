@@ -22,6 +22,8 @@ export function AnalyzeRedisPrefixes(arg1:string,arg2:string,arg3:number,arg4:bo
 
 export function AppVersion():Promise<string>;
 
+export function AppendSshHistory(arg1:string,arg2:string):Promise<boolean>;
+
 export function BackupVault(arg1:string):Promise<string>;
 
 export function BeginRedisTransaction(arg1:string):Promise<void>;
@@ -48,9 +50,13 @@ export function ChmodSftpPath(arg1:string,arg2:string,arg3:number):Promise<void>
 
 export function ClearAgentKey(arg1:string):Promise<void>;
 
+export function ClearAllSshHistory():Promise<number>;
+
 export function ClearQueryHistory(arg1:string):Promise<void>;
 
 export function ClearRecentFiles():Promise<void>;
+
+export function ClearSshHistory(arg1:string):Promise<number>;
 
 export function CloseLocalTerminal(arg1:string):Promise<void>;
 
@@ -336,6 +342,8 @@ export function ListSftpDir(arg1:string,arg2:string):Promise<Array<sftpx.FileEnt
 
 export function ListShells():Promise<Array<localterm.Shell>>;
 
+export function ListSshHistory(arg1:string,arg2:number):Promise<Array<vault.SshHistoryEntry>>;
+
 export function ListSshSnippets():Promise<Array<vault.SshSnippet>>;
 
 export function LocalShellLabel(arg1:string):Promise<string>;
@@ -476,6 +484,8 @@ export function SetRememberMasterKey(arg1:boolean):Promise<void>;
 
 export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 
+export function SetSshHistoryEnabled(arg1:boolean):Promise<void>;
+
 export function SetSshTerminalTheme(arg1:string):Promise<void>;
 
 export function SetTerminalFontSize(arg1:number):Promise<void>;
@@ -485,6 +495,8 @@ export function SetTheme(arg1:string):Promise<void>;
 export function SftpHomeDir(arg1:string):Promise<string>;
 
 export function SftpPathPermissions(arg1:string,arg2:string):Promise<sftpx.PermInfo>;
+
+export function SshHistoryEnabled():Promise<boolean>;
 
 export function StartSftpTransfer(arg1:main.SftpTransferInput):Promise<void>;
 

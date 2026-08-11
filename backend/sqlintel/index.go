@@ -36,6 +36,13 @@ type TableEntry struct {
 	// Qualified is "schema.name" when the table has a schema, else "name".
 	Qualified string
 
+	// FromScript marks a table that exists only in the buffer being edited —
+	// a CREATE TABLE further up the file, a CTE of this statement. Surfaced
+	// in the suggestion's detail line, because "this name is not in the
+	// database yet" is something the author needs to see, not be shielded
+	// from.
+	FromScript bool
+
 	Columns   []*ColumnEntry
 	columnsBy map[string]*ColumnEntry
 	// outgoing groups this table's foreign keys by referenced table (lower
@@ -76,6 +83,51 @@ type SchemaIndex struct {
 
 	tablesBy  map[string][]*TableEntry
 	schemasBy map[string][]*TableEntry
+	// incoming is the reverse of TableEntry.outgoing: referenced table (lower
+	// case) → the tables holding a foreign key at it. Join prediction needs
+	// both directions, and without this the only way to answer "what can join
+	// onto USUARIOS?" is a scan of every table's FKs — a full sweep of the
+	// catalog on a keystroke.
+	incoming map[string][]*TableEntry
+	// script holds the objects the edited buffer declares (see script.go).
+	// It is a per-request overlay attached by withScript, never part of a
+	// stored index: it changes with every keystroke, while the catalog index
+	// is rebuilt only on a metadata refresh.
+	script []*TableEntry
+}
+
+// withScript returns a view of idx that also resolves the objects declared
+// in the buffer. The clone is a shallow struct copy — the slices and maps
+// built by BuildIndex are read-only from that point on, so sharing them
+// across requests is safe and keeps this O(1) instead of recompiling a
+// catalog of thousands of tables on every keystroke.
+func (idx *SchemaIndex) withScript(script []*TableEntry) *SchemaIndex {
+	if len(script) == 0 {
+		return idx
+	}
+	var clone SchemaIndex
+	if idx != nil {
+		clone = *idx
+	}
+	clone.script = script
+	return &clone
+}
+
+// scriptTable resolves name against the buffer's own declarations.
+func (idx *SchemaIndex) scriptTable(schema, name string) (*TableEntry, bool) {
+	if idx == nil {
+		return nil, false
+	}
+	lower := strings.ToLower(name)
+	for _, t := range idx.script {
+		if t.Lower != lower {
+			continue
+		}
+		if schema == "" || strings.EqualFold(t.Schema, schema) {
+			return t, true
+		}
+	}
+	return nil, false
 }
 
 // BuildIndex compiles metadata into a SchemaIndex. A nil meta yields an
@@ -84,6 +136,7 @@ func BuildIndex(meta *db.SchemaMetadata) *SchemaIndex {
 	idx := &SchemaIndex{
 		tablesBy:  map[string][]*TableEntry{},
 		schemasBy: map[string][]*TableEntry{},
+		incoming:  map[string][]*TableEntry{},
 	}
 	if meta == nil {
 		return idx
@@ -107,6 +160,9 @@ func BuildIndex(meta *db.SchemaMetadata) *SchemaIndex {
 			fk := &t.ForeignKeys[j]
 			fkByColumn[strings.ToLower(fk.Column)] = fk
 			key := strings.ToLower(fk.ReferencedTable)
+			if _, already := entry.outgoing[key]; !already {
+				idx.incoming[key] = append(idx.incoming[key], entry)
+			}
 			entry.outgoing[key] = append(entry.outgoing[key], fk)
 		}
 
@@ -176,6 +232,11 @@ func (idx *SchemaIndex) Table(schema, name string) (*TableEntry, bool) {
 	if idx == nil {
 		return nil, false
 	}
+	// The buffer wins over the catalog: a CTE named like an existing table
+	// shadows it inside that statement, which is what SQL itself does.
+	if t, ok := idx.scriptTable(schema, name); ok {
+		return t, true
+	}
 	candidates := idx.tablesBy[strings.ToLower(name)]
 	if len(candidates) == 0 {
 		return nil, false
@@ -196,7 +257,52 @@ func (idx *SchemaIndex) TablesInSchema(schema string) []*TableEntry {
 	if idx == nil {
 		return nil
 	}
-	return idx.schemasBy[strings.ToLower(schema)]
+	out := idx.schemasBy[strings.ToLower(schema)]
+	for _, t := range idx.script {
+		if strings.EqualFold(t.Schema, schema) {
+			out = append(out[:len(out):len(out)], t)
+		}
+	}
+	return out
+}
+
+// AllTables walks the catalog and the buffer's own declarations, script
+// objects first — they are the ones the author has in mind right now.
+func (idx *SchemaIndex) AllTables(fn func(*TableEntry)) {
+	if idx == nil {
+		return
+	}
+	for _, t := range idx.script {
+		fn(t)
+	}
+	for _, t := range idx.Tables {
+		fn(t)
+	}
+}
+
+// RelatedTables returns the tables joinable to t through a declared foreign
+// key, in either direction, without scanning the catalog.
+func (idx *SchemaIndex) RelatedTables(t *TableEntry) []*TableEntry {
+	if idx == nil || t == nil {
+		return nil
+	}
+	seen := map[*TableEntry]bool{t: true}
+	var out []*TableEntry
+	for name := range t.outgoing {
+		for _, cand := range idx.tablesBy[name] {
+			if !seen[cand] {
+				seen[cand] = true
+				out = append(out, cand)
+			}
+		}
+	}
+	for _, cand := range idx.incoming[t.Lower] {
+		if !seen[cand] {
+			seen[cand] = true
+			out = append(out, cand)
+		}
+	}
+	return out
 }
 
 // Resolve maps a parsed TableRef to its indexed table. Derived tables

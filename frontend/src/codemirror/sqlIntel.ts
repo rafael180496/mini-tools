@@ -24,18 +24,24 @@ import {CompleteSQL, PrimeSchemaIndex, RecordCompletionUse, SuggestInlineSQL} fr
 import type {sqlintel} from '../../wailsjs/go/models'
 
 // Item kinds mirrored from backend/sqlintel/engine.go's Kind* constants —
-// this map is the contract between the two halves. Values are CodeMirror's
-// built-in completion types, which is what picks the icon shown next to
-// each suggestion.
+// this map is the contract between the two halves. The value becomes the
+// option's CSS class (cm-completionIcon-<type>), which is what picks the
+// icon.
+//
+// The types are deliberately NOT CodeMirror's built-ins ('class',
+// 'property', 'namespace'…). Those come with abstract geometric glyphs — a
+// table rendered as "○" and a column as "□" — that carry no meaning in SQL
+// and, at 12px, read as a checkbox. Own names mean own icons, with no
+// specificity fight against the library's defaults.
 const KIND_TO_TYPE: Record<string, string> = {
-    table: 'class',
-    column: 'property',
-    schema: 'namespace',
-    function: 'function',
-    routine: 'method',
-    keyword: 'keyword',
-    snippet: 'text',
-    join: 'interface',
+    table: 'sqlintel-table',
+    column: 'sqlintel-column',
+    schema: 'sqlintel-schema',
+    function: 'sqlintel-function',
+    routine: 'sqlintel-routine',
+    keyword: 'sqlintel-keyword',
+    snippet: 'sqlintel-snippet',
+    join: 'sqlintel-join',
 }
 
 // Go returns an absolute score (roughly 0-1800). CodeMirror expects a
@@ -116,10 +122,21 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
         const word = context.matchBefore(/[\w$#]*/)
         const qualified = context.matchBefore(/[\w$#]\.[\w$#]*$/) !== null
 
-        // Without an explicit trigger, only fire once there is something to
-        // match on — a bare cursor after a space would otherwise pull the
-        // whole scope across the bridge on every keystroke.
-        if (!context.explicit && !qualified && (!word || word.from === word.to)) return null
+        // Nothing typed yet is the position where suggestions are most
+        // wanted ("FROM |", "WHERE |", "SELECT a, |") and also the one that
+        // would pull the whole scope across the bridge on every space bar.
+        // The compromise is to ask only where the text right before the
+        // cursor is a clause keyword, a comma or an open paren. Go narrows it
+        // a second time by the clause it parsed (schema-backed clauses only,
+        // and only tables/columns in the answer), so the two gates are
+        // complementary: this one keeps the bridge quiet, that one keeps the
+        // popup relevant. Anywhere else a bare cursor waits for Ctrl-Space.
+        // The 64-char window is cut at its first whitespace so a slice that
+        // began mid-word ("…rgin ") cannot pass that fragment off as "in".
+        const before = context.state.sliceDoc(Math.max(0, context.pos - 64), context.pos).replace(/^\S+/, '')
+        const autoOpen = /(?:\b(?:from|join|where|on|select|set|by|having|and|or|like|in)\s+|[,(]\s*)$/i.test(before)
+
+        if (!context.explicit && !qualified && !autoOpen && (!word || word.from === word.to)) return null
 
         let resp: sqlintel.Response
         try {
@@ -161,6 +178,182 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
         }
     }
 }
+
+// --- Popup presentation ---------------------------------------------------
+
+// CodeMirror's stock completion popup is a narrow list of bare labels: the
+// detail sits inline right after the name, so a column reads as one run of
+// text ("NUM_AF AN_TRABPEND_AF · VARCHAR2 · PK") and the eye has nothing to
+// anchor on when scanning twenty of them. Every rule below serves the same
+// goal — the NAME is the column being scanned, and where it comes from and
+// what type it is are supporting text, aligned in their own column to the
+// right so they can be ignored until wanted.
+//
+// Colours come from the app's design tokens rather than hard-coded values,
+// which is also what makes the popup follow the light/dark theme without a
+// second definition (see .claude/specs/design-system.md).
+export const sqlCompletionTheme = EditorView.baseTheme({
+    '.cm-tooltip.cm-tooltip-autocomplete': {
+        border: '1px solid var(--color-outline-variant)',
+        borderRadius: '8px',
+        backgroundColor: 'var(--color-surface-container-high)',
+        boxShadow: '0 8px 24px rgb(0 0 0 / 0.28)',
+        overflow: 'hidden',
+    },
+    // A whole JOIN clause is a long label; the popup is given room to show
+    // one rather than clipping every suggestion to the width of a name.
+    '.cm-tooltip.cm-tooltip-autocomplete > ul': {
+        fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
+        fontSize: '12px',
+        maxHeight: '18em',
+        // El piso sube junto con el del nombre (18em) + ícono + un detalle
+        // corto; el techo deja lugar a una cláusula JOIN entera, que es el
+        // ítem más largo que este motor produce.
+        minWidth: '32em',
+        maxWidth: 'min(60em, 92vw)',
+    },
+    // Every rule below is written one class deeper than the library's own
+    // (".cm-tooltip.cm-tooltip-autocomplete …" rather than plain
+    // ".cm-completionDetail"). CodeMirror's base theme styles the same
+    // elements at equal specificity, so at equal specificity the winner is
+    // whichever style sheet the browser happened to insert last — which is
+    // how the detail text kept rendering in the library's italic even with
+    // this rule present.
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5em',
+        padding: '3px 8px',
+        lineHeight: '1.5',
+        color: 'var(--color-on-surface)',
+    },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+        backgroundColor: 'color-mix(in srgb, var(--color-primary) 18%, transparent)',
+        color: 'var(--color-on-surface)',
+    },
+    // El nombre manda, y eso hay que decirlo en dos lugares del layout:
+    //
+    // `min-width` reserva ancho para un identificador entero. Antes decía 0, y
+    // un elemento flex con min-width 0 no aporta NADA al ancho intrínseco del
+    // contenedor: el popup se medía como si los nombres no existieran, salía
+    // angosto, y adentro de ese ancho el único que cedía era justamente el
+    // nombre. Resultado: "TIP_FA…" al lado de un detalle completo. 18em son
+    // los 30 caracteres que Oracle permite en un identificador, así que la
+    // enorme mayoría entra sin cortarse.
+    //
+    // Reservarlo también cuando el nombre es corto es deliberado: alinea los
+    // detalles en una columna en vez de dejarlos escalonados según el largo de
+    // cada nombre, que es lo que hace escaneable una lista de veinte.
+    '.cm-tooltip-autocomplete .cm-completionLabel': {
+        flex: '1 1 auto',
+        minWidth: '18em',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+    },
+    // The typed fragment, highlighted in place instead of underlined: it
+    // shows WHY a suggestion is in the list, which matters most when the
+    // match is an acronym or a subsequence rather than a prefix.
+    '.cm-tooltip-autocomplete .cm-completionMatchedText': {
+        textDecoration: 'none',
+        fontWeight: '700',
+        color: 'var(--color-primary)',
+    },
+    // Supporting text, never the thing being scanned: smaller, dimmer, and
+    // upright — italic at 11px in a monospace face is the hardest possible
+    // combination to read at a glance.
+    // El detalle es el que cede. `0 1 auto` con min-width 0 lo hace encogible,
+    // así que cuando no entra todo se corta "FUECICLO · VARCHAR2 · PK · NOT
+    // NULL" —donde lo que se pierde es la cola, que es lo menos importante— en
+    // vez de cortarse el nombre de la columna.
+    '.cm-tooltip-autocomplete .cm-completionDetail': {
+        flex: '0 1 auto',
+        minWidth: '0',
+        fontStyle: 'normal',
+        fontSize: '11px',
+        opacity: '0.6',
+        maxWidth: '24em',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+    },
+    // Icons: the app's self-hosted Material Symbols, addressed by ligature
+    // name exactly like <Icon name="…" /> does everywhere else (see
+    // components/Icon.tsx). Each name below was checked against the shipped
+    // woff2 — an unknown ligature renders as the literal word with no error,
+    // which is the failure mode the design-system rules warn about.
+    //
+    // Colour groups the kinds rather than tinting each one differently: a
+    // schema object, a value, something executable, and plain syntax. Four
+    // groups is what a glance can actually separate; eight tints would just
+    // be noise. All four are semantic MD3 tokens, so they follow the theme.
+    '.cm-tooltip-autocomplete .cm-completionIcon': {
+        flex: '0 0 auto',
+        width: '1.15em',
+        paddingRight: '0',
+        opacity: '1',
+        fontFamily: "'Material Symbols Outlined'",
+        fontSize: '15px',
+        fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
+        lineHeight: '1',
+        textAlign: 'center',
+        // The ligature is what turns "view_column" into a glyph; without it
+        // the popup would print the name.
+        fontFeatureSettings: "'liga'",
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-table::after': {
+        content: "'table'",
+        color: 'var(--color-primary)',
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-schema::after': {
+        content: "'schema'",
+        color: 'var(--color-secondary)',
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-column::after': {
+        content: "'view_column'",
+        color: 'var(--color-tertiary)',
+    },
+    // A predicted JOIN is the one suggestion that writes a whole clause, so
+    // it gets the icon that says "these two tables meet here".
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-join::after': {
+        content: "'join_inner'",
+        color: 'var(--color-primary)',
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-function::after': {
+        content: "'function'",
+        color: 'var(--color-secondary)',
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-routine::after': {
+        content: "'bolt'",
+        color: 'var(--color-secondary)',
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-keyword::after': {
+        content: "'abc'",
+        color: 'var(--color-on-surface-variant)',
+    },
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-snippet::after': {
+        content: "'code'",
+        color: 'var(--color-on-surface-variant)',
+    },
+    // lang-sql contributes its own keyword completions from a separate
+    // source and types them 'keyword'; without this they would keep the
+    // library's 🔑 next to this engine's identical suggestions. The extra
+    // class outranks the default rule whatever order the sheets land in.
+    '.cm-tooltip-autocomplete .cm-completionIcon-keyword::after': {
+        content: "'abc'",
+        color: 'var(--color-on-surface-variant)',
+    },
+    '.cm-tooltip.cm-completionInfo': {
+        border: '1px solid var(--color-outline-variant)',
+        borderRadius: '8px',
+        backgroundColor: 'var(--color-surface-container-high)',
+        color: 'var(--color-on-surface)',
+        padding: '6px 8px',
+        maxWidth: '22em',
+        fontSize: '11px',
+        lineHeight: '1.45',
+    },
+})
 
 // --- Inline ghost text ----------------------------------------------------
 

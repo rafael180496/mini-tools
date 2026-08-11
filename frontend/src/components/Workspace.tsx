@@ -1,5 +1,6 @@
-import {lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
+import {lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
+import DbmsOutputPanel from './results/DbmsOutputPanel'
 import SshConnectionTree from './sidebar/SshConnectionTree'
 import ConfirmDialog from './ConfirmDialog'
 import DDLViewerModal, {type DDLObjectType} from './DDLViewerModal'
@@ -497,7 +498,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // the Explain buttons and closed with its own X, like a result tab —
     // rather than a fourth panel docked under everything else, which is
     // what it used to be.
-    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'console' | 'history' | 'explain'>('results')
+    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'console' | 'dbms' | 'history' | 'explain'>('results')
     const [historyEntries, setHistoryEntries] = useState<vault.HistoryEntry[]>([])
     const [historyLoading, setHistoryLoading] = useState(false)
     const [historyError, setHistoryError] = useState('')
@@ -570,6 +571,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const [pageSize, setPageSize] = useState(500)
     const [gitSyncToken, setGitSyncToken] = useState(0)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    // Búsqueda única de la barra lateral: la comparten los tres módulos
+    // (conexiones, SSH y Git), que antes tenían una caja "Buscar…" cada uno.
+    // Vive acá y no en ConnectionTree porque los otros dos módulos se montan
+    // como `extraModules` desde este componente.
+    const [sidebarFilter, setSidebarFilter] = useState('')
     const [editorHeight, setEditorHeightState] = useState(EDITOR_HEIGHT_DEFAULT)
     // "Recordar clave" toggle — whether the vault auto-unlocks from the OS
     // keychain on the next launch (see TryAutoUnlock in App.tsx). Read here
@@ -1474,7 +1480,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             .finally(() => setHistoryLoading(false))
     }
 
-    function selectBottomTab(tab: 'results' | 'console' | 'history' | 'explain') {
+    function selectBottomTab(tab: 'results' | 'console' | 'dbms' | 'history' | 'explain') {
         if (tab === 'history' && activeBottomTab !== 'history') loadHistory()
         setActiveBottomTab(tab)
     }
@@ -2117,6 +2123,22 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     useEffect(refreshLiveConnections, [selected, activeTabConnection, reloadToken])
 
     const activeResult = resultSets[activeResultTab]
+    // La salida de DBMS_OUTPUT de TODO el script, no la del resultset que
+    // estés mirando: un script con varios bloques PL/SQL escribe desde todos, y
+    // atarla a la pestaña de resultados activa hacía que la salida apareciera y
+    // desapareciera según en qué grilla estuvieras parado. Se concatena en el
+    // orden en que se ejecutaron los statements, que es el orden en que se
+    // imprimieron las líneas.
+    const dbmsOutputLines = useMemo(() => resultSets.flatMap((r) => r.dbmsOutput ?? []), [resultSets])
+
+    // La pestaña DBMS_OUTPUT solo existe mientras haya salida, así que una
+    // ejecución que no genera ninguna la hace desaparecer — y dejaría la vista
+    // parada en una pestaña que ya no está en la tira, mostrando un panel
+    // vacío sin nada resaltado arriba. Se vuelve a Resultados, que es donde
+    // está lo que esa ejecución sí produjo.
+    useEffect(() => {
+        if (dbmsOutputLines.length === 0 && activeBottomTab === 'dbms') setActiveBottomTab('results')
+    }, [dbmsOutputLines.length, activeBottomTab])
     const isSqlActive =
         !!activeTabConnection &&
         activeTabConnection.dbType !== 'redis' &&
@@ -2165,6 +2187,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 onConfigureSchemas={setSchemaPickerConn}
                 collapsed={sidebarCollapsed}
                 onToggleCollapsed={toggleSidebarCollapsed}
+                sharedFilter={sidebarFilter}
+                onSharedFilterChange={setSidebarFilter}
                 folders={folders}
                 moduleCollapsed={collapsedModules.has('connections')}
                 onToggleModuleCollapsed={() => toggleModuleCollapsed('connections')}
@@ -2189,6 +2213,9 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         reloadToken={reloadToken}
                         moduleCollapsed={collapsedModules.has('ssh-connections')}
                         onToggleModuleCollapsed={() => toggleModuleCollapsed('ssh-connections')}
+                        rail={sidebarCollapsed}
+                        sharedFilter={sidebarFilter}
+                        onSharedFilterChange={setSidebarFilter}
                         folders={folders}
                         onCreateFolder={(name, parentId) => createFolder(name, parentId, 'ssh')}
                         onRenameFolder={renameFolder}
@@ -2200,6 +2227,9 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     <GitRepoTree
                         moduleCollapsed={collapsedModules.has('git-repos')}
                         onToggleModuleCollapsed={() => toggleModuleCollapsed('git-repos')}
+                        rail={sidebarCollapsed}
+                        sharedFilter={sidebarFilter}
+                        onSharedFilterChange={setSidebarFilter}
                         onOpenRepo={openGitRepo}
                         activeTabRepoId={activeTabData?.repoId ?? null}
                         reloadToken={reloadToken}
@@ -2718,6 +2748,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         >
                             <SshTerminalTab
                                 connId={t.connId as string}
+                                connName={connections.find((c) => c.id === t.connId)?.name ?? t.title}
                                 theme={theme}
                                 terminalThemeId={terminalThemeId}
                                 onChangeTerminalTheme={changeTerminalTheme}
@@ -2834,7 +2865,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
                             <button
                                 onClick={() => selectBottomTab('results')}
-                                title="Resultado de la última ejecución — el ícono de terminal indica que algún statement generó DBMS_OUTPUT (PL/SQL Oracle), aunque estés viendo otra pestaña"
+                                title="Resultado de la última ejecución: la grilla de filas devueltas"
                                 className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
                                     activeBottomTab === 'results'
                                         ? 'bg-surface text-on-surface'
@@ -2843,9 +2874,6 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             >
                                 <Icon name="table_chart" size={14} className="opacity-70" />
                                 Resultados
-                                {resultSets.some((r) => r.dbmsOutput.length > 0) && (
-                                    <Icon name="terminal" size={14} className="text-primary" filled />
-                                )}
                             </button>
                             {!isRedisActive && !isMongoActive && (
                                 <button
@@ -2862,6 +2890,31 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     {consoleLog.some((e) => e.status === 'error') && (
                                         <Icon name="error" size={14} className="text-error" filled />
                                     )}
+                                </button>
+                            )}
+                            {/* DBMS_OUTPUT es una pestaña y no un cajón al pie
+                                de "Resultados": un bloque PL/SQL de proceso no
+                                devuelve resultset, así que su salida quedaba
+                                apretada en 128px debajo de una grilla vacía
+                                enorme. Como pestaña recibe el panel entero, y
+                                sigue el mismo estándar que Consola — solo
+                                aparece cuando hay algo que mostrar, y avisa
+                                desde el título cuánto hay. */}
+                            {dbmsOutputLines.length > 0 && (
+                                <button
+                                    onClick={() => selectBottomTab('dbms')}
+                                    title={`Salida de DBMS_OUTPUT.PUT_LINE del último bloque PL/SQL ejecutado — ${dbmsOutputLines.length} ${dbmsOutputLines.length === 1 ? 'línea' : 'líneas'}, con filtro y copiado`}
+                                    className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
+                                        activeBottomTab === 'dbms'
+                                            ? 'bg-surface text-on-surface'
+                                            : 'text-on-surface-variant hover:text-on-surface'
+                                    }`}
+                                >
+                                    <Icon name="wysiwyg" size={14} className="opacity-70" />
+                                    DBMS_OUTPUT
+                                    <span className="rounded-full bg-primary/15 px-1.5 font-mono text-[10px] tabular-nums text-primary">
+                                        {dbmsOutputLines.length}
+                                    </span>
                                 </button>
                             )}
                             <button
@@ -3003,21 +3056,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 </div>
                             )}
 
-                            {activeResult && activeResult.dbmsOutput.length > 0 && (
-                                <div className="border-t border-outline-variant bg-surface-container-lowest">
-                                    <div className="flex items-center gap-1.5 px-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
-                                        <Icon name="terminal" size={12} />
-                                        DBMS_OUTPUT
-                                    </div>
-                                    <pre className="max-h-32 overflow-y-auto p-2 font-mono text-xs text-on-surface-variant">
-                                        {activeResult.dbmsOutput.join('\n')}
-                                    </pre>
-                                </div>
-                            )}
                         </>
                     )
                 ) : activeBottomTab === 'console' ? (
                     <ExecutionConsole entries={consoleLog} running={running} onClear={() => setConsoleLog([])} />
+                ) : activeBottomTab === 'dbms' ? (
+                    <DbmsOutputPanel lines={dbmsOutputLines} />
                 ) : activeBottomTab === 'explain' ? (
                     <Suspense fallback={null}>
                         <ExplainPlanPanel plan={explainPlan} loading={explainLoading} error={explainError} />

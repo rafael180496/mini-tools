@@ -117,6 +117,7 @@ export default function SshHybridTab({
             <div className="min-h-0 flex-1 overflow-hidden">
                 <SshTerminalTab
                     connId={connId}
+                    connName={connName}
                     theme={theme}
                     terminalThemeId={terminalThemeId}
                     terminalFontSize={terminalFontSize}
