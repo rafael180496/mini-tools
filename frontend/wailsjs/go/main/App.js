@@ -822,6 +822,10 @@ export function RestoreVaultBackupFromFile(arg1, arg2) {
   return window['go']['main']['App']['RestoreVaultBackupFromFile'](arg1, arg2);
 }
 
+export function RevealConnectionPassword(arg1, arg2) {
+  return window['go']['main']['App']['RevealConnectionPassword'](arg1, arg2);
+}
+
 export function RollbackTransaction(arg1) {
   return window['go']['main']['App']['RollbackTransaction'](arg1);
 }

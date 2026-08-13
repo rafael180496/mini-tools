@@ -239,6 +239,12 @@ func (s *Store) DeleteConnection(id string) error {
 // ConnectionDSN decrypts and returns the DSN for id. Internal use only (the
 // pool manager) — this value must never be returned from a bound App
 // method to the frontend.
+//
+// Única excepción, y es sobre UN campo, no sobre el DSN: App.
+// RevealConnectionPassword extrae de acá el parámetro `password` y devuelve
+// solo eso, tras reconfirmar la clave maestra — es el "ver/copiar la
+// contraseña guardada" del diálogo de conexión. El DSN armado sigue sin
+// cruzar nunca al frontend; ver el comentario de esa función para el porqué.
 func (s *Store) ConnectionDSN(id string) (db.DBType, string, error) {
 	key, err := s.gate.Key()
 	if err != nil {

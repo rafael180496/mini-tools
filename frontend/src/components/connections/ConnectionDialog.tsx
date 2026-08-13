@@ -16,6 +16,7 @@ import {ENVIRONMENTS, type EnvironmentId} from '../../lib/environments'
 import DbTypeIcon, {DB_TYPES, dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
 import Select from '../Select'
+import PasswordField from './PasswordField'
 import SshKeyVaultDialog from './SshKeyVaultDialog'
 import Toggle from '../Toggle'
 
@@ -638,16 +639,13 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className={inputClass}
                             />
                         </label>
-                        <label className={labelClass}>
-                            Password
-                            <input
-                                type="password"
-                                value={params.password ?? ''}
-                                onChange={(e) => setParam('password', e.target.value)}
-                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
-                                className={inputClass}
-                            />
-                        </label>
+                        <PasswordField
+                            value={params.password ?? ''}
+                            onChange={(v) => setParam('password', v)}
+                            editingId={editingId}
+                            inputClass={inputClass}
+                            labelClass={labelClass}
+                        />
                         <label className={labelClass}>
                             Base de datos
                             <input
@@ -710,16 +708,13 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className={inputClass}
                             />
                         </label>
-                        <label className={labelClass}>
-                            Password
-                            <input
-                                type="password"
-                                value={params.password ?? ''}
-                                onChange={(e) => setParam('password', e.target.value)}
-                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
-                                className={inputClass}
-                            />
-                        </label>
+                        <PasswordField
+                            value={params.password ?? ''}
+                            onChange={(v) => setParam('password', v)}
+                            editingId={editingId}
+                            inputClass={inputClass}
+                            labelClass={labelClass}
+                        />
                         <label className={labelClass}>
                             Base de datos
                             <input
@@ -780,16 +775,13 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className={inputClass}
                             />
                         </label>
-                        <label className={labelClass}>
-                            Password
-                            <input
-                                type="password"
-                                value={params.password ?? ''}
-                                onChange={(e) => setParam('password', e.target.value)}
-                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
-                                className={inputClass}
-                            />
-                        </label>
+                        <PasswordField
+                            value={params.password ?? ''}
+                            onChange={(v) => setParam('password', v)}
+                            editingId={editingId}
+                            inputClass={inputClass}
+                            labelClass={labelClass}
+                        />
                         <div className={labelClass}>
                             Modo de conexión
                             <Select
@@ -886,16 +878,14 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             Usuario (opcional)
                             <input value={params.user ?? ''} onChange={(e) => setParam('user', e.target.value)} className={inputClass} />
                         </label>
-                        <label className={labelClass}>
-                            Password (opcional)
-                            <input
-                                type="password"
-                                value={params.password ?? ''}
-                                onChange={(e) => setParam('password', e.target.value)}
-                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
-                                className={inputClass}
-                            />
-                        </label>
+                        <PasswordField
+                            value={params.password ?? ''}
+                            onChange={(v) => setParam('password', v)}
+                            editingId={editingId}
+                            label="Password (opcional)"
+                            inputClass={inputClass}
+                            labelClass={labelClass}
+                        />
                         <label className={labelClass}>
                             Base de datos (opcional)
                             <input
@@ -1018,16 +1008,13 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 className={inputClass}
                             />
                         </label>
-                        <label className={labelClass}>
-                            Password
-                            <input
-                                type="password"
-                                value={params.password ?? ''}
-                                onChange={(e) => setParam('password', e.target.value)}
-                                placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
-                                className={inputClass}
-                            />
-                        </label>
+                        <PasswordField
+                            value={params.password ?? ''}
+                            onChange={(v) => setParam('password', v)}
+                            editingId={editingId}
+                            inputClass={inputClass}
+                            labelClass={labelClass}
+                        />
                         {redisMode !== 'cluster' && (
                             <label className={labelClass}>
                                 Índice de DB (0-15)
@@ -1100,16 +1087,13 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                         </div>
 
                         {sshAuthMethod === 'password' && (
-                            <label className={labelClass}>
-                                Password
-                                <input
-                                    type="password"
-                                    value={params.password ?? ''}
-                                    onChange={(e) => setParam('password', e.target.value)}
-                                    placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
-                                    className={inputClass}
-                                />
-                            </label>
+                            <PasswordField
+                                value={params.password ?? ''}
+                                onChange={(v) => setParam('password', v)}
+                                editingId={editingId}
+                                inputClass={inputClass}
+                                labelClass={labelClass}
+                            />
                         )}
 
                         {sshAuthMethod === 'key' && (

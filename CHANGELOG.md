@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **Recuperar la contraseña guardada de una conexión, en SSH y en todos los motores de base de datos.** El campo decía "Dejar en blanco para mantener la actual" y no había forma de leer esa contraseña: para saberla había que buscarla en otro lado, aunque estuviera guardada acá y fuera tuya. Ahora el campo tiene tres gestos, que son tres cosas distintas y por eso son tres controles: **"Ver la actual"** trae del vault la contraseña ya guardada y la deja en el campo (editable, se guarda como cualquier otro cambio); el **ojo** destapa lo que estás tipeando; y **copiar** manda al portapapeles lo que haya en el campo. La distinción importa porque el ojo sobre un campo vacío no muestra nada, y eso se lee como que está roto.
+
+  Aplica a **SSH, PostgreSQL, Oracle, SQL Server, MongoDB y Redis** — un solo componente para los seis, no seis copias que se desincronizan. La passphrase de una llave privada y la clave de un SQLite cifrado quedan afuera: son credenciales distintas, con su propio campo, y el binding no las devuelve.
+
+  **Pide la clave maestra de nuevo antes de mostrarla.** No porque agregue una barrera criptográfica —quien tiene el vault abierto ya podía conectarse a ese servidor igual— sino porque "dejé la app abierta" y "quiero esta contraseña en pantalla" no son la misma decisión; es el mismo gesto que ya pide el backup del vault. El binding nuevo devuelve **solo el campo `password`**, nunca el DSN armado: el resto de lo que ese DSN lleva (host, usuario, llave privada inline) sigue sin cruzar al frontend, que era la regla escrita en `ConnectionDSN` y que quedó documentada ahí como excepción acotada en vez de silenciosamente relajada. La llave privada de una conexión por key **no** se expone por acá: un `.pem` entero es material de otra escala y para eso está el gestor central de llaves.
+
 ## [1.2.0] - 2026-08-11
 
 ### Agregado

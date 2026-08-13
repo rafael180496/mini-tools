@@ -699,6 +699,49 @@ func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
 // the connection's current DSN before rebuilding. Closes any open pool and
 // drops cached metadata for id afterward, since the target this connID
 // points at may have changed.
+// RevealConnectionPassword devuelve en claro la contraseña guardada de una
+// conexión, después de reconfirmar la clave maestra.
+//
+// Es una excepción deliberada y acotada a la regla de ConnectionDSN ("este
+// valor nunca sale hacia el frontend"), y vale la pena decir por qué no la
+// contradice:
+//
+//   - Devuelve SOLO el parámetro `password`, nunca el DSN armado. El resto de
+//     lo que lleva el DSN (host, puerto, usuario, llave privada inline) no sale
+//     por acá.
+//   - Quien puede llamarla ya tiene el vault abierto, y con el vault abierto ya
+//     podía conectarse a ese servidor. No abre una puerta que estuviera
+//     cerrada: recupera un dato que es del usuario y que él mismo guardó.
+//   - Aun así pide la clave maestra de nuevo (VerifyPassword, el mismo gesto
+//     que exige el backup del vault), porque "la app quedó abierta" y "quiero
+//     ver esta contraseña" no son la misma decisión.
+//
+// La llave privada de una conexión por key NO se expone por acá: un `.pem`
+// entero es material de otra escala, y para eso está el gestor central de
+// llaves.
+func (a *App) RevealConnectionPassword(id string, masterPassword string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	if err := a.vault.VerifyPassword(masterPassword); err != nil {
+		return "", err
+	}
+
+	dbType, dsn, err := a.vault.ConnectionDSN(id)
+	if err != nil {
+		return "", err
+	}
+	connector, err := db.ConnectorFor(dbType)
+	if err != nil {
+		return "", err
+	}
+	params, err := connector.ParseDSN(dsn)
+	if err != nil {
+		return "", err
+	}
+	return params["password"], nil
+}
+
 func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vault.ConnectionSummary, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err

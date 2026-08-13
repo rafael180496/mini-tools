@@ -422,6 +422,8 @@ export function RestoreVaultBackupFirstRun(arg1:string,arg2:string):Promise<void
 
 export function RestoreVaultBackupFromFile(arg1:string,arg2:string):Promise<void>;
 
+export function RevealConnectionPassword(arg1:string,arg2:string):Promise<string>;
+
 export function RollbackTransaction(arg1:string):Promise<void>;
 
 export function RunRedisLuaScript(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<string>):Promise<redisquery.LuaResult>;
