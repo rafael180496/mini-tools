@@ -42,6 +42,11 @@ func SplitStatements(sqlText string) []Statement {
 	blockDepth := 0
 	awaitingBegin := false
 	inPLSQL := false
+	// Ver el bloque de BEGIN más abajo: juntos distinguen el BEGIN del cuerpo
+	// de un objeto PL/SQL del de un subprograma declarado en su sección
+	// declarativa.
+	unitDeclSection := false
+	nestedPending := 0
 	started := false // whether we've classified the statement starting at stmtStart yet
 
 	var inSingle, inDouble, inLineComment, inBlockComment bool
@@ -59,6 +64,8 @@ func SplitStatements(sqlText string) []Statement {
 		blockDepth = 0
 		awaitingBegin = false
 		inPLSQL = false
+		unitDeclSection = false
+		nestedPending = 0
 		started = false
 	}
 
@@ -197,8 +204,62 @@ func SplitStatements(sqlText string) []Statement {
 			}
 		}
 
+		// La sección declarativa de un CREATE PROCEDURE/FUNCTION/PACKAGE BODY
+		// puede declarar SUBPROGRAMAS anidados, y cada uno trae su propio
+		// BEGIN…END. Eso rompía la suposición de que "el primer BEGIN es el del
+		// cuerpo": el primer BEGIN de este procedure real
+		//
+		//     CREATE PROCEDURE p AS
+		//       PROCEDURE registrar_anomalia IS BEGIN … END registrar_anomalia;
+		//       FUNCTION  es_detectable      IS BEGIN … END es_detectable;
+		//     BEGIN            <-- éste es el de verdad
+		//
+		// es el de `registrar_anomalia`. Con awaitingBegin ya apagado, su
+		// `END registrar_anomalia;` devolvía blockDepth a 0 y el `;` siguiente
+		// se tomaba como fin de statement: el procedure se partía en pedazos y
+		// el `BEGIN` principal viajaba solo a Oracle, que respondía
+		// PLS-00201 por cada variable de la sección declarativa que ese
+		// fragmento ya no tenía (caso real: SGCPRO.PR_FACT_INCONSISTENCIAS).
+		//
+		// unitDeclSection marca que estamos entre el IS/AS del objeto y su
+		// BEGIN; nestedPending cuenta los subprogramas declarados ahí que
+		// todavía no cerraron. Mientras haya alguno pendiente, un BEGIN es de
+		// ese subprograma y no del cuerpo.
+		// Las tres formas de abrir la sección declarativa: IS/AS en un
+		// procedure, función o package body; DECLARE en un trigger o en un
+		// bloque anónimo, que también pueden declarar subprogramas anidados.
+		if awaitingBegin && blockDepth == 0 && !unitDeclSection {
+			opener := ""
+			for _, kw := range [...]string{"IS", "AS", "DECLARE"} {
+				if matchKeywordAt(runes, i, kw) {
+					opener = kw
+					break
+				}
+			}
+			if opener != "" {
+				unitDeclSection = true
+				i += len(opener)
+				continue
+			}
+		}
+		if awaitingBegin && unitDeclSection && blockDepth == 0 {
+			if matchKeywordAt(runes, i, "PROCEDURE") {
+				nestedPending++
+				i += len("PROCEDURE")
+				continue
+			}
+			if matchKeywordAt(runes, i, "FUNCTION") {
+				nestedPending++
+				i += len("FUNCTION")
+				continue
+			}
+		}
+
 		if matchKeywordAt(runes, i, "BEGIN") {
-			awaitingBegin = false
+			// Sin subprogramas pendientes, éste es el BEGIN del cuerpo.
+			if nestedPending == 0 {
+				awaitingBegin = false
+			}
 			blockDepth++
 			i += len("BEGIN")
 			continue
@@ -247,6 +308,20 @@ func SplitStatements(sqlText string) []Statement {
 				}
 				i += len("END")
 			}
+			continue
+		}
+
+		// Un ';' a profundidad 0 dentro de la sección declarativa cierra el
+		// subprograma anidado que se venía contando: sirve tanto para el
+		// `END registrar_anomalia;` de uno con cuerpo como para el `PROCEDURE
+		// x(...);` de una declaración adelantada, que nunca va a traer BEGIN.
+		// Nunca parte el statement: ahí adentro el ';' separa declaraciones,
+		// no sentencias.
+		if c == ';' && awaitingBegin && blockDepth == 0 {
+			if nestedPending > 0 {
+				nestedPending--
+			}
+			i++
 			continue
 		}
 

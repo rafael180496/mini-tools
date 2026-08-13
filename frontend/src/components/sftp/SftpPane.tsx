@@ -512,11 +512,28 @@ export default function SftpPane({
         return selected.has(e.path) && sel.length > 0 ? sel : [{path: e.path, isDir: e.isDir}]
     }
 
-    function startDrag(e: sftpx.FileEntry) {
-        dragRef.current = itemsForEntry(e)
+    // El arrastre entre paneles se apoya en dragRef para el payload real, pero
+    // ADEMÁS tiene que poblar el dataTransfer del evento. No es adorno: el
+    // arrastre HTML5 exige que el "drag data store" quede con algo durante
+    // dragstart, y WKWebView —el motor que usa Wails en macOS— aborta el
+    // arrastre cuando queda vacío, así que el drop no llegaba nunca. Antes
+    // este handler ni siquiera recibía el evento.
+    function startDrag(ev: React.DragEvent, e: sftpx.FileEntry) {
+        const items = itemsForEntry(e)
+        dragRef.current = items
+        if (ev.dataTransfer) {
+            // El texto es lo que verían otras aplicaciones si se suelta afuera;
+            // adentro de la app manda dragRef, que lleva el isDir de cada ítem.
+            ev.dataTransfer.setData('text/plain', items.map((it) => it.path).join('\n'))
+            ev.dataTransfer.effectAllowed = 'copy'
+        }
     }
 
-    function onDrop() {
+    function onDrop(ev: React.DragEvent) {
+        // Sin preventDefault el navegador aplica su comportamiento por defecto
+        // (abrir lo soltado), que en un webview se traduce en navegar fuera de
+        // la app.
+        ev.preventDefault()
         setDragOver(false)
         const items = dragRef.current
         dragRef.current = null
@@ -816,6 +833,12 @@ export default function SftpPane({
                 onDragOver={(e) => {
                     if (dragRef.current && canAct) {
                         e.preventDefault()
+                        // dropEffect manda el cursor que ve el usuario mientras
+                        // arrastra. Sin fijarlo el sistema muestra el de "no se
+                        // puede soltar acá" aunque el drop sí vaya a funcionar,
+                        // que es la señal exacta que hace que uno suelte el
+                        // mouse afuera y crea que la función no existe.
+                        e.dataTransfer.dropEffect = 'copy'
                         setDragOver(true)
                     }
                 }}
@@ -893,7 +916,7 @@ export default function SftpPane({
                                     key={e.path}
                                     draggable
                                     style={{height: ROW_HEIGHT}}
-                                    onDragStart={() => startDrag(e)}
+                                    onDragStart={(ev) => startDrag(ev, e)}
                                     onClick={(ev) => clickRow(e.path, ev)}
                                     onDoubleClick={() => (e.isDir ? onNavigate(e.path) : onOpenFile?.(e.path))}
                                     onContextMenu={(ev) => {

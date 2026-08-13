@@ -56,9 +56,9 @@ Queda sin confirmar en Windows, en orden de riesgo:
   (`%APPDATA%\npm`, `~/.bun/bin`), que no se verificaron contra una
   instalación real.
 - **Las transferencias SFTP con la configuración nueva del cliente.** Esta
-  versión sube el tamaño de paquete a 256 KB y activa lecturas/escrituras
-  concurrentes. Es código Go idéntico en todos los SO, pero el rendimiento
-  real depende de la red y no se midió desde Windows.
+  versión activa lecturas/escrituras concurrentes. Es código Go idéntico en
+  todos los SO, pero el rendimiento real depende de la red y no se midió
+  desde Windows.
 - **WebView2 arranca sin instalar nada.** Confirmado en 1.0.0 sobre
   Windows 10 y 11; es razonable esperar lo mismo acá (no cambió nada del
   bootstrap), pero no se volvió a comprobar.

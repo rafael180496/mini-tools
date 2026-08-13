@@ -181,26 +181,28 @@ func dialRemote(pool *sshconn.ClientPool, connID, dsn string) (*remoteFS, error)
 	if err != nil {
 		return nil, err
 	}
-	// El cliente se creaba con las opciones por defecto de pkg/sftp: paquetes
-	// de 32 KB y lecturas de a una. Sobre un enlace con latencia real —un
-	// servidor remoto, no localhost— eso es lo que decide cuánto tarda tanto
-	// bajar un archivo como listar una carpeta grande, porque el costo no está
-	// en el ancho de banda sino en la cantidad de idas y vueltas.
+	// Lecturas y escrituras concurrentes: dejan que un archivo grande viaje
+	// con varias peticiones en vuelo en vez de una atrás de la otra, que es lo
+	// que decide el tiempo de una transferencia sobre un enlace con latencia
+	// real (el costo está en las idas y vueltas, no en el ancho de banda).
 	//
-	// 256 KB es el máximo que acepta el sftp-server de OpenSSH; pedir más hace
-	// que rechace el paquete, así que este número es un tope del otro lado, no
-	// una preferencia. Las lecturas concurrentes dejan que un archivo se baje
-	// con varias peticiones en vuelo en vez de una atrás de la otra.
+	// NO se toca el tamaño de paquete, y conviene dejar escrito por qué: una
+	// versión anterior de esto llamaba a sftp.MaxPacket(256*1024) creyendo que
+	// bajaba la cantidad de round-trips. MaxPacket es MaxPacketChecked, que
+	// RECHAZA cualquier valor mayor a 32768 con "sizes larger than 32KB might
+	// not work with all servers" — así que el cliente no se creaba y el panel
+	// SFTP quedaba inutilizable contra cualquier servidor. Y aun sin ese
+	// error no habría servido de nada: 32768 ya es el default de la librería,
+	// o sea que no había margen para subir. Existe MaxPacketUnchecked, pero
+	// pasarse de 32 KB solo es seguro contra un servidor conocido y probado,
+	// que no es el caso de una app que se conecta a donde el usuario diga.
 	//
-	// Sobre el listado de carpetas, con honestidad: SSH_FXP_READDIR es
-	// secuencial por diseño (el servidor mantiene un cursor sobre el handle) y
-	// el sftp-server de OpenSSH devuelve como mucho unas 100 entradas por
-	// respuesta, así que una carpeta de miles de archivos son decenas de idas
-	// y vueltas que NO se pueden paralelizar desde acá. Un paquete más grande
-	// ayuda con los servidores que sí empaquetan más, y no empeora nada con
-	// los que no.
+	// Y sobre el listado de carpetas, que era el reclamo original: SSH_FXP_READDIR
+	// es secuencial por diseño (el servidor mantiene un cursor sobre el handle),
+	// así que una carpeta de miles de archivos son decenas de idas y vueltas que
+	// NO se pueden paralelizar desde el cliente. Esa mejora vino por el lado del
+	// render y de la caché de carpetas, no del protocolo.
 	sc, err := sftp.NewClient(lease.Client,
-		sftp.MaxPacket(256*1024),
 		sftp.UseConcurrentReads(true),
 		sftp.UseConcurrentWrites(true),
 	)

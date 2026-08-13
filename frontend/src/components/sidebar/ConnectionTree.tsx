@@ -416,9 +416,16 @@ export default function ConnectionTree({
                 ) : (
                     <div
                         style={{paddingLeft: `${8 + depth * 14}px`}}
+                        // La franja de color del entorno va también acá, no
+                        // solo en SSH: una conexión marcada como Producción
+                        // tiene que verse igual sea una terminal o una base.
+                        // Antes las conexiones de base solo mostraban la
+                        // insignia PROD/STG al final de la fila, que es lo
+                        // último que se mira y lo primero que tapa un nombre
+                        // largo.
                         className={`group flex w-full items-center gap-1 py-1.5 pr-3 text-left text-sm transition-colors ${
                             isSelected ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
-                        }`}
+                        } ${envStyleOf(c)?.border ?? ''}`}
                     >
                         <button
                             onClick={() => toggleExpand(c)}

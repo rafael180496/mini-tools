@@ -487,7 +487,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             {value: 'dev', label: 'Desarrollo'},
                         ]}
                         onChange={setEnvironment}
-                        title="Tiñe la conexión en la lista según el entorno. En SSH, marcarla como Producción además hace que la terminal pida confirmación antes de ejecutar comandos destructivos (rm -rf, mkfs, dd, systemctl stop…)."
+                        title="Tiñe la conexión en la lista según el entorno y, marcada como Producción, pide confirmación antes de algo irreversible: en SSH ante comandos destructivos (rm -rf, mkfs, dd, systemctl stop…) y en una base de datos ante DROP, TRUNCATE, GRANT o un DELETE/UPDATE que toque datos."
                         ariaLabel="Entorno"
                         className="w-full"
                     />

@@ -93,6 +93,7 @@ import {BrowserOpenURL, EventsOn} from '../../wailsjs/runtime'
 import {db, explain, updatecheck, vault} from '../../wailsjs/go/models'
 import type {EditorView} from '@codemirror/view'
 import {lintSQL} from '../lib/linter'
+import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
 import {lintMongoCommands} from '../lib/mongoLinter'
 import {setActiveMongoCollections} from '../codemirror/mongoCollectionsStore'
@@ -431,6 +432,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // (see .claude/rules/conventions.md), holding the script text until the
     // user confirms or cancels.
     const [pendingRedisCommandRun, setPendingRedisCommandRun] = useState<string | null>(null)
+    // SQL retenido por una de dos razones, con el mismo diálogo temado que ya
+    // usan Redis y Mongo: el linter lo marcó como bloqueante, o la conexión
+    // está marcada como Producción y el script trae sentencias destructivas.
+    // `risks` vacío = fue el linter; con contenido = fue el entorno.
+    const [pendingSqlRun, setPendingSqlRun] = useState<{text: string; title: string; description: string} | null>(null)
     // Explain Analyze on a mutating statement: confirmed first, same themed
     // ConfirmDialog pattern as pendingRedisCommandRun. The dialog is the
     // courtesy; the guarantee is that the backend wraps a mutating analyzed
@@ -1374,10 +1380,9 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
 
         if (activeTabConnection.dbType === 'redis') {
             // FLUSHALL/FLUSHDB block via a themed ConfirmDialog (never
-            // window.confirm(), see .claude/rules/conventions.md) instead
-            // of the SQL branch's inline window.confirm() below — that one
-            // is pre-existing code, left as-is rather than touched as a
-            // drive-by fix outside this task's scope.
+            // window.confirm(), see .claude/rules/conventions.md). El camino
+            // SQL de más abajo usaba window.confirm() y ya no: quedó con el
+            // mismo diálogo temado al sumarle el guard de producción.
             const warnings = lintRedisCommands(text).filter((w) => w.blocking)
             if (warnings.length > 0) {
                 setPendingRedisCommandRun(text)
@@ -1397,12 +1402,42 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             return
         }
 
-        const warnings = lintSQL(text).filter((w) => w.blocking)
-        if (warnings.length > 0) {
-            const message = warnings.map((w) => `Línea ${w.startLineNumber}: ${w.message}`).join('\n')
-            if (!window.confirm(`Advertencias antes de ejecutar:\n\n${message}\n\n¿Ejecutar de todas formas?`)) {
+        // Dos preguntas distintas, en orden de gravedad.
+        //
+        // La del entorno va primero: que el script esté bien escrito no lo hace
+        // menos irreversible contra producción. Es el equivalente de lo que la
+        // terminal SSH ya hacía con una conexión marcada como Producción — en
+        // las bases la marca existía pero no hacía nada, así que un DROP contra
+        // producción salía tan rápido como contra la copia local.
+        if (activeTabConnection.environment === 'prod') {
+            const risks = inspectSQL(text)
+            if (risks.length > 0) {
+                const detail = risks
+                    .slice(0, 5)
+                    .map((r) => `• ${r.label}: ${r.detail}\n  ${r.statement.split('\n')[0]}`)
+                    .join('\n\n')
+                const extra = risks.length > 5 ? `\n\n…y ${risks.length - 5} sentencia(s) más.` : ''
+                setPendingSqlRun({
+                    text,
+                    title: `Estás en PRODUCCIÓN — ${activeTabConnection.name}`,
+                    description: `Este script modifica datos o estructura en una conexión marcada como Producción:\n\n${detail}${extra}`,
+                })
                 return
             }
+        }
+
+        // La del linter: cosas mal escritas, en cualquier base. Antes usaba
+        // window.confirm(), prohibido por .claude/rules/conventions.md — dentro
+        // del webview no se percibe como un diálogo de la app y ya causó dos
+        // confusiones reales ("no me deja ejecutar").
+        const warnings = lintSQL(text).filter((w) => w.blocking)
+        if (warnings.length > 0) {
+            setPendingSqlRun({
+                text,
+                title: 'Advertencias antes de ejecutar',
+                description: warnings.map((w) => `Línea ${w.startLineNumber}: ${w.message}`).join('\n'),
+            })
+            return
         }
         runText(activeTabConnection, text)
     }
@@ -3193,6 +3228,16 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     danger
                     onConfirm={() => void executeExplain(pendingAnalyzeRun, true)}
                     onClose={() => setPendingAnalyzeRun(null)}
+                />
+            )}
+            {pendingSqlRun && activeTabConnection && (
+                <ConfirmDialog
+                    title={pendingSqlRun.title}
+                    description={pendingSqlRun.description}
+                    confirmLabel="Ejecutar igual"
+                    danger
+                    onConfirm={() => runText(activeTabConnection, pendingSqlRun.text)}
+                    onClose={() => setPendingSqlRun(null)}
                 />
             )}
             {pendingMongoCommandRun && activeTabConnection && (
