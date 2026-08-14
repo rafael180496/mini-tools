@@ -33,6 +33,30 @@ func renderClaudeMD(info ProjectInfo) string {
 	return b.String()
 }
 
+// renderAgentPointer genera el archivo de instrucciones de un agente que NO
+// es Claude Code (AGENTS.md para Codex, GEMINI.md para Gemini/Antigravity).
+//
+// Es un puntero corto y no una copia del CLAUDE.md, y esa es la decisión de
+// fondo: tres documentos con el mismo contenido se desincronizan en el primer
+// cambio, y a partir de ahí el equipo tiene tres versiones de la verdad según
+// qué CLI use cada uno. Los tres CLIs leen archivos del repositorio sin
+// problema, así que apuntarlos al mismo documento cuesta cuatro líneas y no
+// puede quedar desactualizado.
+//
+// Existe porque cada agente lee SOLO el suyo: un repo perfectamente
+// documentado en CLAUDE.md no le dice absolutamente nada a Codex.
+func renderAgentPointer(file, agentName string, info ProjectInfo) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s — contexto del proyecto\n\n", info.ConnectionName)
+	fmt.Fprintf(&b, "> Generado por [mini-tools](https://github.com/rafael180496/mini-tools) para %s. Este archivo existe porque %s lee `%s` y no `CLAUDE.md`.\n\n", agentName, agentName, file)
+	b.WriteString("**El contexto completo vive en [CLAUDE.md](CLAUDE.md)** — leelo antes de tocar nada. Acá no se duplica a propósito: dos copias del mismo documento se desincronizan en el primer cambio.\n\n")
+	fmt.Fprintf(&b, "En resumen: este proyecto trabaja contra la conexión **%s** (%s).\n\n", info.ConnectionName, info.DBType)
+	b.WriteString("- Schema completo: [.claude/specs/database-schema.md](.claude/specs/database-schema.md)\n")
+	b.WriteString("- Convenciones de SQL del motor: [.claude/rules/sql-conventions.md](.claude/rules/sql-conventions.md)\n")
+	fmt.Fprintf(&b, "\n_Última generación: %s_\n", time.Now().Format("2006-01-02 15:04"))
+	return b.String()
+}
+
 func renderSchemaSpec(info ProjectInfo) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Schema de %s (%s)\n\n", info.ConnectionName, info.DBType)

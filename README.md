@@ -1,124 +1,150 @@
 # mini-tools
 
+![Versión](https://img.shields.io/badge/versi%C3%B3n-1.3.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
+![Binario](https://img.shields.io/badge/binario-50MB-success)
+![Sin telemetría](https://img.shields.io/badge/telemetr%C3%ADa-ninguna-informational)
 
-Cliente de escritorio para **Oracle, PostgreSQL, SQLite, SQL Server, Redis y MongoDB**, más **terminal SSH**, **transferencia de archivos por SFTP** y un **cliente Git** integrado estilo Sublime Merge — tipo DataGrip + RedisInsight + Termius + Sublime Merge, pero minimalista y en un solo binario nativo. Go + Wails v2 en el backend, React + Tailwind en el frontend. Sin Electron, sin JVM, sin telemetría.
+### Tu cliente de base de datos, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de 50 MB.
 
-> El spec funcional completo vive en [docs/SPEC.md](docs/SPEC.md); la arquitectura y convenciones actuales del código en [CLAUDE.md](CLAUDE.md).
+Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en tu máquina y nada saliendo a ningún lado.
+
+**Oracle · PostgreSQL · SQLite · SQL Server · Redis · MongoDB · SSH · SFTP · Git · Claude Code · Codex · Antigravity**
+
+<p align="center">
+  <img src="docs/screenshots/ui-workspace.png" width="900" alt="mini-tools: sidebar con conexiones de base de datos, SSH y repositorios Git; editor SQL al centro y panel de resultados abajo">
+</p>
+
+---
+
+## Novedades — 1.3.0
+
+**La versión que convierte a mini-tools en un cliente agéntico.** Hasta la 1.2.0 los agentes eran una terminal más; ahora son parte de la herramienta:
+
+- **Chat nativo** con Claude Code, Codex y Antigravity sobre el repositorio abierto, con cada acción visible y los tokens de cada turno.
+- **Cinco modos de permiso**, incluida la **aprobación acción por acción**: el agente te pregunta antes de cada cosa y espera.
+- **Modo carpeta**: entrar a lo agéntico despeja ramas, grafo y diff y deja el árbol del proyecto con los indicadores de cambio.
+- **Consumo de tokens y plan** de cada CLI, con desglose por modelo y cuánto se fue en *este* repositorio.
+- **Servidores MCP** de los tres agentes, leídos de los cinco lugares donde cada uno los guarda, con los remotos marcados.
+- **Historial de chats** por repositorio, agrupado por agente, renombrable y retomable.
+- **Editor de archivos** con más de treinta lenguajes y vista previa de Markdown en tres modos.
+
+Detalle completo en [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+## Lo que lo hace distinto
+
+**Un solo programa para todo el día.** La consulta a Oracle, el `tail -f` por SSH, el rebase, el archivo que hay que subir por SFTP y la charla con el agente: todo en la misma ventana, con los mismos atajos y el mismo tema.
+
+**Los agentes de IA como parte de la herramienta, no como una pestaña de navegador.** Claude Code, Codex y Antigravity corren sobre el repositorio abierto, con el diff al lado. Podés chatear con ellos, ver **qué hace cada acción antes de autorizarla**, y saber cuántos tokens llevás gastados y con qué plan.
+
+**Nada se va de tu máquina.** El vault es un SQLite local con los DSN cifrados columna a columna (AES-256-GCM, clave derivada con Argon2id). No hay servidor, no hay cuenta, no hay telemetría. Sin la clave maestra no hay acceso — y no hay bypass.
+
+**Pesa lo que pesa un binario nativo.** 50 MB, arranque instantáneo, sin un runtime de Node ni una JVM detrás.
+
+---
+
+## Trabajar con agentes, de verdad
+
+<p align="center">
+  <img src="docs/screenshots/ui-repo.png" width="900" alt="Pestaña Git con ramas plegables, grafo de commits y el panel de agentes abierto abajo mostrando instrucciones del proyecto y skills">
+</p>
+
+Abrí un repositorio y el panel **Agentes** te dice lo que ningún otro cliente te dice:
+
+- **Qué tiene preparado este repo** para un agente: sus skills, sus subagentes, sus comandos — y **cuáles archivos de instrucciones le faltan**. Cada CLI lee el suyo y no el de los otros: un repo impecablemente documentado en `CLAUDE.md` no le dice *nada* a Codex. Eso es invisible hasta que alguien lo dibuja.
+- **Qué herramientas MCP ve cada agente**, de dónde salen, y cuáles son remotas — las que mandan contexto de tu repo fuera de la máquina. Podés agregar y quitar servidores desde acá.
+- **Cuántos tokens llevás gastados**, con qué modelo, cuánto se fue en *este* repositorio, y **con qué plan** estás.
+
+### Modo agente: un botón que despeja la pantalla
+
+<p align="center">
+  <img src="docs/screenshots/ui-agentmode.png" width="900" alt="Modo agente activo: sin panel de ramas, sin grafo de commits y sin diff; en su lugar el árbol de archivos del proyecto con indicadores de cambio y el panel de agentes abajo">
+</p>
+
+Cuando trabajás con un agente no te importan las ramas, el grafo ni el diff — te importa **qué archivos hay** y **qué está haciendo**. El botón **Agente** esconde el resto del módulo Git y deja eso: el árbol del proyecto, con la letra de git en cada archivo modificado y el conteo de cambios en cada carpeta, más la conversación. El mismo botón te devuelve todo tal como lo tenías.
+
+### Chat con permisos que se entienden
+
+<p align="center">
+  <img src="docs/screenshots/ui-chat.png" width="760" alt="Chat con un agente: mensaje del usuario destacado, la llamada a herramienta plegada mostrando el archivo leído, y la barra de controles con modo, esfuerzo, imagen y modelo">
+</p>
+
+El chat muestra **qué está haciendo** el agente: cada llamada a herramienta con su archivo y su tamaño, plegable, y los tokens de cada turno. Arriba de la caja de texto elegís qué le permitís:
+
+| Modo | Qué puede hacer |
+|---|---|
+| **Solo consulta** | Lee, razona y propone. No toca nada. |
+| **Plan** | Explora y arma un plan, explícitamente sin editar. |
+| **Aprobar cada acción** | Trabaja, pero **te pregunta antes de cada acción** y espera tu respuesta. |
+| **Automático** | Aprueba lo que pasa su propio control de seguridad y frena en lo riesgoso. |
+| **Aplicar ediciones** | Modifica archivos sin preguntar. |
+
+Los tres últimos **se aprueban una vez, explícitamente**, con un diálogo que dice qué vas a permitir. Y hay una línea que no se cruza: **nunca se le pasa al CLI la bandera que saltea todos los permisos**, ni en el modo más suelto — esa cubre también ejecutar comandos arbitrarios, y no es lo mismo que editar archivos versionados.
+
+Cuando el agente termina de trabajar solo, te dice **cuántos archivos tocó** y te lleva a revisarlos. Caen en el árbol de trabajo de git: los ves en Cambios y los descartás con un clic.
+
+### Y lo que se espera de un chat
+
+Pegá una captura con `⌘V` en cualquier parte del panel, escribí `@` para referenciar un archivo del repo, retomá una conversación de la semana pasada con **el mismo modelo y esfuerzo** con los que la venías trabajando, o abrí **dos agentes en paralelo** — uno escribiendo, otro revisando lo que el primero hizo.
+
+---
+
+## Git, completo
+
+<p align="center">
+  <img src="docs/screenshots/git-commit-graph.png" width="900" alt="Grafo de commits con carriles de colores, badges de rama y tag, y marca de HEAD">
+</p>
+
+Cliente Git estilo Sublime Merge sobre el `git` de tu sistema — así que tus credential helpers, tu `ssh-agent` y tus hooks siguen funcionando igual. Grafo de commits, diff unificado o lado a lado, stage por bloque, rebase interactivo, stashes, worktrees, resolutor de conflictos de tres vías, y un **log de los comandos exactos** que la app ejecutó por debajo, con su salida.
+
+Además: **editor de archivos** con resaltado para más de treinta lenguajes, árbol plegable con los indicadores de cambio de git, y vista previa de Markdown en tres modos.
+
+---
+
+## Bases de datos, SSH y SFTP
+
+<p align="center">
+  <img src="docs/screenshots/ui-redis.png" width="900" alt="Redis Browser: lista de keys con badges de tipo (string, hash, json, list, zset, set, stream), stats de total y memoria, y panel de detalle con el hash editable campo a campo y su TTL">
+</p>
+
+Seis motores nativos sin instalar un cliente aparte, editor con autocompletado que **entiende el contexto** (sugiere columnas de las tablas que realmente referenciaste, resolviendo alias), ejecución con streaming y cancelación, `EXPLAIN PLAN` visual, y export a CSV/JSON/XLSX/DDL.
+
+Terminal SSH real con `xterm.js`, transferencia SFTP de doble panel con cola y cancelación, y snippets reutilizables.
+
+---
 
 ## Descargas
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v1.2.0.dmg](releases/macos/mini-tools-v1.2.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v1.2.0-windows-amd64.exe](releases/windows/mini-tools-v1.2.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v1.3.0.dmg](releases/macos/mini-tools-v1.3.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v1.3.0-windows-amd64.exe](releases/windows/mini-tools-v1.3.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**, ver [detalle](releases/windows/README.md). |
 
 Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
-## Capturas
+## Todo lo que trae
 
-<p align="center">
-  <img src="docs/screenshots/editor.png" width="900" alt="Editor SQL de mini-tools con autocompletado, tabs reordenables, transacciones explícitas y configuración centralizada">
-</p>
+<details>
+<summary><strong>Ver la lista completa de funcionalidades</strong></summary>
 
-<p align="center"><em>Editor CodeMirror con autocompletado consciente del contexto, tabs que se reordenan arrastrando, transacciones explícitas siempre visibles y un ícono de Configuración a un click de distancia.</em></p>
+### Agentes de código
 
-<p align="center">
-  <img src="docs/screenshots/redis-browser.png" width="900" alt="Redis Browser: explorador de keys en pestaña completa, con filtro por tipo, stats de header, selección múltiple y panel de detalle editable">
-</p>
+- **Tres CLIs integrados**: Claude Code, Codex CLI y Antigravity CLI, detectados solos en el PATH y en las rutas donde se instalan de verdad (`~/.local/bin`, npm, bun).
+- **Dos formas de usarlos**: su terminal completa —con su propio render y su diálogo de permisos— o el **chat nativo**, que muestra cada acción y los tokens de cada turno.
+- **Cinco modos de permiso**, del solo-consulta al aplicar-ediciones, cada uno aprobado explícitamente. La bandera que saltea *todos* los permisos no se pasa nunca.
+- **Aprobación acción por acción** con un diálogo que dice qué está por hacer. Si algo falla en esa cadena, la respuesta es denegar: si no se pudo preguntar, no se pudo haber aprobado.
+- **Consumo de tokens y plan** por agente, con el desglose por modelo y cuánto se fue en este repositorio.
+- **Servidores MCP** de los tres CLIs, leídos de donde cada uno los guarda; se pueden agregar y quitar los que son archivos de configuración.
+- **Skills, subagentes, comandos e instrucciones** que el repositorio le ofrece a un agente — incluidos los archivos que le faltan.
+- **Historial de chats** por repositorio, agrupado por agente, con nombres editables y retomable después de cerrar la app.
+- **Acciones agénticas en Git**: redactar el mensaje de commit desde el diff preparado, revisar antes de pushear, explicar un commit, describir un PR, asistir un conflicto, explicar un comando fallido.
+- **Adjuntar imágenes** pegándolas o arrastrándolas, y referenciar archivos del repo con `@`.
 
-<p align="center"><em>Redis Browser: pestaña de ventana completa por conexión Redis — filtro por tipo con badges de color, stats de keys/memoria, selección múltiple con exportación a JSON/CSV, y edición inline del valor (string, JSON, hash, list, set, zset) preservando el TTL.</em></p>
-
-### 🌿 Cliente Git integrado <sub>· nuevo en 0.5.0</sub>
-
-> **Cliente Git completo estilo Sublime Merge, como tercer módulo del sidebar junto a Conexiones y SSH.** Usa el `git` del sistema (vía `os/exec`, cero dependencias nuevas y sin reimplementar credential helpers ni ssh-agent). Cada repositorio abre en su propia pestaña con **grafo de commits** (carriles de colores, badges de rama/tag, marca de HEAD), detalle del commit y **visor de diff** unificado o lado a lado con contexto, ignorar-espacios y wrap configurables. Fetch/Pull/Push con todas sus variantes, y menús contextuales para checkout, merge, rebase, revert, cherry-pick, reset, tags y stashes. **`git status` en vivo** (detecta cambios hechos por fuera de la app), tokens (PAT) guardados **cifrados** por servidor y usados automáticamente, e identidad (`user.name`/`user.email`) configurable por repo o global.
-
-<p align="center">
-  <img src="docs/screenshots/git-repo-tab.png" width="900" alt="Pestaña de repositorio Git en tres paneles: ramas locales y remotas a la izquierda, grafo de commits al centro, y a la derecha el detalle del commit con su lista de archivos y el diff coloreado">
-</p>
-
-<p align="center"><em>Pestaña de repositorio en tres paneles: ramas (local/remotas) con checkout por doble-click, grafo de commits al centro, y a la derecha el commit seleccionado con Autor/Fecha/Hash/Padre, sus archivos con <code>+/−</code>, y el diff con la barra de Unificado/Lado a lado y control de contexto.</em></p>
-
-<table>
-  <tr>
-    <td align="center" width="66%">
-      <img src="docs/screenshots/git-commit-graph.png" width="560" alt="Grafo de commits con carriles de colores mostrando ramas y merges, cada commit con su autor, fecha, hash corto y badges de rama/tag"><br>
-      <sub>Grafo de commits con carriles de colores por rama y merges reales dibujados como diagonales — cada fila con autor, fecha, hash y badges de las ramas/tags que apuntan ahí. "Ocultar rama" saca ramas ruidosas del grafo sin borrarlas.</sub>
-    </td>
-    <td align="center" width="34%">
-      <img src="docs/screenshots/git-sidebar-folders.png" width="260" alt="Módulo Git del sidebar con una carpeta 'Sigeme' que contiene el repositorio MicroFOCUS anidado, con chevron para desplegar"><br>
-      <sub>Módulo Git en el sidebar: repositorios organizables en <strong>carpetas</strong> anidables (mismo patrón que Conexiones y SSH), cada repo expande sus ramas, remotos, tags y stashes.</sub>
-    </td>
-  </tr>
-</table>
-
-### 🖥️ Terminal SSH, temas y consola de ejecución
-
-<table>
-  <tr>
-    <td align="center" width="62%">
-      <img src="docs/screenshots/ssh-terminal.png" width="580" alt="Terminal SSH interactiva real (xterm.js) conectada a un host remoto, en su propia pestaña"><br>
-      <sub>Terminal SSH interactiva real (xterm.js) por conexión, en su propia pestaña — PTY con streaming en vivo, resize automático y cierre limpio de la sesión remota. Panel de <strong>Snippets</strong> para comandos/scripts guardados, reutilizables en cualquier sesión.</sub>
-    </td>
-    <td align="center" width="38%">
-      <img src="docs/screenshots/terminal-themes.png" width="220" alt="Selector visual de temas de terminal con muestra de paleta"><br>
-      <sub>Selector visual de temas de terminal (Dracula, Nord, Solarized, Gruvbox, One Half…) con muestra de paleta, o Automático siguiendo el tema de la app.</sub>
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <td align="center" width="42%">
-      <img src="docs/screenshots/new-ssh-connection.png" width="300" alt="Diálogo de nueva conexión SSH con auth por password o private key y Agent Forwarding"><br>
-      <sub>Conexiones SSH en su propio módulo de sidebar: auth por password o private key (+ passphrase) y Agent Forwarding, con Test Connection antes de guardar.</sub>
-    </td>
-    <td align="center" width="58%">
-      <img src="docs/screenshots/execution-console.png" width="440" alt="Consola de ejecución mostrando cada statement con su resultado y marca de tiempo"><br>
-      <sub>Consola de ejecución estilo SQL Developer: cada statement con su texto completo y una línea de resultado con hora — <em>N filas obtenidas</em>, <em>completado</em>, o el <em>ERROR</em> completo sin recortar.</sub>
-    </td>
-  </tr>
-</table>
-
-### 📂 Transferencia de archivos por SFTP <sub>· nuevo en 0.2.4</sub>
-
-> **Explorador de doble panel que reutiliza tus conexiones SSH** — arrastrá archivos entre paneles y transferí en cualquier dirección: **local → remoto, remoto → local y remoto → remoto** (streaming a través de tu máquina). Cola de transferencias con **porcentaje en vivo** y **cancelación**, procesamiento de lotes grandes en paralelo (pool de goroutines) **sin dejar procesos colgados** al cancelar o desconectar. Listado tipo Finder con columnas ordenables (Nombre, Fecha, Tamaño, Kind, Permisos), menú contextual (Enviar / Renombrar / Eliminar / Nueva carpeta) y diálogo de **permisos (chmod)** con toggles Lectura/Escritura/Ejecución para Propietario/Grupo/Otros.
-
-<table>
-  <tr>
-    <td align="center" width="34%">
-      <img src="docs/screenshots/schema-tree.png" width="260" alt="Árbol de conexiones con carpetas, múltiples motores (incluido Redis) y categorías colapsables de tablas/functions/triggers"><br>
-      <sub>Conexiones organizadas en carpetas, ícono real por motor (Oracle/PostgreSQL/SQLite/Redis), y tablas/procedures/functions/triggers en categorías colapsables y ordenadas — probado en vivo con un schema de 342 tablas</sub>
-    </td>
-    <td align="center" width="66%">
-      <img src="docs/screenshots/new-connection.png" width="480" alt="Diálogo de nueva conexión con los 6 motores soportados (SQLite, PostgreSQL, Oracle, SQL Server, MongoDB, Redis), selector visual de tipo y color, y detección de connection string"><br>
-      <sub>Nueva conexión: pegá una connection string y se completa sola, elegí motor entre los 6 (SQLite/PostgreSQL/Oracle/SQL Server/MongoDB/Redis) con un click y ponele un color propio</sub>
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <td align="center" width="52%">
-      <img src="docs/screenshots/unlock-vault.png" width="420" alt="Pantalla de desbloqueo del vault cifrado"><br>
-      <sub>Conexiones cifradas en un vault local — sin la clave maestra, no hay acceso.</sub>
-    </td>
-    <td align="center" width="48%">
-      <img src="docs/screenshots/vault-settings.png" width="360" alt="Modal de Configuración con backup y restaurar del vault, recordar clave y tema del editor"><br>
-      <sub>Configuración centralizada: backup y <strong>restaurar</strong> el vault, recordar clave maestra y tema del editor — todo en un modal propio, no suelto en la barra.</sub>
-    </td>
-  </tr>
-</table>
-
-> Los diálogos de nueva conexión (SQL y SSH) y la pantalla de desbloqueo son ejemplos ficticios. El editor, el árbol de conexiones, el Redis Browser, la terminal SSH y el cliente Git muestran datos reales con nombres de tabla/conexión difuminados y, en el Redis Browser, los nombres de key y el valor de la key seleccionada pixelados a propósito (esa captura en particular exponía una key con un secreto real) — el resto de la interfaz (toolbar, tabs, badges de tipo, ícono por motor, colores) es exactamente como se ve en uso normal.
-
-## Por qué
-
-La mayoría de clientes SQL multi-motor son pesados (JVM, Electron, cientos de MB). mini-tools apunta a lo contrario: un binario nativo liviano, dark por defecto, sin telemetría, con las conexiones cifradas en un vault local — nada más.
-
-## Features
+### Bases de datos, terminal y Git
 
 - **6 motores nativos**: Oracle (TNS / Easy Connect / SID / Service Name), PostgreSQL (SSL modes completos), SQLite y SQL Server (T-SQL, instancias con nombre, modos de encriptación) — vía `database/sql`, sin cliente Oracle/Postgres/SQL Server instalado aparte —, Redis (Standalone/Cluster/Sentinel, ACL, TLS) vía `go-redis`, con soporte de primera clase para RediSearch (`FT.SEARCH`/`FT.AGGREGATE`) y RedisJSON (`JSON.*`), y MongoDB (`mongodb://` y SRV/Atlas, replica sets) con lenguaje mongosh en el editor y explorador de documentos estilo Compass.
 - **Vault cifrado local**: las conexiones se guardan en SQLite, con el DSN cifrado columna a columna (AES-256-GCM, clave derivada con Argon2id). Sin clave maestra correcta, no hay acceso — no hay bypass.
@@ -149,6 +175,8 @@ La mayoría de clientes SQL multi-motor son pesados (JVM, Electron, cientos de M
 - **Export**: CSV, JSON, XLSX, DDL de tabla/schema completo, y config de conexión (sin password) — más "copiar como INSERT" desde el grid.
 - **Tooltips contextuales** en cada control, pensados para alguien que abre la app por primera vez. Toda confirmación (borrar historial, backup del vault) usa un modal propio con el tema de la app, nunca un diálogo nativo del navegador.
 - Interfaz Material Design 3, dark/light con toggle persistido, tipografías e íconos empaquetados con la app (sin depender de internet para renderizar).
+
+</details>
 
 ## Requisitos
 
@@ -218,11 +246,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.2.0 |
+| Versión | 1.3.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v1.2.0.dmg](releases/macos/mini-tools-v1.2.0.dmg)** |
-| SHA-256 | `901f55803c417fc2367ed6084303b08f461ab279190fe4af0a2cda6d7ed1067e` |
+| Archivo | **[⬇ Descargar mini-tools-v1.3.0.dmg](releases/macos/mini-tools-v1.3.0.dmg)** |
+| SHA-256 | `bef570fec27092bd093f2baf71b3ce1f6cf5f38fb48fc21cd2eb2036ba5e7b12` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -234,7 +262,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **La 1.2.0 NO se corrió en una Windows real** — solo se confirmó que cross-compila limpio. Lo más expuesto acá es la migración 29 del vault, que al primer arranque toca el `vault.db` que ya está en la máquina, y la terminal integrada, que en Windows usa ConPTY (un camino de código distinto al de macOS/Linux). La 1.2.0 tampoco se verificó, así que lo pendiente se acumula: lo último que corrió de verdad en Windows 10 y 11 fue la 1.0.0. Detalle de qué queda sin confirmar en [releases/windows/README.md](releases/windows/README.md).
+> ⚠️ **La 1.3.0 NO se corrió en una Windows real** — solo se confirmó que cross-compila limpio. Lo más expuesto en esta versión es todo lo agéntico: lanzar los CLIs como procesos hijos y leerles la salida en streaming es otro camino de código en Windows, y la **aprobación acción por acción de Claude Code usa un socket Unix**, que en Windows no existe — falta confirmar si degrada limpio o falla. Se suman las migraciones 30, 31 y 32 del vault, que al primer arranque tocan el `vault.db` que ya está en la máquina, y la terminal integrada, que usa ConPTY. La 1.1.0 y la 1.2.0 tampoco se verificaron, así que lo pendiente se acumula: lo último que corrió de verdad en Windows 10 y 11 fue la 1.0.0. Detalle en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -242,10 +270,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.2.0 |
+| Versión | 1.3.0 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS y **no verificado** en una Windows real |
-| Archivo | **[⬇ Descargar mini-tools-v1.2.0-windows-amd64.exe](releases/windows/mini-tools-v1.2.0-windows-amd64.exe)** |
-| SHA-256 | `dcffd3b83e10b9320f8f136141c04cb23a12928c0af0334e20e87a0cbb4c3036` |
+| Archivo | **[⬇ Descargar mini-tools-v1.3.0-windows-amd64.exe](releases/windows/mini-tools-v1.3.0-windows-amd64.exe)** |
+| SHA-256 | `530234970a0fc6f2e0d86206ce899fea04f56cf33f5d8c65b83d863a3f47f3f7` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).
@@ -263,6 +291,14 @@ main.go         bootstrap de Wails, embed de frontend/dist
 ```
 
 Detalle completo (stack, estructura fase a fase, contrato de bindings) en [CLAUDE.md](CLAUDE.md) → [.claude/specs/architecture.md](.claude/specs/architecture.md).
+
+## Sobre las capturas de este README
+
+Las imágenes `ui-*.png` **no son de una instalación real**: salen de
+`./scripts/uishot.sh`, que monta los componentes en un navegador headless con
+datos inventados. No hay rutas, repositorios, hosts ni credenciales de nadie —
+no porque se hayan borrado después, sino porque nunca estuvieron ahí. Es
+también la razón por la que ninguna está borroneada: no hay nada que tapar.
 
 ## Seguridad
 

@@ -1,3 +1,220 @@
+export namespace agentchat {
+	
+	export class ToolCall {
+	    name: string;
+	    input: string;
+	    summary: string;
+	    detail: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ToolCall(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.input = source["input"];
+	        this.summary = source["summary"];
+	        this.detail = source["detail"];
+	    }
+	}
+	export class PastTurn {
+	    role: string;
+	    text: string;
+	    tools: ToolCall[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PastTurn(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.text = source["text"];
+	        this.tools = this.convertValues(source["tools"], ToolCall);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace agentctx {
+	
+	export class Instruction {
+	    file: string;
+	    path: string;
+	    present: boolean;
+	    size: number;
+	    agents: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Instruction(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.path = source["path"];
+	        this.present = source["present"];
+	        this.size = source["size"];
+	        this.agents = source["agents"];
+	    }
+	}
+	export class Entry {
+	    name: string;
+	    description: string;
+	    path: string;
+	    scope: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Entry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.path = source["path"];
+	        this.scope = source["scope"];
+	    }
+	}
+	export class Context {
+	    skills: Entry[];
+	    agents: Entry[];
+	    commands: Entry[];
+	    instructions: Instruction[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Context(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.skills = this.convertValues(source["skills"], Entry);
+	        this.agents = this.convertValues(source["agents"], Entry);
+	        this.commands = this.convertValues(source["commands"], Entry);
+	        this.instructions = this.convertValues(source["instructions"], Instruction);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+
+}
+
+export namespace agentmodels {
+	
+	export class Model {
+	    id: string;
+	    label: string;
+	    description: string;
+	    efforts: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Model(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.description = source["description"];
+	        this.efforts = source["efforts"];
+	    }
+	}
+	export class Catalog {
+	    models: Model[];
+	    efforts: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Catalog(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.models = this.convertValues(source["models"], Model);
+	        this.efforts = source["efforts"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace agentplan {
+	
+	export class Plan {
+	    agent: string;
+	    known: boolean;
+	    label: string;
+	    detail: string;
+	    note: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Plan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agent = source["agent"];
+	        this.known = source["known"];
+	        this.label = source["label"];
+	        this.detail = source["detail"];
+	        this.note = source["note"];
+	    }
+	}
+
+}
+
 export namespace agents {
 	
 	export class Agent {
@@ -33,6 +250,157 @@ export namespace agents {
 	        this.note = source["note"];
 	        this.docsUrl = source["docsUrl"];
 	    }
+	}
+
+}
+
+export namespace agentusage {
+	
+	export class Activity {
+	    conversations: number;
+	    steps: number;
+	    repoConversations: number;
+	    repoSteps: number;
+	    lastUsed: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Activity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.conversations = source["conversations"];
+	        this.steps = source["steps"];
+	        this.repoConversations = source["repoConversations"];
+	        this.repoSteps = source["repoSteps"];
+	        this.lastUsed = source["lastUsed"];
+	    }
+	}
+	export class Bucket {
+	    key: string;
+	    total: number;
+	    percent: number;
+	    messages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Bucket(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.total = source["total"];
+	        this.percent = source["percent"];
+	        this.messages = source["messages"];
+	    }
+	}
+	export class Totals {
+	    input: number;
+	    output: number;
+	    cacheWrite: number;
+	    cacheRead: number;
+	    total: number;
+	    messages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Totals(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.output = source["output"];
+	        this.cacheWrite = source["cacheWrite"];
+	        this.cacheRead = source["cacheRead"];
+	        this.total = source["total"];
+	        this.messages = source["messages"];
+	    }
+	}
+	export class AgentUsage {
+	    agent: string;
+	    available: boolean;
+	    note: string;
+	    source: string;
+	    all: Totals;
+	    repo: Totals;
+	    firstDay: string;
+	    lastDay: string;
+	    byModel: Bucket[];
+	    byDay: Bucket[];
+	    cacheHitPercent: number;
+	    activity?: Activity;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentUsage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agent = source["agent"];
+	        this.available = source["available"];
+	        this.note = source["note"];
+	        this.source = source["source"];
+	        this.all = this.convertValues(source["all"], Totals);
+	        this.repo = this.convertValues(source["repo"], Totals);
+	        this.firstDay = source["firstDay"];
+	        this.lastDay = source["lastDay"];
+	        this.byModel = this.convertValues(source["byModel"], Bucket);
+	        this.byDay = this.convertValues(source["byDay"], Bucket);
+	        this.cacheHitPercent = source["cacheHitPercent"];
+	        this.activity = this.convertValues(source["activity"], Activity);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class Usage {
+	    agents: AgentUsage[];
+	    days: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Usage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agents = this.convertValues(source["agents"], AgentUsage);
+	        this.days = source["days"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -1281,6 +1649,42 @@ export namespace git {
 	        this.taggerDate = source["taggerDate"];
 	    }
 	}
+	export class WorkFile {
+	    path: string;
+	    content: string;
+	    size: number;
+	    modTimeUnix: number;
+	    binary: boolean;
+	    tooLarge: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.content = source["content"];
+	        this.size = source["size"];
+	        this.modTimeUnix = source["modTimeUnix"];
+	        this.binary = source["binary"];
+	        this.tooLarge = source["tooLarge"];
+	    }
+	}
+	export class WorkTree {
+	    files: string[];
+	    truncated: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkTree(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.files = source["files"];
+	        this.truncated = source["truncated"];
+	    }
+	}
 	export class Worktree {
 	    path: string;
 	    branch: string;
@@ -1446,6 +1850,119 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace mcpconf {
+	
+	export class File {
+	    path: string;
+	    agent: string;
+	    scope: string;
+	    present: boolean;
+	    error: string;
+	    servers: number;
+	    writable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new File(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.agent = source["agent"];
+	        this.scope = source["scope"];
+	        this.present = source["present"];
+	        this.error = source["error"];
+	        this.servers = source["servers"];
+	        this.writable = source["writable"];
+	    }
+	}
+	export class Server {
+	    name: string;
+	    agent: string;
+	    scope: string;
+	    transport: string;
+	    command: string;
+	    args: string[];
+	    url: string;
+	    envKeys: string[];
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Server(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.agent = source["agent"];
+	        this.scope = source["scope"];
+	        this.transport = source["transport"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	        this.url = source["url"];
+	        this.envKeys = source["envKeys"];
+	        this.source = source["source"];
+	    }
+	}
+	export class Config {
+	    servers: Server[];
+	    files: File[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.servers = this.convertValues(source["servers"], Server);
+	        this.files = this.convertValues(source["files"], File);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class ServerInput {
+	    name: string;
+	    transport: string;
+	    command: string;
+	    args: string[];
+	    url: string;
+	    env: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new ServerInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.transport = source["transport"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	        this.url = source["url"];
+	        this.env = source["env"];
+	    }
 	}
 
 }
@@ -1728,6 +2245,36 @@ export namespace updatecheck {
 
 export namespace vault {
 	
+	export class AgentChat {
+	    id: string;
+	    repoId: string;
+	    agentId: string;
+	    title: string;
+	    conversationId: string;
+	    createdAt: number;
+	    updatedAt: number;
+	    model: string;
+	    effort: string;
+	    mode: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentChat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.repoId = source["repoId"];
+	        this.agentId = source["agentId"];
+	        this.title = source["title"];
+	        this.conversationId = source["conversationId"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.model = source["model"];
+	        this.effort = source["effort"];
+	        this.mode = source["mode"];
+	    }
+	}
 	export class ConnectionSummary {
 	    id: string;
 	    name: string;
@@ -1872,6 +2419,20 @@ export namespace vault {
 	        this.sortOrder = source["sortOrder"];
 	        this.createdAt = source["createdAt"];
 	        this.pinnedBranches = source["pinnedBranches"];
+	    }
+	}
+	export class GitRepoWorkspace {
+	    openFiles: string[];
+	    defaultAgent: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitRepoWorkspace(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.openFiles = source["openFiles"];
+	        this.defaultAgent = source["defaultAgent"];
 	    }
 	}
 	export class HistoryEntry {

@@ -52,6 +52,15 @@ interface DiffViewerProps {
     // staged marks this as the index-vs-HEAD diff, where the only action
     // that makes sense is unstaging.
     staged?: boolean
+    // Opens this file in the file editor. Absent for a commit's diff: that is
+    // history, and the working-tree file may not even have those lines
+    // anymore — "editar" ahí llevaría a un archivo que no es el que se está
+    // mirando.
+    onEdit?: () => void
+    // Le pasa este cambio a una sesión de agente. Como onEdit, solo para el
+    // working tree: preguntar por un diff histórico llevaría al agente a mirar
+    // el archivo de hoy, que puede no tener nada que ver.
+    onAsk?: () => void
 }
 
 const baseTheme = EditorView.theme({
@@ -155,6 +164,8 @@ export default function DiffViewer({
     blame,
     blameSide = 'old',
     onToggleBlame,
+    onEdit,
+    onAsk,
 }: DiffViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
@@ -373,6 +384,28 @@ export default function DiffViewer({
                         icon="person_search"
                         title="Mostrar quién tocó cada línea por última vez, con su commit y su fecha. En un diff del working tree las líneas agregadas todavía no tienen commit, así que aparecen vacías."
                     />
+                )}
+
+                {onEdit && (
+                    <button
+                        onClick={onEdit}
+                        title="Abre este archivo en el editor, en la solapa Archivos. Es el camino corto para el caso normal: ver el cambio, darse cuenta de que falta algo, y arreglarlo sin salir de la app."
+                        className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                    >
+                        <Icon name="edit" size={14} />
+                        Editar
+                    </button>
+                )}
+
+                {onAsk && (
+                    <button
+                        onClick={onAsk}
+                        title="Le pasa este cambio a una sesión de agente y deja el prompt escrito para que lo completes — revisar un diff antes de commitear, o preguntar por qué algo no anda. No lo envía solo."
+                        className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                    >
+                        <Icon name="smart_toy" size={14} />
+                        Preguntar
+                    </button>
                 )}
 
                 <IconToggle

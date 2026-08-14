@@ -15,6 +15,7 @@ Este archivo es solo un índice; el contenido real vive en archivos dedicados, c
 | [.claude/specs/go-react-contract.md](.claude/specs/go-react-contract.md) | Contrato completo de bindings `App` (Go↔React), fase por fase |
 | [.claude/specs/vault-migrations.md](.claude/specs/vault-migrations.md) | Sistema de migraciones del vault (schema_migrations, cómo agregar una migración, verificación) |
 | [.claude/specs/design-system.md](.claude/specs/design-system.md) | Sistema de diseño Material Design 3 — tokens de color, tipografía/iconos self-hosted, mapeo semántico. Leer antes de tocar cualquier estilo. |
+| [.claude/specs/agentic-git-workbench.md](.claude/specs/agentic-git-workbench.md) | **Propuesta, sin implementar.** Plan segmentado para editar código en el módulo Git (CodeMirror multi-lenguaje) e integrarlo con los CLIs agénticos: skills del repo, MCP, `.md` agénticos, chat y acciones agénticas sobre Git |
 | [.claude/rules/technical.md](.claude/rules/technical.md) | Restricciones técnicas duras y no negociables (cgo, `database/sql`, cifrado, tamaño de binario, migraciones, etc.) |
 | [.claude/rules/conventions.md](.claude/rules/conventions.md) | Convenciones de Go/frontend, testing, commits, CodeGraph |
 | [.claude/skills/mini-tools-patterns/SKILL.md](.claude/skills/mini-tools-patterns/SKILL.md) | Patrones de conectores/queries/theming — consultar antes de tocar un motor de BD, el executor, o el sistema de temas |

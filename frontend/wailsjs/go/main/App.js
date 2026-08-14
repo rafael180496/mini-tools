@@ -14,6 +14,26 @@ export function AddRedisZSetMember(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddRedisZSetMember'](arg1, arg2, arg3, arg4);
 }
 
+export function AgentChatHistory(arg1, arg2) {
+  return window['go']['main']['App']['AgentChatHistory'](arg1, arg2);
+}
+
+export function AgentChatModes(arg1) {
+  return window['go']['main']['App']['AgentChatModes'](arg1);
+}
+
+export function AgentChatSupported(arg1) {
+  return window['go']['main']['App']['AgentChatSupported'](arg1);
+}
+
+export function AgentModelCatalog(arg1) {
+  return window['go']['main']['App']['AgentModelCatalog'](arg1);
+}
+
+export function AgentPlans() {
+  return window['go']['main']['App']['AgentPlans']();
+}
+
 export function AnalyzeRedisPrefixes(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AnalyzeRedisPrefixes'](arg1, arg2, arg3, arg4);
 }
@@ -26,6 +46,10 @@ export function AppendSshHistory(arg1, arg2) {
   return window['go']['main']['App']['AppendSshHistory'](arg1, arg2);
 }
 
+export function AskAgentOnce(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AskAgentOnce'](arg1, arg2, arg3);
+}
+
 export function BackupVault(arg1) {
   return window['go']['main']['App']['BackupVault'](arg1);
 }
@@ -36,6 +60,10 @@ export function BeginRedisTransaction(arg1) {
 
 export function BeginTransaction(arg1) {
   return window['go']['main']['App']['BeginTransaction'](arg1);
+}
+
+export function CancelAgentChat(arg1) {
+  return window['go']['main']['App']['CancelAgentChat'](arg1);
 }
 
 export function CancelMongoQuery(arg1) {
@@ -122,6 +150,10 @@ export function CountMongoDocuments(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CountMongoDocuments'](arg1, arg2, arg3, arg4);
 }
 
+export function CreateAgentChat(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreateAgentChat'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateFolder'](arg1, arg2, arg3);
 }
@@ -132,6 +164,10 @@ export function CreateSshSnippet(arg1, arg2) {
 
 export function DefaultShellID() {
   return window['go']['main']['App']['DefaultShellID']();
+}
+
+export function DeleteAgentChat(arg1) {
+  return window['go']['main']['App']['DeleteAgentChat'](arg1);
 }
 
 export function DeleteConnection(arg1) {
@@ -294,6 +330,14 @@ export function GitAddWorktree(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GitAddWorktree'](arg1, arg2, arg3, arg4);
 }
 
+export function GitAgentContext(arg1) {
+  return window['go']['main']['App']['GitAgentContext'](arg1);
+}
+
+export function GitAgentUsage(arg1, arg2) {
+  return window['go']['main']['App']['GitAgentUsage'](arg1, arg2);
+}
+
 export function GitApplyPatch(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GitApplyPatch'](arg1, arg2, arg3, arg4);
 }
@@ -410,8 +454,16 @@ export function GitListRepos() {
   return window['go']['main']['App']['GitListRepos']();
 }
 
+export function GitListWorkTree(arg1) {
+  return window['go']['main']['App']['GitListWorkTree'](arg1);
+}
+
 export function GitLog(arg1, arg2) {
   return window['go']['main']['App']['GitLog'](arg1, arg2);
+}
+
+export function GitMCPConfig(arg1) {
+  return window['go']['main']['App']['GitMCPConfig'](arg1);
 }
 
 export function GitMerge(arg1, arg2, arg3) {
@@ -458,6 +510,10 @@ export function GitReadConflictFile(arg1, arg2) {
   return window['go']['main']['App']['GitReadConflictFile'](arg1, arg2);
 }
 
+export function GitReadWorkFile(arg1, arg2) {
+  return window['go']['main']['App']['GitReadWorkFile'](arg1, arg2);
+}
+
 export function GitRebaseApply(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitRebaseApply'](arg1, arg2, arg3);
 }
@@ -476,6 +532,10 @@ export function GitRemoteURLForCopy(arg1, arg2) {
 
 export function GitRemotes(arg1) {
   return window['go']['main']['App']['GitRemotes'](arg1);
+}
+
+export function GitRemoveMCPServer(arg1, arg2) {
+  return window['go']['main']['App']['GitRemoveMCPServer'](arg1, arg2);
 }
 
 export function GitRemoveRemote(arg1, arg2) {
@@ -502,6 +562,10 @@ export function GitRenameRepo(arg1, arg2) {
   return window['go']['main']['App']['GitRenameRepo'](arg1, arg2);
 }
 
+export function GitRepoWorkspace(arg1) {
+  return window['go']['main']['App']['GitRepoWorkspace'](arg1);
+}
+
 export function GitReset(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitReset'](arg1, arg2, arg3);
 }
@@ -518,12 +582,20 @@ export function GitSaveCredential(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitSaveCredential'](arg1, arg2, arg3);
 }
 
+export function GitSetDefaultAgent(arg1, arg2) {
+  return window['go']['main']['App']['GitSetDefaultAgent'](arg1, arg2);
+}
+
 export function GitSetDiffPrefs(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitSetDiffPrefs'](arg1, arg2, arg3);
 }
 
 export function GitSetIdentity(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GitSetIdentity'](arg1, arg2, arg3, arg4);
+}
+
+export function GitSetOpenFiles(arg1, arg2) {
+  return window['go']['main']['App']['GitSetOpenFiles'](arg1, arg2);
 }
 
 export function GitSetPaneWidths(arg1, arg2) {
@@ -586,8 +658,16 @@ export function GitUnstage(arg1, arg2) {
   return window['go']['main']['App']['GitUnstage'](arg1, arg2);
 }
 
+export function GitUpsertMCPServer(arg1, arg2) {
+  return window['go']['main']['App']['GitUpsertMCPServer'](arg1, arg2);
+}
+
 export function GitWorktrees(arg1) {
   return window['go']['main']['App']['GitWorktrees'](arg1);
+}
+
+export function GitWriteWorkFile(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitWriteWorkFile'](arg1, arg2, arg3, arg4);
 }
 
 export function HasOpenTransaction(arg1) {
@@ -600,6 +680,10 @@ export function InitializeVault(arg1) {
 
 export function IsVaultInitialized() {
   return window['go']['main']['App']['IsVaultInitialized']();
+}
+
+export function ListAgentChats(arg1) {
+  return window['go']['main']['App']['ListAgentChats'](arg1);
 }
 
 export function ListAgents() {
@@ -782,6 +866,10 @@ export function RemoveRedisZSetMember(arg1, arg2, arg3) {
   return window['go']['main']['App']['RemoveRedisZSetMember'](arg1, arg2, arg3);
 }
 
+export function RenameAgentChat(arg1, arg2) {
+  return window['go']['main']['App']['RenameAgentChat'](arg1, arg2);
+}
+
 export function RenameFolder(arg1, arg2) {
   return window['go']['main']['App']['RenameFolder'](arg1, arg2);
 }
@@ -802,6 +890,10 @@ export function ReplaceMongoDocument(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ReplaceMongoDocument'](arg1, arg2, arg3, arg4);
 }
 
+export function ResetAgentChat(arg1) {
+  return window['go']['main']['App']['ResetAgentChat'](arg1);
+}
+
 export function ResizeLocalTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeLocalTerminal'](arg1, arg2, arg3);
 }
@@ -814,12 +906,20 @@ export function ResolveJoinCondition(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['ResolveJoinCondition'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function RespondAgentApproval(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RespondAgentApproval'](arg1, arg2, arg3);
+}
+
 export function RestoreVaultBackupFirstRun(arg1, arg2) {
   return window['go']['main']['App']['RestoreVaultBackupFirstRun'](arg1, arg2);
 }
 
 export function RestoreVaultBackupFromFile(arg1, arg2) {
   return window['go']['main']['App']['RestoreVaultBackupFromFile'](arg1, arg2);
+}
+
+export function ResumeAgentChat(arg1, arg2) {
+  return window['go']['main']['App']['ResumeAgentChat'](arg1, arg2);
 }
 
 export function RevealConnectionPassword(arg1, arg2) {
@@ -842,6 +942,10 @@ export function SampleMongoFields(arg1, arg2, arg3) {
   return window['go']['main']['App']['SampleMongoFields'](arg1, arg2, arg3);
 }
 
+export function SaveChatAttachment(arg1, arg2) {
+  return window['go']['main']['App']['SaveChatAttachment'](arg1, arg2);
+}
+
 export function SaveConnection(arg1, arg2) {
   return window['go']['main']['App']['SaveConnection'](arg1, arg2);
 }
@@ -860,6 +964,14 @@ export function SaveSQLFileAs(arg1, arg2) {
 
 export function SaveSSHKey(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveSSHKey'](arg1, arg2, arg3);
+}
+
+export function SendAgentChat(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['SendAgentChat'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
+export function SetAgentChatSettings(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetAgentChatSettings'](arg1, arg2, arg3, arg4);
 }
 
 export function SetAgentCommand(arg1, arg2) {
@@ -1000,6 +1112,10 @@ export function SyncSchemaMetadata(arg1, arg2) {
 
 export function TestConnection(arg1) {
   return window['go']['main']['App']['TestConnection'](arg1);
+}
+
+export function TouchAgentChat(arg1, arg2) {
+  return window['go']['main']['App']['TouchAgentChat'](arg1, arg2);
 }
 
 export function TryAutoUnlock() {

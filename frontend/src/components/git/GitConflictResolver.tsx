@@ -21,6 +21,16 @@ interface GitConflictResolverProps {
     onAbort: () => void
     onResolved: () => void
     onClose: () => void
+    // Le pasa el conflicto abierto al agente, en el chat. Ausente = no hay
+    // ningún agente con chat verificado instalado.
+    //
+    // Deliberadamente NO se le pide al agente el contenido resuelto para
+    // volcarlo en el editor: eso exigiría que devuelva el archivo entero,
+    // exacto, y un merge mal reconstruido se ve idéntico a uno bien hecho
+    // hasta que alguien corre el código. Que explique el conflicto y proponga
+    // un criterio es útil; que escriba el resultado sin que nadie lo compare
+    // línea por línea, no.
+    onAsk?: (path: string) => void
 }
 
 // Three-way conflict resolver.
@@ -39,6 +49,7 @@ export default function GitConflictResolver({
     onAbort,
     onResolved,
     onClose,
+    onAsk,
 }: GitConflictResolverProps) {
     const [files, setFiles] = useState<string[]>([])
     const [path, setPath] = useState<string | null>(null)
@@ -165,6 +176,16 @@ export default function GitConflictResolver({
                     >
                         Continuar {operation}
                     </button>
+                    {onAsk && path && (
+                        <button
+                            onClick={() => onAsk(path)}
+                            title="Le pide al agente que explique este conflicto y proponga un criterio para resolverlo. No escribe el archivo: la resolución la elegís y la marcás vos."
+                            className="flex items-center gap-1 rounded px-2 py-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            <Icon name="smart_toy" size={14} />
+                            Consultar
+                        </button>
+                    )}
                     <button
                         onClick={onAbort}
                         disabled={busy}

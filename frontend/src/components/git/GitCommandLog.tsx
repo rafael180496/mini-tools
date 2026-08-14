@@ -7,6 +7,9 @@ interface GitCommandLogProps {
     // reloadToken changes after every mutating action, so the drawer shows
     // what just ran without polling.
     reloadToken: number
+    // Le pasa un comando fallido y su salida al agente. Ausente = la acción
+    // no se ofrece (no hay ningún agente con chat verificado instalado).
+    onAsk?: (command: string, output: string) => void
 }
 
 // Registro de solo lectura de los comandos git que el módulo ejecutó de
@@ -24,7 +27,7 @@ interface GitCommandLogProps {
 // El alto y el cierre los maneja el cajón que lo contiene (GitRepoTab), de
 // ahí que este componente ocupe todo lo que le den y no tenga botón de
 // cerrar propio: el título y la X viven en la tira de solapas.
-export default function GitCommandLogDrawer({reloadToken}: GitCommandLogProps) {
+export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogProps) {
     const [entries, setEntries] = useState<git.CommandEntry[]>([])
     const [onlyFailed, setOnlyFailed] = useState(false)
     const [copied, setCopied] = useState('')
@@ -98,6 +101,19 @@ export default function GitCommandLogDrawer({reloadToken}: GitCommandLogProps) {
                                 <span className="shrink-0 text-[10px] text-on-surface-variant/60">
                                     {new Date(e.atMs).toLocaleTimeString('es')}
                                 </span>
+                                {/* Solo en los que fallaron: preguntar por un
+                                    comando que salió bien no tiene sentido, y
+                                    un botón por fila en todas convertiría el
+                                    log en un tablero de botones. */}
+                                {e.failed && onAsk && (
+                                    <button
+                                        onClick={() => onAsk(e.command, e.output ?? '')}
+                                        title="Le pasa este comando y su error al agente, en el chat, para que explique qué pasó y cómo salir"
+                                        className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-on-surface"
+                                    >
+                                        <Icon name="smart_toy" size={12} />
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => void copy(e.command)}
                                     title="Copia el comando para pegarlo en una terminal tal cual se ejecutó"

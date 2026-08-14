@@ -45,10 +45,23 @@ import {
     GitSetPaneWidths,
     GitSetPinnedBranches,
     GitStatus,
+    GitRepoWorkspace,
+    GitSetOpenFiles,
+    GitSetDefaultAgent,
+    AgentChatSupported,
+    AskAgentOnce,
+    CreateAgentChat,
+    GitAgentContext,
+    ListAgentChats,
+    RenameAgentChat,
+    DeleteAgentChat,
+    ResumeAgentChat,
+    TouchAgentChat,
+    WriteLocalTerminal,
     GitUnstage,
 } from '../../../wailsjs/go/main/App'
 import {GetSettings, ListAgents, SetGitLayout, SetGitPanelSessions} from '../../../wailsjs/go/main/App'
-import {agents as agentsModel, git} from '../../../wailsjs/go/models'
+import {agents as agentsModel, git, vault} from '../../../wailsjs/go/models'
 import type {Theme} from '../../hooks/useTheme'
 import type {TerminalThemeId} from '../../xterm/terminalThemes'
 import {buildBranchTree, countBranches, expandedForBranch, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
@@ -79,6 +92,9 @@ import GitConflictResolver from './GitConflictResolver'
 import GitCommandLogDrawer from './GitCommandLog'
 import GitRebaseDialog from './GitRebaseDialog'
 import GitStashPanel from './GitStashPanel'
+import GitFileEditor from './GitFileEditor'
+import GitAgentPanel from './GitAgentPanel'
+import AgentChat from './AgentChat'
 import LocalTerminalPanel from '../terminal/LocalTerminalPanel'
 import TerminalThemeMenu from '../terminal/TerminalThemeMenu'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../../xterm/terminalFont'
@@ -146,13 +162,13 @@ interface GitRepoTabProps {
 // Which of the two center views is showing. "commits" is the history graph;
 // "changes" is the working tree — the same Commits/Files split the sidebar of
 // a Sublime Merge tab has.
-type CenterView = 'commits' | 'changes' | 'stash' | 'conflicts'
+type CenterView = 'commits' | 'changes' | 'stash' | 'conflicts' | 'files'
 
 // Dónde va anclado el panel de la terminal, y qué solapa muestra. Espejan
 // settings.git_term_dock/git_panel_tab (migración 27); null es la solapa
 // vacía, que en la base es ''.
 type Dock = 'bottom' | 'left' | 'right'
-type PanelTab = 'terminal' | 'commands' | null
+type PanelTab = 'terminal' | 'commands' | 'agents' | null
 
 // Una sesión abierta del panel. `id` es a la vez el id de sesión del backend
 // y el nombre del evento de Wails por el que llegan sus bytes, así que tiene
@@ -162,9 +178,13 @@ type PanelTab = 'terminal' | 'commands' | null
 // agente arranca solo— de una restaurada del layout guardado, que abre su
 // shell y espera: relanzar un asistente que consume cuota porque la app se
 // reinició no es algo que nadie haya pedido.
+// `chat` es una sesión SIN PTY: corre el CLI en modo headless y dibuja la
+// conversación (ver backend/agentchat). Convive con `agent`, que es el mismo
+// CLI dentro de una terminal de verdad — no lo reemplaza, porque solo ahí el
+// agente puede pedir permiso y editar archivos.
 interface PanelSession {
     id: string
-    kind: 'shell' | 'agent'
+    kind: 'shell' | 'agent' | 'chat'
     agentId?: string
     title: string
     autoStart: boolean
@@ -194,6 +214,14 @@ const DOCK_BUTTONS = [
     {id: 'right' as const, icon: 'dock_to_left', title: 'Anclar el panel a la derecha — deja el grafo y las ramas a la izquierda, como en un IDE'},
 ]
 
+// shortAbout recorta el asunto para el título de una solapa. Se queda con el
+// final de la ruta, que es la parte que distingue: "src/components/git/" es
+// idéntico en veinte archivos, "GitRepoTab.tsx:120-140" no.
+function shortAbout(about: string): string {
+    const tail = about.split('/').pop() ?? about
+    return tail.length > 28 ? `…${tail.slice(-27)}` : tail
+}
+
 function newShellSession(repoId: string): PanelSession {
     return {id: `git-term-${repoId}-${nextTerminalSeq()}`, kind: 'shell', title: 'Terminal', autoStart: false}
 }
@@ -213,6 +241,30 @@ export default function GitRepoTab({
     active,
 }: GitRepoTabProps) {
     const [view, setView] = useState<CenterView>('commits')
+    // Archivo que el botón "Editar" del diff pide abrir en la vista Archivos.
+    // El token acompaña a la ruta para que pedir el mismo archivo dos veces
+    // vuelva a enfocarlo en vez de no hacer nada.
+    const [editRequest, setEditRequest] = useState<{path: string; token: number} | null>(null)
+    // Estado por repositorio del banco de trabajo (migración 30): pestañas
+    // abiertas del editor y agente por defecto.
+    const [openFiles, setOpenFiles] = useState<string[] | null>(null)
+    const [defaultAgent, setDefaultAgent] = useState('')
+    // Prompt armado para una sesión de agente que TODAVÍA no está lista. Ver
+    // askAgent: a una sesión recién creada no se le puede escribir de una,
+    // porque el CLI tarda en arrancar y el texto se lo comería la shell.
+    const [pendingPrompt, setPendingPrompt] = useState<{sessionId: string; text: string; about: string} | null>(null)
+    // Prompt para una sesión de CHAT. A diferencia de pendingPrompt no hay
+    // nada que esperar: se llena la caja de texto y listo.
+    const [chatSeed, setChatSeed] = useState<{sessionId: string; text: string; token: number} | null>(null)
+    // Agentes con chat nativo verificado (backend/agentchat). Los que no
+    // están siguen abriéndose como terminal, en vez de ofrecer un chat que se
+    // quedaría mudo.
+    const [chatCapable, setChatCapable] = useState<Set<string>>(new Set())
+    // Historial de conversaciones guardadas de este repositorio (migración 31).
+    const [chatHistory, setChatHistory] = useState<vault.AgentChat[]>([])
+    // Cuántas cosas agénticas tiene ESTE repositorio, para el contador de la
+    // solapa. Se pide con el resto del contexto y no en cada render.
+    const [agentBadge, setAgentBadge] = useState(0)
     const [commits, setCommits] = useState<git.CommitInfo[]>([])
     const [branches, setBranches] = useState<git.Branch[]>([])
     // Tags live in the same panel as branches because they answer the same
@@ -239,6 +291,19 @@ export default function GitRepoTab({
     // siembra con las que llevan a la rama actual (ver el efecto más abajo):
     // en un repositorio con 364 remotas, abrir todo por defecto sería la lista
     // plana de antes con indentación extra.
+    // Secciones plegadas del panel de ramas. Se guarda lo CERRADO y no lo
+    // abierto: el estado natural es todo desplegado, y así una sección nueva
+    // aparece visible en vez de escondida.
+    const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+    const toggleSection = useCallback((key: string) => {
+        setCollapsedSections((prev) => {
+            const next = new Set(prev)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
+    }, [])
+
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
     const seededFoldersRef = useRef(false)
     // Commit search. Parsed into real git log filters (author/grep/path/
@@ -275,6 +340,20 @@ export default function GitRepoTab({
     // de padre, y eso mataría todas las sesiones en cada cambio de dock.
     const [sessions, setSessions] = useState<PanelSession[]>([])
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+    // Chat activo, aparte del de las terminales: desde que los chats viven en
+    // la solapa Agentes y las terminales en Sesiones, un solo "activo"
+    // compartido haría que cambiar de solapa te moviera la selección de la
+    // otra.
+    const [activeChatId, setActiveChatId] = useState<string | null>(null)
+    // Qué muestra la solapa Agentes: las conversaciones o el contexto del
+    // repositorio (skills, MCP, consumo).
+    const [agentsView, setAgentsView] = useState<'chats' | 'context'>('context')
+    // Modo agente: archivos + conversación, sin ramas ni diff. Se recuerda lo
+    // que estaba oculto ANTES de entrar, para devolverlo tal cual al salir —
+    // salir dejando visible algo que el usuario tenía cerrado sería reordenarle
+    // la pantalla por haber probado un modo.
+    const [agentMode, setAgentMode] = useState(false)
+    const beforeAgentMode = useRef<{side: boolean; diff: boolean; view: CenterView} | null>(null)
     // Catálogo de agentes de esta máquina, para el menú "+". Se pide una vez:
     // qué hay instalado no cambia mientras la pestaña está abierta.
     const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
@@ -435,7 +514,7 @@ export default function GitRepoTab({
                 // recrean sus shells, pero ningún agente arranca solo.
                 const restored: PanelSession[] = (st.gitPanelSessions ?? []).map((p) => ({
                     id: `git-term-${repoId}-${nextTerminalSeq()}`,
-                    kind: p.kind === 'agent' ? 'agent' : 'shell',
+                    kind: p.kind === 'agent' ? 'agent' : p.kind === 'chat' ? 'chat' : 'shell',
                     agentId: p.agentId || undefined,
                     title: p.title || (p.kind === 'agent' ? (p.agentId ?? 'Agente') : 'Terminal'),
                     autoStart: false,
@@ -446,7 +525,10 @@ export default function GitRepoTab({
                 // en esa solapa pero no hay sesiones anotadas (una instalación
                 // que viene de la versión de una sola terminal), se abre una
                 // terminal, que es exactamente lo que había antes.
-                const openTab = st.gitPanelTab === 'terminal' || st.gitPanelTab === 'commands' ? st.gitPanelTab : null
+                const openTab =
+                    st.gitPanelTab === 'terminal' || st.gitPanelTab === 'commands' || st.gitPanelTab === 'agents'
+                        ? st.gitPanelTab
+                        : null
                 const initial =
                     openTab === 'terminal' && restored.length === 0 ? [newShellSession(repoId)] : restored
                 if (openTab) setPanelTab(openTab)
@@ -527,15 +609,282 @@ export default function GitRepoTab({
         })
     }, [])
 
+    const reloadChatHistory = useCallback(() => {
+        ListAgentChats(repoId)
+            .then((l) => setChatHistory(l ?? []))
+            .catch(() => setChatHistory([]))
+    }, [repoId])
+
+    useEffect(() => {
+        reloadChatHistory()
+    }, [reloadChatHistory])
+
+    // Contador de la solapa Agentes: skills + subagentes + comandos del repo.
+    // No incluye los archivos de instrucciones ausentes — un contador que
+    // sube porque te FALTA algo se lee al revés de lo que significa.
+    useEffect(() => {
+        GitAgentContext(repoId)
+            .then((c) => setAgentBadge((c.skills?.length ?? 0) + (c.agents?.length ?? 0) + (c.commands?.length ?? 0)))
+            .catch(() => setAgentBadge(0))
+    }, [repoId])
+
+    // enterAgentMode deja la pestaña en "modo carpeta": archivos del proyecto
+    // al centro, sin ramas, grafo ni diff.
+    //
+    // Los cambios de layout van ACÁ y no adentro de un updater de
+    // setAgentMode: React puede invocar un updater más de una vez, y un
+    // setState metido adentro no tiene garantía de aplicarse ni de aplicarse
+    // una sola vez.
+    //
+    // Es idempotente a propósito: lo llama el botón, pero también abrir o
+    // elegir un chat, y esas dos cosas se solapan todo el tiempo.
+    const enterAgentMode = useCallback(() => {
+        if (agentMode) return
+        beforeAgentMode.current = {side: sideHidden, diff: diffHidden, view}
+        setAgentMode(true)
+        setSideHidden(true)
+        setDiffHidden(true)
+        setView('files')
+        setPanelTab('agents')
+        // Un panel colapsado al mínimo dejaría el modo agente sin su mitad: se
+        // le da un ancho utilizable si estaba en nada.
+        setPanelSize((sz) => (sz < 320 ? 420 : sz))
+        persistLayout({tab: 'agents', sideHidden: true, diffHidden: true})
+    }, [agentMode, sideHidden, diffHidden, view, persistLayout])
+
+    // resumeChat retoma una conversación guardada.
+    //
+    // La sesión del panel reusa el ID DEL CHAT a propósito: es lo que hace que
+    // seguir escribiendo actualice esa misma entrada del historial en vez de
+    // crear una nueva cada vez que se retoma.
+    const resumeChat = useCallback(
+        (chat: vault.AgentChat) => {
+            setPanelTab('agents')
+            setAgentsView('chats')
+            persistLayout({tab: 'agents'})
+            enterAgentMode()
+
+            const open = sessions.find((s) => s.id === chat.id)
+            if (open) {
+                setActiveChatId(chat.id)
+                return
+            }
+            const session: PanelSession = {
+                id: chat.id,
+                kind: 'chat',
+                agentId: chat.agentId,
+                title: chat.title || `Chat con ${agentList.find((a) => a.id === chat.agentId)?.label ?? chat.agentId}`,
+                autoStart: false,
+            }
+            const next = [...sessions, session]
+            setSessions(next)
+            setActiveChatId(session.id)
+            persistSessions(next)
+            // Le dice al manager con qué conversación del CLI encadenar. Sin
+            // esto la ventana mostraría el chat pero el agente empezaría de
+            // cero, que es peor que no ofrecer retomar.
+            void ResumeAgentChat(chat.id, chat.conversationId).catch(() => {})
+        },
+        [sessions, agentList, persistLayout, persistSessions, enterAgentMode],
+    )
+
+    // Estado por repositorio, una sola vez por pestaña.
+    useEffect(() => {
+        GitRepoWorkspace(repoId)
+            .then((ws) => {
+                setOpenFiles(ws.openFiles ?? [])
+                setDefaultAgent(ws.defaultAgent ?? '')
+            })
+            .catch(() => setOpenFiles([]))
+    }, [repoId])
+
+    // askAgent le pasa una pregunta al agente elegido.
+    //
+    // **No se envía sola: el prompt se ESCRIBE en la sesión y enviar queda a
+    // cargo del usuario.** Es la misma decisión que ya tomó el historial de
+    // comandos SSH de esta app (click escribe, ejecutar es un gesto aparte), y
+    // por el mismo motivo: casi siempre se quiere completar o corregir el
+    // texto antes de mandarlo, y disparar solo lo que quedó escrito es un
+    // atajo que en algún momento manda algo que no era.
+    //
+    // Si ya hay una sesión de ese agente corriendo, el texto entra ahí. Si hay
+    // que crearla, el prompt queda PENDIENTE con un botón para insertarlo: a
+    // una sesión recién abierta no se le puede escribir de inmediato porque el
+    // CLI tarda en arrancar, y el texto se lo comería la shell que lo lanza —
+    // que además terminaría ejecutándolo como un comando cuando el agente
+    // arranque.
+    const askAgent = useCallback(
+        (agentId: string, prompt: string, about: string) => {
+            // Con chat nativo el problema del arranque desaparece: no hay un
+            // CLI que esté levantando y al que no se le pueda escribir, solo
+            // una caja de texto que se llena. Por eso se prefiere el chat
+            // cuando el agente lo soporta, y la terminal queda para el resto.
+            if (chatCapable.has(agentId)) {
+                setPanelTab('agents')
+                setAgentsView('chats')
+                persistLayout({tab: 'agents'})
+                enterAgentMode()
+                const existingChat = sessions.find((s) => s.kind === 'chat' && s.agentId === agentId)
+                if (existingChat) {
+                    setActiveChatId(existingChat.id)
+                    setChatSeed({sessionId: existingChat.id, text: prompt, token: Date.now()})
+                    return
+                }
+                const agent = agentList.find((a) => a.id === agentId)
+                const session: PanelSession = {
+                    id: `git-term-${repoId}-${nextTerminalSeq()}`,
+                    kind: 'chat',
+                    agentId,
+                    title: `Chat · ${shortAbout(about)}`,
+                    autoStart: false,
+                }
+                const next = [...sessions, session]
+                setSessions(next)
+                setActiveChatId(session.id)
+                persistSessions(next)
+                // El chat entra al historial del repositorio con el asunto como
+                // título: es lo que después permite reconocerlo en la lista y
+                // retomarlo.
+                void CreateAgentChat(session.id, repoId, agentId, about).catch(() => {})
+                setChatSeed({sessionId: session.id, text: prompt, token: Date.now()})
+                void agent // el label ya quedó en el título
+                return
+            }
+
+            setPanelTab('terminal')
+            persistLayout({tab: 'terminal'})
+            const existing = sessions.find((s) => s.kind === 'agent' && s.agentId === agentId)
+            if (existing) {
+                setActiveSessionId(existing.id)
+                void WriteLocalTerminal(existing.id, prompt)
+                return
+            }
+
+            const agent = agentList.find((a) => a.id === agentId)
+            const session: PanelSession = {
+                id: `git-term-${repoId}-${nextTerminalSeq()}`,
+                kind: 'agent',
+                agentId,
+                // La sesión se nombra por la TAREA y no solo por el agente:
+                // con tres sesiones abiertas, "Claude Code", "Claude Code" y
+                // "Claude Code" no ayuda a encontrar la que estabas usando.
+                title: `${agent?.label ?? agentId} · ${shortAbout(about)}`,
+                autoStart: true,
+            }
+            const next = [...sessions, session]
+            setSessions(next)
+            setActiveSessionId(session.id)
+            persistSessions(next)
+            setPendingPrompt({sessionId: session.id, text: prompt, about})
+        },
+        [sessions, agentList, chatCapable, repoId, persistLayout, persistSessions, enterAgentMode],
+    )
+
+
+    const toggleAgentMode = useCallback(() => {
+        if (!agentMode) {
+            enterAgentMode()
+            // Si hay una conversación abierta se muestra ESA, no el
+            // contexto: entrar en modo agente para tener que hacer un clic
+            // más y llegar a lo que ya estabas hablando es una fricción sin
+            // motivo.
+            setAgentsView(sessions.some((s) => s.kind === 'chat') ? 'chats' : 'context')
+            return
+        }
+        const prev = beforeAgentMode.current
+        setAgentMode(false)
+        setSideHidden(prev?.side ?? false)
+        setDiffHidden(prev?.diff ?? false)
+        setView(prev?.view ?? 'commits')
+        persistLayout({sideHidden: prev?.side ?? false, diffHidden: prev?.diff ?? false})
+    }, [agentMode, enterAgentMode, sessions, persistLayout])
+
+    // draftAgent es con qué agente se redacta el mensaje de commit: el que
+    // esté fijado por defecto si sirve, o el primero con chat verificado. Sin
+    // ninguno, la acción no se ofrece — mejor que ofrecerla y fallar al
+    // tocarla.
+    const draftAgent = useMemo(() => {
+        if (defaultAgent && chatCapable.has(defaultAgent)) return defaultAgent
+        return agentList.find((a) => a.available && chatCapable.has(a.id))?.id ?? ''
+    }, [defaultAgent, chatCapable, agentList])
+
+    const [drafting, setDrafting] = useState(false)
+
+    // draftCommitMessage le pide al agente el mensaje a partir del diff
+    // PREPARADO y lo escribe en el campo.
+    //
+    // Tres decisiones que hacen que esto sirva en vez de estorbar:
+    //   - Se le pide que lea `git diff --staged` él mismo en vez de pegarle el
+    //     parche: el diff de un commit grande no entra cómodo en un prompt, y
+    //     git es una herramienta que los dos agentes ya tienen.
+    //   - Se le pide el mensaje PELADO, sin markdown ni explicación, porque va
+    //     derecho a un campo de texto.
+    //   - El prefijo de tipo/scope que el usuario ya haya elegido se vuelve a
+    //     aplicar sobre lo que devuelva: la convención del proyecto la decide
+    //     el selector, no el agente.
+    const draftCommitMessage = useCallback(async () => {
+        if (!draftAgent || drafting) return
+        setDrafting(true)
+        setError(null)
+        try {
+            const answer = await AskAgentOnce(
+                repoId,
+                draftAgent,
+                'Mirá el diff preparado para commitear en este repositorio (git diff --staged) y escribí el mensaje de commit. ' +
+                    'Respondé SOLO con el mensaje: primera línea de resumen en imperativo y menos de 72 caracteres, y si hace falta ' +
+                    'una línea en blanco y un cuerpo breve explicando el porqué. Sin markdown, sin comillas y sin ninguna explicación adicional.',
+            )
+            const {type, scope} = currentPrefixOf(commitMessage)
+            const clean = answer.trim()
+            setCommitMessage(type ? applyPrefix(clean, buildCommitPrefix(type, scope)) : clean)
+        } catch (e) {
+            setError(String(e))
+        } finally {
+            setDrafting(false)
+        }
+    }, [draftAgent, drafting, repoId, commitMessage])
+
+    // askAgentPicking resuelve CON QUÉ agente. Con uno por defecto va directo;
+    // sin él abre el menú, porque elegir por el usuario un asistente que
+    // consume su cuota no es algo que nadie haya pedido.
+    const askAgentPicking = useCallback(
+        (prompt: string, about: string, e?: {clientX: number; clientY: number}) => {
+            const usable = agentList.filter((a) => a.available)
+            if (defaultAgent && usable.some((a) => a.id === defaultAgent)) {
+                askAgent(defaultAgent, prompt, about)
+                return
+            }
+            if (usable.length === 0) {
+                setError('No hay ningún asistente de código instalado en este equipo.')
+                return
+            }
+            if (usable.length === 1) {
+                askAgent(usable[0].id, prompt, about)
+                return
+            }
+            setMenu({
+                x: e?.clientX ?? 200,
+                y: e?.clientY ?? 200,
+                items: usable.map((a) => ({
+                    label: `Preguntar a ${a.label}`,
+                    icon: 'smart_toy',
+                    hint: about,
+                    onSelect: () => askAgent(a.id, prompt, about),
+                })),
+            })
+        },
+        [agentList, defaultAgent, askAgent],
+    )
+
     const addSession = useCallback(
-        (kind: 'shell' | 'agent', agent?: agentsModel.Agent) => {
+        (kind: 'shell' | 'agent' | 'chat', agent?: agentsModel.Agent) => {
             const session: PanelSession =
-                kind === 'agent' && agent
+                kind !== 'shell' && agent
                     ? {
                           id: `git-term-${repoId}-${nextTerminalSeq()}`,
-                          kind: 'agent',
+                          kind,
                           agentId: agent.id,
-                          title: agent.label,
+                          title: kind === 'chat' ? `Chat · ${agent.label}` : agent.label,
                           // Creada por un clic acá y ahora: el agente arranca
                           // solo. Solo las restauradas esperan (ver PanelSession).
                           autoStart: true,
@@ -543,12 +892,25 @@ export default function GitRepoTab({
                     : newShellSession(repoId)
             const next = [...sessions, session]
             setSessions(next)
+            persistSessions(next)
+
+            if (kind === 'chat') {
+                setActiveChatId(session.id)
+                setAgentsView('chats')
+                setPanelTab('agents')
+                persistLayout({tab: 'agents'})
+                enterAgentMode()
+                if (agent) {
+                    void CreateAgentChat(session.id, repoId, agent.id, `Chat con ${agent.label}`).catch(() => {})
+                }
+                return
+            }
+
             setActiveSessionId(session.id)
             setPanelTab('terminal')
             persistLayout({tab: 'terminal'})
-            persistSessions(next)
         },
-        [repoId, sessions, persistLayout, persistSessions],
+        [repoId, sessions, persistLayout, persistSessions, enterAgentMode],
     )
 
     const closeSession = useCallback(
@@ -568,25 +930,37 @@ export default function GitRepoTab({
         (tab: Exclude<PanelTab, null>) => {
             const next = panelTab === tab ? null : tab
             setPanelTab(next)
-            // Abrir la solapa de sesiones sin ninguna sesión mostraría un
-            // panel vacío: se crea una terminal, que es lo que se estaba
-            // pidiendo al abrirla.
-            if (next === 'terminal' && sessions.length === 0) {
-                const session = newShellSession(repoId)
-                setSessions([session])
-                setActiveSessionId(session.id)
-                persistSessions([session])
-            }
+            // Abrir Agentes ES ponerse a trabajar con un agente, y entonces lo
+            // que se quiere ver son los archivos del proyecto, no el grafo de
+            // commits. Vale para las tres puertas de entrada —este botón, la
+            // solapa del panel y abrir un chat— porque desde el lado del
+            // usuario son la misma acción, y que una sola de ellas reacomode la
+            // pantalla es exactamente lo que se siente roto.
+            if (next === 'agents') enterAgentMode()
+            // Antes, abrir la solapa de sesiones sin ninguna abierta creaba
+            // una terminal directamente. El resultado era un prompt de zsh
+            // mudo: nada indicaba que además se puede chatear con un agente,
+            // retomar una conversación o ver qué tiene preparado el
+            // repositorio. Ahora se muestra el lanzador (ver más abajo), y la
+            // terminal es UNA de las opciones en vez de la única.
             persistLayout({tab: next})
         },
-        [panelTab, sessions.length, repoId, persistLayout, persistSessions],
+        [panelTab, sessions.length, repoId, persistLayout, persistSessions, enterAgentMode],
     )
 
     // El catálogo de agentes se pide una vez: qué hay instalado en la máquina
     // no cambia mientras la pestaña está abierta.
     useEffect(() => {
         ListAgents()
-            .then((list) => setAgentList(list ?? []))
+            .then(async (list) => {
+                const agents = list ?? []
+                setAgentList(agents)
+                // Qué agentes tienen chat nativo lo decide el backend, que es
+                // donde está la lista de adaptadores verificados — duplicarla
+                // acá se desincronizaría en cuanto se agregue uno.
+                const flags = await Promise.all(agents.map((a) => AgentChatSupported(a.id).catch(() => false)))
+                setChatCapable(new Set(agents.filter((_, i) => flags[i]).map((a) => a.id)))
+            })
             .catch(() => setAgentList([]))
     }, [])
 
@@ -1073,6 +1447,19 @@ export default function GitRepoTab({
     function commitMenuItems(c: git.CommitInfo): (DropdownItem | 'separator')[] {
         const short = c.shortHash
         return [
+            // Va primero porque es de solo lectura y sin consecuencias, a
+            // diferencia de todo lo que sigue.
+            {
+                label: 'Preguntarle al agente sobre este commit',
+                icon: 'smart_toy',
+                hint: 'Abre el chat con el prompt escrito; enviar y seguir la conversación es tuyo',
+                onSelect: () =>
+                    askAgentPicking(
+                        `Explicá qué hizo el commit ${c.hash} de este repositorio (git show ${c.hash}) y `,
+                        `commit ${short}`,
+                    ),
+            },
+            'separator',
             {
                 label: 'Reordenar y combinar desde acá…',
                 icon: 'low_priority',
@@ -1324,6 +1711,21 @@ export default function GitRepoTab({
         },
         {label: 'push --tags', hint: 'Incluye los tags', onSelect: () => run('push', () => GitPush(repoId, new git.PushOptions({tags: true}), new git.AuthConfig({})))},
         'separator',
+        // Revisar ANTES de publicar, que es cuando todavía se puede arreglar
+        // barato. No pushea: abre el chat con el prompt escrito.
+        {
+            label: 'Revisar con el agente antes de pushear',
+            icon: 'smart_toy',
+            hint: upstream ? `Revisa ${upstream}..HEAD sin publicar nada` : 'La rama no tiene upstream: se revisan los commits locales',
+            onSelect: () =>
+                askAgentPicking(
+                    upstream
+                        ? `Revisá los commits que estoy por pushear en este repositorio (git log ${upstream}..HEAD y git diff ${upstream}..HEAD) y decime si ves algo que no debería publicarse. `
+                        : 'Revisá los commits locales de esta rama que todavía no están publicados y decime si ves algo que no debería publicarse. ',
+                    'lo que voy a pushear',
+                ),
+        },
+        'separator',
         {
             label: 'push --force-with-lease',
             hint: 'Reescribe, pero aborta si alguien subió algo',
@@ -1356,7 +1758,13 @@ export default function GitRepoTab({
     // Umbral medido contra el contenido real de la fila: ícono (14) + texto
     // (~45 a 11px) + relleno, por tres, más los separadores. Por debajo de eso
     // los tres botones no entran y hay que quedarse con los íconos.
-    const compactTabs = sideWidth < 210
+    // Cinco solapas (Commits, Cambios, Stash, Archivos, Agente) no entran con
+    // texto ni siquiera en una columna de 260px: quedaban recortadas a
+    // "C…"/"St…"/"Ar…", que ocupa casi lo mismo y encima no se entiende. El
+    // umbral sube para pasar a solo íconos antes de llegar a ese punto — los
+    // cinco íconos son distintos entre sí y el tooltip sigue diciendo qué hace
+    // cada uno.
+    const compactTabs = sideWidth < 340
 
     const localBranches = pinnedFirst(branches.filter((b) => !b.isRemote && matchesFilter(b)))
     const remoteBranches = pinnedFirst(branches.filter((b) => b.isRemote && matchesFilter(b)))
@@ -1519,6 +1927,49 @@ export default function GitRepoTab({
                         Crear pull request
                     </button>
                 )}
+                {/* Describir el PR va al lado de crearlo, que es donde uno se
+                    queda mirando el formulario vacío. Abre el chat con el
+                    prompt escrito: el título y el cuerpo los pega el usuario
+                    en la página del forge, esta app no tiene token de nadie. */}
+                {forge?.compareUrl && (
+                    <button
+                        onClick={() =>
+                            askAgentPicking(
+                                `Escribí el título y el cuerpo del pull request de la rama "${status?.branch ?? ''}" de este repositorio, mirando los commits que la separan de su base (git log y git diff contra la rama principal). `,
+                                `PR de ${status?.branch ?? 'esta rama'}`,
+                            )
+                        }
+                        title="Le pide al agente el título y el cuerpo del PR a partir de los commits de la rama. Lo escribe en el chat para que lo revises y lo pegues."
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="smart_toy" size={13} />
+                        Describir
+                    </button>
+                )}
+                {/* Modo agente: deja archivos + conversación y esconde ramas,
+                    grafo y diff.
+
+                    Va en la barra de arriba y NO en la columna de ramas: el
+                    modo oculta esa columna, así que el botón que lo apaga se
+                    escondía junto con ella y no había forma de volver más que
+                    reabrir el panel a mano. Un interruptor tiene que
+                    sobrevivir a lo que apaga. */}
+                <button
+                    onClick={toggleAgentMode}
+                    title={
+                        agentMode
+                            ? 'Volver a la vista de siempre: ramas, grafo y diff'
+                            : 'Modo agente: archivos del proyecto y conversación, sin ramas, grafo ni diff ocupando la pantalla'
+                    }
+                    className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                        agentMode
+                            ? 'bg-primary text-on-primary'
+                            : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                    }`}
+                >
+                    <Icon name="smart_toy" size={14} />
+                    Agente
+                </button>
                 {/* Los interruptores de paneles viven en un menú y no como
                     botones sueltos: la fila ya tenía "Crear pull request",
                     Terminal y Comandos, y tres botones más la desbordaban en
@@ -1553,22 +2004,28 @@ export default function GitRepoTab({
                         },
                     ]}
                 />
-                <button
+                {panelTab === null && <button
                     onClick={() => openPanel('terminal')}
                     title="Abre una terminal de verdad en la raíz de este repositorio: podés hacer cd, correr los tests, un rebase interactivo o cualquier comando que la interfaz no cubra, sin salir de la app. Se puede anclar abajo, a la izquierda o a la derecha, y el intérprete (zsh, bash, PowerShell, Git Bash…) se elige en Configuración → Terminal."
-                    className={`ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'terminal' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                    className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
                 >
                     <Icon name="terminal" size={13} />
                     Terminal
-                </button>
-                <button
-                    onClick={() => openPanel('commands')}
-                    title="Muestra el comando git exacto que se ejecutó por debajo y su salida — para entender un fallo sin tener que reproducirlo en una terminal. Es solo lectura: para ejecutar algo, usá Terminal."
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'commands' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                </button>}
+                {/* Antes acá había un botón "Comandos" que repetía una solapa
+                    del panel de abajo. Se reemplazó por el acceso a lo
+                    agéntico, que es lo que de verdad no se encontraba: los
+                    chats, los skills del repo, los servidores MCP y el consumo
+                    estaban todos detrás de una solapa chica sin nada que
+                    anunciara qué había adentro. */}
+                {panelTab === null && <button
+                    onClick={() => openPanel('agents')}
+                    title="Asistentes de código sobre este repositorio: chatear con Claude Code, Codex o Antigravity, ver qué skills e instrucciones tiene preparadas el repo, qué servidores MCP ve cada agente, y cuántos tokens llevás gastados."
+                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
                 >
-                    <Icon name="history" size={13} />
-                    Comandos
-                </button>
+                    <Icon name="smart_toy" size={13} />
+                    Agentes
+                </button>}
             </div>
 
             {showWorktrees && (
@@ -1669,6 +2126,14 @@ export default function GitRepoTab({
                             badge={stashes.length}
                             title="Ver los cambios apartados en stashes, con su contenido, antes de aplicarlos"
                         />
+                        <ViewTab
+                            compact={compactTabs}
+                            active={view === 'files'}
+                            onClick={() => setView('files')}
+                            icon="edit_document"
+                            label="Archivos"
+                            title="Abrir y editar los archivos del repositorio sin salir de la app"
+                        />
                     </div>
                     {/* Commit search. Distinct from the branch filter below:
                         this one goes to git and narrows the HISTORY, that one
@@ -1758,39 +2223,55 @@ export default function GitRepoTab({
                         </div>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto p-1">
-                        <SectionLabel count={localBranches.length}>Ramas</SectionLabel>
+                        <SectionLabel
+                            count={localBranches.length}
+                            open={!collapsedSections.has('local')}
+                            onToggle={() => toggleSection('local')}
+                        >
+                            Ramas
+                        </SectionLabel>
                         {/* Las ancladas van planas y arriba de todo: anclarlas
                             existe justamente para sacarlas del montón, así que
                             volver a meterlas dentro de su carpeta anularía la
                             función. */}
-                        {pinnedLocal.map((b) => (
+                        {!collapsedSections.has('local') && pinnedLocal.map((b) => (
                             <BranchRow {...branchRowProps(b)} key={b.name} />
                         ))}
-                        <BranchTree
-                            node={localTree}
-                            depth={0}
-                            expanded={expandedFolders}
-                            expandAll={filtering}
-                            onToggleFolder={toggleFolder}
-                            renderBranch={(b, folderPath) => (
-                                <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
-                            )}
-                        />
+                        {!collapsedSections.has('local') && (
+                            <BranchTree
+                                node={localTree}
+                                depth={0}
+                                expanded={expandedFolders}
+                                expandAll={filtering}
+                                onToggleFolder={toggleFolder}
+                                renderBranch={(b, folderPath) => (
+                                    <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
+                                )}
+                            />
+                        )}
 
-                        <SectionLabel count={remoteBranches.length}>Remotas</SectionLabel>
-                        {pinnedRemote.map((b) => (
+                        <SectionLabel
+                            count={remoteBranches.length}
+                            open={!collapsedSections.has('remote')}
+                            onToggle={() => toggleSection('remote')}
+                        >
+                            Remotas
+                        </SectionLabel>
+                        {!collapsedSections.has('remote') && pinnedRemote.map((b) => (
                             <BranchRow {...branchRowProps(b)} key={b.name} />
                         ))}
-                        <BranchTree
-                            node={remoteTree}
-                            depth={0}
-                            expanded={expandedFolders}
-                            expandAll={filtering}
-                            onToggleFolder={toggleFolder}
-                            renderBranch={(b, folderPath) => (
-                                <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
-                            )}
-                        />
+                        {!collapsedSections.has('remote') && (
+                            <BranchTree
+                                node={remoteTree}
+                                depth={0}
+                                expanded={expandedFolders}
+                                expandAll={filtering}
+                                onToggleFolder={toggleFolder}
+                                renderBranch={(b, folderPath) => (
+                                    <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
+                                )}
+                            />
+                        )}
 
                         {/* Tags. Hasta ahora solo estaban en el árbol de la
                             barra lateral, que no puede llevar el grafo a
@@ -1800,8 +2281,14 @@ export default function GitRepoTab({
                             el grafo, igual que una rama. */}
                         {tags.length > 0 && (
                             <>
-                                <SectionLabel count={visibleTags.length}>Tags</SectionLabel>
-                                {tagGroups.groups.map((group) => {
+                                <SectionLabel
+                                    count={visibleTags.length}
+                                    open={!collapsedSections.has('tags')}
+                                    onToggle={() => toggleSection('tags')}
+                                >
+                                    Tags
+                                </SectionLabel>
+                                {!collapsedSections.has('tags') && tagGroups.groups.map((group) => {
                                     const key = `tag:${group.key}`
                                     const open = filtering || expandedFolders.has(key)
                                     return (
@@ -1827,7 +2314,7 @@ export default function GitRepoTab({
                                         </div>
                                     )
                                 })}
-                                {tagGroups.loose.map((t) => (
+                                {!collapsedSections.has('tags') && tagGroups.loose.map((t) => (
                                     <TagRow key={t.name} tag={t} depth={0} onSelect={() => revealCommit(t.hash)} onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: tagMenuItems(t)})} />
                                 ))}
                             </>
@@ -1854,6 +2341,12 @@ export default function GitRepoTab({
                             onContinue={() => void run(`${inProgress} --continue`, () => GitContinue(repoId, inProgress))}
                             onAbort={() => void run(`${inProgress} --abort`, () => GitAbort(repoId, inProgress))}
                             onResolved={() => void reload()}
+                            onAsk={(path) =>
+                                askAgentPicking(
+                                    `Estoy resolviendo un conflicto de ${inProgress || 'merge'} en el archivo ${path} de este repositorio. Leelo, explicame qué está en conflicto y proponeme un criterio para resolverlo. No lo edites: la resolución la aplico yo. `,
+                                    `conflicto en ${path}`,
+                                )
+                            }
                             onClose={() => setView('commits')}
                         />
                     ) : view === 'stash' ? (
@@ -1864,6 +2357,27 @@ export default function GitRepoTab({
                             onApply={(ref, drop) => void run(drop ? 'stash pop' : 'stash apply', () => GitStashApply(repoId, ref, drop))}
                             onDrop={(ref) => void run('stash drop', () => GitStashDrop(repoId, ref))}
                             onPush={() => void run('stash push', () => GitStashPush(repoId, '', true))}
+                            onClose={() => setView('commits')}
+                        />
+                    ) : view === 'files' ? (
+                        <GitFileEditor
+                            repoId={repoId}
+                            editorThemeId={editorThemeId}
+                            appTheme={appTheme}
+                            request={editRequest}
+                            initialFiles={openFiles ?? undefined}
+                            onOpenFilesChange={(paths) => {
+                                // Solo después de restaurar: guardar la lista
+                                // vacía del primer render borraría lo anterior.
+                                if (openFiles === null) return
+                                void GitSetOpenFiles(repoId, paths).catch(() => {})
+                            }}
+                            onAskAgent={(prompt, about) => askAgentPicking(prompt, about)}
+                            status={status}
+                            // Guardar un archivo lo vuelve un cambio sin
+                            // commitear: sin este refresco habría que esperar
+                            // al siguiente poll para verlo en Cambios.
+                            onSaved={() => void reload()}
                             onClose={() => setView('commits')}
                         />
                     ) : view === 'commits' ? (
@@ -1899,6 +2413,8 @@ export default function GitRepoTab({
                             onUnstage={(paths) => run('restore --staged', () => GitUnstage(repoId, paths))}
                             onDiscard={(paths) => setConfirmDiscard(paths)}
                             onChangeMessage={setCommitMessage}
+                            drafting={drafting}
+                            onDraftMessage={draftAgent ? () => void draftCommitMessage() : undefined}
                             onCommit={() =>
                                 run('commit', async () => {
                                     await GitCommit(repoId, commitMessage, false)
@@ -1955,6 +2471,35 @@ export default function GitRepoTab({
                                         .then((b) => setBlame(b ?? []))
                                         .catch((e) => setError(String(e)))
                                 }}
+                                // Solo desde el working tree. En el diff de un
+                                // commit "editar" llevaría al archivo de HOY,
+                                // que puede no tener nada que ver con las
+                                // líneas que se están mirando.
+                                onEdit={
+                                    view === 'changes' && selectedPath
+                                        ? () => {
+                                              setEditRequest({path: selectedPath, token: Date.now()})
+                                              setView('files')
+                                          }
+                                        : undefined
+                                }
+                                onAsk={
+                                    view === 'changes' && selectedPath
+                                        ? () =>
+                                              askAgentPicking(
+                                                  // Se nombra el archivo y se
+                                                  // le pide al agente que mire
+                                                  // el diff él mismo: `git
+                                                  // diff` es una herramienta
+                                                  // que los tres tienen, y
+                                                  // pegar el parche entero en
+                                                  // el prompt gasta contexto y
+                                                  // rompe el pegado del PTY.
+                                                  `Revisá el cambio sin commitear de ${selectedPath} (git diff) y `,
+                                                  `diff de ${selectedPath}`,
+                                              )
+                                        : undefined
+                                }
                                 onApplyPatch={
                                     view === 'changes'
                                         ? (patch, action) => {
@@ -2052,6 +2597,25 @@ export default function GitRepoTab({
                             <Icon name="history" size={13} />
                             {dock === 'bottom' ? 'Comandos ejecutados' : 'Comandos'}
                         </button>
+                        <button
+                            onClick={() => {
+                                setPanelTab('agents')
+                                persistLayout({tab: 'agents'})
+                                enterAgentMode()
+                            }}
+                            title="Qué le ofrece este repositorio a un agente: skills, subagentes, comandos y archivos de instrucciones — incluidos los que faltan"
+                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'agents' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                        >
+                            <Icon name="smart_toy" size={13} />
+                            Agentes
+                            {/* Un contador: una solapa que dice cuántas cosas
+                                tiene adentro invita a abrirla; una vacía de
+                                señales se ignora. Cuenta lo que ESTE repo
+                                tiene preparado, no lo que la app soporta. */}
+                            {agentBadge > 0 && (
+                                <span className="rounded-full bg-primary/20 px-1 text-[10px] text-primary">{agentBadge}</span>
+                            )}
+                        </button>
 
                         <div className="ml-auto flex shrink-0 items-center gap-0.5">
                             <button
@@ -2108,6 +2672,125 @@ export default function GitRepoTab({
                         </div>
                     </div>
 
+                    {/* Tira de la solapa Agentes: las conversaciones abiertas
+                        y el contexto del repositorio. Es la hermana de la tira
+                        de sesiones de abajo — una para lo agéntico, otra para
+                        las terminales. */}
+                    {panelTab === 'agents' && (
+                        <div
+                            className={`flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-outline-variant px-1 py-1 ${
+                                dock === 'bottom' ? '' : dock === 'right' ? 'ml-1.5' : 'mr-1.5'
+                            }`}
+                        >
+                            <button
+                                onClick={() => setAgentsView('context')}
+                                title="Qué le ofrece este repositorio a un agente: skills, instrucciones, servidores MCP, consumo y plan"
+                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+                                    agentsView === 'context'
+                                        ? 'bg-primary/15 text-primary'
+                                        : 'text-on-surface-variant hover:bg-surface-variant'
+                                }`}
+                            >
+                                <Icon name="dataset" size={12} />
+                                Contexto
+                            </button>
+
+                            {sessions
+                                .filter((s) => s.kind === 'chat')
+                                .map((s) => (
+                                    <span
+                                        key={s.id}
+                                        className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+                                            agentsView === 'chats' && activeChatId === s.id
+                                                ? 'bg-primary/15 text-primary'
+                                                : 'text-on-surface-variant hover:bg-surface-variant'
+                                        }`}
+                                    >
+                                        <button
+                                            onClick={() => {
+                                                setAgentsView('chats')
+                                                setActiveChatId(s.id)
+                                                // Abrir un chat ES ponerse a
+                                                // trabajar con el agente, y ahí
+                                                // lo que importa son los
+                                                // archivos, no el grafo.
+                                                enterAgentMode()
+                                            }}
+                                            onContextMenu={(e: ReactMouseEvent) => {
+                                                e.preventDefault()
+                                                setMenu({
+                                                    x: e.clientX,
+                                                    y: e.clientY,
+                                                    items: [
+                                                        {
+                                                            label: 'Renombrar el chat…',
+                                                            icon: 'edit',
+                                                            onSelect: () =>
+                                                                setPrompt({
+                                                                    title: 'Renombrar el chat',
+                                                                    label: 'Nombre',
+                                                                    initial: s.title,
+                                                                    confirmLabel: 'Guardar',
+                                                                    onSubmit: (name: string) => {
+                                                                        const title = name.trim()
+                                                                        if (!title) return
+                                                                        setSessions((prev) =>
+                                                                            prev.map((x) => (x.id === s.id ? {...x, title} : x)),
+                                                                        )
+                                                                        void RenameAgentChat(s.id, title)
+                                                                            .then(reloadChatHistory)
+                                                                            .catch(() => {})
+                                                                    },
+                                                                }),
+                                                        },
+                                                        {
+                                                            label: 'Quitar del historial',
+                                                            icon: 'delete',
+                                                            danger: true,
+                                                            hint: 'La conversación sigue en el CLI; se pierde el atajo',
+                                                            onSelect: () => {
+                                                                void DeleteAgentChat(s.id).then(reloadChatHistory).catch(() => {})
+                                                                closeSession(s.id)
+                                                            },
+                                                        },
+                                                    ],
+                                                })
+                                            }}
+                                            title={`${s.title} — click derecho para renombrarlo o quitarlo del historial`}
+                                            className="max-w-40 truncate"
+                                        >
+                                            {s.title}
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                closeSession(s.id)
+                                                setActiveChatId((cur) => (cur === s.id ? null : cur))
+                                            }}
+                                            title="Cierra la conversación. Queda en el historial y se puede retomar."
+                                            className="rounded hover:text-on-surface"
+                                        >
+                                            <Icon name="close" size={12} />
+                                        </button>
+                                    </span>
+                                ))}
+
+                            <DropdownMenu
+                                label=""
+                                icon="add"
+                                title="Empezar una conversación nueva con un agente"
+                                width={280}
+                                items={agentList
+                                    .filter((a) => a.available && chatCapable.has(a.id))
+                                    .map((a) => ({
+                                        label: a.label,
+                                        icon: 'chat',
+                                        hint: a.vendor,
+                                        onSelect: () => addSession('chat', a),
+                                    }))}
+                            />
+                        </div>
+                    )}
+
                     {/* Tira de sesiones. Solo en la solapa de sesiones: en
                         Comandos no habría nada que elegir. */}
                     {panelTab === 'terminal' && (
@@ -2116,14 +2799,67 @@ export default function GitRepoTab({
                                 dock === 'right' ? 'ml-1.5' : dock === 'left' ? 'mr-1.5' : ''
                             }`}
                         >
-                            {sessions.map((s) => (
+                            {sessions.filter((s) => s.kind !== 'chat').map((s) => (
                                 <div
                                     key={s.id}
                                     onClick={() => setActiveSessionId(s.id)}
+                                    // Renombrar y borrar del historial viven en
+                                    // el menú contextual y no como botones: la
+                                    // tira de solapas ya está apretada, y son
+                                    // acciones que se usan de a una cada tanto.
+                                    onContextMenu={
+                                        s.kind === 'chat'
+                                            ? (e: ReactMouseEvent) => {
+                                                  e.preventDefault()
+                                                  setMenu({
+                                                      x: e.clientX,
+                                                      y: e.clientY,
+                                                      items: [
+                                                          {
+                                                              label: 'Renombrar el chat…',
+                                                              icon: 'edit',
+                                                              onSelect: () =>
+                                                                  setPrompt({
+                                                                      title: 'Renombrar el chat',
+                                                                      label: 'Nombre',
+                                                                      placeholder: s.title,
+                                                                      initial: s.title,
+                                                                      confirmLabel: 'Guardar',
+                                                                      onSubmit: (name: string) => {
+                                                                          const title = name.trim()
+                                                                          if (!title) return
+                                                                          setSessions((prev) =>
+                                                                              prev.map((x) => (x.id === s.id ? {...x, title} : x)),
+                                                                          )
+                                                                          void RenameAgentChat(s.id, title)
+                                                                              .then(reloadChatHistory)
+                                                                              .catch(() => {})
+                                                                      },
+                                                                  }),
+                                                          },
+                                                          {
+                                                              label: 'Quitar del historial',
+                                                              icon: 'delete',
+                                                              danger: true,
+                                                              hint: 'La conversación sigue existiendo en el CLI; se pierde el atajo para retomarla',
+                                                              onSelect: () => {
+                                                                  void DeleteAgentChat(s.id)
+                                                                      .then(reloadChatHistory)
+                                                                      .catch(() => {})
+                                                                  closeSession(s.id)
+                                                              },
+                                                          },
+                                                      ],
+                                                  })
+                                              }
+                                            : undefined
+                                    }
                                     title={
-                                        s.kind === 'agent'
-                                            ? `Sesión de ${s.title} en este repositorio`
-                                            : 'Terminal en la raíz de este repositorio'
+                                        s.kind === 'chat'
+                                            ? `${s.title} — click derecho para renombrarlo o quitarlo del historial`
+                                            : s.kind === 'agent'
+                                              ? `Sesión de ${s.title} en este repositorio`
+                                              : 'Terminal en la raíz de este repositorio'
                                     }
                                     className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 ${
                                         activeSessionId === s.id
@@ -2131,7 +2867,11 @@ export default function GitRepoTab({
                                             : 'text-on-surface-variant hover:bg-surface-variant'
                                     }`}
                                 >
-                                    <Icon name={s.kind === 'agent' ? 'smart_toy' : 'terminal'} size={12} className="shrink-0" />
+                                    <Icon
+                                        name={s.kind === 'chat' ? 'chat' : s.kind === 'agent' ? 'smart_toy' : 'terminal'}
+                                        size={12}
+                                        className="shrink-0"
+                                    />
                                     <span className="max-w-32 truncate">{s.title}</span>
                                     <span
                                         role="button"
@@ -2151,20 +2891,53 @@ export default function GitRepoTab({
                             <DropdownMenu
                                 label="Nueva"
                                 icon="add"
-                                title="Abrir una sesión nueva en este repositorio: una terminal, o un asistente de código (Claude Code, Codex, Gemini)"
+                                title="Abrir una sesión nueva en este repositorio: una terminal, un asistente en su terminal completa, o un chat con tool-calls y consumo a la vista"
                                 width={340}
                                 items={[
+                                    // Chats: lo agéntico primero y agrupado
+                                    // por agente, que es como uno lo piensa
+                                    // ("quiero preguntarle a Claude"), no por
+                                    // tipo de sesión.
+                                    ...agentList
+                                        .filter((a) => a.available && chatCapable.has(a.id))
+                                        .flatMap((a) => {
+                                            const mine = chatHistory.filter((c) => c.agentId === a.id)
+                                            return [
+                                                {
+                                                    label: `Chat nuevo · ${a.label}`,
+                                                    icon: 'chat',
+                                                    hint: 'Conversación con las acciones y los tokens a la vista',
+                                                    onSelect: () => addSession('chat', a),
+                                                },
+                                                // El historial de ESE agente,
+                                                // debajo del suyo: mezclar las
+                                                // conversaciones de los tres en
+                                                // una sola lista obliga a leer
+                                                // de quién es cada una.
+                                                ...mine.slice(0, 4).map((c) => ({
+                                                    label: `   ${c.title || 'Sin nombre'}`,
+                                                    icon: 'history',
+                                                    hint: new Date(c.updatedAt * 1000).toLocaleDateString('es'),
+                                                    onSelect: () => resumeChat(c),
+                                                })),
+                                            ]
+                                        }),
+                                    'separator' as const,
                                     {
                                         label: 'Terminal',
                                         icon: 'terminal',
                                         hint: 'Shell en la raíz del repositorio',
                                         onSelect: () => addSession('shell'),
                                     },
-                                    'separator',
+                                    // Los CLIs en su terminal completa: es otra
+                                    // cosa que el chat y por eso va en otro
+                                    // grupo, no intercalado.
                                     ...agentList.map((a) => ({
-                                        label: a.label,
+                                        label: `${a.label} en terminal`,
                                         icon: 'smart_toy',
-                                        hint: a.available ? a.vendor : 'No está instalado en este equipo',
+                                        hint: a.available
+                                            ? `${a.vendor} — su render y su propio diálogo de permisos`
+                                            : 'No está instalado en este equipo',
                                         disabled: !a.available,
                                         onSelect: () => addSession('agent', a),
                                     })),
@@ -2176,6 +2949,102 @@ export default function GitRepoTab({
                     <div
                         className={`relative min-h-0 flex-1 ${dock === 'right' ? 'ml-1.5' : dock === 'left' ? 'mr-1.5' : ''}`}
                     >
+                        {/* Lanzador: lo que se ve al abrir el panel sin
+                            ninguna sesión.
+                            
+                            Existe porque el estado anterior —una terminal
+                            vacía— no comunicaba nada: alguien podía usar la
+                            app meses sin enterarse de que puede chatear con un
+                            agente sobre el repositorio abierto. Acá se nombran
+                            las opciones con lo que hacen, y se muestra lo que
+                            este repo tiene preparado. */}
+                        {panelTab === 'terminal' && sessions.filter((s) => s.kind !== 'chat').length === 0 && (
+                            <div className="absolute inset-0 overflow-y-auto p-4">
+                                <p className="mb-3 text-xs text-on-surface-variant">
+                                    Trabajá sobre <span className="text-on-surface">{repoName}</span> sin salir de la app.
+                                </p>
+
+                                <div className="flex flex-col gap-1.5">
+                                    {agentList
+                                        .filter((a) => a.available && chatCapable.has(a.id))
+                                        .map((a) => (
+                                            <button
+                                                key={`chat-${a.id}`}
+                                                onClick={() => addSession('chat', a)}
+                                                title={`Conversación con ${a.label}: se ve lo que hace paso a paso y cuántos tokens costó. Para que edite archivos hay que autorizarlo explícitamente.`}
+                                                className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
+                                            >
+                                                <Icon name="chat" size={14} className="mt-0.5 shrink-0 text-primary" />
+                                                <span className="min-w-0">
+                                                    <span className="block text-xs text-on-surface">Chatear con {a.label}</span>
+                                                    <span className="block text-[11px] text-on-surface-variant">
+                                                        Pregunta, revisa y propone. Edita solo si lo autorizás.
+                                                    </span>
+                                                </span>
+                                            </button>
+                                        ))}
+
+                                    {chatHistory.length > 0 && (
+                                        <button
+                                            onClick={() => resumeChat(chatHistory[0])}
+                                            title={`Retoma "${chatHistory[0].title || 'la última conversación'}" donde la dejaste`}
+                                            className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
+                                        >
+                                            <Icon name="history" size={14} className="mt-0.5 shrink-0 text-primary" />
+                                            <span className="min-w-0">
+                                                <span className="block truncate text-xs text-on-surface">
+                                                    Seguir: {chatHistory[0].title || 'última conversación'}
+                                                </span>
+                                                <span className="block text-[11px] text-on-surface-variant">
+                                                    {chatHistory.length} conversación{chatHistory.length === 1 ? '' : 'es'} guardada
+                                                    {chatHistory.length === 1 ? '' : 's'} en este repositorio
+                                                </span>
+                                            </span>
+                                        </button>
+                                    )}
+
+                                    <button
+                                        onClick={() => addSession('shell')}
+                                        title="Una shell en la raíz del repositorio, para lo que la interfaz no cubre"
+                                        className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
+                                    >
+                                        <Icon name="terminal" size={14} className="mt-0.5 shrink-0 text-on-surface-variant" />
+                                        <span className="min-w-0">
+                                            <span className="block text-xs text-on-surface">Abrir una terminal</span>
+                                            <span className="block text-[11px] text-on-surface-variant">
+                                                Shell en la raíz del repositorio
+                                            </span>
+                                        </span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            setPanelTab('agents')
+                                            persistLayout({tab: 'agents'})
+                                            enterAgentMode()
+                                        }}
+                                        title="Skills, subagentes, archivos de instrucciones, servidores MCP y consumo de tokens de este repositorio"
+                                        className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
+                                    >
+                                        <Icon name="smart_toy" size={14} className="mt-0.5 shrink-0 text-on-surface-variant" />
+                                        <span className="min-w-0">
+                                            <span className="block text-xs text-on-surface">Ver qué tiene este repositorio</span>
+                                            <span className="block text-[11px] text-on-surface-variant">
+                                                Skills, instrucciones, servidores MCP y consumo
+                                            </span>
+                                        </span>
+                                    </button>
+                                </div>
+
+                                {agentList.filter((a) => a.available).length === 0 && (
+                                    <p className="mt-3 text-[11px] text-on-surface-variant">
+                                        No hay ningún asistente de código instalado en este equipo. Se configuran en Configuración →
+                                        Agentes de código.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
                         {/* Todas las sesiones se renderizan siempre y se
                             ocultan por CSS: desmontar la inactiva mataría su
                             proceso. */}
@@ -2183,8 +3052,77 @@ export default function GitRepoTab({
                             <div
                                 key={s.id}
                                 className="absolute inset-0"
-                                style={{display: panelTab === 'terminal' && activeSessionId === s.id ? undefined : 'none'}}
+                                style={{
+                                    // Los chats viven en la solapa Agentes y
+                                    // las terminales en Sesiones: son cosas
+                                    // distintas y mezclarlas obligaba a leer el
+                                    // ícono de cada solapa para saber qué era.
+                                    // Todas se renderizan siempre y se ocultan
+                                    // por CSS — desmontar una terminal mataría
+                                    // su proceso.
+                                    display:
+                                        s.kind === 'chat'
+                                            ? panelTab === 'agents' && agentsView === 'chats' && activeChatId === s.id
+                                                ? undefined
+                                                : 'none'
+                                            : panelTab === 'terminal' && activeSessionId === s.id
+                                              ? undefined
+                                              : 'none',
+                                }}
                             >
+                                {s.kind === 'chat' ? (
+                                    <AgentChat
+                                        sessionId={s.id}
+                                        repoId={repoId}
+                                        agentId={s.agentId ?? ''}
+                                        agentLabel={agentList.find((a) => a.id === s.agentId)?.label ?? s.title}
+                                        seed={chatSeed?.sessionId === s.id ? chatSeed : null}
+                                        // Al retomar, el chat vuelve a dibujar
+                                        // lo que ya se habló leyendo el
+                                        // transcript del propio CLI.
+                                        resumeConversationId={
+                                            chatHistory.find((c) => c.id === s.id)?.conversationId || undefined
+                                        }
+                                        initialSettings={(() => {
+                                            const c = chatHistory.find((x) => x.id === s.id)
+                                            return c ? {model: c.model, effort: c.effort, mode: c.mode} : undefined
+                                        })()}
+                                        // Después de un turno autónomo: se
+                                        // relee el estado y se informa cuántos
+                                        // archivos quedaron tocados, para que
+                                        // revisarlos sea el paso siguiente y no
+                                        // algo que haya que acordarse de hacer.
+                                        onTurnFinished={async () => {
+                                            await reload()
+                                            const st = await GitStatus(repoId).catch(() => null)
+                                            return st?.files.length ?? 0
+                                        }}
+                                        onReviewChanges={() => setView('changes')}
+                                        onValidateWithAnother={(exclude) => {
+                                            // Otro agente, no el mismo: el
+                                            // valor de que revise otro está en
+                                            // que no comparte los puntos ciegos
+                                            // del que escribió.
+                                            const other = agentList.find(
+                                                (a) => a.available && chatCapable.has(a.id) && a.id !== exclude,
+                                            )
+                                            if (!other) {
+                                                setError('No hay otro asistente con chat instalado para revisar.')
+                                                return
+                                            }
+                                            askAgent(
+                                                other.id,
+                                                'Revisá los cambios sin commitear de este repositorio (git diff) como si fueras otro par: decime qué está mal, qué falta y qué no haría así. ',
+                                                'revisión cruzada',
+                                            )
+                                        }}
+                                        onConversation={(conversationId) => {
+                                            void TouchAgentChat(s.id, conversationId)
+                                                .then(reloadChatHistory)
+                                                .catch(() => {})
+                                        }}
+                                    />
+                                ) : (
                                 <LocalTerminalPanel
                                     sessionId={s.id}
                                     repoId={repoId}
@@ -2198,11 +3136,70 @@ export default function GitRepoTab({
                                     fontSize={terminalFontSize}
                                     visible={active && panelTab === 'terminal' && activeSessionId === s.id}
                                 />
+                                )}
                             </div>
                         ))}
+                        {/* Prompt esperando a que el agente termine de
+                            arrancar. Es una barra y no un envío automático a
+                            propósito: el CLI tarda en levantar y escribirle
+                            antes de tiempo se lo come la shell. */}
+                        {pendingPrompt && panelTab === 'terminal' && activeSessionId === pendingPrompt.sessionId && (
+                            <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 border-b border-outline-variant bg-surface-container-high px-2 py-1 text-[11px]">
+                                <Icon name="smart_toy" size={13} className="shrink-0 text-primary" />
+                                <span className="min-w-0 flex-1 truncate text-on-surface-variant">
+                                    Prompt listo sobre <span className="text-on-surface">{pendingPrompt.about}</span> — insertalo cuando el agente
+                                    haya arrancado.
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        void WriteLocalTerminal(pendingPrompt.sessionId, pendingPrompt.text)
+                                        setPendingPrompt(null)
+                                    }}
+                                    title="Escribe el prompt en la sesión. No lo envía: revisalo, completalo y mandalo vos."
+                                    className="shrink-0 rounded bg-primary px-2 py-0.5 text-on-primary"
+                                >
+                                    Insertar
+                                </button>
+                                <button
+                                    onClick={() => setPendingPrompt(null)}
+                                    title="Descarta el prompt"
+                                    className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                >
+                                    <Icon name="close" size={14} />
+                                </button>
+                            </div>
+                        )}
                         {panelTab === 'commands' && (
                             <div className="absolute inset-0">
-                                <GitCommandLogDrawer reloadToken={logToken} />
+                                <GitCommandLogDrawer
+                                    reloadToken={logToken}
+                                    onAsk={(command, output) =>
+                                        askAgentPicking(
+                                            `Este comando falló en este repositorio:\n\n${command}\n\nY devolvió:\n\n${output}\n\nExplicame qué pasó y cómo salir de esto. `,
+                                            command,
+                                        )
+                                    }
+                                />
+                            </div>
+                        )}
+                        {panelTab === 'agents' && agentsView === 'context' && (
+                            <div className="absolute inset-0">
+                                <GitAgentPanel
+                                    repoId={repoId}
+                                    // Un skill o un CLAUDE.md que falta se
+                                    // arregla en el editor de al lado: el panel
+                                    // lista, la solapa Archivos edita.
+                                    onOpenFile={(path) => {
+                                        setEditRequest({path, token: Date.now()})
+                                        setView('files')
+                                    }}
+                                    onAskAgent={(prompt, about) => askAgentPicking(prompt, about)}
+                                    defaultAgent={defaultAgent}
+                                    onSetDefaultAgent={(id) => {
+                                        setDefaultAgent(id)
+                                        void GitSetDefaultAgent(repoId, id).catch(() => {})
+                                    }}
+                                />
                             </div>
                         )}
                     </div>
@@ -2358,12 +3355,50 @@ function ViewTab({
     )
 }
 
-function SectionLabel({children, count}: {children: React.ReactNode; count?: number}) {
-    return (
-        <p className="flex items-baseline gap-1.5 px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">
+// SectionLabel es la cabecera PLEGABLE de cada bloque del panel de ramas.
+//
+// Antes era un título fijo: con muchas ramas remotas o muchos tags, encontrar
+// las locales obligaba a scrollear todo lo demás sin poder sacarlo de en
+// medio. Ahora cada bloque se pliega, y el contador queda a la vista cuando
+// está cerrado — que es lo que hace que plegarlo no sea perder de vista que
+// hay algo ahí.
+function SectionLabel({
+    children,
+    count,
+    open,
+    onToggle,
+}: {
+    children: React.ReactNode
+    count?: number
+    open?: boolean
+    onToggle?: () => void
+}) {
+    const label = (
+        <>
+            <Icon
+                name={open === false ? 'chevron_right' : 'expand_more'}
+                size={12}
+                className="shrink-0 opacity-70"
+            />
             {children}
             {count != null && <span className="font-mono text-[9px] font-normal tabular-nums opacity-70">{count}</span>}
-        </p>
+        </>
+    )
+    if (!onToggle) {
+        return (
+            <p className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">
+                {label}
+            </p>
+        )
+    }
+    return (
+        <button
+            onClick={onToggle}
+            title={open === false ? 'Desplegar esta sección' : 'Plegar esta sección — el contador sigue a la vista'}
+            className="flex w-full items-center gap-1.5 rounded px-2 pb-1 pt-2 text-left text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface-variant"
+        >
+            {label}
+        </button>
     )
 }
 
@@ -2643,6 +3678,8 @@ function ChangesPanel({
     onDiscard,
     onChangeMessage,
     onCommit,
+    onDraftMessage,
+    drafting,
 }: {
     staged: git.FileStatus[]
     unstaged: git.FileStatus[]
@@ -2659,6 +3696,10 @@ function ChangesPanel({
     onDiscard: (paths: string[]) => void
     onChangeMessage: (m: string) => void
     onCommit: () => void
+    // Ausente cuando no hay ningún agente con chat verificado instalado: la
+    // acción no se ofrece en vez de ofrecerla y fallar al tocarla.
+    onDraftMessage?: () => void
+    drafting?: boolean
 }) {
     return (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -2725,6 +3766,25 @@ function ChangesPanel({
                             className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 font-mono text-[10px] text-on-surface-variant hover:text-on-surface"
                         >
                             {extractTicket(branchName)}
+                        </button>
+                    )}
+                    {/* Redactar el mensaje desde el diff preparado. Respeta el
+                        prefijo de tipo/scope que ya haya: el agente escribe el
+                        resumen, la convención del proyecto la sigue poniendo
+                        el selector de al lado. */}
+                    {onDraftMessage && (
+                        <button
+                            onClick={onDraftMessage}
+                            disabled={busy || staged.length === 0 || drafting}
+                            title={
+                                staged.length === 0
+                                    ? 'Agregá archivos al stage: el mensaje se redacta a partir de lo que está preparado'
+                                    : 'Le pasa el diff preparado al agente para que redacte el mensaje. Lo escribe en el campo — commitear sigue siendo tuyo.'
+                            }
+                            className="ml-auto flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-[10px] text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+                        >
+                            <Icon name={drafting ? 'hourglass_top' : 'smart_toy'} size={11} />
+                            {drafting ? 'Redactando…' : 'Redactar'}
                         </button>
                     )}
                 </div>

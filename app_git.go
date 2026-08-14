@@ -387,6 +387,84 @@ func (a *App) GitFileAtCommit(repoID, commit, filePath string) (string, error) {
 	return a.gitRunner.GetFileAtCommit(path, commit, filePath)
 }
 
+// --- Working-tree files ----------------------------------------------------
+//
+// Editar un archivo del repositorio dentro de la app. Hasta acá el módulo Git
+// leía archivos solo para MOSTRARLOS (GitFileAtCommit) o para resolver un
+// conflicto; esto es lo que faltaba para abrir uno cualquiera y modificarlo.
+//
+// Los tres siguen la indirección por repoID del resto del módulo: el frontend
+// pide "el archivo X del repo Y", nunca una ruta del sistema de archivos. La
+// ruta relativa que sí manda se valida contra la raíz del repositorio en
+// backend/git (editablePath), no acá.
+
+// GitListWorkTree lists the repository's editable files: tracked plus
+// untracked-but-not-ignored, which is what makes the tree usable in a project
+// that has a node_modules.
+func (a *App) GitListWorkTree(repoID string) (git.WorkTree, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return git.WorkTree{}, err
+	}
+	return a.gitRunner.ListWorkTree(path)
+}
+
+// GitReadWorkFile loads a working-tree file for editing. Reports (rather than
+// errors on) a binary or oversized file so the UI can explain why it will not
+// open it — same contract as ReadSftpFileForEdit.
+func (a *App) GitReadWorkFile(repoID, filePath string) (git.WorkFile, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return git.WorkFile{}, err
+	}
+	return a.gitRunner.ReadWorkFile(path, filePath)
+}
+
+// GitWriteWorkFile saves an edited file back, refusing when it changed on disk
+// since it was read.
+//
+// expectedModTimeUnix is the mtime the editor loaded; 0 means "overwrite
+// anyway", which is what the conflict dialog sends after telling the user.
+// Returns the new mtime so the next save compares against the right value.
+// This app makes the stale-write case ordinary rather than theoretical: an
+// agent session in the panel next to the editor writes to these same files.
+func (a *App) GitWriteWorkFile(repoID, filePath, content string, expectedModTimeUnix int64) (int64, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return 0, err
+	}
+	return a.gitRunner.WriteWorkFile(path, filePath, content, expectedModTimeUnix)
+}
+
+// GitRepoWorkspace devuelve el estado por repositorio del banco de trabajo:
+// qué archivos tenía abiertos el editor y con qué agente se abren las
+// sesiones. Migración 30.
+func (a *App) GitRepoWorkspace(repoID string) (vault.GitRepoWorkspace, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return vault.GitRepoWorkspace{}, err
+	}
+	return a.vault.GitRepoWorkspaceFor(repoID)
+}
+
+// GitSetOpenFiles persiste las pestañas del editor de archivos. Solo rutas: al
+// reabrir se lee el archivo como está en el disco, que es lo único correcto si
+// un agente lo tocó mientras tanto.
+func (a *App) GitSetOpenFiles(repoID string, files []string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetGitRepoOpenFiles(repoID, files)
+}
+
+// GitSetDefaultAgent fija con qué agente se abren las sesiones de este
+// repositorio. Vacío vuelve a "preguntar".
+func (a *App) GitSetDefaultAgent(repoID, agentID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetGitRepoDefaultAgent(repoID, agentID)
+}
+
 // --- Remote operations -----------------------------------------------------
 
 func (a *App) GitFetch(repoID string, opts git.FetchOptions, auth git.AuthConfig) (string, error) {

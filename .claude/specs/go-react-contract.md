@@ -377,11 +377,25 @@ se convierte en una ruta.
 | `GitWorktrees` / `GitAddWorktree` / `GitRemoveWorktree` / `GitPruneWorktrees` | F6 | — |
 | `GitCommandLog` / `GitClearCommandLog` | F6 | Argumentos, **nunca** el entorno |
 | `GitForgeInfo` / `GitOpenInBrowser` | F6 | Solo construcción de URL; `GitOpenInBrowser` restringe a http/https |
+| `GitListWorkTree(repoID)` | F7 | Versionados + no rastreados **no ignorados**; sin `--exclude-standard` un repo de Node devuelve `node_modules` entero. Descuenta borrados y dedupe de conflictos (un path en conflicto sale 3 veces en `--cached`) |
+| `GitReadWorkFile(repoID, path)` | F7 | Binario y "demasiado grande" se **reportan**, no se erroran — mismo contrato que `ReadSftpFileForEdit` |
+| `GitWriteWorkFile(repoID, path, content, expectedModTimeUnix)` | F7 | `expectedModTimeUnix` 0 = "pisar igual". Escritura atómica, conserva permisos. Devuelve el mtime nuevo |
 
-**`safeWorkingPath` (backend/git/conflict.go) es el único lugar del módulo
-que escribe en una ruta que nombra el frontend.** Valida sobre la ruta
-**resuelta**, no sobre el string: rechazar `..` textualmente se le escapa un
-symlink que apunta afuera del árbol.
+**Dos funciones escriben en una ruta que nombra el frontend, y hacen cosas
+distintas.**
+
+`safeWorkingPath` (backend/git/conflict.go) valida **textualmente**: rechaza
+rutas absolutas y las que se escapan con `..` después de limpiar. Alcanza para
+lo que fue escrito, el resolutor de conflictos, porque ahí las rutas las
+produce git (`ConflictedFiles`), no el usuario.
+
+`editablePath` (backend/git/files.go) es la que usa el editor de archivos, y le
+suma las dos guardas que la textual no da: **resuelve symlinks antes de
+aprobar** —un symlink versionado que apunte a `~/.ssh/id_rsa` pasa una
+comprobación de prefijo sin problema, y acá la ruta puede ser cualquiera que
+el frontend pida— y **deja `.git/` afuera**, porque editar por accidente un
+`config` o un hook desde un árbol de archivos rompe el repositorio o ejecuta
+código en el próximo commit. Ambas cosas están cubiertas en `files_test.go`.
 
 **`main()` despacha DOS re-exec antes de abrir la ventana**: el askpass de
 `auth.go` y el sequence editor de `rebase.go`. Cualquier helper nuevo que git
@@ -450,6 +464,18 @@ sigue montado (oculto por CSS) cuando se cierra.
 | `SetAgentKey(agentID, apiKey)` / `ClearAgentKey(agentID)` | AES-GCM bajo la clave maestra, mismo esquema que `encrypted_dsn` y `ssh_keys` |
 | `OpenAgentSession(sessionID, repoID, agentID, cols, rows, runCommand)` | Abre una sesión de `localterm` con el agente adentro. `runCommand=false` la abre sin arrancarlo |
 | `SetGitPanelSessions(sessions)` | Qué sesiones tenía abiertas el panel (intención, no procesos) |
+| `GitAgentContext(repoID)` | Skills/subagentes/comandos/instrucciones que ve el repo (`backend/agentctx`). Solo lectura; informa también los archivos de instrucciones **ausentes**, que es la mitad útil de la respuesta |
+| `GitMCPConfig(repoID)` | Servidores MCP por agente y scope (`backend/mcpconf`). **Los valores de `env` NO cruzan, solo sus nombres** — misma regla que el DSN (punto 9), aplicada a una credencial que esta app ni siquiera administra. Informa también dónde miró y qué archivo está roto |
+| `AgentChatSupported(agentID)` | Si hay adaptador **verificado** (`backend/agentchat`). La UI ofrece el chat solo donde funciona; duplicar la lista en el frontend se desincronizaría |
+| `AgentPlans()` | Plan de cada agente (`backend/agentplan`). Del JWT de Codex se extrae **solo** el claim del plan; el token nunca cruza |
+| `AgentModelCatalog(agentID)` | Modelos y esfuerzos que informa cada CLI (`backend/agentmodels`), no una lista escrita a mano |
+| `AgentChatHistory(agentID, conversationID)` | Mensajes de una conversación anterior, leídos del transcript del CLI. Vacío NO es error: Antigravity guarda blobs binarios |
+| `SaveChatAttachment(name, dataBase64)` | Guarda una imagen pegada/subida FUERA del repositorio y devuelve su ruta |
+| `AgentChatModes(agentID)` | Modos de permisos que soporta ESE agente, de menos a más permisivo. No son los mismos para todos (`auto` es solo de Claude Code) |
+| `SendAgentChat(sessionID, repoID, agentID, prompt, mode, effort, model)` | Vuelve enseguida; la respuesta llega como `agentchat.Event` en el evento de Wails llamado `sessionID`. **Suscribirse ANTES**, misma carrera que la terminal y las queries. `agentchat.Event` NO está en `wailsjs/go/models` —viaja por evento, no por retorno— así que el frontend lo espeja a mano en `AgentChat.tsx`, igual que `LocalTermEvent` |
+| `AskAgentOnce(repoID, agentID, prompt)` | Un turno de **una sola vez que devuelve el texto**, para las acciones agénticas del módulo Git (redactar el commit). Sin conversación ni estado; `agentchat.Ask` **rechaza los modos que editan**, así que un botón nunca puede tocar archivos. Con tope de tiempo: bloquea un formulario |
+| `CancelAgentChat(sessionID)` / `ResetAgentChat(sessionID)` | Cortar el turno / olvidar la conversación |
+| `GitAgentUsage(repoID, days)` | Consumo de tokens por agente (`backend/agentusage`), total y atribuido al repo. Los porcentajes son **proporciones de lo consumido, nunca fracciones del límite de un plan** (ese dato no existe en disco). Solo Claude Code tiene lector verificado; los demás devuelven `available:false` con nota |
 
 **La API key entra por el ENTORNO del proceso, nunca por la línea de
 comandos** — ahí quedaría visible en `ps` para cualquier proceso de la

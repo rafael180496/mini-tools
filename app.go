@@ -21,6 +21,9 @@ import (
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
 	"mini-tools/backend/git"
+	"mini-tools/backend/agentapprove"
+	"mini-tools/backend/appdata"
+	"mini-tools/backend/agentchat"
 	"mini-tools/backend/localterm"
 	"mini-tools/backend/mongoquery"
 	"mini-tools/backend/query"
@@ -97,6 +100,25 @@ type App struct {
 	// app_localterm.go; see backend/localterm's package doc for why the
 	// PTY dependency doesn't break the no-cgo rule.
 	localTerms *localterm.SessionManager
+
+	// agentChats corre los CLIs agénticos en modo HEADLESS, un camino aparte
+	// del PTY de localTerms: aquel da la experiencia completa del CLI pero
+	// entrega bytes con ANSI que se pueden mostrar y no entender; este entrega
+	// eventos tipados con los que se puede dibujar un chat de verdad. Los dos
+	// conviven a propósito — ver el doc de backend/agentchat.
+	agentChats *agentchat.Manager
+
+	// approve es el canal por el que un agente pide permiso acción por acción
+	// (backend/agentapprove). nil cuando no se pudo abrir en esta máquina —
+	// no es un error fatal: el chat sigue andando con la aprobación por modo,
+	// y el modo de aprobación por acción simplemente no se ofrece.
+	approve *agentapprove.Channel
+	// approveSettings es la ruta del archivo que instala el hook.
+	approveSettings string
+	// approvePending son las preguntas esperando respuesta del usuario,
+	// indexadas por el id que asigna el canal.
+	approvePending map[string]chan agentapprove.Decision
+	approveMu      sync.Mutex
 
 	// gitRunner is the Git module's engine — the system `git` binary driven
 	// through os/exec, another native parallel path like sshSessions/sftpx
@@ -210,6 +232,30 @@ func (a *App) startup(ctx context.Context) {
 	// closure satisface los dos constructores (el nombre del evento es el
 	// id de sesión en ambos casos).
 	a.localTerms = localterm.NewSessionManager(emit)
+	// El chat agéntico usa el mismo contrato de "un evento de Wails por
+	// sesión", pero con un tipo propio en vez de interface{}: sus eventos son
+	// una unión chica y cerrada (texto, herramienta, uso, error), y tiparlos
+	// es lo que permite que el frontend los dibuje sin adivinar.
+	a.agentChats = agentchat.NewManager(func(sessionID string, ev agentchat.Event) {
+		emit(sessionID, ev)
+	})
+
+	// Canal de aprobación por acción. Que falle NO impide arrancar: en una
+	// máquina sin AF_UNIX el chat sigue funcionando con la aprobación por
+	// modo, y el modo por acción no aparece en la lista (ver
+	// backend/agentapprove).
+	a.approvePending = map[string]chan agentapprove.Decision{}
+	if dir, err := appdata.Dir(); err == nil {
+		ch, err := agentapprove.Start(dir, a.askApproval)
+		if err == nil {
+			a.approve = ch
+			if self, err := os.Executable(); err == nil {
+				if path, err := agentapprove.WriteSettings(dir, self); err == nil {
+					a.approveSettings = path
+				}
+			}
+		}
+	}
 }
 
 // shutdown closes every open connection pool, checkpoints and closes the
@@ -251,6 +297,9 @@ func (a *App) shutdown(ctx context.Context) {
 	// Fuera del grupo SSH: no toma leases del pool compartido, lo que cierra
 	// son procesos de esta máquina. Sin esto quedan shells huérfanas
 	// corriendo después de cerrar la ventana.
+	if a.approve != nil {
+		_ = a.approve.Close()
+	}
 	if a.localTerms != nil {
 		a.localTerms.CloseAll()
 	}

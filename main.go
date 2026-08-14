@@ -8,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
+	"mini-tools/backend/agentapprove"
 	"mini-tools/backend/git"
 )
 
@@ -36,6 +37,16 @@ func main() {
 	// before anything else here opens a window or touches the vault.
 	if git.IsSequenceEditorInvocation() {
 		git.SequenceEditorMain()
+		return
+	}
+
+	// Tercer re-exec, misma forma que los dos de arriba pero lo lanza un CLI
+	// agéntico y no git: el hook PreToolUse con el que el agente pregunta
+	// antes de cada acción. Reenvía la pregunta al proceso de la app por un
+	// socket, así que tampoco es un arranque de la app y va antes de todo lo
+	// demás (ver backend/agentapprove/hook.go).
+	if agentapprove.IsHookInvocation() {
+		agentapprove.HookMain()
 		return
 	}
 

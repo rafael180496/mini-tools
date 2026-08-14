@@ -230,6 +230,22 @@ func (s *Store) ConnectionEnvironment(id string) (string, error) {
 // DeleteConnection removes a saved connection. The caller is responsible for
 // closing any open pool for id first (see db.PoolManager.Close).
 func (s *Store) DeleteConnection(id string) error {
+	// El historial de comandos SSH se borra EXPLÍCITAMENTE, aunque
+	// ssh_command_history declare `ON DELETE CASCADE` sobre esta tabla.
+	//
+	// Ese CASCADE nunca se disparó: SQLite no aplica claves foráneas salvo que
+	// se active `PRAGMA foreign_keys = ON`, y este vault no lo hace — se
+	// descubrió al verificar la migración 31, que había declarado la misma
+	// cláusula. O sea que hasta ahora borrar una conexión dejaba su historial
+	// huérfano: filas cifradas que ya no se podían ni mostrar ni limpiar desde
+	// la interfaz, porque la conexión a la que colgaban no existía más.
+	//
+	// Se arregla acá y no activando el pragma porque ese cambio es global y
+	// alteraría el comportamiento de toda tabla con FK declarada; eso merece
+	// su propia verificación en vez de entrar de costado.
+	if _, err := s.db.Exec(`DELETE FROM ssh_command_history WHERE conn_id = ?`, id); err != nil {
+		return fmt.Errorf("vault: deleting connection history: %w", err)
+	}
 	if _, err := s.db.Exec(`DELETE FROM connections WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("vault: deleting connection: %w", err)
 	}

@@ -11,38 +11,47 @@ etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.2.0 |
-| Archivo | `mini-tools-v1.2.0-windows-amd64.exe` |
-| Tamaño | ~53 MB |
-| SHA-256 | `dcffd3b83e10b9320f8f136141c04cb23a12928c0af0334e20e87a0cbb4c3036` |
+| Versión | 1.3.0 |
+| Archivo | `mini-tools-v1.3.0-windows-amd64.exe` |
+| Tamaño | ~54 MB |
+| SHA-256 | `530234970a0fc6f2e0d86206ce899fea04f56cf33f5d8c65b83d863a3f47f3f7` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v1.2.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v1.3.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
 ## Estado de verificación en Windows real
 
-**Esta versión (1.2.0) NO fue verificada en una Windows real.** Lo único
+**Esta versión (1.3.0) NO fue verificada en una Windows real.** Lo único
 confirmado es que cross-compila limpio desde macOS (ninguno de los
 conectores de base de datos —PostgreSQL, Oracle, SQLite, SQL Server,
 MongoDB— ni `go-redis` ni el PTY usan CGO, así que no hace falta un
 toolchain de Windows/mingw).
 
-Importante, porque se acumula: **la 1.1.0 tampoco se verificó**, así que
-todo lo que quedó pendiente de confirmar en aquella versión sigue
-pendiente acá — no se reinicia la lista con cada release. Lo último que
-corrió de verdad sobre Windows 10 y 11 fue la 1.0.0.
+Importante, porque se acumula: **la 1.1.0 y la 1.2.0 tampoco se
+verificaron**, así que todo lo que quedó pendiente de confirmar en
+aquellas versiones sigue pendiente acá — no se reinicia la lista con cada
+release. Lo último que corrió de verdad sobre Windows 10 y 11 fue la
+1.0.0.
 
 Queda sin confirmar en Windows, en orden de riesgo:
 
-- **La migración 29 del vault, nueva en esta versión.** Al primer arranque
-  crea la tabla `ssh_command_history` y agrega una columna a `settings`
-  sobre el `vault.db` que ya existe en la máquina. Es SQLite puro y el
+- **Las migraciones 30, 31 y 32 del vault, nuevas en esta versión.** Al
+  primer arranque agregan columnas a `git_repos` y crean la tabla
+  `agent_chats` (con su título cifrado) sobre el `vault.db` que ya existe
+  en la máquina. Se suman a la 29, que sigue sin verificarse.
+- **Todo el subsistema agéntico, que es lo que trae esta versión.** Lanza
+  los CLIs (`claude`, `codex`, `agy`) como procesos hijos y les habla por
+  stdout en streaming; en Windows eso implica otra resolución de
+  ejecutables (`.cmd`/`.exe` del `PATH`) y otro manejo de saltos de línea.
+  Y la aprobación por acción de Claude Code usa un **socket Unix**, que en
+  Windows no existe: hace falta confirmar si degrada a "sin aprobación
+  por acción" de forma limpia o si directamente falla. Es SQLite puro y el
   camino es el mismo en todos los SO, pero una migración que falle deja la
   app sin arrancar, así que es lo primero a mirar si alguien la prueba.
 - **La terminal local integrada** (pendiente desde 1.1.0). En Windows usa
@@ -96,7 +105,7 @@ borrarla sin más.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v1.2.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v1.3.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

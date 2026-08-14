@@ -502,6 +502,98 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 30,
+		desc:    "agrega git_repos.open_files (pestañas del editor de archivos) y git_repos.default_agent",
+		apply: func(tx *sql.Tx) error {
+			// Qué archivos tenía abiertos el editor de la pestaña Git, en JSON
+			// (["ruta/relativa.go", ...]). Por repositorio y no global: las
+			// pestañas abiertas son del proyecto en el que estabas trabajando,
+			// igual que pinned_branches.
+			//
+			// Se guardan las RUTAS, nunca el contenido. Guardar el contenido
+			// convertiría al vault en una segunda copia del árbol de trabajo,
+			// desincronizada con el disco desde el instante siguiente: al
+			// reabrir hay que leer el archivo como está AHORA, que además es
+			// lo único correcto si un agente lo tocó mientras tanto.
+			//
+			// DEFAULT '[]': una instalación que actualiza abre el editor
+			// vacío, exactamente como venía.
+			if _, err := tx.Exec(`ALTER TABLE git_repos ADD COLUMN open_files TEXT NOT NULL DEFAULT '[]'`); err != nil {
+				return err
+			}
+			// Con qué agente se abre una sesión desde este repositorio cuando
+			// no se elige uno. Vacío = preguntar, que es el comportamiento
+			// actual y el default correcto: elegir por el usuario un asistente
+			// que consume su cuota no es algo que nadie haya pedido.
+			_, err := tx.Exec(`ALTER TABLE git_repos ADD COLUMN default_agent TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
+	{
+		version: 31,
+		desc:    "crea agent_chats (historial de conversaciones con agentes por repositorio, con el título cifrado)",
+		apply: func(tx *sql.Tx) error {
+			// Historial de chats con agentes, por repositorio.
+			//
+			// Lo que se guarda es el PUNTERO a la conversación, no la
+			// conversación: `conversation_id` es el id que devuelve el propio
+			// CLI y con el que se la retoma (`--resume`, `--conversation`). El
+			// historial de mensajes lo tiene el CLI; duplicarlo acá sería una
+			// segunda memoria que se desincroniza con la real y que además
+			// obligaría a guardar en el vault todo lo que se conversó.
+			//
+			// El TÍTULO sí va cifrado, con el mismo esquema que
+			// ssh_command_history y por el mismo motivo: se deriva de lo
+			// primero que se le escribió al agente, y eso puede ser cualquier
+			// cosa —el nombre de un cliente, una ruta interna, un fragmento de
+			// un error con datos adentro—. Los ids y las fechas van en claro:
+			// son identificadores opacos, no contenido.
+			//
+			// ON DELETE CASCADE: sacar el repositorio de la app se lleva su
+			// historial. Un chat huérfano no se puede ni mostrar ni borrar
+			// desde la interfaz, que es la definición de basura que se acumula.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS agent_chats (
+				id TEXT PRIMARY KEY,
+				repo_id TEXT NOT NULL REFERENCES git_repos(id) ON DELETE CASCADE,
+				agent_id TEXT NOT NULL,
+				encrypted_title BLOB,
+				title_nonce BLOB,
+				conversation_id TEXT NOT NULL DEFAULT '',
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// El índice es por (repositorio, fecha desc): toda lectura es "los
+			// últimos chats de este repo", y sin él una tabla que crece con
+			// cada conversación obliga a un scan completo para responderla.
+			_, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_agent_chats_repo ON agent_chats (repo_id, updated_at DESC)`)
+			return err
+		},
+	},
+	{
+		version: 32,
+		desc:    "agrega a agent_chats el modelo, el esfuerzo y el modo elegidos, para que un chat retomado siga como estaba",
+		apply: func(tx *sql.Tx) error {
+			// Ajustes del chat. Retomar una conversación con el modelo y el
+			// esfuerzo en su default —cuando se había elegido otros— la
+			// continúa de una forma distinta de como venía, y eso no se nota
+			// hasta que la respuesta llega peor de lo esperado.
+			//
+			// El MODO también se guarda, pero se restaura acotado: los modos
+			// permisivos vuelven a pedir aprobación aunque estuvieran
+			// guardados (ver el frontend). Guardar "podía editar" y
+			// reactivarlo solo porque se reabrió una pestaña sería conceder un
+			// permiso que nadie volvió a dar.
+			for _, col := range []string{"model", "effort", "mode"} {
+				if _, err := tx.Exec(`ALTER TABLE agent_chats ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

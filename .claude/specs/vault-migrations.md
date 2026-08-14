@@ -63,4 +63,42 @@ rm -rf tmp_migrationverify
 
 ## Estado actual
 
-- **Versión 2** (`backend/vault/migrations.go`): `ALTER TABLE connections ADD COLUMN metadata_schemas TEXT` — restringe qué esquemas escanea `GetSchemaMetadata` en Postgres (ver `.claude/specs/go-react-contract.md`, sección "Escaneo de esquemas restringido"). Primera migración real del framework — verificada contra un Postgres real en Docker con el patrón de script efímero de arriba (además del round-trip de datos, específicamente contra que abrir un vault ya en versión 1 la aplica una sola vez y queda en versión 2).
+> Esta sección venía anotando solo la versión 2 y quedó **veintiocho versiones
+> atrás** del código. No se reconstruyó el historial completo hacia atrás —
+> `backend/vault/migrations.go` es la fuente de verdad y cada entrada lleva su
+> propio `desc` y su comentario— pero sí se corrigió el número, que era lo que
+> hacía engañosa la sección: leerla daba a entender que agregar una migración
+> era todavía territorio inexplorado.
+
+- **Versión actual: 32.** El slice de `migrations.go` es la lista completa y
+  autoritativa; cada entrada explica en su comentario por qué existe.
+- **Versión 2** (primera migración real del framework):
+  `ALTER TABLE connections ADD COLUMN metadata_schemas TEXT` — restringe qué
+  esquemas escanea `GetSchemaMetadata` en Postgres (ver
+  [go-react-contract.md](go-react-contract.md), sección "Escaneo de esquemas
+  restringido"). Verificada contra un Postgres real en Docker con el patrón de
+  script efímero de arriba.
+- **Versión 32** (ajustes del chat): `agent_chats.model/effort/mode`, para que
+  retomar una conversación la continúe con lo que se venía usando. El modo se
+  guarda pero **los permisivos no se restauran solos** — reactivar "podía
+  editar" porque se reabrió una pestaña sería conceder un permiso que nadie
+  volvió a dar. Verificada en `HOME=$(mktemp -d)`.
+- **Versión 31** (historial de chats con agentes): `agent_chats`, con el
+  **título cifrado** (se deriva de lo que se le escribió al agente) y el resto
+  en claro (ids opacos y fechas). Guarda el PUNTERO a la conversación del CLI,
+  no los mensajes. **Hallazgo al verificarla:** su `ON DELETE CASCADE` **no se
+  dispara** — este vault no activa `PRAGMA foreign_keys = ON`, así que SQLite
+  no aplica las FK. `RemoveGitRepo` borra los chats explícitamente. **El mismo
+  defecto afecta a `ssh_command_history`** (migración 29), que declara el mismo
+  CASCADE y por lo tanto deja historial huérfano al borrar una conexión: no se
+  tocó acá para no arrastrar un cambio ajeno a esta feature, pero está
+  pendiente.
+- **Versión 30** (banco de trabajo agéntico de la pestaña Git):
+  `git_repos.open_files` (rutas de las pestañas del editor, `DEFAULT '[]'` —
+  **rutas, nunca contenido**: al reabrir se lee el archivo como está en el
+  disco, que es lo único correcto si un agente lo tocó mientras tanto) y
+  `git_repos.default_agent` (`DEFAULT ''` = preguntar). Verificada con la
+  receta de arriba en un `HOME=$(mktemp -d)`: los defaults llegan bien a una
+  fila preexistente, el round-trip sobrevive al reinicio, las columnas
+  anteriores quedan intactas y `Unlock` con la clave original sigue
+  funcionando — o sea que `vault_meta.verifier` no fue tocado.

@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"01a00217-12d1-7492-b8df-b6a2c1f0bc86"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'wc -l VERSION'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'wc -l VERSION'","aggregated_output":"1 VERSION\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"1"}}
+{"type":"turn.completed","usage":{"input_tokens":26654,"cached_input_tokens":26112,"cache_write_input_tokens":0,"output_tokens":107,"reasoning_output_tokens":40}}

@@ -113,6 +113,68 @@ func (s *Store) GetGitRepo(id string) (*GitRepo, error) {
 	return &r, nil
 }
 
+// GitRepoWorkspace es el estado por repositorio del banco de trabajo: qué
+// archivos tenía abiertos el editor y con qué agente se abre una sesión.
+//
+// Va aparte de GitRepo y no como campos suyos porque GitRepo lo lee la barra
+// lateral en cada refresco para dibujar la lista, y esto solo lo necesita la
+// pestaña abierta.
+type GitRepoWorkspace struct {
+	OpenFiles []string `json:"openFiles"`
+	// DefaultAgent vacío significa "preguntar", que es el default correcto:
+	// elegir por el usuario un asistente que consume su cuota no es algo que
+	// nadie haya pedido.
+	DefaultAgent string `json:"defaultAgent"`
+}
+
+// GitRepoWorkspaceFor lee ese estado. Un valor ilegible degrada a vacío en vez
+// de fallar, mismo criterio que decodePinned: perder las pestañas abiertas es
+// molesto, no poder abrir el repositorio es otra cosa.
+func (s *Store) GitRepoWorkspaceFor(id string) (GitRepoWorkspace, error) {
+	var rawFiles, agent string
+	err := s.db.QueryRow(
+		`SELECT COALESCE(open_files, '[]'), COALESCE(default_agent, '') FROM git_repos WHERE id = ?`, id,
+	).Scan(&rawFiles, &agent)
+	if err != nil {
+		return GitRepoWorkspace{}, fmt.Errorf("vault: repositorio %q no encontrado: %w", id, err)
+	}
+
+	ws := GitRepoWorkspace{OpenFiles: []string{}, DefaultAgent: agent}
+	if rawFiles != "" {
+		var files []string
+		if err := json.Unmarshal([]byte(rawFiles), &files); err == nil && files != nil {
+			ws.OpenFiles = files
+		}
+	}
+	return ws, nil
+}
+
+// SetGitRepoOpenFiles guarda las RUTAS de los archivos abiertos, nunca su
+// contenido: al reabrir hay que leer el archivo como está ahora, que es lo
+// único correcto si un agente lo tocó mientras tanto.
+func (s *Store) SetGitRepoOpenFiles(id string, files []string) error {
+	if files == nil {
+		files = []string{}
+	}
+	encoded, err := json.Marshal(files)
+	if err != nil {
+		return fmt.Errorf("vault: serializando archivos abiertos: %w", err)
+	}
+	if _, err := s.db.Exec(`UPDATE git_repos SET open_files = ? WHERE id = ?`, string(encoded), id); err != nil {
+		return fmt.Errorf("vault: guardando archivos abiertos: %w", err)
+	}
+	return nil
+}
+
+// SetGitRepoDefaultAgent fija con qué agente se abre una sesión desde este
+// repositorio. Vacío vuelve a "preguntar".
+func (s *Store) SetGitRepoDefaultAgent(id, agentID string) error {
+	if _, err := s.db.Exec(`UPDATE git_repos SET default_agent = ? WHERE id = ?`, agentID, id); err != nil {
+		return fmt.Errorf("vault: guardando el agente por defecto: %w", err)
+	}
+	return nil
+}
+
 // RenameGitRepo changes only the display name; the path on disk is untouched.
 func (s *Store) RenameGitRepo(id, name string) error {
 	res, err := s.db.Exec(`UPDATE git_repos SET name = ? WHERE id = ?`, name, id)
@@ -150,6 +212,20 @@ func (s *Store) MoveGitRepoToFolder(id, folderID string) error {
 // never delete the user's code, the same principle as DeleteFolder never
 // deleting what it contains.
 func (s *Store) RemoveGitRepo(id string) error {
+	// Los chats del repositorio se borran EXPLÍCITAMENTE, aunque agent_chats
+	// declare ON DELETE CASCADE.
+	//
+	// Ese CASCADE no se dispara: SQLite no aplica claves foráneas salvo que se
+	// active `PRAGMA foreign_keys = ON`, y este vault no lo hace. Se comprobó
+	// con un script sandboxeado — el chat sobrevivía al borrado del
+	// repositorio. Se resuelve acá y no activando el pragma porque ese cambio
+	// es global: alteraría el comportamiento de toda tabla con FK declarada,
+	// incluidas las que hoy funcionan sin él, y eso merece su propia
+	// verificación en vez de entrar de costado con esta feature.
+	if _, err := s.db.Exec(`DELETE FROM agent_chats WHERE repo_id = ?`, id); err != nil {
+		return fmt.Errorf("vault: quitando los chats del repositorio: %w", err)
+	}
+
 	res, err := s.db.Exec(`DELETE FROM git_repos WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("vault: quitando repositorio: %w", err)

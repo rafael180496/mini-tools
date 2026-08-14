@@ -1,6 +1,8 @@
 // Package agents es el catálogo de asistentes de código por línea de
-// comandos que el módulo Git puede abrir en una sesión propia (Claude Code,
-// Codex, Gemini CLI).
+// comandos que el módulo Git puede abrir en una sesión propia: Claude Code,
+// Codex CLI y Antigravity CLI — este último es el que antes se llamaba Gemini
+// CLI, renombrado por Google, y por eso hay una sola entrada para los dos
+// nombres y no dos.
 //
 // Decisión de fondo: un agente NO se integra por su API, se ejecuta como el
 // programa de terminal que ya es. Los tres son CLIs interactivas que corren
@@ -68,7 +70,10 @@ type catalogEntry struct {
 	id      string
 	label   string
 	vendor  string
-	bin     string
+	bin string
+	// altBins son nombres anteriores del mismo ejecutable, para que un
+	// renombre del producto no haga desaparecer un agente que sí está.
+	altBins []string
 	command string
 	keyEnv  string
 	login   string
@@ -104,15 +109,28 @@ var catalog = []catalogEntry{
 		docs:    "https://developers.openai.com/codex/cli",
 	},
 	{
-		id:      "gemini",
-		label:   "Gemini CLI",
-		vendor:  "Google",
-		bin:     "gemini",
-		command: "gemini",
-		keyEnv:  "GEMINI_API_KEY",
-		login:   "Se autentica con su propio login de Google (o con una API key en la variable GEMINI_API_KEY). Abrí una sesión y seguí lo que indique el CLI.",
-		note:    "Asistente de Google por línea de comandos, sobre el repositorio abierto.",
-		docs:    "https://google-gemini.github.io/gemini-cli/",
+		id:    "antigravity",
+		label: "Antigravity CLI",
+		// El binario se llama `agy`, no "antigravity" — vale la pena decirlo
+		// porque es lo que hace que la detección funcione y lo que hay que
+		// escribir si se configura un comando propio.
+		bin: "agy",
+		// El CLI de Google se llamaba **Gemini CLI** y ahora se llama
+		// Antigravity: es el mismo producto renombrado, no dos. Por eso hay
+		// una sola entrada y no dos —una segunda diría "no instalado" para
+		// siempre en cualquier máquina moderna—, y por eso se busca también
+		// el binario viejo: quien todavía tenga `gemini` lo ve detectado acá,
+		// bajo el nombre actual.
+		altBins: []string{"gemini"},
+		command: "agy",
+		// Sin variable de API key a propósito: Antigravity se autentica con su
+		// propio login de Google y no documenta un modo por variable de
+		// entorno. Inventar acá un nombre de variable haría aparecer un campo
+		// que no sirve para nada.
+		keyEnv: "",
+		login:  "Se autentica con su propio login de Google: abrí una sesión y seguí lo que indique el CLI. El consumo y el límite restante se ven con /usage dentro de la sesión.",
+		note:   "Asistente de Google por línea de comandos (binario `agy`), sobre el repositorio abierto. Trae sus propios skills y modos de ejecución.",
+		docs:   "https://antigravity.google/",
 	},
 }
 
@@ -187,6 +205,12 @@ func List(overrides map[string]Override) []Agent {
 		// ("claude --model x") o pasar por otro programa, y tratar eso como
 		// nombre de ejecutable daría "no instalado" a algo que anda.
 		path := resolveBin(c.bin)
+		for _, alt := range c.altBins {
+			if path != "" {
+				break
+			}
+			path = resolveBin(alt)
+		}
 
 		out = append(out, Agent{
 			ID:             c.id,

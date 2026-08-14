@@ -50,6 +50,12 @@ func Regenerate(dir string, info ProjectInfo) error {
 		filepath.Join(dir, ".claude", "specs", "database-schema.md"):               renderSchemaSpec(info),
 		filepath.Join(dir, ".claude", "rules", "sql-conventions.md"):               renderSQLConventions(info),
 		filepath.Join(dir, ".claude", "skills", "mini-tools-database", "SKILL.md"): renderSkill(info),
+		// Cada CLI lee SOLO su propio archivo de instrucciones: un repositorio
+		// impecablemente documentado en CLAUDE.md no le dice nada a Codex ni a
+		// Gemini. Estos dos son punteros cortos al mismo documento, no copias
+		// —ver renderAgentPointer para por qué no se duplica el contenido—.
+		filepath.Join(dir, "AGENTS.md"): renderAgentPointer("AGENTS.md", "Codex CLI", info),
+		filepath.Join(dir, "GEMINI.md"): renderAgentPointer("GEMINI.md", "Gemini CLI y Antigravity", info),
 	}
 
 	for path, content := range files {
