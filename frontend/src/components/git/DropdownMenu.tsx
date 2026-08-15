@@ -12,13 +12,28 @@ export interface DropdownItem {
     danger?: boolean
     disabled?: boolean
     onSelect: () => void
+    // onContext es la acción secundaria, con clic derecho. La usa el
+    // historial de chats para renombrar: es una fila que ya tiene una acción
+    // principal obvia (abrirla), y meter un segundo botón por fila para algo
+    // que se hace de vez en cuando ensuciaría la lista entera.
+    onContext?: () => void
 }
+
+// DropdownHeader rotula un grupo dentro del menú. No es seleccionable: existe
+// para que dos grupos con filas parecidas —"empezar una conversación" y "las
+// de este agente"— se lean como lo que son en vez de como una sola lista
+// larga donde hay que deducir qué es cada fila.
+export interface DropdownHeader {
+    header: string
+}
+
+type DropdownEntry = DropdownItem | DropdownHeader | 'separator'
 
 interface DropdownMenuProps {
     label: string
     icon?: string
     title: string
-    items: (DropdownItem | 'separator')[]
+    items: DropdownEntry[]
     disabled?: boolean
     width?: number
 }
@@ -80,15 +95,36 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
                     {items.map((item, i) =>
                         item === 'separator' ? (
                             <div key={`sep-${i}`} className="my-1 border-t border-outline-variant" />
+                        ) : 'header' in item ? (
+                            <div
+                                key={`head-${i}`}
+                                className="px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant/70"
+                            >
+                                {item.header}
+                            </div>
                         ) : (
                             <button
-                                key={item.label}
+                                // Por índice y no por label: dos
+                                // conversaciones pueden tener el mismo
+                                // nombre, y ahí React descarta una de las dos
+                                // filas sin decir nada.
+                                key={`item-${i}`}
                                 disabled={item.disabled}
                                 title={item.hint ?? item.label}
                                 onClick={() => {
                                     setOpen(false)
                                     item.onSelect()
                                 }}
+                                onContextMenu={
+                                    item.onContext
+                                        ? (e) => {
+                                              e.preventDefault()
+                                              e.stopPropagation()
+                                              setOpen(false)
+                                              item.onContext?.()
+                                          }
+                                        : undefined
+                                }
                                 className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs disabled:opacity-40 ${
                                     item.danger
                                         ? 'text-error hover:bg-error-container/40'

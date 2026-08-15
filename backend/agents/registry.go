@@ -160,20 +160,89 @@ func extraLookupDirs() []string {
 // resolveBin busca el ejecutable en el PATH y después en las ubicaciones
 // habituales. Devuelve "" si no está instalado.
 func resolveBin(bin string) string {
-	name := bin
-	if runtime.GOOS == "windows" {
-		name = bin + ".exe"
-	}
 	if p, err := exec.LookPath(bin); err == nil {
 		return p
 	}
 	for _, dir := range extraLookupDirs() {
-		p := filepath.Join(dir, name)
-		if info, err := os.Stat(p); err == nil && !info.IsDir() {
-			return p
+		for _, name := range binNames(bin) {
+			p := filepath.Join(dir, name)
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+				return p
+			}
 		}
 	}
 	return ""
+}
+
+// binNames son los nombres de archivo que puede tener ese ejecutable.
+//
+// En Windows importa y no alcanza con `.exe`: los tres CLIs se instalan por
+// npm, y npm no deja un `.exe` sino un **shim `.cmd`** en `%APPDATA%\npm`.
+// Buscar solo `claude.exe` ahí es garantía de no encontrarlo nunca en la
+// máquina donde justamente está instalado.
+func binNames(bin string) []string {
+	if runtime.GOOS != "windows" {
+		return []string{bin}
+	}
+	return []string{bin + ".cmd", bin + ".exe", bin + ".bat"}
+}
+
+// Resolve es resolveBin para el resto de la app: dónde está de verdad ese
+// ejecutable, o "" si no está.
+func Resolve(bin string) string { return resolveBin(bin) }
+
+// Env es el entorno con el que hay que lanzar un agente: **el del proceso
+// entero**, con el PATH ampliado y las variables extra que se le pasen.
+//
+// Que herede todo no es comodidad, es requisito. `cmd.Env` REEMPLAZA el
+// entorno del hijo, no lo agrega: armar una lista con solo el PATH deja al
+// agente sin `HOME`, y sin HOME ninguno de los tres funciona —
+//
+//   - **Claude Code** guarda ahí su sesión, así que contesta "Not logged in ·
+//     Please run /login" en una máquina donde el login está hecho.
+//   - **Antigravity** directamente aborta con "$HOME is not defined" antes de
+//     leer el prompt.
+//
+// Y no es solo HOME: quedaban afuera también el resto de las variables del
+// perfil de las que un CLI puede depender. La terminal integrada nunca tuvo
+// este problema porque siempre partió de os.Environ() (ver
+// localterm.terminalEnv); esto es lo mismo para el chat.
+func Env(extra ...string) []string {
+	base := os.Environ()
+	out := make([]string, 0, len(base)+len(extra)+1)
+	for _, kv := range base {
+		// El PATH se reemplaza por el ampliado: el heredado por una app
+		// abierta desde Finder no incluye los directorios donde se instalan
+		// los CLIs ni las herramientas que ellos lanzan.
+		if strings.HasPrefix(kv, "PATH=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	out = append(out, "PATH="+PathEnv())
+	return append(out, extra...)
+}
+
+// Launcher convierte una ruta de ejecutable en el argv con el que se lanza.
+//
+// Casi siempre es la ruta sola. La excepción es Windows con un shim `.cmd` o
+// `.bat`: **CreateProcess no sabe ejecutar un archivo por lotes**, así que hay
+// que pasar por `cmd.exe /c` o el lanzado falla con un error de formato — que
+// es exactamente el caso de los CLIs instalados por npm, o sea el normal.
+//
+// NOTA: sin verificar en una Windows real (ver releases/windows/README.md).
+func Launcher(path string) []string {
+	if runtime.GOOS == "windows" {
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".cmd", ".bat":
+			shell := os.Getenv("COMSPEC")
+			if shell == "" {
+				shell = "cmd.exe"
+			}
+			return []string{shell, "/c", path}
+		}
+	}
+	return []string{path}
 }
 
 // Override es la parte configurable por el usuario de un agente. La define

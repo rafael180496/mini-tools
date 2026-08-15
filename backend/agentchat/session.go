@@ -112,6 +112,18 @@ type Turn struct {
 	// Command es lo que el catálogo resolvió para este agente (puede traer
 	// argumentos fijos del usuario).
 	Command string
+	// Exec es el argv con el que se lanza de verdad: el ejecutable ya
+	// resuelto a ruta absoluta, más el `cmd /c` de adelante si en Windows es
+	// un shim `.cmd`. Reemplaza al primer token de Command, conservando los
+	// argumentos fijos que traiga.
+	//
+	// Existe porque `exec.Command` resuelve el nombre del programa con el
+	// PATH **del proceso padre**, no con el que se le ponga en `cmd.Env`: una
+	// app de macOS abierta desde Finder hereda un PATH mínimo sin
+	// `~/.local/bin` ni el prefijo de npm, así que invocar "claude" por
+	// nombre fallaba con "executable file not found in $PATH" aunque el
+	// catálogo lo hubiera encontrado un segundo antes.
+	Exec []string
 	Cwd     string
 	Env     []string
 	Prompt  string
@@ -211,6 +223,7 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 		return "", err
 	}
 
+	args = withExec(t, args)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = t.Cwd
 	cmd.Env = t.Env
@@ -314,6 +327,7 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 		return
 	}
 
+	args = withExec(t, args)
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = t.Cwd
 	// El entorno del hook viaja al proceso del agente para que lo herede el
@@ -409,6 +423,15 @@ func withImagePaths(prompt string, images []string) string {
 // cosa en la máquina". Lo primero puede ser una elección informada del
 // usuario; lo segundo no es algo que una lista desplegable pueda representar
 // honestamente.
+// withExec reemplaza el primer token de los argumentos por el ejecutable ya
+// resuelto, conservando los argumentos fijos que el usuario haya configurado.
+func withExec(t Turn, args []string) []string {
+	if len(t.Exec) == 0 || len(args) == 0 {
+		return args
+	}
+	return append(append([]string{}, t.Exec...), args[1:]...)
+}
+
 func buildArgs(t Turn, conversation string) ([]string, error) {
 	base := strings.Fields(strings.TrimSpace(t.Command))
 	if len(base) == 0 {

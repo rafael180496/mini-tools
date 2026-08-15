@@ -11,29 +11,29 @@ etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.3.0 |
-| Archivo | `mini-tools-v1.3.0-windows-amd64.exe` |
+| Versión | 1.3.1 |
+| Archivo | `mini-tools-v1.3.1-windows-amd64.exe` |
 | Tamaño | ~54 MB |
-| SHA-256 | `530234970a0fc6f2e0d86206ce899fea04f56cf33f5d8c65b83d863a3f47f3f7` |
+| SHA-256 | `de65effc3198665894a496c65dd2aeb8c595e71a756e10644f058b545688226c` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v1.3.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v1.3.1-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
 ## Estado de verificación en Windows real
 
-**Esta versión (1.3.0) NO fue verificada en una Windows real.** Lo único
+**Esta versión (1.3.1) NO fue verificada en una Windows real.** Lo único
 confirmado es que cross-compila limpio desde macOS (ninguno de los
 conectores de base de datos —PostgreSQL, Oracle, SQLite, SQL Server,
 MongoDB— ni `go-redis` ni el PTY usan CGO, así que no hace falta un
 toolchain de Windows/mingw).
 
-Importante, porque se acumula: **la 1.1.0 y la 1.2.0 tampoco se
+Importante, porque se acumula: **la 1.1.0, la 1.2.0 y la 1.3.0 tampoco se
 verificaron**, así que todo lo que quedó pendiente de confirmar en
 aquellas versiones sigue pendiente acá — no se reinicia la lista con cada
 release. Lo último que corrió de verdad sobre Windows 10 y 11 fue la
@@ -105,7 +105,7 @@ borrarla sin más.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v1.3.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v1.3.1-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

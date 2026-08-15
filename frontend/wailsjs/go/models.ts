@@ -1,5 +1,23 @@
 export namespace agentchat {
 	
+	export class Conversation {
+	    id: string;
+	    agent: string;
+	    title: string;
+	    updatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Conversation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.agent = source["agent"];
+	        this.title = source["title"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
 	export class ToolCall {
 	    name: string;
 	    input: string;

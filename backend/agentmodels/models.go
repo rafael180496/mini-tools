@@ -27,6 +27,7 @@ package agentmodels
 import (
 	"context"
 	"encoding/json"
+	"mini-tools/backend/agents"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -172,22 +173,18 @@ func codexModels() []Model {
 // cache de arriba y el tope de tiempo: que el panel tarde en abrir por listar
 // modelos sería peor que no listarlos.
 func antigravityModels() []Model {
-	bin, err := exec.LookPath("agy")
-	if err != nil {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil
-		}
-		bin = filepath.Join(home, ".local", "bin", "agy")
-		if _, err := os.Stat(bin); err != nil {
-			return nil
-		}
+	// Mismo resolvedor que el catálogo: `exec.LookPath` sola falla en una app
+	// abierta desde Finder, que hereda un PATH mínimo.
+	bin := agents.Resolve("agy")
+	if bin == "" {
+		return nil
 	}
+	argv := agents.Launcher(bin)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, bin, "models").Output()
+	out, err := exec.CommandContext(ctx, argv[0], append(argv[1:], "models")...).Output()
 	if err != nil {
 		return nil
 	}

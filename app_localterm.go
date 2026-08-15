@@ -267,7 +267,9 @@ func (a *App) OpenAgentSession(sessionID, repoID, agentID string, cols, rows int
 	// PATH ampliado con los directorios donde suelen vivir estos CLIs: una
 	// app abierta desde el Dock no hereda ~/.local/bin ni los binarios de
 	// npm/bun, que es justo donde se instalan.
-	env := []string{"PATH=" + agents.PathEnv()}
+	// El entorno del proceso entero, no solo el PATH: cmd.Env reemplaza, y sin
+	// HOME el agente no encuentra su sesión (ver agents.Env).
+	env := agents.Env()
 	if agent.KeyEnv != "" {
 		key, err := a.vault.AgentKey(agentID)
 		if err != nil {
@@ -428,7 +430,9 @@ func (a *App) SendAgentChat(sessionID, repoID, agentID, prompt, mode, effort, mo
 	// Mismo entorno que una sesión de terminal: PATH ampliado y, si hay una,
 	// la API key por variable — nunca por la línea de comandos, donde quedaría
 	// visible en `ps`.
-	env := []string{"PATH=" + agents.PathEnv()}
+	// El entorno del proceso entero, no solo el PATH: cmd.Env reemplaza, y sin
+	// HOME el agente no encuentra su sesión (ver agents.Env).
+	env := agents.Env()
 	if agent.KeyEnv != "" {
 		key, err := a.vault.AgentKey(agentID)
 		if err != nil {
@@ -462,6 +466,10 @@ func (a *App) SendAgentChat(sessionID, repoID, agentID, prompt, mode, effort, mo
 		SessionID: sessionID,
 		AgentID:   agentID,
 		Command:   agent.Command,
+		// El ejecutable va resuelto a ruta absoluta: lanzarlo por nombre lo
+		// hace depender del PATH que heredó la ventana, que abierta desde
+		// Finder no incluye ~/.local/bin ni el prefijo de npm.
+		Exec: agents.Launcher(agent.Path),
 		Cwd:       cwd,
 		Env:       env,
 		Prompt:    prompt,
@@ -520,7 +528,9 @@ func (a *App) AskAgentOnce(repoID, agentID, prompt string) (string, error) {
 		cwd = path
 	}
 
-	env := []string{"PATH=" + agents.PathEnv()}
+	// El entorno del proceso entero, no solo el PATH: cmd.Env reemplaza, y sin
+	// HOME el agente no encuentra su sesión (ver agents.Env).
+	env := agents.Env()
 	if agent.KeyEnv != "" {
 		key, err := a.vault.AgentKey(agentID)
 		if err != nil {
@@ -540,6 +550,7 @@ func (a *App) AskAgentOnce(repoID, agentID, prompt string) (string, error) {
 	return a.agentChats.Ask(ctx, agentchat.Turn{
 		AgentID: agentID,
 		Command: agent.Command,
+		Exec:    agents.Launcher(agent.Path),
 		Cwd:     cwd,
 		Env:     env,
 		Prompt:  prompt,
@@ -727,6 +738,35 @@ func (a *App) ListAgentChats(repoID string) ([]vault.AgentChat, error) {
 		return nil, err
 	}
 	return a.vault.ListAgentChats(repoID)
+}
+
+// AgentCLIConversations lista las conversaciones que el propio CLI ya tiene
+// guardadas de este repositorio.
+//
+// Es distinto de ListAgentChats, que devuelve solo lo abierto DESDE la app.
+// Los CLIs son los mismos que se usan por fuera —la extensión de VS Code, la
+// terminal— y todo eso queda en el mismo almacenamiento; sin esto, abrir un
+// repositorio con semanas de trabajo encima muestra un historial vacío y
+// parece que la app perdió los chats.
+//
+// Devuelve punteros, no mensajes: el id que el CLI ya usa para encadenar.
+func (a *App) AgentCLIConversations(agentID, repoID string) ([]agentchat.Conversation, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return nil, err
+	}
+	cs, err := agentchat.Conversations(agentID, root)
+	if err != nil {
+		return nil, err
+	}
+	// Nunca nil: el frontend recorre esto con .map, y un null lo rompe.
+	if cs == nil {
+		cs = []agentchat.Conversation{}
+	}
+	return cs, nil
 }
 
 // CreateAgentChat registra una conversación nueva. El id lo genera el frontend

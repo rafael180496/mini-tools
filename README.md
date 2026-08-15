@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-1.3.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-1.3.1-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -30,6 +30,8 @@ Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en
 - **Servidores MCP** de los tres agentes, leídos de los cinco lugares donde cada uno los guarda, con los remotos marcados.
 - **Historial de chats** por repositorio, agrupado por agente, renombrable y retomable.
 - **Editor de archivos** con más de treinta lenguajes y vista previa de Markdown en tres modos.
+
+La **1.3.1** es correctiva sobre esa base y es la que hay que descargar: arregla que ningún agente arrancara desde la app instalada (el `PATH` mínimo que hereda una app abierta desde Finder), que Claude Code informara "Not logged in" con la sesión iniciada (le faltaba `HOME`), y suma el listado de **las conversaciones que el CLI ya tenía de este repositorio** — las mismas que ves en la extensión de VS Code.
 
 Detalle completo en [CHANGELOG.md](CHANGELOG.md).
 
@@ -121,8 +123,8 @@ Terminal SSH real con `xterm.js`, transferencia SFTP de doble panel con cola y c
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v1.3.0.dmg](releases/macos/mini-tools-v1.3.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v1.3.0-windows-amd64.exe](releases/windows/mini-tools-v1.3.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v1.3.1.dmg](releases/macos/mini-tools-v1.3.1.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v1.3.1-windows-amd64.exe](releases/windows/mini-tools-v1.3.1-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**, ver [detalle](releases/windows/README.md). |
 
 Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -246,11 +248,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.3.0 |
+| Versión | 1.3.1 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v1.3.0.dmg](releases/macos/mini-tools-v1.3.0.dmg)** |
-| SHA-256 | `bef570fec27092bd093f2baf71b3ce1f6cf5f38fb48fc21cd2eb2036ba5e7b12` |
+| Archivo | **[⬇ Descargar mini-tools-v1.3.1.dmg](releases/macos/mini-tools-v1.3.1.dmg)** |
+| SHA-256 | `3388923f455a4436f5a3dfb609acd5ffea0a41a49a9dfabeb6d2e358c598566a` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -262,7 +264,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **La 1.3.0 NO se corrió en una Windows real** — solo se confirmó que cross-compila limpio. Lo más expuesto en esta versión es todo lo agéntico: lanzar los CLIs como procesos hijos y leerles la salida en streaming es otro camino de código en Windows, y la **aprobación acción por acción de Claude Code usa un socket Unix**, que en Windows no existe — falta confirmar si degrada limpio o falla. Se suman las migraciones 30, 31 y 32 del vault, que al primer arranque tocan el `vault.db` que ya está en la máquina, y la terminal integrada, que usa ConPTY. La 1.1.0 y la 1.2.0 tampoco se verificaron, así que lo pendiente se acumula: lo último que corrió de verdad en Windows 10 y 11 fue la 1.0.0. Detalle en [releases/windows/README.md](releases/windows/README.md).
+> ⚠️ **La 1.3.1 NO se corrió en una Windows real** — solo se confirmó que cross-compila limpio. Lo más expuesto en esta versión es todo lo agéntico: lanzar los CLIs como procesos hijos y leerles la salida en streaming es otro camino de código en Windows, y la **aprobación acción por acción de Claude Code usa un socket Unix**, que en Windows no existe — falta confirmar si degrada limpio o falla. Se suman las migraciones 30, 31 y 32 del vault, que al primer arranque tocan el `vault.db` que ya está en la máquina, y la terminal integrada, que usa ConPTY. La 1.1.0, la 1.2.0 y la 1.3.0 tampoco se verificaron, así que lo pendiente se acumula: lo último que corrió de verdad en Windows 10 y 11 fue la 1.0.0. Detalle en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -270,10 +272,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.3.0 |
+| Versión | 1.3.1 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS y **no verificado** en una Windows real |
-| Archivo | **[⬇ Descargar mini-tools-v1.3.0-windows-amd64.exe](releases/windows/mini-tools-v1.3.0-windows-amd64.exe)** |
-| SHA-256 | `530234970a0fc6f2e0d86206ce899fea04f56cf33f5d8c65b83d863a3f47f3f7` |
+| Archivo | **[⬇ Descargar mini-tools-v1.3.1-windows-amd64.exe](releases/windows/mini-tools-v1.3.1-windows-amd64.exe)** |
+| SHA-256 | `de65effc3198665894a496c65dd2aeb8c595e71a756e10644f058b545688226c` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

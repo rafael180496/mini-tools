@@ -97,7 +97,7 @@ const fixtures: Record<string, unknown> = {
         {role: 'user', text: '¿Por qué falla el login de SGCPRO?', tools: []},
         {
             role: 'agent',
-            text: 'Miré el controlador y el problema está en la validación del token: expira antes de que se renueve la sesión.',
+            text: '## Qué encontré\n\nEl problema está en la **validación del token**: expira antes de que se renueve la sesión.\n\n- `accounts_controller.rb` valida contra `Time.now` sin margen\n- El refresh corre en un job que puede demorar hasta 30s\n\n> Con la carga de producción esa ventana se abre en casi todos los logins.\n\n```ruby\nreturn if token.expires_at > Time.now + GRACE\n```\n\nSi te parece, lo cambio y agrego el test.',
             tools: [{name: 'Read', input: '{"file_path":"app/controllers/api/v1/accounts_controller.rb"}', summary: 'app/controllers/api/v1/accounts_controller.rb', detail: ''}],
         },
     ],
@@ -162,6 +162,17 @@ const fixtures: Record<string, unknown> = {
     gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' ? '' : 'agents', gitSideHidden: false, gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
     GitChangedFiles: [],
     GitDiff: {path: '', origPath: '', patch: '', isBinary: false, stat: {added: 0, removed: 0}},
+    // Conversaciones que el propio CLI ya tiene del repositorio: la respuesta
+    // depende del agente que se pregunte.
+    AgentCLIConversations: (agentID: string) =>
+        agentID === 'claude'
+            ? [
+                  {id: 'c-9f21', agent: 'claude', title: 'migrar el panel de conexiones a carpetas', updatedAt: 1786650000},
+                  {id: 'c-7a03', agent: 'claude', title: 'por qué el SFTP no conecta contra el servidor de staging', updatedAt: 1786480000},
+              ]
+            : agentID === 'codex'
+              ? [{id: 'x-0142', agent: 'codex', title: 'revisar el splitter de PL/SQL con subprogramas anidados', updatedAt: 1786390000}]
+              : [],
     // --- Redis Browser ---
     // Claves de un e-commerce de juguete: nada que se parezca a un dato de
     // nadie, que es lo que permite publicar la captura sin borronear nada.
@@ -223,8 +234,12 @@ anyWindow.go = {
                 get:
                     (_t, name: string) =>
                     (...args: unknown[]) => {
-                        void args
-                        return Promise.resolve(fixtures[name] ?? null)
+                        const fx = fixtures[name]
+                        // Una fixture puede ser función cuando la respuesta
+                        // depende del argumento —el caso de los listados por
+                        // agente, donde devolver siempre lo mismo duplicaría
+                        // cada fila en la pantalla que se quiere fotografiar.
+                        return Promise.resolve(typeof fx === 'function' ? fx(...args) : (fx ?? null))
                     },
             },
         ),
@@ -278,6 +293,10 @@ const views_repo = (
     />
 )
 
+const views_chat = (
+    <AgentChat sessionId="chat-1" repoId="r1" agentId="claude" agentLabel="Claude Code" resumeConversationId="conv-1" />
+)
+
 const views: Record<string, React.ReactNode> = {
     // El módulo de base de datos entero: sidebar de conexiones, editor SQL y
     // resultados. Es el otro producto que vive en esta app.
@@ -302,17 +321,13 @@ const views: Record<string, React.ReactNode> = {
     agentmode: views_repo,
     chatmode: views_repo,
     panelagents: views_repo,
+    newmenu: views_repo,
     redis: <RedisBrowserTab connId="c3" initialKey="cart:u:1042" initialKeyToken={1} />,
     agents: <GitAgentPanel repoId="r1" onOpenFile={() => {}} onAskAgent={() => {}} defaultAgent="" onSetDefaultAgent={() => {}} />,
-    chat: (
-        <AgentChat
-            sessionId="chat-1"
-            repoId="r1"
-            agentId="claude"
-            agentLabel="Claude Code"
-            resumeConversationId="conv-1"
-        />
-    ),
+    chat: views_chat,
+    // Mismo componente: lo que cambia es que el harness le manda un mensaje,
+    // que es la única forma de que exista un turno en curso que fotografiar.
+    thinking: views_chat,
 }
 
 const view = new URLSearchParams(location.search).get('view') ?? 'files'
@@ -338,6 +353,30 @@ if (view === 'agentmode') {
 }
 if (view === 'panelagents') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Asistentes de código')))
+}
+if (view === 'newmenu') {
+    // El menú "Nueva" del panel de agentes: es donde aparecen las
+    // conversaciones que el CLI ya tenía, y solo se ve abierto.
+    // Primero el modo agente (para que exista la tira de la solapa Agentes) y
+    // después el `+` de esa tira, que es donde vive el historial.
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Modo agente')))
+    setTimeout(() => {
+        autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Empezar una conversación nueva')))
+    }, 400)
+}
+if (view === 'thinking') {
+    // El indicador de trabajo solo existe con un turno en curso, y un turno
+    // en curso es el CLI corriendo. Se simula mandando un mensaje: el envío
+    // pone la vista en "ocupado" y ahí se queda, porque la fixture nunca
+    // emite el evento de fin.
+    autoClick(() => {
+        const ta = document.querySelector('textarea')
+        if (!ta) return undefined
+        const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+        set?.call(ta, 'de qué trata el proyecto')
+        ta.dispatchEvent(new Event('input', {bubbles: true}))
+        return [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Manda el mensaje'))
+    })
 }
 if (view === 'redis') {
     // La key se elige con un clic y no por prop: `initialKey` sirve para

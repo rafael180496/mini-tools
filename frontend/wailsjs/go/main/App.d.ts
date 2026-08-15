@@ -24,6 +24,8 @@ export function AddRedisSetMember(arg1:string,arg2:string,arg3:string):Promise<v
 
 export function AddRedisZSetMember(arg1:string,arg2:string,arg3:string,arg4:number):Promise<void>;
 
+export function AgentCLIConversations(arg1:string,arg2:string):Promise<Array<agentchat.Conversation>>;
+
 export function AgentChatHistory(arg1:string,arg2:string):Promise<Array<agentchat.PastTurn>>;
 
 export function AgentChatModes(arg1:string):Promise<Array<string>>;

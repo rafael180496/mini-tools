@@ -15,6 +15,7 @@ import {EventsOn} from '../../../wailsjs/runtime'
 import {agentmodels} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
+import MarkdownPreview from './MarkdownPreview'
 
 // Espeja ChatEvent / ToolCall / Usage (backend/agentchat/types.go).
 //
@@ -169,6 +170,22 @@ interface AgentChatProps {
     onConversation?: (conversationId: string) => void
 }
 
+// formatTokens abrevia los totales. Una sesión larga llega a millones, y
+// "1.283.945" en una barra de estado es ruido: lo que importa es el orden de
+// magnitud.
+function formatTokens(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+    return String(n)
+}
+
+// formatElapsed muestra el tiempo del turno en curso. Pasa a minutos porque
+// "184s" obliga a hacer la cuenta justo cuando uno está evaluando si esperar.
+function formatElapsed(sec: number): string {
+    if (sec < 60) return `${sec}s`
+    return `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s`
+}
+
 export default function AgentChat({
     sessionId,
     repoId,
@@ -183,8 +200,55 @@ export default function AgentChat({
     onConversation,
 }: AgentChatProps) {
     const [turns, setTurns] = useState<Turn[]>([])
+    // Acumulado de la conversación: la suma de lo que informó cada turno.
+    //
+    // Es lo consumido, **no lo que queda del plan**. Cuánto queda no está en
+    // ningún archivo local — lo sabe el servidor, y cada CLI lo contesta con
+    // su propio comando (`/status`, `/usage`). Inventar acá un "te queda 18%"
+    // sería la clase de número que se lee mal y se cree igual, así que se
+    // muestra lo que sí es verificable y se dice dónde ver el resto.
+
+    // Qué mostrar mientras trabaja: la última herramienta que llamó en este
+    // turno, que es lo que explica la demora, o "pensando" si todavía no
+    // llamó a ninguna.
+    const workingLabel = useMemo(() => {
+        const last = turns[turns.length - 1]
+        const tool = last && last.role === 'agent' ? last.tools?.[last.tools.length - 1] : undefined
+        if (!tool) return `${agentLabel} está pensando…`
+        return tool.summary ? `${tool.name} · ${tool.summary}` : `${tool.name}…`
+    }, [turns, agentLabel])
+
+    const sessionUsage = useMemo(
+        () =>
+            turns.reduce(
+                (acc, t) => ({
+                    total: acc.total + (t.usage?.total ?? 0),
+                    output: acc.output + (t.usage?.output ?? 0),
+                    cost: acc.cost + (t.usage?.costUsd ?? 0),
+                }),
+                {total: 0, output: 0, cost: 0},
+            ),
+        [turns],
+    )
     const [input, setInput] = useState('')
     const [busy, setBusy] = useState(false)
+    // Segundos que lleva el turno en curso. Un agente puede tardar minutos
+    // leyendo archivos, y sin un número en pantalla no hay forma de
+    // distinguir "está pensando" de "se colgó" — que es la duda que hace que
+    // uno cancele y vuelva a empezar sin necesidad.
+    const [elapsed, setElapsed] = useState(0)
+
+    useEffect(() => {
+        if (!busy) {
+            setElapsed(0)
+            return
+        }
+        // Se cuenta acá y no con un timestamp de inicio para que el intervalo
+        // exista solo mientras el turno corre: un chat abierto sin actividad
+        // no tiene por qué estar despertando a React cada segundo.
+        const t = setInterval(() => setElapsed((n) => n + 1), 1000)
+        return () => clearInterval(t)
+    }, [busy])
     const [info, setInfo] = useState<{model: string; tools: number; mcp: string[]} | null>(null)
     // Controles del turno. Arrancan en lo menos permisivo y en el default del
     // CLI: que la app elija por el usuario un modo que escribe archivos, o un
@@ -582,13 +646,23 @@ export default function AgentChat({
                             // y había que leer el encabezado para saber quién
                             // hablaba, que es justo lo que un chat evita.
                             <div
-                                className={`whitespace-pre-wrap break-words rounded px-2 py-1 ${
+                                className={`break-words rounded px-2 py-1 ${
                                     t.role === 'user'
-                                        ? 'border-l-2 border-primary bg-primary/15 text-on-surface'
+                                        ? 'whitespace-pre-wrap border-l-2 border-primary bg-primary/15 text-on-surface'
                                         : 'bg-surface-container'
                                 }`}
                             >
-                                {t.text}
+                                {/* La respuesta del agente viene en Markdown
+                                    —los tres lo usan— así que se renderiza en
+                                    vez de mostrarse cruda: sin esto la salida
+                                    se lee con los `**` y los `-` a la vista,
+                                    que es exactamente lo que el formato existe
+                                    para evitar.
+
+                                    El mensaje PROPIO no: lo escribiste vos y
+                                    tiene que verse tal cual lo mandaste —
+                                    reinterpretarlo cambiaría lo que dijiste. */}
+                                {t.role === 'user' ? t.text : <MarkdownPreview source={t.text} />}
                             </div>
                         )}
 
@@ -607,6 +681,36 @@ export default function AgentChat({
                         )}
                     </div>
                 ))}
+
+                {/* Mientras el turno corre. Antes lo único que cambiaba era el
+                    botón de mandar, que pasaba a ser un stop: había que
+                    mirarlo para saber que el agente estaba trabajando, y en
+                    una respuesta larga la pantalla se quedaba quieta sin
+                    ninguna señal de vida.
+
+                    Dice QUÉ está haciendo y no solo que espere: mientras hay
+                    una herramienta corriendo se muestra esa —que es la que
+                    explica la demora— y si todavía no llamó a ninguna, que
+                    está pensando. El contador de segundos es lo que separa
+                    "tarda" de "se colgó", que es la duda que hace cancelar y
+                    volver a empezar sin necesidad. */}
+                {busy && (
+                    <div className="flex items-center gap-2 px-1 py-1.5 text-[11px] text-on-surface-variant">
+                        <span className="flex shrink-0 items-end gap-0.5" aria-hidden>
+                            {[0, 1, 2].map((i) => (
+                                <span
+                                    key={i}
+                                    className="size-1 animate-bounce rounded-full bg-primary"
+                                    // Desfasados: los tres al unísono se leen
+                                    // como un parpadeo, no como progreso.
+                                    style={{animationDelay: `${i * 150}ms`, animationDuration: '900ms'}}
+                                />
+                            ))}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{workingLabel}</span>
+                        <span className="shrink-0 tabular-nums opacity-70">{formatElapsed(elapsed)}</span>
+                    </div>
+                )}
             </div>
 
             {mention !== null && suggestions.length > 0 && (
@@ -772,6 +876,31 @@ export default function AgentChat({
                         {mode === 'edit' ? 'Va a modificar archivos' : 'Actúa sin volver a preguntarte'}
                     </span>
                 )}
+
+                {/* Lo gastado en esta conversación, siempre a la vista.
+                    Deliberadamente NO dice "te quedan X": el saldo del plan no
+                    está en ningún archivo local, lo contesta el servidor. Se
+                    muestra lo verificable y el tooltip dice dónde ver el
+                    resto. */}
+                <span
+                    className="ml-auto flex shrink-0 items-center gap-1 text-on-surface-variant"
+                    title={
+                        sessionUsage.total > 0
+                            ? `Consumo de los turnos de esta ventana, informado por el propio CLI. Una conversación retomada empieza a contar desde acá: los turnos anteriores los corrió el CLI y no informó su consumo al reabrirlos.\n\nNo es cuánto te queda del plan: ese saldo lo sabe el servidor, no un archivo local. Se ve con /status en Claude Code y /usage en Antigravity.`
+                            : 'Acá se acumulan los tokens de esta conversación en cuanto el agente conteste el primer turno.'
+                    }
+                >
+                    <Icon name="monitoring" size={12} />
+                    {sessionUsage.total > 0 ? (
+                        <>
+                            {formatTokens(sessionUsage.total)} en la sesión
+                            <span className="opacity-70">· {formatTokens(sessionUsage.output)} de salida</span>
+                            {sessionUsage.cost > 0 && <span className="opacity-70">· US${sessionUsage.cost.toFixed(4)}</span>}
+                        </>
+                    ) : (
+                        <span className="opacity-70">sin consumo todavía</span>
+                    )}
+                </span>
             </div>
 
             {/* Cierre del círculo de un turno autónomo: qué tocó y qué hacer

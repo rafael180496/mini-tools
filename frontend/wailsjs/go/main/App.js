@@ -14,6 +14,10 @@ export function AddRedisZSetMember(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddRedisZSetMember'](arg1, arg2, arg3, arg4);
 }
 
+export function AgentCLIConversations(arg1, arg2) {
+  return window['go']['main']['App']['AgentCLIConversations'](arg1, arg2);
+}
+
 export function AgentChatHistory(arg1, arg2) {
   return window['go']['main']['App']['AgentChatHistory'](arg1, arg2);
 }
