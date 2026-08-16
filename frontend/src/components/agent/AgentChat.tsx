@@ -7,15 +7,18 @@ import {
     GitListWorkTree,
     RespondAgentApproval,
     SaveChatAttachment,
+    AgentResolveRefs,
     SetAgentChatSettings,
     ResetAgentChat,
     SendAgentChat,
 } from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
-import {agentmodels} from '../../../wailsjs/go/models'
+import {agentctx, agentmodels} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
-import MarkdownPreview from './MarkdownPreview'
+import MarkdownPreview from '../MarkdownPreview'
+import AgentRefPicker from './AgentRefPicker'
+import {CONTEXT_ICONS, CONTEXT_NOUNS, describeContext, repoIdOf, type WorkContext} from './workContext'
 
 // Espeja ChatEvent / ToolCall / Usage (backend/agentchat/types.go).
 //
@@ -137,7 +140,21 @@ interface Turn {
 
 interface AgentChatProps {
     sessionId: string
-    repoId: string
+    // Sobre qué se está preguntando. Reemplaza al `repoId` obligatorio que
+    // tenía este componente cuando vivía dentro del módulo Git: es el MISMO
+    // componente el que ahora se abre desde el editor SQL, una terminal SSH o
+    // una nota, donde no hay repositorio.
+    //
+    // El contexto es lo que separa los dos propósitos del agente. Sobre un
+    // repositorio el trabajo es de CÓDIGO: se ofrecen los modos que editan,
+    // porque lo que haga cae en el árbol de trabajo y se descarta desde
+    // Cambios, y el selector de @ ofrece archivos. Fuera de un repositorio el
+    // trabajo es CONSULTAR: no hay modos permisivos —no habría diff que mirar
+    // ni nada que descartar—, el subproceso corre en un directorio vacío y el
+    // selector ofrece conexiones, tablas y planes.
+    //
+    // La conversación NO se reinicia al cambiar de contexto. Ver AgentChatHost.
+    context: WorkContext
     agentId: string
     agentLabel: string
     // Prompt que llega desde afuera (el botón Preguntar del editor o del
@@ -168,6 +185,11 @@ interface AgentChatProps {
     // para poder retomar el chat después de cerrar la app — sin esto el
     // historial tendría entradas que no llevan a ningún lado.
     onConversation?: (conversationId: string) => void
+    // Se llama con el texto de CADA mensaje que sale. El anfitrión usa el
+    // primero para crear la entrada del historial con ese texto como título:
+    // una conversación a la que nunca se le escribió nada no es historial, es
+    // una ventana que se abrió.
+    onSend?: (text: string) => void
 }
 
 // formatTokens abrevia los totales. Una sesión larga llega a millones, y
@@ -188,7 +210,7 @@ function formatElapsed(sec: number): string {
 
 export default function AgentChat({
     sessionId,
-    repoId,
+    context,
     agentId,
     agentLabel,
     seed,
@@ -198,6 +220,7 @@ export default function AgentChat({
     onReviewChanges,
     onValidateWithAnother,
     onConversation,
+    onSend,
 }: AgentChatProps) {
     const [turns, setTurns] = useState<Turn[]>([])
     // Acumulado de la conversación: la suma de lo que informó cada turno.
@@ -283,6 +306,12 @@ export default function AgentChat({
     // Consulta activa del selector: lo que hay escrito después de la última @.
     // null cuando no se está escribiendo una referencia.
     const [mention, setMention] = useState<string | null>(null)
+    // Primera sugerencia utilizable del selector, que es la que elige Enter.
+    // La calcula el selector —él tiene la lista— y la reporta acá.
+    const [firstSuggestion, setFirstSuggestion] = useState<{insert: string; partial: boolean} | null>(null)
+    // Referencias `@tipo:valor` ya resueltas por el backend, para las fichas
+    // desplegables del compositor.
+    const [resolvedRefs, setResolvedRefs] = useState<agentctx.Resolved[]>([])
     const inputRef = useRef<HTMLTextAreaElement>(null)
     // Imágenes adjuntas al próximo mensaje: rutas ya escritas en el disco,
     // porque los tres CLIs las reciben por ruta y no en memoria.
@@ -297,7 +326,16 @@ export default function AgentChat({
     const onConversationRef = useRef(onConversation)
     onConversationRef.current = onConversation
 
+    // El árbol de archivos solo existe cuando el contexto es un repositorio.
+    // En una conexión de base de datos o una terminal SSH no hay rutas locales
+    // que referenciar, y pedirlas igual devolvería un error por un repositorio
+    // que nadie nombró.
+    const repoId = repoIdOf(context)
     useEffect(() => {
+        if (!repoId) {
+            setPaths([])
+            return
+        }
         GitListWorkTree(repoId)
             .then((t) => setPaths(t?.files ?? []))
             .catch(() => setPaths([]))
@@ -311,11 +349,29 @@ export default function AgentChat({
             .catch(() => setCatalog(null))
     }, [agentId])
 
+    // Los modos permisivos se ofrecen SOLO sobre un repositorio.
+    //
+    // Lo que hace aceptable dejar que un agente edite sin preguntar es que el
+    // resultado cae en el árbol de trabajo de un repositorio git: se ve en
+    // Cambios y se descarta con un clic. Fuera de un repositorio esa vuelta
+    // atrás no existe — no habría diff que mirar ni nada que descartar—, así
+    // que el modo no se ofrece en vez de ofrecerse sin su red.
     useEffect(() => {
         AgentChatModes(agentId)
-            .then((m) => setModes(m?.length ? m : ['']))
+            .then((m) => {
+                const all = m?.length ? m : ['']
+                const usable = repoId ? all : all.filter((x) => !PERMISSIVE.has(x))
+                setModes(usable.length ? usable : [''])
+            })
             .catch(() => setModes(['']))
-    }, [agentId])
+    }, [agentId, repoId])
+
+    // Si el contexto deja de ser un repositorio con un modo permisivo activo,
+    // el modo se baja solo. Mantenerlo sería conservar un permiso que se
+    // concedió para otra cosa.
+    useEffect(() => {
+        if (!repoId && PERMISSIVE.has(mode)) setMode('')
+    }, [repoId, mode])
 
     // Suscripción ANTES de mandar nada: el primer evento puede llegar antes de
     // que termine el await, misma carrera que resuelven la terminal y las
@@ -451,43 +507,47 @@ export default function AgentChat({
         if (seed?.text) setInput(seed.text)
     }, [seed?.token, seed?.text])
 
-    // Sugerencias para el selector de @: archivos Y carpetas, como en un
-    // explorador. Las carpetas se derivan de las rutas —el backend devuelve
-    // archivos— porque referenciar un directorio entero es una forma normal de
-    // darle contexto a un agente ("mirá backend/git/").
-    const suggestions = useMemo(() => {
-        if (mention === null) return []
-        const q = mention.toLowerCase()
-
-        const dirs = new Set<string>()
-        for (const p of paths) {
-            const parts = p.split('/')
-            for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/') + '/')
+    // Resolver las referencias del mensaje mientras se escribe, para poder
+    // mostrar qué se va a mandar. Con retardo porque cada resolución puede
+    // leer un archivo o el esquema de una base: hacerlo por pulsación
+    // convertiría escribir en una ráfaga de consultas.
+    useEffect(() => {
+        if (!input.includes('@')) {
+            setResolvedRefs([])
+            return
         }
+        let cancelled = false
+        const t = setTimeout(() => {
+            AgentResolveRefs(input, context.kind, context.id)
+                .then((refs) => {
+                    if (!cancelled) setResolvedRefs(refs ?? [])
+                })
+                .catch(() => {
+                    if (!cancelled) setResolvedRefs([])
+                })
+        }, 350)
+        return () => {
+            cancelled = true
+            clearTimeout(t)
+        }
+    }, [input, context.kind, context.id])
 
-        const all = [...dirs, ...paths]
-        const matched = q ? all.filter((p) => p.toLowerCase().includes(q)) : all
-        // Tope bajo a propósito: una lista larga no se lee, se filtra. Se
-        // ordena por ruta más corta, que suele ser la más general y la que uno
-        // busca cuando escribe poco.
-        return matched.sort((a, b) => a.length - b.length).slice(0, 12)
-    }, [mention, paths])
-
-    // insertMention reemplaza el `@loquesea` que se está escribiendo por la
-    // ruta elegida. Se manda la RUTA y no el contenido: el agente ya sabe
-    // abrir archivos, y pegarlos gastaría contexto duplicando lo que va a leer.
-    const insertMention = useCallback(
-        (path: string) => {
-            setInput((prev) => {
-                const at = prev.lastIndexOf('@')
-                if (at < 0) return prev
-                return prev.slice(0, at) + '@' + path + ' '
-            })
-            setMention(null)
-            inputRef.current?.focus()
-        },
-        [],
-    )
+    // insertMention reemplaza el `@loquesea` que se está escribiendo por lo
+    // que se eligió en el selector.
+    //
+    // `partial` distingue elegir un TIPO (`@db:`) o una conexión (`@db:Prod/`)
+    // —donde falta la mitad y el selector se queda abierto para ofrecer el
+    // resto— de elegir una referencia completa, que cierra el selector.
+    const insertMention = useCallback((insert: string, partial: boolean) => {
+        if (!insert) return
+        setInput((prev) => {
+            const at = prev.lastIndexOf('@')
+            if (at < 0) return prev
+            return prev.slice(0, at) + insert
+        })
+        setMention(partial ? insert.replace(/^@/, '') : null)
+        inputRef.current?.focus()
+    }, [])
 
     // Los niveles de esfuerzo dependen del MODELO en Codex (su terra acepta
     // `ultra` y los demás no) y del agente en Claude Code. Antigravity no
@@ -531,14 +591,17 @@ export default function AgentChat({
         setTurns((prev) => [...prev, {role: 'user', text, tools: []}])
         setInput('')
         setBusy(true)
+        // Antes de mandar y no después: si el turno falla, la conversación
+        // igual existe y se puede reintentar desde el historial.
+        onSend?.(text)
         try {
-            await SendAgentChat(sessionId, repoId, agentId, text, mode, effort, model.trim(), attachments)
+            await SendAgentChat(sessionId, context.kind, context.id, agentId, text, mode, effort, model.trim(), attachments)
             setAttachments([])
         } catch (e) {
             setTurns((prev) => [...prev, {role: 'agent', text: '', tools: [], error: String(e)}])
             setBusy(false)
         }
-    }, [input, busy, sessionId, repoId, agentId, mode, effort, model, attachments])
+    }, [input, busy, sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend])
 
     return (
         <div
@@ -556,6 +619,20 @@ export default function AgentChat({
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-[11px]">
                 <Icon name="smart_toy" size={13} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">{agentLabel}</span>
+                {/* Sobre qué está trabajando AHORA. Es la contracara de tener
+                    un solo chat para toda la app: la conversación no se
+                    reinicia al cambiar de módulo, así que sin esto no habría
+                    forma de saber a qué repositorio o a qué conexión se refiere
+                    "acá" en el próximo mensaje. */}
+                {context.kind !== 'none' && context.label && (
+                    <span
+                        className="flex min-w-0 shrink items-center gap-1 rounded bg-surface-variant px-1.5 py-0.5 text-on-surface-variant"
+                        title={`El agente está trabajando sobre ${CONTEXT_NOUNS[context.kind]} «${context.label}». Cambia solo cuando cambiás de módulo, y no reinicia la conversación.`}
+                    >
+                        <Icon name={CONTEXT_ICONS[context.kind]} size={11} className="shrink-0" />
+                        <span className="truncate">{describeContext(context)}</span>
+                    </span>
+                )}
                 {info?.model && <span className="text-on-surface-variant">{info.model}</span>}
                 {info && info.mcp.length > 0 && (
                     <span
@@ -595,13 +672,28 @@ export default function AgentChat({
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-xs">
                 {turns.length === 0 && (
                     <p className="p-3 text-center text-[11px] text-on-surface-variant">
-                        Preguntale a {agentLabel} sobre este repositorio.
+                        Preguntale a {agentLabel}
+                        {context.kind !== 'none' && context.label
+                            ? ` sobre ${CONTEXT_NOUNS[context.kind]} «${context.label}»`
+                            : ''}
+                        .
                         <br />
                         Empieza en <strong>solo consulta</strong>: lee y propone, no toca nada. Para que edite, elegí un modo
                         abajo — cada uno te dice qué le vas a permitir antes de activarlo.
                         <br />
-                        Podés pegar una captura con {navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'} o escribir{' '}
-                        <strong>@</strong> para referenciar un archivo del repo.
+                        Podés pegar una captura con {navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'}
+                        {/* El selector de @ solo tiene qué ofrecer cuando hay un
+                            árbol de archivos detrás. Anunciarlo en una conexión
+                            de base de datos sería prometer un autocompletado
+                            que abre vacío. */}
+                        {repoId ? (
+                            <>
+                                {' '}
+                                o escribir <strong>@</strong> para referenciar un archivo del repo.
+                            </>
+                        ) : (
+                            '.'
+                        )}
                     </p>
                 )}
 
@@ -713,25 +805,54 @@ export default function AgentChat({
                 )}
             </div>
 
-            {mention !== null && suggestions.length > 0 && (
-                <div className="max-h-48 shrink-0 overflow-y-auto border-t border-outline-variant bg-surface-container">
-                    {suggestions.map((p) => {
-                        const isDir = p.endsWith('/')
-                        const name = isDir ? p.slice(0, -1).split('/').pop() + '/' : p.split('/').pop()
-                        const dir = p.slice(0, p.length - (name?.length ?? 0))
-                        return (
-                            <button
-                                key={p}
-                                onClick={() => insertMention(p)}
-                                title={p}
-                                className="flex w-full items-center gap-2 px-2 py-1 text-left text-[11px] hover:bg-surface-container-high"
-                            >
-                                <Icon name={isDir ? 'folder' : 'description'} size={12} className="shrink-0 text-on-surface-variant" />
-                                <span className="shrink-0 text-on-surface">{name}</span>
-                                {dir && <span className="min-w-0 flex-1 truncate text-on-surface-variant/70">{dir}</span>}
-                            </button>
-                        )
-                    })}
+            {mention !== null && (
+                <AgentRefPicker
+                    query={mention}
+                    paths={paths}
+                    context={context}
+                    onPick={insertMention}
+                    onFirstChange={setFirstSuggestion}
+                />
+            )}
+
+            {/* Fichas de lo que se va a mandar. No es decoración: una
+                referencia que se expande en silencio es indistinguible de una
+                fuga, así que lo que sale de la máquina tiene que poder verse
+                ANTES de mandarlo — y desplegarse entero, no resumido. */}
+            {resolvedRefs.length > 0 && (
+                <div className="flex shrink-0 flex-col gap-1 border-t border-outline-variant px-1.5 pt-1">
+                    {resolvedRefs.map((r) => (
+                        <details
+                            key={r.raw}
+                            className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                                r.err
+                                    ? 'border-error/40 bg-error-container/20'
+                                    : 'border-outline-variant bg-surface-container'
+                            }`}
+                        >
+                            <summary className="flex cursor-pointer items-center gap-1.5">
+                                <Icon
+                                    name={r.err ? (r.blocked ? 'lock' : 'error') : 'attachment'}
+                                    size={11}
+                                    className={`shrink-0 ${r.err ? 'text-error' : 'text-primary'}`}
+                                />
+                                <span className="shrink-0 font-mono text-on-surface">{r.raw}</span>
+                                <span className="min-w-0 flex-1 truncate text-on-surface-variant">
+                                    {r.err ? r.err : r.title}
+                                </span>
+                                {!r.err && (
+                                    <span className="shrink-0 rounded bg-surface-variant px-1 text-on-surface-variant">
+                                        {r.body.length.toLocaleString('es')} car.
+                                    </span>
+                                )}
+                            </summary>
+                            {!r.err && (
+                                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[10px] text-on-surface-variant">
+                                    {r.body}
+                                </pre>
+                            )}
+                        </details>
+                    ))}
                 </div>
             )}
 
@@ -1006,9 +1127,9 @@ export default function AgentChat({
                         // sugerencia en vez de mandar el mensaje: es lo que
                         // uno espera de un autocompletado, y mandar a medio
                         // escribir una referencia no le sirve a nadie.
-                        if (e.key === 'Enter' && !e.shiftKey && mention !== null && suggestions.length > 0) {
+                        if (e.key === 'Enter' && !e.shiftKey && mention !== null && firstSuggestion) {
                             e.preventDefault()
-                            insertMention(suggestions[0])
+                            insertMention(firstSuggestion.insert, firstSuggestion.partial)
                             return
                         }
                         // Enter manda, Shift+Enter hace salto de línea — lo

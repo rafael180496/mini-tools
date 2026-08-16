@@ -87,7 +87,7 @@ import Icon from '../Icon'
 import CommitGraph from './CommitGraph'
 import ContextMenu from './ContextMenu'
 import DiffViewer from './DiffViewer'
-import AgentChatHistory, {type ChatHistoryEntry} from './AgentChatHistory'
+import AgentChatHistory, {type ChatHistoryEntry} from '../agent/AgentChatHistory'
 import DropdownMenu, {type DropdownHeader, type DropdownItem} from './DropdownMenu'
 import GitSettingsDialog from './GitSettingsDialog'
 import GitConflictResolver from './GitConflictResolver'
@@ -96,7 +96,8 @@ import GitRebaseDialog from './GitRebaseDialog'
 import GitStashPanel from './GitStashPanel'
 import GitFileEditor from './GitFileEditor'
 import GitAgentPanel from './GitAgentPanel'
-import AgentChat from './AgentChat'
+import AgentChat from '../agent/AgentChat'
+import type {WorkContext} from '../agent/workContext'
 import LocalTerminalPanel from '../terminal/LocalTerminalPanel'
 import TerminalThemeMenu from '../terminal/TerminalThemeMenu'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../../xterm/terminalFont'
@@ -243,6 +244,11 @@ export default function GitRepoTab({
     active,
 }: GitRepoTabProps) {
     const [view, setView] = useState<CenterView>('commits')
+    // Contexto de trabajo que esta pestaña le da al chat: el chat es uno solo
+    // para toda la app (components/agent/) y lo que lo ancla a este
+    // repositorio es esto, no un prop suelto. Memoizado porque va como prop a
+    // un componente que se re-renderiza con cada evento del stream.
+    const gitContext = useMemo<WorkContext>(() => ({kind: 'git', id: repoId, label: repoName}), [repoId, repoName])
     // Archivo que el botón "Editar" del diff pide abrir en la vista Archivos.
     // El token acompaña a la ruta para que pedir el mismo archivo dos veces
     // vuelva a enfocarlo en vez de no hacer nada.
@@ -768,7 +774,7 @@ export default function GitRepoTab({
                 // El chat entra al historial del repositorio con el asunto como
                 // título: es lo que después permite reconocerlo en la lista y
                 // retomarlo.
-                void CreateAgentChat(session.id, repoId, agentId, about).catch(() => {})
+                void CreateAgentChat(session.id, repoId, agentId, about, 'git', repoId).catch(() => {})
                 setChatSeed({sessionId: session.id, text: prompt, token: Date.now()})
                 void agent // el label ya quedó en el título
                 return
@@ -843,7 +849,7 @@ export default function GitRepoTab({
             const id = `git-term-${repoId}-${nextTerminalSeq()}`
             const title = conv.title || `Conversación con ${agentList.find((a) => a.id === agentId)?.label ?? agentId}`
             try {
-                await CreateAgentChat(id, repoId, agentId, title)
+                await CreateAgentChat(id, repoId, agentId, title, 'git', repoId)
                 await TouchAgentChat(id, conv.id)
             } catch {
                 // Si el vault no la pudo registrar no se abre a medias: se
@@ -959,7 +965,7 @@ export default function GitRepoTab({
                 persistLayout({tab: 'agents'})
                 enterAgentMode()
                 if (agent) {
-                    void CreateAgentChat(session.id, repoId, agent.id, `Chat con ${agent.label}`).catch(() => {})
+                    void CreateAgentChat(session.id, repoId, agent.id, `Chat con ${agent.label}`, 'git', repoId).catch(() => {})
                 }
                 return
             }
@@ -3173,7 +3179,7 @@ export default function GitRepoTab({
                                 {s.kind === 'chat' ? (
                                     <AgentChat
                                         sessionId={s.id}
-                                        repoId={repoId}
+                                        context={gitContext}
                                         agentId={s.agentId ?? ''}
                                         agentLabel={agentList.find((a) => a.id === s.agentId)?.label ?? s.title}
                                         seed={chatSeed?.sessionId === s.id ? chatSeed : null}

@@ -14,6 +14,14 @@ export function AddRedisZSetMember(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AddRedisZSetMember'](arg1, arg2, arg3, arg4);
 }
 
+export function AgentActive() {
+  return window['go']['main']['App']['AgentActive']();
+}
+
+export function AgentAsk(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AgentAsk'](arg1, arg2, arg3);
+}
+
 export function AgentCLIConversations(arg1, arg2) {
   return window['go']['main']['App']['AgentCLIConversations'](arg1, arg2);
 }
@@ -36,6 +44,14 @@ export function AgentModelCatalog(arg1) {
 
 export function AgentPlans() {
   return window['go']['main']['App']['AgentPlans']();
+}
+
+export function AgentRefPolicies() {
+  return window['go']['main']['App']['AgentRefPolicies']();
+}
+
+export function AgentResolveRefs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AgentResolveRefs'](arg1, arg2, arg3);
 }
 
 export function AnalyzeRedisPrefixes(arg1, arg2, arg3, arg4) {
@@ -154,8 +170,8 @@ export function CountMongoDocuments(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CountMongoDocuments'](arg1, arg2, arg3, arg4);
 }
 
-export function CreateAgentChat(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['CreateAgentChat'](arg1, arg2, arg3, arg4);
+export function CreateAgentChat(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['CreateAgentChat'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function CreateFolder(arg1, arg2, arg3) {
@@ -694,6 +710,10 @@ export function ListAgents() {
   return window['go']['main']['App']['ListAgents']();
 }
 
+export function ListAllAgentChats() {
+  return window['go']['main']['App']['ListAllAgentChats']();
+}
+
 export function ListConnections() {
   return window['go']['main']['App']['ListConnections']();
 }
@@ -970,8 +990,16 @@ export function SaveSSHKey(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveSSHKey'](arg1, arg2, arg3);
 }
 
-export function SendAgentChat(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
-  return window['go']['main']['App']['SendAgentChat'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+export function SendAgentChat(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
+  return window['go']['main']['App']['SendAgentChat'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+}
+
+export function SetAgentActive(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetAgentActive'](arg1, arg2, arg3);
+}
+
+export function SetAgentChatContext(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetAgentChatContext'](arg1, arg2, arg3);
 }
 
 export function SetAgentChatSettings(arg1, arg2, arg3, arg4) {
@@ -984,6 +1012,10 @@ export function SetAgentCommand(arg1, arg2) {
 
 export function SetAgentKey(arg1, arg2) {
   return window['go']['main']['App']['SetAgentKey'](arg1, arg2);
+}
+
+export function SetAgentLayout(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentLayout'](arg1, arg2);
 }
 
 export function SetAutoBackupEnabled(arg1) {

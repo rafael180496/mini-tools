@@ -7,7 +7,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"mini-tools/backend/agentapprove"
 	"mini-tools/backend/agentchat"
@@ -392,55 +391,37 @@ func (a *App) AgentChatModes(agentID string) ([]string, error) {
 // a turno, nunca un default: lo que la hace aceptable es que el resultado cae
 // en el árbol de trabajo de un repositorio git, donde se ve en el diff de la
 // app y se descarta con un click.
-func (a *App) SendAgentChat(sessionID, repoID, agentID, prompt, mode, effort, model string, images []string) error {
+func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode, effort, model string, images []string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
 
-	configs, err := a.vault.ListAgentConfigs()
+	agent, err := a.agentByID(agentID)
 	if err != nil {
 		return err
 	}
-	overrides := make(map[string]agents.Override, len(configs))
-	for id, c := range configs {
-		overrides[id] = agents.Override{Command: c.Command, HasKey: c.HasKey}
+
+	// Un repositorio abierto es el directorio de trabajo; en cualquier otro
+	// módulo, el directorio vacío de consultas — ver agentCwd (app_agent.go)
+	// para por qué no es el home del usuario.
+	cwd, err := a.agentCwd(module, contextID)
+	if err != nil {
+		return err
 	}
 
-	var agent agents.Agent
-	found := false
-	for _, cand := range agents.List(overrides) {
-		if cand.ID == agentID {
-			agent, found = cand, true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("app: agente desconocido %q", agentID)
-	}
-
-	cwd := ""
-	if repoID != "" {
-		path, err := a.gitRepo(repoID)
-		if err != nil {
-			return err
-		}
-		cwd = path
-	}
+	// Las referencias `@tipo:valor` se expanden ACÁ, no en el frontend: para
+	// que el frontend las resolviera tendría que haber recibido antes el
+	// contenido, que es exactamente lo que no puede pasar (ver app_refs.go).
+	// El `@ruta` suelto del módulo Git no se toca: ese le pasa la ruta al
+	// agente a propósito, para que la lea él.
+	prompt, _ = a.expandRefs(prompt, module, contextID)
 
 	// Mismo entorno que una sesión de terminal: PATH ampliado y, si hay una,
 	// la API key por variable — nunca por la línea de comandos, donde quedaría
 	// visible en `ps`.
-	// El entorno del proceso entero, no solo el PATH: cmd.Env reemplaza, y sin
-	// HOME el agente no encuentra su sesión (ver agents.Env).
-	env := agents.Env()
-	if agent.KeyEnv != "" {
-		key, err := a.vault.AgentKey(agentID)
-		if err != nil {
-			return err
-		}
-		if key != "" {
-			env = append(env, agent.KeyEnv+"="+key)
-		}
+	env, err := a.agentEnv(agent)
+	if err != nil {
+		return err
 	}
 
 	// El modo se valida contra la unión conocida en vez de reenviarse tal
@@ -498,53 +479,25 @@ func (a *App) AskAgentOnce(repoID, agentID, prompt string) (string, error) {
 		return "", err
 	}
 
-	configs, err := a.vault.ListAgentConfigs()
+	agent, err := a.agentByID(agentID)
 	if err != nil {
 		return "", err
 	}
-	overrides := make(map[string]agents.Override, len(configs))
-	for id, c := range configs {
-		overrides[id] = agents.Override{Command: c.Command, HasKey: c.HasKey}
+
+	cwd, err := a.agentCwd("git", repoID)
+	if err != nil {
+		return "", err
 	}
 
-	var agent agents.Agent
-	found := false
-	for _, cand := range agents.List(overrides) {
-		if cand.ID == agentID {
-			agent, found = cand, true
-			break
-		}
-	}
-	if !found {
-		return "", fmt.Errorf("app: agente desconocido %q", agentID)
-	}
-
-	cwd := ""
-	if repoID != "" {
-		path, err := a.gitRepo(repoID)
-		if err != nil {
-			return "", err
-		}
-		cwd = path
-	}
-
-	// El entorno del proceso entero, no solo el PATH: cmd.Env reemplaza, y sin
-	// HOME el agente no encuentra su sesión (ver agents.Env).
-	env := agents.Env()
-	if agent.KeyEnv != "" {
-		key, err := a.vault.AgentKey(agentID)
-		if err != nil {
-			return "", err
-		}
-		if key != "" {
-			env = append(env, agent.KeyEnv+"="+key)
-		}
+	env, err := a.agentEnv(agent)
+	if err != nil {
+		return "", err
 	}
 
 	// Tope de tiempo: esto lo dispara un botón y bloquea un formulario, así
 	// que un agente que se cuelga tiene que fallar y no dejar el botón girando
 	// para siempre.
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), AgentAskTimeout)
 	defer cancel()
 
 	return a.agentChats.Ask(ctx, agentchat.Turn{
@@ -771,11 +724,38 @@ func (a *App) AgentCLIConversations(agentID, repoID string) ([]agentchat.Convers
 
 // CreateAgentChat registra una conversación nueva. El id lo genera el frontend
 // y es el mismo que identifica la sesión del panel.
-func (a *App) CreateAgentChat(id, repoID, agentID, title string) error {
+//
+// module/contextID dicen desde qué módulo nació ("git", "db", "ssh", "note")
+// y sobre qué recurso — el chat es uno solo para toda la app, así que una
+// conversación puede empezar en el editor SQL sin repositorio de por medio. Se
+// guarda el ID del recurso y nunca su nombre visible: ver AgentChat.Module.
+func (a *App) CreateAgentChat(id, repoID, agentID, title, module, contextID string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.vault.CreateAgentChat(id, repoID, agentID, title)
+	return a.vault.CreateAgentChat(id, repoID, agentID, title, module, contextID)
+}
+
+// ListAllAgentChats devuelve el historial COMPLETO, de todos los módulos.
+//
+// ListAgentChats (por repositorio) sigue existiendo para la vista del módulo
+// Git; esta es la que necesita el chat unificado, donde una conversación puede
+// no venir de ningún repositorio y filtrar por repo la dejaría invisible.
+func (a *App) ListAllAgentChats() ([]vault.AgentChat, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListAllAgentChats()
+}
+
+// SetAgentChatContext reasigna una conversación al módulo donde se la está
+// usando ahora. Ver Store.SetAgentChatContext para por qué se mueve en vez de
+// abrir una conversación nueva por módulo.
+func (a *App) SetAgentChatContext(id, module, contextID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetAgentChatContext(id, module, contextID)
 }
 
 // RenameAgentChat cambia el nombre visible de una conversación.

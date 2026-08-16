@@ -26,6 +26,8 @@ import SftpTab from './sftp/SftpTab'
 import type {PaneHost} from './sftp/types'
 import GitErrorBoundary from './git/GitErrorBoundary'
 import GitRepoTab from './git/GitRepoTab'
+import AgentChatHost, {AgentChatButton, type AgentDock} from './agent/AgentChatHost'
+import {NO_CONTEXT, type WorkContext} from './agent/workContext'
 import GitRepoTree from './git/GitRepoTree'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../xterm/terminalFont'
@@ -60,6 +62,7 @@ import {
     ListMongoDatabases,
     GetSchemaMetadata,
     GetSettings,
+    SetAgentLayout,
     HasOpenTransaction,
     ListConnections,
     ListFolders,
@@ -534,6 +537,33 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // state with no special-casing needed.
     const activeTabConnection = activeTabData?.connId ? connections.find((c) => c.id === activeTabData.connId) ?? null : null
 
+    // Sobre qué está trabajando el chat unificado, derivado de la pestaña
+    // activa. Es lo único que ancla una sola conversación a lo que el usuario
+    // está mirando: cambiar de pestaña cambia esto, NO la conversación.
+    //
+    // Un tipo de pestaña que no sabemos describir cae en 'none' en vez de
+    // inventarle un contexto — el chat sigue funcionando, solo que sin decir
+    // "sobre X" en el encabezado, que es lo honesto.
+    const agentContext = useMemo<WorkContext>(() => {
+        const t = activeTabData
+        if (!t) return NO_CONTEXT
+        if (t.kind === 'git-repo' && t.repoId) {
+            return {kind: 'git', id: t.repoId, label: t.title.replace(/^Git — /, '')}
+        }
+        const conn = t.connId ? connections.find((c) => c.id === t.connId) ?? null : null
+        if (!conn) return NO_CONTEXT
+        // Una conexión SSH y una de base de datos viven en la misma tabla del
+        // vault y se distinguen por dbType — el módulo del chat sale de ahí y
+        // no del tipo de pestaña, que para 'remote-file' o 'sftp' diría poco.
+        return {kind: conn.dbType === 'ssh' ? 'ssh' : 'db', id: conn.id, label: conn.name}
+    }, [activeTabData, connections])
+
+    const changeAgentLayout = useCallback((dock: AgentDock, size: number) => {
+        setAgentDockState(dock)
+        setAgentSizeState(size)
+        void SetAgentLayout(dock, size).catch(() => {})
+    }, [])
+
     function updateActiveTabContent(content: string) {
         setTabs((prev) => prev.map((t) => (t.id === activeTabIdRef.current ? {...t, content, dirty: true} : t)))
     }
@@ -616,6 +646,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const [autoBackupPath, setAutoBackupPathState] = useState('')
     const [autoSaveEnabled, setAutoSaveEnabledState] = useState(false)
     const [autoSaveIntervalSeconds, setAutoSaveIntervalSecondsState] = useState(30)
+    // Disposición del panel del chat unificado (migración 33). Los defaults
+    // son los del vault, repetidos acá porque el primer render ocurre antes de
+    // que GetSettings conteste — un panel que arranca en otro lado y salta
+    // medio segundo después se lee como un bug.
+    const [agentDock, setAgentDockState] = useState<AgentDock>('right')
+    const [agentSize, setAgentSizeState] = useState(380)
 
     useEffect(() => {
         let cancelled = false
@@ -651,6 +687,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 setAutoBackupPathState(settings.autoBackupPath || '')
                 setAutoSaveEnabledState(!!settings.autoSaveEnabled)
                 setAutoSaveIntervalSecondsState(settings.autoSaveIntervalSeconds || 30)
+                if (settings.agentDock) setAgentDockState(settings.agentDock as AgentDock)
+                if (settings.agentSize) setAgentSizeState(settings.agentSize)
 
                 const infos = settings.openTabs ?? []
                 if (infos.length === 0) return
@@ -2342,7 +2380,19 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 </div>
             )}
 
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            {/* El chat unificado envuelve la columna principal en vez de
+                montarse adentro de un módulo: es UNO SOLO para toda la app
+                (ver components/agent/AgentChatHost.tsx) y su panel comparte el
+                ancho con lo que estés mirando, sea el editor SQL, una terminal
+                SSH o un repositorio. Los children son exactamente lo que antes
+                era la columna principal — el anfitrión aporta su mismo
+                contenedor flex. */}
+            <AgentChatHost
+                context={agentContext}
+                dock={agentDock}
+                size={agentSize}
+                onLayoutChange={changeAgentLayout}
+            >
                 {/* Tab strip goes FIRST, above the toolbar — its position
                     must stay fixed regardless of which tab is active. The
                     toolbar below it grows/shrinks (isSqlActive/
@@ -2545,6 +2595,13 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         )}
 
                         <div className="flex-1" />
+
+                        {/* Punto de entrada GENÉRICO al chat: sirve desde
+                            cualquier módulo justamente porque no sabe de
+                            ninguno. Los botones contextuales ("analizá este
+                            error", "explicá este plan") llegan con las fases
+                            que los necesitan y llaman al mismo host. */}
+                        <AgentChatButton />
 
                         <button
                             onClick={() => setShowSettingsDialog(true)}
@@ -3142,7 +3199,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 </div>
                     </>
                 )}
-            </div>
+            </AgentChatHost>
 
             {connectionDialog && (
                 <Suspense fallback={null}>

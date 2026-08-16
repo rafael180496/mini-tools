@@ -594,6 +594,71 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 33,
+		desc:    "agente activo de nivel app y módulo de origen de cada chat (chat integral único)",
+		apply: func(tx *sql.Tx) error {
+			// El agente/modelo/esfuerzo activos dejan de ser del módulo Git y
+			// pasan a ser de la aplicación: el chat es UNO SOLO y se abre desde
+			// cualquier módulo, así que elegir agente en el editor SQL y
+			// encontrar otro en la pestaña Git sería el mismo error que tener
+			// dos chats.
+			//
+			// Vacío = preguntar, igual que `git_repos.default_agent` (migración
+			// 30) y por el mismo motivo: elegir por el usuario un asistente que
+			// consume su cuota no es algo que nadie haya pedido. El default por
+			// repositorio se conserva y sigue ganando cuando existe — esto es el
+			// piso para los módulos que no son un repositorio.
+			for _, col := range []string{"active_agent", "active_model", "active_effort"} {
+				if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+					return err
+				}
+			}
+
+			// Dónde va anclado el panel del chat y cuánto mide. Mismo criterio
+			// que git_term_dock/git_term_size (migración 27): un solo número
+			// para las dos orientaciones, porque el panel nunca está anclado
+			// abajo y a un costado a la vez.
+			//
+			// El default es "right" y no "float": es donde el chat ya vivía en
+			// la pestaña Git, y mover de lugar algo que el usuario ya tiene
+			// aprendido no es una mejora.
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN agent_dock TEXT NOT NULL DEFAULT 'right'`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN agent_size INTEGER NOT NULL DEFAULT 380`); err != nil {
+				return err
+			}
+
+			// De qué módulo salió cada conversación, para poder filtrar el
+			// historial por origen ahora que ya no es todo del módulo Git.
+			//
+			// `module` es un identificador de la app ("git", "db", "ssh",
+			// "note", "" = sin módulo) y `context_id` el id opaco del recurso
+			// dentro de ese módulo (id de conexión, alias SSH, id de nota).
+			// **Se guarda el id, nunca la etiqueta**: el nombre visible se
+			// resuelve al leer, así que renombrar una conexión no deja el
+			// historial mintiendo, y un recurso borrado se muestra como tal en
+			// vez de dejar un texto que ya no corresponde a nada.
+			//
+			// `repo_id` queda como está y admite '' para los chats que no salen
+			// de un repositorio. Su FK declarada no se aplica —este vault no
+			// activa `PRAGMA foreign_keys` (hallazgo de la migración 31)—, así
+			// que una fila con repo_id vacío no rompe nada; lo que sí hace falta
+			// es que las lecturas por repositorio no se la lleven puesta, y por
+			// eso ListAgentChats filtra por repo Y AgentChatsByModule por módulo.
+			for _, col := range []string{"module", "context_id"} {
+				if _, err := tx.Exec(`ALTER TABLE agent_chats ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+					return err
+				}
+			}
+			// Mismo criterio que el índice por (repo, fecha) de la migración 31:
+			// la lectura natural del historial unificado es "los últimos chats
+			// de este módulo".
+			_, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_agent_chats_module ON agent_chats (module, updated_at DESC)`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

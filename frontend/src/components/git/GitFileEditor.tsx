@@ -11,7 +11,7 @@ import ConfirmDialog from '../ConfirmDialog'
 import {resolveEditorTheme} from '../../codemirror/themes'
 import {LANGUAGE_OPTIONS, languageForPath, languageIfLoaded, languageLabel, loadLanguage, type LanguageId} from '../../codemirror/languageRegistry'
 import {frontmatterLint, needsFrontmatter} from '../../codemirror/frontmatterLint'
-import MarkdownPreview from './MarkdownPreview'
+import MarkdownPreview from '../MarkdownPreview'
 import {ancestorsOf, buildFileTree, flatten} from '../../lib/fileTree'
 import type {Theme} from '../../hooks/useTheme'
 

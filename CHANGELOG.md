@@ -4,6 +4,24 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **El chat con el agente es un solo componente, y ahora se abre desde cualquier módulo.** Hasta ahora vivía adentro de la pestaña Git: solo existía si había un repositorio abierto, y solo sabía de repositorios. Pero el trabajo real cruza módulos —se mira un plan de ejecución, se corrige la consulta, se revisa un log por SSH y se saca una conclusión—, y ese hilo quedaba afuera de la app.
+
+  Ahora **el mismo chat** se abre desde donde estés con **⌘L / Ctrl+L** o con el botón **Agente** del toolbar, y **cambiar de pestaña no lo reinicia**: la conversación sigue y lo que cambia es el encabezado, que dice sobre qué está trabajando (`Git · mini-tools`, `Base · Prod_Analytics`, `SSH · SUN24D01`). El panel se ancla a la izquierda, a la derecha o abajo, o se suelta como ventana flotante, y dónde lo dejaste queda guardado. El historial también dejó de ser por repositorio: lista las conversaciones de **todos** los módulos, con el ícono del módulo del que salió cada una.
+
+  **La pestaña Git conserva su panel, y a propósito.** Ahí el agente trabaja sobre un proyecto de código: edita con permisos, se le aprueba acción por acción, se abren dos en paralelo para que uno revise al otro, y todo lo que hace se ve en el diff y se descarta con un clic. Eso es un banco de trabajo, no una consulta, y no tenía por qué mudarse a ningún lado. Lo que se unificó es la implementación —un solo componente, un solo historial, un solo lugar donde arreglar un bug—, no la cantidad de paneles.
+
+  **Un detalle de permisos que cambió con esto, y no es cosmético.** Los modos en los que el agente actúa sin volver a preguntar ("Aplicar ediciones", "Automático") ahora **solo se ofrecen sobre un repositorio**. Lo que hacía aceptable dejar que edite sin preguntar era justamente que el resultado caía en el árbol de trabajo de un repositorio git. Sobre una conexión de base de datos o una terminal esa vuelta atrás no existe —no hay diff que mirar ni nada que descartar—, así que el modo no aparece en vez de aparecer sin su red. Y si estabas en uno de esos modos y te movés a una pestaña que no es un repositorio, el modo se baja solo: mantenerlo sería conservar un permiso que se dio para otra cosa.
+
+  **Dónde corre el agente cuando no hay repositorio.** El directorio de trabajo es lo que un agente puede leer sin que nadie se lo pase, así que lanzarlo en tu carpeta personal para contestar una pregunta sobre un esquema de base de datos le daría de regalo todo lo que hay ahí. Cuando el contexto no es un repositorio, corre en un directorio propio y **vacío** dentro de los datos de la app: el contexto de esas preguntas viaja en el mensaje, no en el disco.
+- **Referencias `@` a cualquier recurso de la app, resueltas en el backend.** Escribir `@` en el chat ahora ofrece primero los **tipos** y después sus valores reales, en dos niveles como un explorador: `@db:Conexión/tabla` inyecta las columnas, tipos, clave primaria y claves foráneas de esa tabla; `@explain:last`, el último plan de ejecución con su consulta; `@git:staged`, el diff preparado; `@file:ruta`, un archivo del repositorio abierto. El `@ruta` suelto de antes sigue funcionando igual —le pasa la ruta al agente para que la abra él, que gasta mucho menos contexto que pegarle el archivo entero.
+
+  **Lo que cada referencia inyecta, y lo que no, lo decide el backend y está escrito en una tabla que se puede leer desde el propio selector.** `@db` manda DDL y **ninguna fila**; nunca un DSN, un usuario ni una contraseña. La resolución corre entera en Go: si la hiciera el frontend, para poder mostrarla ya tendría que haber recibido el contenido, que es exactamente lo que no puede pasar.
+
+  Y antes de mandar el mensaje, cada referencia se muestra como una **ficha desplegable con el texto exacto que se va a enviar**. Una referencia que se expande en silencio es indistinguible de una fuga: si algo sale de tu máquina, tenés que poder verlo primero.
+- **`@ssh:` y `@note:` ya aparecen en el selector, marcados como todavía no disponibles.** La terminal SSH no guarda su salida y el módulo de notas no existe todavía; decirlo así es más útil que dejar que se escriban y devuelvan "no encontrado", que manda a buscar un alias mal escrito que no es el problema.
+
 ### Corregido
 
 - **El historial dejó de aparecer también en el menú del `+`.** Con la vista nueva quedaban los dos, y no era una repetición inofensiva: en el menú solo entran unas pocas filas, así que mostraba **un recorte** —las más recientes de cada agente— y esa lista corta parecía ser todo lo que había. Un menú que contesta "esto es todo" cuando no lo es es peor que uno que no contesta. Ahora el `+` ofrece solo empezar una conversación, y abajo un acceso directo a la vista Historial con el total al lado.

@@ -150,6 +150,51 @@ export namespace agentctx {
 		}
 	}
 	
+	
+	export class Policy {
+	    kind: string;
+	    syntax: string;
+	    injects: string;
+	    never?: string;
+	    available: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Policy(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.syntax = source["syntax"];
+	        this.injects = source["injects"];
+	        this.never = source["never"];
+	        this.available = source["available"];
+	    }
+	}
+	export class Resolved {
+	    raw: string;
+	    kind: string;
+	    value: string;
+	    title: string;
+	    body: string;
+	    err?: string;
+	    blocked?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Resolved(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.raw = source["raw"];
+	        this.kind = source["kind"];
+	        this.value = source["value"];
+	        this.title = source["title"];
+	        this.body = source["body"];
+	        this.err = source["err"];
+	        this.blocked = source["blocked"];
+	    }
+	}
 
 }
 
@@ -1761,6 +1806,28 @@ export namespace localterm {
 
 export namespace main {
 	
+	export class ActiveAgent {
+	    id: string;
+	    label: string;
+	    available: boolean;
+	    model: string;
+	    effort: string;
+	    chatSupported: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ActiveAgent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.available = source["available"];
+	        this.model = source["model"];
+	        this.effort = source["effort"];
+	        this.chatSupported = source["chatSupported"];
+	    }
+	}
 	export class ConnectionEditInfo {
 	    name: string;
 	    dbType: string;
@@ -2274,6 +2341,8 @@ export namespace vault {
 	    model: string;
 	    effort: string;
 	    mode: string;
+	    module: string;
+	    contextId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AgentChat(source);
@@ -2291,6 +2360,8 @@ export namespace vault {
 	        this.model = source["model"];
 	        this.effort = source["effort"];
 	        this.mode = source["mode"];
+	        this.module = source["module"];
+	        this.contextId = source["contextId"];
 	    }
 	}
 	export class ConnectionSummary {
@@ -2561,6 +2632,11 @@ export namespace vault {
 	    autoBackupPath: string;
 	    autoSaveEnabled: boolean;
 	    autoSaveIntervalSeconds: number;
+	    activeAgent: string;
+	    activeModel: string;
+	    activeEffort: string;
+	    agentDock: string;
+	    agentSize: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -2595,6 +2671,11 @@ export namespace vault {
 	        this.autoBackupPath = source["autoBackupPath"];
 	        this.autoSaveEnabled = source["autoSaveEnabled"];
 	        this.autoSaveIntervalSeconds = source["autoSaveIntervalSeconds"];
+	        this.activeAgent = source["activeAgent"];
+	        this.activeModel = source["activeModel"];
+	        this.activeEffort = source["activeEffort"];
+	        this.agentDock = source["agentDock"];
+	        this.agentSize = source["agentSize"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

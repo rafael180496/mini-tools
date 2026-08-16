@@ -313,7 +313,7 @@ anyWindow.runtime = {
 // cualquier llamada de módulo sin nada a lo que apuntar.
 const {default: GitFileEditor} = await import('./components/git/GitFileEditor')
 const {default: GitAgentPanel} = await import('./components/git/GitAgentPanel')
-const {default: AgentChat} = await import('./components/git/AgentChat')
+const {default: AgentChat} = await import('./components/agent/AgentChat')
 const {default: GitRepoTab} = await import('./components/git/GitRepoTab')
 const {default: Workspace} = await import('./components/Workspace')
 const {default: RedisBrowserTab} = await import('./components/redis/RedisBrowserTab')
@@ -340,7 +340,13 @@ const views_repo = (
 )
 
 const views_chat = (
-    <AgentChat sessionId="chat-1" repoId="r1" agentId="claude" agentLabel="Claude Code" resumeConversationId="conv-1" />
+    <AgentChat
+        sessionId="chat-1"
+        context={{kind: 'git', id: 'r1', label: 'mini-tools'}}
+        agentId="claude"
+        agentLabel="Claude Code"
+        resumeConversationId="conv-1"
+    />
 )
 
 const views: Record<string, React.ReactNode> = {

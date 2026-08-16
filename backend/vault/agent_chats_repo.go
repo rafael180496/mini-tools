@@ -35,19 +35,36 @@ type AgentChat struct {
 	Model  string `json:"model"`
 	Effort string `json:"effort"`
 	Mode   string `json:"mode"`
+	// Module es de qué módulo de la app salió la conversación (migración 33):
+	// "git", "db", "ssh", "note", o "" para las anteriores al chat unificado.
+	// ContextID es el id opaco del recurso dentro de ese módulo (id de
+	// conexión, alias SSH, id de nota).
+	//
+	// Se guarda el ID y **nunca la etiqueta visible**: el nombre se resuelve al
+	// leer, así que renombrar una conexión no deja el historial mintiendo, y un
+	// recurso borrado se muestra como tal en vez de dejar un texto que ya no
+	// corresponde a nada.
+	Module    string `json:"module"`
+	ContextID string `json:"contextId"`
 }
 
 // CreateAgentChat registra una conversación nueva.
-func (s *Store) CreateAgentChat(id, repoID, agentID, title string) error {
+//
+// repoID puede venir vacío: desde el chat unificado una conversación puede
+// nacer en el editor SQL o en una terminal SSH, donde no hay repositorio. La FK
+// declarada no se aplica (este vault no activa `PRAGMA foreign_keys`, hallazgo
+// de la migración 31), así que una fila sin repositorio es válida — lo que
+// importa es que las lecturas la encuentren, y para eso está module.
+func (s *Store) CreateAgentChat(id, repoID, agentID, title, module, contextID string) error {
 	enc, nonce, err := s.encryptOptional(title)
 	if err != nil {
 		return err
 	}
 	now := time.Now().Unix()
 	_, err = s.db.Exec(
-		`INSERT INTO agent_chats (id, repo_id, agent_id, encrypted_title, title_nonce, conversation_id, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, '', ?, ?)`,
-		id, repoID, agentID, enc, nonce, now, now,
+		`INSERT INTO agent_chats (id, repo_id, agent_id, encrypted_title, title_nonce, conversation_id, created_at, updated_at, module, context_id)
+		 VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?)`,
+		id, repoID, agentID, enc, nonce, now, now, module, contextID,
 	)
 	if err != nil {
 		return fmt.Errorf("vault: creando el chat: %w", err)
@@ -55,14 +72,32 @@ func (s *Store) CreateAgentChat(id, repoID, agentID, title string) error {
 	return nil
 }
 
+// agentChatColumns es la lista de columnas que leen todas las consultas de
+// historial. Una sola constante para que un SELECT no se quede atrás del otro
+// cuando se agregue una columna — que es exactamente lo que pasó al sumar
+// module/context_id.
+const agentChatColumns = `id, repo_id, agent_id, encrypted_title, title_nonce, conversation_id, created_at, updated_at,
+	        COALESCE(model, ''), COALESCE(effort, ''), COALESCE(mode, ''), COALESCE(module, ''), COALESCE(context_id, '')`
+
 // ListAgentChats devuelve los chats de un repositorio, del más reciente al más
 // viejo — que es el orden en el que se los busca.
 func (s *Store) ListAgentChats(repoID string) ([]AgentChat, error) {
-	rows, err := s.db.Query(
-		`SELECT id, repo_id, agent_id, encrypted_title, title_nonce, conversation_id, created_at, updated_at,
-		        COALESCE(model, ''), COALESCE(effort, ''), COALESCE(mode, '')
-		 FROM agent_chats WHERE repo_id = ? ORDER BY updated_at DESC`, repoID,
-	)
+	return s.queryAgentChats(
+		`SELECT `+agentChatColumns+` FROM agent_chats WHERE repo_id = ? ORDER BY updated_at DESC`, repoID)
+}
+
+// ListAllAgentChats devuelve TODO el historial, sin filtrar por repositorio.
+//
+// Es lo que pide el chat unificado: desde que una conversación puede nacer en
+// el editor SQL o en una terminal SSH, filtrar por repositorio dejaría afuera
+// justamente las que no salieron de uno — y una lista que dice "esto es todo"
+// cuando no lo es es peor que una que no contesta.
+func (s *Store) ListAllAgentChats() ([]AgentChat, error) {
+	return s.queryAgentChats(`SELECT ` + agentChatColumns + ` FROM agent_chats ORDER BY updated_at DESC`)
+}
+
+func (s *Store) queryAgentChats(query string, args ...any) ([]AgentChat, error) {
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("vault: leyendo los chats: %w", err)
 	}
@@ -73,7 +108,7 @@ func (s *Store) ListAgentChats(repoID string) ([]AgentChat, error) {
 		var c AgentChat
 		var enc, nonce []byte
 		if err := rows.Scan(&c.ID, &c.RepoID, &c.AgentID, &enc, &nonce, &c.ConversationID, &c.CreatedAt, &c.UpdatedAt,
-			&c.Model, &c.Effort, &c.Mode); err != nil {
+			&c.Model, &c.Effort, &c.Mode, &c.Module, &c.ContextID); err != nil {
 			return nil, err
 		}
 		// Un título que no se puede descifrar NO tira abajo la lista: se
@@ -83,6 +118,24 @@ func (s *Store) ListAgentChats(repoID string) ([]AgentChat, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// SetAgentChatContext mueve una conversación al módulo/recurso donde se la
+// está usando ahora.
+//
+// La conversación del chat unificado es una sola y se desplaza: se empieza
+// mirando un EXPLAIN, se sigue en una terminal SSH y se termina en el
+// repositorio. Reasignar el origen —en vez de partir la conversación en tres—
+// es lo que hace que el historial la muestre donde uno la fue a buscar
+// último, que es donde la recuerda.
+func (s *Store) SetAgentChatContext(id, module, contextID string) error {
+	if _, err := s.db.Exec(
+		`UPDATE agent_chats SET module = ?, context_id = ?, updated_at = ? WHERE id = ?`,
+		module, contextID, time.Now().Unix(), id,
+	); err != nil {
+		return fmt.Errorf("vault: guardando el contexto del chat: %w", err)
+	}
+	return nil
 }
 
 // RenameAgentChat cambia el nombre visible.

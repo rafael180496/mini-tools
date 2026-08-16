@@ -143,6 +143,25 @@ type Settings struct {
 	// fires, in seconds (validated in SetAutoSaveIntervalSeconds against the
 	// Min/Max bounds below).
 	AutoSaveIntervalSeconds int `json:"autoSaveIntervalSeconds"`
+	// ActiveAgent/ActiveModel/ActiveEffort son el agente de código elegido
+	// para TODA la app (migración 33) — el chat es uno solo y se abre desde
+	// cualquier módulo, así que el agente no puede ser una preferencia del
+	// módulo Git. Vacío = todavía no se eligió ninguno, que no es lo mismo
+	// que "ninguno disponible": la UI pregunta en vez de elegir por el
+	// usuario un asistente que consume su cuota.
+	//
+	// El default por repositorio (`git_repos.default_agent`, migración 30) se
+	// conserva y sigue teniendo prioridad cuando el contexto de trabajo es un
+	// repositorio; esto es el piso para los módulos que no lo son.
+	ActiveAgent  string `json:"activeAgent"`
+	ActiveModel  string `json:"activeModel"`
+	ActiveEffort string `json:"activeEffort"`
+	// AgentDock es dónde va anclado el panel del chat unificado: "right"
+	// (default), "left", "bottom" o "float" (ventana flotante). AgentSize es
+	// su ancho cuando está a un costado o su alto cuando está abajo — un solo
+	// número para las dos orientaciones, igual que GitTermSize.
+	AgentDock string `json:"agentDock"`
+	AgentSize int    `json:"agentSize"`
 }
 
 // GitPanelSession es una pestaña del panel de la pestaña Git: una terminal
@@ -203,10 +222,12 @@ func (s *Store) GetSettings() (Settings, error) {
 	var gitTermSize, terminalFontSize int
 	var gitSideHidden, gitDiffHidden bool
 	var gitPanelSessionsJSON sql.NullString
+	var activeAgent, activeModel, activeEffort, agentDock string
+	var agentSize int
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -271,7 +292,61 @@ func (s *Store) GetSettings() (Settings, error) {
 		GitDiffHidden:           gitDiffHidden,
 		TerminalFontSize:        terminalFontSize,
 		GitPanelSessions:        gitPanelSessions,
+		ActiveAgent:             activeAgent,
+		ActiveModel:             activeModel,
+		ActiveEffort:            activeEffort,
+		AgentDock:               agentDock,
+		AgentSize:               agentSize,
 	}, nil
+}
+
+// SetActiveAgent persiste el agente de código elegido para toda la app, con el
+// modelo y el esfuerzo con los que se lo estaba usando.
+//
+// Los tres en un solo UPDATE por el mismo motivo que SetGitLayout: se eligen
+// desde el mismo control y en la misma interacción, y escribirlos por separado
+// deja una elección a medio guardar si la app se cierra en el medio.
+//
+// Sin validación contra el catálogo: los ids válidos los define
+// backend/agents (y los modelos, cada CLI), así que un agente desinstalado se
+// resuelve al abrir el chat —mostrando que ya no está— en vez de rechazarse
+// acá. Es el mismo criterio de "solo almacenamiento" de SetLocalShell, y por
+// la misma razón: el vault viaja entre máquinas por backup/restore.
+// agentDocks son los anclajes válidos del panel del chat. "float" es la
+// ventana flotante — entra como opción y no como default, ver la migración 33.
+var agentDocks = map[string]bool{"right": true, "left": true, "bottom": true, "float": true}
+
+// SetAgentLayout persiste dónde va anclado el panel del chat y cuánto mide.
+//
+// Los valores fuera de rango se corrigen en vez de rechazarse, mismo criterio
+// que SetGitLayout: esto lo escribe la UI en cada arrastre, y un error acá se
+// traduciría en "el panel no se guarda" sin que nada lo explique. Un dock
+// desconocido —el caso de un vault escrito por una versión más nueva— cae a
+// "right", que es el default que toda instalación entiende.
+func (s *Store) SetAgentLayout(dock string, size int) error {
+	if !agentDocks[dock] {
+		dock = "right"
+	}
+	if size < 240 {
+		size = 240
+	}
+	if size > 1200 {
+		size = 1200
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET agent_dock = ?, agent_size = ? WHERE id = 1`, dock, size); err != nil {
+		return fmt.Errorf("vault: guardando el layout del chat: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) SetActiveAgent(agentID, model, effort string) error {
+	if _, err := s.db.Exec(
+		`UPDATE settings SET active_agent = ?, active_model = ?, active_effort = ? WHERE id = 1`,
+		agentID, model, effort,
+	); err != nil {
+		return fmt.Errorf("vault: guardando el agente activo: %w", err)
+	}
+	return nil
 }
 
 // SetTheme persists the theme preference ("dark" or "light").
