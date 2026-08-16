@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-1.3.1-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.0.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -22,14 +22,18 @@ Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en
 ## Novedades — 2.0.0
 
 **La versión donde la IA deja de vivir en una pestaña.** Hasta la 1.3.x el agente
-existía adentro del módulo Git; ahora atraviesa la aplicación entera — y llega
-un módulo nuevo.
+existía adentro del módulo Git; ahora atraviesa la aplicación entera — y llegan
+dos módulos nuevos: **Notas** y una **grilla de resultados que escribe el
+UPDATE por vos**.
 
 - **Un solo chat, el mismo en todos los módulos.** Se abre con `⌘L` / `Ctrl+L`
-  desde donde estés y **cambiar de pestaña no lo reinicia**: la conversación
-  sigue y el encabezado dice sobre qué está trabajando. La pestaña Git conserva
-  su banco de trabajo agéntico, con sus permisos y su diff — ahí el agente
-  trabaja sobre código, que es otro objetivo.
+  desde donde estés, y **cada módulo tiene su propia conversación**: la de una
+  conexión no arrastra lo que hablaste sobre un servidor SSH. La pestaña Git
+  conserva su banco de trabajo agéntico, con sus permisos y su diff — ahí el
+  agente trabaja sobre código, que es otro objetivo.
+- **El chat ve la consulta que estás escribiendo**, adjunta como ficha que se
+  puede abrir y sacar. Cada bloque de código de la respuesta trae **Copiar** y
+  **Al editor**: el SQL corregido entra donde está el cursor sin pisar nada.
 - **Referencias `@`**: `@db:Conexión/tabla` inyecta el DDL de esa tabla,
   `@explain:last` el último plan, `@note:"Runbook"` una nota, `@ssh:Servidor`
   las últimas líneas de una terminal. **Cada una se ve como ficha desplegable
@@ -38,18 +42,21 @@ un módulo nuevo.
   la escribe **en el dialecto de tu motor** — Oracle con `FETCH FIRST` y `NVL`,
   Postgres con `ILIKE` y JSONB, T-SQL con `TOP`, pipelines en Mongo. Llega como
   diff, y **nunca se ejecuta sola**. Más "Explicar y corregir" pegado al error
-  del motor, y "Analizar con el agente" sobre el plan de ejecución.
-- **Módulo nuevo: Notas.** Tu documentación técnica cifrada dentro del vault —
-  runbooks, procedimientos, notas de incidentes. Markdown puro (se abre en
-  Obsidian sin pérdida), enlaces `[[entre notas]]` con backlinks, **grafo de
-  conocimiento**, menú `/` de bloques, y **bloques SQL que se ejecutan** contra
-  tus conexiones con el mismo Production Guard del editor. Con un **buscador
-  que encuentra `Diagnóstico` escribiendo `diagnostico`**, exige todas las
-  palabras y te muestra el fragmento donde acertó.
+  del motor, y "Analizar con el agente" sobre el plan de ejecución — **eligiendo
+  con qué proveedor**, para pedir la misma segunda opinión a otro modelo sin
+  cambiar el agente de toda la app.
+- **Módulo nuevo: Notas.** Tu documentación técnica cifrada dentro del vault,
+  con editor tipo Notion, imágenes pegadas con `⌘V`, grafo de conocimiento y
+  bloques SQL ejecutables. [Abajo, con capturas](#notas--tu-documentación-viva-y-cifrada).
+- **La grilla de resultados ahora escribe.** Doble clic en una celda, corregís
+  el dato y la app arma el `UPDATE` con su `WHERE` por clave primaria.
+  [Abajo, con captura](#la-grilla-que-escribe-el-update).
 - **Servidor MCP nativo**, para que los agentes te **pidan** datos en vez de que
   se los mandes. **Nace apagado y apagado no hay nada corriendo** — ni socket,
   ni proceso. Y sin la ventana abierta no hay datos: el proceso que lanza el CLI
-  no tiene la clave maestra.
+  no tiene la clave maestra. Con el instructivo de conexión adentro de la app.
+- **Abrir el proyecto en VS Code o en el explorador de archivos**, desde la
+  barra del repositorio — y solo si están instalados de verdad.
 - **"Aprobar cada acción" ya funciona en Windows** (10 y 11, verificado), con un
   named pipe cuya ACL está restringida a tu usuario.
 
@@ -122,9 +129,111 @@ Los tres últimos **se aprueban una vez, explícitamente**, con un diálogo que 
 
 Cuando el agente termina de trabajar solo, te dice **cuántos archivos tocó** y te lleva a revisarlos. Caen en el árbol de trabajo de git: los ves en Cambios y los descartás con un clic.
 
+### El mismo chat, sobre tu base de datos
+
+<p align="center">
+  <img src="docs/screenshots/chat-db.png" width="760" alt="Chat abierto sobre una conexión: la consulta del editor adjunta abajo, y la respuesta con dos bloques SQL, cada uno con su barra de Copiar y Al editor">
+</p>
+
+Es el **mismo componente** que el chat de código, abierto sobre una conexión: la
+consulta que estás escribiendo va adjunta —se puede abrir para ver exactamente
+qué se manda, y sacarla con un clic—, así que *"mejorá esta query"* por fin
+tiene una query. Y cada bloque de la respuesta trae **Copiar** y **Al editor**:
+el SQL corregido entra en la posición del cursor sin pisar lo que tenías.
+
+Cada módulo mantiene su propia conversación: la de una conexión no arrastra lo
+que hablaste sobre un servidor SSH ni sobre una nota.
+
+### Cuánto llevás gastado, sin inventar el número
+
+<p align="center">
+  <img src="docs/screenshots/chat-usage.png" width="440" alt="Panel de consumo del chat: lo gastado en esta conversación arriba, y debajo cada CLI con su plan, el total de tokens, el porcentaje de caché y el reparto por modelo">
+</p>
+
+Lo de **esta** conversación arriba, y debajo cada CLI de los últimos 30 días con
+su plan al lado — sin él, un total de tokens es un número sin escala—, el
+reparto por modelo y qué parte de la entrada resolvió el caché, que es el único
+de esos números sobre el que se puede actuar.
+
+Lo que **no** vas a ver es un "82% de tu plan usado": ese dato lo tiene el
+servidor de tu proveedor, no un archivo local. Un porcentaje sacado de una
+división inventada es la clase de número que se lee mal y se cree igual.
+
+### Servidor MCP: que el agente pida, en vez de mandarle
+
+<p align="center">
+  <img src="docs/screenshots/mcp-setup.png" width="440" alt="Panel Acceso de la IA: el interruptor del servidor MCP encendido con su socket local, el instructivo de tres pasos y la configuración lista para copiar de Claude Code, Codex y Antigravity">
+</p>
+
+Encendido, Claude Code, Codex o Antigravity pueden **pedirle** datos a
+mini-tools desde su propia conversación: buscar en tus notas, leer el esquema de
+una tabla, mirar las últimas líneas de una terminal. Con el instructivo adentro
+de la app y la configuración lista para copiar, con la ruta real de tu
+ejecutable ya puesta.
+
+**Apagado no hay absolutamente nada corriendo** — ni socket, ni proceso, ni
+consumo. Nunca se abre un puerto de red: el canal es un socket local con
+permisos de tu usuario. Y sin la ventana abierta y el vault desbloqueado no hay
+datos, porque el proceso que lanza el CLI **no tiene la clave maestra**. Debajo
+del interruptor queda el registro de qué se pidió y cuándo: confiar en la regla
+y poder verificarla son dos cosas distintas.
+
 ### Y lo que se espera de un chat
 
 Pegá una captura con `⌘V` en cualquier parte del panel, escribí `@` para referenciar un archivo del repo, retomá una conversación de la semana pasada con **el mismo modelo y esfuerzo** con los que la venías trabajando, o abrí **dos agentes en paralelo** — uno escribiendo, otro revisando lo que el primero hizo.
+
+---
+
+## Notas — tu documentación, viva y cifrada
+
+<p align="center">
+  <img src="docs/screenshots/notes-editor.png" width="900" alt="Editor de notas: el Markdown se ve formateado mientras se escribe — títulos grandes, negritas, enlaces entre notas subrayados y etiquetas como pastillas — con la barra de formato arriba y el panel de enlaces salientes y backlinks a la derecha">
+</p>
+
+Los runbooks, los procedimientos y las notas de incidentes viven **adentro del
+vault**, cifrados con la misma clave maestra que tus conexiones. Y se escriben
+como en Notion: el Markdown **se ve formateado mientras lo escribís** —las
+marcas aparecen solo en la línea donde está el cursor, que es cuando hacen
+falta—, con barra de formato para quien no lo escribe de memoria, alineación de
+documento, autocompletado de `[[enlaces]]` y de `#etiquetas`, y un revisor que
+avisa lo que ninguna otra herramienta te va a marcar: un enlace a una nota que
+todavía no existe (con "crearla" a un clic), un bloque de código sin cerrar, o
+el `#Titulo` sin espacio que vos creías que era un título y en realidad es una
+etiqueta.
+
+**Pegá una captura con `⌘V`** y queda incrustada en el documento, cifrada igual
+que el texto: una captura de un tablero de producción es tan sensible como el
+párrafo que la acompaña — y más delatora, porque se entiende de un vistazo. Solo
+PNG y JPG, y los PNG se recomprimen **sin perder un solo píxel**.
+
+<p align="center">
+  <img src="docs/screenshots/notes-preview.png" width="900" alt="La misma nota en vista renderizada: callout de atención, bloque SQL con botón Ejecutar contra la conexión SGCPRO, enlaces entre notas y etiquetas">
+</p>
+
+**Los runbooks se ejecutan.** Un bloque ```` ```sql connection="SGCPRO" ````
+trae su botón **Ejecutar**, contra tu conexión de verdad y con el mismo
+Production Guard del editor. El resultado no se guarda en la nota: es una
+consulta, no documentación.
+
+<p align="center">
+  <img src="docs/screenshots/notes-graph.png" width="900" alt="Grafo de conocimiento: los nodos son notas, las líneas los enlaces entre ellas, la nota abierta resaltada y las privadas con un anillo alrededor">
+</p>
+
+Todo lo que enlazás arma un **grafo** — y también el árbol del panel lateral,
+donde cada nota cuelga de la que la enlaza. Los **backlinks** son la mitad más
+útil: los enlaces que salen ya los ves al escribir, los que entran son los que
+uno no recuerda haber puesto.
+
+**El candado es contra los agentes, no contra vos.** Marcar una nota como
+privada la esconde de forma absoluta —ni el chat ni el servidor MCP pueden
+leerla, y el filtro está en la consulta, no en un `if`—, sin dejar de verla vos
+ni de aparecer en tu grafo y tus búsquedas. Las notas nacen **visibles**, porque
+para eso está el grafo; esconder una es una decisión con su propia confirmación.
+
+Y un buscador que sirve para buscar: encuentra `Diagnóstico` escribiendo
+`diagnostico`, exige todas las palabras en cualquier orden, entiende frases
+entre comillas y filtros (`tag:`, `enlaza:`, `privado:`), y te muestra el
+fragmento donde acertó.
 
 ---
 
@@ -136,7 +245,7 @@ Pegá una captura con `⌘V` en cualquier parte del panel, escribí `@` para ref
 
 Cliente Git estilo Sublime Merge sobre el `git` de tu sistema — así que tus credential helpers, tu `ssh-agent` y tus hooks siguen funcionando igual. Grafo de commits, diff unificado o lado a lado, stage por bloque, rebase interactivo, stashes, worktrees, resolutor de conflictos de tres vías, y un **log de los comandos exactos** que la app ejecutó por debajo, con su salida.
 
-Además: **editor de archivos** con resaltado para más de treinta lenguajes, árbol plegable con los indicadores de cambio de git, y vista previa de Markdown en tres modos.
+Además: **editor de archivos** con resaltado para más de treinta lenguajes, árbol plegable con los indicadores de cambio de git, vista previa de Markdown en tres modos, y **botones para abrir el proyecto en VS Code o en el explorador de archivos** de tu sistema — que aparecen solo si están instalados de verdad.
 
 ---
 
@@ -154,12 +263,40 @@ Y cuando algo falla, **"Analizar error"**: le manda al agente lo que tengas sele
 
 ---
 
+## La grilla que escribe el UPDATE
+
+<p align="center">
+  <img src="docs/screenshots/grid-edit.png" width="900" alt="Grilla de resultados con una celda editada resaltada y la barra inferior: 1 cambio sin guardar, Ver el SQL, Guardar en la base, Descartar">
+</p>
+
+Doble clic en una celda, corregís el dato, y la app arma el `UPDATE` con su
+`WHERE` por clave primaria. El cambio **queda pendiente y marcado** hasta que lo
+mandás con `⌘↵` / `Ctrl+↵` — esa demora es a propósito: te deja ver el SQL
+exacto antes, cambiar de opinión, y mandar varios cambios juntos.
+
+**La regla que gobierna toda la función es no escribir nunca una fila que no se
+pueda identificar sin ninguna duda**, porque un `WHERE` de más no se deshace con
+Ctrl+Z. Por eso solo se ofrece editar cuando la consulta sale de **una** tabla
+—sin JOIN, sin GROUP BY, sin subconsultas—, cuando esa tabla tiene **clave
+primaria** y cuando la clave está en el resultado. Cuando no se puede, la grilla
+**te dice por qué** en vez de esconder el botón.
+
+Cada `UPDATE` corre en una transacción y tiene que afectar **exactamente una
+fila**: si afecta otra cantidad se revierte el lote entero y te lo explica. Los
+valores viajan como parámetros, nunca concatenados. Y el editor de cada celda
+depende del tipo: selector de fecha y hora para un timestamp, desplegable para
+un booleano, campo numérico para un número — con `NULL` como botón aparte,
+porque «sin dato» y «texto vacío» no son lo mismo y la base guarda esa
+diferencia.
+
+---
+
 ## Descargas
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v1.3.1.dmg](releases/macos/mini-tools-v1.3.1.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v1.3.1-windows-amd64.exe](releases/windows/mini-tools-v1.3.1-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.0.0.dmg](releases/macos/mini-tools-v2.0.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.0.0-windows-amd64.exe](releases/windows/mini-tools-v2.0.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). De esta versión se verificó en Windows 10 y 11 la **aprobación acción por acción**; el resto del `.exe` empaquetado no se corrió ahí, ver [detalle](releases/windows/README.md). |
 
 Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -184,6 +321,11 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
 - **Sistema `@` de referencias**: `@db:Conexión/tabla` (DDL, cero filas), `@explain:last`, `@git:staged`, `@file:ruta`, `@note:"Título"`, `@ssh:Servidor`. Cada una se muestra como ficha desplegable con el texto exacto que se va a enviar.
 - **Servidor MCP nativo**, apagado por defecto: encendido, los agentes pueden pedir datos ellos mismos; apagado no hay socket ni proceso. Sin la ventana abierta y el vault desbloqueado, no hay datos.
 - **Registro de accesos** de la IA: qué pidió y cuándo, sin el contenido.
+- **Instructivo del servidor MCP** adentro de la app: tres pasos y la configuración lista para copiar de cada CLI, con la ruta real de tu ejecutable ya puesta.
+- **Copiar cualquier mensaje o bloque de código** del chat, y **"Al editor"** para insertar ese bloque donde está el cursor —el editor SQL o la nota abierta— sin pisar lo que tenías.
+- **Consumo y plan desde el chat**, no solo desde Git: lo de esta conversación arriba, y debajo cada CLI de los últimos 30 días con su reparto por modelo.
+- **Elegir el proveedor para un análisis puntual** (plan de ejecución, error de terminal) sin cambiar el agente activo de la app.
+- **Contexto del módulo en cada conversación**: la del editor SQL lleva adjunta la consulta que estás escribiendo; la de una terminal, sus últimas líneas.
 
 ### Notas — base de conocimiento cifrada
 
@@ -193,7 +335,12 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
 - **Buscador que sirve para buscar**: encuentra `Diagnóstico` escribiendo `diagnostico`, exige todas las palabras en cualquier orden, entiende frases entre comillas y filtros (`tag:`, `enlaza:`, `privado:`), ordena por relevancia y muestra el fragmento donde acertó.
 - **Menú `/`** de bloques: encabezados, callouts, tablas, plegables, checklists.
 - **Runbooks vivos**: bloques SQL que se ejecutan contra tus conexiones, uno por uno, con el mismo Production Guard del editor. El resultado no se guarda en la nota.
-- **Candado por nota**: marcarla la esconde de los agentes de forma absoluta, sin dejar de verla vos ni de aparecer en el grafo.
+- **Candado por nota**: marcarla la esconde de los agentes de forma absoluta, sin dejar de verla vos ni de aparecer en el grafo. Las notas nacen visibles; esconderlas es una decisión con su propia confirmación, y el estado se refleja al instante en todas las vistas.
+- **Editor tipo Notion**: el Markdown se ve formateado mientras se escribe y las marcas aparecen solo en la línea del cursor, con barra de formato (títulos, negrita, listas, citas, tablas, plegables), alineación del documento (izquierda/centro/derecha/justificado) guardada como propiedad de la nota — el Markdown queda limpio y se sigue abriendo en cualquier otro editor.
+- **Imágenes pegadas con `⌘V`** (o arrastradas, o desde el disco), guardadas **cifradas** dentro del vault. Solo PNG y JPG, validados por sus bytes y no por lo que declaren; los PNG se recomprimen sin perder un píxel y los JPEG se guardan byte a byte, porque recodificar un JPEG pierde calidad siempre.
+- **Revisor con corrección aplicable**: enlaces a notas que no existen (con "crearla"), bloques de código sin cerrar, encabezados sin el espacio. No es un corrector ortográfico: eso ya lo hace el sistema operativo, y un diccionario pesaría más que la app.
+- **Autocompletado de `[[enlaces]]` y de `#etiquetas`** con las que ya usaste, para no terminar con tres etiquetas distintas para lo mismo.
+- **Árbol que sigue a los enlaces**: cada nota cuelga de la que la enlaza, plegable, con las carpetas como organización explícita por encima.
 
 ### Asistencia sobre bases de datos
 
@@ -226,6 +373,8 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
 - **Consola de ejecución** (estilo DataGrip/SQL Developer): pestaña propia junto a Resultados/Historial que registra cada statement de un script con su texto completo y una línea de resultado con hora (`N filas obtenidas en Xms`, `completado en Xms`, o el `ERROR` completo sin recortar) — se activa sola en cualquier script de más de un statement.
 - **Historial de ejecuciones** por conexión: SQL exacto, estado, duración y error completo de cada statement corrido — filtrable, borrable entero o fila por fila.
 - **Grid de resultados** virtualizado para miles de filas sin lag, columnas redimensionables/ordenables (el sort reemite la query con `ORDER BY`, no ordena en cliente). Seleccionar una fila habilita copiarla como texto, `INSERT` o `UPDATE` listos para pegar en el editor.
+- **Grid editable**: doble clic en una celda y la app escribe el `UPDATE` con su `WHERE` por clave primaria. Los cambios quedan pendientes hasta que los mandás (`⌘↵`), con vista previa del SQL exacto, en una transacción donde cada sentencia tiene que afectar exactamente una fila. Solo se habilita cuando la consulta sale de una sola tabla con clave primaria; si no, dice por qué.
+- **Explain y Explain Analyze sobre lo seleccionado**, o sobre la sentencia donde está el cursor — no sobre el archivo entero.
 - **Árbol de conexiones** colapsable a una barra de solo íconos, con buscador que cubre tablas y también procedures/functions/triggers/packages, categoría de tablas colapsable y siempre ordenada alfabéticamente (probado con un schema real de 342 tablas), export de DDL (objeto puntual o esquema completo) desde el propio árbol, y layout (sidebar colapsado, alto del editor) recordado entre sesiones.
 - **Configuración centralizada**: backup del vault y "recordar clave maestra" viven en un modal de Configuración propio, abierto desde el ícono de engranaje — no sueltos en la barra de herramientas.
 - **EXPLAIN PLAN visual**: árbol de plan de ejecución para los 3 motores, con detección de full table scan resaltada.
@@ -304,11 +453,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.3.1 |
+| Versión | 2.0.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v1.3.1.dmg](releases/macos/mini-tools-v1.3.1.dmg)** |
-| SHA-256 | `3388923f455a4436f5a3dfb609acd5ffea0a41a49a9dfabeb6d2e358c598566a` |
+| Archivo | **[⬇ Descargar mini-tools-v2.0.0.dmg](releases/macos/mini-tools-v2.0.0.dmg)** |
+| SHA-256 | `b93cbdeb0038f04513f1caabf55bc87e5ccee377899d67215e112aed8f34ab23` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -320,7 +469,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **La 1.3.1 NO se corrió en una Windows real** — solo se confirmó que cross-compila limpio. Lo más expuesto en esta versión es todo lo agéntico: lanzar los CLIs como procesos hijos y leerles la salida en streaming es otro camino de código en Windows, y la **aprobación acción por acción de Claude Code usa un socket Unix**, que en Windows no existe — falta confirmar si degrada limpio o falla. Se suman las migraciones 30, 31 y 32 del vault, que al primer arranque tocan el `vault.db` que ya está en la máquina, y la terminal integrada, que usa ConPTY. La 1.1.0, la 1.2.0 y la 1.3.0 tampoco se verificaron, así que lo pendiente se acumula: lo último que corrió de verdad en Windows 10 y 11 fue la 1.0.0. Detalle en [releases/windows/README.md](releases/windows/README.md).
+> ⚠️ **De la 2.0.0 se verificó una parte en Windows 10 y 11: la aprobación acción por acción**, que era justamente lo que quedaba pendiente en 1.3.1 — en Windows no hay sockets Unix, así que ahora usa un named pipe con la ACL restringida a tu usuario. **El `.exe` empaquetado no se corrió en una Windows real**, y lo pendiente se acumula desde la 1.1.0: las migraciones 33 a 39 del vault (que crean las tablas de notas sobre el `vault.db` que ya está en la máquina), el servidor MCP —que en Windows también es un named pipe, pero con el CLI del otro lado—, abrir el proyecto en VS Code/Explorador, la terminal integrada con ConPTY y pegar imágenes en una nota. Lo último que corrió de punta a punta en Windows 10 y 11 fue la 1.0.0. Detalle en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -328,10 +477,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.3.1 |
+| Versión | 2.0.0 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS y **no verificado** en una Windows real |
-| Archivo | **[⬇ Descargar mini-tools-v1.3.1-windows-amd64.exe](releases/windows/mini-tools-v1.3.1-windows-amd64.exe)** |
-| SHA-256 | `de65effc3198665894a496c65dd2aeb8c595e71a756e10644f058b545688226c` |
+| Archivo | **[⬇ Descargar mini-tools-v2.0.0-windows-amd64.exe](releases/windows/mini-tools-v2.0.0-windows-amd64.exe)** |
+| SHA-256 | `fdab69a6b54b8bebbfb55b7b9b154e8301563f2b47d7069c76047f2e051e467e` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).
@@ -352,7 +501,7 @@ Detalle completo (stack, estructura fase a fase, contrato de bindings) en [CLAUD
 
 ## Sobre las capturas de este README
 
-Las imágenes `ui-*.png` **no son de una instalación real**: salen de
+Las imágenes de este archivo **no son de una instalación real**: salen de
 `./scripts/uishot.sh`, que monta los componentes en un navegador headless con
 datos inventados. No hay rutas, repositorios, hosts ni credenciales de nadie —
 no porque se hayan borrado después, sino porque nunca estuvieron ahí. Es

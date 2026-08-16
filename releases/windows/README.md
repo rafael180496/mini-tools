@@ -1,8 +1,10 @@
 # mini-tools — release Windows
 
 Artefacto de distribución local generado con `./scripts/package-windows.sh`,
-**cross-compilado desde macOS**. Esta versión **no se corrió en una Windows
-real** antes de publicarla — ver "Estado de verificación" abajo. No es un
+**cross-compilado desde macOS**. De esta versión se verificó **una parte** en
+Windows 10 y 11 —la aprobación acción por acción, que en Windows usa un named
+pipe— y el resto **no**: el `.exe` empaquetado no se corrió en una Windows real.
+Ver "Estado de verificación" abajo. No es un
 release firmado ni se publica automáticamente a ningún lado — solo empaqueta
 el `.exe` para distribuirlo manualmente (GitHub Releases, USB, red interna,
 etc.).
@@ -11,77 +13,81 @@ etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 1.3.1 |
-| Archivo | `mini-tools-v1.3.1-windows-amd64.exe` |
+| Versión | 2.0.0 |
+| Archivo | `mini-tools-v2.0.0-windows-amd64.exe` |
 | Tamaño | ~54 MB |
-| SHA-256 | `de65effc3198665894a496c65dd2aeb8c595e71a756e10644f058b545688226c` |
+| SHA-256 | `fdab69a6b54b8bebbfb55b7b9b154e8301563f2b47d7069c76047f2e051e467e` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v1.3.1-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.0.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
 ## Estado de verificación en Windows real
 
-**Esta versión (1.3.1) NO fue verificada en una Windows real.** Lo único
-confirmado es que cross-compila limpio desde macOS (ninguno de los
-conectores de base de datos —PostgreSQL, Oracle, SQLite, SQL Server,
-MongoDB— ni `go-redis` ni el PTY usan CGO, así que no hace falta un
-toolchain de Windows/mingw).
+**Verificado en esta versión (2.0.0), en Windows 10 y 11:** la **aprobación
+acción por acción** de los agentes. Era lo que en 1.3.1 quedaba explícitamente
+sin confirmar, porque en macOS y Linux usa un socket Unix, que en Windows no
+existe. Ahora usa un **named pipe** con la ACL restringida al usuario actual, y
+se corrió sobre las dos versiones de Windows durante el desarrollo de esta
+versión.
 
-Importante, porque se acumula: **la 1.1.0, la 1.2.0 y la 1.3.0 tampoco se
-verificaron**, así que todo lo que quedó pendiente de confirmar en
-aquellas versiones sigue pendiente acá — no se reinicia la lista con cada
-release. Lo último que corrió de verdad sobre Windows 10 y 11 fue la
-1.0.0.
+**El resto no se verificó con el `.exe` empaquetado.** Lo confirmado de ese lado
+es que cross-compila limpio desde macOS (ninguno de los conectores de base de
+datos —PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni `go-redis` ni el PTY
+usan CGO, así que no hace falta un toolchain de Windows/mingw). Lo pendiente se
+acumula desde la 1.1.0: lo último que se corrió de punta a punta en Windows 10 y
+11 fue la 1.0.0.
 
 Queda sin confirmar en Windows, en orden de riesgo:
 
-- **Las migraciones 30, 31 y 32 del vault, nuevas en esta versión.** Al
-  primer arranque agregan columnas a `git_repos` y crean la tabla
-  `agent_chats` (con su título cifrado) sobre el `vault.db` que ya existe
-  en la máquina. Se suman a la 29, que sigue sin verificarse.
-- **Todo el subsistema agéntico, que es lo que trae esta versión.** Lanza
-  los CLIs (`claude`, `codex`, `agy`) como procesos hijos y les habla por
-  stdout en streaming; en Windows eso implica otra resolución de
-  ejecutables (`.cmd`/`.exe` del `PATH`) y otro manejo de saltos de línea.
-  Y la aprobación por acción de Claude Code usa un **socket Unix**, que en
-  Windows no existe: hace falta confirmar si degrada a "sin aprobación
-  por acción" de forma limpia o si directamente falla. Es SQLite puro y el
-  camino es el mismo en todos los SO, pero una migración que falle deja la
-  app sin arrancar, así que es lo primero a mirar si alguien la prueba.
+- **Las migraciones 33 a 39 del vault, nuevas en esta versión.** Al primer
+  arranque crean las tablas de notas (`vault_notes`, `vault_note_links`,
+  `vault_note_assets`) y agregan columnas a `agent_chats` y a `settings`, sobre
+  el `vault.db` que ya existe en la máquina. Se suman a las 29–32, que siguen
+  sin verificarse. Es SQLite puro y el camino es el mismo en todos los SO, pero
+  una migración que falle deja la app sin arrancar: es lo primero a mirar si
+  alguien la prueba.
+- **El servidor MCP**, nuevo en esta versión. En Windows el canal es un **named
+  pipe** en vez de un socket Unix — el mismo mecanismo que sí se verificó para
+  la aprobación de acciones, pero con otro proceso del lado del cliente (el CLI
+  que lanza el propio usuario). Falta confirmarlo de punta a punta con un CLI
+  real conectado.
+- **Abrir el proyecto en VS Code y en el explorador de archivos**, nuevo acá. En
+  Windows resuelve `code` del `PATH` y usa `explorer`; sin probarlo no está
+  confirmado que encuentre una instalación típica de VS Code.
+- **El resto del subsistema agéntico**: lanzar los CLIs (`claude`, `codex`,
+  `agy`) como procesos hijos implica otra resolución de ejecutables
+  (`.cmd`/`.exe` del `PATH`) y otro manejo de saltos de línea.
 - **La terminal local integrada** (pendiente desde 1.1.0). En Windows usa
-  ConPTY (la API de pseudo-consola del sistema) vía
-  `github.com/aymanbagabas/go-pty`, un camino de código completamente
-  distinto al `openpty` de Unix. Sin probarlo no está confirmado que la
-  shell arranque, que el redimensionado reflowe bien, ni que
-  PowerShell/cmd/Git Bash/WSL se detecten y abran como corresponde.
-- **Las sesiones de agentes de código** (pendiente desde 1.1.0). Dependen
-  de encontrar los CLIs en las rutas de instalación típicas de Windows
-  (`%APPDATA%\npm`, `~/.bun/bin`), que no se verificaron contra una
-  instalación real.
-- **Las transferencias SFTP con la configuración nueva del cliente.** Esta
-  versión activa lecturas/escrituras concurrentes. Es código Go idéntico en
-  todos los SO, pero el rendimiento real depende de la red y no se midió
-  desde Windows.
-- **WebView2 arranca sin instalar nada.** Confirmado en 1.0.0 sobre
-  Windows 10 y 11; es razonable esperar lo mismo acá (no cambió nada del
-  bootstrap), pero no se volvió a comprobar.
+  ConPTY vía `github.com/aymanbagabas/go-pty`, un camino de código distinto al
+  `openpty` de Unix: sin probarlo no está confirmado que la shell arranque, que
+  el redimensionado reflowe bien, ni que PowerShell/cmd/Git Bash/WSL se
+  detecten.
+- **Pegar imágenes en una nota** (`Ctrl+V` desde Recortes), que depende de cómo
+  el WebView2 expone el portapapeles.
+- **Las transferencias SFTP con lecturas/escrituras concurrentes**: código Go
+  idéntico en todos los SO, pero el rendimiento real depende de la red y no se
+  midió desde Windows.
+- **WebView2 arranca sin instalar nada.** Confirmado en 1.0.0 sobre Windows 10 y
+  11; es razonable esperar lo mismo (no cambió el bootstrap), pero no se volvió
+  a comprobar.
 - **DPI scaling, tamaño y posición de ventana.**
 - **Diálogos nativos** (abrir/guardar archivo, backup del vault).
 
-Si alguien la corre en una Windows real, corresponde reemplazar esta
+Si alguien la corre entera en una Windows real, corresponde reemplazar esta
 sección por lo que se haya confirmado y en qué versiones de Windows — no
 borrarla sin más.
 
 ## Compatibilidad del sistema
 
-- **Windows 10 y Windows 11**, esperado pero **no verificado en esta
-  versión** (ver la sección de arriba). Wails v2 en Windows depende del
+- **Windows 10 y Windows 11**. En esta versión se verificó ahí la aprobación
+  acción por acción; el resto del `.exe` empaquetado no se corrió (ver la
+  sección de arriba). Wails v2 en Windows depende del
   WebView2 Runtime de Microsoft: Windows 11 lo trae preinstalado y los
   Windows 10 con Edge al día también (llega con las actualizaciones de
   Edge). Un Windows 10 viejo o sin actualizar puede no tenerlo — ahí se
@@ -105,7 +111,7 @@ borrarla sin más.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v1.3.1-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.0.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

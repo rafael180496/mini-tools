@@ -74,6 +74,57 @@ const repoFiles = [
     'wails.json',
 ]
 
+// Turnos de ejemplo del chat. Se declaran aparte porque la fixture del
+// historial es una función del id de conversación: el chat de código y el de
+// una base muestran cosas distintas, y fotografiar las dos con el mismo texto
+// no probaría nada.
+const chatCodeTurns = [
+    {role: 'user', text: '¿Por qué falla el login de SGCPRO?', tools: []},
+    {
+        role: 'agent',
+        text: '## Qué encontré\n\nEl problema está en la **validación del token**: expira antes de que se renueve la sesión.\n\n- `accounts_controller.rb` valida contra `Time.now` sin margen\n- El refresh corre en un job que puede demorar hasta 30s\n\n> Con la carga de producción esa ventana se abre en casi todos los logins.\n\n```ruby\nreturn if token.expires_at > Time.now + GRACE\n```\n\nSi te parece, lo cambio y agrego el test.',
+        tools: [{name: 'Read', input: '{"file_path":"app/controllers/api/v1/accounts_controller.rb"}', summary: 'app/controllers/api/v1/accounts_controller.rb', detail: ''}],
+    },
+]
+
+const chatDbTurns = [
+    {role: 'user', text: 'mejorá esta query', tools: []},
+    {
+        role: 'agent',
+        text: [
+            'Traer la tabla entera con `SELECT *` consume ancho de banda que no vas a usar, impide que el motor resuelva por índice cubriente y rompe la aplicación si mañana cambia el orden de las columnas.',
+            '',
+            '### 1. Pedí solo lo que mostrás',
+            '',
+            '```sql',
+            'SELECT id,',
+            '       name,',
+            '       email,',
+            '       phone_number,',
+            '       created_at',
+            'FROM contacts',
+            'ORDER BY id',
+            'LIMIT 50;',
+            '```',
+            '',
+            '### 2. Filtrá por estado',
+            '',
+            'Rara vez necesitás los dados de baja. Si la tabla maneja borrado lógico:',
+            '',
+            '```sql',
+            'SELECT id, name, email',
+            'FROM contacts',
+            'WHERE deleted_at IS NULL',
+            'ORDER BY name',
+            'LIMIT 100;',
+            '```',
+            '',
+            'El `ORDER BY` no es un adorno: sin él, dos ejecuciones con `LIMIT` pueden devolver filas distintas.',
+        ].join('\n'),
+        tools: [],
+    },
+]
+
 const fixtures: Record<string, unknown> = {
     GitListWorkTree: {files: repoFiles, truncated: false},
     GitStatus: {
@@ -113,14 +164,11 @@ const fixtures: Record<string, unknown> = {
         ],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     },
-    AgentChatHistory: [
-        {role: 'user', text: '¿Por qué falla el login de SGCPRO?', tools: []},
-        {
-            role: 'agent',
-            text: '## Qué encontré\n\nEl problema está en la **validación del token**: expira antes de que se renueve la sesión.\n\n- `accounts_controller.rb` valida contra `Time.now` sin margen\n- El refresh corre en un job que puede demorar hasta 30s\n\n> Con la carga de producción esa ventana se abre en casi todos los logins.\n\n```ruby\nreturn if token.expires_at > Time.now + GRACE\n```\n\nSi te parece, lo cambio y agrego el test.',
-            tools: [{name: 'Read', input: '{"file_path":"app/controllers/api/v1/accounts_controller.rb"}', summary: 'app/controllers/api/v1/accounts_controller.rb', detail: ''}],
-        },
-    ],
+    // Dos historiales: el de código (pestaña Git) y el de una BASE, que es
+    // donde se ve lo nuevo — la consulta adjunta y la barra de cada bloque de
+    // SQL con "Al editor".
+    AgentChatHistory: (_agentID: string, conversationID: string) =>
+        conversationID === 'conv-db' ? chatDbTurns : chatCodeTurns,
     GitAgentContext: {
         skills: [{name: 'chatwoot-dev', description: 'Chatwoot full-stack development workflow. Use when: creating a new feature, adding an API endpoint.', path: '.claude/skills/chatwoot-dev/SKILL.md', scope: 'repo'}],
         agents: [],
@@ -267,6 +315,126 @@ const fixtures: Record<string, unknown> = {
     ListRecentFiles: [],
     ListSchemas: ['SGCPRO', 'PUBLIC'],
     GetSchemaMetadata: {tables: [], views: [], routines: []},
+    // --- Notas (base de conocimiento cifrada) -----------------------------
+    //
+    // El texto es un runbook creíble y sin datos de nadie: lo que hay que
+    // fotografiar es cómo se ve el Markdown formateado mientras se escribe,
+    // los enlaces entre notas y el panel lateral.
+    GetNote: {
+        id: 'n1',
+        title: 'Runbook · caída del pool de conexiones',
+        content: [
+            '# Síntoma',
+            '',
+            'La API responde 502 y el log del servicio repite `ORA-12519` cada pocos',
+            'segundos. Ver [[Inventario de entornos]] para saber a qué host mirar.',
+            '',
+            '> [!WARNING]',
+            '> Antes de reiniciar nada, sacá el estado del pool: reiniciar borra la',
+            '> evidencia y el problema vuelve a la hora.',
+            '',
+            '## 1. Confirmar que el pool está lleno',
+            '',
+            '```sql connection="SGCPRO"',
+            'SELECT resource_name, current_utilization, max_utilization, limit_value',
+            'FROM v$resource_limit',
+            "WHERE resource_name IN ('processes', 'sessions');",
+            '```',
+            '',
+            '## 2. Quién las tiene tomadas',
+            '',
+            'Si `current_utilization` está pegado al límite, casi siempre es **una sola',
+            'aplicación** que no devuelve las conexiones. El detalle en',
+            '[[Procedimiento de sesiones colgadas]].',
+            '',
+            '#produccion #oracle',
+        ].join('\n'),
+        frontmatter: '',
+        isPrivate: false,
+        corrupt: false,
+        folderId: '',
+        createdAt: 1786400000,
+        updatedAt: 1786741440,
+    },
+    NoteLinks: [
+        {targetHash: 'h1', targetId: 'n2', title: 'Inventario de entornos', isPrivate: false},
+        {targetHash: 'h2', targetId: 'n3', title: 'Procedimiento de sesiones colgadas', isPrivate: false},
+    ],
+    NoteBacklinks: [{targetHash: 'h9', targetId: 'n4', title: 'Guardia · qué mirar primero', isPrivate: false}],
+    NoteStatsFor: {backlinks: 1, words: 128, chars: 812},
+    NoteTitles: [
+        {id: 'n2', title: 'Inventario de entornos', isPrivate: false},
+        {id: 'n3', title: 'Procedimiento de sesiones colgadas', isPrivate: false},
+        {id: 'n4', title: 'Guardia · qué mirar primero', isPrivate: false},
+        {id: 'n5', title: 'Credenciales de laboratorio', isPrivate: true},
+    ],
+    NoteTags: [
+        {tag: '#produccion', count: 6},
+        {tag: '#oracle', count: 4},
+    ],
+    NotesGraph: {
+        nodes: [
+            {id: 'n1', title: 'Runbook · caída del pool de conexiones', isPrivate: false, degree: 3},
+            {id: 'n2', title: 'Inventario de entornos', isPrivate: false, degree: 2},
+            {id: 'n3', title: 'Procedimiento de sesiones colgadas', isPrivate: false, degree: 2},
+            {id: 'n4', title: 'Guardia · qué mirar primero', isPrivate: false, degree: 2},
+            {id: 'n5', title: 'Credenciales de laboratorio', isPrivate: true, degree: 1},
+            {id: 'n6', title: 'Postmortem 2026-07-30', isPrivate: false, degree: 1},
+        ],
+        edges: [
+            {source: 'n4', target: 'n1'},
+            {source: 'n1', target: 'n2'},
+            {source: 'n1', target: 'n3'},
+            {source: 'n3', target: 'n2'},
+            {source: 'n6', target: 'n1'},
+            {source: 'n4', target: 'n5'},
+        ],
+        brokenLinks: 2,
+        selfLinks: 0,
+    },
+    SearchNotesSmart: [],
+
+    // --- Grilla editable ---------------------------------------------------
+    ResultEditTarget: {
+        editable: true,
+        table: '"public"."contacts"',
+        keyCols: ['id'],
+        reason: '',
+        columns: [
+            {name: 'id', dataType: 'int4', nullable: false, isKey: true, kind: 'number', editable: false},
+            {name: 'name', dataType: 'varchar', nullable: true, isKey: false, kind: 'text', editable: true},
+            {name: 'email', dataType: 'varchar', nullable: true, isKey: false, kind: 'text', editable: true},
+            {name: 'phone_number', dataType: 'varchar', nullable: true, isKey: false, kind: 'text', editable: true},
+            {name: 'account_id', dataType: 'int8', nullable: true, isKey: false, kind: 'number', editable: true},
+            {name: 'created_at', dataType: 'timestamp', nullable: true, isKey: false, kind: 'datetime', editable: true},
+        ],
+    },
+    PreviewRowEdits: [`UPDATE "public"."contacts" SET "name" = 'white-sound-2467' WHERE "id" = 4`],
+
+    // --- Consumo global (el botón del chat) --------------------------------
+    AgentUsageAll: {
+        days: 30,
+        agents: [
+            {agent: 'claude', available: true, note: '', source: '', all: {input: 37210, output: 8646915, cacheWrite: 60985113, cacheRead: 3604530546, total: 3674199784, messages: 9309}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '2026-07-15', lastDay: '2026-08-14', byModel: [{key: 'claude-opus-5', total: 2055073573, percent: 60.1, messages: 5119}, {key: 'claude-opus-4-8', total: 834401643, percent: 21.5, messages: 1789}, {key: 'claude-haiku-4-5', total: 384744568, percent: 18.4, messages: 2401}], byDay: [], cacheHitPercent: 98.4, activity: null},
+            {agent: 'codex', available: true, note: '', source: '', all: {input: 412300, output: 1204880, cacheWrite: 0, cacheRead: 8221400, total: 9838580, messages: 412}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '2026-07-28', lastDay: '2026-08-15', byModel: [{key: 'gpt-5-codex', total: 9838580, percent: 100, messages: 412}], byDay: [], cacheHitPercent: 83.5, activity: null},
+            {agent: 'antigravity', available: false, note: 'El CLI no deja los tokens en disco: se muestra la actividad registrada.', source: '~/.gemini', all: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '', lastDay: '', byModel: [], byDay: [], cacheHitPercent: 0, activity: {conversations: 34, steps: 291, repoConversations: 0, repoSteps: 0, lastUsed: 'hace 2 h'}},
+        ],
+    },
+
+    // --- Servidor MCP ------------------------------------------------------
+    MCPServerStatus: {
+        enabled: true,
+        socketPath: '/Users/tu-usuario/Library/Application Support/mini-tools/mcp.sock',
+        tools: 7,
+        executable: '/Applications/mini-tools.app/Contents/MacOS/mini-tools',
+        audit: [
+            {tool: 'vault_search_notes', resource: 'pool de conexiones', denied: false, at: 1786741380},
+            {tool: 'db_get_schema', resource: 'SGCPRO.FACTURAS', denied: false, at: 1786741260},
+            {tool: 'vault_read_note', resource: 'Credenciales de laboratorio', denied: true, at: 1786741100},
+            {tool: 'ssh_get_recent_logs', resource: 'sgc-app-01', denied: false, at: 1786740980},
+        ],
+    },
+
     QueryHistory: [],
 }
 
@@ -317,6 +485,11 @@ const {default: AgentChat} = await import('./components/agent/AgentChat')
 const {default: GitRepoTab} = await import('./components/git/GitRepoTab')
 const {default: Workspace} = await import('./components/Workspace')
 const {default: RedisBrowserTab} = await import('./components/redis/RedisBrowserTab')
+const {default: NoteEditorTab} = await import('./components/notes/NoteEditorTab')
+const {default: NotesGraphView} = await import('./components/notes/NotesGraphView')
+const {default: ResultGrid} = await import('./components/results/ResultGrid')
+const {default: AgentUsagePanel} = await import('./components/agent/AgentUsagePanel')
+const {default: AiAccessPanel} = await import('./components/AiAccessPanel')
 
 // --- Vistas ---------------------------------------------------------------
 
@@ -349,6 +522,36 @@ const views_chat = (
     />
 )
 
+// El mismo chat pero abierto sobre una CONEXIÓN, con la consulta del editor
+// adjunta y con destino para insertar: es lo que hace aparecer la barra de cada
+// bloque de código ("Al editor" / "Copiar"), que es lo nuevo que hay que
+// mostrar.
+const views_chatdb = (
+    <AgentChat
+        sessionId="chat-db"
+        context={{kind: 'db', id: 'c1', label: 'chatwoot_dev'}}
+        agentId="claude"
+        agentLabel="Claude Code"
+        resumeConversationId="conv-db"
+        working={{label: 'Consulta del editor', text: 'SELECT * FROM contacts;', language: 'sql'}}
+        insertLabel="Inserta el bloque en el editor, donde está el cursor"
+        onInsertText={() => {}}
+    />
+)
+
+// Las filas de la grilla editable. Son las mismas columnas que declara la
+// fixture de ResultEditTarget: si no coincidieran, la captura mostraría una
+// grilla que la app real no permitiría editar.
+const gridColumns = ['id', 'name', 'email', 'phone_number', 'account_id', 'created_at']
+const gridRows: unknown[][] = [
+    [1, 'jane', 'jane@example.com', '+2320000', 1, '2026-06-24 22:41:03.893239'],
+    [3, 'polished-rain-974', null, null, 2, '2026-06-24 22:48:01.016058'],
+    [4, 'white-sound-246', null, null, 2, '2026-06-24 22:48:02.462428'],
+    [5, 'prueba', 'prueba9@prueba9.com', null, 2, '2026-07-02 18:10:26.673483'],
+    [865, 'rafa', null, '+50588842174', 2, '2026-07-30 13:41:37.617379'],
+    [2, 'rafael', 'rafael@prueba.com', null, 1, '2026-08-15 00:00:00.000000'],
+]
+
 const views: Record<string, React.ReactNode> = {
     // El módulo de base de datos entero: sidebar de conexiones, editor SQL y
     // resultados. Es el otro producto que vive en esta app.
@@ -378,6 +581,52 @@ const views: Record<string, React.ReactNode> = {
     redis: <RedisBrowserTab connId="c3" initialKey="cart:u:1042" initialKeyToken={1} />,
     agents: <GitAgentPanel repoId="r1" onOpenFile={() => {}} onAskAgent={() => {}} defaultAgent="" onSetDefaultAgent={() => {}} />,
     chat: views_chat,
+    chatdb: views_chatdb,
+    // La base de conocimiento: el editor con el Markdown ya formateado, la
+    // barra de formato, los enlaces entre notas y el panel lateral.
+    notes: (
+        <NoteEditorTab
+            noteId="n1"
+            editorThemeId="auto"
+            appTheme="dark"
+            onOpenNote={() => {}}
+            onCreateNote={() => {}}
+            onClosed={() => {}}
+            onChanged={() => {}}
+        />
+    ),
+    notespreview: (
+        <NoteEditorTab
+            noteId="n1"
+            editorThemeId="auto"
+            appTheme="dark"
+            onOpenNote={() => {}}
+            onCreateNote={() => {}}
+            onClosed={() => {}}
+            onChanged={() => {}}
+        />
+    ),
+    notesgraph: <NotesGraphView onOpenNote={() => {}} onClose={() => {}} activeNoteId="n1" />,
+    // La grilla con la conexión y la consulta: es lo que la habilita a editar.
+    gridedit: (
+        <div className="flex h-full flex-col">
+            <ResultGrid columns={gridColumns} rows={gridRows} connId="c1" sqlText="select * from contacts;" />
+        </div>
+    ),
+    usage: (
+        <div className="w-[420px]">
+            <AgentUsagePanel
+                agentLabel={(id) => ({claude: 'Claude Code', codex: 'Codex CLI', antigravity: 'Antigravity CLI'})[id] ?? id}
+                session={{total: 15900, output: 974, cost: 0.0412}}
+                onClose={() => {}}
+            />
+        </div>
+    ),
+    mcp: (
+        <div className="w-[420px] p-3">
+            <AiAccessPanel />
+        </div>
+    ),
     // Mismo componente: lo que cambia es que el harness le manda un mensaje,
     // que es la única forma de que exista un turno en curso que fotografiar.
     thinking: views_chat,
@@ -442,6 +691,41 @@ if (view === 'redis') {
     // llegar desde otra pestaña, pero lo que hay que fotografiar es el panel
     // de detalle con un valor cargado.
     autoClick(() => [...document.querySelectorAll('button, div[role="button"], span')].find((e) => e.textContent?.trim() === 'cart:u:1042') as HTMLElement | undefined)
+}
+if (view === 'notes') {
+    // El cursor arranca en la línea 1, y en la línea del cursor la vista en
+    // vivo muestra las marcas —es lo correcto para editar, pero para la foto
+    // conviene ver el documento formateado de punta a punta. Se mueve el
+    // cursor al final haciendo clic abajo de todo, como haría una persona.
+    setTimeout(() => {
+        const lines = [...document.querySelectorAll('.cm-line')]
+        ;(lines[lines.length - 1] as HTMLElement | undefined)?.click()
+    }, 1200)
+}
+if (view === 'notespreview') {
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Ver la nota renderizada')))
+}
+if (view === 'mcp') {
+    // El tutorial viene plegado: se abre, que es justamente lo que hay que
+    // fotografiar.
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Los pasos exactos')))
+}
+if (view === 'gridedit') {
+    // Se edita una celda de verdad, como lo haría una persona: doble clic,
+    // escribir, y confirmar. Así la captura muestra el estado que importa —la
+    // barra de cambios pendientes— y no una grilla cualquiera.
+    setTimeout(() => {
+        const cell = [...document.querySelectorAll('td')].find((td) => td.textContent?.trim() === 'white-sound-246')
+        cell?.dispatchEvent(new MouseEvent('dblclick', {bubbles: true}))
+        setTimeout(() => {
+            const input = document.querySelector('td input') as HTMLInputElement | null
+            if (!input) return
+            const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+            set?.call(input, 'white-sound-2467')
+            input.dispatchEvent(new Event('input', {bubbles: true}))
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))
+        }, 250)
+    }, 900)
 }
 if (view === 'chatmode') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Chat · Claude Code')))

@@ -4,6 +4,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-15
+
+
 ### Agregado
 
 - **Editar el resultado y que la app escriba el UPDATE**, como en DataGrip. Doble clic en una celda, se corrige el dato, y el cambio queda **pendiente y marcado** hasta que lo mandás con el botón o con `Cmd`/`Ctrl + Enter`. Esa demora es a propósito: permite ver el SQL exacto antes, cambiar de opinión, y mandar varios cambios juntos.
@@ -183,6 +186,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
   Las de la app y las que ya existían en el CLI se muestran juntas, porque para quien mira son lo mismo, pero con **icono distinto**: la nube marca las que vienen de afuera y el tooltip lo dice. Esas no ofrecen renombrar ni borrar hasta que se abren, porque hasta ese momento no hay una entrada de la app que renombrar — abrirlas la crea.
 - **Los títulos empezaban con `[Image #1] [Image #2]`.** Una conversación que arrancó con un par de capturas pegadas se titulaba con los marcadores del adjunto, y los primeros caracteres —los únicos que se ven cuando la fila se corta— eran justamente los que no distinguen una conversación de otra. Ahora se les sacan esos marcadores y los de la propia herramienta (`[Request interrupted by user]`, `[Pasted text …]`). Si al sacarlos el mensaje queda vacío se sigue buscando en el siguiente, en vez de descartar la conversación y dejarla fuera de la lista.
+
+### Agregado
+
+- **Consumo y plan desde el chat**, no solo desde el módulo Git: un botón en la cabecera del panel con lo gastado en esta conversación arriba y, debajo, cada CLI de los últimos 30 días con su plan al lado, el reparto por modelo y el porcentaje de caché.
+- **Capturas nuevas del README** para todo lo que trae esta versión: el editor de notas y su vista renderizada, el grafo de conocimiento, la grilla editable, el chat sobre una base con los bloques de SQL, el panel de consumo y el instructivo del servidor MCP. Salen del banco de capturas (`./scripts/uishot.sh`), con datos inventados: no hay rutas, hosts ni credenciales de nadie.
+
+### Corregido
+
+- **La vista previa de Markdown junta las líneas de un párrafo.** Un texto escrito con márgenes de 80 columnas se veía partido en cinco bloques con aire entre medio, y —peor— **el formato que cruzaba el salto de línea no se aplicaba**: una negrita abierta en una línea y cerrada en la siguiente quedaba con los asteriscos a la vista. En Markdown un salto simple no separa párrafos; ahora se respeta eso, y el salto "duro" de dos espacios al final de la línea se sigue respetando.
 
 ## [1.3.1] - 2026-08-14
 

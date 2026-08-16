@@ -251,11 +251,19 @@ export default function MarkdownPreview({
                         <Icon name={style.icon} size={13} filled />
                         {callout[1].toUpperCase() === kind && CALLOUT_STYLES[kind] ? style.label : callout[1]}
                     </p>
-                    {buf.map((l, n) => (
-                        <p key={n} className="text-on-surface">
-                            {inline(l, `co-${blocks.length}-${n}`, onWikiLink)}
-                        </p>
-                    ))}
+                    {/* Mismo criterio que un párrafo normal: las líneas
+                        seguidas son UN párrafo, y una línea en blanco los
+                        separa. Renglón por renglón, una caja de tres líneas se
+                        veía como tres párrafos sueltos. */}
+                    {buf
+                        .join('\n')
+                        .split(/\n\s*\n/)
+                        .filter((p2) => p2.trim())
+                        .map((p2, n) => (
+                            <p key={n} className="text-on-surface">
+                                {inline(p2.split('\n').map((l) => l.trim()).join(' '), `co-${blocks.length}-${n}`, onWikiLink)}
+                            </p>
+                        ))}
                 </div>,
             )
             continue
@@ -309,13 +317,40 @@ export default function MarkdownPreview({
             continue
         }
 
+        // Párrafo: se juntan las líneas seguidas en UNA.
+        //
+        // No es un detalle de estilo. En Markdown un salto de línea simple no
+        // separa párrafos —hay que dejar una línea en blanco—, así que un
+        // texto escrito con márgenes de 80 columnas se veía partido en cinco
+        // bloques con aire entre medio. Peor: **el formato que cruzaba el
+        // salto no se aplicaba**, porque cada línea se interpretaba sola, y
+        // una negrita abierta en una línea y cerrada en la siguiente quedaba
+        // con los asteriscos a la vista.
         flushList()
+        const para: string[] = []
+        while (
+            i < lines.length &&
+            lines[i].trim() !== '' &&
+            !lines[i].trimStart().startsWith('```') &&
+            !/^\s*>/.test(lines[i]) &&
+            !/^(#{1,6})\s+/.test(lines[i]) &&
+            !/^\s*[-*+]\s+/.test(lines[i]) &&
+            !/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i])
+        ) {
+            para.push(lines[i])
+            i++
+        }
+        // Un salto “duro” de Markdown son dos espacios al final de la línea:
+        // eso sí separa renglones y se respeta.
+        const text = para
+            .map((l, n) => (l.endsWith('  ') && n < para.length - 1 ? l.trimEnd() + '\n' : l.trim()))
+            .join(' ')
+            .replace(/\n /g, '\n')
         blocks.push(
             <p key={`p-${blocks.length}`} className="my-1 whitespace-pre-wrap break-words text-on-surface-variant">
-                {inline(line, `p-${blocks.length}`, onWikiLink)}
+                {inline(text, `p-${blocks.length}`, onWikiLink)}
             </p>,
         )
-        i++
     }
     flushList()
 
