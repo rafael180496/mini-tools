@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -156,7 +157,12 @@ func claudeFirstPrompt(path string) string {
 		if text == "" || strings.HasPrefix(text, "<") {
 			continue
 		}
-		return trimTitle(text)
+		// Puede quedar vacío después de sacarle los marcadores —una
+		// conversación que arranca solo con capturas pegadas—; ahí se sigue
+		// buscando en vez de descartarla, que la dejaría fuera de la lista.
+		if title := trimTitle(text); title != "" {
+			return title
+		}
 	}
 	return ""
 }
@@ -226,7 +232,16 @@ func sortByRecency(cs []Conversation) {
 	sort.SliceStable(cs, func(i, j int) bool { return cs[i].UpdatedAt > cs[j].UpdatedAt })
 }
 
+// noiseInTitle son los marcadores que los CLIs meten en el texto del mensaje
+// y que no dicen nada como título: los adjuntos y los avisos de la propia
+// herramienta. Una conversación que arranca con dos capturas pegadas se
+// titulaba "[Image #1] [Image #2] en el git hay un botón…", y los primeros
+// caracteres —los que se ven cuando la fila se corta— eran justamente los que
+// no distinguen una conversación de otra.
+var noiseInTitle = regexp.MustCompile(`\[(Image|Imagen|Screenshot|Captura|Pasted [^\]]*|Request interrupted[^\]]*)[^\]]*\]`)
+
 func trimTitle(s string) string {
+	s = noiseInTitle.ReplaceAllString(s, " ")
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) <= titleLimit {
 		return s

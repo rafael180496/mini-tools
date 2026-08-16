@@ -41,18 +41,37 @@ import './styles/globals.css'
 // banco no simula se dibuja vacío en vez de romper la captura entera, y ese
 // vacío es en sí mismo una señal de que falta un dato.
 
+// El árbol del propio repositorio: las capturas se comparan contra la app
+// real, y un árbol inventado hace que cualquier diferencia de disposición
+// parezca un cambio de la app en vez de del banco de datos.
 const repoFiles = [
-    'CLAUDE.md',
-    'AGENTS.md',
-    'README.md',
-    'app/javascript/dashboard/App.vue',
-    'app/javascript/dashboard/routes/index.js',
-    'app/models/conversation.rb',
-    'app/controllers/api/v1/accounts_controller.rb',
-    'backend/git/files.go',
+    '.claude/rules/technical.md',
+    '.claude/specs/architecture.md',
+    '.codegraph/config.toml',
     'backend/agentchat/session.go',
-    'config/routes.rb',
-    'spec/models/conversation_spec.rb',
+    'backend/agentchat/conversations.go',
+    'backend/agents/registry.go',
+    'backend/git/files.go',
+    'build/darwin/Info.plist',
+    'docs/screenshots/ui-history.png',
+    'frontend/src/components/git/GitRepoTab.tsx',
+    'frontend/src/components/git/AgentChat.tsx',
+    'frontend/src/uishot.tsx',
+    'releases/macos/README.md',
+    'scripts/package-all.sh',
+    '.gitignore',
+    'app_git.go',
+    'app_localterm.go',
+    'app.go',
+    'CHANGELOG.md',
+    'CLAUDE.md',
+    'go.mod',
+    'go.sum',
+    'LICENSE',
+    'main.go',
+    'README.md',
+    'VERSION',
+    'wails.json',
 ]
 
 const fixtures: Record<string, unknown> = {
@@ -65,15 +84,16 @@ const fixtures: Record<string, unknown> = {
         detached: false,
         hasChanges: true,
         files: [
-            {path: 'backend/git/files.go', origPath: '', indexStatus: 'M', workStatus: '', staged: true, untracked: false},
-            {path: 'app/models/conversation.rb', origPath: '', indexStatus: '', workStatus: 'M', staged: false, untracked: false},
-            {path: 'CLAUDE.md', origPath: '', indexStatus: '', workStatus: '?', staged: false, untracked: true},
+            {path: 'backend/agentchat/conversations.go', origPath: '', indexStatus: 'A', workStatus: '', staged: true, untracked: false},
+            {path: 'frontend/src/components/git/GitRepoTab.tsx', origPath: '', indexStatus: '', workStatus: 'M', staged: false, untracked: false},
+            {path: 'CHANGELOG.md', origPath: '', indexStatus: '', workStatus: 'M', staged: false, untracked: false},
+            {path: 'README.md', origPath: '', indexStatus: '', workStatus: 'M', staged: false, untracked: false},
         ],
     },
     GitReadWorkFile: {
-        path: 'CLAUDE.md',
-        content: '# Chatwoot Clone — Claude Instructions\n\n## CodeGraph Sync\n\n`.codegraph/` indexa este repo.\n\n## Estilo\n\n- **Español** para specs y commits.\n- Identificadores en inglés.\n\n| Nivel | Qué cambia |\n|---|---|\n| lite | Sin relleno |\n| ultra | Abreviado |\n',
-        size: 240,
+        path: 'app_git.go',
+        content: 'package main\n\nimport (\n\t"fmt"\n\t"strings"\n\n\t"github.com/wailsapp/wails/v2/pkg/runtime"\n\n\t"mini-tools/backend/git"\n\t"mini-tools/backend/vault"\n)\n\n// Git module bindings.\n//\n// These live in their own file rather than inside app.go\'s ~2500 lines purely\n// for readability — Wails binds every exported method on *App regardless of\n// which file declares it.\n//\n// gitRepo resolves an opaque repository ID to its on-disk path, after the gate\n// check. Every operation below funnels through it.\nfunc (a *App) gitRepo(repoID string) (string, error) {\n\tif err := a.requireUnlocked(); err != nil {\n\t\treturn "", err\n\t}\n\trepo, err := a.vault.GetGitRepo(repoID)\n\tif err != nil {\n\t\treturn "", err\n\t}\n\treturn repo.Path, nil\n}\n',
+        size: 640,
         modTimeUnix: 1786741440,
         binary: false,
         tooLarge: false,
@@ -132,31 +152,57 @@ const fixtures: Record<string, unknown> = {
         {agent: 'codex', known: true, label: 'Free', detail: 'chatgpt', note: ''},
     ],
     ListAgentChats: [
-        {id: 'chat-1', repoId: 'r1', agentId: 'claude', title: 'Login SGCPRO', conversationId: 'conv-1', createdAt: 1786700000, updatedAt: 1786741440, model: 'opus', effort: 'high', mode: ''},
+        {id: 'chat-1', repoId: 'r1', agentId: 'claude', title: 'Potenciar el editor Git con CodeMirror y agentes', conversationId: 'conv-1', createdAt: 1786700000, updatedAt: 1786741440, model: 'opus', effort: 'high', mode: ''},
+        {id: 'chat-2', repoId: 'r1', agentId: 'claude', title: 'Investigar la anomalía AT355 en facturación', conversationId: 'conv-2', createdAt: 1786600000, updatedAt: 1786665000, model: 'opus', effort: 'high', mode: ''},
+        {id: 'chat-3', repoId: 'r1', agentId: 'codex', title: 'Corregir el autocompletado SQL de esquemas y tablas', conversationId: 'conv-3', createdAt: 1786500000, updatedAt: 1786579000, model: '', effort: '', mode: ''},
+        {id: 'chat-4', repoId: 'r1', agentId: 'claude', title: 'Procedimiento de limpieza de facturas duplicadas', conversationId: 'conv-4', createdAt: 1786400000, updatedAt: 1786492000, model: '', effort: '', mode: ''},
+        {id: 'chat-5', repoId: 'r1', agentId: 'antigravity', title: 'Diseñar el autocompletado SQL con contexto', conversationId: 'conv-5', createdAt: 1785500000, updatedAt: 1785542000, model: '', effort: '', mode: ''},
+        {id: 'chat-6', repoId: 'r1', agentId: 'codex', title: 'Configurar git push upstream en la rama de feature', conversationId: 'conv-6', createdAt: 1785200000, updatedAt: 1785282000, model: '', effort: '', mode: ''},
     ],
-    GitRepoWorkspace: {openFiles: ['CLAUDE.md'], defaultAgent: ''},
+    GitRepoWorkspace: {openFiles: ['app_git.go'], defaultAgent: ''},
     GitProbe: {available: true, version: '2.45.0', path: '/usr/bin/git', error: ''},
     GitBranches: [
-        {name: 'develop', current: true, remote: false, upstream: 'origin/develop', ahead: 2, behind: 0, hash: 'a1b2c3d', subject: 'feat: panel de agentes'},
-        {name: 'feature/login-fix', current: false, remote: false, upstream: '', ahead: 0, behind: 0, hash: 'e4f5a6b', subject: 'fix: token'},
-        {name: 'origin/develop', current: false, remote: true, upstream: '', ahead: 0, behind: 0, hash: 'a1b2c3d', subject: ''},
-        {name: 'origin/main', current: false, remote: true, upstream: '', ahead: 0, behind: 0, hash: 'c7d8e9f', subject: ''},
+        {name: 'develop', current: true, remote: false, upstream: 'origin/develop', ahead: 8, behind: 0, hash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release'},
+        {name: 'main', current: false, remote: false, upstream: 'origin/main', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
+        {name: 'origin/develop', current: false, remote: true, upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
+        {name: 'origin/main', current: false, remote: true, upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
     ],
     GitTags: [
-        {name: 'v1.2.0', hash: 'a1b2c3d', message: '', date: '2026-08-01'},
-        {name: 'v1.1.0', hash: 'c7d8e9f', message: '', date: '2026-07-10'},
+        {name: 'v1.3.1', hash: '76d8575', message: '', date: '2026-08-15'},
+        {name: 'v1.3.0', hash: '7334bc1', message: '', date: '2026-08-14'},
+        {name: 'v1.2.0', hash: '3b24744', message: '', date: '2026-08-11'},
+        {name: 'v1.1.0', hash: '3ffd8cf', message: '', date: '2026-08-03'},
+        {name: 'v1.0.0', hash: '8e0d0e1', message: '', date: '2026-07-30'},
+        {name: 'v0.5.2', hash: '847a366', message: '', date: '2026-07-23'},
+        {name: 'v0.5.1', hash: 'fe25341', message: '', date: '2026-07-22'},
+        {name: 'v0.4.0', hash: '83d5c41', message: '', date: '2026-07-22'},
+        {name: 'v0.3.0', hash: '65da206', message: '', date: '2026-07-20'},
     ],
-    GitRemotes: [{name: 'origin', fetchUrl: 'git@github.com:ejemplo/chatwoot-clone.git', pushUrl: ''}],
+    GitRemotes: [{name: 'origin', fetchUrl: 'git@github.com:rafael180496/mini-tools.git', pushUrl: ''}],
     GitStashes: [],
     GitLog: [
-        {hash: 'a1b2c3d4e5f6', shortHash: 'a1b2c3d', subject: 'feat: panel de agentes con consumo y MCP', author: 'Dev', email: '', date: '2026-08-14', parents: ['c7d8e9f'], refs: ['develop']},
-        {hash: 'c7d8e9f0a1b2', shortHash: 'c7d8e9f', subject: 'fix: validación del token de sesión', author: 'Dev', email: '', date: '2026-08-13', parents: [], refs: []},
+        {hash: '76d8575000000000000000000000000000000000', shortHash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-15', body: '', parents: ['7334bc1000000000000000000000000000000000'], branches: ['develop', 'main', 'origin/develop', 'origin/main', 'origin/HEAD'], tags: ['v1.3.1'], isHead: true, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '7334bc1000000000000000000000000000000000', shortHash: '7334bc1', subject: 'feat: Add agent chat functionalities and models', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-14', body: '', parents: ['74e1525000000000000000000000000000000000'], branches: [], tags: ['v1.3.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '74e1525000000000000000000000000000000000', shortHash: '74e1525', subject: 'feat: agregar confirmación antes de ejecutar sentencias destructivas en bases de datos marcadas como Producción', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-13', body: '', parents: ['3230ced000000000000000000000000000000000'], branches: [], tags: [], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '3230ced000000000000000000000000000000000', shortHash: '3230ced', subject: 'feat: agregar funcionalidad para revelar contraseñas guardadas en conexiones, incluyendo controles para ver, copiar y editar', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-13', body: '', parents: ['3b24744000000000000000000000000000000000'], branches: [], tags: [], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '3b24744000000000000000000000000000000000', shortHash: '3b24744', subject: 'feat: add SQL script parsing for CREATE TABLE/VIEW and CTEs', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-11', body: '', parents: ['e2b214c000000000000000000000000000000000'], branches: [], tags: ['v1.2.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: 'e2b214c000000000000000000000000000000000', shortHash: 'e2b214c', subject: 'feat: eliminar versiones antiguas de archivos binarios para macOS y Windows', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-03', body: '', parents: ['3ffd8cf000000000000000000000000000000000'], branches: [], tags: [], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '3ffd8cf000000000000000000000000000000000', shortHash: '3ffd8cf', subject: 'feat: add terminal font size limits and default values', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-03', body: '', parents: ['8e0d0e1000000000000000000000000000000000'], branches: [], tags: ['v1.1.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '8e0d0e1000000000000000000000000000000000', shortHash: '8e0d0e1', subject: 'feat: Add new data models for MongoDB and Redis, including field info and server stats', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-30', body: '', parents: ['847a366000000000000000000000000000000000'], branches: [], tags: ['v1.0.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '847a366000000000000000000000000000000000', shortHash: '847a366', subject: 'feat: enhance commit graph and repository management features', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-23', body: '', parents: ['fe25341000000000000000000000000000000000'], branches: [], tags: ['v0.5.2'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: 'fe25341000000000000000000000000000000000', shortHash: 'fe25341', subject: 'feat: add SQLCipher support for SQLite connections', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-22', body: '', parents: ['0549112000000000000000000000000000000000'], branches: [], tags: ['v0.5.1'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '0549112000000000000000000000000000000000', shortHash: '0549112', subject: 'Refactor code structure for improved readability and maintainability', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-22', body: '', parents: ['39f3b92000000000000000000000000000000000'], branches: [], tags: [], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '39f3b92000000000000000000000000000000000', shortHash: '39f3b92', subject: 'feat: actualizar a la versión 0.5.0 con nuevas funcionalidades y correcciones', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-22', body: '', parents: ['16fa5c0000000000000000000000000000000000'], branches: [], tags: ['v0.5.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '16fa5c0000000000000000000000000000000000', shortHash: '16fa5c0', subject: 'feat(git): add prompt dialog and split diff functionality', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-22', body: '', parents: ['9cb3da9000000000000000000000000000000000'], branches: [], tags: [], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '9cb3da9000000000000000000000000000000000', shortHash: '9cb3da9', subject: 'feat: actualizar el tamaño objetivo del binario a <80MB y ajustar documentación relacionada', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-22', body: '', parents: ['83d5c41000000000000000000000000000000000'], branches: [], tags: [], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '83d5c41000000000000000000000000000000000', shortHash: '83d5c41', subject: 'Update macOS and Windows releases to version 0.4.0', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-22', body: '', parents: ['65da206000000000000000000000000000000000'], branches: [], tags: ['v0.4.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
+        {hash: '65da206000000000000000000000000000000000', shortHash: '65da206', subject: 'feat: implement automatic backup feature with scheduler', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-20', body: '', parents: [], branches: [], tags: ['v0.3.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
     ],
     GitInProgress: '',
-    GitForgeInfo: {provider: 'github', webUrl: 'https://github.com/ejemplo/chatwoot-clone', compareUrl: 'https://github.com/ejemplo/chatwoot-clone/compare/develop'},
+    GitForgeInfo: {provider: 'github', webUrl: 'https://github.com/rafael180496/mini-tools', compareUrl: 'https://github.com/rafael180496/mini-tools/compare/develop'},
     GitCommandLog: [],
     GitWorktrees: [],
-    GetSettings: {gitSideWidth: 260, gitDiffWidth: 420, gitPanelDock: 'right', gitPanelSize: 460, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
+    GetSettings: {gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
     // que solo existe con el panel CERRADO — de ahí que la fixture dependa de
     // la vista.
     gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' ? '' : 'agents', gitSideHidden: false, gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
@@ -279,7 +325,7 @@ const {default: RedisBrowserTab} = await import('./components/redis/RedisBrowser
 const views_repo = (
     <GitRepoTab
         repoId="r1"
-        repoName="chatwoot-clone"
+        repoName="mini-tools"
         editorThemeId="auto"
         appTheme="dark"
         terminalThemeId="Dracula"
@@ -309,7 +355,7 @@ const views: Record<string, React.ReactNode> = {
             repoId="r1"
             editorThemeId="auto"
             appTheme="dark"
-            initialFiles={['CLAUDE.md']}
+            initialFiles={['app_git.go']}
             // El estado de git es lo que pinta los indicadores de cambio del
             // árbol: sin pasarlo, la vista se veía bien pero no probaba nada.
             status={fixtures.GitStatus as never}
@@ -322,6 +368,7 @@ const views: Record<string, React.ReactNode> = {
     chatmode: views_repo,
     panelagents: views_repo,
     newmenu: views_repo,
+    history: views_repo,
     redis: <RedisBrowserTab connId="c3" initialKey="cart:u:1042" initialKeyToken={1} />,
     agents: <GitAgentPanel repoId="r1" onOpenFile={() => {}} onAskAgent={() => {}} defaultAgent="" onSetDefaultAgent={() => {}} />,
     chat: views_chat,
@@ -377,6 +424,12 @@ if (view === 'thinking') {
         ta.dispatchEvent(new Event('input', {bubbles: true}))
         return [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Manda el mensaje'))
     })
+}
+if (view === 'history') {
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Modo agente')))
+    setTimeout(() => {
+        autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Todas las conversaciones de este repositorio, por agente')))
+    }, 1200)
 }
 if (view === 'redis') {
     // La key se elige con un clic y no por prop: `initialKey` sirve para

@@ -87,6 +87,7 @@ import Icon from '../Icon'
 import CommitGraph from './CommitGraph'
 import ContextMenu from './ContextMenu'
 import DiffViewer from './DiffViewer'
+import AgentChatHistory, {type ChatHistoryEntry} from './AgentChatHistory'
 import DropdownMenu, {type DropdownHeader, type DropdownItem} from './DropdownMenu'
 import GitSettingsDialog from './GitSettingsDialog'
 import GitConflictResolver from './GitConflictResolver'
@@ -352,9 +353,9 @@ export default function GitRepoTab({
     // compartido haría que cambiar de solapa te moviera la selección de la
     // otra.
     const [activeChatId, setActiveChatId] = useState<string | null>(null)
-    // Qué muestra la solapa Agentes: las conversaciones o el contexto del
-    // repositorio (skills, MCP, consumo).
-    const [agentsView, setAgentsView] = useState<'chats' | 'context'>('context')
+    // Qué muestra la solapa Agentes: la conversación abierta, el contexto del
+    // repositorio (skills, MCP, consumo) o el historial completo.
+    const [agentsView, setAgentsView] = useState<'chats' | 'context' | 'history'>('context')
     // Modo agente: archivos + conversación, sin ramas ni diff. Se recuerda lo
     // que estaba oculto ANTES de entrar, para devolverlo tal cual al salir —
     // salir dejando visible algo que el usuario tenía cerrado sería reordenarle
@@ -970,21 +971,8 @@ export default function GitRepoTab({
         [repoId, sessions, persistLayout, persistSessions, enterAgentMode],
     )
 
-    // chatMenuItems arma el menú del `+`: primero empezar una conversación,
-    // después el historial, **separado y agrupado por agente**.
-    //
-    // Los dos grupos no se intercalan a propósito. Mezclados —"Chat nuevo ·
-    // Claude Code" seguido de "Chat con Claude Code"— las dos filas se leen
-    // casi igual y hay que detenerse a distinguir cuál abre algo nuevo y cuál
-    // retoma algo que ya existe, que es justo la decisión que uno viene a
-    // tomar al abrir este menú.
-    //
-    // Lo usan el `+` de la solapa Agentes y el "Nueva" de Sesiones: tenerlo
-    // dos veces garantizaba que a uno le faltara lo que el otro tenía, que ya
-    // pasó con las conversaciones del CLI.
-    // renameChat abre el mismo diálogo que el clic derecho sobre la solapa de
-    // un chat. Está acá arriba porque ahora lo usan los dos lugares: la
-    // solapa y el historial del menú.
+    // renameChat abre el diálogo de renombrar. Lo usan la solapa de un chat
+    // abierto y las filas de la vista Historial.
     const renameChat = useCallback(
         (id: string, current: string) => {
             setPrompt({
@@ -1003,8 +991,16 @@ export default function GitRepoTab({
         [reloadChatHistory],
     )
 
+    // chatMenuItems arma el menú del `+`: **solo empezar una conversación**.
+    //
+    // El historial vivía acá y se fue a su propia vista. Dejarlo en los dos
+    // lados no era redundancia inofensiva: el menú solo entra unas pocas
+    // filas, así que mostraba un recorte —las más recientes de cada agente— y
+    // esa lista corta parecía ser el historial completo. Un menú que contesta
+    // "esto es todo lo que hay" cuando no lo es es peor que no contestar.
+    // Abajo queda el acceso a la vista, que sí lo tiene todo, con buscador.
     const chatMenuItems = useCallback(
-        (limitPerAgent: number) => {
+        (): (DropdownItem | DropdownHeader | 'separator')[] => {
             const usable = agentList.filter((a) => a.available && chatCapable.has(a.id))
             const items: (DropdownItem | DropdownHeader | 'separator')[] = [{header: 'Empezar una conversación'}]
 
@@ -1017,41 +1013,18 @@ export default function GitRepoTab({
                 })
             }
 
-            // Un grupo por agente, con su propio encabezado: el historial de
-            // los tres en una sola lista obliga a leer de quién es cada fila.
-            for (const a of usable) {
-                const mine = chatHistory.filter((c) => c.agentId === a.id)
-                // Las del propio CLI que todavía no se adoptaron. Se marcan
-                // distinto: son las mismas que ves en la extensión de VS Code
-                // o en la terminal, y saberlo explica por qué aparecen sin que
-                // las hayas abierto nunca desde acá.
-                const external = cliChats.filter(
-                    (c) => c.agent === a.id && !chatHistory.some((h) => h.conversationId === c.id),
-                )
-                if (mine.length === 0 && external.length === 0) continue
-
-                items.push('separator', {header: `${a.label} · historial`})
-                for (const c of mine.slice(0, limitPerAgent)) {
-                    items.push({
-                        label: c.title || 'Sin nombre',
-                        icon: 'history',
-                        hint: new Date(c.updatedAt * 1000).toLocaleDateString('es'),
-                        onSelect: () => resumeChat(c),
-                        onContext: () => renameChat(c.id, c.title),
-                    })
-                }
-                for (const c of external.slice(0, limitPerAgent)) {
-                    items.push({
-                        label: c.title,
-                        icon: 'cloud_download',
-                        hint: `ya estaba en ${a.label}`,
-                        onSelect: () => void adoptConversation(a.id, c),
-                    })
-                }
+            const saved = chatHistory.length + cliChats.length
+            if (saved > 0) {
+                items.push('separator', {
+                    label: 'Ver el historial completo',
+                    icon: 'history',
+                    hint: `${saved} conversación${saved === 1 ? '' : 'es'}`,
+                    onSelect: () => setAgentsView('history'),
+                })
             }
             return items
         },
-        [agentList, chatCapable, chatHistory, cliChats, addSession, resumeChat, adoptConversation, renameChat],
+        [agentList, chatCapable, chatHistory, cliChats, addSession],
     )
 
     const closeSession = useCallback(
@@ -2835,6 +2808,21 @@ export default function GitRepoTab({
                                 <Icon name="dataset" size={12} />
                                 Contexto
                             </button>
+                            <button
+                                onClick={() => setAgentsView('history')}
+                                title="Todas las conversaciones de este repositorio, por agente — incluidas las que ya tenías fuera de la app"
+                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+                                    agentsView === 'history'
+                                        ? 'bg-primary/15 text-primary'
+                                        : 'text-on-surface-variant hover:bg-surface-variant'
+                                }`}
+                            >
+                                <Icon name="history" size={12} />
+                                Historial
+                                {chatHistory.length + cliChats.length > 0 && (
+                                    <span className="opacity-60">{chatHistory.length + cliChats.length}</span>
+                                )}
+                            </button>
 
                             {sessions
                                 .filter((s) => s.kind === 'chat')
@@ -2918,9 +2906,9 @@ export default function GitRepoTab({
                             <DropdownMenu
                                 label=""
                                 icon="add"
-                                title="Empezar una conversación nueva con un agente, o retomar una de las anteriores de este repositorio — incluidas las que ya tenías fuera de la app. Clic derecho sobre una del historial para renombrarla."
+                                title="Empezar una conversación nueva con un agente. Las anteriores están en Historial, con buscador y agrupadas por agente."
                                 width={360}
-                                items={chatMenuItems(5)}
+                                items={chatMenuItems()}
                             />
                         </div>
                     )}
@@ -3291,6 +3279,40 @@ export default function GitRepoTab({
                                             command,
                                         )
                                     }
+                                />
+                            </div>
+                        )}
+                        {panelTab === 'agents' && agentsView === 'history' && (
+                            <div className="absolute inset-0">
+                                <AgentChatHistory
+                                    agents={agentList.filter((a) => chatCapable.has(a.id))}
+                                    mine={chatHistory}
+                                    cli={cliChats}
+                                    activeId={activeChatId}
+                                    onOpen={(e: ChatHistoryEntry) => {
+                                        if (e.external && e.conv) {
+                                            void adoptConversation(e.agentId, e.conv)
+                                            return
+                                        }
+                                        const chat = chatHistory.find((c) => c.id === e.id)
+                                        if (chat) resumeChat(chat)
+                                    }}
+                                    onRename={renameChat}
+                                    onDelete={(id) => {
+                                        setConfirm({
+                                            title: 'Quitar del historial',
+                                            description:
+                                                'La conversación sigue existiendo en el agente: lo que se pierde es el atajo para retomarla desde acá.',
+                                            label: chatHistory.find((c) => c.id === id)?.title || 'Sin nombre',
+                                            confirmLabel: 'Quitar',
+                                            danger: true,
+                                            run: () => DeleteAgentChat(id).then(reloadChatHistory),
+                                        })
+                                    }}
+                                    onNew={(agentId) => {
+                                        const agent = agentList.find((a) => a.id === agentId)
+                                        if (agent) addSession('chat', agent)
+                                    }}
                                 />
                             </div>
                         )}

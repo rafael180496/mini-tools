@@ -69,6 +69,14 @@ Abrí un repositorio y el panel **Agentes** te dice lo que ningún otro cliente 
 
 Cuando trabajás con un agente no te importan las ramas, el grafo ni el diff — te importa **qué archivos hay** y **qué está haciendo**. El botón **Agente** esconde el resto del módulo Git y deja eso: el árbol del proyecto, con la letra de git en cada archivo modificado y el conteo de cambios en cada carpeta, más la conversación. El mismo botón te devuelve todo tal como lo tenías.
 
+### El historial de todas tus conversaciones, también las de afuera
+
+<p align="center">
+  <img src="docs/screenshots/ui-history.png" width="900" alt="Vista Historial de la solapa Agentes: pestañas por proveedor con su contador, buscador por título y filas con la antigüedad relativa; las conversaciones que vienen del propio CLI se marcan con un icono de nube">
+</p>
+
+Cada repositorio tiene su historial, con **pestañas por proveedor**, buscador, y renombrar o quitar en cada fila. Y no solo lo que abriste desde acá: también lista **las conversaciones que el CLI ya tenía** de ese repositorio — las mismas que ves en la extensión de VS Code o en la terminal. Abrir una la retoma donde la dejaste; los mensajes los sigue teniendo el CLI, esta app no guarda una segunda copia.
+
 ### Chat con permisos que se entienden
 
 <p align="center">
