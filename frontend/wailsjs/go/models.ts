@@ -1905,6 +1905,7 @@ export namespace main {
 	    socketPath: string;
 	    tools: number;
 	    audit: mcpAudit[];
+	    executable: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new MCPStatus(source);
@@ -1916,6 +1917,7 @@ export namespace main {
 	        this.socketPath = source["socketPath"];
 	        this.tools = source["tools"];
 	        this.audit = this.convertValues(source["audit"], mcpAudit);
+	        this.executable = source["executable"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2775,6 +2777,7 @@ export namespace vault {
 	    nodes: NoteGraphNode[];
 	    edges: NoteGraphEdge[];
 	    brokenLinks: number;
+	    selfLinks: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new NoteGraphData(source);
@@ -2785,6 +2788,7 @@ export namespace vault {
 	        this.nodes = this.convertValues(source["nodes"], NoteGraphNode);
 	        this.edges = this.convertValues(source["edges"], NoteGraphEdge);
 	        this.brokenLinks = source["brokenLinks"];
+	        this.selfLinks = source["selfLinks"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

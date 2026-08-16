@@ -136,6 +136,73 @@ function tagDecorations(view: EditorView, add: (from: number, to: number, d: Dec
 
 const tagMark = Decoration.mark({class: 'cm-note-tag'})
 
+// WIKI_RE encuentra un enlace a otra nota: `[[Título]]` o `[[Título|alias]]`.
+//
+// **Por qué a mano y no por el árbol de sintaxis.** Markdown no tiene enlaces
+// wiki: el parser ve `[[Título]]` como un enlace normal `[Título]` metido entre
+// corchetes sueltos, así que escondía UNA marca de cada lado y dejaba a la
+// vista el corchete que sobraba — el `[prueba 2]]` que se veía en pantalla. Con
+// su propia regla, el enlace se ve como se tiene que ver: el título solo,
+// subrayado, y los corchetes escondidos.
+const WIKI_RE = /\[\[([^\[\]|\n]+)(\|([^\[\]\n]*))?\]\]/g
+
+const hidden = Decoration.replace({})
+
+// wikiDecorations dibuja los enlaces y devuelve sus rangos, para que las marcas
+// del parser de Markdown no se metan adentro (dos decoraciones que esconden el
+// mismo carácter se pisan).
+function wikiDecorations(
+    view: EditorView,
+    activeLines: Set<number>,
+    add: (from: number, to: number, d: Decoration) => void,
+): {from: number; to: number}[] {
+    const ranges: {from: number; to: number}[] = []
+    const {state} = view
+    for (const {from, to} of view.visibleRanges) {
+        let pos = from
+        while (pos <= to) {
+            const line = state.doc.lineAt(pos)
+            WIKI_RE.lastIndex = 0
+            let m: RegExpExecArray | null
+            while ((m = WIKI_RE.exec(line.text)) !== null) {
+                const start = line.from + m.index
+                const end = start + m[0].length
+                ranges.push({from: start, to: end})
+
+                const target = m[1].trim()
+                const editing = activeLines.has(line.number)
+                // En la línea del cursor el enlace se deja entero: hay que
+                // poder corregir el título que uno está escribiendo. Ahí el
+                // clic simple coloca el cursor y hace falta Cmd/Ctrl para
+                // abrir — como en cualquier editor.
+                const mark = Decoration.mark({
+                    class: editing ? 'cm-note-wikilink cm-note-wikilink-editing' : 'cm-note-wikilink',
+                    attributes: {
+                        'data-wiki': target,
+                        ...(editing ? {'data-wiki-mod': '1'} : {}),
+                        title: editing
+                            ? `Cmd/Ctrl + clic para abrir «${target}». Sin la tecla, el clic edita el enlace.`
+                            : `Abrir «${target}». Si todavía no existe, se ofrece crearla.`,
+                    },
+                })
+
+                if (editing) {
+                    add(start, end, mark)
+                } else {
+                    // `[[` y, si hay alias, también el título de destino: lo
+                    // que se muestra es el alias, igual que en Obsidian.
+                    const labelFrom = start + 2 + (m[2] ? m[1].length + 1 : 0)
+                    add(start, labelFrom, hidden)
+                    if (labelFrom < end - 2) add(labelFrom, end - 2, mark)
+                    add(end - 2, end, hidden)
+                }
+            }
+            pos = line.to + 1
+        }
+    }
+    return ranges
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
     // Se juntan y se ordenan antes de construir: RangeSetBuilder exige orden
     // por posición, y las etiquetas y las marcas de sintaxis se descubren en
@@ -151,6 +218,12 @@ function buildDecorations(view: EditorView): DecorationSet {
         for (let n = from; n <= to; n++) activeLines.add(n)
     }
 
+    // Los enlaces a notas se resuelven primero: sus rangos quedan vedados para
+    // el parser de Markdown, que si no les esconde un corchete de cada lado.
+    const wikiRanges = wikiDecorations(view, activeLines, add)
+    const insideWiki = (from: number, to: number) =>
+        wikiRanges.some((r) => from >= r.from && to <= r.to)
+
     for (const {from, to} of view.visibleRanges) {
         syntaxTree(state).iterate({
             from,
@@ -158,6 +231,7 @@ function buildDecorations(view: EditorView): DecorationSet {
             enter: (node) => {
                 const line = state.doc.lineAt(node.from).number
                 if (activeLines.has(line)) return
+                if (insideWiki(node.from, node.to)) return
 
                 if (node.name === 'Image') {
                     // `![alt](nota:ID)` — solo las del vault. Una imagen con
@@ -189,7 +263,10 @@ function buildDecorations(view: EditorView): DecorationSet {
 }
 
 // notesLivePreview es la extensión completa.
-export function notesLivePreview(): Extension {
+//
+// `onWikiLink` recibe el título enlazado al hacer clic. Resolverlo —abrir la
+// nota o proponer crearla— es del contenedor: acá no se sabe qué notas existen.
+export function notesLivePreview(onWikiLink: (title: string) => void): Extension {
     return [
         ViewPlugin.fromClass(
             class {
@@ -209,7 +286,30 @@ export function notesLivePreview(): Extension {
             },
             {decorations: (v) => v.decorations},
         ),
+        // Clic en un enlace a otra nota. Un enlace que se ve como enlace y no
+        // lleva a ningún lado es peor que no formatearlo.
+        EditorView.domEventHandlers({
+            mousedown: (event) => {
+                const el = (event.target as HTMLElement | null)?.closest?.('[data-wiki]') as HTMLElement | null
+                if (!el) return false
+                if (el.dataset.wikiMod === '1' && !event.metaKey && !event.ctrlKey) return false
+                event.preventDefault()
+                onWikiLink(el.dataset.wiki ?? '')
+                return true
+            },
+        }),
         EditorView.theme({
+            '.cm-note-wikilink': {
+                color: 'var(--color-primary)',
+                textDecoration: 'underline',
+                textDecorationStyle: 'dotted',
+                textUnderlineOffset: '3px',
+                cursor: 'pointer',
+            },
+            '.cm-note-wikilink-editing': {
+                textDecorationStyle: 'solid',
+                opacity: '0.85',
+            },
             '.cm-note-image': {
                 display: 'block',
                 margin: '0.75rem 0',

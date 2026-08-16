@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react'
-import {CreateNote, DeleteNote, SearchNotesSmart, SetNoteFolder} from '../../../wailsjs/go/main/App'
+import {CreateNote, DeleteNote, NotesGraph, SearchNotesSmart, SetNoteFolder} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import SidebarModule from '../sidebar/SidebarModule'
@@ -7,6 +7,7 @@ import MoveToFolderMenu from '../sidebar/MoveToFolderMenu'
 import ConfirmDialog from '../ConfirmDialog'
 import PromptDialog from '../git/PromptDialog'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
+import {buildNoteLinkTree, childrenIndex, type NoteTreeRow} from '../../lib/noteLinkTree'
 
 // Módulo "Notas" del sidebar: el buscador y la lista de la base de
 // conocimiento.
@@ -107,6 +108,45 @@ export default function NotesTree({
     }, [query, onCreated])
 
     const searching = query.trim().length > 0
+
+    // Aristas del grafo, para colgar cada nota de la que la enlaza. Se piden
+    // todas juntas y no por nota: el árbol necesita el conjunto para saber
+    // quién es raíz, y pedirlas de a una serían N llamadas por dibujo.
+    const [edges, setEdges] = useState<vault.NoteGraphEdge[]>([])
+    useEffect(() => {
+        let cancelled = false
+        NotesGraph()
+            .then((g) => !cancelled && setEdges(g.edges ?? []))
+            .catch(() => !cancelled && setEdges([]))
+        return () => {
+            cancelled = true
+        }
+    }, [reloadToken])
+
+    const children = useMemo(() => childrenIndex(edges), [edges])
+
+    // Ramas plegadas, por camino. Se guarda lo PLEGADO y no lo abierto porque
+    // el árbol nace desplegado: la estructura es justamente lo que se quiere
+    // ver de un vistazo.
+    const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+    const toggleBranch = (path: string) =>
+        setCollapsed((prev) => {
+            const next = new Set(prev)
+            if (next.has(path)) next.delete(path)
+            else next.add(path)
+            return next
+        })
+
+    // Buscando NO se anida: una coincidencia escondida debajo de una nota que
+    // no coincide es un resultado que no se ve, justo lo contrario de lo que
+    // se pidió al buscar.
+    const rowsFor = useCallback(
+        (notes: vault.NoteHit[], depth: number): NoteTreeRow[] =>
+            searching
+                ? notes.map((h) => ({hit: h, depth, path: h.id, children: 0}))
+                : buildNoteLinkTree(notes, children, (p) => collapsed.has(p), depth),
+        [searching, children, collapsed],
+    )
 
     // Árbol de carpetas del módulo. Se construye con el mismo helper que los
     // otros tres módulos: un árbol propio por scope, nunca mezclado.
@@ -270,27 +310,31 @@ export default function NotesTree({
                         onCreateFolder={onCreateFolder}
                         onRenameFolder={setRenamingFolder}
                         onDeleteFolder={onDeleteFolder}
-                        renderNote={(h, depth) => (
-                            <NoteRow
-                                key={h.id}
-                                hit={h}
-                                depth={depth}
-                                active={activeNoteId === h.id}
-                                flatFolders={flatFolders}
-                                onOpen={onOpenNote}
-                                onMove={moveNote}
-                                onDelete={setDeleting}
-                            />
-                        )}
+                        renderNotes={(notes, depth) =>
+                            rowsFor(notes, depth).map((row) => (
+                                <NoteRow
+                                    key={row.path}
+                                    row={row}
+                                    active={activeNoteId === row.hit.id}
+                                    collapsed={collapsed.has(row.path)}
+                                    onToggleBranch={toggleBranch}
+                                    flatFolders={flatFolders}
+                                    onOpen={onOpenNote}
+                                    onMove={moveNote}
+                                    onDelete={setDeleting}
+                                />
+                            ))
+                        }
                     />
                 ))}
 
-                {(byFolder[''] ?? []).map((h) => (
+                {rowsFor(byFolder[''] ?? [], 0).map((row) => (
                     <NoteRow
-                        key={h.id}
-                        hit={h}
-                        depth={0}
-                        active={activeNoteId === h.id}
+                        key={row.path}
+                        row={row}
+                        active={activeNoteId === row.hit.id}
+                        collapsed={collapsed.has(row.path)}
+                        onToggleBranch={toggleBranch}
                         flatFolders={flatFolders}
                         onOpen={onOpenNote}
                         onMove={moveNote}
@@ -342,7 +386,7 @@ function FolderRow({
     onCreateFolder,
     onRenameFolder,
     onDeleteFolder,
-    renderNote,
+    renderNotes,
 }: {
     node: FolderNode
     depth: number
@@ -352,7 +396,9 @@ function FolderRow({
     onCreateFolder: (name: string, parentId: string) => void
     onRenameFolder: (folder: vault.Folder) => void
     onDeleteFolder: (id: string) => void
-    renderNote: (hit: vault.NoteHit, depth: number) => ReactNode
+    // Recibe TODAS las notas de la carpeta y no una por una: el anidado por
+    // enlaces necesita el conjunto para saber cuáles son raíz.
+    renderNotes: (notes: vault.NoteHit[], depth: number) => ReactNode
 }) {
     const notes = byFolder[node.folder.id] ?? []
     const open = isOpen(node.folder.id)
@@ -362,27 +408,27 @@ function FolderRow({
 
     return (
         <div>
+            {/* Solo el chevron y el nombre. El ícono de carpeta al lado del
+                chevron es información repetida —el chevron ya dice que se
+                despliega— y en una barra angosta cada ícono de más come ancho
+                del nombre, que es lo único que hay que leer. El contador
+                aparece al pasar por encima. */}
             <div
-                className="group flex items-center gap-1 py-0.5 pr-2 text-[11px] hover:bg-surface-variant"
-                style={{paddingLeft: `${depth * 12 + 8}px`}}
+                className="group mx-1 flex items-center gap-1 rounded py-[3px] pr-1 text-[12px] hover:bg-surface-variant"
+                style={{paddingLeft: `${depth * 12 + 4}px`}}
             >
                 <button
                     onClick={() => onToggle(node.folder.id)}
-                    title={open ? 'Plegar la carpeta' : `Desplegar la carpeta (${total} notas)`}
+                    title={open ? 'Plegar la carpeta' : `Desplegar la carpeta (${total} ${total === 1 ? 'nota' : 'notas'})`}
                     className="flex min-w-0 flex-1 items-center gap-1 text-left"
                 >
                     <Icon
                         name={open ? 'expand_more' : 'chevron_right'}
-                        size={12}
-                        className="shrink-0 text-on-surface-variant"
-                    />
-                    <Icon
-                        name={open ? 'folder_open' : 'folder'}
                         size={13}
-                        className="shrink-0 text-on-surface-variant"
+                        className="shrink-0 text-on-surface-variant/70"
                     />
                     <span className="min-w-0 truncate text-on-surface">{node.folder.name}</span>
-                    <span className="shrink-0 text-on-surface-variant/60">{total}</span>
+                    <span className="shrink-0 text-[10px] text-on-surface-variant/50 group-hover:hidden">{total}</span>
                 </button>
 
                 <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
@@ -423,10 +469,10 @@ function FolderRow({
                             onCreateFolder={onCreateFolder}
                             onRenameFolder={onRenameFolder}
                             onDeleteFolder={onDeleteFolder}
-                            renderNote={renderNote}
+                            renderNotes={renderNotes}
                         />
                     ))}
-                    {notes.map((h) => renderNote(h, depth + 1))}
+                    {renderNotes(notes, depth + 1)}
                 </>
             )}
         </div>
@@ -441,30 +487,56 @@ function countIn(node: FolderNode, byFolder: Record<string, vault.NoteHit[]>): n
 
 // NoteRow es una nota en el árbol.
 function NoteRow({
-    hit,
-    depth,
+    row,
     active,
+    collapsed,
+    onToggleBranch,
     flatFolders,
     onOpen,
     onMove,
     onDelete,
 }: {
-    hit: vault.NoteHit
-    depth: number
+    row: NoteTreeRow
     active: boolean
+    collapsed: boolean
+    onToggleBranch: (path: string) => void
     flatFolders: {folder: vault.Folder; depth: number}[]
     onOpen: (id: string) => void
     onMove: (noteId: string, folderId: string) => void
     onDelete: (hit: vault.NoteHit) => void
 }) {
+    const {hit, depth} = row
     return (
+        // La nota activa se marca con un fondo redondeado, no con una barra al
+        // costado: en una lista de treinta títulos la barra se pierde y el
+        // fondo se ve de un vistazo. Y sin ícono de documento — todas son
+        // documentos, así que el ícono no distingue nada y solo come ancho del
+        // título, que es lo único que hay que leer.
         <div
-            className={`group flex flex-col border-l-2 pr-1 ${
-                active ? 'border-l-primary bg-surface-variant' : 'border-l-transparent hover:bg-surface-container-high'
+            className={`group mx-1 flex flex-col rounded pr-1 ${
+                active ? 'bg-surface-variant' : 'hover:bg-surface-container-high'
             }`}
-            style={{paddingLeft: `${depth * 12 + 8}px`}}
+            style={{paddingLeft: `${depth * 12 + 4}px`}}
         >
-            <div className="flex items-center gap-1.5 py-1">
+            <div className="flex items-center gap-1.5 py-[3px]">
+                {/* El chevron solo si de esta nota cuelga algo. Las hojas
+                    llevan un hueco del mismo ancho para que los títulos del
+                    mismo nivel queden alineados. */}
+                {row.children > 0 ? (
+                    <button
+                        onClick={() => onToggleBranch(row.path)}
+                        title={
+                            collapsed
+                                ? `Mostrar las ${row.children} notas que esta enlaza`
+                                : 'Plegar las notas que esta enlaza'
+                        }
+                        className="shrink-0 rounded text-on-surface-variant/70 hover:text-on-surface"
+                    >
+                        <Icon name={collapsed ? 'chevron_right' : 'expand_more'} size={13} />
+                    </button>
+                ) : (
+                    <span className="w-[13px] shrink-0" />
+                )}
                 <button
                     onClick={() => onOpen(hit.id)}
                     title={
@@ -474,17 +546,16 @@ function NoteRow({
                     }
                     className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                 >
-                    {/* El candado no es decoración: es la única señal de un
-                        vistazo de qué puede leer un agente. */}
-                    <Icon
-                        name={hit.isPrivate ? 'lock' : 'description'}
-                        size={11}
-                        className={`shrink-0 ${hit.isPrivate ? 'text-on-surface-variant/60' : 'text-on-surface-variant'}`}
-                    />
+                    {/* El candado SÍ se queda: es la única señal de un vistazo
+                        de qué puede leer un agente, y solo aparece cuando hay
+                        algo que decir. */}
+                    {hit.isPrivate && (
+                        <Icon name="lock" size={11} className="shrink-0 text-on-surface-variant/60" />
+                    )}
                     <span
-                        className={`min-w-0 truncate text-[11px] ${
-                            hit.matchedTitle ? 'font-medium text-on-surface' : 'text-on-surface'
-                        }`}
+                        className={`min-w-0 truncate text-[12px] ${
+                            active ? 'text-on-surface' : 'text-on-surface/90'
+                        } ${hit.matchedTitle ? 'font-medium' : ''}`}
                     >
                         {hit.title || 'Sin título'}
                     </span>
@@ -505,7 +576,7 @@ function NoteRow({
                 era. El resaltado viene marcado con «…» desde el backend y se
                 parte acá — nunca se inyecta HTML. */}
             {hit.snippet && (
-                <span className="line-clamp-2 pb-1 pl-[18px] text-[10px] leading-4 text-on-surface-variant">
+                <span className="line-clamp-2 pb-1 text-[10px] leading-4 text-on-surface-variant">
                     {hit.snippet.split(/«|»/).map((part, i) =>
                         i % 2 === 1 ? (
                             <mark key={i} className="rounded bg-primary/25 text-on-surface">

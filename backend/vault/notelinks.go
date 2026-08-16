@@ -219,6 +219,13 @@ type NoteGraphData struct {
 	// "12 nodos" callando que hay 30 enlaces sin destino esconde justo el
 	// trabajo pendiente.
 	BrokenLinks int `json:"brokenLinks"`
+	// SelfLinks son los `[[enlaces]]` de una nota a sí misma. Tampoco se
+	// dibujan —una arista de un nodo a sí mismo no dice nada y el layout la
+	// mostraría como un nodo tironeándose solo— pero **se cuentan**, porque
+	// callarlas es lo que hace que el grafo parezca roto: la nota muestra su
+	// enlace en el panel lateral y en el grafo no aparece ninguna línea, sin
+	// ninguna explicación a la vista.
+	SelfLinks int `json:"selfLinks"`
 }
 
 // NoteGraph arma el grafo entero.
@@ -272,9 +279,9 @@ func (s *Store) NoteGraph() (NoteGraphData, error) {
 			out.BrokenLinks++
 			continue
 		}
-		// Un enlace a sí misma no es una arista: no dice nada y el layout la
-		// dibujaría como un nodo tironeándose solo.
+		// Un enlace a sí misma no es una arista, pero se cuenta (ver SelfLinks).
 		if target == source {
+			out.SelfLinks++
 			continue
 		}
 		out.Edges = append(out.Edges, NoteGraphEdge{Source: source, Target: target})

@@ -287,6 +287,14 @@ export default function NotesGraphView({onOpenNote, onClose, activeNoteId}: Prop
                 {data && (
                     <span className="text-on-surface-variant">
                         {filtered.nodes.length} notas · {filtered.edges.length} enlaces
+                        {data.selfLinks > 0 && (
+                            <span
+                                className="ml-1 text-on-surface-variant/70"
+                                title="Notas que se enlazan a sí mismas. No se dibujan —una línea de un nodo a sí mismo no dice nada— pero se cuentan acá: si no, el enlace aparece en el panel lateral de la nota y en el grafo no se ve ninguna línea, y el grafo parece roto."
+                            >
+                                · {data.selfLinks} a sí misma
+                            </span>
+                        )}
                         {data.brokenLinks > 0 && (
                             <span
                                 className="ml-1 text-tertiary"

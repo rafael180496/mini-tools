@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -61,6 +62,11 @@ type MCPStatus struct {
 	Tools int `json:"tools"`
 	// Audit son los últimos accesos, del más reciente al más viejo.
 	Audit []mcpAudit `json:"audit"`
+	// Executable es la ruta absoluta de este binario, que es lo que hay que
+	// poner en la configuración del CLI. Se informa siempre (encendido o no):
+	// es el dato que hace falta para conectar, y esconderlo hasta encender
+	// obligaría a encender para poder leer las instrucciones.
+	Executable string `json:"executable"`
 }
 
 // MCPServerStatus devuelve el estado del servidor.
@@ -71,10 +77,12 @@ func (a *App) MCPServerStatus() (MCPStatus, error) {
 	a.mcp.mu.Lock()
 	defer a.mcp.mu.Unlock()
 
+	exe, _ := os.Executable()
 	out := MCPStatus{
 		Enabled:    a.mcp.bridge != nil,
 		SocketPath: a.mcp.bridge.Path(),
 		Tools:      len(a.mcpTools()),
+		Executable: exe,
 	}
 	// Del más reciente al más viejo, que es como se lee.
 	for i := len(a.mcp.audit) - 1; i >= 0; i-- {

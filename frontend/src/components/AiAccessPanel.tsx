@@ -22,10 +22,46 @@ const TOOL_LABELS: Record<string, string> = {
     git_status: 'Miró el estado de un repositorio',
 }
 
+// Cómo se conecta cada CLI. Son tres formatos distintos porque cada uno guarda
+// su configuración a su manera — es la misma razón por la que la solapa Agentes
+// tiene que leer cinco archivos para responder "qué MCP ve este agente".
+//
+// Se ofrecen para COPIAR y no se escriben solas. Dos motivos: `~/.claude.json`
+// no es un archivo de configuración sino el archivo de ESTADO de Claude Code
+// —historial por proyecto y mucho más, típicamente enorme— y reescribirlo
+// entero para agregar una clave es un riesgo desproporcionado; y el lector de
+// TOML de esta app está acotado a lo que necesita leer, así que no alcanza para
+// escribir el `config.toml` de Codex preservando lo que no entiende.
+function connectSnippets(exe: string) {
+    const path = exe || '/ruta/a/mini-tools'
+    return [
+        {
+            agent: 'Claude Code',
+            how: 'En una terminal, una sola vez:',
+            code: `claude mcp add mini-tools -- "${path}" --mcp`,
+            note: 'Queda disponible en todos tus proyectos. Con `claude mcp list` se verifica que quedó.',
+        },
+        {
+            agent: 'Codex CLI',
+            how: 'Agregá esto a ~/.codex/config.toml:',
+            code: `[mcp_servers.mini-tools]\ncommand = "${path}"\nargs = ["--mcp"]`,
+            note: 'Si el archivo no existe, crealo con ese contenido.',
+        },
+        {
+            agent: 'Antigravity CLI',
+            how: 'Agregá esto a ~/.gemini/config/mcp_config.json:',
+            code: `{\n  "mcpServers": {\n    "mini-tools": {\n      "command": "${path}",\n      "args": ["--mcp"]\n    }\n  }\n}`,
+            note: 'Si ya tenés otros servidores, agregá solo la entrada "mini-tools" adentro de "mcpServers".',
+        },
+    ]
+}
+
 export default function AiAccessPanel() {
     const [status, setStatus] = useState<main.MCPStatus | null>(null)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
+    const [howTo, setHowTo] = useState(false)
+    const [copied, setCopied] = useState('')
 
     const refresh = useCallback(() => {
         MCPServerStatus()
@@ -104,6 +140,70 @@ export default function AiAccessPanel() {
                         </p>
                     </>
                 )}
+
+                {/* Cómo conectarlo. Estaba el interruptor y no había forma de
+                    saber qué hacer después: encender un servidor que ningún
+                    agente sabe que existe no sirve de nada. */}
+                <div className="rounded border border-outline-variant bg-surface-container-low">
+                    <button
+                        onClick={() => setHowTo((v) => !v)}
+                        title="Los pasos exactos para que Claude Code, Codex o Antigravity vean este servidor"
+                        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px] text-on-surface hover:bg-surface-variant"
+                    >
+                        <Icon name={howTo ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0" />
+                        <Icon name="help" size={13} className="shrink-0 text-primary" />
+                        <span className="font-medium">Cómo conectar tu agente a este servidor</span>
+                        <span className="ml-auto text-on-surface-variant/70">3 pasos</span>
+                    </button>
+
+                    {howTo && (
+                        <div className="flex flex-col gap-2 border-t border-outline-variant p-2 text-[11px]">
+                            <ol className="ml-4 list-decimal space-y-1 text-on-surface-variant">
+                                <li>
+                                    Encendé el servidor con el interruptor de arriba.{' '}
+                                    <strong className="text-on-surface">Tiene que quedar encendido</strong> mientras
+                                    uses el agente: apagado no hay nada escuchando.
+                                </li>
+                                <li>Pegá la configuración de tu CLI (abajo). Se hace una sola vez.</li>
+                                <li>
+                                    Reiniciá el CLI. Preguntale <em>"¿qué herramientas de mini-tools tenés?"</em> para
+                                    confirmar.
+                                </li>
+                            </ol>
+
+                            {connectSnippets(status?.executable ?? '').map((s2) => (
+                                <div key={s2.agent} className="rounded border border-outline-variant bg-surface p-1.5">
+                                    <p className="mb-1 flex items-center gap-1.5">
+                                        <Icon name="smart_toy" size={12} className="shrink-0 text-primary" />
+                                        <span className="font-medium text-on-surface">{s2.agent}</span>
+                                        <span className="text-on-surface-variant">{s2.how}</span>
+                                        <button
+                                            onClick={() => {
+                                                void navigator.clipboard.writeText(s2.code)
+                                                setCopied(s2.agent)
+                                            }}
+                                            title="Copia el comando al portapapeles"
+                                            className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                        >
+                                            <Icon name={copied === s2.agent ? 'check' : 'content_copy'} size={12} />
+                                            {copied === s2.agent ? 'Copiado' : 'Copiar'}
+                                        </button>
+                                    </p>
+                                    <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-surface-container-highest px-2 py-1 font-mono text-[10px] text-on-surface">
+                                        {s2.code}
+                                    </pre>
+                                    <p className="mt-1 text-[10px] text-on-surface-variant/70">{s2.note}</p>
+                                </div>
+                            ))}
+
+                            <p className="text-[10px] leading-4 text-on-surface-variant/70">
+                                <strong>Se copia y no se escribe solo</strong>, a propósito: el archivo de Claude Code es
+                                su archivo de <em>estado</em> —con el historial de todos tus proyectos adentro— y
+                                reescribirlo entero para agregar una línea es un riesgo desproporcionado.
+                            </p>
+                        </div>
+                    )}
+                </div>
 
                 <div className="rounded border border-outline-variant bg-surface-container-low p-2">
                     <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-on-surface-variant">

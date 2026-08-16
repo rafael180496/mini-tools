@@ -67,14 +67,27 @@ const notesEditorTheme = EditorView.theme({
     '.cm-scroller': {
         fontFamily: 'var(--font-sans, ui-sans-serif, system-ui)',
         lineHeight: '1.7',
-        padding: '1.5rem 0 6rem',
+        // Sin relleno superior: el aire ya lo pone el bloque del título, que
+        // está justo arriba. Con los dos, el cuerpo quedaba despegado del
+        // título como si fueran dos documentos distintos.
+        padding: '0 0 6rem',
     },
     // El contenido centrado con ancho máximo, no pegado al borde izquierdo.
+    // Mismo ancho y mismo relleno que el bloque del título, para que el texto
+    // arranque exactamente donde arranca el título. Un editor cuyo cuerpo no
+    // se alinea con su propio encabezado se ve descuidado antes de que uno
+    // sepa por qué.
+    //
+    // Alineado a la izquierda y NO centrado: ver el comentario del bloque del
+    // título en NoteEditorTab. El ancho máximo se conserva —una línea que
+    // cruza un monitor de 27" no se lee— pero el espacio sobrante queda de un
+    // solo lado.
     '.cm-content': {
-        maxWidth: '46rem',
-        margin: '0 auto',
-        padding: '0 1.5rem',
+        maxWidth: '52rem',
+        marginLeft: '0',
+        padding: '0 2rem 0 2.5rem',
         caretColor: 'var(--color-primary)',
+        textAlign: 'left',
     },
     '.cm-line': {padding: '0'},
     '&.cm-focused': {outline: 'none'},

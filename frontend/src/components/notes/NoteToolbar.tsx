@@ -14,8 +14,25 @@ import Icon from '../Icon'
 // nada de lo escrito se pierde. Y si no hay nada seleccionado, se inserta la
 // marca con el cursor adentro, listo para escribir.
 
+// Alineaciones posibles del documento.
+//
+// **No se escriben en el Markdown.** Markdown no tiene alineación: para tenerla
+// habría que meter `<div align="center">` en el texto, y eso deja el documento
+// lleno de HTML que en cualquier otro editor se ve como basura. Se guarda como
+// metadato de la nota y se aplica a la vista — el texto sigue siendo texto.
+export type NoteAlign = 'left' | 'center' | 'right' | 'justify'
+
+const ALIGNS: {value: NoteAlign; icon: string; label: string}[] = [
+    {value: 'left', icon: 'format_align_left', label: 'Alinear a la izquierda'},
+    {value: 'center', icon: 'format_align_center', label: 'Centrar'},
+    {value: 'right', icon: 'format_align_right', label: 'Alinear a la derecha'},
+    {value: 'justify', icon: 'format_align_justify', label: 'Justificar'},
+]
+
 interface Props {
     view: EditorView | null
+    align: NoteAlign
+    onAlign: (a: NoteAlign) => void
     // Pega una imagen desde el disco. La sube el contenedor, que es quien
     // sabe a qué nota pertenece.
     onPickImage: () => void
@@ -69,7 +86,7 @@ function prefixLines(view: EditorView | null, prefix: string) {
     view.focus()
 }
 
-export default function NoteToolbar({view, onPickImage, onToggleFold}: Props) {
+export default function NoteToolbar({view, align, onAlign, onPickImage, onToggleFold}: Props) {
     const btn = 'rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
 
     return (
@@ -121,6 +138,25 @@ export default function NoteToolbar({view, onPickImage, onToggleFold}: Props) {
             <button onClick={() => prefixLines(view, '> ')} title="Cita" className={btn}>
                 <Icon name="format_quote" size={15} />
             </button>
+
+            <span className="mx-1 h-4 w-px bg-outline-variant" />
+
+            {/* Alineación del documento. Se guarda con la nota, no en el
+                Markdown: ver NoteAlign. */}
+            {ALIGNS.map((a) => (
+                <button
+                    key={a.value}
+                    onClick={() => onAlign(a.value)}
+                    title={`${a.label}. Es una propiedad de la nota, no del texto: el Markdown queda limpio y se sigue abriendo igual en cualquier otro editor.`}
+                    className={
+                        align === a.value
+                            ? 'rounded bg-primary/20 p-1 text-primary'
+                            : btn
+                    }
+                >
+                    <Icon name={a.icon} size={15} />
+                </button>
+            ))}
 
             <span className="mx-1 h-4 w-px bg-outline-variant" />
 

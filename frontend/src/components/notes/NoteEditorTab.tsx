@@ -26,7 +26,7 @@ import {main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
-import NoteToolbar from './NoteToolbar'
+import NoteToolbar, {type NoteAlign} from './NoteToolbar'
 import RunbookSqlBlock from './RunbookSqlBlock'
 import {useAgentChat} from '../agent/AgentChatHost'
 import {loadLanguage} from '../../codemirror/languageRegistry'
@@ -60,6 +60,67 @@ interface Props {
     onChanged: (title?: string) => void
 }
 
+// toStorableImage deja la imagen en un formato que el vault acepta.
+//
+// **Por qué hace falta.** El vault guarda solo PNG y JPG —por seguridad y por
+// tamaño, ver backend/imageopt— pero el portapapeles no siempre da eso: una
+// imagen copiada de una página web puede venir en WebP, y un GIF pegado viene
+// como GIF. Rechazarlas sería técnicamente correcto y prácticamente molesto:
+// quien pega una captura no sabe ni le importa en qué formato la puso el
+// sistema.
+//
+// Entonces, si no es PNG ni JPG, se **redibuja en un lienzo y se exporta como
+// PNG**: una conversión hacia PNG con los píxeles exactos que el navegador
+// decodificó, no una recompresión con pérdida.
+//
+// Lo que el navegador no sabe decodificar —un TIFF, por ejemplo— falla acá con
+// un mensaje que dice qué pasó, en vez de guardarse como un archivo roto.
+async function toStorableImage(file: File): Promise<{dataURL: string; name: string}> {
+    const read = (f: Blob) =>
+        new Promise<string>((resolve, reject) => {
+            const r = new FileReader()
+            r.onload = () => resolve(String(r.result ?? ''))
+            r.onerror = () => reject(new Error('No se pudo leer la imagen'))
+            r.readAsDataURL(f)
+        })
+
+    const name = file.name || 'captura'
+    if (file.type === 'image/png' || file.type === 'image/jpeg') {
+        return {dataURL: await read(file), name}
+    }
+
+    const url = URL.createObjectURL(file)
+    try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const el = new Image()
+            el.onload = () => resolve(el)
+            el.onerror = () =>
+                reject(
+                    new Error(
+                        `No se pudo leer una imagen de tipo ${file.type || 'desconocido'}. Las notas guardan PNG y JPG; probá con una captura de pantalla.`,
+                    ),
+                )
+            el.src = url
+        })
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        const ctx = canvas.getContext('2d')
+        if (!ctx) throw new Error('No se pudo convertir la imagen')
+        ctx.drawImage(img, 0, 0)
+        return {dataURL: canvas.toDataURL('image/png'), name: name.replace(/\.[^.]+$/, '') + '.png'}
+    } finally {
+        URL.revokeObjectURL(url)
+    }
+}
+
+// normalizeTitle replica NormalizeTitle del backend (minúsculas, espacios
+// colapsados). Tiene que dar lo mismo, o un enlace que el backend resuelve acá
+// se ofrecería crear de nuevo.
+function normalizeTitle(t: string): string {
+    return t.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
 export default function NoteEditorTab({
     noteId,
     editorThemeId,
@@ -83,6 +144,9 @@ export default function NoteEditorTab({
     // Números de la barra de estado: cuántas notas la enlazan y cuánto tiene
     // escrito. Se cuentan en el backend, donde el contenido ya está descifrado.
     const [stats, setStats] = useState<main.NoteStats | null>(null)
+    // Alineación del documento. Vive en el frontmatter de la nota —un metadato
+    // más— y no en el Markdown: ver NoteAlign.
+    const [align, setAlign] = useState<NoteAlign>('left')
     const chat = useAgentChat()
 
     const hostRef = useRef<HTMLDivElement>(null)
@@ -104,6 +168,7 @@ export default function NoteEditorTab({
                 setNote(n)
                 setTitle(n.title)
                 setContent(n.content)
+                setAlign(parseAlign(n.frontmatter))
                 setDirty(false)
             })
             .catch((e) => !cancelled && setError(String(e)))
@@ -141,7 +206,7 @@ export default function NoteEditorTab({
         setSaving(true)
         setError('')
         try {
-            await UpdateNote(noteId, titleRef.current, contentRef.current, note?.frontmatter ?? '')
+            await UpdateNote(noteId, titleRef.current, contentRef.current, withAlign(note?.frontmatter ?? '', alignRef.current))
             setDirty(false)
             reloadLinks()
             onChanged(titleRef.current)
@@ -161,6 +226,14 @@ export default function NoteEditorTab({
     // "crear la nota" no puede cerrarse sobre el prop del primer render.
     const onCreateNoteRef = useRef(onCreateNote)
     onCreateNoteRef.current = onCreateNote
+    const onOpenNoteRef = useRef(onOpenNote)
+    onOpenNoteRef.current = onOpenNote
+    // Mismo motivo que saveRef: el manejador se registra una sola vez con el
+    // editor y no puede quedarse con la versión del primer render. Se declara
+    // vacío y se llena más abajo, donde la función ya existe.
+    const imageTransferRef = useRef<(d: DataTransfer | null) => boolean>(() => false)
+    const alignRef = useRef<NoteAlign>('left')
+    alignRef.current = align
 
     // Guardado automático con retardo. Una nota no es un archivo de código: no
     // hay compilación que romper con un guardado a medias, y perder tres
@@ -171,6 +244,24 @@ export default function NoteEditorTab({
         const t = setTimeout(() => void save(), 1200)
         return () => clearTimeout(t)
     }, [dirty, title, content, save])
+
+    // openWikiTarget resuelve un `[[enlace]]` recién clickeado.
+    //
+    // **Contra los títulos de verdad y no contra la lista de enlaces ya
+    // indexada**: los enlaces se indexan al GUARDAR, así que uno recién escrito
+    // todavía no está en esa lista y el clic no habría hecho nada — justo el
+    // caso en el que uno acaba de enlazar algo y quiere ir a verlo. Si el
+    // destino no existe se ofrece crearlo, que es como se arma el grafo.
+    const openWikiTarget = useCallback(async (target: string) => {
+        const wanted = normalizeTitle(target)
+        if (!wanted) return
+        const titles = await NoteTitles().catch(() => [] as main.NoteTitle[])
+        const hit = titles.find((t) => normalizeTitle(t.title) === wanted)
+        if (hit) onOpenNoteRef.current(hit.id)
+        else onCreateNoteRef.current(target.trim())
+    }, [])
+    const openWikiRef = useRef(openWikiTarget)
+    openWikiRef.current = openWikiTarget
 
     // --- editor ------------------------------------------------------------
 
@@ -254,7 +345,7 @@ export default function NoteEditorTab({
                     // Vista en vivo: esconde las marcas de Markdown y muestra
                     // las imágenes, salvo en la línea donde está el cursor.
                     // El texto guardado no cambia — son decoraciones.
-                    notesLivePreview(),
+                    notesLivePreview((title) => void openWikiRef.current(title)),
                     // Dos fuentes de autocompletado: `[[` para enlazar notas y
                     // `/` para insertar bloques. Cada una decide sola si
                     // aplica, y la primera que contesta gana.
@@ -276,6 +367,18 @@ export default function NoteEditorTab({
                             },
                         },
                     ]),
+                    // Captura pegada (⌘⇧4 en macOS, Impr Pant en Windows) o
+                    // imagen arrastrada al editor. Va acá y no en el div de
+                    // afuera por el orden de los manejadores — ver
+                    // imageFromTransfer.
+                    EditorView.domEventHandlers({
+                        paste: (event) => imageTransferRef.current(event.clipboardData),
+                        drop: (event) => {
+                            const handled = imageTransferRef.current(event.dataTransfer)
+                            if (handled) event.preventDefault()
+                            return handled
+                        },
+                    }),
                     EditorView.updateListener.of((u) => {
                         if (!u.docChanged) return
                         setContent(u.state.doc.toString())
@@ -330,19 +433,29 @@ export default function NoteEditorTab({
     )
 
     // Pegar o arrastrar una imagen.
+    //
+    // **El manejador se registra DENTRO de CodeMirror**, no solo en el div que
+    // lo contiene. El editor tiene su propio manejador de `paste` sobre su
+    // elemento editable y corre primero: un `onPaste` en un ancestro se entera
+    // tarde y, con una captura de pantalla —que en el portapapeles no trae
+    // texto—, el pegado terminaba sin hacer nada. Desde `domEventHandlers` se
+    // intercepta antes y se devuelve `true` para que el editor no siga.
     const imageFromTransfer = useCallback(
         (data: DataTransfer | null): boolean => {
             const file = Array.from(data?.items ?? [])
                 .find((i) => i.type.startsWith('image/'))
                 ?.getAsFile()
             if (!file) return false
-            const reader = new FileReader()
-            reader.onload = () => insertImage(String(reader.result ?? ''), file.name)
-            reader.readAsDataURL(file)
+
+            void toStorableImage(file)
+                .then(({dataURL, name}) => insertImage(dataURL, name))
+                .catch((e) => setError(String(e)))
             return true
         },
         [insertImage],
     )
+
+    imageTransferRef.current = imageFromTransfer
 
     // --- privacidad --------------------------------------------------------
 
@@ -459,6 +572,11 @@ export default function NoteEditorTab({
             {!preview && (
                 <NoteToolbar
                     view={viewRef.current}
+                    align={align}
+                    onAlign={(a) => {
+                        setAlign(a)
+                        setDirty(true)
+                    }}
                     onPickImage={() => fileInputRef.current?.click()}
                     onToggleFold={() => {
                         const view = viewRef.current
@@ -482,10 +600,11 @@ export default function NoteEditorTab({
                 onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) {
-                        const reader = new FileReader()
-                        reader.onload = () => insertImage(String(reader.result ?? ''), file.name)
-                        reader.readAsDataURL(file)
+                        void toStorableImage(file)
+                            .then(({dataURL, name}) => insertImage(dataURL, name))
+                            .catch((err) => setError(String(err)))
                     }
+                    // Se limpia para poder elegir el MISMO archivo dos veces.
                     e.target.value = ''
                 }}
             />
@@ -505,7 +624,24 @@ export default function NoteEditorTab({
                         como un campo de la barra: en una nota el título es la
                         primera línea de lo que estás escribiendo, no un
                         metadato de un formulario. */}
-                    <div className="mx-auto max-w-[46rem] px-6 pt-6">
+                    {/* Dos niveles a propósito. `mx-auto` en un hijo directo de
+                        un contenedor flex-columna **desactiva el estirado** —
+                        los márgenes automáticos absorben el espacio libre y el
+                        bloque se encoge al ancho de su contenido, que era por
+                        qué el título aparecía flotando en el medio de la
+                        pantalla. El envoltorio ocupa el ancho completo y la
+                        columna de lectura se centra adentro. */}
+                    <div className="w-full shrink-0">
+                    {/* Alineado a la IZQUIERDA, no centrado. Centrar una
+                        columna de lectura funciona en una app de lectura a
+                        pantalla completa; acá el editor convive con la barra
+                        lateral y con el panel de enlaces, así que centrar
+                        dejaba un hueco muerto a la izquierda y el texto
+                        arrancaba en el medio de la nada. Con el ancho máximo se
+                        conserva lo que importa —que la línea no cruce un
+                        monitor entero— y el espacio sobrante queda de un solo
+                        lado, que se lee como margen y no como error. */}
+                    <div className="max-w-[52rem] pl-10 pr-8 pt-8">
                         <input
                             value={title}
                             onChange={(e) => {
@@ -514,6 +650,7 @@ export default function NoteEditorTab({
                             }}
                             placeholder="Sin título"
                             title="El título es lo que otras notas usan para enlazarla con [[…]]. Cambiarlo deja rotos los enlaces que le apuntaban — se ven marcados en la nota que los tiene."
+                            style={{textAlign: align}}
                             className="w-full border-none bg-transparent text-3xl font-bold leading-tight text-on-surface outline-none placeholder:text-on-surface-variant/40"
                         />
                         {note?.frontmatter?.trim() && (
@@ -521,7 +658,7 @@ export default function NoteEditorTab({
                                 {note.frontmatter
                                     .split(/[,\n]/)
                                     .map((tag) => tag.trim())
-                                    .filter(Boolean)
+                                    .filter((tag) => tag && !tag.startsWith('align:'))
                                     .map((tag) => (
                                         <span
                                             key={tag}
@@ -533,6 +670,7 @@ export default function NoteEditorTab({
                             </div>
                         )}
                     </div>
+                    </div>
 
                     {/* El editor sigue montado detrás de la vista previa: si se
                         desmontara, se perdería el historial de deshacer cada vez
@@ -541,11 +679,12 @@ export default function NoteEditorTab({
                         superior: el aire ya lo pone el bloque del título. */}
                     <div
                         ref={hostRef}
-                        className="[&_.cm-scroller]:pt-2"
-                        style={{display: preview ? 'none' : undefined}}
+                        className="min-h-0 w-full flex-1"
+                        style={{display: preview ? 'none' : undefined, textAlign: align}}
                     />
                     {preview && (
-                        <div className="mx-auto max-w-[46rem] px-6 pb-24 pt-4 text-[15px] leading-7 text-on-surface [&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:text-3xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:my-1 [&_p]:my-3 [&_pre]:my-3 [&_ul]:my-3">
+                        <div className="w-full">
+                        <div style={{textAlign: align}} className="max-w-[52rem] pb-24 pl-10 pr-8 pt-4 text-[15px] leading-7 text-on-surface [&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:text-3xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:my-1 [&_p]:my-3 [&_pre]:my-3 [&_ul]:my-3">
                             <MarkdownPreview
                                 source={content}
                                 renderCodeBlock={({lang, code, key}) => {
@@ -558,18 +697,11 @@ export default function NoteEditorTab({
                                     if (!m) return null
                                     return <RunbookSqlBlock key={key} connectionName={m[1]} sql={code} />
                                 }}
-                                onWikiLink={(target) => {
-                                    // Se resuelve contra los enlaces YA
-                                    // indexados: si el destino existe se abre,
-                                    // y si no, se ofrece crearlo con ese
-                                    // título — que es como se arma el grafo.
-                                    const known = links.find(
-                                        (l) => l.title.trim().toLowerCase() === target.trim().toLowerCase(),
-                                    )
-                                    if (known?.targetId) onOpenNote(known.targetId)
-                                    else onCreateNote(target)
-                                }}
+                                // El mismo resolvedor que el editor: un enlace
+                                // se comporta igual escribiendo que leyendo.
+                                onWikiLink={(target) => void openWikiTarget(target)}
                             />
+                        </div>
                         </div>
                     )}
                 </div>
@@ -628,6 +760,14 @@ export default function NoteEditorTab({
                 <span title="Palabras del cuerpo de la nota" className="flex items-center gap-1">
                     <Icon name="menu_book" size={11} />
                     {(stats?.words ?? 0).toLocaleString('es')} palabras
+                </span>
+                <span
+                    title="Líneas y caracteres. El editor de notas no muestra números de línea al costado —un documento no tiene líneas que referenciar— pero el número sigue estando acá cuando hace falta."
+                    className="flex items-center gap-1"
+                >
+                    <Icon name="format_list_numbered" size={11} />
+                    {content.split('\n').length.toLocaleString('es')} líneas ·{' '}
+                    {(stats?.chars ?? 0).toLocaleString('es')} caracteres
                 </span>
                 <span className="ml-auto">{saving ? 'Guardando…' : dirty ? 'Sin guardar' : 'Guardado'}</span>
             </div>
@@ -703,4 +843,26 @@ function LinkGroup({
             )}
         </div>
     )
+}
+
+// parseAlign / withAlign guardan la alineación dentro del frontmatter cifrado.
+//
+// Como una línea `align:justify` y no como una columna nueva: es una
+// preferencia de presentación de UNA nota, y agregar una columna al esquema
+// por eso obligaría a una migración por cada ajuste visual que se agregue
+// después. El frontmatter ya es el lugar de los metadatos.
+function parseAlign(frontmatter: string): NoteAlign {
+    const m = /(?:^|[,\n])\s*align:\s*(left|center|right|justify)/.exec(frontmatter || '')
+    return (m?.[1] as NoteAlign) ?? 'left'
+}
+
+function withAlign(frontmatter: string, align: NoteAlign): string {
+    const rest = (frontmatter || '')
+        .split(/[,\n]/)
+        .map((p) => p.trim())
+        .filter((p) => p && !p.startsWith('align:'))
+    // 'left' es el valor por defecto: no se escribe, para no ensuciar el
+    // frontmatter de todas las notas con un dato que no dice nada.
+    if (align !== 'left') rest.push(`align:${align}`)
+    return rest.join('\n')
 }
