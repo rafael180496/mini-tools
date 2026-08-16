@@ -1,7 +1,7 @@
 # Plan — Sistema agéntico unificado, Vault Notes y servidor MCP nativo (1.4.0 → 2.0.0)
 
-> **Estado: FASE 1 implementada y completa** (ver "Estado de implementación" al
-> final). Fases 2 a 7: propuesta.
+> **Estado: FASES 1 y 2 implementadas** (ver "Estado de implementación" al
+> final). Fases 3 a 7: propuesta.
 >
 > Segmentación completa de la
 > especificación maestra pedida: IA omnipresente sobre los tres CLIs (Claude
@@ -90,7 +90,7 @@ para no pagar dos veces lo mismo:
 | Historial de conversaciones por repositorio | ✅ `agentchat/history.go` + `agent_chats` (migraciones 31–32) |
 | 7 motores de base de datos | ✅ Oracle, Postgres, SQLite, SQL Server, MySQL/MariaDB*, Redis, Mongo |
 | Autocompletado de tablas/alias/FKs reales | ✅ `backend/sqlintel` (no es IA: es índice de esquema + fuzzy) |
-| `EXPLAIN` → árbol de costo | ✅ `backend/explain` (falta la capa de diagnóstico con IA) |
+| `EXPLAIN` → árbol de costo **y su diagnóstico** | ✅ `backend/explain` — `analysis.go` (severidad, cuello de botella, estimaciones erradas) y `suggest.go` (`CREATE INDEX`). Verificado en la fase 2: NO había que construirlo |
 | Inspector Redis (tipos, `MEMORY USAGE`, TTL, Pub/Sub, Streams) | ✅ `backend/redisquery` + `rediskeys.go` |
 | Explorador SFTP doble panel + cola de transferencias | ✅ `backend/sftpx` + `components/sftp/` |
 | Edición remota con `Ctrl+S` (Remote Edit & Sync) | ✅ `ReadSftpFileForEdit`/`WriteSftpFileFromEdit` |
@@ -136,8 +136,8 @@ entrada en `CHANGELOG.md` bajo `[Unreleased]` **en la misma tarea**.
 
 | Fase | Versión | Qué entrega | Depende de |
 |---|---|---|---|
-| 1 | **1.4.0** | **Chat integral único para todos los módulos** + sesión agéntica de nivel app + sistema `@` de contexto | — |
-| 2 | **1.5.0** | IA en bases de datos: NL2SQL, auto-fix, Index Advisor | Fase 1 |
+| 1 | **1.4.0** ✅ | **Chat integral único para todos los módulos** + sesión agéntica de nivel app + sistema `@` de contexto | — |
+| 2 | **1.5.0** ✅ | IA en bases de datos: NL2SQL, auto-fix, análisis de plan | Fase 1 |
 | 3 | **1.6.0** | Vault Notes: núcleo cifrado, Markdown, WikiLinks, backlinks | — |
 | 4 | **1.7.0** | Vault Notes: bloques `/slash`, runbooks vivos, grafo | Fase 3 |
 | 5 | **1.8.0** | SSH/SFTP agéntico: debugger, sincronización, Production Guard | Fase 1 |
@@ -729,6 +729,57 @@ entre un módulo y otro es el **contexto de trabajo**, no la implementación —
 ver la tabla "Un componente, dos propósitos" en el segmento 1.2.
 
 Con eso, la fase 1 está **completa**.
+
+### Fase 2 (1.5.0) — implementada, con dos segmentos que ya existían
+
+**Hallazgo que cambió el alcance: los segmentos 2.3.1, 2.3.2 y 2.3.4 ya estaban
+construidos.** `backend/explain/analysis.go` calcula tiempo propio por nodo,
+impacto relativo, severidad graduada y los hallazgos accionables (escaneo
+completo con umbrales de filas, estimaciones erradas, cuello de botella, tasa
+de aciertos de buffer); `backend/explain/suggest.go` deriva el `CREATE INDEX`
+de los predicados del nodo. Y `ExplainPlanPanel.tsx` ya los dibujaba con su
+solapa "Diagnóstico". Lo único que faltaba de ese segmento era **2.3.3**, el
+botón que le pide una segunda opinión al agente.
+
+**Construido:**
+
+- `backend/agentctx/dbctx.go` — elección de tablas relevantes (menciones del
+  pedido + cierre por FK a un salto, en las dos direcciones) y su DDL. Con tope
+  de tablas y diciendo cuántas quedaron afuera; cuando el pedido no nombra
+  ninguna, van solo los nombres.
+- `backend/agentctx/nosqlctx.go` — contexto de Mongo (campos inferidos con su
+  tipo BSON, nunca un documento) y de Redis (**patrones** de clave, nunca
+  claves: `sesion:usuario:12345` viaja como `sesion:usuario:*`). Regla más
+  estricta que la relacional a propósito — ahí el nombre de la clave *es*
+  contenido.
+- `backend/agentctx/prompts.go` — prompts dialecto-aware por motor, con las
+  reglas que un agente acierta solo la mitad de las veces si no se las dicen
+  (limitar filas, nulos, fechas), más `ExtractCode` para sacar el bloque.
+- `app_dbagent.go` — `AgentGenerateSQL`, `AgentFixSQL`, `AgentAnalyzePlan`.
+- `components/editor/NlPromptBar.tsx` + `lineDiff.ts` (LCS por líneas escrito a
+  mano, ~40 líneas, regla 12) — la barra de `⌘I`/`Ctrl+I` con el diff de la
+  propuesta.
+- Botón "Explicar y corregir" pegado al error del motor, y "Analizar con el
+  agente" + "Seguir en el chat" en la solapa Diagnóstico del plan.
+
+**Decisiones que el plan no preveía:**
+
+1. **Al agente se le mandan los hallazgos deterministas junto con el plan.** El
+   plan decía "mandá el JSON del plan + DDL + índices". Mandarle además lo que
+   la app ya dedujo —incluido el `CREATE INDEX` que propuso— hace que lo
+   *evalúe* en vez de derivar una propuesta paralela: si coincide lo confirma,
+   y si no, explica por qué no. Dos respuestas útiles en vez de dos opiniones
+   sueltas.
+2. **La propuesta se muestra como diff aun cuando el editor estaba vacío** (ahí
+   todas las líneas van como "sin cambio", no como "agregadas"): marcar cada
+   línea de una consulta nueva como agregada es ruido que no distingue nada.
+3. **Un fallo leyendo el esquema no cancela la consulta al agente.** Se pregunta
+   igual con el contexto que haya y el prompt dice que el esquema no se pudo
+   leer, en vez de negar una pregunta de sintaxis por un catálogo inaccesible.
+
+**Verificación:** `go build`, `go vet`, `pnpm tsc --noEmit`, `pnpm build` y
+`wails build` limpios. **Binario macOS `arm64`: 50MB**, sin cambio — cero
+dependencias nuevas en Go y en el frontend.
 
 ## Fuera de alcance a propósito
 

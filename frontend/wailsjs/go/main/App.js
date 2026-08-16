@@ -18,6 +18,10 @@ export function AgentActive() {
   return window['go']['main']['App']['AgentActive']();
 }
 
+export function AgentAnalyzePlan(arg1) {
+  return window['go']['main']['App']['AgentAnalyzePlan'](arg1);
+}
+
 export function AgentAsk(arg1, arg2, arg3) {
   return window['go']['main']['App']['AgentAsk'](arg1, arg2, arg3);
 }
@@ -36,6 +40,14 @@ export function AgentChatModes(arg1) {
 
 export function AgentChatSupported(arg1) {
   return window['go']['main']['App']['AgentChatSupported'](arg1);
+}
+
+export function AgentFixSQL(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AgentFixSQL'](arg1, arg2, arg3);
+}
+
+export function AgentGenerateSQL(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AgentGenerateSQL'](arg1, arg2, arg3);
 }
 
 export function AgentModelCatalog(arg1) {

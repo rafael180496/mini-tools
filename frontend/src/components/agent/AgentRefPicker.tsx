@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from 'react'
-import {GetSchemaMetadata, ListConnections} from '../../../wailsjs/go/main/App'
+import {AgentRefPolicies, GetSchemaMetadata, ListConnections} from '../../../wailsjs/go/main/App'
 import {agentctx, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import type {WorkContext} from './workContext'
@@ -54,8 +54,7 @@ export default function AgentRefPicker({query, paths, context, onPick, onFirstCh
         // La tabla de políticas la sirve el backend y no se duplica acá: es la
         // promesa de seguridad del sistema (qué inyecta y qué nunca), y dos
         // copias se desincronizan justo en lo que no puede estar mal.
-        import('../../../wailsjs/go/main/App')
-            .then((App) => App.AgentRefPolicies())
+        AgentRefPolicies()
             .then((p) => setPolicies(p ?? []))
             .catch(() => setPolicies([]))
     }, [])

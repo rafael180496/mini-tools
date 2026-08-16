@@ -17,6 +17,7 @@ import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
 import MongoResultView, {MongoCommandResult} from './results/MongoResultView'
 import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
+import NlPromptBar from './editor/NlPromptBar'
 import RedisBrowserTab from './redis/RedisBrowserTab'
 import MongoBrowserTab from './mongo/MongoBrowserTab'
 import MongoFindWizard from './mongo/MongoFindWizard'
@@ -557,6 +558,13 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         // no del tipo de pestaña, que para 'remote-file' o 'sftp' diría poco.
         return {kind: conn.dbType === 'ssh' ? 'ssh' : 'db', id: conn.id, label: conn.name}
     }, [activeTabData, connections])
+
+    // Asistente de consultas del editor (Cmd/Ctrl+I). `errorText` distingue
+    // los dos modos: vacío es "escribime una consulta", con texto es "esto
+    // falló, explicá y corregí". Un solo componente porque son el mismo
+    // flujo —pedir, ver la propuesta, aplicarla o descartarla— y lo único que
+    // cambia es de dónde sale el pedido.
+    const [nlBar, setNlBar] = useState<{errorText?: string} | null>(null)
 
     const changeAgentLayout = useCallback((dock: AgentDock, size: number) => {
         setAgentDockState(dock)
@@ -2180,6 +2188,14 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
                 e.preventDefault()
                 void saveActiveTab()
+            } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+                // Asistente de consultas. Solo con una conexión vinculada:
+                // sin ella no hay motor cuyo dialecto usar ni esquema que
+                // pasarle, y la respuesta sería SQL genérico que puede no
+                // correr en ningún lado.
+                if (!activeTabConnection) return
+                e.preventDefault()
+                setNlBar({})
             } else if (e.key === 'F5') {
                 e.preventDefault()
                 refreshMetadata()
@@ -2745,12 +2761,27 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 </div>
 
                 <div
-                    className="min-w-0 border-b border-outline-variant"
+                    className="relative min-w-0 border-b border-outline-variant"
                     style={{
                         height: isRemoteFileActive ? '100%' : editorHeight,
                         display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive ? 'none' : undefined,
                     }}
                 >
+                    {/* Asistente de consultas: flota SOBRE el editor en vez de
+                        empujarlo. Abrirlo no puede mover el texto que uno está
+                        mirando — y menos cuando lo que va a proponer es un
+                        cambio sobre ese mismo texto. */}
+                    {nlBar && activeTabConnection && (
+                        <NlPromptBar
+                            connId={activeTabConnection.id}
+                            connName={activeTabConnection.name}
+                            dbType={activeTabConnection.dbType}
+                            currentSql={activeTabData?.content ?? ''}
+                            errorText={nlBar.errorText}
+                            onApply={(code) => updateActiveTabContent(code)}
+                            onClose={() => setNlBar(null)}
+                        />
+                    )}
                     {/* Always mounted, even behind a Redis Browser tab —
                         CodeMirrorTabbedEditor caches every other open
                         tab's EditorState/undo history in a ref that only
@@ -3156,7 +3187,13 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     <DbmsOutputPanel lines={dbmsOutputLines} />
                 ) : activeBottomTab === 'explain' ? (
                     <Suspense fallback={null}>
-                        <ExplainPlanPanel plan={explainPlan} loading={explainLoading} error={explainError} />
+                        <ExplainPlanPanel
+                            plan={explainPlan}
+                            loading={explainLoading}
+                            error={explainError}
+                            connId={activeTabConnection?.id ?? null}
+                            connName={activeTabConnection?.name}
+                        />
                     </Suspense>
                 ) : (
                     <Suspense fallback={null}>
@@ -3192,9 +3229,27 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         <span className="shrink-0 text-tertiary">Cancelada</span>
                     )}
                     {!isRedisActive && activeResult?.status === 'error' && (
-                        <span className="min-w-0 flex-1 truncate text-error" title={activeResult.error}>
-                            {activeResult.error}
-                        </span>
+                        <>
+                            <span className="min-w-0 flex-1 truncate text-error" title={activeResult.error}>
+                                {activeResult.error}
+                            </span>
+                            {/* El error del motor trae adentro más información
+                                que cualquier resumen (`ORA-00942`, un SQLSTATE),
+                                y con el esquema al lado suele alcanzar para
+                                decir qué está mal. Va acá, pegado al error, y
+                                no en un menú: es donde uno está mirando cuando
+                                le pasa. */}
+                            {activeTabConnection && (
+                                <button
+                                    onClick={() => setNlBar({errorText: activeResult.error})}
+                                    title="Le pasa al agente el error, la consulta y el esquema de las tablas que menciona, y propone la versión corregida. No la ejecuta: la aplicás vos."
+                                    className="flex shrink-0 items-center gap-1 rounded bg-error-container px-2 py-0.5 text-[11px] text-on-error-container hover:opacity-90"
+                                >
+                                    <Icon name="healing" size={12} />
+                                    Explicar y corregir
+                                </button>
+                            )}
+                        </>
                     )}
                 </div>
                     </>

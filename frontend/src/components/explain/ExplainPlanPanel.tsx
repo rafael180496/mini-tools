@@ -1,6 +1,9 @@
-import {useMemo, useState} from 'react'
+import {useEffect, useMemo, useState} from 'react'
+import {AgentAnalyzePlan} from '../../../wailsjs/go/main/App'
 import {explain} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import MarkdownPreview from '../MarkdownPreview'
+import {useAgentChat} from '../agent/AgentChatHost'
 
 // Severity → visual weight. The rule the whole panel is built on: a plan
 // node is flagged by a LEFT BORDER and a badge, never by filling its row
@@ -235,6 +238,12 @@ interface ExplainPlanPanelProps {
     plan: explain.Plan | null
     loading: boolean
     error: string
+    // Conexión de la que salió el plan, para poder pedirle al agente que lo
+    // analice. Opcional: sin ella el panel funciona igual, solo que sin ese
+    // botón — todo el diagnóstico de esta pantalla es determinista y no
+    // depende de que haya un agente instalado.
+    connId?: string | null
+    connName?: string
 }
 
 type View = 'tree' | 'insights' | 'raw'
@@ -243,8 +252,33 @@ type View = 'tree' | 'insights' | 'raw'
 // Consola / Historial — not as a panel docked under them. It therefore owns
 // no close button and no fixed height: the tab bar closes it (with its own
 // X, like a result tab) and the shared panel sizes it.
-export default function ExplainPlanPanel({plan, loading, error}: ExplainPlanPanelProps) {
+export default function ExplainPlanPanel({plan, loading, error, connId, connName}: ExplainPlanPanelProps) {
     const [view, setView] = useState<View>('tree')
+    const chat = useAgentChat()
+    // Análisis del agente: se pide a mano y se muestra debajo del diagnóstico
+    // determinista, no en su lugar. El 80% del valor de esta pantalla —dónde
+    // está el cuello de botella, qué índice falta— ya lo calcula la app sin
+    // ninguna IA; regalarlo detrás de "instalá un CLI" sería un mal negocio.
+    const [aiAnswer, setAiAnswer] = useState('')
+    const [aiBusy, setAiBusy] = useState(false)
+    const [aiError, setAiError] = useState('')
+
+    // Un plan nuevo invalida el análisis anterior: dejarlo visible bajo otro
+    // plan sería explicar una consulta con las conclusiones de otra.
+    useEffect(() => {
+        setAiAnswer('')
+        setAiError('')
+    }, [plan])
+
+    const analyzeWithAgent = () => {
+        if (!connId || aiBusy) return
+        setAiBusy(true)
+        setAiError('')
+        AgentAnalyzePlan(connId)
+            .then(setAiAnswer)
+            .catch((e) => setAiError(String(e)))
+            .finally(() => setAiBusy(false))
+    }
     const analyzed = !!plan?.analyzed
     const insights = useMemo(() => plan?.insights ?? [], [plan])
     const criticalCount = insights.filter((i) => i.severity === 'critical').length
@@ -381,6 +415,58 @@ export default function ExplainPlanPanel({plan, loading, error}: ExplainPlanPane
                             </p>
                         ) : (
                             insights.map((insight, i) => <InsightRow key={i} insight={insight} />)
+                        )}
+
+                        {/* Segunda opinión, explícitamente pedida. Lo de arriba
+                            es determinista y ya dice DÓNDE está el problema; lo
+                            que el agente agrega es por qué pasa y qué conviene
+                            hacer, que es lo que la app no puede saber. */}
+                        {plan && connId && (
+                            <div className="flex flex-col gap-2 p-2">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={analyzeWithAgent}
+                                        disabled={aiBusy}
+                                        title="Le manda al agente la consulta, el plan y el esquema de las tablas involucradas, junto con lo que ya detectó la app, y pide una explicación y qué cambiar. No ejecuta nada ni crea ningún índice."
+                                        className="flex items-center gap-1.5 rounded-md border border-outline-variant px-2.5 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-50"
+                                    >
+                                        <Icon name="smart_toy" size={14} />
+                                        {aiBusy ? 'Analizando…' : 'Analizar con el agente'}
+                                    </button>
+                                    {aiAnswer && (
+                                        <button
+                                            onClick={() =>
+                                                chat.open({
+                                                    prompt: '@explain:last ¿cómo sigo con esto?',
+                                                    context: connId
+                                                        ? {kind: 'db', id: connId, label: connName ?? ''}
+                                                        : undefined,
+                                                })
+                                            }
+                                            title="Abre el chat con el plan ya referenciado, para repreguntar sobre esta misma respuesta"
+                                            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                        >
+                                            <Icon name="forum" size={14} />
+                                            Seguir en el chat
+                                        </button>
+                                    )}
+                                </div>
+
+                                {aiError && (
+                                    <p className="rounded bg-error-container/40 px-2 py-1 text-[11px] text-error">{aiError}</p>
+                                )}
+
+                                {aiAnswer && (
+                                    <div className="rounded-lg border border-outline-variant bg-surface-container p-2 text-xs text-on-surface">
+                                        <MarkdownPreview source={aiAnswer} />
+                                        <p className="mt-2 border-t border-outline-variant pt-1 text-[10px] text-on-surface-variant">
+                                            Es una sugerencia. Un índice cuesta disco, enlentece las escrituras y su orden de
+                                            columnas depende de las otras consultas que corren contra esa tabla — crearlo lo
+                                            decidís vos.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 )}

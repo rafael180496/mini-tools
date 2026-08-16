@@ -22,7 +22,7 @@ import {
 import {agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import AgentChat from './AgentChat'
-import {CONTEXT_ICONS, describeContext, repoIdOf, NO_CONTEXT, type WorkContext} from './workContext'
+import {CONTEXT_ICONS, repoIdOf, type WorkContext} from './workContext'
 
 // Anfitrión del chat de nivel APLICACIÓN: una conversación que acompaña al
 // usuario por los módulos donde el agente CONSULTA (bases de datos, SSH,
@@ -80,6 +80,16 @@ interface AgentChatApi {
     close: () => void
     toggle: () => void
     isOpen: boolean
+    // Si este anfitrión aplica en el módulo activo.
+    //
+    // **En la pestaña Git es false, a propósito.** Ese módulo tiene el agente
+    // integrado adentro, con su propio objetivo —trabajar sobre el código del
+    // repositorio, con permisos y diff de por medio— y su propia solapa
+    // "Agentes". Ofrecer ahí además el botón de la barra superior sería un
+    // segundo lugar para abrir un segundo chat sobre lo mismo: ni el botón
+    // aparece ni el atajo hace nada mientras la pestaña activa sea un
+    // repositorio.
+    isAvailable: boolean
     // Si hay al menos un agente instalado. Los módulos lo usan para no ofrecer
     // un botón que solo puede terminar en "no hay ningún agente".
     hasAgent: boolean
@@ -101,6 +111,7 @@ export function useAgentChat(): AgentChatApi {
             close: () => {},
             toggle: () => {},
             isOpen: false,
+            isAvailable: false,
             hasAgent: false,
             activeAgentLabel: '',
         }
@@ -141,6 +152,12 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
     // explícito. Se prefiere al del módulo activo hasta que el usuario cambie
     // de pestaña, que es cuando el suyo vuelve a mandar.
     const [pinned, setPinned] = useState<WorkContext | null>(null)
+    // La sesión vigente para los manejadores que se registran una sola vez o
+    // que corren fuera del ciclo de render: el id de conversación puede llegar
+    // antes de que React vuelva a renderizar, y una copia vieja lo escribiría
+    // en el chat equivocado (o en ninguno).
+    const sessionRef = useRef<Session | null>(null)
+    sessionRef.current = session
 
     const effective = pinned ?? context
 
@@ -193,13 +210,24 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
         [],
     )
 
+    // La pestaña Git tiene el agente adentro, con su propia solapa y su propio
+    // objetivo. Este anfitrión se apaga ahí en vez de superponerse.
+    const gitOwnsChat = context.kind === 'git'
+
+    // Y si estaba abierto cuando se entra a un repositorio, se cierra: dejarlo
+    // encima del banco de trabajo de Git sería mostrar dos chats a la vez.
+    useEffect(() => {
+        if (gitOwnsChat) setOpen(false)
+    }, [gitOwnsChat])
+
     const openChat = useCallback(
         (opts?: OpenChatOptions) => {
+            if (gitOwnsChat) return
             if (opts?.context) setPinned(opts.context)
             setOpen(true)
             if (opts?.prompt) setSeed({text: opts.prompt, token: Date.now()})
         },
-        [],
+        [gitOwnsChat],
     )
 
     // Al abrir sin sesión, arrancar una con el agente activo. Si no hay
@@ -214,17 +242,21 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
         () => ({
             open: openChat,
             close: () => setOpen(false),
-            toggle: () => setOpen((v) => !v),
+            toggle: () => !gitOwnsChat && setOpen((v) => !v),
             isOpen: open,
+            isAvailable: !gitOwnsChat,
             hasAgent: available.length > 0,
             activeAgentLabel: activeAgent?.label ?? '',
         }),
-        [openChat, open, available.length, activeAgent?.label],
+        [openChat, open, gitOwnsChat, available.length, activeAgent?.label],
     )
 
     // Atajo global. Cmd/Ctrl+L y no una tecla de función: es el mismo gesto en
     // las dos plataformas y no choca con nada que el editor ya use.
+    //
+    // No hace nada en la pestaña Git: ahí el chat lo tiene el módulo.
     useEffect(() => {
+        if (gitOwnsChat) return
         const onKey = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'l') {
                 e.preventDefault()
@@ -233,7 +265,7 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
-    }, [])
+    }, [gitOwnsChat])
 
     const loadHistory = useCallback(() => {
         ListAllAgentChats()
@@ -243,16 +275,21 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
 
     // El primer mensaje es lo que crea la entrada del historial, con el texto
     // como título — la misma convención que ya usaba la pestaña Git.
+    //
+    // La escritura va FUERA del actualizador de estado. Un actualizador de
+    // React tiene que ser puro: en modo estricto se lo invoca dos veces, así
+    // que meter el INSERT adentro dejaría dos filas por conversación. La
+    // guarda contra el doble registro es el ref, no el valor del estado, que
+    // todavía no se actualizó cuando llega el segundo evento.
+    const creatingChatRef = useRef('')
     const onFirstSend = useCallback(
         (text: string) => {
-            setSession((prev) => {
-                if (!prev || prev.chatId) return prev
-                const title = text.trim().split('\n')[0].slice(0, 80)
-                void CreateAgentChat(prev.id, repoIdOf(effective), prev.agentId, title, effective.kind, effective.id).catch(
-                    () => {},
-                )
-                return {...prev, chatId: prev.id}
-            })
+            const s = sessionRef.current
+            if (!s || s.chatId || creatingChatRef.current === s.id) return
+            creatingChatRef.current = s.id
+            const title = text.trim().split('\n')[0].slice(0, 80)
+            void CreateAgentChat(s.id, repoIdOf(effective), s.agentId, title, effective.kind, effective.id).catch(() => {})
+            setSession((prev) => (prev && prev.id === s.id ? {...prev, chatId: prev.id} : prev))
         },
         [effective],
     )
@@ -408,7 +445,12 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
                         initialSettings={session.initialSettings}
                         onSend={onFirstSend}
                         onConversation={(conversationId) => {
-                            if (session.chatId) void TouchAgentChat(session.chatId, conversationId).catch(() => {})
+                            // Por el ref y no por `session`: el id de
+                            // conversación llega apenas el CLI contesta, que
+                            // puede ser antes de que el render con el chatId
+                            // recién creado haya ocurrido.
+                            const chatId = sessionRef.current?.chatId
+                            if (chatId) void TouchAgentChat(chatId, conversationId).catch(() => {})
                         }}
                     />
                 ) : (
@@ -525,6 +567,10 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
 // useAgentChat().open({prompt}).
 export function AgentChatButton({context}: {context?: WorkContext}) {
     const chat = useAgentChat()
+    // En la pestaña Git no se dibuja: ese módulo ya tiene el agente adentro,
+    // con su solapa "Agentes" y su propio objetivo. Un segundo botón arriba
+    // sería un segundo lugar para abrir un segundo chat sobre lo mismo.
+    if (!chat.isAvailable) return null
     return (
         <button
             onClick={() => chat.open(context ? {context} : undefined)}
@@ -547,6 +593,3 @@ export function AgentChatButton({context}: {context?: WorkContext}) {
     )
 }
 
-// describeContext se re-exporta para los módulos que quieran mostrar sobre qué
-// abriría el chat sin importar el archivo de contexto.
-export {describeContext, NO_CONTEXT}

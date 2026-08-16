@@ -26,6 +26,8 @@ export function AddRedisZSetMember(arg1:string,arg2:string,arg3:string,arg4:numb
 
 export function AgentActive():Promise<main.ActiveAgent>;
 
+export function AgentAnalyzePlan(arg1:string):Promise<string>;
+
 export function AgentAsk(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function AgentCLIConversations(arg1:string,arg2:string):Promise<Array<agentchat.Conversation>>;
@@ -35,6 +37,10 @@ export function AgentChatHistory(arg1:string,arg2:string):Promise<Array<agentcha
 export function AgentChatModes(arg1:string):Promise<Array<string>>;
 
 export function AgentChatSupported(arg1:string):Promise<boolean>;
+
+export function AgentFixSQL(arg1:string,arg2:string,arg3:string):Promise<main.SQLSuggestion>;
+
+export function AgentGenerateSQL(arg1:string,arg2:string,arg3:string):Promise<main.SQLSuggestion>;
 
 export function AgentModelCatalog(arg1:string):Promise<agentmodels.Catalog>;
 

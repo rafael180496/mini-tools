@@ -1882,6 +1882,26 @@ export namespace main {
 	        this.content = source["content"];
 	    }
 	}
+	export class SQLSuggestion {
+	    code: string;
+	    answer: string;
+	    dialect: string;
+	    tables: string[];
+	    totalTables: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SQLSuggestion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.answer = source["answer"];
+	        this.dialect = source["dialect"];
+	        this.tables = source["tables"];
+	        this.totalTables = source["totalTables"];
+	    }
+	}
 	export class SftpEndpointInput {
 	    local: boolean;
 	    connId: string;
