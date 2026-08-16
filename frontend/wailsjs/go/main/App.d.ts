@@ -27,9 +27,13 @@ export function AddRedisZSetMember(arg1:string,arg2:string,arg3:string,arg4:numb
 
 export function AgentActive():Promise<main.ActiveAgent>;
 
-export function AgentAnalyzePlan(arg1:string):Promise<string>;
+export function AgentAnalyzePlan(arg1:string,arg2:string):Promise<string>;
 
 export function AgentAsk(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function AgentAskAgents():Promise<Array<main.AskAgent>>;
+
+export function AgentAskWith(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function AgentCLIConversations(arg1:string,arg2:string):Promise<Array<agentchat.Conversation>>;
 
@@ -53,7 +57,7 @@ export function AgentResolveRefs(arg1:string,arg2:string,arg3:string):Promise<Ar
 
 export function AnalyzeRedisPrefixes(arg1:string,arg2:string,arg3:number,arg4:boolean):Promise<db.RedisPrefixReport>;
 
-export function AnalyzeSSHError(arg1:string,arg2:string,arg3:number):Promise<main.SSHErrorAnalysis>;
+export function AnalyzeSSHError(arg1:string,arg2:string,arg3:number,arg4:string):Promise<main.SSHErrorAnalysis>;
 
 export function AppVersion():Promise<string>;
 

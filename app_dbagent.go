@@ -107,7 +107,10 @@ func (a *App) AgentFixSQL(connID, sqlText, errText string) (SQLSuggestion, error
 // Devuelve la respuesta en Markdown, sin extraer código: acá lo valioso es la
 // explicación, y el `CREATE INDEX` que proponga se copia a mano a propósito —
 // crear un índice es una escritura real sobre una base real.
-func (a *App) AgentAnalyzePlan(connID string) (string, error) {
+//
+// `agentID` vacío usa el agente activo; con uno explícito se pide la segunda
+// opinión a ese proveedor sin cambiar el activo de la app.
+func (a *App) AgentAnalyzePlan(connID, agentID string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
 	}
@@ -131,7 +134,8 @@ func (a *App) AgentAnalyzePlan(connID string) (string, error) {
 		return "", err
 	}
 
-	return a.AgentAsk(
+	return a.AgentAskWith(
+		agentID,
 		agentctx.PlanPrompt(dbType, e.SQLText, string(planJSON), renderFindings(e.Plan.Insights), schema),
 		"db", connID,
 	)

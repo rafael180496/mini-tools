@@ -45,7 +45,10 @@ type SSHErrorAnalysis struct {
 //
 // `selection` es lo que el usuario marcó en pantalla; si viene vacío se usan
 // las últimas líneas del buffer, que es el caso de "acaba de fallar algo".
-func (a *App) AnalyzeSSHError(connID, selection string, lines int) (SSHErrorAnalysis, error) {
+//
+// `agentID` vacío usa el agente activo; con uno explícito la explicación la da
+// ese proveedor, sin cambiar el activo de la app.
+func (a *App) AnalyzeSSHError(connID, selection string, lines int, agentID string) (SSHErrorAnalysis, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return SSHErrorAnalysis{}, err
 	}
@@ -72,7 +75,8 @@ func (a *App) AnalyzeSSHError(connID, selection string, lines int) (SSHErrorAnal
 
 	out.OSInfo = a.sshOSInfo(connID)
 
-	answer, err := a.AgentAsk(
+	answer, err := a.AgentAskWith(
+		agentID,
 		agentctx.SSHErrorPrompt(conn.Name, out.OSInfo, strings.Join(out.Lines, "\n")),
 		"ssh", connID,
 	)

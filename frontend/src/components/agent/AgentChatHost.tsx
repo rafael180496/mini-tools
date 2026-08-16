@@ -140,6 +140,12 @@ interface Props {
     dock: AgentDock
     size: number
     onLayoutChange: (dock: AgentDock, size: number) => void
+    // Inserta texto donde el usuario está trabajando: el editor SQL, la nota
+    // abierta. Es lo que convierte un bloque de código de la respuesta en algo
+    // que se usa, en vez de algo que hay que seleccionar y pegar a mano.
+    // Devuelve la etiqueta de dónde lo puso, o null si no hay dónde.
+    onInsertText?: ((text: string) => void) | null
+    insertLabel?: string
     children: ReactNode
 }
 
@@ -155,7 +161,16 @@ interface Session {
     initialSettings?: {model: string; effort: string; mode: string}
 }
 
-export default function AgentChatHost({context, working, dock, size, onLayoutChange, children}: Props) {
+export default function AgentChatHost({
+    context,
+    working,
+    dock,
+    size,
+    onLayoutChange,
+    onInsertText,
+    insertLabel,
+    children,
+}: Props) {
     const [open, setOpen] = useState(false)
     // Una sesión POR contexto de trabajo, indexadas por su clave. El hilo de
     // una conexión sobrevive a irse a otra pestaña y volver.
@@ -469,6 +484,8 @@ export default function AgentChatHost({context, working, dock, size, onLayoutCha
                         resumeConversationId={session.resumeConversationId}
                         initialSettings={session.initialSettings}
                         working={working}
+                        onInsertText={onInsertText ?? undefined}
+                        insertLabel={insertLabel}
                         onSend={onFirstSend}
                         onConversation={(conversationId) => {
                             // Por el ref y no por `session`: el id de

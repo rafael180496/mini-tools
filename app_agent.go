@@ -210,6 +210,55 @@ const AgentAskTimeout = 3 * time.Minute
 // repositorio, "db" + id de conexión, "ssh" + id de conexión, "note" + id de
 // nota). Determinan el directorio de trabajo del subproceso — ver agentCwd.
 func (a *App) AgentAsk(prompt, module, contextID string) (string, error) {
+	return a.AgentAskWith("", prompt, module, contextID)
+}
+
+// AskAgent es un agente que puede contestar una pregunta puntual.
+type AskAgent struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	// Active es el que se usaría sin elegir nada, para poder marcarlo.
+	Active bool `json:"active"`
+}
+
+// AgentAskAgents lista entre qué agentes se puede elegir para un análisis
+// puntual (el botón "Analizar con el agente").
+//
+// **No es la lista completa del catálogo**, y por dos filtros que importan:
+// solo los que están INSTALADOS en esta máquina —ofrecer uno que no está
+// termina siempre en el mismo error— y solo los que tienen adaptador de chat
+// verificado, porque una respuesta de una sola tirada se lee con el mismo
+// traductor de eventos que el chat. Un CLI sin adaptador se puede seguir
+// usando en la terminal; lo que no puede es contestar esto.
+func (a *App) AgentAskAgents() ([]AskAgent, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	active, err := a.AgentActive()
+	if err != nil {
+		return nil, err
+	}
+	list, err := a.ListAgents()
+	if err != nil {
+		return nil, err
+	}
+	out := []AskAgent{}
+	for _, ag := range list {
+		if !ag.Available || !agentchat.Supports(ag.ID) {
+			continue
+		}
+		out = append(out, AskAgent{ID: ag.ID, Label: ag.Label, Active: ag.ID == active.ID})
+	}
+	return out, nil
+}
+
+// AgentAskWith es lo mismo pero con el proveedor elegido a mano.
+//
+// `agentID` vacío significa "el activo de la app", que es lo que hacía siempre
+// esta llamada. Elegir otro **no cambia el agente activo**: es una decisión
+// para esta consulta y nada más — pedirle una segunda opinión a otro modelo no
+// puede ser motivo de que el resto de la app cambie de proveedor por atrás.
+func (a *App) AgentAskWith(agentID, prompt, module, contextID string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
 	}
@@ -217,14 +266,22 @@ func (a *App) AgentAsk(prompt, module, contextID string) (string, error) {
 		return "", fmt.Errorf("app: la consulta al agente está vacía")
 	}
 
-	active, err := a.AgentActive()
-	if err != nil {
-		return "", err
+	// Modelo y esfuerzo son los del agente ACTIVO, y solo se pasan si se está
+	// usando ese: un modelo es un nombre propio de su proveedor, y mandarle a
+	// Claude Code el modelo elegido para Codex es pedirle uno que no existe.
+	// Con otro proveedor se va sin modelo, y cada CLI usa el suyo por defecto.
+	var model, effort string
+	if agentID == "" {
+		active, err := a.AgentActive()
+		if err != nil {
+			return "", err
+		}
+		if active.ID == "" {
+			return "", fmt.Errorf("app: no hay ningún agente elegido — elegí uno en la barra de agente")
+		}
+		agentID, model, effort = active.ID, active.Model, active.Effort
 	}
-	if active.ID == "" {
-		return "", fmt.Errorf("app: no hay ningún agente elegido — elegí uno en la barra de agente")
-	}
-	agent, err := a.agentByID(active.ID)
+	agent, err := a.agentByID(agentID)
 	if err != nil {
 		return "", err
 	}
@@ -258,10 +315,9 @@ func (a *App) AgentAsk(prompt, module, contextID string) (string, error) {
 		Cwd:    cwd,
 		Env:    env,
 		Prompt: prompt,
-		// El modelo del agente activo, sí; el esfuerzo también. El MODO no se
-		// pasa a propósito: Ask rechaza los permisivos, y mandar uno sería
-		// pedir un permiso para algo que este camino no hace.
-		Model:  active.Model,
-		Effort: active.Effort,
+		// El MODO no se pasa a propósito: Ask rechaza los permisivos, y mandar
+		// uno sería pedir un permiso para algo que este camino no hace.
+		Model:  model,
+		Effort: effort,
 	})
 }

@@ -18,12 +18,20 @@ export function AgentActive() {
   return window['go']['main']['App']['AgentActive']();
 }
 
-export function AgentAnalyzePlan(arg1) {
-  return window['go']['main']['App']['AgentAnalyzePlan'](arg1);
+export function AgentAnalyzePlan(arg1, arg2) {
+  return window['go']['main']['App']['AgentAnalyzePlan'](arg1, arg2);
 }
 
 export function AgentAsk(arg1, arg2, arg3) {
   return window['go']['main']['App']['AgentAsk'](arg1, arg2, arg3);
+}
+
+export function AgentAskAgents() {
+  return window['go']['main']['App']['AgentAskAgents']();
+}
+
+export function AgentAskWith(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['AgentAskWith'](arg1, arg2, arg3, arg4);
 }
 
 export function AgentCLIConversations(arg1, arg2) {
@@ -70,8 +78,8 @@ export function AnalyzeRedisPrefixes(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AnalyzeRedisPrefixes'](arg1, arg2, arg3, arg4);
 }
 
-export function AnalyzeSSHError(arg1, arg2, arg3) {
-  return window['go']['main']['App']['AnalyzeSSHError'](arg1, arg2, arg3);
+export function AnalyzeSSHError(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['AnalyzeSSHError'](arg1, arg2, arg3, arg4);
 }
 
 export function AppVersion() {

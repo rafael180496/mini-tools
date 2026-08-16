@@ -408,3 +408,60 @@ func TestConversationsArePerSession(t *testing.T) {
 		t.Errorf("las conversaciones se cruzaron: %+v", m.convos)
 	}
 }
+
+// TestAntigravitySplitRune: un carácter partido entre dos trozos.
+//
+// Es el bug de `borrado l<?><?>gico`: la "ó" ocupa dos bytes y el CLI cortó
+// entre uno y otro. Cada línea, por separado, es texto inválido; juntas son la
+// palabra. Sin este arreglo, `encoding/json` reemplazaba cada mitad por U+FFFD
+// al decodificar y la palabra quedaba rota para siempre.
+func TestAntigravitySplitRune(t *testing.T) {
+	lines := [][]byte{
+		[]byte("{\"event\":\"step_update\",\"step_update\":{\"step_type\":\"agent_response\",\"text_delta\":\"borrado l\xc3\"}}"),
+		[]byte("{\"event\":\"step_update\",\"step_update\":{\"step_type\":\"agent_response\",\"text_delta\":\"\xb3gico\"}}"),
+	}
+
+	var fix utf8Stitcher
+	var got string
+	for _, line := range lines {
+		for _, ev := range antigravityAdapter(line) {
+			if ev.Kind == KindText {
+				got += fix.Feed(ev.Text)
+			}
+		}
+	}
+	got += fix.Flush()
+
+	if want := "borrado lógico"; got != want {
+		t.Fatalf("texto cosido = %q, quería %q", got, want)
+	}
+}
+
+// TestStitcherKeepsWholeText: el caso normal —ningún carácter partido— tiene
+// que pasar tal cual y trozo por trozo, o el chat dejaría de verse escribir.
+func TestStitcherKeepsWholeText(t *testing.T) {
+	var fix utf8Stitcher
+	for _, chunk := range []string{"Añadí ", "una restricción ", "🚀"} {
+		if out := fix.Feed(chunk); out != chunk {
+			t.Fatalf("Feed(%q) = %q, quería el trozo entero", chunk, out)
+		}
+	}
+	if rest := fix.Flush(); rest != "" {
+		t.Fatalf("quedó %q colgando y no tendría que haber nada", rest)
+	}
+}
+
+// TestJSONRawStringUnescapes: los escapes normales se siguen entendiendo, con
+// par de sustitutos incluido (un emoji viaja como DOS escapes).
+func TestJSONRawStringUnescapes(t *testing.T) {
+	cases := map[string]string{
+		`"lógico"`:      "lógico",
+		`"a\nb\t\"c\""`: "a\nb\t\"c\"",
+		`"🚀 ok"`:        "🚀 ok",
+	}
+	for in, want := range cases {
+		if got := jsonRawString([]byte(in)); got != want {
+			t.Fatalf("jsonRawString(%s) = %q, quería %q", in, got, want)
+		}
+	}
+}

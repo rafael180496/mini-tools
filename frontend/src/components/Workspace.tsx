@@ -102,6 +102,7 @@ import {
 import {BrowserOpenURL, EventsOn} from '../../wailsjs/runtime'
 import {db, explain, updatecheck, vault} from '../../wailsjs/go/models'
 import type {EditorView} from '@codemirror/view'
+import {statementAt} from '../lib/sqlStatementAt'
 import {lintSQL} from '../lib/linter'
 import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
@@ -529,6 +530,14 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // starts. Every run function below sets it.
     const unsubscribeRef = useRef<(() => void) | null>(null)
     const editorRef = useRef<EditorView | null>(null)
+    // Cambió la privacidad de una nota, desde donde sea: el candado del árbol
+    // tiene que reflejarlo YA. Un control de privacidad que muestra el estado
+    // anterior es peor que no mostrarlo.
+    useEffect(() => EventsOn('note:privacy', () => setNotesToken((n) => n + 1)), [])
+
+    // Editores de las notas abiertas, por pestaña. Son vistas de CodeMirror
+    // distintas de la del editor SQL, y hay una por nota montada.
+    const noteViewsRef = useRef<Map<string, EditorView>>(new Map())
     const tabsRef = useRef(tabs)
     tabsRef.current = tabs
     const activeTabIdRef = useRef(activeTabId)
@@ -1575,9 +1584,24 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // confirmation first — asked of Go rather than a local regex, because
     // "-- delete this" and "SELECT 'DELETE'" are not deletes and a
     // "WITH x AS (…) DELETE …" is one.
+    // Qué se explica: lo seleccionado, o la sentencia donde está el cursor.
+    //
+    // **Antes iba el archivo entero**, y eso estaba mal de dos maneras: una
+    // pestaña de trabajo tiene diez consultas y lo que se está mirando es una,
+    // y el planner devuelve el plan de la ÚLTIMA sentencia del texto — así que
+    // el plan que se leía ni siquiera era el de la consulta bajo el cursor.
+    function explainTargetSQL(): string {
+        const full = activeTabData?.content ?? ''
+        const view = editorRef.current
+        if (!view) return full
+        const {from, to, empty} = view.state.selection.main
+        if (!empty) return view.state.sliceDoc(from, to)
+        return statementAt(view.state.doc.toString(), from).text.trim() || full
+    }
+
     async function runExplain(analyze: boolean) {
         if (!activeTabConnection) return
-        const text = activeTabData?.content ?? ''
+        const text = explainTargetSQL()
         if (!text.trim()) return
 
         if (analyze) {
@@ -2521,6 +2545,27 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 dock={agentDock}
                 size={agentSize}
                 onLayoutChange={changeAgentLayout}
+                // Mandar un bloque de código de la respuesta a donde estás
+                // trabajando. Solo si hay dónde: en una terminal o un browser
+                // de Redis el botón no aparece, en vez de aparecer y no hacer
+                // nada.
+                onInsertText={
+                    isNoteTabActive || activeTabData?.kind === 'editor'
+                        ? (text) => {
+                              const view = isNoteTabActive
+                                  ? noteViewsRef.current.get(activeTabId ?? '')
+                                  : editorRef.current
+                              if (!view) return
+                              view.dispatch(view.state.replaceSelection(text.endsWith('\n') ? text : text + '\n'))
+                              view.focus()
+                          }
+                        : null
+                }
+                insertLabel={
+                    isNoteTabActive
+                        ? 'Inserta el bloque en la nota, donde está el cursor'
+                        : 'Inserta el bloque en el editor, donde está el cursor — no pisa lo que ya escribiste'
+                }
             >
                 {/* Tab strip goes FIRST, above the toolbar — its position
                     must stay fixed regardless of which tab is active. The
@@ -2838,7 +2883,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 <button
                                     onClick={() => void runExplain(false)}
                                     disabled={!activeTabConnection}
-                                    title="Muestra el plan de ejecución del query (EXPLAIN) sin correrlo — útil para diagnosticar lentitud sin afectar datos"
+                                    title="Muestra el plan de ejecución (EXPLAIN) sin correr nada. Explica lo que tengas SELECCIONADO; sin selección, la sentencia donde está el cursor — no el archivo entero."
                                     className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-50"
                                 >
                                     <Icon name="query_stats" size={16} />
@@ -2851,7 +2896,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 <button
                                     onClick={() => void runExplain(true)}
                                     disabled={!activeTabConnection}
-                                    title="Ejecuta el query de verdad contra la base y muestra el plan con filas y tiempos REALES (EXPLAIN ANALYZE). A diferencia de Explain, sí corre la consulta: si modifica datos se te pide confirmación y la ejecución se envuelve en una transacción que se revierte."
+                                    title="Ejecuta el query de verdad contra la base y muestra el plan con filas y tiempos REALES (EXPLAIN ANALYZE). Corre lo que tengas SELECCIONADO; sin selección, la sentencia donde está el cursor. A diferencia de Explain, sí ejecuta: si modifica datos se te pide confirmación y la ejecución se envuelve en una transacción que se revierte."
                                     className="flex items-center gap-1.5 rounded-md border border-tertiary/40 bg-tertiary/10 px-3 py-1.5 text-xs font-medium text-tertiary transition-colors hover:bg-tertiary/20 disabled:opacity-50"
                                 >
                                     <Icon name="analytics" size={16} />
@@ -3106,6 +3151,15 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                         .catch(() => {})
                                 }}
                                 onClosed={() => closeTab(t.id)}
+                                onViewReady={(view) => {
+                                    // Solo la nota ACTIVA queda apuntada: con
+                                    // varias abiertas, la última en montarse
+                                    // no es necesariamente la que se está
+                                    // mirando, y el chat insertaría en la
+                                    // equivocada.
+                                    if (view) noteViewsRef.current.set(t.id, view)
+                                    else noteViewsRef.current.delete(t.id)
+                                }}
                                 onChanged={(title) => {
                                     setNotesToken((n) => n + 1)
                                     if (title) {

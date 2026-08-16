@@ -123,11 +123,11 @@ type Turn struct {
 	// `~/.local/bin` ni el prefijo de npm, así que invocar "claude" por
 	// nombre fallaba con "executable file not found in $PATH" aunque el
 	// catálogo lo hubiera encontrado un segundo antes.
-	Exec []string
-	Cwd     string
-	Env     []string
-	Prompt  string
-	Mode    Mode
+	Exec   []string
+	Cwd    string
+	Env    []string
+	Prompt string
+	Mode   Mode
 	// ApproveSettings es la ruta del archivo de settings que instala el hook
 	// de aprobación. Solo se usa con ModeApprove; vacío deshabilita el modo,
 	// que es lo que pasa cuando el canal no se pudo abrir.
@@ -240,6 +240,9 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 
 	var text strings.Builder
 	var failure string
+	// Mismo arreglo que en el turno en vivo: acá el texto también llega en
+	// trozos, y esta respuesta puede terminar en un mensaje de commit.
+	var textFix utf8Stitcher
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for sc.Scan() {
@@ -250,12 +253,14 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 		for _, ev := range adapt([]byte(line)) {
 			switch ev.Kind {
 			case KindText:
-				text.WriteString(ev.Text)
+				text.WriteString(textFix.Feed(ev.Text))
 			case KindError:
 				failure = ev.Error
 			}
 		}
 	}
+
+	text.WriteString(textFix.Flush())
 
 	// Un error del scanner corta la lectura a la mitad: sin comprobarlo, una
 	// respuesta truncada se devolvería como si estuviera completa — y acá esa
@@ -351,6 +356,10 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 		return
 	}
 
+	// El texto llega en trozos y un trozo puede cortar un carácter por la
+	// mitad: acá se vuelve a pegar. Uno por flujo — ver rawtext.go.
+	var textFix, thinkFix utf8Stitcher
+
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for sc.Scan() {
@@ -359,6 +368,18 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 			continue
 		}
 		for _, ev := range adapt([]byte(line)) {
+			switch ev.Kind {
+			case KindText:
+				// Un trozo que quedó entero en el retén no se emite: mandarlo
+				// vacío haría parpadear el "escribiendo" sin texto nuevo.
+				if ev.Text = textFix.Feed(ev.Text); ev.Text == "" {
+					continue
+				}
+			case KindThinking:
+				if ev.Text = thinkFix.Feed(ev.Text); ev.Text == "" {
+					continue
+				}
+			}
 			// El id de conversación se retiene apenas aparece, no al final:
 			// si el turno se corta a la mitad, el siguiente igual encadena con
 			// lo que ya se dijo en vez de empezar de cero.
@@ -369,6 +390,12 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 			}
 			m.emit(t.SessionID, ev)
 		}
+	}
+
+	// Lo que haya quedado a medias sale igual: un carácter incompleto es
+	// señal de que el flujo se cortó, y comérselo escondería el truncado.
+	if rest := textFix.Flush(); rest != "" {
+		m.emit(t.SessionID, Event{Kind: KindText, Text: rest})
 	}
 
 	// Igual que en Ask: un scanner que se corta dejaría la respuesta a medias

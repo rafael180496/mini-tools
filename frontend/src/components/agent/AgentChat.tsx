@@ -18,6 +18,7 @@ import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
 import AgentRefPicker from './AgentRefPicker'
+import ChatCodeBlock from './ChatCodeBlock'
 import {CONTEXT_ICONS, CONTEXT_NOUNS, describeContext, repoIdOf, type WorkContext} from './workContext'
 
 // Espeja ChatEvent / ToolCall / Usage (backend/agentchat/types.go).
@@ -189,6 +190,11 @@ interface AgentChatProps {
     onTurnFinished?: () => Promise<number>
     // Lleva a la vista de Cambios, con el diff de lo que hizo el agente.
     onReviewChanges?: () => void
+    // Manda un bloque de código de la respuesta a donde el usuario trabaja: el
+    // editor SQL, la nota abierta. Sin esto los bloques solo se copian — que es
+    // lo correcto en un módulo donde no hay dónde insertar nada.
+    onInsertText?: (text: string) => void
+    insertLabel?: string
     // Abre OTRO chat, con otro agente, para que revise lo que este viene
     // haciendo. Es el caso de trabajar en paralelo: uno propone, otro valida.
     onValidateWithAnother?: (excludeAgentId: string) => void
@@ -240,8 +246,14 @@ export default function AgentChat({
     onConversation,
     onSend,
     working,
+    onInsertText,
+    insertLabel,
 }: AgentChatProps) {
     const [turns, setTurns] = useState<Turn[]>([])
+    // Qué mensaje se acaba de copiar, para confirmarlo en el botón. Sin la
+    // confirmación no hay forma de saber si el clic hizo algo: el portapapeles
+    // no se ve.
+    const [copiedTurn, setCopiedTurn] = useState<number | null>(null)
     // Acumulado de la conversación: la suma de lo que informó cada turno.
     //
     // Es lo consumido, **no lo que queda del plan**. Cuánto queda no está en
@@ -745,10 +757,28 @@ export default function AgentChat({
                 )}
 
                 {turns.map((t, i) => (
-                    <div key={i} className={`mb-2 ${t.role === 'user' ? 'text-on-surface' : ''}`}>
+                    <div key={i} className={`group mb-2 ${t.role === 'user' ? 'text-on-surface' : ''}`}>
                         <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wider text-on-surface-variant">
                             <Icon name={t.role === 'user' ? 'person' : 'smart_toy'} size={11} />
                             {t.role === 'user' ? 'Vos' : agentLabel}
+
+                            {/* Copiar el mensaje entero. Aparece al pasar por
+                                encima para no ensuciar la lectura, y copia el
+                                TEXTO —no el Markdown renderizado— que es lo
+                                que sirve para pegar en otro lado. */}
+                            {t.text && (
+                                <button
+                                    onClick={() => {
+                                        void navigator.clipboard.writeText(t.text)
+                                        setCopiedTurn(i)
+                                    }}
+                                    title="Copia este mensaje al portapapeles"
+                                    className="ml-auto hidden shrink-0 items-center gap-1 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface group-hover:flex"
+                                >
+                                    <Icon name={copiedTurn === i ? 'check' : 'content_copy'} size={11} />
+                                    {copiedTurn === i ? 'Copiado' : 'Copiar'}
+                                </button>
+                            )}
                         </div>
 
                         {/* Cada acción del agente en una línea: qué herramienta,
@@ -801,7 +831,25 @@ export default function AgentChat({
                                     El mensaje PROPIO no: lo escribiste vos y
                                     tiene que verse tal cual lo mandaste —
                                     reinterpretarlo cambiaría lo que dijiste. */}
-                                {t.role === 'user' ? t.text : <MarkdownPreview source={t.text} />}
+                                {t.role === 'user' ? (
+                                    t.text
+                                ) : (
+                                    <MarkdownPreview
+                                        source={t.text}
+                                        // Los bloques de código llevan su
+                                        // propia barra: copiar y mandar al
+                                        // editor. Ver ChatCodeBlock.
+                                        renderCodeBlock={({lang, code, key}) => (
+                                            <ChatCodeBlock
+                                                key={key}
+                                                lang={lang}
+                                                code={code}
+                                                onInsert={onInsertText}
+                                                insertLabel={insertLabel}
+                                            />
+                                        )}
+                                    />
+                                )}
                             </div>
                         )}
 

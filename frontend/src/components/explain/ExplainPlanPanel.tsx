@@ -4,6 +4,7 @@ import {explain} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import MarkdownPreview from '../MarkdownPreview'
 import {useAgentChat} from '../agent/AgentChatHost'
+import AskAgentPicker from '../agent/AskAgentPicker'
 
 // Severity → visual weight. The rule the whole panel is built on: a plan
 // node is flagged by a LEFT BORDER and a badge, never by filling its row
@@ -261,6 +262,9 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
     // ninguna IA; regalarlo detrás de "instalá un CLI" sería un mal negocio.
     const [aiAnswer, setAiAnswer] = useState('')
     const [aiBusy, setAiBusy] = useState(false)
+    // Proveedor de este análisis. Vacío = el activo de la app; elegir otro no
+    // lo cambia — ver AskAgentPicker.
+    const [askAgent, setAskAgent] = useState('')
     const [aiError, setAiError] = useState('')
 
     // Un plan nuevo invalida el análisis anterior: dejarlo visible bajo otro
@@ -274,7 +278,7 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
         if (!connId || aiBusy) return
         setAiBusy(true)
         setAiError('')
-        AgentAnalyzePlan(connId)
+        AgentAnalyzePlan(connId, askAgent)
             .then(setAiAnswer)
             .catch((e) => setAiError(String(e)))
             .finally(() => setAiBusy(false))
@@ -431,8 +435,14 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                                         className="flex items-center gap-1.5 rounded-md border border-outline-variant px-2.5 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-50"
                                     >
                                         <Icon name="smart_toy" size={14} />
-                                        {aiBusy ? 'Analizando…' : 'Analizar con el agente'}
+                                        {aiBusy ? 'Analizando…' : aiAnswer ? 'Volver a analizar' : 'Analizar con el agente'}
                                     </button>
+
+                                    {/* Con qué proveedor. Si la respuesta de
+                                        uno no convence, lo que uno quiere es
+                                        preguntarle lo mismo a otro modelo — no
+                                        cambiar el agente de toda la app. */}
+                                    <AskAgentPicker value={askAgent} onChange={setAskAgent} disabled={aiBusy} />
                                     {aiAnswer && (
                                         <button
                                             onClick={() =>

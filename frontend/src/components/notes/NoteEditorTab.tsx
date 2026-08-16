@@ -22,6 +22,7 @@ import {
     SetNotePrivacy,
     UpdateNote,
 } from '../../../wailsjs/go/main/App'
+import {EventsOn} from '../../../wailsjs/runtime'
 import {main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
@@ -53,6 +54,11 @@ interface Props {
     // Crear la nota que un enlace roto nombra.
     onCreateNote: (title: string) => void
     onClosed: () => void
+    // Publica el editor de CodeMirror hacia afuera, para que el chat pueda
+    // insertar un bloque de código en la nota abierta. Se avisa también al
+    // desmontar (con null): un editor destruido al que alguien todavía apunta
+    // es un `dispatch` sobre una vista muerta.
+    onViewReady?: (view: EditorView | null) => void
     // Avisa que algo cambió, para que la lista del sidebar se refresque. El
     // título viaja para que la pestaña se renombre con la nota — una pestaña
     // que dice "Nota" cuando el documento ya se llama otra cosa obliga a
@@ -128,6 +134,7 @@ export default function NoteEditorTab({
     onOpenNote,
     onCreateNote,
     onClosed,
+    onViewReady,
     onChanged,
 }: Props) {
     const [note, setNote] = useState<vault.Note | null>(null)
@@ -188,6 +195,19 @@ export default function NoteEditorTab({
 
     useEffect(reloadLinks, [reloadLinks])
 
+    // La privacidad puede cambiar desde otra vista (el grafo, otro panel). La
+    // insignia de esta barra tiene que seguirla: mostrar "Acceso IA permitido"
+    // sobre una nota que ya está escondida es exactamente el error que un
+    // control de privacidad no puede cometer.
+    useEffect(
+        () =>
+            EventsOn('note:privacy', (payload: {id: string; isPrivate: boolean}) => {
+                if (payload?.id !== noteId) return
+                setNote((n) => (n ? ({...n, isPrivate: payload.isPrivate} as vault.Note) : n))
+            }),
+        [noteId],
+    )
+
     // Los números se recalculan al guardar, no en cada tecla: contar palabras
     // por pulsación sería un viaje al backend por letra.
     useEffect(() => {
@@ -228,6 +248,8 @@ export default function NoteEditorTab({
     onCreateNoteRef.current = onCreateNote
     const onOpenNoteRef = useRef(onOpenNote)
     onOpenNoteRef.current = onOpenNote
+    const onViewReadyRef = useRef(onViewReady)
+    onViewReadyRef.current = onViewReady
     // Mismo motivo que saveRef: el manejador se registra una sola vez con el
     // editor y no puede quedarse con la versión del primer render. Se declara
     // vacío y se llena más abajo, donde la función ya existe.
@@ -388,12 +410,14 @@ export default function NoteEditorTab({
             }),
         })
         viewRef.current = view
+        onViewReadyRef.current?.(view)
         // Markdown con import() dinámico, nunca estático: los parsers de
         // lenguaje van cada uno a su chunk (regla 6 de technical.md).
         void loadLanguage('markdown').then((ext) => {
             if (ext) view.dispatch({effects: langComp.current.reconfigure(ext)})
         })
         return () => {
+            onViewReadyRef.current?.(null)
             view.destroy()
             viewRef.current = null
         }

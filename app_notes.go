@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"mini-tools/backend/vault"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Bindings del módulo de notas: la base de conocimiento cifrada.
@@ -105,12 +107,31 @@ func (a *App) UpdateNote(id, title, content, frontmatter string) error {
 	return a.vault.UpdateNote(id, title, content, frontmatter)
 }
 
+// NotePrivacyEvent es el nombre del evento que avisa que una nota cambió de
+// privacidad.
+//
+// **Por qué un evento y no que cada vista se entere por su cuenta.** El estado
+// "esta nota la puede leer un agente" se muestra en cuatro lugares a la vez —
+// la insignia del editor, el candado del árbol, el nodo del grafo y el panel de
+// acceso— y se puede cambiar desde varios. Sin un aviso, el que no hizo el
+// cambio se queda mostrando lo de antes, y ahí el candado deja de ser
+// información y pasa a ser una suposición. En un control de privacidad eso no
+// es un detalle de refresco: es la diferencia entre creer que algo está
+// escondido y que lo esté.
+const NotePrivacyEvent = "note:privacy"
+
 // SetNotePrivacy esconde o vuelve a mostrar una nota a los agentes.
 func (a *App) SetNotePrivacy(id string, private bool) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.vault.SetNotePrivacy(id, private)
+	if err := a.vault.SetNotePrivacy(id, private); err != nil {
+		return err
+	}
+	// Después de que la escritura salió bien, nunca antes: avisar de un cambio
+	// que falló haría que todas las vistas se pongan de acuerdo en algo falso.
+	runtime.EventsEmit(a.ctx, NotePrivacyEvent, map[string]any{"id": id, "isPrivate": private})
+	return nil
 }
 
 // DeleteNote borra una nota. Los enlaces que le apuntaban quedan rotos y

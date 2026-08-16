@@ -1,5 +1,6 @@
-import {useEffect, useMemo, useRef, useState} from 'react'
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {NotesGraph} from '../../../wailsjs/go/main/App'
+import {EventsOn} from '../../../wailsjs/runtime'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 
@@ -75,11 +76,17 @@ export default function NotesGraphView({onOpenNote, onClose, activeNoteId}: Prop
         return () => window.removeEventListener('keydown', onKey)
     }, [onClose])
 
-    useEffect(() => {
+    const reload = useCallback(() => {
         NotesGraph()
             .then(setData)
             .catch((e) => setError(String(e)))
     }, [])
+
+    useEffect(reload, [reload])
+
+    // El candado de un nodo se actualiza sin cerrar el grafo: si cambió la
+    // privacidad mientras esta vista está abierta, acá se ve.
+    useEffect(() => EventsOn('note:privacy', reload), [reload])
 
     const filtered = useMemo(() => {
         if (!data) return {nodes: [], edges: []}

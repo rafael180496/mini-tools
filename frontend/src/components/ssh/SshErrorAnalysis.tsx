@@ -3,6 +3,7 @@ import {AnalyzeSSHError} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import MarkdownPreview from '../MarkdownPreview'
+import AskAgentPicker from '../agent/AskAgentPicker'
 import {useAgentChat} from '../agent/AgentChatHost'
 
 // Analizar un error de la terminal SSH con el agente.
@@ -35,18 +36,23 @@ export default function SshErrorAnalysis({connId, connName, selection, onClose, 
     const [busy, setBusy] = useState(true)
     const [error, setError] = useState('')
     const [showSent, setShowSent] = useState(false)
+    // Proveedor de ESTE análisis. Vacío = el activo de la app. Cambiarlo
+    // relanza la pregunta: pedir la misma explicación a otro modelo es
+    // justamente para lo que sirve.
+    const [askAgent, setAskAgent] = useState('')
     const chat = useAgentChat()
 
     useEffect(() => {
         let cancelled = false
-        AnalyzeSSHError(connId, selection, 60)
+        setBusy(true)
+        AnalyzeSSHError(connId, selection, 60, askAgent)
             .then((r) => !cancelled && setResult(r))
             .catch((e) => !cancelled && setError(String(e)))
             .finally(() => !cancelled && setBusy(false))
         return () => {
             cancelled = true
         }
-    }, [connId, selection])
+    }, [connId, selection, askAgent])
 
     // Los comandos que propuso el agente, sacados de los bloques de código.
     const commands = extractCommands(result?.answer ?? '')
@@ -67,6 +73,8 @@ export default function SshErrorAnalysis({connId, connName, selection, onClose, 
                         {result.redacted} {result.redacted === 1 ? 'valor oculto' : 'valores ocultos'}
                     </span>
                 )}
+
+                <AskAgentPicker value={askAgent} onChange={setAskAgent} disabled={busy} />
 
                 {result && (
                     <button

@@ -136,14 +136,17 @@ type agyLine struct {
 	} `json:"init"`
 	ConversationID string `json:"conversation_id"`
 	StepUpdate     *struct {
-		ConversationID string    `json:"conversation_id"`
-		StepIndex      int       `json:"step_index"`
-		StepType       string    `json:"step_type"`
-		State          string    `json:"state"`
-		TextDelta      string    `json:"text_delta"`
-		ToolName       string    `json:"tool_name"`
-		ToolInput      any       `json:"tool_input"`
-		Usage          *agyUsage `json:"usage"`
+		ConversationID string `json:"conversation_id"`
+		StepIndex      int    `json:"step_index"`
+		StepType       string `json:"step_type"`
+		State          string `json:"state"`
+		// TextDelta se lee CRUDO. Ver rawtext.go: el decodificador estándar
+		// reemplaza por U+FFFD el byte suelto de un carácter que quedó
+		// partido entre dos trozos, y ahí ya no hay nada que recuperar.
+		TextDelta json.RawMessage `json:"text_delta"`
+		ToolName  string          `json:"tool_name"`
+		ToolInput any             `json:"tool_input"`
+		Usage     *agyUsage       `json:"usage"`
 	} `json:"step_update"`
 	Result *struct {
 		ConversationID string    `json:"conversation_id"`
@@ -186,8 +189,8 @@ func antigravityAdapter(line []byte) []Event {
 		// sienta vivo.
 		switch s.StepType {
 		case "agent_response":
-			if s.TextDelta != "" {
-				return []Event{{Kind: KindText, Text: s.TextDelta}}
+			if delta := jsonRawString(s.TextDelta); delta != "" {
+				return []Event{{Kind: KindText, Text: delta}}
 			}
 		case "user_input", "checkpoint", "unknown":
 			// Pasos internos: no son nada que mostrar.

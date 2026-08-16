@@ -1828,6 +1828,22 @@ export namespace main {
 	        this.chatSupported = source["chatSupported"];
 	    }
 	}
+	export class AskAgent {
+	    id: string;
+	    label: string;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AskAgent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.active = source["active"];
+	    }
+	}
 	export class ConnectionEditInfo {
 	    name: string;
 	    dbType: string;
