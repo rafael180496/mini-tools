@@ -112,10 +112,10 @@ func Policies() []Policy {
 			Available: true,
 		},
 		{
-			Kind:      KindSSH,
-			Syntax:    "@ssh:alias/last_error",
-			Injects:   "Las últimas líneas de la terminal SSH activa.",
-			Never:     "La contraseña ni la clave privada de la conexión.",
+			Kind:    KindSSH,
+			Syntax:  "@ssh:alias/last_error",
+			Injects: "Las últimas líneas de la terminal SSH activa.",
+			Never:   "La contraseña ni la clave privada de la conexión.",
 			// La terminal SSH streamea su salida al frontend y no la retiene:
 			// no hay buffer del que leer todavía. Se declara acá igual para
 			// que el tipo exista desde el primer día y no haya que rehacer el
@@ -124,11 +124,10 @@ func Policies() []Policy {
 		},
 		{
 			Kind:      KindNote,
-			Syntax:    "@note:Título",
+			Syntax:    `@note:"Título de la nota"`,
 			Injects:   "El Markdown de la nota, solo si está marcada como visible para la IA.",
 			Never:     "El contenido de una nota privada, bajo ninguna circunstancia.",
-			// El módulo de notas llega en la fase 3.
-			Available: false,
+			Available: true,
 		},
 	}
 }

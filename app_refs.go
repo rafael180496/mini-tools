@@ -95,8 +95,7 @@ func (a *App) resolveRef(r agentctx.Ref, module, contextID string) agentctx.Reso
 		res.Err = "las referencias a la terminal SSH todavía no están disponibles: la terminal no guarda su salida"
 		return res
 	case agentctx.KindNote:
-		res.Err = "el módulo de notas todavía no existe en esta versión"
-		return res
+		return a.resolveNoteRef(res)
 	}
 	res.Err = fmt.Sprintf("tipo de referencia desconocido: %q", r.Kind)
 	return res
@@ -128,6 +127,37 @@ func (a *App) resolveFileRef(res agentctx.Resolved, module, contextID string) ag
 	}
 	res.Title = f.Path
 	res.Body = truncateBody(f.Content)
+	return res
+}
+
+// resolveNoteRef inyecta el Markdown de una nota — **solo si el usuario la
+// abrió explícitamente a la IA**.
+//
+// Es el cortafuegos de privacidad en su punto de aplicación. La decisión no se
+// toma acá: se delega en `vault.NoteForAI`, que filtra por `is_private = 0` en
+// la propia consulta SQL. Que la condición viva en la consulta y no en un `if`
+// de este archivo es deliberado — un `if` se puede reordenar, negar o saltear
+// en una refactorización; una cláusula `WHERE` no llega a leer la fila.
+//
+// El mensaje de una nota bloqueada dice qué nota, por qué y cómo permitirlo, y
+// se muestra tal cual en la ficha del compositor. Un "no encontrado" mandaría a
+// buscar un título mal escrito que no es el problema.
+func (a *App) resolveNoteRef(res agentctx.Resolved) agentctx.Resolved {
+	note, err := a.vault.NoteForAI(res.Value)
+	if err != nil {
+		res.Err = err.Error()
+		// Se distingue "está bloqueada" de "no existe" porque la acción del
+		// usuario es distinta: en un caso hay algo que permitir, en el otro
+		// hay un título que corregir.
+		res.Blocked = strings.Contains(err.Error(), "PRIVADA")
+		return res
+	}
+	res.Title = note.Title
+	body := note.Content
+	if note.Corrupt {
+		body = "(ADVERTENCIA: el checksum de esta nota no coincide con su contenido)\n\n" + body
+	}
+	res.Body = truncateBody(body)
 	return res
 }
 

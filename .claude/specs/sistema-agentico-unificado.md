@@ -1,7 +1,7 @@
 # Plan — Sistema agéntico unificado, Vault Notes y servidor MCP nativo (1.4.0 → 2.0.0)
 
-> **Estado: FASES 1 y 2 implementadas** (ver "Estado de implementación" al
-> final). Fases 3 a 7: propuesta.
+> **Estado: FASES 1, 2 y 3 implementadas** (ver "Estado de implementación" al
+> final). Fases 4 a 7: propuesta.
 >
 > Segmentación completa de la
 > especificación maestra pedida: IA omnipresente sobre los tres CLIs (Claude
@@ -138,7 +138,7 @@ entrada en `CHANGELOG.md` bajo `[Unreleased]` **en la misma tarea**.
 |---|---|---|---|
 | 1 | **1.4.0** ✅ | **Chat integral único para todos los módulos** + sesión agéntica de nivel app + sistema `@` de contexto | — |
 | 2 | **1.5.0** ✅ | IA en bases de datos: NL2SQL, auto-fix, análisis de plan | Fase 1 |
-| 3 | **1.6.0** | Vault Notes: núcleo cifrado, Markdown, WikiLinks, backlinks | — |
+| 3 | **1.6.0** ✅ | Vault Notes: núcleo cifrado, WikiLinks, backlinks, **buscador** | — |
 | 4 | **1.7.0** | Vault Notes: bloques `/slash`, runbooks vivos, grafo | Fase 3 |
 | 5 | **1.8.0** | SSH/SFTP agéntico: debugger, sincronización, Production Guard | Fase 1 |
 | 6 | **1.9.0** | Servidor MCP nativo embebido + AI Access Firewall | Fases 1, 3 |
@@ -780,6 +780,47 @@ botón que le pide una segunda opinión al agente.
 **Verificación:** `go build`, `go vet`, `pnpm tsc --noEmit`, `pnpm build` y
 `wails build` limpios. **Binario macOS `arm64`: 50MB**, sin cambio — cero
 dependencias nuevas en Go y en el frontend.
+
+### Fase 3 (1.6.0) — implementada, más un agregado pedido sobre la marcha
+
+**Construido:** migraciones **34** (`vault_notes`), **35** (`vault_note_links`)
+y **36** (settings del módulo); `backend/vault/notes_repo.go`,
+`notelinks.go` y `notesearch.go`; `app_notes.go`; el resolvedor `@note`
+activado en `app_refs.go`; y en el frontend `components/notes/NotesTree.tsx`
+(módulo del sidebar con el buscador) y `NoteEditorTab.tsx` (una pestaña por
+nota). Diseño completo en [vault-notes.md](vault-notes.md).
+
+**Agregado que el plan no tenía: el buscador inteligente.** Lo pidió el usuario
+durante la implementación, y tenía razón — el segmento 3.3.6 decía "búsqueda de
+texto completo descifrando en RAM", que es un `contiene`. Para buscar en
+documentación propia eso no alcanza: buscar es justamente el momento en el que
+uno no recuerda el título. `SearchNotesSmart` pliega acentos, exige todos los
+términos en cualquier orden, entiende frases entre comillas y los filtros
+`tag:` / `enlaza:` / `privado:`, ordena por relevancia (título > cuerpo, frase
+> término, repetición cuenta) y devuelve el fragmento donde acertó.
+
+**Decisiones cerradas durante la implementación:**
+
+1. **D2 resuelta como se recomendaba**: descifrar en memoria, sin índice
+   persistido. Un índice de tokens sobre contenido cifrado es un canal lateral.
+2. **D3 resuelta como se recomendaba**: renombrar deja los enlaces rotos y
+   visibles. El destino se guarda como hash de título, así que romperse es la
+   consecuencia natural del diseño y no una decisión aparte.
+3. **Una pestaña por nota**, no una pantalla "Notas". Es el modelo del resto de
+   la app y permite tener el runbook abierto al lado de la consulta que se está
+   depurando.
+4. **`MarkdownPreview` aprendió `[[WikiLinks]]`**, con manejador opcional: en
+   una nota son navegables; en la respuesta de un agente o en un `.md` del
+   repositorio se muestran marcados pero sin destino, porque ahí no hay ninguno.
+
+**Verificación:** script efímero en `HOME=$(mktemp -d)` que comprueba que una
+nota nace privada, que los enlaces de un bloque de código NO cuentan, que
+`NoteForAI` bloquea una privada y la deja pasar tras abrirla, que guardar no
+cambia la privacidad, que los backlinks resuelven, que el buscador encuentra sin
+tildes y exige todos los términos — y, abriendo `vault.db` con `sqlite3`, que
+**el título y el cuerpo son ilegibles en disco**. `go build`, `go vet`,
+`pnpm tsc --noEmit`, `pnpm build` y `wails build` limpios. **Binario macOS
+`arm64`: 50MB**, sin cambio.
 
 ## Fuera de alcance a propósito
 

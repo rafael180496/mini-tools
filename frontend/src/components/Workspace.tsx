@@ -18,6 +18,8 @@ import MongoResultView, {MongoCommandResult} from './results/MongoResultView'
 import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import NlPromptBar from './editor/NlPromptBar'
+import NotesTree from './notes/NotesTree'
+import NoteEditorTab from './notes/NoteEditorTab'
 import RedisBrowserTab from './redis/RedisBrowserTab'
 import MongoBrowserTab from './mongo/MongoBrowserTab'
 import MongoFindWizard from './mongo/MongoFindWizard'
@@ -62,8 +64,10 @@ import {
     ListMongoCollections,
     ListMongoDatabases,
     GetSchemaMetadata,
+    CreateNote,
     GetSettings,
     SetAgentLayout,
+    SetNotesLayout,
     HasOpenTransaction,
     ListConnections,
     ListFolders,
@@ -565,6 +569,45 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // flujo —pedir, ver la propuesta, aplicarla o descartarla— y lo único que
     // cambia es de dónde sale el pedido.
     const [nlBar, setNlBar] = useState<{errorText?: string} | null>(null)
+    // Token que refresca la lista de notas del sidebar cuando una nota se
+    // guarda, se crea o se borra desde su pestaña.
+    const [notesToken, setNotesToken] = useState(0)
+
+    // Cambiar de pestaña lo cierra. La barra queda anclada a la conexión y al
+    // texto de la pestaña donde se abrió: dejarla abierta al cambiar mostraría
+    // una propuesta calculada sobre otra consulta y otro esquema, con el botón
+    // Aplicar apuntando al editor equivocado.
+    useEffect(() => {
+        setNlBar(null)
+    }, [activeTabId])
+
+    // Abre una nota en su propia pestaña, o enfoca la que ya la tenía. Una
+    // pestaña por nota y no una sola pestaña "Notas": es el modelo del resto de
+    // la app —una pestaña por cosa en la que estás trabajando— y permite tener
+    // el runbook abierto al lado de la consulta que estás depurando.
+    const openNote = useCallback((noteId: string, title?: string) => {
+        setTabs((prev) => {
+            const existing = prev.find((t) => t.kind === 'note' && t.noteId === noteId)
+            if (existing) {
+                setActiveTabId(existing.id)
+                return prev
+            }
+            const tab: EditorTab = {
+                id: newTabId(),
+                title: title || 'Nota',
+                path: null,
+                content: '',
+                dirty: false,
+                connId: null,
+                language: 'sql',
+                kind: 'note',
+                noteId,
+            }
+            setActiveTabId(tab.id)
+            return [...prev, tab]
+        })
+        void SetNotesLayout(noteId, 260).catch(() => {})
+    }, [])
 
     const changeAgentLayout = useCallback((dock: AgentDock, size: number) => {
         setAgentDockState(dock)
@@ -2240,6 +2283,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const isSftpTabActive = activeTabData?.kind === 'sftp'
     const isHybridTabActive = activeTabData?.kind === 'ssh-hybrid'
     const isGitTabActive = activeTabData?.kind === 'git-repo'
+    const isNoteTabActive = activeTabData?.kind === 'note'
     // A remote file is edited in the same CodeMirror as everything else, but
     // it has nothing to run — so the results panel below would sit there
     // permanently empty. The editor takes the whole height instead.
@@ -2332,6 +2376,22 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onMoveRepoToFolder={moveGitRepoToFolder}
                     />
                     </GitErrorBoundary>
+                    {/* Notas: módulo hermano de los otros tres. Buscar en la
+                        documentación propia pasa MIENTRAS se está haciendo otra
+                        cosa —depurando una consulta, mirando un log—, así que
+                        vive en la barra lateral y no en una pantalla aparte. */}
+                    <NotesTree
+                        activeNoteId={activeTabData?.noteId ?? null}
+                        onOpenNote={(id) => openNote(id)}
+                        moduleCollapsed={collapsedModules.has('notes')}
+                        onToggleModuleCollapsed={() => toggleModuleCollapsed('notes')}
+                        rail={sidebarCollapsed}
+                        onCreated={(id) => {
+                            setNotesToken((n) => n + 1)
+                            openNote(id)
+                        }}
+                        reloadToken={notesToken}
+                    />
                     </>
                 }
             />
@@ -2669,7 +2729,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
-                    {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && (
+                    {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
                         <button
                             onClick={() => void saveActiveTab()}
@@ -2764,7 +2824,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     className="relative min-w-0 border-b border-outline-variant"
                     style={{
                         height: isRemoteFileActive ? '100%' : editorHeight,
-                        display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive ? 'none' : undefined,
+                        display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive || isNoteTabActive ? 'none' : undefined,
                     }}
                 >
                     {/* Asistente de consultas: flota SOBRE el editor en vez de
@@ -2960,11 +3020,43 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         </div>
                     ))}
 
+                {/* Cada nota abierta queda montada y se oculta con CSS,
+                    mismo criterio que las pestañas de Git y los browsers:
+                    desmontarla perdería el historial de deshacer del editor y
+                    el estado de la vista previa cada vez que se cambia de
+                    pestaña y se vuelve. */}
+                {tabs
+                    .filter((t) => t.kind === 'note' && t.noteId)
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex min-h-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <NoteEditorTab
+                                noteId={t.noteId as string}
+                                editorThemeId={editorThemeId}
+                                appTheme={theme}
+                                onOpenNote={(id) => openNote(id)}
+                                onCreateNote={(title) => {
+                                    void CreateNote(title, '')
+                                        .then((id) => {
+                                            setNotesToken((n) => n + 1)
+                                            openNote(id, title)
+                                        })
+                                        .catch(() => {})
+                                }}
+                                onClosed={() => closeTab(t.id)}
+                                onChanged={() => setNotesToken((n) => n + 1)}
+                            />
+                        </div>
+                    ))}
+
                 {/* The bottom panel belongs to the SQL editor. A remote-file or
                     hybrid-session tab has nothing to run, so it would sit there
                     permanently empty while stealing height from the terminal
                     and the file drawer, which is exactly the space they need. */}
-                {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && (
+                {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
                     <>
                         {/* Drag handle: resizes the editor pane against the
                             results grid below. Persisted on mouseup, see

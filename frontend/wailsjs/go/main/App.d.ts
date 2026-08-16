@@ -112,6 +112,8 @@ export function CreateAgentChat(arg1:string,arg2:string,arg3:string,arg4:string,
 
 export function CreateFolder(arg1:string,arg2:string,arg3:string):Promise<vault.Folder>;
 
+export function CreateNote(arg1:string,arg2:string):Promise<string>;
+
 export function CreateSshSnippet(arg1:string,arg2:string):Promise<vault.SshSnippet>;
 
 export function DefaultShellID():Promise<string>;
@@ -123,6 +125,8 @@ export function DeleteConnection(arg1:string):Promise<void>;
 export function DeleteFolder(arg1:string):Promise<void>;
 
 export function DeleteMongoDocument(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function DeleteNote(arg1:string):Promise<void>;
 
 export function DeleteQueryHistoryEntry(arg1:string):Promise<void>;
 
@@ -173,6 +177,8 @@ export function GetConnectionForEdit(arg1:string):Promise<main.ConnectionEditInf
 export function GetMongoDefaultDatabase(arg1:string):Promise<string>;
 
 export function GetMongoIndexes(arg1:string,arg2:string,arg3:string):Promise<Array<db.MongoIndex>>;
+
+export function GetNote(arg1:string):Promise<vault.Note>;
 
 export function GetObjectDDL(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number):Promise<string>;
 
@@ -392,6 +398,8 @@ export function ListMongoDatabases(arg1:string):Promise<Array<db.MongoDatabaseIn
 
 export function ListMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number):Promise<Array<string>>;
 
+export function ListNotes():Promise<Array<vault.NoteSummary>>;
+
 export function ListQueryHistory(arg1:string,arg2:number):Promise<Array<vault.HistoryEntry>>;
 
 export function ListRecentFiles():Promise<Array<vault.RecentFile>>;
@@ -421,6 +429,12 @@ export function MoveConnectionToFolder(arg1:string,arg2:string):Promise<void>;
 export function MoveFolder(arg1:string,arg2:string):Promise<void>;
 
 export function MoveSshSnippetToFolder(arg1:string,arg2:string):Promise<void>;
+
+export function NoteBacklinks(arg1:string):Promise<Array<vault.NoteLink>>;
+
+export function NoteLinks(arg1:string):Promise<Array<vault.NoteLink>>;
+
+export function NoteTitles():Promise<Array<main.NoteTitle>>;
 
 export function OpenAgentSession(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number,arg6:boolean):Promise<void>;
 
@@ -518,6 +532,8 @@ export function SaveSQLFileAs(arg1:string,arg2:string):Promise<string>;
 
 export function SaveSSHKey(arg1:string,arg2:string,arg3:string):Promise<vault.SSHKeySummary>;
 
+export function SearchNotesSmart(arg1:string,arg2:number):Promise<Array<vault.NoteHit>>;
+
 export function SendAgentChat(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:Array<string>):Promise<void>;
 
 export function SetAgentActive(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -553,6 +569,10 @@ export function SetGitLayout(arg1:string,arg2:number,arg3:string,arg4:boolean,ar
 export function SetGitPanelSessions(arg1:Array<vault.GitPanelSession>):Promise<void>;
 
 export function SetLocalShell(arg1:string):Promise<void>;
+
+export function SetNotePrivacy(arg1:string,arg2:boolean):Promise<void>;
+
+export function SetNotesLayout(arg1:string,arg2:number):Promise<void>;
 
 export function SetOpenTabs(arg1:Array<vault.OpenTabInfo>):Promise<void>;
 
@@ -605,6 +625,8 @@ export function TryAutoUnlock():Promise<boolean>;
 export function UnlockVault(arg1:string):Promise<void>;
 
 export function UpdateConnection(arg1:string,arg2:main.ConnectionInput,arg3:boolean):Promise<vault.ConnectionSummary>;
+
+export function UpdateNote(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function UpdateSshSnippet(arg1:string,arg2:string,arg3:string):Promise<void>;
 

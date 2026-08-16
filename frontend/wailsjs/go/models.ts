@@ -1882,6 +1882,22 @@ export namespace main {
 	        this.content = source["content"];
 	    }
 	}
+	export class NoteTitle {
+	    id: string;
+	    title: string;
+	    isPrivate: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteTitle(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.isPrivate = source["isPrivate"];
+	    }
+	}
 	export class SQLSuggestion {
 	    code: string;
 	    answer: string;
@@ -2570,6 +2586,94 @@ export namespace vault {
 	        this.executedAt = source["executedAt"];
 	    }
 	}
+	export class Note {
+	    id: string;
+	    title: string;
+	    content: string;
+	    frontmatter: string;
+	    isPrivate: boolean;
+	    createdAt: number;
+	    updatedAt: number;
+	    corrupt?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Note(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.content = source["content"];
+	        this.frontmatter = source["frontmatter"];
+	        this.isPrivate = source["isPrivate"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.corrupt = source["corrupt"];
+	    }
+	}
+	export class NoteHit {
+	    id: string;
+	    title: string;
+	    isPrivate: boolean;
+	    updatedAt: number;
+	    score: number;
+	    snippet: string;
+	    matchedTitle: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteHit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.isPrivate = source["isPrivate"];
+	        this.updatedAt = source["updatedAt"];
+	        this.score = source["score"];
+	        this.snippet = source["snippet"];
+	        this.matchedTitle = source["matchedTitle"];
+	    }
+	}
+	export class NoteLink {
+	    targetId: string;
+	    title: string;
+	    targetHash: string;
+	    isPrivate: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.targetId = source["targetId"];
+	        this.title = source["title"];
+	        this.targetHash = source["targetHash"];
+	        this.isPrivate = source["isPrivate"];
+	    }
+	}
+	export class NoteSummary {
+	    id: string;
+	    title: string;
+	    isPrivate: boolean;
+	    updatedAt: number;
+	    linkCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.isPrivate = source["isPrivate"];
+	        this.updatedAt = source["updatedAt"];
+	        this.linkCount = source["linkCount"];
+	    }
+	}
 	export class OpenTabInfo {
 	    path: string;
 	    connId?: string;
@@ -2657,6 +2761,8 @@ export namespace vault {
 	    activeEffort: string;
 	    agentDock: string;
 	    agentSize: number;
+	    notesLastOpen: string;
+	    notesSideWidth: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -2696,6 +2802,8 @@ export namespace vault {
 	        this.activeEffort = source["activeEffort"];
 	        this.agentDock = source["agentDock"];
 	        this.agentSize = source["agentSize"];
+	        this.notesLastOpen = source["notesLastOpen"];
+	        this.notesSideWidth = source["notesSideWidth"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -25,9 +25,12 @@ import {Fragment, type ReactNode} from 'react'
 // Se recorre con una sola expresión regular alternada en vez de encadenar
 // reemplazos: encadenarlos haría que la negrita de adentro de un bloque de
 // código se procese igual, que es el bug clásico de estos renderers.
-function inline(text: string, keyBase: string): ReactNode[] {
+function inline(text: string, keyBase: string, onWikiLink?: WikiLinkHandler): ReactNode[] {
     const out: ReactNode[] = []
-    const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)]+\))/g
+    // El `[[WikiLink]]` va PRIMERO en la alternancia: si fuera después, el
+    // patrón de enlace Markdown `[texto](url)` se comería el primer corchete y
+    // partiría la referencia a la mitad.
+    const re = /(\[\[[^\]]+\]\])|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)]+\))/g
     let last = 0
     let m: RegExpExecArray | null
     let i = 0
@@ -37,7 +40,33 @@ function inline(text: string, keyBase: string): ReactNode[] {
         const token = m[0]
         const key = `${keyBase}-${i++}`
 
-        if (token.startsWith('`')) {
+        if (token.startsWith('[[')) {
+            // Enlace entre notas. El alias (`[[Nota|texto]]`) es presentación:
+            // se muestra el texto y se navega al título.
+            const inner = token.slice(2, -2)
+            const bar = inner.indexOf('|')
+            const target = (bar >= 0 ? inner.slice(0, bar) : inner).trim()
+            const label = (bar >= 0 ? inner.slice(bar + 1) : inner).trim()
+            out.push(
+                onWikiLink ? (
+                    <button
+                        key={key}
+                        onClick={() => onWikiLink(target)}
+                        title={`Abrir la nota «${target}». Si no existe, se ofrece crearla.`}
+                        className="rounded text-primary underline decoration-dotted underline-offset-2 hover:bg-primary/10"
+                    >
+                        {label}
+                    </button>
+                ) : (
+                    // Sin manejador —por ejemplo en la respuesta de un agente—
+                    // se muestra como texto marcado: no hay nada a donde
+                    // navegar desde ahí.
+                    <span key={key} className="text-primary" title={`Nota: ${target}`}>
+                        {label}
+                    </span>
+                ),
+            )
+        } else if (token.startsWith('`')) {
             out.push(
                 <code key={key} className="rounded bg-surface-container-highest px-1 font-mono text-[11px]">
                     {token.slice(1, -1)}
@@ -72,7 +101,12 @@ function inline(text: string, keyBase: string): ReactNode[] {
     return out
 }
 
-export default function MarkdownPreview({source}: {source: string}) {
+// WikiLinkHandler navega a la nota que un `[[enlace]]` nombra. Opcional: la
+// vista previa se usa también para la respuesta de un agente y para un `.md`
+// del repositorio, donde no hay notas a las que ir.
+export type WikiLinkHandler = (title: string) => void
+
+export default function MarkdownPreview({source, onWikiLink}: {source: string; onWikiLink?: WikiLinkHandler}) {
     const lines = source.split('\n')
     const blocks: ReactNode[] = []
 
@@ -86,7 +120,7 @@ export default function MarkdownPreview({source}: {source: string}) {
         blocks.push(
             <ul key={`ul-${blocks.length}`} className="my-1 ml-4 list-disc space-y-0.5">
                 {items.map((it, n) => (
-                    <li key={n}>{inline(it, `li-${blocks.length}-${n}`)}</li>
+                    <li key={n}>{inline(it, `li-${blocks.length}-${n}`, onWikiLink)}</li>
                 ))}
             </ul>,
         )
@@ -148,7 +182,7 @@ export default function MarkdownPreview({source}: {source: string}) {
             const size = level === 1 ? 'text-base' : level === 2 ? 'text-sm' : 'text-xs'
             blocks.push(
                 <p key={`h-${blocks.length}`} className={`mt-2 mb-1 font-semibold text-on-surface ${size}`}>
-                    {inline(heading[2], `h-${blocks.length}`)}
+                    {inline(heading[2], `h-${blocks.length}`, onWikiLink)}
                 </p>,
             )
             i++
@@ -166,7 +200,7 @@ export default function MarkdownPreview({source}: {source: string}) {
             flushList()
             blocks.push(
                 <p key={`q-${blocks.length}`} className="my-1 border-l-2 border-outline-variant pl-2 text-on-surface-variant">
-                    {inline(line.replace(/^\s*>\s?/, ''), `q-${blocks.length}`)}
+                    {inline(line.replace(/^\s*>\s?/, ''), `q-${blocks.length}`, onWikiLink)}
                 </p>,
             )
             i++
@@ -189,7 +223,7 @@ export default function MarkdownPreview({source}: {source: string}) {
         flushList()
         blocks.push(
             <p key={`p-${blocks.length}`} className="my-1 whitespace-pre-wrap break-words text-on-surface-variant">
-                {inline(line, `p-${blocks.length}`)}
+                {inline(line, `p-${blocks.length}`, onWikiLink)}
             </p>,
         )
         i++

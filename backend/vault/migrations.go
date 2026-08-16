@@ -659,6 +659,115 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 34,
+		desc:    "crea vault_notes (base de conocimiento cifrada, privada por defecto)",
+		apply: func(tx *sql.Tx) error {
+			// Notas de la base de conocimiento. Mismo esquema de cifrado por
+			// COLUMNA que `connections.encrypted_dsn` y que el título de
+			// `agent_chats`: la app no cifra el archivo entero porque eso
+			// requeriría SQLCipher y cgo (.claude/rules/technical.md punto 3).
+			//
+			// Título, cuerpo y frontmatter van cifrados cada uno con su propio
+			// nonce. Nonces separados y no uno compartido: reusar un nonce con
+			// la misma clave en AES-GCM es la forma clásica de romper GCM, y
+			// tres columnas que se escriben en la misma operación son
+			// exactamente donde uno se tienta de compartirlo.
+			//
+			// **`is_private` nace en 1 y ese default es la mitad del
+			// cortafuegos.** Vive en el esquema justamente para que no dependa
+			// de que alguien se acuerde de setearlo en el código que inserta:
+			// una nota que se crea por un camino nuevo nace privada igual.
+			//
+			// `title_hash` es SHA-256 del título normalizado. Es lo que permite
+			// resolver `[[Nota]]` y dibujar el grafo **sin descifrar nada**: se
+			// comparan hashes, no títulos. Va en claro porque un hash no revela
+			// el título, y sin él cada enlace obligaría a descifrar todas las
+			// notas para encontrar su destino.
+			//
+			// `checksum_hash` es SHA-256 del texto plano ANTES de cifrar. Sirve
+			// para distinguir "esta nota está corrupta" de "esta nota dice
+			// algo raro", que sin verificación se ven igual.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS vault_notes (
+				id TEXT PRIMARY KEY,
+				encrypted_title BLOB,
+				title_nonce BLOB,
+				encrypted_content BLOB,
+				content_nonce BLOB,
+				encrypted_frontmatter BLOB,
+				frontmatter_nonce BLOB,
+				title_hash TEXT NOT NULL DEFAULT '',
+				is_private INTEGER NOT NULL DEFAULT 1,
+				checksum_hash TEXT NOT NULL DEFAULT '',
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// Índice para filtrar lo que la IA puede ver sin descifrar una sola
+			// nota: la consulta del cortafuegos es exactamente
+			// `WHERE id = ? AND is_private = 0`.
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_notes_ai_access ON vault_notes (id, is_private)`); err != nil {
+				return err
+			}
+			// La lectura natural de la lista es "las últimas que toqué".
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON vault_notes (updated_at DESC)`); err != nil {
+				return err
+			}
+			// Y la resolución de un `[[enlace]]` es una búsqueda por hash.
+			_, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_notes_title_hash ON vault_notes (title_hash)`)
+			return err
+		},
+	},
+	{
+		version: 35,
+		desc:    "crea vault_note_links (grafo de WikiLinks, por hash de título)",
+		apply: func(tx *sql.Tx) error {
+			// Aristas del grafo. El destino se guarda como HASH DEL TÍTULO y no
+			// como id de nota, por dos motivos:
+			//
+			//  1. Un `[[enlace]]` puede apuntar a una nota que todavía no
+			//     existe. Eso no es un error —es como se crean las notas en un
+			//     grafo de conocimiento— y con una FK a `vault_notes(id)` no se
+			//     podría representar.
+			//  2. Renombrar una nota cambia su hash, y ahí los enlaces que le
+			//     apuntaban quedan visiblemente rotos en vez de apuntar en
+			//     silencio a otro contenido.
+			//
+			// No hay FK declarada a propósito: este vault no activa
+			// `PRAGMA foreign_keys`, así que una FK sería decorativa (hallazgo
+			// de la migración 31). El borrado de las aristas de una nota lo
+			// hace explícitamente el repositorio.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS vault_note_links (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				source_note_id TEXT NOT NULL,
+				target_title_hash TEXT NOT NULL,
+				created_at INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// Los dos sentidos se consultan igual de seguido: los enlaces
+			// salientes de la nota abierta, y los entrantes (backlinks).
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_note_links_source ON vault_note_links (source_note_id)`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_note_links_target ON vault_note_links (target_title_hash)`)
+			return err
+		},
+	},
+	{
+		version: 36,
+		desc:    "agrega a settings el estado del módulo de notas",
+		apply: func(tx *sql.Tx) error {
+			// Última nota abierta y ancho del panel lateral del módulo. Mismo
+			// criterio que el resto del layout: la app abre como se dejó.
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN notes_last_open TEXT NOT NULL DEFAULT ''`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN notes_side_width INTEGER NOT NULL DEFAULT 260`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

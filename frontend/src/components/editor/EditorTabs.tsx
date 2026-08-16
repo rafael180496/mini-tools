@@ -26,7 +26,12 @@ export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 // GitRepoTab.tsx) — same unused-placeholder-fields treatment, but it is the
 // one kind bound to a repoId instead of a connId, since a repository is not a
 // database connection.
-export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp' | 'git-repo' | 'remote-file' | 'ssh-hybrid'
+// 'note' es una nota de la base de conocimiento cifrada (ver
+// components/notes/): mismo tratamiento de campos sin usar que las anteriores,
+// con su propio `noteId` en vez de connId — una nota no es una conexión ni un
+// repositorio, y sobrecargar connId la haría aparecer como "sin conexión
+// vinculada" en cada búsqueda del workspace.
+export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp' | 'git-repo' | 'remote-file' | 'ssh-hybrid' | 'note'
 
 // RemoteFileRef identifies a file being edited on a server: which browse
 // session to reach it through, its path, and the modification time it was
@@ -69,6 +74,10 @@ export interface EditorTab {
     // every `connections.find(c => c.id === tab.connId)` in Workspace silently
     // miss and render the tab as "sin conexión vinculada".
     repoId?: string
+    // Nota que muestra esta pestaña — solo para kind === 'note'. Su propio
+    // campo por el mismo motivo que repoId: direcciona otro registro
+    // (vault_notes), no las conexiones.
+    noteId?: string
 }
 
 interface EditorTabsProps {

@@ -190,6 +190,10 @@ export function CreateFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateFolder'](arg1, arg2, arg3);
 }
 
+export function CreateNote(arg1, arg2) {
+  return window['go']['main']['App']['CreateNote'](arg1, arg2);
+}
+
 export function CreateSshSnippet(arg1, arg2) {
   return window['go']['main']['App']['CreateSshSnippet'](arg1, arg2);
 }
@@ -212,6 +216,10 @@ export function DeleteFolder(arg1) {
 
 export function DeleteMongoDocument(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeleteMongoDocument'](arg1, arg2, arg3, arg4);
+}
+
+export function DeleteNote(arg1) {
+  return window['go']['main']['App']['DeleteNote'](arg1);
 }
 
 export function DeleteQueryHistoryEntry(arg1) {
@@ -312,6 +320,10 @@ export function GetMongoDefaultDatabase(arg1) {
 
 export function GetMongoIndexes(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetMongoIndexes'](arg1, arg2, arg3);
+}
+
+export function GetNote(arg1) {
+  return window['go']['main']['App']['GetNote'](arg1);
 }
 
 export function GetObjectDDL(arg1, arg2, arg3, arg4, arg5) {
@@ -750,6 +762,10 @@ export function ListMongoDocuments(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['ListMongoDocuments'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
+export function ListNotes() {
+  return window['go']['main']['App']['ListNotes']();
+}
+
 export function ListQueryHistory(arg1, arg2) {
   return window['go']['main']['App']['ListQueryHistory'](arg1, arg2);
 }
@@ -808,6 +824,18 @@ export function MoveFolder(arg1, arg2) {
 
 export function MoveSshSnippetToFolder(arg1, arg2) {
   return window['go']['main']['App']['MoveSshSnippetToFolder'](arg1, arg2);
+}
+
+export function NoteBacklinks(arg1) {
+  return window['go']['main']['App']['NoteBacklinks'](arg1);
+}
+
+export function NoteLinks(arg1) {
+  return window['go']['main']['App']['NoteLinks'](arg1);
+}
+
+export function NoteTitles() {
+  return window['go']['main']['App']['NoteTitles']();
 }
 
 export function OpenAgentSession(arg1, arg2, arg3, arg4, arg5, arg6) {
@@ -1002,6 +1030,10 @@ export function SaveSSHKey(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveSSHKey'](arg1, arg2, arg3);
 }
 
+export function SearchNotesSmart(arg1, arg2) {
+  return window['go']['main']['App']['SearchNotesSmart'](arg1, arg2);
+}
+
 export function SendAgentChat(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
   return window['go']['main']['App']['SendAgentChat'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
@@ -1072,6 +1104,14 @@ export function SetGitPanelSessions(arg1) {
 
 export function SetLocalShell(arg1) {
   return window['go']['main']['App']['SetLocalShell'](arg1);
+}
+
+export function SetNotePrivacy(arg1, arg2) {
+  return window['go']['main']['App']['SetNotePrivacy'](arg1, arg2);
+}
+
+export function SetNotesLayout(arg1, arg2) {
+  return window['go']['main']['App']['SetNotesLayout'](arg1, arg2);
 }
 
 export function SetOpenTabs(arg1) {
@@ -1176,6 +1216,10 @@ export function UnlockVault(arg1) {
 
 export function UpdateConnection(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateConnection'](arg1, arg2, arg3);
+}
+
+export function UpdateNote(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateNote'](arg1, arg2, arg3, arg4);
 }
 
 export function UpdateSshSnippet(arg1, arg2, arg3) {

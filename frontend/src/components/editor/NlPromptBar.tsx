@@ -25,6 +25,29 @@ import {countChanges, diffLines} from './lineDiff'
 
 type Mode = 'generate' | 'fix'
 
+// Cómo se nombra el contexto que viajó, por motor. Cada uno manda algo
+// distinto y con una regla de privacidad distinta — ver backend/agentctx.
+const CONTEXT_NOUNS: Record<string, {singular: string; plural: string; explain: string; empty: string}> = {
+    sql: {
+        singular: 'tabla',
+        plural: 'tablas',
+        explain: 'Se le pasó el DDL de estas tablas — columnas, tipos y claves, ninguna fila',
+        empty: 'No se le pasó el DDL de ninguna tabla: el pedido no mencionaba ninguna que exista en esta conexión.',
+    },
+    mongodb: {
+        singular: 'colección',
+        plural: 'colecciones',
+        explain: 'Se le pasaron los nombres de campo y sus tipos de estas colecciones — ningún documento',
+        empty: 'No se le pasó el detalle de ninguna colección: el pedido no mencionaba ninguna que exista en esta base.',
+    },
+    redis: {
+        singular: 'patrón de clave',
+        plural: 'patrones de clave',
+        explain: 'Se le pasaron estos PATRONES de clave con su tipo — ni claves completas ni ningún valor',
+        empty: 'No se pudo muestrear ninguna clave de esta conexión.',
+    },
+}
+
 interface Props {
     connId: string
     connName: string
@@ -45,6 +68,10 @@ interface Props {
 export default function NlPromptBar({connId, connName, dbType, currentSql, errorText, onApply, onClose}: Props) {
     const mode: Mode = errorText ? 'fix' : 'generate'
     const noun = dbType === 'redis' ? 'comandos' : dbType === 'mongodb' ? 'una consulta Mongo' : 'una consulta'
+    // Cómo se llama lo que se le mandó de contexto. No es cosmético: decir
+    // "3 tablas" sobre una conexión Redis daría a entender que se mandó algo
+    // que no existe, y lo que se mandó ahí son patrones de clave.
+    const ctxNoun = CONTEXT_NOUNS[dbType] ?? CONTEXT_NOUNS.sql
     const [request, setRequest] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
@@ -185,15 +212,16 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
                                     className="ml-auto truncate"
                                     title={
                                         result.tables.length > 0
-                                            ? `Se le pasó el DDL de estas tablas — columnas, tipos y claves, ninguna fila:\n${result.tables.join('\n')}${
+                                            ? `${ctxNoun.explain}:\n${result.tables.join('\n')}${
                                                   result.totalTables > result.tables.length
-                                                      ? `\n\n(de ${result.totalTables} tablas en la conexión)`
+                                                      ? `\n\n(de ${result.totalTables} ${ctxNoun.plural} en la conexión)`
                                                       : ''
                                               }`
-                                            : 'No se le pasó el DDL de ninguna tabla: el pedido no mencionaba ninguna que exista en esta conexión.'
+                                            : ctxNoun.empty
                                     }
                                 >
-                                    contexto: {result.tables.length} tabla{result.tables.length === 1 ? '' : 's'}
+                                    contexto: {result.tables.length}{' '}
+                                    {result.tables.length === 1 ? ctxNoun.singular : ctxNoun.plural}
                                 </span>
                             </div>
                             <pre className="max-h-56 overflow-auto bg-surface p-2 font-mono text-[11px] leading-5">
