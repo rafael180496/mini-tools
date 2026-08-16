@@ -3331,6 +3331,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 sortDirection={activeResult?.sortDirection}
                                 onSort={sortActiveResult}
                                 tableNameHint={activeTabConnection?.name}
+                                // Con la conexión y la consulta que produjo
+                                // estas filas, la grilla puede editar: el
+                                // backend decide si salen de una sola tabla con
+                                // clave primaria y escribe el UPDATE.
+                                connId={activeTabConnection?.id}
+                                sqlText={activeResult?.sourceSql}
                             />
 
                             {/* Barra de paginación, estilo DataGrip: el backend

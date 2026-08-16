@@ -74,6 +74,10 @@ export function AgentResolveRefs(arg1, arg2, arg3) {
   return window['go']['main']['App']['AgentResolveRefs'](arg1, arg2, arg3);
 }
 
+export function AgentUsageAll(arg1) {
+  return window['go']['main']['App']['AgentUsageAll'](arg1);
+}
+
 export function AnalyzeRedisPrefixes(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AnalyzeRedisPrefixes'](arg1, arg2, arg3, arg4);
 }
@@ -88,6 +92,10 @@ export function AppVersion() {
 
 export function AppendSshHistory(arg1, arg2) {
   return window['go']['main']['App']['AppendSshHistory'](arg1, arg2);
+}
+
+export function ApplyRowEdits(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ApplyRowEdits'](arg1, arg2, arg3);
 }
 
 export function AskAgentOnce(arg1, arg2, arg3) {
@@ -316,6 +324,10 @@ export function ExportSchemaDDL(arg1, arg2) {
 
 export function ExportTableDDL(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportTableDDL'](arg1, arg2, arg3);
+}
+
+export function ExternalEditors() {
+  return window['go']['main']['App']['ExternalEditors']();
 }
 
 export function FetchMoreRows(arg1) {
@@ -890,6 +902,14 @@ export function OpenLocalTerminalAt(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenLocalTerminalAt'](arg1, arg2, arg3);
 }
 
+export function OpenRepoInEditor(arg1, arg2) {
+  return window['go']['main']['App']['OpenRepoInEditor'](arg1, arg2);
+}
+
+export function OpenRepoInFileManager(arg1) {
+  return window['go']['main']['App']['OpenRepoInFileManager'](arg1);
+}
+
 export function OpenSQLFileDialog() {
   return window['go']['main']['App']['OpenSQLFileDialog']();
 }
@@ -924,6 +944,10 @@ export function PickVaultBackupFile(arg1) {
 
 export function PickVaultBackupFileFirstRun() {
   return window['go']['main']['App']['PickVaultBackupFileFirstRun']();
+}
+
+export function PreviewRowEdits(arg1, arg2, arg3) {
+  return window['go']['main']['App']['PreviewRowEdits'](arg1, arg2, arg3);
 }
 
 export function PrimeSchemaIndex(arg1) {
@@ -1020,6 +1044,10 @@ export function RestoreVaultBackupFirstRun(arg1, arg2) {
 
 export function RestoreVaultBackupFromFile(arg1, arg2) {
   return window['go']['main']['App']['RestoreVaultBackupFromFile'](arg1, arg2);
+}
+
+export function ResultEditTarget(arg1, arg2) {
+  return window['go']['main']['App']['ResultEditTarget'](arg1, arg2);
 }
 
 export function ResumeAgentChat(arg1, arg2) {

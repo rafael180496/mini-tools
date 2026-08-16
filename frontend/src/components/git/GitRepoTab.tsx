@@ -62,6 +62,8 @@ import {
     GitUnstage,
 } from '../../../wailsjs/go/main/App'
 import {GetSettings, ListAgents, SetGitLayout, SetGitPanelSessions} from '../../../wailsjs/go/main/App'
+import {ExternalEditors, OpenRepoInEditor, OpenRepoInFileManager} from '../../../wailsjs/go/main/App'
+import {osopen} from '../../../wailsjs/go/models'
 import {agentchat, agents as agentsModel, git, vault} from '../../../wailsjs/go/models'
 import type {Theme} from '../../hooks/useTheme'
 import type {TerminalThemeId} from '../../xterm/terminalThemes'
@@ -249,6 +251,17 @@ export default function GitRepoTab({
     // repositorio es esto, no un prop suelto. Memoizado porque va como prop a
     // un componente que se re-renderiza con cada evento del stream.
     const gitContext = useMemo<WorkContext>(() => ({kind: 'git', id: repoId, label: repoName}), [repoId, repoName])
+
+    // Editores externos instalados. Se pide una vez y se guarda: la lista sale
+    // de mirar el disco, y no cambia mientras la app está abierta. Si no hay
+    // ninguno, no se dibuja el botón — ofrecer "Abrir en VS Code" en una
+    // máquina sin VS Code termina siempre en el mismo error.
+    const [editors, setEditors] = useState<osopen.Editor[]>([])
+    useEffect(() => {
+        ExternalEditors()
+            .then((list) => setEditors(list ?? []))
+            .catch(() => setEditors([]))
+    }, [])
     // Archivo que el botón "Editar" del diff pide abrir en la vista Archivos.
     // El token acompaña a la ruta para que pedir el mismo archivo dos veces
     // vuelva a enfocarlo en vez de no hacer nada.
@@ -2124,10 +2137,39 @@ export default function GitRepoTab({
                         },
                     ]}
                 />
+                {/* Salir de la app sin copiar la ruta a mano: el editor de
+                    siempre —con sus extensiones y su configuración— y el
+                    explorador de archivos del sistema. Son las dos cosas que
+                    esta pestaña no puede hacer y que se necesitan todos los
+                    días. */}
+                {editors.length > 0 && (
+                    <button
+                        onClick={() => {
+                            void OpenRepoInEditor(repoId, editors[0].id).catch((e) => setError(String(e)))
+                        }}
+                        title={`Abre esta carpeta en ${editors[0].label}. La app sigue abierta: lo que edites afuera aparece acá al refrescar.`}
+                        className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
+                    >
+                        <Icon name="code_blocks" size={13} />
+                        {editors[0].label}
+                    </button>
+                )}
+                <button
+                    onClick={() => {
+                        void OpenRepoInFileManager(repoId).catch((e) => setError(String(e)))
+                    }}
+                    title="Abre la carpeta del repositorio en el explorador de archivos de tu sistema (Finder, Explorador de Windows, el de tu escritorio)."
+                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant ${
+                        editors.length > 0 ? '' : 'ml-auto'
+                    }`}
+                >
+                    <Icon name="folder_open" size={13} />
+                    Carpeta
+                </button>
                 {panelTab === null && <button
                     onClick={() => openPanel('terminal')}
                     title="Abre una terminal de verdad en la raíz de este repositorio: podés hacer cd, correr los tests, un rebase interactivo o cualquier comando que la interfaz no cubra, sin salir de la app. Se puede anclar abajo, a la izquierda o a la derecha, y el intérprete (zsh, bash, PowerShell, Git Bash…) se elige en Configuración → Terminal."
-                    className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
+                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
                 >
                     <Icon name="terminal" size={13} />
                     Terminal

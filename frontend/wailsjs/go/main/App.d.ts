@@ -5,6 +5,7 @@ import {agentchat} from '../models';
 import {agentmodels} from '../models';
 import {agentplan} from '../models';
 import {agentctx} from '../models';
+import {agentusage} from '../models';
 import {db} from '../models';
 import {updatecheck} from '../models';
 import {redisquery} from '../models';
@@ -12,7 +13,7 @@ import {sftpx} from '../models';
 import {sqlintel} from '../models';
 import {vault} from '../models';
 import {explain} from '../models';
-import {agentusage} from '../models';
+import {osopen} from '../models';
 import {git} from '../models';
 import {mcpconf} from '../models';
 import {agents} from '../models';
@@ -55,6 +56,8 @@ export function AgentRefPolicies():Promise<Array<agentctx.Policy>>;
 
 export function AgentResolveRefs(arg1:string,arg2:string,arg3:string):Promise<Array<agentctx.Resolved>>;
 
+export function AgentUsageAll(arg1:number):Promise<agentusage.Usage>;
+
 export function AnalyzeRedisPrefixes(arg1:string,arg2:string,arg3:number,arg4:boolean):Promise<db.RedisPrefixReport>;
 
 export function AnalyzeSSHError(arg1:string,arg2:string,arg3:number,arg4:string):Promise<main.SSHErrorAnalysis>;
@@ -62,6 +65,8 @@ export function AnalyzeSSHError(arg1:string,arg2:string,arg3:number,arg4:string)
 export function AppVersion():Promise<string>;
 
 export function AppendSshHistory(arg1:string,arg2:string):Promise<boolean>;
+
+export function ApplyRowEdits(arg1:string,arg2:string,arg3:Array<main.CellEdit>):Promise<main.EditApplied>;
 
 export function AskAgentOnce(arg1:string,arg2:string,arg3:string):Promise<string>;
 
@@ -176,6 +181,8 @@ export function ExportResult(arg1:Array<string>,arg2:Array<any>,arg3:string):Pro
 export function ExportSchemaDDL(arg1:string,arg2:string):Promise<string>;
 
 export function ExportTableDDL(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function ExternalEditors():Promise<Array<osopen.Editor>>;
 
 export function FetchMoreRows(arg1:string):Promise<void>;
 
@@ -463,6 +470,10 @@ export function OpenLocalTerminal(arg1:string,arg2:string,arg3:number,arg4:numbe
 
 export function OpenLocalTerminalAt(arg1:string,arg2:number,arg3:number):Promise<void>;
 
+export function OpenRepoInEditor(arg1:string,arg2:string):Promise<void>;
+
+export function OpenRepoInFileManager(arg1:string):Promise<void>;
+
 export function OpenSQLFileDialog():Promise<main.FileContent>;
 
 export function OpenSQLFilePath(arg1:string):Promise<main.FileContent>;
@@ -480,6 +491,8 @@ export function PickSQLiteFile():Promise<string>;
 export function PickVaultBackupFile(arg1:string):Promise<string>;
 
 export function PickVaultBackupFileFirstRun():Promise<string>;
+
+export function PreviewRowEdits(arg1:string,arg2:string,arg3:Array<main.CellEdit>):Promise<Array<string>>;
 
 export function PrimeSchemaIndex(arg1:string):Promise<sqlintel.Status>;
 
@@ -528,6 +541,8 @@ export function RespondAgentApproval(arg1:string,arg2:boolean,arg3:string):Promi
 export function RestoreVaultBackupFirstRun(arg1:string,arg2:string):Promise<void>;
 
 export function RestoreVaultBackupFromFile(arg1:string,arg2:string):Promise<void>;
+
+export function ResultEditTarget(arg1:string,arg2:string):Promise<main.EditTarget>;
 
 export function ResumeAgentChat(arg1:string,arg2:string):Promise<void>;
 

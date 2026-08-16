@@ -10,12 +10,12 @@ import (
 
 	"mini-tools/backend/agentapprove"
 	"mini-tools/backend/agentchat"
-	"mini-tools/backend/appdata"
 	"mini-tools/backend/agentctx"
 	"mini-tools/backend/agentmodels"
 	"mini-tools/backend/agentplan"
-	"mini-tools/backend/agentusage"
 	"mini-tools/backend/agents"
+	"mini-tools/backend/agentusage"
+	"mini-tools/backend/appdata"
 	"mini-tools/backend/localterm"
 	"mini-tools/backend/mcpconf"
 	"mini-tools/backend/vault"
@@ -349,6 +349,20 @@ func (a *App) GitAgentUsage(repoID string, days int) (agentusage.Usage, error) {
 	return agentusage.Scan(path, days), nil
 }
 
+// AgentUsageAll es el mismo consumo pero SIN repositorio: lo gastado en toda la
+// máquina, que es lo que corresponde mirar desde el chat.
+//
+// El chat no vive en un repositorio —se abre sobre una conexión, una terminal o
+// una nota—, así que la parte "de este repo" del panel de Git no aplica acá y
+// se pasa vacía a propósito. Lo demás es idéntico: los mismos lectores por CLI,
+// la misma ventana de días.
+func (a *App) AgentUsageAll(days int) (agentusage.Usage, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return agentusage.Usage{}, err
+	}
+	return agentusage.Scan("", days), nil
+}
+
 // --- Chat agéntico (modo headless) ---------------------------------------
 //
 // Camino paralelo al PTY, no un reemplazo: ver el doc de backend/agentchat
@@ -450,10 +464,10 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		// El ejecutable va resuelto a ruta absoluta: lanzarlo por nombre lo
 		// hace depender del PATH que heredó la ventana, que abierta desde
 		// Finder no incluye ~/.local/bin ni el prefijo de npm.
-		Exec: agents.Launcher(agent.Path),
-		Cwd:       cwd,
-		Env:       env,
-		Prompt:    prompt,
+		Exec:            agents.Launcher(agent.Path),
+		Cwd:             cwd,
+		Env:             env,
+		Prompt:          prompt,
 		Images:          images,
 		Mode:            m,
 		Effort:          effort,
@@ -677,7 +691,6 @@ func (a *App) RespondAgentApproval(id string, allow bool, reason string) error {
 	}
 	return nil
 }
-
 
 // --- Historial de chats ---------------------------------------------------
 //

@@ -1,8 +1,10 @@
-import {useState, useRef, type MouseEvent} from 'react'
+import {useEffect, useState, useRef, type MouseEvent} from 'react'
 import {ColumnDef, flexRender, getCoreRowModel, useReactTable} from '@tanstack/react-table'
 import {useVirtualizer} from '@tanstack/react-virtual'
 import Icon from '../Icon'
 import {generateCSV, generateInsertStatements, generateUpdateStatements} from '../../lib/sqlGenerate'
+import CellEditor from './CellEditor'
+import {useRowEditing} from './useRowEditing'
 
 interface ResultGridProps {
     columns: string[]
@@ -16,6 +18,13 @@ interface ResultGridProps {
     // the query, so this is just whatever the caller has handy (the active
     // connection's name), not necessarily the real table.
     tableNameHint?: string
+    // Conexión y consulta que produjeron estas filas. Con las dos, la grilla
+    // puede ofrecer EDITAR: el backend decide si el resultado sale de una sola
+    // tabla con clave primaria y genera el UPDATE. Sin ellas la grilla es de
+    // solo lectura, que es lo correcto para un resultado de Mongo o de una
+    // vista previa.
+    connId?: string
+    sqlText?: string
 }
 
 const ROW_HEIGHT = 28
@@ -25,7 +34,16 @@ const ROW_HEIGHT = 28
 // happen client-side: clicking a header calls onSort, and the caller
 // re-issues the query wrapped in ORDER BY — see spec's "ordenar = reemitir
 // query con ORDER BY, no ordenar en cliente un dataset parcial".
-export default function ResultGrid({columns, rows, sortColumn, sortDirection, onSort, tableNameHint}: ResultGridProps) {
+export default function ResultGrid({
+    columns,
+    rows,
+    sortColumn,
+    sortDirection,
+    onSort,
+    tableNameHint,
+    connId,
+    sqlText,
+}: ResultGridProps) {
     const parentRef = useRef<HTMLDivElement>(null)
     // Set (not a single index) so ctrl/cmd-click and shift-click can build a
     // multi-row selection — anchorRef tracks the last non-shift click so a
@@ -33,6 +51,30 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
     const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
     const anchorRef = useRef<number | null>(null)
     const [copyStatus, setCopyStatus] = useState('')
+
+    // Edición de celdas, al estilo DataGrip. Ver useRowEditing: lo que se
+    // escribe queda PENDIENTE hasta que se manda, y lo que se puede editar lo
+    // decide el backend.
+    const editing = useRowEditing(connId, sqlText, columns, rows)
+    const [editCell, setEditCell] = useState<{row: number; col: string} | null>(null)
+    const [previewSql, setPreviewSql] = useState<string[] | null>(null)
+
+    // ⌘↵ / Ctrl+↵ manda los cambios, como en DataGrip. Solo cuando hay algo
+    // pendiente: un atajo que escribe en la base no puede dispararse por
+    // casualidad sobre una grilla sin cambios.
+    const applyRef = useRef(editing.apply)
+    applyRef.current = editing.apply
+    useEffect(() => {
+        if (editing.pendingCount === 0) return
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                void applyRef.current().catch(() => {})
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [editing.pendingCount])
 
     const colDefs: ColumnDef<unknown[]>[] = columns.map((col, i) => ({
         id: col,
@@ -163,14 +205,50 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                                     }`}
                                 >
                                     {row.getVisibleCells().map((cell) => {
-                                        const value = cell.getValue()
+                                        const colName = cell.column.id
+                                        const editable = editing.editableCols.get(colName.toLowerCase())
+                                        const change = editing.valueOf(vi.index, colName)
+                                        const value = change ? change.value : cell.getValue()
+                                        const isEditing =
+                                            editCell?.row === vi.index && editCell.col === colName
                                         return (
                                             <td
                                                 key={cell.id}
                                                 style={{width: cell.column.getSize()}}
-                                                className="truncate whitespace-nowrap border-b border-outline-variant/30 px-3 py-1.5 text-on-surface"
+                                                // Doble clic y no un clic: el clic simple ya
+                                                // selecciona la fila para copiarla, y una
+                                                // grilla donde tocar un dato lo pone en
+                                                // edición se edita sola sin querer.
+                                                onDoubleClick={(e) => {
+                                                    if (!editable) return
+                                                    e.stopPropagation()
+                                                    setEditCell({row: vi.index, col: colName})
+                                                }}
+                                                title={
+                                                    editable
+                                                        ? `Doble clic para editar. ${editable.dataType} — el cambio queda pendiente hasta que lo mandes.`
+                                                        : undefined
+                                                }
+                                                className={`truncate whitespace-nowrap border-b border-outline-variant/30 px-3 py-1.5 text-on-surface ${
+                                                    change
+                                                        ? change.saved
+                                                            ? 'bg-tertiary/15'
+                                                            : 'bg-primary/20 font-medium'
+                                                        : ''
+                                                } ${editable ? 'cursor-text' : ''}`}
                                             >
-                                                {value === null || value === undefined ? (
+                                                {isEditing && editable ? (
+                                                    <CellEditor
+                                                        kind={editable.kind}
+                                                        initial={value === null || value === undefined ? null : String(value)}
+                                                        nullable={editable.nullable}
+                                                        onCommit={(v) => {
+                                                            editing.setValue(vi.index, colName, v)
+                                                            setEditCell(null)
+                                                        }}
+                                                        onCancel={() => setEditCell(null)}
+                                                    />
+                                                ) : value === null || value === undefined ? (
                                                     <span className="italic text-on-surface-variant/60">NULL</span>
                                                 ) : (
                                                     String(value)
@@ -189,6 +267,98 @@ export default function ResultGrid({columns, rows, sortColumn, sortDirection, on
                     </tbody>
                 </table>
             </div>
+
+            {/* Barra de cambios pendientes. Aparece solo cuando hay algo sin
+                guardar: es el recordatorio de que lo que se ve en la grilla
+                todavía no está en la base. */}
+            {editing.pendingCount > 0 && (
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant bg-primary/10 px-2 py-1 text-[11px]">
+                    <Icon name="edit" size={13} className="shrink-0 text-primary" />
+                    <span className="text-on-surface">
+                        {editing.pendingCount} {editing.pendingCount === 1 ? 'cambio sin guardar' : 'cambios sin guardar'}
+                    </span>
+
+                    <button
+                        onClick={() => void editing.preview().then(setPreviewSql).catch((e) => editing.setError(String(e)))}
+                        title="Muestra exactamente el UPDATE que se va a ejecutar, con su WHERE, antes de tocar la base."
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="visibility" size={13} />
+                        Ver el SQL
+                    </button>
+                    <button
+                        onClick={() => void editing.apply().catch(() => {})}
+                        disabled={editing.busy}
+                        title="Ejecuta los UPDATE en UNA transacción. Cada uno tiene que afectar exactamente una fila: si alguno afecta otra cantidad, se revierte el lote entero. (Cmd/Ctrl + Enter)"
+                        className="flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 text-primary hover:bg-primary/30 disabled:opacity-50"
+                    >
+                        <Icon name="upload" size={13} />
+                        {editing.busy ? 'Guardando…' : 'Guardar en la base'}
+                    </button>
+                    <button
+                        onClick={editing.discard}
+                        title="Descarta los cambios pendientes. La base no se tocó, así que no hay nada que deshacer."
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="undo" size={13} />
+                        Descartar
+                    </button>
+
+                    {editing.error && (
+                        <span className="min-w-0 flex-1 truncate text-error" title={editing.error}>
+                            {editing.error}
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {/* Por qué esta consulta NO se puede editar. Se dice el motivo y no
+                se esconde la función en silencio: es lo que explica por qué en
+                la consulta de al lado sí anda. */}
+            {editing.reason && editing.pendingCount === 0 && (
+                <div className="flex shrink-0 items-center gap-1.5 border-t border-outline-variant bg-surface-container-low px-2 py-1 text-[10px] text-on-surface-variant">
+                    <Icon name="lock" size={11} className="shrink-0" />
+                    Solo lectura: {editing.reason}
+                </div>
+            )}
+
+            {previewSql && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4">
+                    <div className="flex max-h-full w-full max-w-2xl flex-col rounded-lg border border-outline-variant bg-surface-container shadow-xl">
+                        <p className="flex items-center gap-1.5 border-b border-outline-variant px-3 py-2 text-xs font-medium text-on-surface">
+                            <Icon name="code" size={14} className="text-primary" />
+                            Esto es lo que se va a ejecutar
+                        </p>
+                        <div className="min-h-0 flex-1 overflow-auto p-3">
+                            <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-on-surface">
+                                {previewSql.join('\n')}
+                            </pre>
+                            <p className="mt-2 text-[10px] leading-4 text-on-surface-variant">
+                                Los valores se muestran escritos adentro de la sentencia para poder leerla. Al ejecutar
+                                viajan como <strong>parámetros</strong>, aparte del texto — que es lo que hace que un
+                                valor con comillas no pueda cambiar el sentido del UPDATE.
+                            </p>
+                        </div>
+                        <div className="flex justify-end gap-2 border-t border-outline-variant px-3 py-2">
+                            <button
+                                onClick={() => setPreviewSql(null)}
+                                className="rounded px-3 py-1 text-xs text-on-surface-variant hover:bg-surface-variant"
+                            >
+                                Cerrar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setPreviewSql(null)
+                                    void editing.apply().catch(() => {})
+                                }}
+                                className="rounded bg-primary px-3 py-1 text-xs text-on-primary hover:opacity-90"
+                            >
+                                Ejecutar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {selectedRows.length > 0 && (
                 <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg">

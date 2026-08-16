@@ -7,6 +7,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/git"
+	"mini-tools/backend/osopen"
 	"mini-tools/backend/vault"
 )
 
@@ -177,6 +178,38 @@ func (a *App) GitListRepos() ([]vault.GitRepo, error) {
 		return nil, err
 	}
 	return a.vault.ListGitRepos()
+}
+
+// ExternalEditors lista los editores externos instalados en esta máquina.
+//
+// La interfaz solo ofrece lo que está: un botón "Abrir en VS Code" en una
+// máquina sin VS Code termina en un "comando no encontrado" que parece un error
+// de esta app. Ver backend/osopen.
+func (a *App) ExternalEditors() []osopen.Editor {
+	return osopen.Editors()
+}
+
+// OpenRepoInEditor abre la carpeta de un repositorio en un editor externo.
+//
+// Recibe el id del repositorio y no una ruta suelta a propósito: así lo que se
+// abre es siempre una carpeta que el usuario ya registró en la app, y no
+// cualquier ruta que llegue desde el frontend.
+func (a *App) OpenRepoInEditor(repoID, editorID string) error {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return osopen.OpenInEditor(editorID, path)
+}
+
+// OpenRepoInFileManager abre la carpeta del repositorio en el explorador de
+// archivos del sistema (Finder, Explorador de Windows, el de tu escritorio).
+func (a *App) OpenRepoInFileManager(repoID string) error {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return osopen.Reveal(path)
 }
 
 // GitPickRepoFolder opens the native folder picker and returns the chosen

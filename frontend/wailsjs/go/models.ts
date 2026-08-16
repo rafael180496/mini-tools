@@ -1844,6 +1844,22 @@ export namespace main {
 	        this.active = source["active"];
 	    }
 	}
+	export class CellEdit {
+	    column: string;
+	    value?: string;
+	    key: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new CellEdit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.column = source["column"];
+	        this.value = source["value"];
+	        this.key = source["key"];
+	    }
+	}
 	export class ConnectionEditInfo {
 	    name: string;
 	    dbType: string;
@@ -1883,6 +1899,80 @@ export namespace main {
 	        this.color = source["color"];
 	        this.environment = source["environment"];
 	    }
+	}
+	export class EditApplied {
+	    statements: string[];
+	    rows: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditApplied(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.statements = source["statements"];
+	        this.rows = source["rows"];
+	    }
+	}
+	export class EditColumn {
+	    name: string;
+	    dataType: string;
+	    nullable: boolean;
+	    isKey: boolean;
+	    kind: string;
+	    editable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditColumn(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.dataType = source["dataType"];
+	        this.nullable = source["nullable"];
+	        this.isKey = source["isKey"];
+	        this.kind = source["kind"];
+	        this.editable = source["editable"];
+	    }
+	}
+	export class EditTarget {
+	    editable: boolean;
+	    table: string;
+	    columns: EditColumn[];
+	    keyCols: string[];
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditTarget(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.editable = source["editable"];
+	        this.table = source["table"];
+	        this.columns = this.convertValues(source["columns"], EditColumn);
+	        this.keyCols = source["keyCols"];
+	        this.reason = source["reason"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class FileContent {
 	    path: string;
@@ -2210,6 +2300,25 @@ export namespace mcpserver {
 	        this.name = source["name"];
 	        this.description = source["description"];
 	        this.inputSchema = source["inputSchema"];
+	    }
+	}
+
+}
+
+export namespace osopen {
+	
+	export class Editor {
+	    id: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Editor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
 	    }
 	}
 

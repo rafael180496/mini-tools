@@ -25,6 +25,7 @@ import {
 import {agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import AgentChat from './AgentChat'
+import AgentUsagePanel from './AgentUsagePanel'
 import AgentHistoryPanel from './AgentHistoryPanel'
 import PromptDialog from '../git/PromptDialog'
 import {CONTEXT_ICONS, contextKey, repoIdOf, type WorkContext} from './workContext'
@@ -180,6 +181,11 @@ export default function AgentChatHost({
     const [active, setActive] = useState<main.ActiveAgent | null>(null)
     const [history, setHistory] = useState<vault.AgentChat[]>([])
     const [historyOpen, setHistoryOpen] = useState(false)
+    // Panel de consumo: lo mismo que muestra la solapa Agentes del módulo Git,
+    // pero sin repositorio — desde el chat la pregunta es "cuánto llevo
+    // gastado", no "cuánto en este repo".
+    const [usageOpen, setUsageOpen] = useState(false)
+    const [sessionUsage, setSessionUsage] = useState({total: 0, output: 0, cost: 0})
     // Conversación que se está renombrando. El título sale de lo primero que se
     // escribió, que casi nunca es cómo uno la va a buscar después.
     const [renaming, setRenaming] = useState<vault.AgentChat | null>(null)
@@ -393,6 +399,16 @@ export default function AgentChatHost({
                 </select>
 
                 <button
+                    onClick={() => setUsageOpen((v) => !v)}
+                    title="Cuántos tokens llevás gastados con cada CLI en los últimos 30 días, con tu plan al lado. Es lo mismo que muestra la solapa Agentes del módulo Git — acá sin repositorio, porque el chat no vive en uno."
+                    className={`shrink-0 rounded p-0.5 ${
+                        usageOpen ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                    }`}
+                >
+                    <Icon name="monitoring" size={14} />
+                </button>
+
+                <button
                     onClick={() => {
                         setHistoryOpen((v) => !v)
                         if (!historyOpen) loadHistory()
@@ -443,6 +459,14 @@ export default function AgentChatHost({
                 </span>
             </div>
 
+            {usageOpen && (
+                <AgentUsagePanel
+                    agentLabel={(id) => agentList.find((a) => a.id === id)?.label ?? id}
+                    session={sessionUsage}
+                    onClose={() => setUsageOpen(false)}
+                />
+            )}
+
             {historyOpen && (
                 <AgentHistoryPanel
                     // Al abrirlo desde un módulo arranca filtrado a ESE módulo:
@@ -485,6 +509,7 @@ export default function AgentChatHost({
                         initialSettings={session.initialSettings}
                         working={working}
                         onInsertText={onInsertText ?? undefined}
+                        onSessionUsage={setSessionUsage}
                         insertLabel={insertLabel}
                         onSend={onFirstSend}
                         onConversation={(conversationId) => {

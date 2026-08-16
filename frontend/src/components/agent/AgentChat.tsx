@@ -195,6 +195,10 @@ interface AgentChatProps {
     // lo correcto en un módulo donde no hay dónde insertar nada.
     onInsertText?: (text: string) => void
     insertLabel?: string
+    // Lo gastado en esta conversación, para que el panel de consumo pueda
+    // mostrarlo junto al del mes. Lo calcula este componente porque es quien
+    // recibe el informe de cada turno.
+    onSessionUsage?: (usage: {total: number; output: number; cost: number}) => void
     // Abre OTRO chat, con otro agente, para que revise lo que este viene
     // haciendo. Es el caso de trabajar en paralelo: uno propone, otro valida.
     onValidateWithAnother?: (excludeAgentId: string) => void
@@ -248,6 +252,7 @@ export default function AgentChat({
     working,
     onInsertText,
     insertLabel,
+    onSessionUsage,
 }: AgentChatProps) {
     const [turns, setTurns] = useState<Turn[]>([])
     // Qué mensaje se acaba de copiar, para confirmarlo en el botón. Sin la
@@ -261,6 +266,11 @@ export default function AgentChat({
     // su propio comando (`/status`, `/usage`). Inventar acá un "te queda 18%"
     // sería la clase de número que se lee mal y se cree igual, así que se
     // muestra lo que sí es verificable y se dice dónde ver el resto.
+
+    // Se avisa hacia afuera cada vez que cambia: el panel de consumo vive en
+    // el anfitrión, que no ve los turnos.
+    const onSessionUsageRef = useRef(onSessionUsage)
+    onSessionUsageRef.current = onSessionUsage
 
     // Qué mostrar mientras trabaja: la última herramienta que llamó en este
     // turno, que es lo que explica la demora, o "pensando" si todavía no
@@ -284,6 +294,11 @@ export default function AgentChat({
             ),
         [turns],
     )
+
+    useEffect(() => {
+        onSessionUsageRef.current?.(sessionUsage)
+    }, [sessionUsage])
+
     const [input, setInput] = useState('')
     const [busy, setBusy] = useState(false)
     // Segundos que lleva el turno en curso. Un agente puede tardar minutos
