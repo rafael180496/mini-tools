@@ -53,6 +53,9 @@ type NoteHit struct {
 	Snippet string `json:"snippet"`
 	// MatchedTitle indica que el título acertó, para que la lista lo marque.
 	MatchedTitle bool `json:"matchedTitle"`
+	// FolderID es la carpeta donde vive, para poder dibujar el árbol con los
+	// resultados de una búsqueda en su lugar.
+	FolderID string `json:"folderId"`
 }
 
 // NoteQuery es una consulta ya parseada.
@@ -221,6 +224,7 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 	rows, err := s.db.Query(
 		`SELECT id, encrypted_title, title_nonce, encrypted_content, content_nonce,
 		        encrypted_frontmatter, frontmatter_nonce, is_private, updated_at
+		        , COALESCE(folder_id, '')
 		 FROM vault_notes`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: buscando en las notas: %w", err)
@@ -233,8 +237,9 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 		var encTitle, titleNonce, encContent, contentNonce, encFm, fmNonce []byte
 		var private int
 		var updated int64
+		var folderID string
 		if err := rows.Scan(&id, &encTitle, &titleNonce, &encContent, &contentNonce,
-			&encFm, &fmNonce, &private, &updated); err != nil {
+			&encFm, &fmNonce, &private, &updated, &folderID); err != nil {
 			return nil, err
 		}
 
@@ -258,6 +263,7 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 		}
 		hit.IsPrivate = private != 0
 		hit.UpdatedAt = updated
+		hit.FolderID = folderID
 		hits = append(hits, hit)
 	}
 	if err := rows.Err(); err != nil {
@@ -424,4 +430,103 @@ func collapseSpace(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// AllNoteTags junta las etiquetas (`#algo`) de todas las notas, con cuántas
+// veces aparece cada una.
+//
+// **Sirve para autocompletar.** Es el mismo principio que el autocompletado de
+// SQL: no se inventan sugerencias, se ofrecen las que ya existen en tus datos.
+// Escribir `#prod` y que aparezca `#produccion` porque ya la usaste en otras
+// cuatro notas es lo que evita terminar con `#produccion`, `#produccion-`,
+// `#prod` y `#PROD` como cuatro etiquetas distintas.
+//
+// Descifra en memoria, como el buscador, y por el mismo motivo: un índice de
+// etiquetas persistido sería contenido derivado del texto plano.
+func (s *Store) AllNoteTags() ([]NoteTag, error) {
+	rows, err := s.db.Query(`SELECT encrypted_content, content_nonce, encrypted_frontmatter, frontmatter_nonce FROM vault_notes`)
+	if err != nil {
+		return nil, fmt.Errorf("vault: leyendo las etiquetas: %w", err)
+	}
+	defer rows.Close()
+
+	counts := map[string]int{}
+	for rows.Next() {
+		var encContent, contentNonce, encFm, fmNonce []byte
+		if err := rows.Scan(&encContent, &contentNonce, &encFm, &fmNonce); err != nil {
+			return nil, err
+		}
+		text := s.decryptOptional(encContent, contentNonce) + "\n" + s.decryptOptional(encFm, fmNonce)
+		for _, tag := range extractTags(text) {
+			counts[tag]++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	out := make([]NoteTag, 0, len(counts))
+	for tag, n := range counts {
+		out = append(out, NoteTag{Tag: tag, Count: n})
+	}
+	// Las más usadas primero: son las que uno quiere volver a usar.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Tag < out[j].Tag
+	})
+	return out, nil
+}
+
+// NoteTag es una etiqueta con cuántas notas la usan.
+type NoteTag struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
+}
+
+// extractTags saca las etiquetas de un texto.
+//
+// Una etiqueta es `#` pegado a una palabra; `# ` con espacio es un encabezado y
+// no cuenta. Esa diferencia de un carácter es la que confunde a todo el mundo,
+// así que está escrita en los dos lados que la miran (acá y en el editor).
+func extractTags(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		// Encabezado: `#` seguido de espacio (o de más almohadillas y espacio).
+		if h := strings.TrimLeft(trimmed, "#"); h != trimmed && strings.HasPrefix(h, " ") {
+			continue
+		}
+		for i := 0; i < len(line); i++ {
+			if line[i] != '#' {
+				continue
+			}
+			if i > 0 && !isTagBoundary(line[i-1]) {
+				continue
+			}
+			j := i + 1
+			for j < len(line) && isTagRune(line[j]) {
+				j++
+			}
+			if j == i+1 {
+				continue
+			}
+			tag := line[i:j]
+			if !seen[tag] {
+				seen[tag] = true
+				out = append(out, tag)
+			}
+			i = j
+		}
+	}
+	return out
+}
+
+func isTagBoundary(b byte) bool { return b == ' ' || b == '\t' || b == '(' || b == '[' }
+
+func isTagRune(b byte) bool {
+	return b == '_' || b == '-' || b == '/' ||
+		(b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b >= 0x80
 }

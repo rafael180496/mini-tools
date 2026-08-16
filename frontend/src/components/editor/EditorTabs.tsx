@@ -192,6 +192,17 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                 >
                     <Icon name="commit" size={12} />
                 </span>
+            ) : tab.kind === 'note' ? (
+                // Una nota es un documento: no hay conexión que vincular ni
+                // lenguaje que elegir. El menú de la pestaña ofrecía las dos
+                // cosas sobre un texto, que es ofrecer una opción que no
+                // significa nada.
+                <span
+                    title="Nota de la base de conocimiento — es un documento, no se vincula a ninguna conexión"
+                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
+                >
+                    <Icon name="description" size={12} />
+                </span>
             ) : (
                 <button
                     ref={chipRef}

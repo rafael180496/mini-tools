@@ -70,6 +70,10 @@ export function AnalyzeRedisPrefixes(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AnalyzeRedisPrefixes'](arg1, arg2, arg3, arg4);
 }
 
+export function AnalyzeSSHError(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AnalyzeSSHError'](arg1, arg2, arg3);
+}
+
 export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
@@ -92,6 +96,10 @@ export function BeginRedisTransaction(arg1) {
 
 export function BeginTransaction(arg1) {
   return window['go']['main']['App']['BeginTransaction'](arg1);
+}
+
+export function CallTool(arg1, arg2) {
+  return window['go']['main']['App']['CallTool'](arg1, arg2);
 }
 
 export function CancelAgentChat(arg1) {
@@ -324,6 +332,10 @@ export function GetMongoIndexes(arg1, arg2, arg3) {
 
 export function GetNote(arg1) {
   return window['go']['main']['App']['GetNote'](arg1);
+}
+
+export function GetNoteImage(arg1) {
+  return window['go']['main']['App']['GetNoteImage'](arg1);
 }
 
 export function GetObjectDDL(arg1, arg2, arg3, arg4, arg5) {
@@ -806,8 +818,16 @@ export function ListSshSnippets() {
   return window['go']['main']['App']['ListSshSnippets']();
 }
 
+export function ListTools() {
+  return window['go']['main']['App']['ListTools']();
+}
+
 export function LocalShellLabel(arg1) {
   return window['go']['main']['App']['LocalShellLabel'](arg1);
+}
+
+export function MCPServerStatus() {
+  return window['go']['main']['App']['MCPServerStatus']();
 }
 
 export function MakeSftpDir(arg1, arg2) {
@@ -834,8 +854,20 @@ export function NoteLinks(arg1) {
   return window['go']['main']['App']['NoteLinks'](arg1);
 }
 
+export function NoteStatsFor(arg1) {
+  return window['go']['main']['App']['NoteStatsFor'](arg1);
+}
+
+export function NoteTags() {
+  return window['go']['main']['App']['NoteTags']();
+}
+
 export function NoteTitles() {
   return window['go']['main']['App']['NoteTitles']();
+}
+
+export function NotesGraph() {
+  return window['go']['main']['App']['NotesGraph']();
 }
 
 export function OpenAgentSession(arg1, arg2, arg3, arg4, arg5, arg6) {
@@ -998,8 +1030,16 @@ export function RunRedisLuaScript(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['RunRedisLuaScript'](arg1, arg2, arg3, arg4);
 }
 
+export function SSHCwd(arg1) {
+  return window['go']['main']['App']['SSHCwd'](arg1);
+}
+
 export function SSHKeyUsage(arg1) {
   return window['go']['main']['App']['SSHKeyUsage'](arg1);
+}
+
+export function SSHTail(arg1, arg2) {
+  return window['go']['main']['App']['SSHTail'](arg1, arg2);
 }
 
 export function SampleMongoFields(arg1, arg2, arg3) {
@@ -1016,6 +1056,10 @@ export function SaveConnection(arg1, arg2) {
 
 export function SaveDDLToFile(arg1, arg2) {
   return window['go']['main']['App']['SaveDDLToFile'](arg1, arg2);
+}
+
+export function SaveNoteImage(arg1, arg2) {
+  return window['go']['main']['App']['SaveNoteImage'](arg1, arg2);
 }
 
 export function SaveSQLFile(arg1, arg2) {
@@ -1106,12 +1150,20 @@ export function SetLocalShell(arg1) {
   return window['go']['main']['App']['SetLocalShell'](arg1);
 }
 
+export function SetMCPServerEnabled(arg1) {
+  return window['go']['main']['App']['SetMCPServerEnabled'](arg1);
+}
+
+export function SetNoteFolder(arg1, arg2) {
+  return window['go']['main']['App']['SetNoteFolder'](arg1, arg2);
+}
+
 export function SetNotePrivacy(arg1, arg2) {
   return window['go']['main']['App']['SetNotePrivacy'](arg1, arg2);
 }
 
-export function SetNotesLayout(arg1, arg2) {
-  return window['go']['main']['App']['SetNotesLayout'](arg1, arg2);
+export function SetNotesLastOpen(arg1) {
+  return window['go']['main']['App']['SetNotesLastOpen'](arg1);
 }
 
 export function SetOpenTabs(arg1) {

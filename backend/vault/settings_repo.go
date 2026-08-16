@@ -168,6 +168,10 @@ type Settings struct {
 	// nota cambió mientras tanto — mismo criterio que `git_repos.open_files`.
 	NotesLastOpen  string `json:"notesLastOpen"`
 	NotesSideWidth int    `json:"notesSideWidth"`
+	// MCPEnabled recuerda si el servidor MCP quedó encendido la última vez.
+	// **No lo enciende al arrancar**: es un recordatorio para la interfaz, no
+	// un arranque automático — ver la migración 37.
+	MCPEnabled bool `json:"mcpEnabled"`
 }
 
 // GitPanelSession es una pestaña del panel de la pestaña Git: una terminal
@@ -230,10 +234,11 @@ func (s *Store) GetSettings() (Settings, error) {
 	var gitPanelSessionsJSON sql.NullString
 	var activeAgent, activeModel, activeEffort, agentDock, notesLastOpen string
 	var agentSize, notesSideWidth int
+	var mcpEnabled bool
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -305,6 +310,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		AgentSize:               agentSize,
 		NotesLastOpen:           notesLastOpen,
 		NotesSideWidth:          notesSideWidth,
+		MCPEnabled:              mcpEnabled,
 	}, nil
 }
 
@@ -347,19 +353,27 @@ func (s *Store) SetAgentLayout(dock string, size int) error {
 	return nil
 }
 
-// SetNotesLayout persiste qué nota quedó abierta y cuánto mide su lista.
-// Mismo criterio de acotar en vez de rechazar que SetAgentLayout.
-func (s *Store) SetNotesLayout(lastOpen string, sideWidth int) error {
-	if sideWidth < 180 {
-		sideWidth = 180
+// SetNotesLastOpen persiste qué nota quedó abierta, para reabrirla al arrancar.
+func (s *Store) SetNotesLastOpen(noteID string) error {
+	if _, err := s.db.Exec(`UPDATE settings SET notes_last_open = ? WHERE id = 1`, noteID); err != nil {
+		return fmt.Errorf("vault: guardando la última nota abierta: %w", err)
 	}
-	if sideWidth > 700 {
-		sideWidth = 700
+	return nil
+}
+
+// SetNotesSideWidth persiste el ancho de la lista de notas. Separado del
+// anterior a propósito: se cambian en momentos distintos, y guardarlos juntos
+// hacía que abrir una nota pisara el ancho que el usuario había dejado.
+// Acotado en vez de rechazado, mismo criterio que SetAgentLayout.
+func (s *Store) SetNotesSideWidth(width int) error {
+	if width < 180 {
+		width = 180
 	}
-	if _, err := s.db.Exec(
-		`UPDATE settings SET notes_last_open = ?, notes_side_width = ? WHERE id = 1`, lastOpen, sideWidth,
-	); err != nil {
-		return fmt.Errorf("vault: guardando el layout de notas: %w", err)
+	if width > 700 {
+		width = 700
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET notes_side_width = ? WHERE id = 1`, width); err != nil {
+		return fmt.Errorf("vault: guardando el ancho de la lista de notas: %w", err)
 	}
 	return nil
 }
@@ -677,6 +691,19 @@ func (s *Store) SetCollapsedSidebarModules(ids []string) error {
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET collapsed_sidebar_modules = ? WHERE id = 1`, string(encoded)); err != nil {
 		return fmt.Errorf("vault: guardando collapsed_sidebar_modules: %w", err)
+	}
+	return nil
+}
+
+// SetMCPEnabled persiste si el servidor MCP quedó encendido.
+//
+// Es solo el recuerdo de la preferencia: encender el servidor de verdad es
+// abrir el socket, y eso lo hace App.SetMCPServerEnabled. Guardar el flag sin
+// abrir nada es exactamente lo que se quiere — al reabrir la app, el usuario
+// decide si volver a encenderlo.
+func (s *Store) SetMCPEnabled(enabled bool) error {
+	if _, err := s.db.Exec(`UPDATE settings SET mcp_enabled = ? WHERE id = 1`, enabled); err != nil {
+		return fmt.Errorf("vault: guardando mcp_enabled: %w", err)
 	}
 	return nil
 }

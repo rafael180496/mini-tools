@@ -185,3 +185,106 @@ func BrokenLinkTitles(content string, existing map[string]bool) []string {
 	}
 	return out
 }
+
+// NoteGraphNode es un nodo del grafo de conocimiento.
+//
+// **Sin cuerpo de nota.** El grafo es una vista de la estructura —qué existe y
+// qué apunta a qué—, así que mandar el contenido al frontend sería descifrar
+// toda la base para dibujar círculos.
+type NoteGraphNode struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// IsPrivate se manda para poder dibujar el candado. Las notas privadas SÍ
+	// entran al grafo: el cortafuegos es contra los agentes, no contra el
+	// usuario — poder ver cómo se relaciona lo propio es justamente para lo
+	// que existe esta vista.
+	IsPrivate bool `json:"isPrivate"`
+	// Degree es cuántas aristas toca, para dibujar más grande lo más conectado
+	// y para poder filtrar las huérfanas.
+	Degree int `json:"degree"`
+}
+
+// NoteGraphEdge es una arista ya resuelta entre dos notas existentes.
+type NoteGraphEdge struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+// NoteGraphData es el grafo completo.
+type NoteGraphData struct {
+	Nodes []NoteGraphNode `json:"nodes"`
+	Edges []NoteGraphEdge `json:"edges"`
+	// BrokenLinks es cuántas aristas apuntan a notas que no existen. No se
+	// dibujan —no hay a dónde ponerlas— pero se cuentan: un grafo que dice
+	// "12 nodos" callando que hay 30 enlaces sin destino esconde justo el
+	// trabajo pendiente.
+	BrokenLinks int `json:"brokenLinks"`
+}
+
+// NoteGraph arma el grafo entero.
+//
+// Las aristas se resuelven por hash de título contra las notas existentes, que
+// es la misma operación que hace el panel de enlaces — acá de una sola vez para
+// todas, porque hacerlo nota por nota serían N consultas para dibujar una
+// pantalla.
+func (s *Store) NoteGraph() (NoteGraphData, error) {
+	out := NoteGraphData{Nodes: []NoteGraphNode{}, Edges: []NoteGraphEdge{}}
+
+	rows, err := s.db.Query(`SELECT id, encrypted_title, title_nonce, is_private, title_hash FROM vault_notes`)
+	if err != nil {
+		return out, fmt.Errorf("vault: leyendo el grafo: %w", err)
+	}
+	byHash := map[string]string{}
+	degree := map[string]int{}
+	index := map[string]int{}
+	for rows.Next() {
+		var n NoteGraphNode
+		var enc, nonce []byte
+		var private int
+		var hash string
+		if err := rows.Scan(&n.ID, &enc, &nonce, &private, &hash); err != nil {
+			rows.Close()
+			return out, err
+		}
+		n.IsPrivate = private != 0
+		n.Title = s.decryptOptional(enc, nonce)
+		byHash[hash] = n.ID
+		index[n.ID] = len(out.Nodes)
+		out.Nodes = append(out.Nodes, n)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+
+	links, err := s.db.Query(`SELECT source_note_id, target_title_hash FROM vault_note_links`)
+	if err != nil {
+		return out, fmt.Errorf("vault: leyendo las aristas: %w", err)
+	}
+	defer links.Close()
+	for links.Next() {
+		var source, hash string
+		if err := links.Scan(&source, &hash); err != nil {
+			return out, err
+		}
+		target, ok := byHash[hash]
+		if !ok {
+			out.BrokenLinks++
+			continue
+		}
+		// Un enlace a sí misma no es una arista: no dice nada y el layout la
+		// dibujaría como un nodo tironeándose solo.
+		if target == source {
+			continue
+		}
+		out.Edges = append(out.Edges, NoteGraphEdge{Source: source, Target: target})
+		degree[source]++
+		degree[target]++
+	}
+	for id, d := range degree {
+		if i, ok := index[id]; ok {
+			out.Nodes[i].Degree = d
+		}
+	}
+	return out, links.Err()
+}

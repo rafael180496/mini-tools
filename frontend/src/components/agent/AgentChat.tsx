@@ -94,6 +94,16 @@ interface ChatEvent {
 // primero; el modo se aplica después.
 const PERMISSIVE = new Set(['auto', 'edit'])
 
+// Tres arranques por módulo. No son plantillas mágicas: son las preguntas que
+// uno hace igual, escritas para no tener que pensarlas frente a una caja vacía.
+const STARTERS: Record<string, string[]> = {
+    db: ['Explicá esta consulta', 'Optimizá esta consulta', '¿Qué tablas tiene esta conexión?'],
+    ssh: ['¿Qué falló acá?', 'Explicá este log', '¿Cómo reviso el uso de disco?'],
+    note: ['Resumí esta nota', '¿Este procedimiento sigue teniendo sentido?', 'Ampliá el último paso'],
+    git: ['¿Qué cambió en esta rama?', 'Revisá los cambios preparados', 'Escribí el mensaje del commit'],
+    none: ['¿Qué podés hacer en mini-tools?'],
+}
+
 // Espeja agentapprove.Request: la acción que el agente quiere hacer y sobre la
 // que hay que decidir. Viaja por evento, así que se escribe a mano igual que
 // ChatEvent.
@@ -153,7 +163,8 @@ interface AgentChatProps {
     // ni nada que descartar—, el subproceso corre en un directorio vacío y el
     // selector ofrece conexiones, tablas y planes.
     //
-    // La conversación NO se reinicia al cambiar de contexto. Ver AgentChatHost.
+    // **Hay una conversación por contexto**: cambiar de pestaña cambia de hilo,
+    // no continúa el anterior. Ver AgentChatHost.
     context: WorkContext
     agentId: string
     agentLabel: string
@@ -190,6 +201,13 @@ interface AgentChatProps {
     // una conversación a la que nunca se le escribió nada no es historial, es
     // una ventana que se abrió.
     onSend?: (text: string) => void
+    // Lo que estás mirando AHORA en el módulo, adjuntado automáticamente al
+    // mensaje: la consulta del editor SQL, por ejemplo.
+    //
+    // Es la diferencia entre "preguntale al agente sobre esta conexión" y
+    // "preguntale sobre ESTA consulta". Va como ficha desplegable y se puede
+    // sacar: adjuntar algo sin que se vea es lo mismo que mandarlo a escondidas.
+    working?: {label: string; text: string; language?: string} | null
 }
 
 // formatTokens abrevia los totales. Una sesión larga llega a millones, y
@@ -221,6 +239,7 @@ export default function AgentChat({
     onValidateWithAnother,
     onConversation,
     onSend,
+    working,
 }: AgentChatProps) {
     const [turns, setTurns] = useState<Turn[]>([])
     // Acumulado de la conversación: la suma de lo que informó cada turno.
@@ -312,6 +331,10 @@ export default function AgentChat({
     // Referencias `@tipo:valor` ya resueltas por el backend, para las fichas
     // desplegables del compositor.
     const [resolvedRefs, setResolvedRefs] = useState<agentctx.Resolved[]>([])
+    // Si el contexto de trabajo va adjunto al próximo mensaje. Arranca en sí
+    // cuando hay algo que adjuntar —es lo que estás mirando— y se saca con un
+    // clic.
+    const [attachWorking, setAttachWorking] = useState(true)
     const inputRef = useRef<HTMLTextAreaElement>(null)
     // Imágenes adjuntas al próximo mensaje: rutas ya escritas en el disco,
     // porque los tres CLIs las reciben por ruta y no en memoria.
@@ -591,17 +614,24 @@ export default function AgentChat({
         setTurns((prev) => [...prev, {role: 'user', text, tools: []}])
         setInput('')
         setBusy(true)
+        // El contexto de trabajo se antepone al mensaje, no lo reemplaza: el
+        // agente ve primero qué estás mirando y después qué le preguntás.
+        const fence = '```'
+        const outgoing =
+            attachWorking && working?.text.trim()
+                ? `${working.label}:\n\n${fence}${working.language ?? ''}\n${working.text}\n${fence}\n\n${text}`
+                : text
         // Antes de mandar y no después: si el turno falla, la conversación
         // igual existe y se puede reintentar desde el historial.
         onSend?.(text)
         try {
-            await SendAgentChat(sessionId, context.kind, context.id, agentId, text, mode, effort, model.trim(), attachments)
+            await SendAgentChat(sessionId, context.kind, context.id, agentId, outgoing, mode, effort, model.trim(), attachments)
             setAttachments([])
         } catch (e) {
             setTurns((prev) => [...prev, {role: 'agent', text: '', tools: [], error: String(e)}])
             setBusy(false)
         }
-    }, [input, busy, sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend])
+    }, [input, busy, sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend, attachWorking, working])
 
     return (
         <div
@@ -617,8 +647,10 @@ export default function AgentChat({
             }}
         >
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-[11px]">
-                <Icon name="smart_toy" size={13} className="shrink-0 text-primary" />
-                <span className="font-medium text-on-surface">{agentLabel}</span>
+                {/* El nombre del agente NO se repite acá: ya está en el
+                    selector del encabezado del panel, una línea más arriba.
+                    Repetirlo gastaba la línea más visible del chat en un dato
+                    que ya estaba a la vista. */}
                 {/* Sobre qué está trabajando AHORA. Es la contracara de tener
                     un solo chat para toda la app: la conversación no se
                     reinicia al cambiar de módulo, así que sin esto no habría
@@ -671,30 +703,45 @@ export default function AgentChat({
 
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-xs">
                 {turns.length === 0 && (
-                    <p className="p-3 text-center text-[11px] text-on-surface-variant">
-                        Preguntale a {agentLabel}
-                        {context.kind !== 'none' && context.label
-                            ? ` sobre ${CONTEXT_NOUNS[context.kind]} «${context.label}»`
-                            : ''}
-                        .
-                        <br />
-                        Empieza en <strong>solo consulta</strong>: lee y propone, no toca nada. Para que edite, elegí un modo
-                        abajo — cada uno te dice qué le vas a permitir antes de activarlo.
-                        <br />
-                        Podés pegar una captura con {navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'}
-                        {/* El selector de @ solo tiene qué ofrecer cuando hay un
-                            árbol de archivos detrás. Anunciarlo en una conexión
-                            de base de datos sería prometer un autocompletado
-                            que abre vacío. */}
-                        {repoId ? (
-                            <>
-                                {' '}
-                                o escribir <strong>@</strong> para referenciar un archivo del repo.
-                            </>
-                        ) : (
-                            '.'
-                        )}
-                    </p>
+                    <div className="flex flex-col items-center gap-2 p-4 text-center text-[11px] text-on-surface-variant">
+                        <p>
+                            {context.kind !== 'none' && context.label ? (
+                                <>
+                                    Sobre {CONTEXT_NOUNS[context.kind]}{' '}
+                                    <span className="text-on-surface">«{context.label}»</span>. Empieza en{' '}
+                                    <strong>solo consulta</strong>: lee y propone, no toca nada.
+                                </>
+                            ) : (
+                                <>
+                                    Empieza en <strong>solo consulta</strong>: lee y propone, no toca nada.
+                                </>
+                            )}
+                        </p>
+                        {/* Sugerencias que llenan la caja, en vez de un párrafo
+                            explicando qué se puede escribir: frente a una caja
+                            vacía uno no sabe por dónde empezar, y tres ejemplos
+                            del módulo en el que está lo resuelven mejor que una
+                            instrucción. */}
+                        <div className="flex flex-wrap justify-center gap-1">
+                            {(STARTERS[context.kind] ?? STARTERS.none).map((st) => (
+                                <button
+                                    key={st}
+                                    onClick={() => {
+                                        setInput(st)
+                                        inputRef.current?.focus()
+                                    }}
+                                    title="Escribe esto en la caja de mensaje. Podés editarlo antes de mandarlo."
+                                    className="rounded-full border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                >
+                                    {st}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="opacity-70">
+                            <strong>@</strong> referencia tablas, notas y terminales ·{' '}
+                            {navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'} pega una captura
+                        </p>
+                    </div>
                 )}
 
                 {turns.map((t, i) => (
@@ -813,6 +860,39 @@ export default function AgentChat({
                     onPick={insertMention}
                     onFirstChange={setFirstSuggestion}
                 />
+            )}
+
+            {working?.text.trim() && (
+                <details className="shrink-0 border-t border-outline-variant px-1.5 pt-1">
+                    <summary className="flex cursor-pointer items-center gap-1.5 text-[10px]">
+                        <Icon
+                            name={attachWorking ? 'attach_file' : 'block'}
+                            size={11}
+                            className={`shrink-0 ${attachWorking ? 'text-primary' : 'text-on-surface-variant'}`}
+                        />
+                        <span className="shrink-0 font-medium text-on-surface">{working.label}</span>
+                        <span className="min-w-0 flex-1 truncate font-mono text-on-surface-variant">
+                            {working.text.trim().split('\n')[0]}
+                        </span>
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault()
+                                setAttachWorking((v) => !v)
+                            }}
+                            title={
+                                attachWorking
+                                    ? 'Se va a adjuntar al próximo mensaje. Hacé clic para NO mandarlo.'
+                                    : 'No se va a adjuntar. Hacé clic para incluirlo.'
+                            }
+                            className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            {attachWorking ? 'adjunto' : 'sin adjuntar'}
+                        </button>
+                    </summary>
+                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-[10px] text-on-surface-variant">
+                        {working.text}
+                    </pre>
+                </details>
             )}
 
             {/* Fichas de lo que se va a mandar. No es decoración: una

@@ -5,6 +5,7 @@ import {
     CloseSftpBrowse,
     OpenSftpBrowse,
     SftpHomeDir,
+    SSHCwd,
     StartSftpTransfer,
 } from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
@@ -28,6 +29,14 @@ interface SftpTabProps {
     // Opens a remote file in an editor tab. Optional so this component keeps
     // working exactly as before wherever it is rendered without one.
     onOpenRemoteFile?: (host: PaneHost, path: string) => void
+    // Conexión cuya terminal está viva al lado (la pestaña híbrida). Habilita
+    // "Seguir a la terminal": el panel salta al directorio donde está parada la
+    // shell. Ausente = la sincronización no se ofrece, que es lo correcto en
+    // una pestaña SFTP suelta, donde no hay ninguna terminal que seguir.
+    followTerminalConnId?: string
+    // Escribe `cd <ruta>` en esa terminal, sin ejecutarlo. Es la dirección
+    // contraria de la sincronización.
+    onOpenTerminalAt?: (path: string) => void
 }
 
 type Side = 'left' | 'right'
@@ -84,7 +93,14 @@ function other(side: Side): Side {
     return side === 'left' ? 'right' : 'left'
 }
 
-export default function SftpTab({tabId, initialConnId, connections, onOpenRemoteFile}: SftpTabProps) {
+export default function SftpTab({
+    tabId,
+    initialConnId,
+    connections,
+    onOpenRemoteFile,
+    followTerminalConnId,
+    onOpenTerminalAt,
+}: SftpTabProps) {
     const [panes, setPanes] = useState<{left: PaneState; right: PaneState}>({
         left: {host: LOCAL_HOST, dir: '', reload: 0},
         right: {host: NONE_HOST, dir: '', reload: 0},
@@ -312,8 +328,106 @@ export default function SftpTab({tabId, initialConnId, connections, onOpenRemote
     const dragRef = useRef<TransferItem[] | null>(null)
     const activeCount = queue.filter((q) => q.status === 'running').length
 
+    // --- sincronización con la terminal ------------------------------------
+    //
+    // Apagado por defecto, y a propósito. El directorio se sabe SOLO si la
+    // shell del servidor lo informa (secuencia OSC 7): no se ejecuta nada para
+    // averiguarlo, porque eso sería escribir en la sesión interactiva del
+    // usuario. En un servidor cuya shell no la emite —lo habitual sin
+    // configurar— esto nunca se mueve, y el panel lo dice en vez de quedarse
+    // callado pareciendo roto.
+    const [follow, setFollow] = useState(false)
+    const [termCwd, setTermCwd] = useState('')
+    const [cwdKnown, setCwdKnown] = useState<boolean | null>(null)
+
+    // El lado que muestra ESE servidor. Puede ser cualquiera de los dos: el
+    // usuario puede haber intercambiado los paneles.
+    const followSide: Side | null =
+        !followTerminalConnId
+            ? null
+            : panes.right.host.kind === 'remote' && panes.right.host.connId === followTerminalConnId
+              ? 'right'
+              : panes.left.host.kind === 'remote' && panes.left.host.connId === followTerminalConnId
+                ? 'left'
+                : null
+
+    useEffect(() => {
+        if (!follow || !followTerminalConnId) return
+        let cancelled = false
+        const tick = () => {
+            SSHCwd(followTerminalConnId)
+                .then((dir) => {
+                    if (cancelled) return
+                    setCwdKnown(!!dir)
+                    if (dir) setTermCwd(dir)
+                })
+                .catch(() => !cancelled && setCwdKnown(false))
+        }
+        tick()
+        // Cada segundo y medio: es un `pwd` que ya está en memoria, no una
+        // llamada al servidor. Con el seguimiento apagado NO hay ningún
+        // intervalo corriendo.
+        const t = setInterval(tick, 1500)
+        return () => {
+            cancelled = true
+            clearInterval(t)
+        }
+    }, [follow, followTerminalConnId])
+
+    useEffect(() => {
+        if (!follow || !followSide || !termCwd) return
+        if (panes[followSide].dir === termCwd) return
+        updatePane(followSide, {dir: termCwd})
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [follow, followSide, termCwd])
+
     return (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+            {followTerminalConnId && (
+                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1 text-[11px]">
+                    <button
+                        onClick={() => setFollow((v) => !v)}
+                        title={
+                            follow
+                                ? 'El explorador está siguiendo a la terminal: cuando hacés cd, el panel salta a esa carpeta. Hacé clic para desengancharlo.'
+                                : 'Engancha el explorador a la terminal: cuando hagas cd, el panel salta a esa carpeta. Funciona si la shell del servidor informa su directorio (la mayoría de las modernas lo hacen); si no, se avisa.'
+                        }
+                        className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 ${
+                            follow ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name={follow ? 'link' : 'link_off'} size={13} />
+                        Seguir a la terminal
+                    </button>
+
+                    {follow && cwdKnown === false && (
+                        <span
+                            className="min-w-0 truncate text-tertiary"
+                            title="El directorio se sabe solo si la shell lo informa (secuencia OSC 7). No se ejecuta `pwd` por nuestra cuenta: eso escribiría en tu sesión interactiva, aparecería en tu pantalla y dentro de un editor abierto sería un desastre."
+                        >
+                            La shell de este servidor no informa su directorio — el panel no se va a mover.
+                        </span>
+                    )}
+                    {follow && termCwd && (
+                        <span className="min-w-0 truncate font-mono text-on-surface-variant" title={termCwd}>
+                            {termCwd}
+                        </span>
+                    )}
+
+                    {onOpenTerminalAt && followSide && (
+                        <button
+                            onClick={() => onOpenTerminalAt(panes[followSide].dir)}
+                            disabled={!panes[followSide].dir}
+                            title="Escribe `cd` a esta carpeta en la terminal, SIN ejecutarlo: lo ves antes de apretar Enter. Es la dirección contraria del seguimiento."
+                            className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
+                        >
+                            <Icon name="terminal" size={13} />
+                            Ir acá en la terminal
+                        </button>
+                    )}
+                </div>
+            )}
+
             {error && (
                 <div className="flex shrink-0 items-start gap-2 border-b border-error/40 bg-error-container/40 px-3 py-1.5 text-xs text-on-error-container">
                     <Icon name="error" size={16} className="mt-0.5 shrink-0" />

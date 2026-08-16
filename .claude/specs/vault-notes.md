@@ -1,14 +1,14 @@
 # Vault Notes — base de conocimiento cifrada
 
-> Estado: **implementado** (1.6.0). Núcleo cifrado, WikiLinks, backlinks,
-> buscador y cortafuegos de privacidad. Los bloques `/slash`, los runbooks
-> ejecutables y el grafo visual son la fase 4 del
-> [plan](sistema-agentico-unificado.md).
+> Estado: **implementado** (1.6.0 y 1.7.0). Núcleo cifrado, WikiLinks,
+> backlinks, buscador, control de privacidad, menú `/slash`, bloques SQL
+> ejecutables, grafo visual y chat de IA integrado por nota. Ver el
+> [plan](sistema-agentico-unificado.md) para lo que sigue.
 
 Módulo de documentación técnica propia dentro del vault: runbooks,
 procedimientos, notas de incidentes. Markdown puro, cifrado, con el grafo de
-enlaces de un Obsidian y una regla de privacidad que el resto de la app no
-tiene — **una nota nace invisible para los agentes**.
+enlaces de un Obsidian y un control de privacidad por nota:
+**una nota nace visible para los agentes, y el candado la esconde**.
 
 ## Por qué está adentro del vault y no en archivos
 
@@ -31,7 +31,7 @@ a Windows.
 | `encrypted_content` + `content_nonce` | ídem — el Markdown del cuerpo |
 | `encrypted_frontmatter` + `frontmatter_nonce` | ídem — etiquetas y metadatos |
 | `title_hash` | **en claro**: SHA-256 del título normalizado |
-| `is_private` | **en claro**: 1 = oculta para los agentes (default) |
+| `is_private` | **en claro**: 0 (default) = legible por los agentes, 1 = oculta |
 | `checksum_hash` | **en claro**: SHA-256 del texto plano antes de cifrar |
 | `created_at` / `updated_at` | en claro |
 
@@ -52,13 +52,23 @@ son la misma nota — un grafo que los trata como dos nodos no sirve para nada.
 ## Cortafuegos de privacidad (AI Access Firewall)
 
 ```
-Nota nueva ──► is_private = 1  (el DEFAULT vive en el esquema, no en el código)
+Nota nueva ──► is_private = 0  (el DEFAULT vive en el esquema, no en el código)
    │
-   ├── En la app: se ve, se busca, se enlaza, entra al grafo.  ✅
-   └── Para un agente (chat, @note, servidor MCP):             ⛔ BLOQUEADA
-                                                                  hasta que el
-                                                                  usuario la abra
+   ├── En la app: se ve, se busca, se enlaza, entra al grafo.   ✅
+   └── Para un agente (chat, @note, servidor MCP):              ✅ legible
+                                                                  
+Nota marcada con el candado ──► is_private = 1
+   │
+   ├── En la app: sin cambios — se sigue viendo y buscando.     ✅
+   └── Para un agente:                                          ⛔ BLOQUEADA
 ```
+
+**El default es visible, a propósito.** La base de conocimiento existe para que
+el agente pueda consultarla; una nota que nace invisible no aparece hasta que
+alguien se acuerda de abrirla, y en la práctica eso significa que no aparece
+nunca. El intercambio es real y hay que decirlo: **el runbook que escribiste con
+una contraseña adentro es legible desde el minuto cero salvo que lo marques**.
+Lo que el módulo garantiza es que marcarlo alcanza, y que alcanza de verdad.
 
 **La única puerta es `vault.NoteForAI`.** El filtro `is_private = 0` está en la
 consulta SQL, no en un `if` de Go: un `if` se puede reordenar, negar o saltear
@@ -69,13 +79,15 @@ El error de una nota bloqueada dice **qué nota, por qué y cómo permitirlo**, 
 se muestra tal cual en la ficha del compositor del chat. Un "no encontrado"
 mandaría a buscar un título mal escrito que no es el problema.
 
-**Abrir una nota es asimétrico a propósito**: cerrarla es inmediato, abrirla
-pide confirmación diciendo qué va a poder leerse. Volver a esconder algo nunca
-puede salir mal; mostrarlo sí.
+**El cambio es asimétrico a propósito**: esconder una nota es inmediato,
+volver a compartirla pide confirmación diciendo qué va a poder leerse. Ocultar
+algo nunca puede salir mal; mostrarlo sí.
 
 **Guardar nunca cambia la privacidad.** `UpdateNote` no toca `is_private`; solo
 lo hace `SetNotePrivacy`, que es su propia función para que pueda auditarse
-leyendo una sola cosa.
+leyendo una sola cosa. Y **`CreateNote` no la recibe como parámetro**: toma el
+default del esquema, para que un camino de creación nuevo no pueda decidir la
+política por su cuenta.
 
 ## Grafo de enlaces
 
@@ -129,7 +141,10 @@ app_refs.go                    resolvedor @note, que delega en NoteForAI
 
 frontend/src/components/notes/
   NotesTree.tsx        módulo del sidebar: buscador + lista con fragmentos
-  NoteEditorTab.tsx    pestaña de una nota: editor, privacidad, enlaces, backlinks
+  NoteEditorTab.tsx    pestaña de una nota: editor, privacidad, enlaces, backlinks, chat
+  RunbookSqlBlock.tsx  bloque ```sql connection="X" ejecutable, con Production Guard
+  NotesGraphView.tsx   grafo: canvas 2D + layout por fuerzas escrito a mano
+frontend/src/codemirror/slashCommands.ts   menú `/` de bloques
 ```
 
 Una pestaña por nota, como el resto de la app: permite tener el runbook abierto
@@ -145,10 +160,46 @@ Verificadas con el patrón de script efímero en `HOME=$(mktemp -d)`, abriendo
 `vault.db` con `sqlite3` para confirmar que **el título y el cuerpo son
 ilegibles en disco** y que `title_hash` es un SHA-256 que no contiene el título.
 
+## Runbooks vivos
+
+Un bloque ` ```sql connection="Prod_Analytics" ` se dibuja con un botón
+**Ejecutar** y sus resultados debajo. Tres reglas:
+
+1. **Uno por uno.** No hay "ejecutar todos los bloques": una nota con seis
+   bloques corridos de un clic sobre producción es exactamente el accidente que
+   el Production Guard existe para evitar. Que el documento se llame "runbook"
+   lo hace **más** probable de correr contra prod, no menos.
+2. **El Production Guard es el mismo.** Sobre una conexión marcada `prod`, el
+   bloque abre la misma confirmación que el botón Ejecutar del editor SQL, con
+   el mismo análisis (`inspectSQL`). Un diálogo propio acá sería una segunda
+   implementación de la guarda que puede quedar atrás de la real.
+3. **El resultado no se guarda en la nota.** Se muestra y se va. Una nota con
+   las filas de la última corrida pegadas adentro es documentación que envejece
+   sola y que puede terminar conteniendo datos que nadie decidió guardar.
+
+Un alias que ya no existe se informa con su nombre ("la conexión «X» ya no está
+guardada en este equipo"), no con un error de ejecución: un runbook viejo apunta
+a conexiones que se renombraron, y hay que poder arreglarlo.
+
+## Chat de IA por nota
+
+La barra de la nota tiene su botón de chat. Abre **el mismo componente de chat
+que el resto de la app** (`components/agent/`), con la nota como contexto de
+trabajo y con `@note:"Título"` ya escrito, así que el agente arranca con el
+documento adelante en vez de pidiéndolo. Si la nota está marcada como privada,
+el botón sigue estando —preguntar *sobre* una nota privada sin mandarle el
+contenido es válido— y el backend intercepta la referencia y lo dice.
+
 ## Lo que este módulo NO hace (todavía)
 
-- **Bloques `/slash` y runbooks ejecutables** — fase 4.
-- **Grafo visual** — fase 4.
+- **Diagramas Mermaid renderizados** — `/mermaid` inserta el bloque y se muestra
+  como código. Renderizarlo suma ~1MB al bundle y esa medición todavía no se
+  hizo (decisión D4 del plan).
+- **Bloques SSH ejecutables** — `/ssh` inserta el bloque; ejecutarlo llega con
+  el módulo SSH agéntico (fase 5), que es donde se construye el guard de
+  comandos destructivos para servidores.
+- **Grafo 3D** — el 2D alcanza; el 3D queda condicionado a que se quede corto
+  con números medidos, no supuestos.
 - **Escribir notas desde un agente** — el MCP expone lectura. Un agente que
   escribe en la base de conocimiento cifrada necesita su propio diseño de
   confirmación y deshacer.

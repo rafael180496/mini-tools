@@ -95,22 +95,18 @@ func SocketPath(dataDir string) string {
 func Start(dataDir string, ask AskFunc) (*Channel, error) {
 	path := SocketPath(dataDir)
 
-	// Un socket viejo de una corrida anterior que terminó mal impide escuchar;
-	// borrarlo es seguro porque el nombre es de esta app y de este directorio.
-	_ = os.Remove(path)
-
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("agentapprove: no se pudo preparar el directorio: %w", err)
 	}
 
-	ln, err := net.Listen("unix", path)
+	// El transporte depende de la plataforma: socket de dominio Unix, o named
+	// pipe con su ACL en Windows. Ver ipc_unix.go / ipc_windows.go — los dos
+	// restringen el canal al usuario, que es la única barrera entre "el agente
+	// pregunta" y "cualquier proceso de la máquina contesta por él".
+	ln, err := listen(path)
 	if err != nil {
 		return nil, fmt.Errorf("agentapprove: no se pudo abrir el canal de aprobación: %w", err)
 	}
-	// Solo el usuario: el permiso del archivo del socket es la única barrera
-	// entre "el agente pregunta" y "cualquier proceso de la máquina contesta
-	// por él".
-	_ = os.Chmod(path, 0o600)
 
 	c := &Channel{listener: ln, path: path, ask: ask}
 	go c.accept()
@@ -204,7 +200,7 @@ func writeJSON(conn net.Conn, v any) {
 // Cualquier fallo devuelve denegado. Es la única respuesta correcta: si no se
 // puede preguntar, no se puede haber aprobado.
 func Ask(socketPath string, req Request) Decision {
-	conn, err := net.DialTimeout("unix", socketPath, 5*time.Second)
+	conn, err := dial(socketPath, 5*time.Second)
 	if err != nil {
 		return Decision{Reason: "no se pudo contactar a mini-tools para pedir la aprobación"}
 	}

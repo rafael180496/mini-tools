@@ -20,6 +20,7 @@ import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import NlPromptBar from './editor/NlPromptBar'
 import NotesTree from './notes/NotesTree'
 import NoteEditorTab from './notes/NoteEditorTab'
+import NotesGraphView from './notes/NotesGraphView'
 import RedisBrowserTab from './redis/RedisBrowserTab'
 import MongoBrowserTab from './mongo/MongoBrowserTab'
 import MongoFindWizard from './mongo/MongoFindWizard'
@@ -65,9 +66,10 @@ import {
     ListMongoDatabases,
     GetSchemaMetadata,
     CreateNote,
+    GetNote,
     GetSettings,
     SetAgentLayout,
-    SetNotesLayout,
+    SetNotesLastOpen,
     HasOpenTransaction,
     ListConnections,
     ListFolders,
@@ -312,7 +314,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // connections' (vault.Folder.Scope, schema_migrations version 12) —
     // ConnectionTree.tsx and SshConnectionTree.tsx each wire this with
     // their own fixed scope below, never let the user pick it.
-    function createFolder(name: string, parentId: string, scope: 'db' | 'ssh' | 'git') {
+    function createFolder(name: string, parentId: string, scope: 'db' | 'ssh' | 'git' | 'note') {
         CreateFolder(name, parentId, scope)
             .then(() => setReloadToken((n) => n + 1))
             .catch((err) => setStatusMessage(String(err)))
@@ -555,6 +557,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         if (t.kind === 'git-repo' && t.repoId) {
             return {kind: 'git', id: t.repoId, label: t.title.replace(/^Git — /, '')}
         }
+        // Una nota abierta es contexto de trabajo como cualquier otro: el chat
+        // dice sobre cuál está y `@note:` la puede referenciar por su título.
+        if (t.kind === 'note' && t.noteId) {
+            return {kind: 'note', id: t.noteId, label: t.title}
+        }
         const conn = t.connId ? connections.find((c) => c.id === t.connId) ?? null : null
         if (!conn) return NO_CONTEXT
         // Una conexión SSH y una de base de datos viven en la misma tabla del
@@ -572,6 +579,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // Token que refresca la lista de notas del sidebar cuando una nota se
     // guarda, se crea o se borra desde su pestaña.
     const [notesToken, setNotesToken] = useState(0)
+    const [showNotesGraph, setShowNotesGraph] = useState(false)
 
     // Cambiar de pestaña lo cierra. La barra queda anclada a la conexión y al
     // texto de la pestaña donde se abrió: dejarla abierta al cambiar mostraría
@@ -606,7 +614,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             setActiveTabId(tab.id)
             return [...prev, tab]
         })
-        void SetNotesLayout(noteId, 260).catch(() => {})
+        void SetNotesLastOpen(noteId).catch(() => {})
     }, [])
 
     const changeAgentLayout = useCallback((dock: AgentDock, size: number) => {
@@ -740,6 +748,19 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 setAutoSaveIntervalSecondsState(settings.autoSaveIntervalSeconds || 30)
                 if (settings.agentDock) setAgentDockState(settings.agentDock as AgentDock)
                 if (settings.agentSize) setAgentSizeState(settings.agentSize)
+                // La última nota abierta se reabre. Se guarda solo el ID: el
+                // contenido se lee del vault ahora, que es lo único correcto si
+                // la nota cambió mientras tanto — mismo criterio que las
+                // pestañas de archivo del módulo Git.
+                //
+                // Una nota borrada entre dos arranques simplemente no se abre:
+                // GetNote falla y la pestaña no se crea, en vez de dejar una
+                // pestaña rota que hay que cerrar a mano.
+                if (settings.notesLastOpen) {
+                    GetNote(settings.notesLastOpen)
+                        .then((n) => openNote(settings.notesLastOpen, n.title))
+                        .catch(() => {})
+                }
 
                 const infos = settings.openTabs ?? []
                 if (infos.length === 0) return
@@ -2271,6 +2292,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     useEffect(() => {
         if (dbmsOutputLines.length === 0 && activeBottomTab === 'dbms') setActiveBottomTab('results')
     }, [dbmsOutputLines.length, activeBottomTab])
+    // Una nota no tiene barra de contexto de conexión: ver isNoteTabActive.
     const isSqlActive =
         !!activeTabConnection &&
         activeTabConnection.dbType !== 'redis' &&
@@ -2284,6 +2306,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const isHybridTabActive = activeTabData?.kind === 'ssh-hybrid'
     const isGitTabActive = activeTabData?.kind === 'git-repo'
     const isNoteTabActive = activeTabData?.kind === 'note'
+    // Una nota no es una consulta: no tiene conexión, ni esquema, ni botón de
+    // ejecutar. La barra de herramientas del editor SQL entera se oculta —
+    // dejarla visible decía "Sin conexión" sobre un documento de texto, que es
+    // una advertencia sobre un problema que no existe.
     // A remote file is edited in the same CodeMirror as everything else, but
     // it has nothing to run — so the results panel below would sit there
     // permanently empty. The editor takes the whole height instead.
@@ -2391,10 +2417,24 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             openNote(id)
                         }}
                         reloadToken={notesToken}
+                        onOpenGraph={() => setShowNotesGraph(true)}
+                        folders={folders}
+                        onCreateFolder={(name, parentId) => createFolder(name, parentId, 'note')}
+                        onRenameFolder={renameFolder}
+                        onDeleteFolder={deleteFolder}
+                        onChanged={() => setNotesToken((n) => n + 1)}
                     />
                     </>
                 }
             />
+
+            {showNotesGraph && (
+                <NotesGraphView
+                    activeNoteId={activeTabData?.noteId ?? null}
+                    onOpenNote={(id) => openNote(id)}
+                    onClose={() => setShowNotesGraph(false)}
+                />
+            )}
 
             {ddlViewer && (
                 <DDLViewerModal
@@ -2465,6 +2505,19 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 contenedor flex. */}
             <AgentChatHost
                 context={agentContext}
+                // La consulta que estás editando viaja como contexto adjunto:
+                // sin esto, "optimizá esta consulta" no tiene ninguna consulta.
+                // Solo para pestañas de editor — un browser de Redis o una
+                // terminal no tienen texto que adjuntar.
+                working={
+                    activeTabData?.kind === 'editor' && activeTabData.content.trim()
+                        ? {
+                              label: 'Consulta del editor',
+                              text: activeTabData.content,
+                              language: activeTabData.language === 'sql' ? 'sql' : '',
+                          }
+                        : null
+                }
                 dock={agentDock}
                 size={agentSize}
                 onLayoutChange={changeAgentLayout}
@@ -2512,6 +2565,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         auto-commit switch — a disabled button that is dead
                         99% of the time is pure noise, and its absence already
                         says "no hay nada que confirmar". */}
+                    {/* Toda esta fila desaparece en una nota: una nota no tiene
+                        conexión, ni esquema, ni auto-commit. Dejarla visible
+                        mostraba "Sin conexión" sobre un documento de texto —
+                        una advertencia sobre un problema que no existe. */}
+                    {!isNoteTabActive && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 text-xs text-on-surface-variant">
                         {isSshTerminalTabActive && activeTabConnection ? (
                             <span
@@ -2705,6 +2763,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} size={18} />
                         </button>
                     </div>
+                    )}
 
                     {/* Actions row: save, then the primary run cluster
                         (visually heavier — bg-secondary-container/
@@ -3030,7 +3089,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     .map((t) => (
                         <div
                             key={t.id}
-                            className="flex min-h-0 flex-1 overflow-hidden"
+                            className="flex w-full min-w-0 flex-1 overflow-hidden"
                             style={{display: activeTabId === t.id ? undefined : 'none'}}
                         >
                             <NoteEditorTab
@@ -3047,7 +3106,14 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                         .catch(() => {})
                                 }}
                                 onClosed={() => closeTab(t.id)}
-                                onChanged={() => setNotesToken((n) => n + 1)}
+                                onChanged={(title) => {
+                                    setNotesToken((n) => n + 1)
+                                    if (title) {
+                                        setTabs((prev) =>
+                                            prev.map((x) => (x.id === t.id ? {...x, title} : x)),
+                                        )
+                                    }
+                                }}
                             />
                         </div>
                     ))}

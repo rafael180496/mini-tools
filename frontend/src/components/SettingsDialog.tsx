@@ -8,6 +8,7 @@ import {EDITOR_THEME_IDS, EDITOR_THEME_LABELS} from '../codemirror/themes'
 import {TERMINAL_THEME_IDS, TERMINAL_THEME_LABELS, type TerminalThemeId} from '../xterm/terminalThemes'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../xterm/terminalFont'
 import AgentSettings from './AgentSettings'
+import AiAccessPanel from './AiAccessPanel'
 
 interface SettingsDialogProps {
     rememberMasterKey: boolean
@@ -166,6 +167,8 @@ export default function SettingsDialog({
                 {/* Body */}
                 <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
                     {/* Vault */}
+                    <AiAccessPanel />
+
                     <section className="flex flex-col gap-2">
                         <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Vault</h3>
 

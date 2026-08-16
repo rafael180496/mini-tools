@@ -2,6 +2,8 @@ package main
 
 import (
 	"embed"
+	"fmt"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -9,7 +11,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
 	"mini-tools/backend/agentapprove"
+	"mini-tools/backend/appdata"
 	"mini-tools/backend/git"
+	"mini-tools/backend/mcpserver"
 )
 
 //go:embed all:frontend/dist
@@ -47,6 +51,27 @@ func main() {
 	// demás (ver backend/agentapprove/hook.go).
 	if agentapprove.IsHookInvocation() {
 		agentapprove.HookMain()
+		return
+	}
+
+	// Cuarto re-exec, el mismo patrón: un CLI agéntico lanza este binario como
+	// su servidor MCP (`mini-tools --mcp`). Reenvía cada llamada a la ventana
+	// abierta por un socket local —no tiene la clave maestra, así que no puede
+	// leer nada por su cuenta— y por eso tampoco es un arranque de la app.
+	//
+	// **Si la ventana no está, o el vault está bloqueado, o el servidor no fue
+	// encendido, este proceso no obtiene datos**: contesta explicando qué falta.
+	// No hay una segunda ruta al vault.
+	if len(os.Args) > 1 && os.Args[1] == "--mcp" {
+		dir, err := appdata.Dir()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "mini-tools: no se pudo resolver el directorio de datos:", err)
+			os.Exit(1)
+		}
+		if err := mcpserver.RunStdio(dir, appVersion); err != nil {
+			fmt.Fprintln(os.Stderr, "mini-tools:", err)
+			os.Exit(1)
+		}
 		return
 	}
 

@@ -107,6 +107,10 @@ type App struct {
 	// eventos tipados con los que se puede dibujar un chat de verdad. Los dos
 	// conviven a propósito — ver el doc de backend/agentchat.
 	agentChats *agentchat.Manager
+	// mcp es el servidor MCP. **Nace apagado y no ocupa nada mientras lo esté**:
+	// el listener se abre recién cuando el usuario lo enciende en Configuración
+	// → Acceso de la IA, y apagarlo lo cierra y borra el socket. Ver app_mcp.go.
+	mcp mcpState
 
 	// approve es el canal por el que un agente pide permiso acción por acción
 	// (backend/agentapprove). nil cuando no se pudo abrir en esta máquina —

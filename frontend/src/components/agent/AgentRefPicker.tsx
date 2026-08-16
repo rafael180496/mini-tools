@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react'
-import {AgentRefPolicies, GetSchemaMetadata, ListConnections} from '../../../wailsjs/go/main/App'
-import {agentctx, vault} from '../../../wailsjs/go/models'
+import {AgentRefPolicies, GetSchemaMetadata, ListConnections, NoteTitles} from '../../../wailsjs/go/main/App'
+import {agentctx, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import type {WorkContext} from './workContext'
 
@@ -46,6 +46,10 @@ export default function AgentRefPicker({query, paths, context, onPick, onFirstCh
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
     const [policies, setPolicies] = useState<agentctx.Policy[]>([])
     const [tables, setTables] = useState<Record<string, string[]>>({})
+    // Títulos de las notas. La base de conocimiento es el cerebro del usuario:
+    // poder referenciarla desde cualquier chat —una consulta SQL, un error de
+    // terminal— es justamente para lo que sirve tenerla adentro de la app.
+    const [notes, setNotes] = useState<main.NoteTitle[]>([])
 
     useEffect(() => {
         ListConnections()
@@ -57,6 +61,9 @@ export default function AgentRefPicker({query, paths, context, onPick, onFirstCh
         AgentRefPolicies()
             .then((p) => setPolicies(p ?? []))
             .catch(() => setPolicies([]))
+        NoteTitles()
+            .then((n) => setNotes(n ?? []))
+            .catch(() => setNotes([]))
     }, [])
 
     // Conexión cuya lista de tablas hace falta AHORA (`@db:Prod/` a medio
@@ -85,8 +92,8 @@ export default function AgentRefPicker({query, paths, context, onPick, onFirstCh
     }, [pendingConn, tables])
 
     const suggestions = useMemo(
-        () => buildSuggestions(query, {paths, connections, policies, tables, context}),
-        [query, paths, connections, policies, tables, context],
+        () => buildSuggestions(query, {paths, connections, policies, tables, notes, context}),
+        [query, paths, connections, policies, tables, notes, context],
     )
 
     const first = suggestions.find((s) => !s.disabled) ?? null
@@ -139,10 +146,11 @@ function buildSuggestions(
         connections: vault.ConnectionSummary[]
         policies: agentctx.Policy[]
         tables: Record<string, string[]>
+        notes: main.NoteTitle[]
         context: WorkContext
     },
 ): Suggestion[] {
-    const {paths, connections, policies, tables, context} = opts
+    const {paths, connections, policies, tables, notes, context} = opts
     const [kind, rest] = splitKind(query)
 
     // Nivel 1: todavía sin tipo. Se ofrecen los tipos Y las rutas sueltas.
@@ -206,20 +214,33 @@ function buildSuggestions(
             ].slice(0, 12)
         case 'db':
             return dbSuggestions(rest, connections, tables)
-        case 'ssh':
         case 'note':
-            return [
-                {
-                    insert: '',
-                    label: `@${kind}:`,
-                    hint:
-                        kind === 'ssh'
-                            ? 'La terminal SSH todavía no guarda su salida — llega con el módulo SSH agéntico'
-                            : 'El módulo de notas todavía no existe en esta versión',
-                    icon: KIND_ICONS[kind],
-                    disabled: true,
-                },
-            ]
+            // Solo las notas VISIBLES para la IA se pueden usar. Una privada se
+            // ofrece igual pero deshabilitada y diciendo por qué: esconderla de
+            // la lista haría parecer que no existe, y el usuario la ve en su
+            // propio módulo — el que no puede leerla es el agente.
+            return notes
+                .filter((n) => n.title.toLowerCase().includes(rest.toLowerCase()))
+                .slice(0, 12)
+                .map((n) => ({
+                    insert: `@note:"${n.title}" `,
+                    label: n.title,
+                    hint: n.isPrivate
+                        ? 'Marcada como privada: el agente no puede leerla. Abrí el candado en la nota para permitirlo.'
+                        : 'Se le manda el Markdown completo de la nota',
+                    icon: n.isPrivate ? 'lock' : 'sticky_note_2',
+                    disabled: n.isPrivate,
+                }))
+        case 'ssh':
+            return connections
+                .filter((c) => c.dbType === 'ssh' && c.name.toLowerCase().includes(rest.toLowerCase()))
+                .slice(0, 12)
+                .map((c) => ({
+                    insert: `@ssh:${c.name}/last_error `,
+                    label: c.name,
+                    hint: 'Las últimas 50 líneas de esa terminal, con los secretos ocultados',
+                    icon: 'terminal',
+                }))
     }
 
     // Un tipo desconocido no es un error: es texto, y el selector se calla.

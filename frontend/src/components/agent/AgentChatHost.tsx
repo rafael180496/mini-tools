@@ -12,17 +12,22 @@ import {
     AgentActive,
     CreateAgentChat,
     ListAgents,
+    DeleteAgentChat,
     ListAllAgentChats,
+    ListConnections,
+    GitListRepos,
+    RenameAgentChat,
     ResumeAgentChat,
     SetAgentActive,
-    SetAgentChatContext,
     SetAgentLayout,
     TouchAgentChat,
 } from '../../../wailsjs/go/main/App'
 import {agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import AgentChat from './AgentChat'
-import {CONTEXT_ICONS, repoIdOf, type WorkContext} from './workContext'
+import AgentHistoryPanel from './AgentHistoryPanel'
+import PromptDialog from '../git/PromptDialog'
+import {CONTEXT_ICONS, contextKey, repoIdOf, type WorkContext} from './workContext'
 
 // Anfitrión del chat de nivel APLICACIÓN: una conversación que acompaña al
 // usuario por los módulos donde el agente CONSULTA (bases de datos, SSH,
@@ -41,10 +46,16 @@ import {CONTEXT_ICONS, repoIdOf, type WorkContext} from './workContext'
 //     mueve de ahí.
 //   - **Este anfitrión** cubre todo lo demás, donde el trabajo es consultar:
 //     escribir una consulta, entender un plan de ejecución, leer un error de
-//     una terminal. Se monta UNA sola vez (Workspace.tsx) y acompaña al
-//     usuario entre pestañas: cambiar de pestaña **no reinicia la
-//     conversación**, cambia el contexto de trabajo, que es lo que se ve en el
-//     encabezado y lo que decide el directorio de trabajo del subproceso.
+//     una terminal. Se monta UNA sola vez (Workspace.tsx) y sostiene **una
+//     conversación por contexto de trabajo**.
+//
+// **Una conversación por contexto, no una sola que viaja.** Abrir el chat desde
+// la conexión `tigochat` trae la conversación de `tigochat`; desde una terminal
+// SSH, la de ese servidor; desde una nota, la de esa nota. Cambiar de pestaña
+// cambia de hilo, no continúa el anterior — lo que se habla sobre una base de
+// datos no tiene nada que ver con lo de un servidor, y arrastrarlo hace que el
+// agente razone sobre contexto que no corresponde. Cada hilo mantiene su
+// historial, su modelo y su modo.
 //
 // Lo que se unificó es la IMPLEMENTACIÓN, no la cantidad de paneles: un solo
 // componente, un solo historial, un solo selector de `@`, un solo sistema de
@@ -119,9 +130,13 @@ export function useAgentChat(): AgentChatApi {
 }
 
 interface Props {
-    // Contexto del módulo activo, derivado de la pestaña abierta en
-    // Workspace. Cambia al cambiar de pestaña; la conversación no.
+    // Contexto del módulo activo, derivado de la pestaña abierta en Workspace.
+    // Cambiar de pestaña cambia de conversación: hay una por contexto.
     context: WorkContext
+    // Lo que el usuario está mirando en ese módulo —la consulta del editor
+    // SQL— para adjuntarlo al mensaje. Es la diferencia entre preguntar "sobre
+    // esta conexión" y preguntar "sobre ESTA consulta".
+    working?: {label: string; text: string; language?: string} | null
     dock: AgentDock
     size: number
     onLayoutChange: (dock: AgentDock, size: number) => void
@@ -140,14 +155,22 @@ interface Session {
     initialSettings?: {model: string; effort: string; mode: string}
 }
 
-export default function AgentChatHost({context, dock, size, onLayoutChange, children}: Props) {
+export default function AgentChatHost({context, working, dock, size, onLayoutChange, children}: Props) {
     const [open, setOpen] = useState(false)
-    const [session, setSession] = useState<Session | null>(null)
+    // Una sesión POR contexto de trabajo, indexadas por su clave. El hilo de
+    // una conexión sobrevive a irse a otra pestaña y volver.
+    const [sessions, setSessions] = useState<Record<string, Session>>({})
     const [seed, setSeed] = useState<{text: string; token: number} | null>(null)
     const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
     const [active, setActive] = useState<main.ActiveAgent | null>(null)
     const [history, setHistory] = useState<vault.AgentChat[]>([])
     const [historyOpen, setHistoryOpen] = useState(false)
+    // Conversación que se está renombrando. El título sale de lo primero que se
+    // escribió, que casi nunca es cómo uno la va a buscar después.
+    const [renaming, setRenaming] = useState<vault.AgentChat | null>(null)
+    // Nombre visible del recurso de cada conversación, resuelto AHORA: una
+    // conexión renombrada tiene que verse con su nombre nuevo.
+    const [resourceNames, setResourceNames] = useState<Record<string, string>>({})
     // Contexto con el que se abrió el chat cuando el llamador pasó uno
     // explícito. Se prefiere al del módulo activo hasta que el usuario cambie
     // de pestaña, que es cuando el suyo vuelve a mandar.
@@ -157,9 +180,11 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
     // antes de que React vuelva a renderizar, y una copia vieja lo escribiría
     // en el chat equivocado (o en ninguno).
     const sessionRef = useRef<Session | null>(null)
-    sessionRef.current = session
 
     const effective = pinned ?? context
+    const key = contextKey(effective)
+    const session = sessions[key] ?? null
+    sessionRef.current = session
 
     useEffect(() => {
         ListAgents()
@@ -176,13 +201,9 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
         setPinned(null)
     }, [context.kind, context.id])
 
-    // La conversación se mueve con el usuario. No se abre una nueva por
-    // módulo: se reasigna de dónde es, que es lo que hace que el historial la
-    // muestre donde uno la fue a buscar último.
-    useEffect(() => {
-        if (!session?.chatId) return
-        void SetAgentChatContext(session.chatId, effective.kind, effective.id).catch(() => {})
-    }, [session?.chatId, effective.kind, effective.id])
+    // El contexto se fija al crear la conversación y no vuelve a moverse: la
+    // conversación ES de ese recurso. (La versión anterior la reasignaba al
+    // cambiar de pestaña, cuando había un solo hilo para toda la app.)
 
     const available = useMemo(() => agentList.filter((a) => a.available), [agentList])
     const activeAgent = useMemo(
@@ -191,20 +212,24 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
     )
 
     const startSession = useCallback(
-        (agent: agentsModel.Agent, resume?: vault.AgentChat) => {
+        (agent: agentsModel.Agent, forKey: string, resume?: vault.AgentChat) => {
             const id = resume?.id ?? `agent-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-            setSession({
-                id,
-                agentId: agent.id,
-                agentLabel: agent.label,
-                // Retomar una conversación reusa SU entrada del historial; una
-                // nueva todavía no tiene, y se crea con el primer mensaje.
-                chatId: resume?.id ?? '',
-                resumeConversationId: resume?.conversationId || undefined,
-                initialSettings: resume
-                    ? {model: resume.model, effort: resume.effort, mode: resume.mode}
-                    : undefined,
-            })
+            setSessions((prev) => ({
+                ...prev,
+                [forKey]: {
+                    id,
+                    agentId: agent.id,
+                    agentLabel: agent.label,
+                    // Retomar una conversación reusa SU entrada del historial;
+                    // una nueva todavía no tiene, y se crea con el primer
+                    // mensaje.
+                    chatId: resume?.id ?? '',
+                    resumeConversationId: resume?.conversationId || undefined,
+                    initialSettings: resume
+                        ? {model: resume.model, effort: resume.effort, mode: resume.mode}
+                        : undefined,
+                },
+            }))
             if (resume?.conversationId) void ResumeAgentChat(id, resume.conversationId).catch(() => {})
         },
         [],
@@ -235,8 +260,8 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
     // lista, que es la pregunta que corresponde hacer.
     useEffect(() => {
         if (!open || session || !activeAgent) return
-        startSession(activeAgent)
-    }, [open, session, activeAgent, startSession])
+        startSession(activeAgent, key)
+    }, [open, session, activeAgent, startSession, key])
 
     const api = useMemo<AgentChatApi>(
         () => ({
@@ -271,6 +296,17 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
         ListAllAgentChats()
             .then((h) => setHistory(h ?? []))
             .catch(() => setHistory([]))
+        // Los nombres se resuelven contra lo que existe HOY: conexiones, SSH y
+        // repositorios. Lo que ya no está simplemente no aparece, y la fila se
+        // muestra sin recurso en vez de con un nombre que no corresponde a nada.
+        Promise.all([ListConnections().catch(() => []), GitListRepos().catch(() => [])])
+            .then(([conns, repos]) => {
+                const map: Record<string, string> = {}
+                for (const c of conns ?? []) map[c.id] = c.name
+                for (const r of repos ?? []) map[r.id] = r.name
+                setResourceNames(map)
+            })
+            .catch(() => {})
     }, [])
 
     // El primer mensaje es lo que crea la entrada del historial, con el texto
@@ -289,9 +325,11 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
             creatingChatRef.current = s.id
             const title = text.trim().split('\n')[0].slice(0, 80)
             void CreateAgentChat(s.id, repoIdOf(effective), s.agentId, title, effective.kind, effective.id).catch(() => {})
-            setSession((prev) => (prev && prev.id === s.id ? {...prev, chatId: prev.id} : prev))
+            setSessions((prev) =>
+                prev[key]?.id === s.id ? {...prev, [key]: {...prev[key], chatId: s.id}} : prev,
+            )
         },
-        [effective],
+        [effective, key],
     )
 
     const chooseAgent = useCallback(
@@ -302,12 +340,12 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
                 .then(() => AgentActive())
                 .then(setActive)
                 .catch(() => {})
-            // Cambiar de agente abre una conversación nueva: la continuidad la
-            // guarda cada CLI en su propio almacenamiento, así que no hay forma
-            // honesta de seguir con otro lo que venía uno.
-            startSession(agent)
+            // Cambiar de agente abre una conversación nueva EN ESTE contexto:
+            // la continuidad la guarda cada CLI en su propio almacenamiento,
+            // así que no hay forma honesta de seguir con otro lo que venía uno.
+            startSession(agent, key)
         },
-        [available, startSession],
+        [available, startSession, key],
     )
 
     const panel = (
@@ -391,45 +429,32 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
             </div>
 
             {historyOpen && (
-                <div className="max-h-56 shrink-0 overflow-y-auto border-b border-outline-variant bg-surface-container-low">
-                    {history.length === 0 ? (
-                        <p className="px-2 py-2 text-[11px] text-on-surface-variant">
-                            Todavía no hay conversaciones guardadas. Una entra al historial con su primer mensaje.
-                        </p>
-                    ) : (
-                        history.map((c) => {
-                            const agent = agentList.find((a) => a.id === c.agentId)
-                            const kind = (c.module || 'none') as WorkContext['kind']
-                            return (
-                                <button
-                                    key={c.id}
-                                    onClick={() => {
-                                        if (!agent) return
-                                        startSession(agent, c)
-                                        setHistoryOpen(false)
-                                    }}
-                                    disabled={!agent}
-                                    title={
-                                        agent
-                                            ? `Retoma esta conversación con ${agent.label}. Los mensajes los tiene el CLI: se vuelven a dibujar al abrirla.`
-                                            : `Esta conversación es de ${c.agentId}, que no está instalado en esta máquina.`
-                                    }
-                                    className="flex w-full items-center gap-2 px-2 py-1 text-left text-[11px] hover:bg-surface-container-high disabled:opacity-50"
-                                >
-                                    <Icon
-                                        name={CONTEXT_ICONS[kind] ?? 'smart_toy'}
-                                        size={12}
-                                        className="shrink-0 text-on-surface-variant"
-                                    />
-                                    <span className="min-w-0 flex-1 truncate text-on-surface">
-                                        {c.title || 'Sin título'}
-                                    </span>
-                                    <span className="shrink-0 text-on-surface-variant/70">{agent?.label ?? c.agentId}</span>
-                                </button>
-                            )
-                        })
-                    )}
-                </div>
+                <AgentHistoryPanel
+                    // Al abrirlo desde un módulo arranca filtrado a ESE módulo:
+                    // quien viene de una conexión busca la conversación de esa
+                    // conexión, no las nueve de todo el programa. El botón del
+                    // encabezado del panel muestra el resto.
+                    chats={history}
+                    initialFilterKind={effective.kind}
+                    agents={agentList}
+                    resourceNames={resourceNames}
+                    onOpen={(c) => {
+                        const agent = agentList.find((a) => a.id === c.agentId)
+                        if (!agent) return
+                        // Se retoma EN SU contexto, no en el que estés mirando:
+                        // una conversación pertenece al recurso donde nació.
+                        const chatKey = c.module ? `${c.module}:${c.contextId}` : 'none'
+                        startSession(agent, chatKey, c)
+                        setHistoryOpen(false)
+                    }}
+                    onRename={(c) => setRenaming(c)}
+                    onDelete={(c) => {
+                        void DeleteAgentChat(c.id)
+                            .then(loadHistory)
+                            .catch(() => {})
+                    }}
+                    onClose={() => setHistoryOpen(false)}
+                />
             )}
 
             <div className="min-h-0 flex-1">
@@ -443,6 +468,7 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
                         seed={seed}
                         resumeConversationId={session.resumeConversationId}
                         initialSettings={session.initialSettings}
+                        working={working}
                         onSend={onFirstSend}
                         onConversation={(conversationId) => {
                             // Por el ref y no por `session`: el id de
@@ -546,6 +572,24 @@ export default function AgentChatHost({context, dock, size, onLayoutChange, chil
                     </>
                 )}
             </div>
+
+            {renaming && (
+                <PromptDialog
+                    title="Cambiar el nombre de la conversación"
+                    label="Nombre"
+                    initial={renaming.title}
+                    confirmLabel="Guardar"
+                    description="Es solo el nombre con el que la vas a encontrar acá. No toca la conversación que el CLI tiene guardada."
+                    onSubmit={(value) => {
+                        const id = renaming.id
+                        setRenaming(null)
+                        void RenameAgentChat(id, value.trim())
+                            .then(loadHistory)
+                            .catch(() => {})
+                    }}
+                    onClose={() => setRenaming(null)}
+                />
+            )}
 
             {floating && (
                 <div

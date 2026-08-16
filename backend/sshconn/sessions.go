@@ -44,6 +44,10 @@ type session struct {
 	sshSess   *ssh.Session
 	stdin     io.WriteCloser
 	agentConn net.Conn // non-nil only when agent forwarding is active
+	// scroll retiene las últimas líneas que imprimió el shell, sin escapes
+	// ANSI, para poder mostrárselas a un agente cuando algo falla. En memoria
+	// y acotado — ver scrollback.go.
+	scroll *scrollback
 }
 
 // SessionManager holds one interactive PTY session per connID — not a
@@ -139,7 +143,7 @@ func (m *SessionManager) Open(connID, dsn string, cols, rows int) error {
 	}
 
 	m.mu.Lock()
-	m.sessions[connID] = &session{lease: lease, sshSess: sshSess, stdin: stdin, agentConn: agentConn}
+	m.sessions[connID] = &session{lease: lease, sshSess: sshSess, stdin: stdin, agentConn: agentConn, scroll: newScrollback()}
 	m.mu.Unlock()
 
 	go m.streamOutput(connID, stdout)
@@ -153,6 +157,12 @@ func (m *SessionManager) streamOutput(connID string, stdout io.Reader) {
 		n, err := stdout.Read(buf)
 		if n > 0 {
 			m.emit(connID, Event{Type: "data", Data: base64.StdEncoding.EncodeToString(buf[:n])})
+			// El buffer se llena en el mismo lugar donde se emite, y no en el
+			// frontend: lo que un agente necesita leer no puede depender de
+			// que una pestaña esté abierta y montada.
+			if s := m.get(connID); s != nil {
+				s.scroll.write(string(buf[:n]))
+			}
 		}
 		if err != nil {
 			break

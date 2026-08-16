@@ -19,19 +19,44 @@ Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en
 
 ---
 
-## Novedades — 1.3.0
+## Novedades — 2.0.0
 
-**La versión que convierte a mini-tools en un cliente agéntico.** Hasta la 1.2.0 los agentes eran una terminal más; ahora son parte de la herramienta:
+**La versión donde la IA deja de vivir en una pestaña.** Hasta la 1.3.x el agente
+existía adentro del módulo Git; ahora atraviesa la aplicación entera — y llega
+un módulo nuevo.
 
-- **Chat nativo** con Claude Code, Codex y Antigravity sobre el repositorio abierto, con cada acción visible y los tokens de cada turno.
-- **Cinco modos de permiso**, incluida la **aprobación acción por acción**: el agente te pregunta antes de cada cosa y espera.
-- **Modo carpeta**: entrar a lo agéntico despeja ramas, grafo y diff y deja el árbol del proyecto con los indicadores de cambio.
-- **Consumo de tokens y plan** de cada CLI, con desglose por modelo y cuánto se fue en *este* repositorio.
-- **Servidores MCP** de los tres agentes, leídos de los cinco lugares donde cada uno los guarda, con los remotos marcados.
-- **Historial de chats** por repositorio, agrupado por agente, renombrable y retomable.
-- **Editor de archivos** con más de treinta lenguajes y vista previa de Markdown en tres modos.
+- **Un solo chat, el mismo en todos los módulos.** Se abre con `⌘L` / `Ctrl+L`
+  desde donde estés y **cambiar de pestaña no lo reinicia**: la conversación
+  sigue y el encabezado dice sobre qué está trabajando. La pestaña Git conserva
+  su banco de trabajo agéntico, con sus permisos y su diff — ahí el agente
+  trabaja sobre código, que es otro objetivo.
+- **Referencias `@`**: `@db:Conexión/tabla` inyecta el DDL de esa tabla,
+  `@explain:last` el último plan, `@note:"Runbook"` una nota, `@ssh:Servidor`
+  las últimas líneas de una terminal. **Cada una se ve como ficha desplegable
+  antes de mandarse**: lo que sale de tu máquina tiene que poder verse.
+- **`⌘I` / `Ctrl+I` en el editor SQL**: describís la consulta en castellano y
+  la escribe **en el dialecto de tu motor** — Oracle con `FETCH FIRST` y `NVL`,
+  Postgres con `ILIKE` y JSONB, T-SQL con `TOP`, pipelines en Mongo. Llega como
+  diff, y **nunca se ejecuta sola**. Más "Explicar y corregir" pegado al error
+  del motor, y "Analizar con el agente" sobre el plan de ejecución.
+- **Módulo nuevo: Notas.** Tu documentación técnica cifrada dentro del vault —
+  runbooks, procedimientos, notas de incidentes. Markdown puro (se abre en
+  Obsidian sin pérdida), enlaces `[[entre notas]]` con backlinks, **grafo de
+  conocimiento**, menú `/` de bloques, y **bloques SQL que se ejecutan** contra
+  tus conexiones con el mismo Production Guard del editor. Con un **buscador
+  que encuentra `Diagnóstico` escribiendo `diagnostico`**, exige todas las
+  palabras y te muestra el fragmento donde acertó.
+- **Servidor MCP nativo**, para que los agentes te **pidan** datos en vez de que
+  se los mandes. **Nace apagado y apagado no hay nada corriendo** — ni socket,
+  ni proceso. Y sin la ventana abierta no hay datos: el proceso que lanza el CLI
+  no tiene la clave maestra.
+- **"Aprobar cada acción" ya funciona en Windows** (10 y 11, verificado), con un
+  named pipe cuya ACL está restringida a tu usuario.
 
-La **1.3.1** es correctiva sobre esa base y es la que hay que descargar: arregla que ningún agente arrancara desde la app instalada (el `PATH` mínimo que hereda una app abierta desde Finder), que Claude Code informara "Not logged in" con la sesión iniciada (le faltaba `HOME`), y suma el listado de **las conversaciones que el CLI ya tenía de este repositorio** — las mismas que ves en la extensión de VS Code.
+**Lo que un agente nunca ve, en ningún camino**: filas de tus bases, DSN, hosts,
+usuarios, contraseñas, ni el contenido de una nota que marcaste como privada. Y
+los secretos que quedan impresos en una terminal —un `mysql -p…`, un token en
+una cabecera— se ocultan antes de salir, diciéndote cuántos.
 
 Detalle completo en [CHANGELOG.md](CHANGELOG.md).
 
@@ -125,6 +150,8 @@ Seis motores nativos sin instalar un cliente aparte, editor con autocompletado q
 
 Terminal SSH real con `xterm.js`, transferencia SFTP de doble panel con cola y cancelación, y snippets reutilizables.
 
+Y cuando algo falla, **"Analizar error"**: le manda al agente lo que tengas seleccionado junto con el **sistema operativo del servidor** —el mismo error se arregla distinto en SunOS, RHEL, Ubuntu o Alpine— y devuelve los comandos exactos. Ninguno se ejecuta solo: se copian o se insertan en la línea, sin el Enter. Los secretos que hayan quedado impresos en la pantalla (`mysql -p…`, un token en una cabecera) **se ocultan antes de salir**, diciéndote cuántos. El explorador además puede **seguir a la terminal**: cuando hacés `cd`, el panel salta a esa carpeta.
+
 ---
 
 ## Descargas
@@ -152,7 +179,28 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
 - **Skills, subagentes, comandos e instrucciones** que el repositorio le ofrece a un agente — incluidos los archivos que le faltan.
 - **Historial de chats** por repositorio, agrupado por agente, con nombres editables y retomable después de cerrar la app.
 - **Acciones agénticas en Git**: redactar el mensaje de commit desde el diff preparado, revisar antes de pushear, explicar un commit, describir un PR, asistir un conflicto, explicar un comando fallido.
-- **Adjuntar imágenes** pegándolas o arrastrándolas, y referenciar archivos del repo con `@`.
+- **Adjuntar imágenes** pegándolas o arrastrándolas.
+- **Un solo chat para toda la app** (`⌘L` / `Ctrl+L`): la misma conversación desde el editor SQL, una terminal SSH o una nota. Cambiar de pestaña actualiza el contexto, no reinicia el hilo.
+- **Sistema `@` de referencias**: `@db:Conexión/tabla` (DDL, cero filas), `@explain:last`, `@git:staged`, `@file:ruta`, `@note:"Título"`, `@ssh:Servidor`. Cada una se muestra como ficha desplegable con el texto exacto que se va a enviar.
+- **Servidor MCP nativo**, apagado por defecto: encendido, los agentes pueden pedir datos ellos mismos; apagado no hay socket ni proceso. Sin la ventana abierta y el vault desbloqueado, no hay datos.
+- **Registro de accesos** de la IA: qué pidió y cuándo, sin el contenido.
+
+### Notas — base de conocimiento cifrada
+
+- **Tu documentación adentro del vault**: runbooks, procedimientos, notas de incidentes, cifrados columna a columna con la misma clave maestra que las conexiones.
+- **Markdown puro**: una nota exportada se abre en Obsidian sin pérdida.
+- **Enlaces `[[entre notas]]`** con autocompletado, backlinks, enlaces sin crear y **grafo de conocimiento** interactivo.
+- **Buscador que sirve para buscar**: encuentra `Diagnóstico` escribiendo `diagnostico`, exige todas las palabras en cualquier orden, entiende frases entre comillas y filtros (`tag:`, `enlaza:`, `privado:`), ordena por relevancia y muestra el fragmento donde acertó.
+- **Menú `/`** de bloques: encabezados, callouts, tablas, plegables, checklists.
+- **Runbooks vivos**: bloques SQL que se ejecutan contra tus conexiones, uno por uno, con el mismo Production Guard del editor. El resultado no se guarda en la nota.
+- **Candado por nota**: marcarla la esconde de los agentes de forma absoluta, sin dejar de verla vos ni de aparecer en el grafo.
+
+### Asistencia sobre bases de datos
+
+- **`⌘I` / `Ctrl+I`**: describís la consulta en castellano y se escribe **en el dialecto de tu motor**. Llega como diff y nunca se ejecuta sola.
+- **"Explicar y corregir"** pegado al error del motor, con el error tal cual lo devolvió y el esquema de las tablas que menciona.
+- **Diagnóstico de `EXPLAIN`** determinista —escaneos completos, estimaciones erradas, `CREATE INDEX` sugerido— que funciona **sin ningún agente instalado**, más un botón para pedirle al agente el porqué y el qué hacer.
+- **Lo que viaja son columnas, tipos y claves. Ninguna fila.** En Mongo, nombres de campo con su tipo; en Redis, **patrones** de clave, nunca claves reales.
 
 ### Bases de datos, terminal y Git
 

@@ -1,13 +1,23 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {EditorState, Compartment} from '@codemirror/state'
-import {EditorView, keymap} from '@codemirror/view'
-import {autocompletion, type CompletionContext, type CompletionResult} from '@codemirror/autocomplete'
-import {basicSetup} from 'codemirror'
+import {EditorView, keymap, drawSelection, placeholder} from '@codemirror/view'
+import {history, historyKeymap, defaultKeymap} from '@codemirror/commands'
+import {
+    autocompletion,
+    closeBrackets,
+    closeBracketsKeymap,
+    completionKeymap,
+    type CompletionContext,
+    type CompletionResult,
+} from '@codemirror/autocomplete'
 import {
     DeleteNote,
     GetNote,
     NoteBacklinks,
     NoteLinks,
+    NoteStatsFor,
+    NoteTags,
+    SaveNoteImage,
     NoteTitles,
     SetNotePrivacy,
     UpdateNote,
@@ -16,8 +26,14 @@ import {main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
+import NoteToolbar from './NoteToolbar'
+import RunbookSqlBlock from './RunbookSqlBlock'
+import {useAgentChat} from '../agent/AgentChatHost'
 import {loadLanguage} from '../../codemirror/languageRegistry'
-import {resolveEditorTheme, type EditorThemeId} from '../../codemirror/themes'
+import {slashCommandSource} from '../../codemirror/slashCommands'
+import {notesEditorExtensions} from '../../codemirror/markdownTheme'
+import {notesLivePreview} from '../../codemirror/notesLivePreview'
+import {notesLint} from '../../codemirror/notesLint'
 import type {Theme} from '../../hooks/useTheme'
 
 // Una nota abierta: editor Markdown, control de privacidad y el panel de
@@ -37,8 +53,11 @@ interface Props {
     // Crear la nota que un enlace roto nombra.
     onCreateNote: (title: string) => void
     onClosed: () => void
-    // Avisa que algo cambió, para que la lista del sidebar se refresque.
-    onChanged: () => void
+    // Avisa que algo cambió, para que la lista del sidebar se refresque. El
+    // título viaja para que la pestaña se renombre con la nota — una pestaña
+    // que dice "Nota" cuando el documento ya se llama otra cosa obliga a
+    // abrirla para saber cuál es.
+    onChanged: (title?: string) => void
 }
 
 export default function NoteEditorTab({
@@ -61,10 +80,14 @@ export default function NoteEditorTab({
     const [backlinks, setBacklinks] = useState<vault.NoteLink[]>([])
     const [confirmShare, setConfirmShare] = useState(false)
     const [confirmDelete, setConfirmDelete] = useState(false)
+    // Números de la barra de estado: cuántas notas la enlazan y cuánto tiene
+    // escrito. Se cuentan en el backend, donde el contenido ya está descifrado.
+    const [stats, setStats] = useState<main.NoteStats | null>(null)
+    const chat = useAgentChat()
 
     const hostRef = useRef<HTMLDivElement>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const viewRef = useRef<EditorView | null>(null)
-    const themeComp = useRef(new Compartment())
     const langComp = useRef(new Compartment())
     const contentRef = useRef(content)
     contentRef.current = content
@@ -100,6 +123,14 @@ export default function NoteEditorTab({
 
     useEffect(reloadLinks, [reloadLinks])
 
+    // Los números se recalculan al guardar, no en cada tecla: contar palabras
+    // por pulsación sería un viaje al backend por letra.
+    useEffect(() => {
+        NoteStatsFor(noteId)
+            .then(setStats)
+            .catch(() => setStats(null))
+    }, [noteId, dirty])
+
     // --- guardado ----------------------------------------------------------
 
     const save = useCallback(async () => {
@@ -113,7 +144,7 @@ export default function NoteEditorTab({
             await UpdateNote(noteId, titleRef.current, contentRef.current, note?.frontmatter ?? '')
             setDirty(false)
             reloadLinks()
-            onChanged()
+            onChanged(titleRef.current)
         } catch (e) {
             setError(String(e))
         } finally {
@@ -126,6 +157,10 @@ export default function NoteEditorTab({
     // render. Se llama a través del ref, que siempre apunta a la actual.
     const saveRef = useRef(save)
     saveRef.current = save
+    // El linter se registra una sola vez con el editor, así que la acción de
+    // "crear la nota" no puede cerrarse sobre el prop del primer render.
+    const onCreateNoteRef = useRef(onCreateNote)
+    onCreateNoteRef.current = onCreateNote
 
     // Guardado automático con retardo. Una nota no es un archivo de código: no
     // hay compilación que romper con un guardado a medias, y perder tres
@@ -138,6 +173,33 @@ export default function NoteEditorTab({
     }, [dirty, title, content, save])
 
     // --- editor ------------------------------------------------------------
+
+    // Autocompletado de etiquetas. Mismo principio que el de SQL: no se
+    // inventan sugerencias, se ofrecen **las que ya existen en tus notas**.
+    // Escribir `#prod` y que aparezca `#produccion` porque ya la usaste en
+    // otras cuatro notas es lo que evita terminar con `#produccion`, `#prod` y
+    // `#PROD` como tres etiquetas distintas para lo mismo.
+    const tagSource = useCallback(async (ctx: CompletionContext): Promise<CompletionResult | null> => {
+        const before = ctx.state.sliceDoc(ctx.state.doc.lineAt(ctx.pos).from, ctx.pos)
+        const m = /(?:^|\s)(#[\p{L}\d_/-]*)$/u.exec(before)
+        if (!m) return null
+        // `# ` con espacio es un encabezado, no una etiqueta.
+        if (m[1] === '#' && /^\s*#+\s/.test(before)) return null
+
+        const typed = m[1].slice(1).toLowerCase()
+        const tags = await NoteTags().catch(() => [] as vault.NoteTag[])
+        const options = tags
+            .filter((t) => t.tag.slice(1).toLowerCase().includes(typed))
+            .slice(0, 15)
+            .map((t) => ({
+                label: t.tag,
+                type: 'keyword',
+                detail: `${t.count} ${t.count === 1 ? 'nota' : 'notas'}`,
+                apply: t.tag + ' ',
+            }))
+        if (options.length === 0) return null
+        return {from: ctx.pos - m[1].length, options}
+    }, [])
 
     // Autocompletado de `[[`: los títulos los sirve el backend descifrando en
     // memoria — nunca hay una lista de títulos en claro persistida.
@@ -173,12 +235,39 @@ export default function NoteEditorTab({
             state: EditorState.create({
                 doc: '',
                 extensions: [
-                    basicSetup,
+                    // **Sin `basicSetup`**, y no es una simplificación: ese
+                    // preajuste trae números de línea, gutter de plegado y —lo
+                    // que rompía el autocompletado— su PROPIA instancia de
+                    // `autocompletion()`. Dos instancias no se suman: la de
+                    // abajo quedaba ignorada, así que ni `[[` ni `/` abrían
+                    // nada. Además, un documento no tiene líneas numeradas: el
+                    // gutter solo le daba aspecto de archivo de código.
+                    history(),
+                    drawSelection(),
+                    closeBrackets(),
                     EditorView.lineWrapping,
+                    placeholder('Escribí en Markdown. «[[» enlaza otra nota, «/» inserta un bloque.'),
                     langComp.current.of([]),
-                    themeComp.current.of(resolveEditorTheme(editorThemeId as EditorThemeId, appTheme)),
-                    autocompletion({override: [wikiLinkSource]}),
+                    // Tipografía de documento: encabezados con peso real,
+                    // ancho de lectura acotado, sin gutter. Ver markdownTheme.
+                    ...notesEditorExtensions(),
+                    // Vista en vivo: esconde las marcas de Markdown y muestra
+                    // las imágenes, salvo en la línea donde está el cursor.
+                    // El texto guardado no cambia — son decoraciones.
+                    notesLivePreview(),
+                    // Dos fuentes de autocompletado: `[[` para enlazar notas y
+                    // `/` para insertar bloques. Cada una decide sola si
+                    // aplica, y la primera que contesta gana.
+                    autocompletion({override: [wikiLinkSource, slashCommandSource, tagSource], icons: false}),
+                    // Revisión del texto: enlaces a notas que no existen,
+                    // encabezados sin espacio, bloques sin cerrar. Cada aviso
+                    // trae su corrección aplicable — ver notesLint.
+                    notesLint((title) => onCreateNoteRef.current(title)),
                     keymap.of([
+                        ...closeBracketsKeymap,
+                        ...completionKeymap,
+                        ...historyKeymap,
+                        ...defaultKeymap,
                         {
                             key: 'Mod-s',
                             run: () => {
@@ -218,11 +307,42 @@ export default function NoteEditorTab({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [noteId, note?.id])
 
-    useEffect(() => {
-        viewRef.current?.dispatch({
-            effects: themeComp.current.reconfigure(resolveEditorTheme(editorThemeId as EditorThemeId, appTheme)),
-        })
-    }, [editorThemeId, appTheme])
+    // --- imágenes ----------------------------------------------------------
+
+    // Guarda una imagen en el vault (cifrada) e inserta su referencia. `nota:ID`
+    // es un esquema propio, no una ruta: el archivo no existe en el disco —
+    // está adentro del vault, cifrado como el resto de la nota.
+    const insertImage = useCallback(
+        (dataURL: string, name: string) => {
+            SaveNoteImage(noteId, dataURL)
+                .then((assetId) => {
+                    const view = viewRef.current
+                    if (!view) return
+                    const at = view.state.selection.main.head
+                    const md = `\n![${name || 'imagen'}](nota:${assetId})\n`
+                    view.dispatch({changes: {from: at, insert: md}, selection: {anchor: at + md.length}})
+                    view.focus()
+                    setDirty(true)
+                })
+                .catch((e) => setError(String(e)))
+        },
+        [noteId],
+    )
+
+    // Pegar o arrastrar una imagen.
+    const imageFromTransfer = useCallback(
+        (data: DataTransfer | null): boolean => {
+            const file = Array.from(data?.items ?? [])
+                .find((i) => i.type.startsWith('image/'))
+                ?.getAsFile()
+            if (!file) return false
+            const reader = new FileReader()
+            reader.onload = () => insertImage(String(reader.result ?? ''), file.name)
+            reader.readAsDataURL(file)
+            return true
+        },
+        [insertImage],
+    )
 
     // --- privacidad --------------------------------------------------------
 
@@ -248,19 +368,17 @@ export default function NoteEditorTab({
     }
 
     return (
-        <div className="flex h-full min-h-0 flex-col">
+        // `flex-1 w-full min-w-0`: el contenedor de la pestaña es una FILA, así
+        // que el eje principal es el ancho — sin pedir crecer, este bloque se
+        // encogía al ancho de su contenido y dejaba media ventana vacía. Fue un
+        // bug real: la nota se veía apretada contra el borde izquierdo.
+        <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
             {/* Barra de la nota */}
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
-                <input
-                    value={title}
-                    onChange={(e) => {
-                        setTitle(e.target.value)
-                        setDirty(true)
-                    }}
-                    placeholder="Título de la nota"
-                    title="El título es lo que otras notas usan para enlazarla con [[…]]. Cambiarlo deja rotos los enlaces que le apuntaban — se ven marcados en la nota que los tiene."
-                    className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-on-surface outline-none hover:border-outline-variant focus:border-primary"
-                />
+                <Icon name="description" size={14} className="shrink-0 text-on-surface-variant" />
+                <span className="min-w-0 flex-1 truncate text-[11px] text-on-surface-variant" title={title}>
+                    {title || 'Sin título'}
+                </span>
 
                 {/* Insignia de privacidad: el control más importante de esta
                     barra, y por eso lleva texto y no solo un ícono. */}
@@ -268,8 +386,8 @@ export default function NoteEditorTab({
                     onClick={togglePrivacy}
                     title={
                         note?.isPrivate
-                            ? 'PRIVADA: ningún agente puede leer esta nota, ni por el chat ni por el servidor MCP. Sigue apareciendo en tu grafo y en tus búsquedas. Hacé clic para permitir que la lean.'
-                            : 'VISIBLE PARA LA IA: los agentes pueden leer el contenido de esta nota si la referenciás o la buscan. Hacé clic para volver a esconderla.'
+                            ? 'PRIVADA: ningún agente puede leer esta nota, ni por el chat ni por el servidor MCP. Sigue apareciendo en tu grafo y en tus búsquedas. Hacé clic para volver a compartirla.'
+                            : 'VISIBLE PARA LA IA (el estado por defecto): los agentes pueden leer el contenido de esta nota si la referenciás o la buscan. Hacé clic para esconderla.'
                     }
                     className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
                         note?.isPrivate
@@ -281,6 +399,36 @@ export default function NoteEditorTab({
                     {note?.isPrivate ? 'Privado' : 'Acceso IA permitido'}
                 </button>
 
+                {/* Chat de IA sobre ESTA nota. Es el mismo componente que el
+                    resto de la app (components/agent/): se abre con la nota
+                    como contexto de trabajo y con `@note:"…"` ya escrito, así
+                    que el agente arranca con el documento adelante en vez de
+                    pidiéndolo. Si la nota está marcada como privada, el
+                    backend intercepta la referencia y lo dice — el botón no se
+                    esconde, porque preguntar SOBRE una nota privada sin
+                    mandarle el contenido sigue siendo válido. */}
+                <button
+                    onClick={() =>
+                        chat.open({
+                            context: {kind: 'note', id: noteId, label: title},
+                            prompt: note?.isPrivate
+                                ? ''
+                                : `@note:"${title}" `,
+                        })
+                    }
+                    disabled={!chat.hasAgent}
+                    title={
+                        !chat.hasAgent
+                            ? 'No hay ningún CLI agéntico instalado. mini-tools usa Claude Code, Codex o Antigravity.'
+                            : note?.isPrivate
+                              ? 'Abre el chat con esta nota como contexto. Como está marcada como PRIVADA, su contenido no se le manda: podés preguntar igual, pero el agente no la lee.'
+                              : 'Abre el chat con el contenido de esta nota ya referenciado, para preguntar sobre ella, ampliarla o revisar un procedimiento.'
+                    }
+                    className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
+                >
+                    <Icon name="forum" size={15} />
+                </button>
+
                 <button
                     onClick={() => setPreview((v) => !v)}
                     title={preview ? 'Volver a editar el Markdown' : 'Ver la nota renderizada, con los enlaces navegables'}
@@ -290,10 +438,6 @@ export default function NoteEditorTab({
                 >
                     <Icon name={preview ? 'edit' : 'visibility'} size={15} />
                 </button>
-
-                <span className="shrink-0 text-[10px] text-on-surface-variant">
-                    {saving ? 'Guardando…' : dirty ? 'Sin guardar' : 'Guardado'}
-                </span>
 
                 <button
                     onClick={() => setConfirmDelete(true)}
@@ -312,16 +456,108 @@ export default function NoteEditorTab({
             )}
             {error && note && <p className="shrink-0 px-2 py-1 text-[11px] text-error">{error}</p>}
 
-            <div className="flex min-h-0 flex-1">
-                <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+            {!preview && (
+                <NoteToolbar
+                    view={viewRef.current}
+                    onPickImage={() => fileInputRef.current?.click()}
+                    onToggleFold={() => {
+                        const view = viewRef.current
+                        if (!view) return
+                        const at = view.state.selection.main.head
+                        const md = '\n<details>\n<summary>Ver detalle</summary>\n\n\n\n</details>\n'
+                        view.dispatch({changes: {from: at, insert: md}, selection: {anchor: at + 32}})
+                        view.focus()
+                    }}
+                />
+            )}
+
+            {/* Elegir una imagen del disco. Input oculto y no un diálogo nativo
+                del backend: el archivo hay que leerlo igual para cifrarlo, así
+                que pedirle la ruta al sistema no ahorraría ningún paso. */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                        const reader = new FileReader()
+                        reader.onload = () => insertImage(String(reader.result ?? ''), file.name)
+                        reader.readAsDataURL(file)
+                    }
+                    e.target.value = ''
+                }}
+            />
+
+            <div
+                className="flex min-h-0 flex-1"
+                onPaste={(e) => {
+                    if (imageFromTransfer(e.clipboardData)) e.preventDefault()
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                    if (imageFromTransfer(e.dataTransfer)) e.preventDefault()
+                }}
+            >
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
+                    {/* El título vive DENTRO del documento y en grande, no
+                        como un campo de la barra: en una nota el título es la
+                        primera línea de lo que estás escribiendo, no un
+                        metadato de un formulario. */}
+                    <div className="mx-auto max-w-[46rem] px-6 pt-6">
+                        <input
+                            value={title}
+                            onChange={(e) => {
+                                setTitle(e.target.value)
+                                setDirty(true)
+                            }}
+                            placeholder="Sin título"
+                            title="El título es lo que otras notas usan para enlazarla con [[…]]. Cambiarlo deja rotos los enlaces que le apuntaban — se ven marcados en la nota que los tiene."
+                            className="w-full border-none bg-transparent text-3xl font-bold leading-tight text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                        />
+                        {note?.frontmatter?.trim() && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                                {note.frontmatter
+                                    .split(/[,\n]/)
+                                    .map((tag) => tag.trim())
+                                    .filter(Boolean)
+                                    .map((tag) => (
+                                        <span
+                                            key={tag}
+                                            className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] text-primary"
+                                        >
+                                            #{tag.replace(/^#/, '')}
+                                        </span>
+                                    ))}
+                            </div>
+                        )}
+                    </div>
+
                     {/* El editor sigue montado detrás de la vista previa: si se
                         desmontara, se perdería el historial de deshacer cada vez
                         que se mira cómo quedó. */}
-                    <div ref={hostRef} className="h-full" style={{display: preview ? 'none' : undefined}} />
+                    {/* El editor va debajo del título, sin su propio relleno
+                        superior: el aire ya lo pone el bloque del título. */}
+                    <div
+                        ref={hostRef}
+                        className="[&_.cm-scroller]:pt-2"
+                        style={{display: preview ? 'none' : undefined}}
+                    />
                     {preview && (
-                        <div className="p-3 text-sm text-on-surface">
+                        <div className="mx-auto max-w-[46rem] px-6 pb-24 pt-4 text-[15px] leading-7 text-on-surface [&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:text-3xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:my-1 [&_p]:my-3 [&_pre]:my-3 [&_ul]:my-3">
                             <MarkdownPreview
                                 source={content}
+                                renderCodeBlock={({lang, code, key}) => {
+                                    // ```sql connection="Prod" ─► bloque
+                                    // ejecutable. Sin el atributo es un bloque
+                                    // de código normal: un ejemplo de SQL en
+                                    // una nota no tiene por qué traer un botón
+                                    // que lo corra contra algo.
+                                    const m = /^sql\s+connection\s*=\s*"([^"]+)"/i.exec(lang)
+                                    if (!m) return null
+                                    return <RunbookSqlBlock key={key} connectionName={m[1]} sql={code} />
+                                }}
                                 onWikiLink={(target) => {
                                     // Se resuelve contra los enlaces YA
                                     // indexados: si el destino existe se abre,
@@ -378,11 +614,29 @@ export default function NoteEditorTab({
                 </div>
             </div>
 
+            {/* Barra de estado: los dos números que dicen si la nota está
+                conectada al resto y cuánto tiene escrito. Van abajo y en
+                chico, como en cualquier editor de documentos. */}
+            <div className="flex shrink-0 items-center gap-3 border-t border-outline-variant px-3 py-0.5 text-[10px] text-on-surface-variant">
+                <span
+                    title="Cuántas notas apuntan a esta con [[…]]. Cero significa que está aislada del resto de tu base de conocimiento."
+                    className="flex items-center gap-1"
+                >
+                    <Icon name="link" size={11} />
+                    {stats?.backlinks ?? 0} {stats?.backlinks === 1 ? 'backlink' : 'backlinks'}
+                </span>
+                <span title="Palabras del cuerpo de la nota" className="flex items-center gap-1">
+                    <Icon name="menu_book" size={11} />
+                    {(stats?.words ?? 0).toLocaleString('es')} palabras
+                </span>
+                <span className="ml-auto">{saving ? 'Guardando…' : dirty ? 'Sin guardar' : 'Guardado'}</span>
+            </div>
+
             {confirmShare && (
                 <ConfirmDialog
-                    title="Permitir que los agentes lean esta nota"
+                    title="Volver a compartir esta nota con los agentes"
                     description={`El contenido completo de «${title}» va a poder ser leído por Claude Code, Codex o Antigravity cuando la referencies con @note o cuando la busquen. Las credenciales, claves y datos personales que tenga adentro salen con ella. Podés volver a esconderla en cualquier momento.`}
-                    confirmLabel="Permitir acceso"
+                    confirmLabel="Compartir"
                     onConfirm={() => {
                         void SetNotePrivacy(noteId, false).then(() => {
                             setNote((n) => (n ? ({...n, isPrivate: false} as vault.Note) : n))

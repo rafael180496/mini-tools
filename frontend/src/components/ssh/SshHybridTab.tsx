@@ -5,6 +5,7 @@ import Icon from '../Icon'
 import SftpTab from '../sftp/SftpTab'
 import type {PaneHost} from '../sftp/types'
 import SshTerminalTab from './SshTerminalTab'
+import {WriteSSHTerminal} from '../../../wailsjs/go/main/App'
 import type {TerminalThemeId} from '../../xterm/terminalThemes'
 
 interface SshHybridTabProps {
@@ -136,15 +137,34 @@ export default function SshHybridTab({
                         <div className="h-0.5 w-8 rounded-full bg-outline-variant group-hover:bg-primary" />
                     </div>
                     <div style={{height: drawerHeight}} className="flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-outline-variant">
+                        {/* La sincronización solo se ofrece acá: es la pestaña
+                            donde hay una terminal viva al lado. En una pestaña
+                            SFTP suelta no hay ninguna terminal que seguir, así
+                            que el control no aparece en vez de aparecer
+                            deshabilitado sin explicación. */}
                         <SftpTab
                             tabId={`hybrid-${connId}`}
                             initialConnId={connId}
                             connections={connections}
                             onOpenRemoteFile={onOpenRemoteFile}
+                            followTerminalConnId={connId}
+                            // Sin el retorno de carro: el `cd` queda escrito y
+                            // el Enter lo pone el usuario. Misma decisión que
+                            // el historial y que los comandos que propone el
+                            // agente — nada se ejecuta solo en una terminal.
+                            onOpenTerminalAt={(path) => void WriteSSHTerminal(connId, `cd ${shellQuote(path)}`)}
                         />
                     </div>
                 </>
             )}
         </div>
     )
+}
+
+// shellQuote entrecomilla una ruta para que un espacio o un paréntesis no la
+// partan en dos argumentos. Comillas simples y escape de la comilla simple:
+// es la forma que funciona igual en sh, bash, ksh y zsh — que son las cuatro
+// que uno se encuentra en los servidores donde esto se usa.
+function shellQuote(path: string): string {
+    return "'" + path.split("'").join(`'\\''`) + "'"
 }

@@ -674,10 +674,18 @@ var migrations = []migration{
 			// tres columnas que se escriben en la misma operación son
 			// exactamente donde uno se tienta de compartirlo.
 			//
-			// **`is_private` nace en 1 y ese default es la mitad del
-			// cortafuegos.** Vive en el esquema justamente para que no dependa
-			// de que alguien se acuerde de setearlo en el código que inserta:
-			// una nota que se crea por un camino nuevo nace privada igual.
+			// **`is_private` nace en 0: una nota es VISIBLE para los agentes
+			// salvo que se la marque.** Es una decisión explícita del usuario
+			// del producto, y el intercambio es real: la base de conocimiento
+			// sirve para que el agente la consulte, y una nota que nace
+			// invisible no aparece hasta que alguien se acuerda de abrirla.
+			// A cambio, esconder algo pasa a ser un acto deliberado — el
+			// candado de la barra de la nota, que sigue existiendo y sigue
+			// siendo absoluto (ver NoteForAI).
+			//
+			// El default vive igual en el ESQUEMA y no en el código que
+			// inserta: así una nota creada por un camino nuevo hereda la misma
+			// política, cualquiera sea.
 			//
 			// `title_hash` es SHA-256 del título normalizado. Es lo que permite
 			// resolver `[[Nota]]` y dibujar el grafo **sin descifrar nada**: se
@@ -697,7 +705,7 @@ var migrations = []migration{
 				encrypted_frontmatter BLOB,
 				frontmatter_nonce BLOB,
 				title_hash TEXT NOT NULL DEFAULT '',
-				is_private INTEGER NOT NULL DEFAULT 1,
+				is_private INTEGER NOT NULL DEFAULT 0,
 				checksum_hash TEXT NOT NULL DEFAULT '',
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL
@@ -705,8 +713,8 @@ var migrations = []migration{
 				return err
 			}
 			// Índice para filtrar lo que la IA puede ver sin descifrar una sola
-			// nota: la consulta del cortafuegos es exactamente
-			// `WHERE id = ? AND is_private = 0`.
+			// nota: la consulta del cortafuegos filtra por `is_private = 0` y
+			// sigue siendo la única puerta, aunque el default se haya invertido.
 			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_notes_ai_access ON vault_notes (id, is_private)`); err != nil {
 				return err
 			}
@@ -765,6 +773,76 @@ var migrations = []migration{
 				return err
 			}
 			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN notes_side_width INTEGER NOT NULL DEFAULT 260`)
+			return err
+		},
+	},
+	{
+		version: 37,
+		desc:    "agrega settings.mcp_enabled — el servidor MCP nace APAGADO",
+		apply: func(tx *sql.Tx) error {
+			// **DEFAULT 0, y el default importa más que de costumbre.** Este
+			// flag decide si hay un canal por el que un agente puede pedirle
+			// datos a la aplicación. Nace apagado, y apagado significa que no
+			// hay socket, ni goroutine, ni archivo — no es un permiso que se
+			// evalúa en cada llamada, es un servidor que no existe.
+			//
+			// El flag es solo el RECUERDO de la preferencia: al abrir la app no
+			// se enciende nada solo porque estuviera en 1. Encender es una
+			// acción del usuario en esa sesión.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN mcp_enabled INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
+	{
+		version: 38,
+		desc:    "agrega vault_notes.folder_id — carpetas para organizar la base de conocimiento",
+		apply: func(tx *sql.Tx) error {
+			// Se reusa la tabla `folders` que ya existe, con `scope = 'note'`.
+			// Esa columna se agregó en la migración 12 justamente para esto:
+			// cada módulo organiza lo suyo en su propio árbol, sin mezclarse
+			// con las carpetas de conexiones, SSH o repositorios. No hace falta
+			// tabla nueva ni tocar `folders`.
+			//
+			// '' = en la raíz, que es donde nacen todas. Igual que
+			// `connections.folder_id`, que es nulable por ser anterior a esta
+			// convención — acá se usa cadena vacía porque es más simple de
+			// consultar y no hay filas previas que preservar.
+			_, err := tx.Exec(`ALTER TABLE vault_notes ADD COLUMN folder_id TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
+	{
+		version: 39,
+		desc:    "crea vault_note_assets (imágenes de las notas, cifradas como el resto)",
+		apply: func(tx *sql.Tx) error {
+			// Imágenes pegadas en una nota.
+			//
+			// **Van cifradas y adentro del vault, no sueltas en el disco.** Es
+			// la decisión importante de esta tabla: una captura de un tablero
+			// de producción, de una consola con datos de un cliente o de un
+			// error con un token a la vista es exactamente igual de sensible
+			// que el texto de la nota que la acompaña. Guardar el texto cifrado
+			// y la imagen en una carpeta al lado sería proteger la mitad —y la
+			// mitad menos delatora, porque una captura se entiende de un
+			// vistazo y un párrafo hay que leerlo.
+			//
+			// El costo es real y se asume: `vault.db` crece con cada imagen y
+			// el backup del vault se lleva todo junto. A cambio, una sola cosa
+			// que proteger y una sola clave.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS vault_note_assets (
+				id TEXT PRIMARY KEY,
+				note_id TEXT NOT NULL,
+				mime TEXT NOT NULL,
+				encrypted_data BLOB,
+				data_nonce BLOB,
+				size_bytes INTEGER NOT NULL DEFAULT 0,
+				created_at INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// La lectura natural es "las imágenes de esta nota", para poder
+			// borrarlas cuando la nota se borra.
+			_, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_note_assets_note ON vault_note_assets (note_id)`)
 			return err
 		},
 	},

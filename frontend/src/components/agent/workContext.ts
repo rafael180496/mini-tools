@@ -63,3 +63,19 @@ export function describeContext(context: WorkContext): string {
         context.kind === 'git' ? 'Git' : context.kind === 'db' ? 'Base' : context.kind === 'ssh' ? 'SSH' : 'Nota'
     return `${prefix} · ${context.label}`
 }
+
+// contextKey identifica una conversación: **hay una por contexto de trabajo**.
+//
+// Abrir el chat desde una conexión de base de datos trae la conversación de esa
+// conexión; desde una terminal SSH, la de ese servidor; desde una nota, la de
+// esa nota. No es una sola conversación que se arrastra por toda la app: son
+// hilos separados, porque lo que se habla en cada lugar no tiene nada que ver
+// con lo de al lado — y mezclarlo hace que el agente arrastre contexto que no
+// corresponde.
+//
+// La nota va por ID y no por módulo, a propósito: "el chat de las notas" no
+// existe: existe el de ESTA nota, que es sobre lo que uno pregunta.
+export function contextKey(context: WorkContext): string {
+    if (context.kind === 'none') return 'none'
+    return `${context.kind}:${context.id}`
+}

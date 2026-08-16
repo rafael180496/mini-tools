@@ -1,4 +1,5 @@
 import {Fragment, type ReactNode} from 'react'
+import Icon from './Icon'
 
 // Vista previa de Markdown, hecha a mano y acotada.
 //
@@ -30,7 +31,7 @@ function inline(text: string, keyBase: string, onWikiLink?: WikiLinkHandler): Re
     // El `[[WikiLink]]` va PRIMERO en la alternancia: si fuera después, el
     // patrón de enlace Markdown `[texto](url)` se comería el primer corchete y
     // partiría la referencia a la mitad.
-    const re = /(\[\[[^\]]+\]\])|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)]+\))/g
+    const re = /(\[\[[^\]]+\]\])|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)]+\))|((?:^|(?<=\s))#[\p{L}\d][\p{L}\d_/-]*)/gu
     let last = 0
     let m: RegExpExecArray | null
     let i = 0
@@ -40,7 +41,21 @@ function inline(text: string, keyBase: string, onWikiLink?: WikiLinkHandler): Re
         const token = m[0]
         const key = `${keyBase}-${i++}`
 
-        if (token.startsWith('[[')) {
+        if (token.startsWith('#')) {
+            // Etiqueta al estilo Obsidian (`#produccion`). Es distinta de un
+            // encabezado: `# Título` lleva espacio, una etiqueta no — y esa
+            // diferencia de un carácter es la que hacía que pareciera que el
+            // editor no formateaba nada.
+            out.push(
+                <span
+                    key={key}
+                    title="Etiqueta. Buscá «tag:…» en el buscador de notas para encontrar todas las que la tienen."
+                    className="rounded-full bg-primary/15 px-2 py-0.5 text-[0.88em] font-medium text-primary"
+                >
+                    {token}
+                </span>,
+            )
+        } else if (token.startsWith('[[')) {
             // Enlace entre notas. El alias (`[[Nota|texto]]`) es presentación:
             // se muestra el texto y se navega al título.
             const inner = token.slice(2, -2)
@@ -106,7 +121,41 @@ function inline(text: string, keyBase: string, onWikiLink?: WikiLinkHandler): Re
 // del repositorio, donde no hay notas a las que ir.
 export type WikiLinkHandler = (title: string) => void
 
-export default function MarkdownPreview({source, onWikiLink}: {source: string; onWikiLink?: WikiLinkHandler}) {
+// CodeBlockRenderer permite que quien usa la vista previa dibuje un bloque de
+// código a su manera. Es lo que convierte un ``` ```sql connection="Prod" ``` `` de
+// una nota en un bloque EJECUTABLE, sin que este componente —que también
+// renderiza la respuesta de un agente y los `.md` de un repositorio— sepa nada
+// de conexiones ni de ejecutar consultas.
+//
+// Devolver null significa "dibujalo como siempre".
+export type CodeBlockRenderer = (info: {lang: string; code: string; key: string}) => ReactNode | null
+
+// CALLOUT_STYLES son las cajas resaltadas al estilo Obsidian (`> [!INFO]`).
+// Se dibujan con los tokens semánticos de MD3, nunca con colores crudos.
+const CALLOUT_STYLES: Record<string, {icon: string; border: string; bg: string; text: string; label: string}> = {
+    INFO: {icon: 'info', border: 'border-l-primary', bg: 'bg-primary/8', text: 'text-primary', label: 'Info'},
+    TIP: {icon: 'lightbulb', border: 'border-l-tertiary', bg: 'bg-tertiary/8', text: 'text-tertiary', label: 'Tip'},
+    WARNING: {
+        icon: 'warning',
+        border: 'border-l-tertiary',
+        bg: 'bg-tertiary/10',
+        text: 'text-tertiary',
+        label: 'Atención',
+    },
+    SECURITY: {icon: 'shield', border: 'border-l-error', bg: 'bg-error-container/25', text: 'text-error', label: 'Seguridad'},
+    DANGER: {icon: 'dangerous', border: 'border-l-error', bg: 'bg-error-container/25', text: 'text-error', label: 'Peligro'},
+    NOTE: {icon: 'sticky_note_2', border: 'border-l-outline-variant', bg: 'bg-surface-container', text: 'text-on-surface-variant', label: 'Nota'},
+}
+
+export default function MarkdownPreview({
+    source,
+    onWikiLink,
+    renderCodeBlock,
+}: {
+    source: string
+    onWikiLink?: WikiLinkHandler
+    renderCodeBlock?: CodeBlockRenderer
+}) {
     const lines = source.split('\n')
     const blocks: ReactNode[] = []
 
@@ -163,14 +212,51 @@ export default function MarkdownPreview({source, onWikiLink}: {source: string; o
             }
             i++
             flushList()
+            const code = buf.join('\n')
+            const custom = renderCodeBlock?.({lang, code, key: `code-${blocks.length}`})
             blocks.push(
-                <pre
-                    key={`code-${blocks.length}`}
-                    title={lang || undefined}
-                    className="my-1 overflow-x-auto rounded bg-surface-container-highest px-2 py-1 font-mono text-[11px] text-on-surface"
+                custom ?? (
+                    <pre
+                        key={`code-${blocks.length}`}
+                        title={lang || undefined}
+                        className="my-1 overflow-x-auto rounded bg-surface-container-highest px-2 py-1 font-mono text-[11px] text-on-surface"
+                    >
+                        {code}
+                    </pre>
+                ),
+            )
+            continue
+        }
+
+        // Caja resaltada al estilo Obsidian: una cita cuya primera línea es
+        // `> [!TIPO]`. Va antes de la cita normal, que si no se la comería.
+        const callout = /^\s*>\s*\[!([A-Za-zÁÉÍÓÚÑ]+)\]\s*(.*)$/.exec(line)
+        if (callout) {
+            const kind = callout[1].toUpperCase()
+            const style = CALLOUT_STYLES[kind] ?? CALLOUT_STYLES.NOTE
+            const buf: string[] = []
+            if (callout[2].trim()) buf.push(callout[2])
+            i++
+            while (i < lines.length && /^\s*>/.test(lines[i])) {
+                buf.push(lines[i].replace(/^\s*>\s?/, ''))
+                i++
+            }
+            flushList()
+            blocks.push(
+                <div
+                    key={`callout-${blocks.length}`}
+                    className={`my-1.5 rounded-r border-l-4 px-2 py-1.5 ${style.border} ${style.bg}`}
                 >
-                    {buf.join('\n')}
-                </pre>,
+                    <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-medium ${style.text}`}>
+                        <Icon name={style.icon} size={13} filled />
+                        {callout[1].toUpperCase() === kind && CALLOUT_STYLES[kind] ? style.label : callout[1]}
+                    </p>
+                    {buf.map((l, n) => (
+                        <p key={n} className="text-on-surface">
+                            {inline(l, `co-${blocks.length}-${n}`, onWikiLink)}
+                        </p>
+                    ))}
+                </div>,
             )
             continue
         }
@@ -199,7 +285,10 @@ export default function MarkdownPreview({source, onWikiLink}: {source: string; o
         if (/^\s*>\s?/.test(line)) {
             flushList()
             blocks.push(
-                <p key={`q-${blocks.length}`} className="my-1 border-l-2 border-outline-variant pl-2 text-on-surface-variant">
+                <p
+                    key={`q-${blocks.length}`}
+                    className="my-3 border-l-[3px] border-primary/50 py-0.5 pl-4 italic text-on-surface-variant"
+                >
                     {inline(line.replace(/^\s*>\s?/, ''), `q-${blocks.length}`, onWikiLink)}
                 </p>,
             )

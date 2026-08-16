@@ -1882,6 +1882,76 @@ export namespace main {
 	        this.content = source["content"];
 	    }
 	}
+	export class mcpAudit {
+	    tool: string;
+	    resource: string;
+	    at: number;
+	    denied: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new mcpAudit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tool = source["tool"];
+	        this.resource = source["resource"];
+	        this.at = source["at"];
+	        this.denied = source["denied"];
+	    }
+	}
+	export class MCPStatus {
+	    enabled: boolean;
+	    socketPath: string;
+	    tools: number;
+	    audit: mcpAudit[];
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.socketPath = source["socketPath"];
+	        this.tools = source["tools"];
+	        this.audit = this.convertValues(source["audit"], mcpAudit);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class NoteStats {
+	    backlinks: number;
+	    words: number;
+	    chars: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.backlinks = source["backlinks"];
+	        this.words = source["words"];
+	        this.chars = source["chars"];
+	    }
+	}
 	export class NoteTitle {
 	    id: string;
 	    title: string;
@@ -1916,6 +1986,24 @@ export namespace main {
 	        this.dialect = source["dialect"];
 	        this.tables = source["tables"];
 	        this.totalTables = source["totalTables"];
+	    }
+	}
+	export class SSHErrorAnalysis {
+	    answer: string;
+	    lines: string[];
+	    osInfo: string;
+	    redacted: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SSHErrorAnalysis(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.answer = source["answer"];
+	        this.lines = source["lines"];
+	        this.osInfo = source["osInfo"];
+	        this.redacted = source["redacted"];
 	    }
 	}
 	export class SftpEndpointInput {
@@ -2083,6 +2171,27 @@ export namespace mcpconf {
 	        this.args = source["args"];
 	        this.url = source["url"];
 	        this.env = source["env"];
+	    }
+	}
+
+}
+
+export namespace mcpserver {
+	
+	export class ToolInfo {
+	    name: string;
+	    description: string;
+	    inputSchema: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new ToolInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.inputSchema = source["inputSchema"];
 	    }
 	}
 
@@ -2612,6 +2721,92 @@ export namespace vault {
 	        this.corrupt = source["corrupt"];
 	    }
 	}
+	export class NoteAsset {
+	    id: string;
+	    mime: string;
+	    data: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteAsset(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.mime = source["mime"];
+	        this.data = source["data"];
+	        this.size = source["size"];
+	    }
+	}
+	export class NoteGraphEdge {
+	    source: string;
+	    target: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteGraphEdge(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.target = source["target"];
+	    }
+	}
+	export class NoteGraphNode {
+	    id: string;
+	    title: string;
+	    isPrivate: boolean;
+	    degree: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteGraphNode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.isPrivate = source["isPrivate"];
+	        this.degree = source["degree"];
+	    }
+	}
+	export class NoteGraphData {
+	    nodes: NoteGraphNode[];
+	    edges: NoteGraphEdge[];
+	    brokenLinks: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteGraphData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nodes = this.convertValues(source["nodes"], NoteGraphNode);
+	        this.edges = this.convertValues(source["edges"], NoteGraphEdge);
+	        this.brokenLinks = source["brokenLinks"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 	export class NoteHit {
 	    id: string;
 	    title: string;
@@ -2620,6 +2815,7 @@ export namespace vault {
 	    score: number;
 	    snippet: string;
 	    matchedTitle: boolean;
+	    folderId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new NoteHit(source);
@@ -2634,6 +2830,7 @@ export namespace vault {
 	        this.score = source["score"];
 	        this.snippet = source["snippet"];
 	        this.matchedTitle = source["matchedTitle"];
+	        this.folderId = source["folderId"];
 	    }
 	}
 	export class NoteLink {
@@ -2660,6 +2857,7 @@ export namespace vault {
 	    isPrivate: boolean;
 	    updatedAt: number;
 	    linkCount: number;
+	    folderId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new NoteSummary(source);
@@ -2672,6 +2870,21 @@ export namespace vault {
 	        this.isPrivate = source["isPrivate"];
 	        this.updatedAt = source["updatedAt"];
 	        this.linkCount = source["linkCount"];
+	        this.folderId = source["folderId"];
+	    }
+	}
+	export class NoteTag {
+	    tag: string;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NoteTag(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tag = source["tag"];
+	        this.count = source["count"];
 	    }
 	}
 	export class OpenTabInfo {
@@ -2763,6 +2976,7 @@ export namespace vault {
 	    agentSize: number;
 	    notesLastOpen: string;
 	    notesSideWidth: number;
+	    mcpEnabled: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -2804,6 +3018,7 @@ export namespace vault {
 	        this.agentSize = source["agentSize"];
 	        this.notesLastOpen = source["notesLastOpen"];
 	        this.notesSideWidth = source["notesSideWidth"];
+	        this.mcpEnabled = source["mcpEnabled"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

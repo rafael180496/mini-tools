@@ -1,7 +1,8 @@
 # Plan — Sistema agéntico unificado, Vault Notes y servidor MCP nativo (1.4.0 → 2.0.0)
 
-> **Estado: FASES 1, 2 y 3 implementadas** (ver "Estado de implementación" al
-> final). Fases 4 a 7: propuesta.
+> **Estado: FASES 1 a 7 implementadas y verificadas.** La paridad de Windows
+> se probó en Windows 10 y 11. Lo único que queda del plan es el empaquetado de
+> la 2.0.0, que es un trigger del usuario. Ver "Estado de implementación".
 >
 > Segmentación completa de la
 > especificación maestra pedida: IA omnipresente sobre los tres CLIs (Claude
@@ -139,10 +140,10 @@ entrada en `CHANGELOG.md` bajo `[Unreleased]` **en la misma tarea**.
 | 1 | **1.4.0** ✅ | **Chat integral único para todos los módulos** + sesión agéntica de nivel app + sistema `@` de contexto | — |
 | 2 | **1.5.0** ✅ | IA en bases de datos: NL2SQL, auto-fix, análisis de plan | Fase 1 |
 | 3 | **1.6.0** ✅ | Vault Notes: núcleo cifrado, WikiLinks, backlinks, **buscador** | — |
-| 4 | **1.7.0** | Vault Notes: bloques `/slash`, runbooks vivos, grafo | Fase 3 |
-| 5 | **1.8.0** | SSH/SFTP agéntico: debugger, sincronización, Production Guard | Fase 1 |
-| 6 | **1.9.0** | Servidor MCP nativo embebido + AI Access Firewall | Fases 1, 3 |
-| 7 | **2.0.0** | Paridad Windows real (`winio`), cierre y empaquetado | Todas |
+| 4 | **1.7.0** ✅ | Vault Notes: bloques `/slash`, runbooks vivos, grafo, chat por nota | Fase 3 |
+| 5 | **1.8.0** ✅ | SSH agéntico: debugger de terminal, `@ssh`, sincronización terminal↔SFTP (el Production Guard **ya existía**) | Fase 1 |
+| 6 | **1.9.0** ✅ | Servidor MCP nativo embebido + AI Access Firewall | Fases 1, 3 |
+| 7 | **2.0.0** ✅ | Paridad Windows (`winio`), verificada en Windows 10 y 11 | Todas |
 
 Las fases 3 y 4 (Vault Notes) son **independientes** de las fases 1, 2 y 5: se
 pueden hacer en paralelo o adelantar si el módulo de notas es lo más urgente.
@@ -821,6 +822,183 @@ tildes y exige todos los términos — y, abriendo `vault.db` con `sqlite3`, que
 **el título y el cuerpo son ilegibles en disco**. `go build`, `go vet`,
 `pnpm tsc --noEmit`, `pnpm build` y `wails build` limpios. **Binario macOS
 `arm64`: 50MB**, sin cambio.
+
+### Fase 4 (1.7.0) — implementada, con dos cambios de política pedidos
+
+**Cambio pedido: las notas nacen VISIBLES para los agentes.** El plan las hacía
+nacer privadas; el usuario pidió lo contrario y el argumento es correcto — una
+base de conocimiento existe para que el agente la consulte, y una nota que nace
+invisible no aparece hasta que alguien se acuerda de abrirla, que en la práctica
+es nunca. **El cortafuegos no cambió**: `NoteForAI` sigue filtrando en la
+consulta SQL y sigue siendo la única puerta; lo que cambió es de qué lado
+arranca el interruptor. El intercambio quedó escrito en
+[vault-notes.md](vault-notes.md) sin suavizarlo.
+
+**Cambio pedido: cada nota tiene su chat.** Se resolvió sin componentes nuevos
+—es el mismo `AgentChat` de la fase 1— agregando `note` al contexto de trabajo
+que ya existía y un botón que lo abre con `@note:"Título"` escrito.
+
+**Construido:** `codemirror/slashCommands.ts`; callouts y bloques de código
+enchufables en `MarkdownPreview` (`renderCodeBlock`, que es lo que permite que
+un ` ```sql connection="X" ` sea ejecutable en una nota y siga siendo un bloque
+normal en la respuesta de un agente); `notes/RunbookSqlBlock.tsx`;
+`vault.NoteGraph` + `notes/NotesGraphView.tsx`.
+
+**Decisiones:**
+
+1. **El bloque ejecutable reusa `inspectSQL` y el ConfirmDialog del editor**, no
+   una guarda propia. Una segunda implementación del Production Guard es una
+   que puede quedar atrás de la real.
+2. **D4 (mermaid) resuelta por ahora como "no":** `/mermaid` inserta el bloque y
+   se muestra como código. Renderizarlo suma ~1MB y esa medición no se hizo;
+   prometerlo sin medir sería justamente lo que la regla 8 evita.
+3. **El grafo con canvas 2D y fuerzas a mano** (~80 líneas), sin librería —
+   regla 12. El 3D queda condicionado a que el 2D se quede corto con números
+   medidos.
+4. **El grafo no recibe cuerpos de nota**: solo títulos y aristas.
+
+**Verificación:** `go build`, `go vet`, `pnpm tsc --noEmit`, `pnpm build` y
+`wails build` limpios. **Binario macOS `arm64`: 50MB**, sin cambio en las cuatro
+fases — cero dependencias nuevas.
+
+### Fase 5 (1.8.0) — parcial: 5.1 hecho, 5.3 ya existía, 5.2 pendiente
+
+**Hallazgo que borró un segmento entero: el Production Guard de SSH ya estaba
+implementado.** El plan (5.3) daba por sentado que las conexiones SSH vivían en
+otra tabla y necesitaban una migración 37 para su `environment`. **No es así**:
+están en la misma tabla `connections` con `dbType = 'ssh'`, así que ya tenían la
+columna — y `SshTerminalTab.tsx` ya dibuja el badge de entorno y ya intercepta
+comandos destructivos con `ProductionGuardDialog`. **No hace falta ninguna
+migración nueva y no se escribió ninguna línea de ese segmento.**
+
+**Construido (5.1):**
+
+- `backend/sshconn/scrollback.go` — anillo de 500 líneas por sesión, sin
+  escapes ANSI, en memoria y sin persistir. Es lo que faltaba para que el
+  backend tuviera algo que mostrarle a un agente: hasta ahora la salida se
+  streameaba a xterm.js y se olvidaba.
+- `app_sshagent.go` — `AnalyzeSSHError` y `SSHTail`, más la deducción del
+  sistema operativo **de lo que la terminal ya imprimió**, nunca ejecutando
+  `uname` por nuestra cuenta (escribir en la sesión interactiva del usuario
+  aparecería en su pantalla y podría caer dentro de un editor abierto).
+- `agentctx.SSHErrorPrompt` — el contexto de SO va primero y, cuando no se
+  sabe, el prompt **dice que no se sabe** y pide no suponer Linux.
+- `components/ssh/SshErrorAnalysis.tsx` + el botón en la barra de la terminal,
+  que cambia de texto según haya selección.
+- **`@ssh:` activado**: el tipo estaba declarado como no disponible desde la
+  fase 1 justamente esperando este buffer.
+
+**Segmento 5.2 — resuelto con OSC 7.** Era el que el plan marcaba como el de
+más riesgo, y las tres formas obvias estaban todas mal: adivinar del prompt es
+adivinar (el prompt lo define el usuario, no es un contrato), `/proc/<pid>/cwd`
+no existe en SunOS ni AIX —justo los servidores donde esto haría más falta— y
+correr `pwd` choca con la misma regla que se respetó para `uname`: **no se
+escribe en la sesión interactiva del usuario**.
+
+La cuarta forma no requiere ninguna de esas concesiones: **OSC 7**, la
+secuencia que las shells modernas emiten en cada prompt y que usan iTerm2,
+WezTerm y VS Code para esto mismo. Se lee al pasar en el mismo lugar donde ya
+se limpiaban los escapes ANSI, sin costo. **Y cuando la shell no la emite, el
+panel lo dice** en vez de quedarse quieto pareciendo roto — que era el "acierta
+el 80% y miente el 20%" que había que evitar.
+
+El toggle está apagado por defecto y solo aparece en la pestaña híbrida, que es
+donde hay una terminal viva. La dirección contraria ("Ir acá en la terminal")
+escribe el `cd` **sin ejecutarlo**, con la ruta entrecomillada para sh/bash/ksh/zsh.
+
+### Fases 6 y 7 (1.9.0 / 2.0.0) — implementadas
+
+**Servidor MCP.** `backend/mcpserver/` con JSON-RPC 2.0 sobre stdio escrito a
+mano (~200 líneas, sin SDK: regla 12), el puente a la ventana, y `app_mcp.go`
+con las siete herramientas.
+
+**Cambio pedido por el usuario durante la implementación, y es la decisión de
+diseño más importante de esta fase: el servidor solo existe si se lo enciende.**
+El plan ya lo tenía apagado por defecto, pero como *flag*. Ahora es más fuerte:
+**apagado no hay listener, ni socket, ni goroutine** — `StartBridge` se llama
+desde `SetMCPServerEnabled` y de ningún otro lado, y apagar cierra y borra. El
+motivo lo dio el usuario y es correcto: mini-tools existe para optimizar
+recursos, y un servidor corriendo por si acaso es exactamente lo contrario.
+
+**Arquitectura de dos procesos, y lo que garantiza.** El proceso `--mcp` que
+lanza el CLI no tiene la clave maestra: reenvía cada llamada por el socket. Por
+lo tanto, **con la app cerrada, el vault bloqueado o el interruptor apagado no
+hay forma de leer nada**, ni lanzando el binario a mano. Además `CallTool`
+revalida `requireUnlocked` en cada llamada, no solo al encender: entre encender
+y llamar, el usuario pudo haber bloqueado el vault.
+
+**Decisiones:**
+
+1. **Un error de herramienta viaja como CONTENIDO con `isError`, no como error
+   de JSON-RPC.** La diferencia importa: un error de transporte lo consume el
+   CLI y el modelo no lo ve; un `isError` llega al modelo, que puede leer "esa
+   nota está marcada como privada" y explicárselo al usuario.
+2. **`db_explain_query` valida con lista blanca** (`SELECT`/`WITH`, y rechaza
+   dos sentencias). Una lista negra deja pasar todo lo que nadie pensó.
+3. **El registro de accesos guarda el hecho, no el contenido**, y vive en
+   memoria: escribirlo sería una segunda copia de lo que se quiere proteger.
+4. **La ACL del named pipe de Windows** (`D:P(A;;GA;;;OW)`) es la contraparte
+   del `chmod 0600`. Un pipe abierto habría sido peor que no tener el modo.
+
+**Paridad Windows.** `winio` entró como **primera dependencia Go nueva de todo
+el plan**, y solo compila en Windows (build tag), así que el binario de macOS
+no cambió: **50MB, igual que en las seis fases anteriores**. `GOOS=windows go
+build ./...` limpio. El transporte se extrajo a `ipc_unix.go`/`ipc_windows.go`
+en los dos paquetes que lo usan (`agentapprove` y `mcpserver`), sin cambiar el
+comportamiento de Unix.
+
+**Verificado en Windows real.** El usuario lo probó en **Windows 10 y 11**, así
+que el named pipe y la aprobación por acción dejaron de ser "compila y la ACL
+es la correcta" para ser algo que corrió. Es la primera parte del soporte de
+Windows de este proyecto que se ejercita en una máquina de verdad y no solo se
+cross-compila.
+
+**Verificación:** script efímero que ejercita el protocolo completo
+(`initialize`, `tools/list`, `tools/call`, bloqueo devuelto como contenido
+legible, línea rota sin cortar la sesión, método desconocido, `ping`) y otro que
+comprueba que la migración 37 nace apagada y que el puente **abre al encender y
+deja de aceptar conexiones al apagar**.
+
+### Corrección de diseño posterior: una conversación POR CONTEXTO
+
+El plan (y las fases 1 a 7) sostenían **una sola conversación** que acompañaba
+al usuario entre módulos, con el argumento de que el trabajo real cruza módulos
+y partir el hilo pierde lo que ya se habló.
+
+**El usuario pidió lo contrario y tiene razón.** Un hilo único hace que el
+agente arrastre contexto que no corresponde: lo que se habló sobre una base de
+datos no tiene nada que ver con un servidor SSH, y una nota es todavía más
+específica —el chat de una nota es sobre *esa* nota—. Ahora hay una conversación
+por contexto (`contextKey` = `kind:id`), cada una con su historial, su modelo y
+su modo, y el historial arranca filtrado al módulo desde el que se abrió.
+
+Lo que **no** cambió: sigue siendo un solo componente, un solo selector de `@`,
+un solo sistema de modos y un solo lugar donde arreglar un bug. La unificación
+era de la implementación, no de la cantidad de hilos.
+
+### Auditoría de la matriz de permisos (segmento 7.2.1)
+
+Se verificó fila por fila **contra el código**, no contra el plan:
+
+| Recurso | App | Grafo | Para un agente | Verificado en |
+|---|---|---|---|---|
+| Nota privada | ✅ | ✅ con candado | ⛔ | `NoteForAI` filtra `is_private = 0` en el SQL; script efímero |
+| Nota compartida | ✅ | ✅ | ✅ | ídem |
+| DSN / contraseñas | ✅ | N/A | ⛔ **nunca** | `grep` sobre todos los caminos agénticos: ninguno toca `encrypted_dsn` ni descifra un DSN; `ConnectionSummary` no lo tiene |
+| Esquema (DDL) | ✅ | ✅ | ✅ **sin filas** | `renderTableDDL` solo emite columnas, tipos, PK y FK |
+| Plan de ejecución | ✅ | N/A | ✅ | `db_explain_query` llama `ExplainQuery(..., analyze=false)`: EXPLAIN no ejecuta el plan; lista blanca `SELECT`/`WITH` |
+| Logs de terminal | ✅ | N/A | ✅ **redactado** | ver abajo |
+
+**La única fila que no resistió la auditoría fue la de los logs.** La
+especificación original la describía como "inyección segura", y no lo es del
+todo: `mysql -pSecreta`, `export TOKEN=…` y `curl -H "Authorization: Bearer …"`
+quedan impresos en pantalla, así que estaban entrando al prompt junto con el
+error. Se corrigió con `backend/sshconn/redact.go`, aplicado **en `Tail`**, que
+es el único método que alimenta los tres caminos hacia un agente (análisis,
+`@ssh:`, MCP) — ponerlo en cada llamador habría hecho que agregar un camino
+nuevo fuera la oportunidad de olvidarse. Verificado con script efímero: los
+seis tipos de secreto se ocultan, y un stacktrace, un `ls -l` y un `ORA-00942`
+quedan intactos.
 
 ## Fuera de alcance a propósito
 

@@ -225,3 +225,43 @@ func ExtractCode(answer string) string {
 	}
 	return strings.TrimSpace(rest[:end])
 }
+
+// SSHErrorPrompt arma el pedido de "explicá este error de la terminal".
+//
+// El contexto de sistema va PRIMERO y en su propia sección: es lo que decide si
+// la respuesta sirve. Un mismo error se arregla distinto en SunOS, RHEL, Ubuntu
+// y Alpine —cambian el gestor de paquetes, las rutas, el init y hasta las
+// banderas de los comandos—, y un agente sin ese dato contesta con la
+// distribución más común de su entrenamiento.
+//
+// Cuando no se pudo averiguar, **se dice que no se sabe** en vez de callarlo:
+// un agente que sabe que no sabe pregunta o da la respuesta portable, y las dos
+// son mejores que una respuesta segura sobre el sistema equivocado.
+func SSHErrorPrompt(serverName, osInfo, output string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Explicá qué está fallando en esta salida de terminal del servidor %q y cómo arreglarlo.\n\n", serverName)
+
+	b.WriteString("## Sistema operativo del servidor\n\n")
+	if strings.TrimSpace(osInfo) == "" {
+		b.WriteString("No se pudo determinar. **No supongas que es Linux**: puede ser SunOS/Solaris, AIX o BSD.\n" +
+			"Si la solución depende del sistema, decilo y ofrecé la variante portable, o pedí que se corra `uname -a`.\n\n")
+	} else {
+		b.WriteString("```\n" + osInfo + "\n```\n\n" +
+			"Usá los comandos, rutas y gestor de paquetes de ESE sistema, no los de la distribución más común.\n\n")
+	}
+
+	b.WriteString("## Salida de la terminal\n\n```\n")
+	b.WriteString(output)
+	b.WriteString("\n```\n\n")
+
+	b.WriteString(`## Qué contestar
+
+1. Qué falló, en una o dos frases.
+2. Por qué pasa.
+3. Los comandos exactos para arreglarlo, en un bloque de código, **para el sistema operativo de arriba**.
+
+**No ejecutes nada.** Devolvés texto: los comandos los corre el usuario en su terminal, donde puede
+leerlos antes. Si alguno es destructivo o irreversible, decilo antes del bloque.
+`)
+	return b.String()
+}

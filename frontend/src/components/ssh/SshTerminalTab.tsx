@@ -8,6 +8,7 @@ import type {Theme} from '../../hooks/useTheme'
 import {resolveTerminalTheme, type TerminalThemeId} from '../../xterm/terminalThemes'
 import ProductionGuardDialog from './ProductionGuardDialog'
 import SshSnippetsPanel from './SshSnippetsPanel'
+import SshErrorAnalysis from './SshErrorAnalysis'
 import SshHistoryPanel from './SshHistoryPanel'
 import SshTerminalThemePicker from './SshTerminalThemePicker'
 import Icon from '../Icon'
@@ -81,6 +82,13 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
     const containerRef = useRef<HTMLDivElement>(null)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const termRef = useRef<Terminal | null>(null)
+    // Análisis del error abierto: `selection` es lo que estaba marcado al
+    // pedirlo (vacío = las últimas líneas del buffer). Se congela al abrir para
+    // que seguir usando la terminal no cambie lo que se está analizando.
+    const [analysis, setAnalysis] = useState<{selection: string} | null>(null)
+    // Si hay algo seleccionado ahora mismo, para ofrecer "analizar lo marcado"
+    // en vez de las últimas líneas.
+    const [hasSelection, setHasSelection] = useState(false)
     // El FitAddon se guarda en un ref además de usarse dentro del efecto de
     // montaje: cambiar el cuerpo de fuente obliga a remedir desde afuera de
     // ese efecto (ver más abajo).
@@ -155,6 +163,10 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
         term.open(container)
         fitAddon.fit()
         termRef.current = term
+        // El botón de analizar cambia de texto según haya o no una selección:
+        // "analizar lo seleccionado" y "analizar el último error" son dos
+        // acciones distintas y conviene que se note antes de apretarlo.
+        term.onSelectionChange(() => setHasSelection(term.hasSelection()))
 
         // EventsOn BEFORE OpenSSHTerminal — avoids the race between the
         // first emitted chunk and the subscription, same contract as
@@ -396,6 +408,26 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                         <Icon name="history" size={14} />
                         Historial
                     </button>
+                    {/* Analizar con el agente. El texto cambia según haya o no
+                        una selección: analizar lo marcado y analizar el último
+                        error son dos cosas distintas, y conviene que se note
+                        antes de apretar. */}
+                    <button
+                        onClick={() =>
+                            setAnalysis({selection: termRef.current?.getSelection() ?? ''})
+                        }
+                        title={
+                            hasSelection
+                                ? 'Le manda al agente exactamente lo que tenés seleccionado, junto con el sistema operativo del servidor, y explica qué falló. No ejecuta nada.'
+                                : 'Le manda al agente las últimas líneas de esta terminal, junto con el sistema operativo del servidor, y explica qué falló. No ejecuta nada.'
+                        }
+                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
+                            analysis ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
+                        }`}
+                    >
+                        <Icon name="troubleshoot" size={14} />
+                        {hasSelection ? 'Analizar selección' : 'Analizar error'}
+                    </button>
                     <button
                         onClick={() => {
                             setShowSnippets((v) => !v)
@@ -463,6 +495,18 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                 />
             )}
             {showSnippets && <SshSnippetsPanel connId={connId} onClose={() => setShowSnippets(false)} />}
+            {analysis && (
+                <SshErrorAnalysis
+                    connId={connId}
+                    connName={connName}
+                    selection={analysis.selection}
+                    onClose={() => setAnalysis(null)}
+                    // Se escribe SIN el retorno de carro: el comando queda en
+                    // la línea, se puede leer y editar, y el Enter lo pone el
+                    // usuario. Es la misma decisión que el panel de historial.
+                    onInsertCommand={(cmd) => void WriteSSHTerminal(connId, cmd)}
+                />
+            )}
             {showThemePicker && (
                 <SshTerminalThemePicker
                     value={terminalThemeId}

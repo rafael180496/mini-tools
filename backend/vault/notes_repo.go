@@ -17,12 +17,16 @@ import (
 // el archivo entero necesitaría SQLCipher y cgo, que están prohibidos
 // (.claude/rules/technical.md puntos 1 y 3).
 //
-// **Privacidad por defecto.** Una nota nace con `is_private = 1` y el default
-// vive en el esquema, no en este código: una nota creada por un camino nuevo
-// nace privada igual. Ninguna función de este archivo devuelve el contenido de
-// una nota privada a un consumidor que no sea la propia interfaz — ver
-// `NoteForAI`, que es la única puerta por la que el agente y el servidor MCP
-// pueden pedir una nota.
+// **Visible por defecto, ocultable por decisión.** Una nota nace con
+// `is_private = 0`: la base de conocimiento existe justamente para que el
+// agente pueda consultarla, y una nota que nace invisible no aparece hasta que
+// alguien se acuerda de abrirla. Marcar una como privada es entonces un acto
+// deliberado — y cuando lo es, el bloqueo es absoluto: `NoteForAI` es la única
+// puerta por la que el agente y el servidor MCP pueden pedir una nota, y filtra
+// en la propia consulta SQL.
+//
+// El default vive en el ESQUEMA (migración 34) y no en este código, para que
+// una nota creada por un camino nuevo herede la misma política.
 //
 // **Lo que va en claro y por qué.** El hash del título (para resolver enlaces
 // y dibujar el grafo sin descifrar nada), el flag de privacidad (para poder
@@ -40,7 +44,8 @@ type Note struct {
 	// sumar un parser YAML al binario está descartado por la regla 12, igual
 	// que en backend/agentctx/frontmatter.go).
 	Frontmatter string `json:"frontmatter"`
-	// IsPrivate es si está oculta para los agentes. Nace en true.
+	// IsPrivate es si está oculta para los agentes. Nace en false: hay que
+	// marcarla.
 	IsPrivate bool  `json:"isPrivate"`
 	CreatedAt int64 `json:"createdAt"`
 	UpdatedAt int64 `json:"updatedAt"`
@@ -60,6 +65,8 @@ type NoteSummary struct {
 	// LinkCount es cuántos enlaces salen de esta nota, para poder marcar las
 	// huérfanas sin abrirlas.
 	LinkCount int `json:"linkCount"`
+	// FolderID es la carpeta donde está, o "" para la raíz (migración 38).
+	FolderID string `json:"folderId"`
 }
 
 // NoteLink es una arista del grafo ya resuelta contra las notas existentes.
@@ -114,9 +121,13 @@ func contentChecksum(title, content, frontmatter string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// CreateNote guarda una nota nueva. Nace PRIVADA, sin excepción y sin
-// parámetro para pedir lo contrario: abrirla a la IA es una acción explícita
-// posterior (SetNotePrivacy), no algo que se pueda pasar de largo al crearla.
+// CreateNote guarda una nota nueva.
+//
+// La privacidad NO es un parámetro: la nota toma el default del esquema
+// (visible) y cambiarla es siempre `SetNotePrivacy`, una acción con su propia
+// confirmación. Un parámetro acá permitiría que un camino de creación nuevo
+// decidiera la política por su cuenta, que es exactamente lo que no queremos
+// que pase sin que nadie lo note.
 func (s *Store) CreateNote(id, title, content, frontmatter string) error {
 	encTitle, titleNonce, err := s.encryptOptional(title)
 	if err != nil {
@@ -135,7 +146,7 @@ func (s *Store) CreateNote(id, title, content, frontmatter string) error {
 	if _, err := s.db.Exec(
 		`INSERT INTO vault_notes (id, encrypted_title, title_nonce, encrypted_content, content_nonce,
 		        encrypted_frontmatter, frontmatter_nonce, title_hash, is_private, checksum_hash, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
 		id, encTitle, titleNonce, encContent, contentNonce, encFm, fmNonce,
 		TitleHash(title), contentChecksum(title, content, frontmatter), now, now,
 	); err != nil {
@@ -179,11 +190,24 @@ func (s *Store) UpdateNote(id, title, content, frontmatter string) error {
 	return s.reindexLinks(id, content)
 }
 
-// SetNotePrivacy abre o cierra una nota para los agentes.
+// SetNoteFolder mueve una nota a una carpeta ("" = raíz).
+//
+// No valida que la carpeta exista, mismo criterio que `connections.folder_id`:
+// una nota cuya carpeta se borró aparece en la raíz, que es un estado
+// entendible, en vez de fallar al guardar por algo que el usuario ya resolvió
+// borrando la carpeta.
+func (s *Store) SetNoteFolder(id, folderID string) error {
+	if _, err := s.db.Exec(`UPDATE vault_notes SET folder_id = ? WHERE id = ?`, folderID, id); err != nil {
+		return fmt.Errorf("vault: moviendo la nota de carpeta: %w", err)
+	}
+	return nil
+}
+
+// SetNotePrivacy esconde o vuelve a mostrar una nota a los agentes.
 //
 // Es su propia operación y no un campo más de UpdateNote a propósito: es el
-// único lugar del código donde una nota pasa de invisible a legible para un
-// proceso externo, y tiene que poder auditarse leyendo una función.
+// único lugar del código donde cambia lo que un proceso externo puede leer, y
+// tiene que poder auditarse leyendo una función.
 func (s *Store) SetNotePrivacy(id string, private bool) error {
 	v := 1
 	if !private {
@@ -203,6 +227,11 @@ func (s *Store) SetNotePrivacy(id string, private bool) error {
 func (s *Store) DeleteNote(id string) error {
 	if _, err := s.db.Exec(`DELETE FROM vault_note_links WHERE source_note_id = ?`, id); err != nil {
 		return fmt.Errorf("vault: borrando los enlaces de la nota: %w", err)
+	}
+	// Las imágenes se van con la nota: dejarlas sería basura cifrada que nadie
+	// puede ver ni borrar desde la interfaz.
+	if err := s.DeleteNoteAssets(id); err != nil {
+		return err
 	}
 	if _, err := s.db.Exec(`DELETE FROM vault_notes WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("vault: borrando la nota: %w", err)
@@ -248,7 +277,8 @@ func (s *Store) scanNote(row *sql.Row) (Note, error) {
 func (s *Store) ListNotes() ([]NoteSummary, error) {
 	rows, err := s.db.Query(
 		`SELECT n.id, n.encrypted_title, n.title_nonce, n.is_private, n.updated_at,
-		        (SELECT COUNT(*) FROM vault_note_links l WHERE l.source_note_id = n.id)
+		        (SELECT COUNT(*) FROM vault_note_links l WHERE l.source_note_id = n.id),
+		        COALESCE(n.folder_id, '')
 		 FROM vault_notes n ORDER BY n.updated_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: leyendo las notas: %w", err)
@@ -260,64 +290,12 @@ func (s *Store) ListNotes() ([]NoteSummary, error) {
 		var s2 NoteSummary
 		var enc, nonce []byte
 		var private int
-		if err := rows.Scan(&s2.ID, &enc, &nonce, &private, &s2.UpdatedAt, &s2.LinkCount); err != nil {
+		if err := rows.Scan(&s2.ID, &enc, &nonce, &private, &s2.UpdatedAt, &s2.LinkCount, &s2.FolderID); err != nil {
 			return nil, err
 		}
 		s2.IsPrivate = private != 0
 		s2.Title = s.decryptOptional(enc, nonce)
 		out = append(out, s2)
-	}
-	return out, rows.Err()
-}
-
-// SearchNotes busca texto en títulos y cuerpos, DESCIFRANDO EN MEMORIA.
-//
-// **Por qué así y no con un índice.** Un índice de texto sobre contenido
-// cifrado obliga a guardar algo derivado del texto plano —tokens, hashes de
-// palabra, n-gramas— y eso es un canal lateral: con un diccionario se puede
-// preguntar "¿esta nota contiene la palabra *despido*?" sin tener la clave.
-// Descifrar en memoria no filtra nada, y a escala de notas personales (cientos,
-// no millones) la diferencia no se percibe. Si algún día se percibe, el
-// problema a resolver será ese, no este.
-//
-// El resultado se acota: una búsqueda que devuelve todo no filtró nada.
-func (s *Store) SearchNotes(query string, limit int) ([]NoteSummary, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" {
-		return s.ListNotes()
-	}
-
-	rows, err := s.db.Query(
-		`SELECT id, encrypted_title, title_nonce, encrypted_content, content_nonce, is_private, updated_at
-		 FROM vault_notes ORDER BY updated_at DESC`)
-	if err != nil {
-		return nil, fmt.Errorf("vault: buscando en las notas: %w", err)
-	}
-	defer rows.Close()
-
-	out := []NoteSummary{}
-	for rows.Next() {
-		if len(out) >= limit {
-			break
-		}
-		var id string
-		var encTitle, titleNonce, encContent, contentNonce []byte
-		var private int
-		var updated int64
-		if err := rows.Scan(&id, &encTitle, &titleNonce, &encContent, &contentNonce, &private, &updated); err != nil {
-			return nil, err
-		}
-		title := s.decryptOptional(encTitle, titleNonce)
-		if !strings.Contains(strings.ToLower(title), q) {
-			content := s.decryptOptional(encContent, contentNonce)
-			if !strings.Contains(strings.ToLower(content), q) {
-				continue
-			}
-		}
-		out = append(out, NoteSummary{ID: id, Title: title, IsPrivate: private != 0, UpdatedAt: updated})
 	}
 	return out, rows.Err()
 }

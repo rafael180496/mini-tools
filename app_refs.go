@@ -89,11 +89,7 @@ func (a *App) resolveRef(r agentctx.Ref, module, contextID string) agentctx.Reso
 	case agentctx.KindGit:
 		return a.resolveGitRef(res, module, contextID)
 	case agentctx.KindSSH:
-		// La terminal SSH streamea su salida y no la retiene: no hay buffer
-		// del que leer. Se dice eso y no "no encontrado", que mandaría a
-		// buscar un alias mal escrito que no es el problema.
-		res.Err = "las referencias a la terminal SSH todavía no están disponibles: la terminal no guarda su salida"
-		return res
+		return a.resolveSSHRef(res)
 	case agentctx.KindNote:
 		return a.resolveNoteRef(res)
 	}
@@ -234,6 +230,40 @@ func (a *App) resolveExplainRef(res agentctx.Resolved, module, contextID string)
 	// La consulta va junto al plan: un plan sin su SQL obliga al agente a
 	// deducir qué se ejecutó, y esa deducción es donde se equivoca.
 	res.Body = truncateBody("-- consulta\n" + e.SQLText + "\n\n-- plan\n" + string(planJSON))
+	return res
+}
+
+// resolveSSHRef inyecta las últimas líneas de una terminal SSH abierta.
+//
+// Se escribe `@ssh:Alias` o `@ssh:Alias/last_error`. Las dos formas hacen lo
+// mismo —devolver la cola del buffer— y la segunda existe porque es como uno lo
+// nombra: "el último error". Fingir que son dos cosas distintas sería inventar
+// una distinción que no está.
+//
+// **Nunca la contraseña ni la clave de la conexión**: lo que sale es lo que
+// imprimió el shell, que es lo que el usuario ya vio en pantalla.
+func (a *App) resolveSSHRef(res agentctx.Resolved) agentctx.Resolved {
+	alias, _, _ := strings.Cut(res.Value, "/")
+	conn, err := a.connByNameOrID(alias)
+	if err != nil {
+		res.Err = err.Error()
+		return res
+	}
+	if conn.DBType != "ssh" {
+		res.Err = fmt.Sprintf("%q no es una conexión SSH", conn.Name)
+		return res
+	}
+	lines, err := a.SSHTail(conn.ID, 50)
+	if err != nil {
+		res.Err = err.Error()
+		return res
+	}
+	if len(lines) == 0 {
+		res.Err = fmt.Sprintf("la terminal de %s todavía no imprimió nada", conn.Name)
+		return res
+	}
+	res.Title = fmt.Sprintf("%s · últimas %d líneas", conn.Name, len(lines))
+	res.Body = truncateBody(strings.Join(lines, "\n"))
 	return res
 }
 

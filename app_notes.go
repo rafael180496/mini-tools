@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -59,8 +60,9 @@ func (a *App) GetNote(id string) (vault.Note, error) {
 	return a.vault.GetNote(id)
 }
 
-// CreateNote crea una nota. **Nace privada**, y el id lo genera el backend con
-// `crypto/rand` (misma convención que el resto del vault: sin `google/uuid`).
+// CreateNote crea una nota. Nace **visible para los agentes** (ver la migración
+// 34); esconderla es `SetNotePrivacy`. El id lo genera el backend con
+// `crypto/rand`, la convención de ids de este proyecto.
 func (a *App) CreateNote(title, content string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
@@ -103,7 +105,7 @@ func (a *App) UpdateNote(id, title, content, frontmatter string) error {
 	return a.vault.UpdateNote(id, title, content, frontmatter)
 }
 
-// SetNotePrivacy abre o cierra una nota para los agentes.
+// SetNotePrivacy esconde o vuelve a mostrar una nota a los agentes.
 func (a *App) SetNotePrivacy(id string, private bool) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
@@ -157,13 +159,18 @@ func (a *App) NoteTitles() ([]NoteTitle, error) {
 	return out, nil
 }
 
-// SetNotesLayout persiste qué nota quedó abierta y el ancho de la lista.
+// SetNotesLastOpen recuerda qué nota quedó abierta, para reabrirla al arrancar.
+//
+// Solo el id, y **no el ancho del panel**: la versión anterior de esta función
+// escribía los dos, así que abrir una nota pisaba el ancho con un valor fijo
+// —el que pasara quien llamara— y borraba el que el usuario hubiera dejado. Dos
+// cosas que cambian por motivos distintos no se guardan con la misma llamada.
 //
 // Sin `requireUnlocked`, igual que SetAgentLayout y por el mismo motivo: es
-// disposición de la interfaz, sin contenido adentro. El ID de una nota es un
-// identificador opaco generado al azar, no dice nada de ella.
-func (a *App) SetNotesLayout(lastOpen string, sideWidth int) error {
-	return a.vault.SetNotesLayout(lastOpen, sideWidth)
+// disposición de la interfaz. El id de una nota es un identificador opaco
+// generado al azar, no dice nada de ella.
+func (a *App) SetNotesLastOpen(noteID string) error {
+	return a.vault.SetNotesLastOpen(noteID)
 }
 
 // newNoteID genera el id con crypto/rand + hex, la convención de ids de este
@@ -174,4 +181,116 @@ func newNoteID() (string, error) {
 		return "", fmt.Errorf("app: generando el id de la nota: %w", err)
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// NotesGraph devuelve el grafo de conocimiento: nodos y aristas, **sin el
+// contenido de ninguna nota**. Ver Store.NoteGraph.
+func (a *App) NotesGraph() (vault.NoteGraphData, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return vault.NoteGraphData{}, err
+	}
+	return a.vault.NoteGraph()
+}
+
+// SetNoteFolder mueve una nota a una carpeta ("" = raíz).
+//
+// Las carpetas de notas reusan la tabla `folders` con `scope = "note"`, el
+// mismo mecanismo que ya organiza conexiones, SSH y repositorios: cada módulo
+// tiene su propio árbol y nunca se mezclan.
+func (a *App) SetNoteFolder(noteID, folderID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetNoteFolder(noteID, folderID)
+}
+
+// NoteStats son los números que van en la barra de estado de una nota:
+// cuántas la enlazan y cuánto tiene escrito.
+type NoteStats struct {
+	Backlinks int `json:"backlinks"`
+	Words     int `json:"words"`
+	Chars     int `json:"chars"`
+}
+
+// NoteStatsFor calcula los números de una nota.
+//
+// Las palabras se cuentan en el backend y no en el frontend porque el
+// contenido ya está descifrado acá: mandarlo entero solo para contarlo sería
+// pasear el texto por el binding sin motivo.
+func (a *App) NoteStatsFor(id string) (NoteStats, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return NoteStats{}, err
+	}
+	note, err := a.vault.GetNote(id)
+	if err != nil {
+		return NoteStats{}, err
+	}
+	back, err := a.vault.NoteBacklinks(id)
+	if err != nil {
+		return NoteStats{}, err
+	}
+	return NoteStats{
+		Backlinks: len(back),
+		Words:     len(strings.Fields(note.Content)),
+		Chars:     len([]rune(note.Content)),
+	}, nil
+}
+
+// SaveNoteImage guarda una imagen pegada en una nota y devuelve la referencia
+// que hay que escribir en el Markdown (`nota:ID`).
+//
+// `dataBase64` llega como `data:image/png;base64,…` (lo que da el portapapeles
+// del navegador). Se valida que sea una imagen: el vault de notas no es un
+// almacén de archivos arbitrarios, y aceptar cualquier cosa sería convertirlo
+// en uno sin decirlo.
+func (a *App) SaveNoteImage(noteID, dataURL string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+
+	const prefix = "data:"
+	if !strings.HasPrefix(dataURL, prefix) {
+		return "", fmt.Errorf("app: eso no es una imagen")
+	}
+	comma := strings.Index(dataURL, ",")
+	if comma < 0 {
+		return "", fmt.Errorf("app: la imagen llegó incompleta")
+	}
+	header := dataURL[len(prefix):comma]
+	mime, _, _ := strings.Cut(header, ";")
+	if !strings.HasPrefix(mime, "image/") {
+		return "", fmt.Errorf("app: solo se pueden pegar imágenes en una nota, y esto es %q", mime)
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(dataURL[comma+1:])
+	if err != nil {
+		return "", fmt.Errorf("app: no se pudo leer la imagen: %w", err)
+	}
+
+	id, err := newNoteID()
+	if err != nil {
+		return "", err
+	}
+	if err := a.vault.SaveNoteAsset(id, noteID, mime, raw); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// GetNoteImage devuelve una imagen descifrada como base64, para mostrarla.
+func (a *App) GetNoteImage(id string) (vault.NoteAsset, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return vault.NoteAsset{}, err
+	}
+	return a.vault.GetNoteAsset(id)
+}
+
+// NoteTags devuelve las etiquetas que ya existen en tus notas, con cuántas la
+// usan. Alimenta el autocompletado de `#`: mismo principio que el
+// autocompletado de SQL — se ofrecen las que ya existen, no inventadas.
+func (a *App) NoteTags() ([]vault.NoteTag, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.AllNoteTags()
 }

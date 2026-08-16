@@ -17,6 +17,7 @@ import {git} from '../models';
 import {mcpconf} from '../models';
 import {agents} from '../models';
 import {localterm} from '../models';
+import {mcpserver} from '../models';
 
 export function ActiveConnectionIds():Promise<Array<string>>;
 
@@ -52,6 +53,8 @@ export function AgentResolveRefs(arg1:string,arg2:string,arg3:string):Promise<Ar
 
 export function AnalyzeRedisPrefixes(arg1:string,arg2:string,arg3:number,arg4:boolean):Promise<db.RedisPrefixReport>;
 
+export function AnalyzeSSHError(arg1:string,arg2:string,arg3:number):Promise<main.SSHErrorAnalysis>;
+
 export function AppVersion():Promise<string>;
 
 export function AppendSshHistory(arg1:string,arg2:string):Promise<boolean>;
@@ -63,6 +66,8 @@ export function BackupVault(arg1:string):Promise<string>;
 export function BeginRedisTransaction(arg1:string):Promise<void>;
 
 export function BeginTransaction(arg1:string):Promise<void>;
+
+export function CallTool(arg1:string,arg2:Record<string, any>):Promise<string>;
 
 export function CancelAgentChat(arg1:string):Promise<void>;
 
@@ -179,6 +184,8 @@ export function GetMongoDefaultDatabase(arg1:string):Promise<string>;
 export function GetMongoIndexes(arg1:string,arg2:string,arg3:string):Promise<Array<db.MongoIndex>>;
 
 export function GetNote(arg1:string):Promise<vault.Note>;
+
+export function GetNoteImage(arg1:string):Promise<vault.NoteAsset>;
 
 export function GetObjectDDL(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number):Promise<string>;
 
@@ -420,7 +427,11 @@ export function ListSshHistory(arg1:string,arg2:number):Promise<Array<vault.SshH
 
 export function ListSshSnippets():Promise<Array<vault.SshSnippet>>;
 
+export function ListTools():Promise<Array<mcpserver.ToolInfo>>;
+
 export function LocalShellLabel(arg1:string):Promise<string>;
+
+export function MCPServerStatus():Promise<main.MCPStatus>;
 
 export function MakeSftpDir(arg1:string,arg2:string):Promise<void>;
 
@@ -434,7 +445,13 @@ export function NoteBacklinks(arg1:string):Promise<Array<vault.NoteLink>>;
 
 export function NoteLinks(arg1:string):Promise<Array<vault.NoteLink>>;
 
+export function NoteStatsFor(arg1:string):Promise<main.NoteStats>;
+
+export function NoteTags():Promise<Array<vault.NoteTag>>;
+
 export function NoteTitles():Promise<Array<main.NoteTitle>>;
+
+export function NotesGraph():Promise<vault.NoteGraphData>;
 
 export function OpenAgentSession(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number,arg6:boolean):Promise<void>;
 
@@ -516,7 +533,11 @@ export function RollbackTransaction(arg1:string):Promise<void>;
 
 export function RunRedisLuaScript(arg1:string,arg2:string,arg3:Array<string>,arg4:Array<string>):Promise<redisquery.LuaResult>;
 
+export function SSHCwd(arg1:string):Promise<string>;
+
 export function SSHKeyUsage(arg1:string):Promise<Array<string>>;
+
+export function SSHTail(arg1:string,arg2:number):Promise<Array<string>>;
 
 export function SampleMongoFields(arg1:string,arg2:string,arg3:string):Promise<Array<db.MongoFieldInfo>>;
 
@@ -525,6 +546,8 @@ export function SaveChatAttachment(arg1:string,arg2:string):Promise<string>;
 export function SaveConnection(arg1:main.ConnectionInput,arg2:boolean):Promise<vault.ConnectionSummary>;
 
 export function SaveDDLToFile(arg1:string,arg2:string):Promise<string>;
+
+export function SaveNoteImage(arg1:string,arg2:string):Promise<string>;
 
 export function SaveSQLFile(arg1:string,arg2:string):Promise<void>;
 
@@ -570,9 +593,13 @@ export function SetGitPanelSessions(arg1:Array<vault.GitPanelSession>):Promise<v
 
 export function SetLocalShell(arg1:string):Promise<void>;
 
+export function SetMCPServerEnabled(arg1:boolean):Promise<void>;
+
+export function SetNoteFolder(arg1:string,arg2:string):Promise<void>;
+
 export function SetNotePrivacy(arg1:string,arg2:boolean):Promise<void>;
 
-export function SetNotesLayout(arg1:string,arg2:number):Promise<void>;
+export function SetNotesLastOpen(arg1:string):Promise<void>;
 
 export function SetOpenTabs(arg1:Array<vault.OpenTabInfo>):Promise<void>;
 
