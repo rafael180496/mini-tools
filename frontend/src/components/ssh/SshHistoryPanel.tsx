@@ -1,15 +1,29 @@
 import {useEffect, useMemo, useState} from 'react'
-import {ClearSshHistory, ListSshHistory, SetSshHistoryEnabled, SshHistoryEnabled} from '../../../wailsjs/go/main/App'
+import {SetSshHistoryEnabled, SshHistoryEnabled} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 
 interface SshHistoryPanelProps {
-    // La conexión cuya terminal está abierta: el historial es por servidor,
-    // porque un comando del servidor de facturación no significa nada en el de
-    // correo y mezclarlos convertiría la lista en ruido.
-    connId: string
-    connName: string
+    // Qué historial se está mirando, ya resuelto por quien abre el panel.
+    //
+    // Es por ÁMBITO y no global porque un comando del servidor de facturación
+    // no significa nada en el de correo —ni uno de PowerShell en zsh— y
+    // mezclarlos convertiría la lista en ruido. Quién es ese ámbito lo decide
+    // el llamador: una conexión SSH o el intérprete de una terminal local.
+    //
+    // `scope` es el identificador (sirve para recargar al cambiar de ámbito) y
+    // `scopeLabel` es cómo se lo nombra en pantalla ("PRODMAIN", "PowerShell").
+    scope: string
+    scopeLabel: string
+    // De dónde salen y cómo se borran. Inyectados porque el historial SSH y el
+    // de las terminales locales viven en tablas distintas (una cuelga de la
+    // conexión, la otra del intérprete) y el panel es el mismo.
+    load: (limit: number) => Promise<vault.SshHistoryEntry[]>
+    clear: () => Promise<number>
+    // Qué NO borra el botón de limpiar, dicho en la propia advertencia: en un
+    // servidor es su ~/.bash_history, en la máquina local el del shell de uno.
+    keepsNote: string
     onClose: () => void
     // Escribe en la terminal sin ejecutar (queda en la línea, editable).
     onPaste: (command: string) => void
@@ -24,7 +38,7 @@ interface SshHistoryPanelProps {
 // cifrado en el vault (ver backend/vault/ssh_history_repo.go), y este panel es
 // dónde se lo mira, se lo reusa y —lo que hace que guardarlo sea aceptable— se
 // lo borra.
-export default function SshHistoryPanel({connId, connName, onClose, onPaste, onRun}: SshHistoryPanelProps) {
+export default function SshHistoryPanel({scope, scopeLabel, load, clear, keepsNote, onClose, onPaste, onRun}: SshHistoryPanelProps) {
     const [entries, setEntries] = useState<vault.SshHistoryEntry[]>([])
     const [filter, setFilter] = useState('')
     const [enabled, setEnabled] = useState(true)
@@ -34,7 +48,7 @@ export default function SshHistoryPanel({connId, connName, onClose, onPaste, onR
 
     function reload() {
         setLoading(true)
-        Promise.all([ListSshHistory(connId, 500), SshHistoryEnabled()])
+        Promise.all([load(500), SshHistoryEnabled()])
             .then(([list, on]) => {
                 setEntries(list ?? [])
                 setEnabled(on)
@@ -48,7 +62,7 @@ export default function SshHistoryPanel({connId, connName, onClose, onPaste, onR
     // suscripción a "se ejecutó un comando": el panel es algo que se abre a
     // buscar algo puntual, y refrescarlo con cada Enter costaría una consulta
     // al vault por tecla para mover una lista que nadie está mirando.
-    useEffect(reload, [connId])
+    useEffect(reload, [scope])
 
     const q = filter.trim().toLowerCase()
     const visible = useMemo(() => (q ? entries.filter((e) => e.command.toLowerCase().includes(q)) : entries), [entries, q])
@@ -67,7 +81,7 @@ export default function SshHistoryPanel({connId, connName, onClose, onPaste, onR
     async function doClear() {
         setConfirmClear(false)
         try {
-            await ClearSshHistory(connId)
+            await clear()
             setEntries([])
         } catch (e) {
             setError(String(e))
@@ -123,7 +137,7 @@ export default function SshHistoryPanel({connId, connName, onClose, onPaste, onR
                         {q
                             ? `Ningún comando coincide con «${filter}».`
                             : enabled
-                              ? `Todavía no hay comandos registrados para "${connName}". Se van guardando a medida que los ejecutás en su terminal.`
+                              ? `Todavía no hay comandos registrados para "${scopeLabel}". Se van guardando a medida que los ejecutás en su terminal.`
                               : 'El registro está apagado, así que no se está guardando nada nuevo.'}
                     </p>
                 ) : (
@@ -180,7 +194,7 @@ export default function SshHistoryPanel({connId, connName, onClose, onPaste, onR
                     title={
                         entries.length === 0
                             ? 'No hay nada que borrar en esta conexión'
-                            : `Borra los ${entries.length} comandos guardados de "${connName}". No toca el historial del propio shell en el servidor.`
+                            : `Borra los ${entries.length} comandos guardados de "${scopeLabel}". ${keepsNote}`
                     }
                     className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-outline-variant py-1.5 text-[11px] text-error hover:bg-error-container/40 disabled:opacity-40 disabled:hover:bg-transparent"
                 >
@@ -192,7 +206,7 @@ export default function SshHistoryPanel({connId, connName, onClose, onPaste, onR
             {confirmClear && (
                 <ConfirmDialog
                     title="Limpiar el historial"
-                    description={`Esto borra del vault los ${entries.length} comandos guardados de "${connName}". No se puede deshacer. El historial del propio shell en el servidor (~/.bash_history y compañía) no se toca: eso vive allá y se limpia allá.`}
+                    description={`Esto borra del vault los ${entries.length} comandos guardados de "${scopeLabel}". No se puede deshacer. ${keepsNote}`}
                     confirmLabel="Limpiar"
                     danger
                     onConfirm={doClear}

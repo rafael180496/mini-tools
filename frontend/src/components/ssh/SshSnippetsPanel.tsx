@@ -10,7 +10,6 @@ import {
     RenameFolder,
     ReorderFolder,
     UpdateSshSnippet,
-    WriteSSHTerminal,
 } from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
@@ -19,11 +18,15 @@ import MoveToFolderMenu, {flattenForMenu} from '../sidebar/MoveToFolderMenu'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
 
 interface SshSnippetsPanelProps {
-    // Which live terminal session Ejecutar/Pegar write into — the panel
-    // itself is global (same snippet list from any SSH tab, see
-    // vault.SshSnippet's doc comment), only the target of Run/Paste is tab-
-    // scoped.
-    connId: string
+    // Dónde escriben Ejecutar/Pegar. La lista de snippets es GLOBAL (la misma
+    // desde cualquier terminal, ver el doc de vault.SshSnippet); lo único
+    // atado a la pestaña es a qué sesión se le mandan los bytes.
+    //
+    // Se recibe como función y no como id de conexión porque el mismo panel lo
+    // usan las terminales SSH y las LOCALES del sistema operativo, y cada una
+    // escribe por su propio binding. Un snippet no sabe —ni tiene por qué
+    // saber— si del otro lado hay un servidor o la máquina de uno.
+    write: (data: string) => void
     onClose: () => void
 }
 
@@ -40,17 +43,17 @@ const SNIPPET_FOLDER_SCOPE = 'ssh-snippet'
 // shell's prompt, so the user can review/extend it before pressing Enter
 // themselves — same distinction Termius' own snippet Run/Paste buttons make.
 // Single-line snippets: Run submits it, Paste just types it.
-function runSnippet(connId: string, script: string) {
+function runSnippet(write: (data: string) => void, script: string) {
     const lines = script.split('\n')
-    void WriteSSHTerminal(connId, lines.map((l) => l + '\r').join(''))
+    write(lines.map((l) => l + '\r').join(''))
 }
 
-function pasteSnippet(connId: string, script: string) {
+function pasteSnippet(write: (data: string) => void, script: string) {
     const lines = script.split('\n')
-    void WriteSSHTerminal(connId, lines.map((l, i) => (i < lines.length - 1 ? l + '\r' : l)).join(''))
+    write(lines.map((l, i) => (i < lines.length - 1 ? l + '\r' : l)).join(''))
 }
 
-export default function SshSnippetsPanel({connId, onClose}: SshSnippetsPanelProps) {
+export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps) {
     const [snippets, setSnippets] = useState<vault.SshSnippet[]>([])
     const [folders, setFolders] = useState<vault.Folder[]>([])
     const [loading, setLoading] = useState(true)
@@ -284,7 +287,7 @@ export default function SshSnippetsPanel({connId, onClose}: SshSnippetsPanelProp
                 </pre>
                 <div className="mt-1.5 flex gap-1.5">
                     <button
-                        onClick={() => runSnippet(connId, s.script)}
+                        onClick={() => runSnippet(write, s.script)}
                         title="Ejecuta cada línea de este snippet en la terminal, como si las tipearas y presionaras Enter"
                         className="flex items-center gap-1 rounded bg-secondary-container px-2 py-1 text-[11px] font-medium text-on-secondary-container hover:opacity-90"
                     >
@@ -292,7 +295,7 @@ export default function SshSnippetsPanel({connId, onClose}: SshSnippetsPanelProp
                         Ejecutar
                     </button>
                     <button
-                        onClick={() => pasteSnippet(connId, s.script)}
+                        onClick={() => pasteSnippet(write, s.script)}
                         title="Escribe este snippet en la terminal sin ejecutarlo — la última línea queda sin confirmar para que la revises antes de Enter"
                         className="flex items-center gap-1 rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >

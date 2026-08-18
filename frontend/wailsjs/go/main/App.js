@@ -50,6 +50,10 @@ export function AgentChatSupported(arg1) {
   return window['go']['main']['App']['AgentChatSupported'](arg1);
 }
 
+export function AgentDraftCommit(arg1, arg2) {
+  return window['go']['main']['App']['AgentDraftCommit'](arg1, arg2);
+}
+
 export function AgentFixSQL(arg1, arg2, arg3) {
   return window['go']['main']['App']['AgentFixSQL'](arg1, arg2, arg3);
 }
@@ -66,6 +70,10 @@ export function AgentPlans() {
   return window['go']['main']['App']['AgentPlans']();
 }
 
+export function AgentQueryLimits(arg1) {
+  return window['go']['main']['App']['AgentQueryLimits'](arg1);
+}
+
 export function AgentRefPolicies() {
   return window['go']['main']['App']['AgentRefPolicies']();
 }
@@ -78,6 +86,10 @@ export function AgentUsageAll(arg1) {
   return window['go']['main']['App']['AgentUsageAll'](arg1);
 }
 
+export function AgentUsageLimits() {
+  return window['go']['main']['App']['AgentUsageLimits']();
+}
+
 export function AnalyzeRedisPrefixes(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AnalyzeRedisPrefixes'](arg1, arg2, arg3, arg4);
 }
@@ -88,6 +100,10 @@ export function AnalyzeSSHError(arg1, arg2, arg3, arg4) {
 
 export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
+}
+
+export function AppendLocalHistory(arg1, arg2) {
+  return window['go']['main']['App']['AppendLocalHistory'](arg1, arg2);
 }
 
 export function AppendSshHistory(arg1, arg2) {
@@ -164,6 +180,10 @@ export function ClearAgentKey(arg1) {
 
 export function ClearAllSshHistory() {
   return window['go']['main']['App']['ClearAllSshHistory']();
+}
+
+export function ClearLocalHistory(arg1) {
+  return window['go']['main']['App']['ClearLocalHistory'](arg1);
 }
 
 export function ClearQueryHistory(arg1) {
@@ -786,6 +806,10 @@ export function ListFolders() {
   return window['go']['main']['App']['ListFolders']();
 }
 
+export function ListLocalHistory(arg1, arg2) {
+  return window['go']['main']['App']['ListLocalHistory'](arg1, arg2);
+}
+
 export function ListMongoCollections(arg1, arg2, arg3) {
   return window['go']['main']['App']['ListMongoCollections'](arg1, arg2, arg3);
 }
@@ -904,6 +928,10 @@ export function OpenLocalTerminal(arg1, arg2, arg3, arg4) {
 
 export function OpenLocalTerminalAt(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenLocalTerminalAt'](arg1, arg2, arg3);
+}
+
+export function OpenLocalTerminalWith(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['OpenLocalTerminalWith'](arg1, arg2, arg3, arg4);
 }
 
 export function OpenRepoInEditor(arg1, arg2) {

@@ -4,6 +4,7 @@ import {main} from '../models';
 import {agentchat} from '../models';
 import {agentmodels} from '../models';
 import {agentplan} from '../models';
+import {agentlimits} from '../models';
 import {agentctx} from '../models';
 import {agentusage} from '../models';
 import {db} from '../models';
@@ -45,6 +46,8 @@ export function AgentChatModes(arg1:string):Promise<Array<string>>;
 
 export function AgentChatSupported(arg1:string):Promise<boolean>;
 
+export function AgentDraftCommit(arg1:string,arg2:string):Promise<main.CommitDraft>;
+
 export function AgentFixSQL(arg1:string,arg2:string,arg3:string):Promise<main.SQLSuggestion>;
 
 export function AgentGenerateSQL(arg1:string,arg2:string,arg3:string):Promise<main.SQLSuggestion>;
@@ -53,17 +56,23 @@ export function AgentModelCatalog(arg1:string):Promise<agentmodels.Catalog>;
 
 export function AgentPlans():Promise<Array<agentplan.Plan>>;
 
+export function AgentQueryLimits(arg1:string):Promise<agentlimits.AgentLimits>;
+
 export function AgentRefPolicies():Promise<Array<agentctx.Policy>>;
 
 export function AgentResolveRefs(arg1:string,arg2:string,arg3:string):Promise<Array<agentctx.Resolved>>;
 
 export function AgentUsageAll(arg1:number):Promise<agentusage.Usage>;
 
+export function AgentUsageLimits():Promise<Array<agentlimits.AgentLimits>>;
+
 export function AnalyzeRedisPrefixes(arg1:string,arg2:string,arg3:number,arg4:boolean):Promise<db.RedisPrefixReport>;
 
 export function AnalyzeSSHError(arg1:string,arg2:string,arg3:number,arg4:string):Promise<main.SSHErrorAnalysis>;
 
 export function AppVersion():Promise<string>;
+
+export function AppendLocalHistory(arg1:string,arg2:string):Promise<boolean>;
 
 export function AppendSshHistory(arg1:string,arg2:string):Promise<boolean>;
 
@@ -102,6 +111,8 @@ export function ChmodSftpPath(arg1:string,arg2:string,arg3:number):Promise<void>
 export function ClearAgentKey(arg1:string):Promise<void>;
 
 export function ClearAllSshHistory():Promise<number>;
+
+export function ClearLocalHistory(arg1:string):Promise<number>;
 
 export function ClearQueryHistory(arg1:string):Promise<void>;
 
@@ -413,6 +424,8 @@ export function ListExplainHistory(arg1:string,arg2:number):Promise<Array<vault.
 
 export function ListFolders():Promise<Array<vault.Folder>>;
 
+export function ListLocalHistory(arg1:string,arg2:number):Promise<Array<vault.SshHistoryEntry>>;
+
 export function ListMongoCollections(arg1:string,arg2:string,arg3:boolean):Promise<Array<db.MongoCollectionInfo>>;
 
 export function ListMongoDatabases(arg1:string):Promise<Array<db.MongoDatabaseInfo>>;
@@ -472,6 +485,8 @@ export function OpenAgentSession(arg1:string,arg2:string,arg3:string,arg4:number
 export function OpenLocalTerminal(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
 
 export function OpenLocalTerminalAt(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function OpenLocalTerminalWith(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
 
 export function OpenRepoInEditor(arg1:string,arg2:string):Promise<void>;
 

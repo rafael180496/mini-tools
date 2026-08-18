@@ -22,12 +22,14 @@ import (
 // workspace, agente y fechas — actividad, no consumo.
 //
 // El panel de "Models & Quota" que muestra el CLI —con el porcentaje restante
-// del límite semanal y el de cinco horas, por grupo de modelos— sale del
-// comando `/usage` DENTRO de la sesión interactiva, y ese porcentaje lo
-// contesta el servidor a través de su language server por gRPC. No queda
-// escrito en ningún archivo. Traerlo a esta app significaría reimplementar esa
-// llamada privada o manejar la TUI por debajo: las dos cosas se rompen en
-// cuanto Google cambie algo, y ninguna es una integración honesta.
+// del límite semanal y el de cinco horas, por grupo de modelos— lo contesta el
+// servidor y no queda escrito en ningún archivo.
+//
+// **Eso sí se resolvió, pero en otro paquete y por otra vía**: no leyendo el
+// disco ni imitando su gRPC, sino preguntándole al propio CLI con
+// `agy --print "/usage" --output-format json`, que es su interfaz pública. Ver
+// backend/agentlimits/query.go. Acá no cambia nada: este paquete mide TOKENS
+// consumidos, y esos Antigravity sigue sin escribirlos en ningún lado.
 //
 // Por eso acá se reporta lo que SÍ está y es verdad: **actividad**
 // (conversaciones y pasos, en total y sobre el repositorio abierto), con el
@@ -48,7 +50,7 @@ func readAntigravity(home, repoRoot string) AgentUsage {
 		return u
 	}
 
-	u.Note = "Antigravity no guarda el consumo de tokens en el disco: su límite semanal y el de cinco horas los contesta el servidor, y se ven con /usage dentro de la sesión. Lo que sí se puede leer acá es la actividad."
+	u.Note = "Antigravity no escribe los tokens consumidos en el disco. Lo que sí se puede leer acá es la actividad; la cuota se consulta con el botón de arriba."
 
 	act, ok := readAntigravityActivity(filepath.Join(dir, "conversation_summaries.db"), repoRoot)
 	if ok {

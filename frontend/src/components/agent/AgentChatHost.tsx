@@ -180,11 +180,18 @@ export default function AgentChatHost({
     const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
     const [active, setActive] = useState<main.ActiveAgent | null>(null)
     const [history, setHistory] = useState<vault.AgentChat[]>([])
-    const [historyOpen, setHistoryOpen] = useState(false)
-    // Panel de consumo: lo mismo que muestra la solapa Agentes del módulo Git,
-    // pero sin repositorio — desde el chat la pregunta es "cuánto llevo
-    // gastado", no "cuánto en este repo".
-    const [usageOpen, setUsageOpen] = useState(false)
+    // Qué ocupa el cuerpo del panel. Son SOLAPAS y no capas apiladas: consumo e
+    // historial son pantallas para leer, y mostrarlas encima del chat dejaba a
+    // los dos a medias —la lista cortada arriba y la conversación espiando
+    // abajo— en un panel que ya es angosto.
+    //
+    // **El chat no se desmonta al cambiar de solapa, se esconde**: tiene
+    // adentro los turnos, lo que se esté escribiendo y la suscripción al stream
+    // del CLI. Desmontarlo para mirar el consumo cortaría una respuesta en
+    // curso, que es exactamente lo que nadie espera de una solapa.
+    const [tab, setTab] = useState<'chat' | 'usage' | 'history'>('chat')
+    const usageOpen = tab === 'usage'
+    const historyOpen = tab === 'history'
     const [sessionUsage, setSessionUsage] = useState({total: 0, output: 0, cost: 0})
     // Conversación que se está renombrando. El título sale de lo primero que se
     // escribió, que casi nunca es cómo uno la va a buscar después.
@@ -399,8 +406,12 @@ export default function AgentChatHost({
                 </select>
 
                 <button
-                    onClick={() => setUsageOpen((v) => !v)}
-                    title="Cuántos tokens llevás gastados con cada CLI en los últimos 30 días, con tu plan al lado. Es lo mismo que muestra la solapa Agentes del módulo Git — acá sin repositorio, porque el chat no vive en uno."
+                    onClick={() => setTab((t) => (t === 'usage' ? 'chat' : 'usage'))}
+                    title={
+                        usageOpen
+                            ? 'Vuelve a la conversación, que siguió corriendo detrás'
+                            : 'Cuánta cuota llevás usada y cuántos tokens gastaste con cada CLI, con tu plan al lado. Ocupa el panel como una solapa: el chat sigue donde estaba.'
+                    }
                     className={`shrink-0 rounded p-0.5 ${
                         usageOpen ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                     }`}
@@ -410,10 +421,14 @@ export default function AgentChatHost({
 
                 <button
                     onClick={() => {
-                        setHistoryOpen((v) => !v)
                         if (!historyOpen) loadHistory()
+                        setTab((t) => (t === 'history' ? 'chat' : 'history'))
                     }}
-                    title="Conversaciones anteriores de TODOS los módulos, no solo de este. Retomar una la continúa donde había quedado."
+                    title={
+                        historyOpen
+                            ? 'Vuelve a la conversación, que siguió corriendo detrás'
+                            : 'Conversaciones anteriores de TODOS los módulos, no solo de este. Retomar una la continúa donde había quedado. Ocupa el panel como una solapa.'
+                    }
                     className={`shrink-0 rounded p-0.5 ${
                         historyOpen ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                     }`}
@@ -459,11 +474,12 @@ export default function AgentChatHost({
                 </span>
             </div>
 
+            <div className="flex min-h-0 flex-1 flex-col">
             {usageOpen && (
                 <AgentUsagePanel
                     agentLabel={(id) => agentList.find((a) => a.id === id)?.label ?? id}
                     session={sessionUsage}
-                    onClose={() => setUsageOpen(false)}
+                    onClose={() => setTab('chat')}
                 />
             )}
 
@@ -484,7 +500,7 @@ export default function AgentChatHost({
                         // una conversación pertenece al recurso donde nació.
                         const chatKey = c.module ? `${c.module}:${c.contextId}` : 'none'
                         startSession(agent, chatKey, c)
-                        setHistoryOpen(false)
+                        setTab('chat')
                     }}
                     onRename={(c) => setRenaming(c)}
                     onDelete={(c) => {
@@ -492,11 +508,12 @@ export default function AgentChatHost({
                             .then(loadHistory)
                             .catch(() => {})
                     }}
-                    onClose={() => setHistoryOpen(false)}
+                    onClose={() => setTab('chat')}
                 />
             )}
 
-            <div className="min-h-0 flex-1">
+            {/* `hidden` y no un desmontaje: ver el comentario de `tab`. */}
+            <div className={`min-h-0 flex-1 ${tab === 'chat' ? '' : 'hidden'}`}>
                 {session ? (
                     <AgentChat
                         key={session.id}
@@ -539,6 +556,7 @@ export default function AgentChatHost({
                         )}
                     </div>
                 )}
+            </div>
             </div>
         </div>
     )

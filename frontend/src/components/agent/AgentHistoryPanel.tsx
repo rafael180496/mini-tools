@@ -119,7 +119,7 @@ export default function AgentHistoryPanel({
     const total = grouped.reduce((n, g) => n + g.items.length, 0)
 
     return (
-        <div className="flex max-h-[70%] shrink-0 flex-col border-b border-outline-variant bg-surface-container-low">
+        <div className="flex h-full min-h-0 flex-col bg-surface-container-low">
             <div className="flex shrink-0 items-center gap-1.5 px-2 py-1">
                 <Icon name="history" size={13} className="shrink-0 text-on-surface-variant" />
                 <div className="flex min-w-0 flex-1 items-center gap-1 rounded border border-outline-variant bg-surface px-1.5">
@@ -169,7 +169,7 @@ export default function AgentHistoryPanel({
                 </button>
                 <button
                     onClick={onClose}
-                    title="Cierra el historial y vuelve a la conversación abierta"
+                    title="Vuelve a la conversación, que siguió corriendo detrás"
                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="close" size={13} />

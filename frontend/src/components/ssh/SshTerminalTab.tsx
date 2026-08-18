@@ -2,7 +2,16 @@ import {useEffect, useRef, useState} from 'react'
 import {Terminal} from '@xterm/xterm'
 import {FitAddon} from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import {AppendSshHistory, CloseSSHTerminal, ConnectionEnvironment, ListSshHistory, OpenSSHTerminal, ResizeSSHTerminal, WriteSSHTerminal} from '../../../wailsjs/go/main/App'
+import {
+    AppendSshHistory,
+    ClearSshHistory,
+    CloseSSHTerminal,
+    ConnectionEnvironment,
+    ListSshHistory,
+    OpenSSHTerminal,
+    ResizeSSHTerminal,
+    WriteSSHTerminal,
+} from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
 import type {Theme} from '../../hooks/useTheme'
 import {resolveTerminalTheme, type TerminalThemeId} from '../../xterm/terminalThemes'
@@ -481,8 +490,11 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
             </div>
             {showHistory && (
                 <SshHistoryPanel
-                    connId={connId}
-                    connName={connName}
+                    scope={connId}
+                    scopeLabel={connName}
+                    load={(limit) => ListSshHistory(connId, limit)}
+                    clear={() => ClearSshHistory(connId)}
+                    keepsNote="El historial del propio shell en el servidor (~/.bash_history y compañía) no se toca: eso vive allá y se limpia allá."
                     onClose={() => setShowHistory(false)}
                     // Pegar deja la línea escrita pero sin ejecutar: reusar un
                     // comando del historial casi siempre es reusarlo con un
@@ -494,7 +506,9 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                     onRun={(cmd) => void WriteSSHTerminal(connId, cmd + '\r')}
                 />
             )}
-            {showSnippets && <SshSnippetsPanel connId={connId} onClose={() => setShowSnippets(false)} />}
+            {showSnippets && (
+                <SshSnippetsPanel write={(data) => void WriteSSHTerminal(connId, data)} onClose={() => setShowSnippets(false)} />
+            )}
             {analysis && (
                 <SshErrorAnalysis
                     connId={connId}

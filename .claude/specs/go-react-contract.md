@@ -380,6 +380,11 @@ se convierte en una ruta.
 | `GitListWorkTree(repoID)` | F7 | Versionados + no rastreados **no ignorados**; sin `--exclude-standard` un repo de Node devuelve `node_modules` entero. Descuenta borrados y dedupe de conflictos (un path en conflicto sale 3 veces en `--cached`) |
 | `GitReadWorkFile(repoID, path)` | F7 | Binario y "demasiado grande" se **reportan**, no se erroran — mismo contrato que `ReadSftpFileForEdit` |
 | `GitWriteWorkFile(repoID, path, content, expectedModTimeUnix)` | F7 | `expectedModTimeUnix` 0 = "pisar igual". Escritura atómica, conserva permisos. Devuelve el mtime nuevo |
+| `AgentDraftCommit(repoID, agentID)` | post-2.1.0 | Redacta el mensaje del commit **preparado** (`app_gitagent.go`). `agentID` vacío = agente activo de la app y, si no hay, el `default_agent` del repo. El contexto (parche recortado a 64 KB, archivos y últimos asuntos como referencia de estilo) lo arma Go, no el agente; devuelve además qué se le mandó, para poder decirlo en la UI |
+| `AgentUsageLimits()` | post-2.1.0 | Porcentaje del **límite** por proveedor (`backend/agentlimits`), leído del caché que cada CLI deja en disco — no lo calcula la app. Complementa `AgentUsageAll`/`GitAgentUsage`, que miden consumo. Trae `measuredAt`: el dato es fechado, no en vivo |
+| `AgentQueryLimits(agentID)` | post-2.1.0 | Le PREGUNTA el límite al CLI del agente que no lo deja en disco (hoy solo Antigravity: `agy --print "/usage" --output-format json`). Lo dispara un botón, no la apertura del panel — es un subproceso de varios segundos que además falla por red de a ratos. El resultado queda cacheado en memoria y `AgentUsageLimits` lo devuelve desde ahí |
+| `OpenLocalTerminalWith(sessionID, shellID, cols, rows)` | post-2.1.0 | Terminal local con un intérprete ELEGIDO, sin tocar el configurado en Configuración. `shellID` vacío = el configurado. Arranca en el home: no cuelga de ningún repositorio |
+| `AppendLocalHistory` / `ListLocalHistory` / `ClearLocalHistory` | post-2.1.0 | Historial de las terminales locales, agrupado por **intérprete** y no por conexión (tabla `local_command_history`, migración 43). Mismo cifrado, mismo filtro de secretos y **mismo interruptor** (`ssh_history_enabled`) que el historial SSH |
 
 **Dos funciones escriben en una ruta que nombra el frontend, y hacen cosas
 distintas.**

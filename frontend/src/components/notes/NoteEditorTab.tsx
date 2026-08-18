@@ -27,12 +27,14 @@ import {main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
+import NoteImage from './NoteImage'
 import NoteToolbar, {type NoteAlign} from './NoteToolbar'
 import RunbookSqlBlock from './RunbookSqlBlock'
 import {useAgentChat} from '../agent/AgentChatHost'
 import {loadLanguage} from '../../codemirror/languageRegistry'
 import {slashCommandSource} from '../../codemirror/slashCommands'
 import {notesEditorExtensions} from '../../codemirror/markdownTheme'
+import {notesEnterEscapesMarks} from '../../codemirror/notesKeymap'
 import {notesLivePreview} from '../../codemirror/notesLivePreview'
 import {notesLint} from '../../codemirror/notesLint'
 import type {Theme} from '../../hooks/useTheme'
@@ -376,6 +378,9 @@ export default function NoteEditorTab({
                     // encabezados sin espacio, bloques sin cerrar. Cada aviso
                     // trae su corrección aplicable — ver notesLint.
                     notesLint((title) => onCreateNoteRef.current(title)),
+                    // Enter con el cursor pegado a una marca de cierre salta
+                    // por encima en vez de partir el par — ver notesKeymap.
+                    notesEnterEscapesMarks(),
                     keymap.of([
                         ...closeBracketsKeymap,
                         ...completionKeymap,
@@ -711,6 +716,12 @@ export default function NoteEditorTab({
                         <div style={{textAlign: align}} className="max-w-[52rem] pb-24 pl-10 pr-8 pt-4 text-[15px] leading-7 text-on-surface [&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:text-3xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:my-1 [&_p]:my-3 [&_pre]:my-3 [&_ul]:my-3">
                             <MarkdownPreview
                                 source={content}
+                                // Cada renglón escrito es un renglón leído. En
+                                // una nota el editor ES el documento: juntar
+                                // dos líneas al leerlas contradice lo que se
+                                // acaba de ver al escribirlas. Mismo default
+                                // que Obsidian.
+                                softBreaks
                                 renderCodeBlock={({lang, code, key}) => {
                                     // ```sql connection="Prod" ─► bloque
                                     // ejecutable. Sin el atributo es un bloque
@@ -724,6 +735,14 @@ export default function NoteEditorTab({
                                 // El mismo resolvedor que el editor: un enlace
                                 // se comporta igual escribiendo que leyendo.
                                 onWikiLink={(target) => void openWikiTarget(target)}
+                                // Las imágenes de una nota viven CIFRADAS en el
+                                // vault (`nota:ID`): hay que descifrarlas para
+                                // mostrarlas. Una imagen con URL externa se
+                                // deja como texto — la app no sale a internet.
+                                renderImage={({alt, src, key}) => {
+                                    const m = /^nota:([a-f0-9]+)$/.exec(src)
+                                    return m ? <NoteImage key={key} assetId={m[1]} alt={alt} /> : null
+                                }}
                             />
                         </div>
                         </div>

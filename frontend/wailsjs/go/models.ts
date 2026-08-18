@@ -198,6 +198,79 @@ export namespace agentctx {
 
 }
 
+export namespace agentlimits {
+	
+	export class Window {
+	    kind: string;
+	    label: string;
+	    detail: string;
+	    percent: number;
+	    resetsAt: string;
+	    severity: string;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Window(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.label = source["label"];
+	        this.detail = source["detail"];
+	        this.percent = source["percent"];
+	        this.resetsAt = source["resetsAt"];
+	        this.severity = source["severity"];
+	        this.active = source["active"];
+	    }
+	}
+	export class AgentLimits {
+	    agent: string;
+	    known: boolean;
+	    note: string;
+	    source: string;
+	    plan: string;
+	    queryable: boolean;
+	    measuredAt: string;
+	    windows: Window[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentLimits(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agent = source["agent"];
+	        this.known = source["known"];
+	        this.note = source["note"];
+	        this.source = source["source"];
+	        this.plan = source["plan"];
+	        this.queryable = source["queryable"];
+	        this.measuredAt = source["measuredAt"];
+	        this.windows = this.convertValues(source["windows"], Window);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace agentmodels {
 	
 	export class Model {
@@ -1984,6 +2057,28 @@ export namespace main {
 	        this.column = source["column"];
 	        this.value = source["value"];
 	        this.key = source["key"];
+	    }
+	}
+	export class CommitDraft {
+	    message: string;
+	    files: string[];
+	    insertions: number;
+	    deletions: number;
+	    diffTruncated: boolean;
+	    agentLabel: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommitDraft(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.message = source["message"];
+	        this.files = source["files"];
+	        this.insertions = source["insertions"];
+	        this.deletions = source["deletions"];
+	        this.diffTruncated = source["diffTruncated"];
+	        this.agentLabel = source["agentLabel"];
 	    }
 	}
 	export class ConnectionEditInfo {

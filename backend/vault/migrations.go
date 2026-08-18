@@ -915,6 +915,42 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 43,
+		desc:    "crea local_command_history (comandos de las terminales locales del SO, cifrados)",
+		apply: func(tx *sql.Tx) error {
+			// Historial de las terminales LOCALES, con el mismo trato que el de
+			// las SSH: cifrado bajo la clave maestra, con el filtro de líneas
+			// que parecen traer un secreto y con el mismo interruptor para
+			// apagarlo (settings.ssh_history_enabled — es "el historial de las
+			// terminales", no dos ajustes que el usuario tendría que apagar por
+			// separado).
+			//
+			// **Tabla aparte y no una fila más en ssh_command_history**, por dos
+			// motivos que no se pueden esquivar: esa tabla tiene
+			// `conn_id REFERENCES connections(id)` y una shell local no es una
+			// conexión —no hay fila a la que apuntar—, y la clave por la que se
+			// agrupa es distinta: el historial de una terminal local es del
+			// INTÉRPRETE (zsh, PowerShell), no de un servidor.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS local_command_history (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				shell_id TEXT NOT NULL,
+				encrypted_cmd BLOB NOT NULL,
+				nonce BLOB NOT NULL,
+				ran_at INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// Mismo índice que el de SSH y por lo mismo: toda lectura es "los
+			// últimos N de este intérprete".
+			if _, err := tx.Exec(
+				`CREATE INDEX IF NOT EXISTS idx_local_history_shell ON local_command_history (shell_id, ran_at DESC)`,
+			); err != nil {
+				return err
+			}
+			return nil
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

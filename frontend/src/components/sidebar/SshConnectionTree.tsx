@@ -1,5 +1,7 @@
-import {useEffect, useState} from 'react'
-import {ListConnections} from '../../../wailsjs/go/main/App'
+import {useEffect, useRef, useState} from 'react'
+import {createPortal} from 'react-dom'
+import {ListConnections, ListShells} from '../../../wailsjs/go/main/App'
+import {localterm} from '../../../wailsjs/go/models'
 import {vault} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
 import DbTypeIcon from '../DbTypeIcon'
@@ -25,6 +27,15 @@ interface SshConnectionTreeProps {
     // from clicking the row itself (unlike ConnectionTree, there's no
     // separate "select to expand a tree" step to distinguish it from).
     onOpenSshTerminal: (conn: vault.ConnectionSummary) => void
+    // Abre una terminal del SISTEMA OPERATIVO (la shell de esta máquina) en una
+    // pestaña nueva.
+    //
+    // Vive en este módulo y no en otro porque el trabajo real es el mismo: se
+    // mira un log en el servidor, se copia algo a la máquina de uno, se corre
+    // un `scp`. Tener que salir de la app para la mitad local partía ese
+    // trabajo en dos — y dejaba afuera los snippets y el historial, que hasta
+    // ahora solo servían del lado remoto.
+    onOpenLocalTerminal: (shellId: string, shellLabel: string) => void
     // Opens (or focuses) the dual-pane SFTP file-transfer explorer seeded with
     // this host — reuses the same saved SSH connection as the terminal.
     onOpenSftp: (conn: vault.ConnectionSummary) => void
@@ -73,6 +84,7 @@ export default function SshConnectionTree({
     onNewConnection,
     onEditConnection,
     onOpenSshTerminal,
+    onOpenLocalTerminal,
     onOpenSftp,
     onOpenSshHybrid,
     activeTabConnectionId,
@@ -91,6 +103,20 @@ export default function SshConnectionTree({
     onMoveConnectionToFolder,
 }: SshConnectionTreeProps) {
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
+    // Intérpretes disponibles en esta máquina, para el menú de terminal local.
+    // Se piden al abrir el menú y no al montar la barra: es una lista que solo
+    // mira quien va a abrir una terminal, y cuesta un recorrido del PATH.
+    const [shells, setShells] = useState<localterm.Shell[]>([])
+    const [shellMenu, setShellMenu] = useState(false)
+    // Posición del menú de intérpretes, medida desde el botón al abrirlo.
+    //
+    // **Va en un portal con posición fija y no pegado al botón**: la barra
+    // lateral se puede angostar hasta menos que el ancho del menú, y ahí un
+    // desplegable posicionado adentro queda recortado por el contenedor —se
+    // veía cortado y con el texto encimado. Es la misma técnica que ya usan
+    // SshRowMenu y MoveToFolderMenu, y por la misma razón.
+    const [shellMenuPos, setShellMenuPos] = useState({top: 0, left: 0})
+    const shellBtnRef = useRef<HTMLButtonElement>(null)
     const [confirmDelete, setConfirmDelete] = useState<vault.ConnectionSummary | null>(null)
     const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<vault.Folder | null>(null)
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -430,6 +456,90 @@ export default function SshConnectionTree({
                     >
                         <Icon name="create_new_folder" size={16} />
                     </button>
+                    {/* Terminal local. Va en este encabezado y no en el
+                        toolbar general porque es parte de trabajar acá: la
+                        mitad de lo que se hace con un servidor tiene una mitad
+                        local (un scp, un kubectl, mirar un archivo que uno
+                        acaba de bajar). */}
+                    <>
+                        <button
+                            ref={shellBtnRef}
+                            onClick={() => {
+                                const rect = shellBtnRef.current?.getBoundingClientRect()
+                                if (rect) {
+                                    // Se ancla al botón pero se recorta contra
+                                    // la ventana: con la barra angosta el menú
+                                    // se abre por encima del área de trabajo,
+                                    // que es donde hay lugar, y nunca se pasa
+                                    // del borde derecho ni de abajo.
+                                    const width = 224
+                                    setShellMenuPos({
+                                        top: Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 220)),
+                                        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+                                    })
+                                }
+                                setShellMenu((v) => !v)
+                                if (shells.length === 0) {
+                                    ListShells()
+                                        .then((list) => setShells(list ?? []))
+                                        .catch(() => setShells([]))
+                                }
+                            }}
+                            title="Abre una terminal de ESTA máquina (PowerShell, zsh, bash…) en una pestaña, con los mismos snippets y su propio historial. No es un servidor: lo que ejecutes corre en tu equipo."
+                            className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            <Icon name="terminal" size={16} />
+                        </button>
+                        {shellMenu &&
+                            createPortal(
+                            <>
+                                {/* Capa de cierre: un menú que solo se cierra
+                                    con su propio botón obliga a volver a
+                                    apuntarle. */}
+                                <div className="fixed inset-0 z-40" onClick={() => setShellMenu(false)} />
+                                <div
+                                    style={{position: 'fixed', top: shellMenuPos.top, left: shellMenuPos.left}}
+                                    className="z-50 max-h-72 w-56 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-high py-1 shadow-lg"
+                                >
+                                    <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-on-surface-variant/70">
+                                        Terminal de esta máquina
+                                    </p>
+                                    <button
+                                        onClick={() => {
+                                            setShellMenu(false)
+                                            onOpenLocalTerminal('', 'shell por defecto')
+                                        }}
+                                        title="Abre el intérprete elegido en Configuración → Terminal"
+                                        className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs text-on-surface hover:bg-surface-variant"
+                                    >
+                                        <Icon name="terminal" size={13} className="shrink-0 text-primary" />
+                                        Predeterminada
+                                    </button>
+                                    {shells.map((sh) => (
+                                        <button
+                                            key={sh.id}
+                                            disabled={!sh.available}
+                                            onClick={() => {
+                                                setShellMenu(false)
+                                                onOpenLocalTerminal(sh.id, sh.label)
+                                            }}
+                                            title={
+                                                sh.available
+                                                    ? `Abre ${sh.label} (${sh.path}) en una pestaña nueva`
+                                                    : `${sh.label} no está instalado en esta máquina`
+                                            }
+                                            className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs text-on-surface hover:bg-surface-variant disabled:opacity-40 disabled:hover:bg-transparent"
+                                        >
+                                            <Icon name="terminal" size={13} className="shrink-0 text-on-surface-variant" />
+                                            <span className="min-w-0 flex-1 truncate">{sh.label}</span>
+                                            {!sh.available && <span className="shrink-0 text-[10px] text-on-surface-variant/60">falta</span>}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>,
+                            document.body,
+                        )}
+                    </>
                     <button
                         onClick={onNewConnection}
                         title="Crea una nueva conexión SSH (host, usuario y clave o llave)"

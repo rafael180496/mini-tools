@@ -6,9 +6,12 @@ import {
     GitRemoveMCPServer,
     GitUpsertMCPServer,
     AgentPlans,
+    AgentQueryLimits,
+    AgentUsageLimits,
     ListAgents,
 } from '../../../wailsjs/go/main/App'
-import {agentctx, agentplan, agents as agentsNs, agentusage, mcpconf} from '../../../wailsjs/go/models'
+import {agentctx, agentlimits, agentplan, agents as agentsNs, agentusage, mcpconf} from '../../../wailsjs/go/models'
+import AgentLimitBars from '../agent/AgentLimitBars'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 
@@ -48,19 +51,28 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
     // Plan de cada agente: le da escala al consumo. Un total de tokens no
     // significa lo mismo en un plan gratuito que en uno de pago.
     const [plans, setPlans] = useState<agentplan.Plan[]>([])
+    // Cuánto se lleva usado del LÍMITE de cada proveedor. Es otra pregunta y
+    // otro origen que el consumo medido: acá el porcentaje lo calculó el
+    // servidor del proveedor y su CLI lo dejó cacheado (ver backend/agentlimits).
+    const [limits, setLimits] = useState<agentlimits.AgentLimits[]>([])
+    // Consulta al CLI del agente que no publica su límite en disco (hoy
+    // Antigravity): qué agente se está consultando y qué falló, por agente.
+    const [querying, setQuerying] = useState('')
+    const [queryErrors, setQueryErrors] = useState<Record<string, string>>({})
     const [installed, setInstalled] = useState<agentsNs.Agent[]>([])
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(true)
 
     const reload = useCallback(() => {
         setLoading(true)
-        Promise.all([GitAgentContext(repoId), ListAgents(), GitMCPConfig(repoId), GitAgentUsage(repoId, 0), AgentPlans()])
-            .then(([c, list, m, u, p]) => {
+        Promise.all([GitAgentContext(repoId), ListAgents(), GitMCPConfig(repoId), GitAgentUsage(repoId, 0), AgentPlans(), AgentUsageLimits()])
+            .then(([c, list, m, u, p, l]) => {
                 setCtx(c)
                 setInstalled(list ?? [])
                 setMcp(m)
                 setUsage(u)
                 setPlans(p ?? [])
+                setLimits(l ?? [])
                 setError('')
             })
             .catch((e) => setError(String(e)))
@@ -194,7 +206,24 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
                 </Section>
             )}
 
-            {usage && <UsageSection usage={usage} agentLabel={agentLabel} plans={plans} />}
+            {usage && (
+                <UsageSection
+                    usage={usage}
+                    agentLabel={agentLabel}
+                    plans={plans}
+                    limits={limits}
+                    onQueryLimits={(agent) => {
+                        setQuerying(agent)
+                        setQueryErrors((prev) => ({...prev, [agent]: ''}))
+                        AgentQueryLimits(agent)
+                            .then((l) => setLimits((prev) => prev.map((x) => (x.agent === agent ? l : x))))
+                            .catch((e) => setQueryErrors((prev) => ({...prev, [agent]: String(e)})))
+                            .finally(() => setQuerying(''))
+                    }}
+                    querying={querying}
+                    queryErrors={queryErrors}
+                />
+            )}
 
             {mcp && <McpSection cfg={mcp} agentLabel={agentLabel} onChanged={reload} />}
 
@@ -217,23 +246,33 @@ function compact(n: number): string {
     return String(n)
 }
 
-// Consumo de tokens por agente.
+// Consumo de tokens por agente, con las barras de límite arriba de cada uno.
 //
-// **Estos porcentajes son proporciones de lo consumido, no de un límite de
-// plan.** Cuánto queda de una suscripción no vive en ningún archivo local: lo
-// sabe el servidor y el propio CLI lo muestra preguntándoselo. Presentar acá
-// un "82% usado" sacado de una división inventada sería la clase de número que
-// se lee mal y se cree igual, así que lo que se muestra es lo que de verdad se
-// puede medir: cuánto se gastó, en qué modelo, cuánto de eso fue en ESTE
-// repositorio, y qué parte de la entrada la resolvió el caché.
+// **Son dos porcentajes de origen distinto y no hay que leerlos igual.** Las
+// barras de límite son el porcentaje del TOPE que calculó el servidor del
+// proveedor y que su CLI dejó cacheado en el disco: la app lo lee tal cual y
+// dice de cuándo es, porque es un dato fechado y no en vivo (ver
+// backend/agentlimits). Todo lo demás —el reparto por modelo, el caché, la
+// parte de ESTE repositorio— son proporciones de lo CONSUMIDO, medidas sobre
+// los transcripts locales, y nunca fracciones de un tope: dividir por un límite
+// que no está en ningún archivo daría la clase de número que se lee mal y se
+// cree igual.
 function UsageSection({
     usage,
     agentLabel,
     plans,
+    limits,
+    onQueryLimits,
+    querying,
+    queryErrors,
 }: {
     usage: agentusage.Usage
     agentLabel: (id: string) => string
     plans: agentplan.Plan[]
+    limits: agentlimits.AgentLimits[]
+    onQueryLimits: (agent: string) => void
+    querying: string
+    queryErrors: Record<string, string>
 }) {
     return (
         <Section title={`Consumo de tokens · ${usage.days} días`} count={usage.agents.filter((a) => a.available).length}>
@@ -269,6 +308,16 @@ function UsageSection({
                             </span>
                         )}
                     </div>
+
+                    {/* El límite va ARRIBA del consumo: "¿cuánto me queda?" es
+                        la pregunta con la que se abre esto; "¿en qué se fue?"
+                        es la de después. */}
+                    <AgentLimitBars
+                        limits={limits.find((l) => l.agent === a.agent)}
+                        onQuery={() => onQueryLimits(a.agent)}
+                        querying={querying === a.agent}
+                        queryError={queryErrors[a.agent]}
+                    />
 
                     {!a.available ? (
                         <>
@@ -329,9 +378,10 @@ function UsageSection({
                     )}
                 </div>
             ))}
-            <p className="px-1.5 text-[10px] text-on-surface-variant/70">
-                Son proporciones de lo consumido, no de un límite de plan — cuánto te queda de tu suscripción lo sabe el
-                servidor, no un archivo local.
+            <p className="px-1.5 text-[10px] leading-4 text-on-surface-variant/70">
+                Las barras de límite son el porcentaje que calculó el servidor de cada proveedor y que su CLI dejó
+                cacheado en esta máquina: se leen tal cual, con la hora en que se midieron — no son en vivo. Los
+                porcentajes de consumo (por modelo, caché, este repo) son proporciones de lo gastado, no de un tope.
             </p>
         </Section>
     )

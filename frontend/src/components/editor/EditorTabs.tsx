@@ -31,7 +31,22 @@ export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 // con su propio `noteId` en vez de connId — una nota no es una conexión ni un
 // repositorio, y sobrecargar connId la haría aparecer como "sin conexión
 // vinculada" en cada búsqueda del workspace.
-export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp' | 'git-repo' | 'remote-file' | 'ssh-hybrid' | 'note'
+export type TabKind =
+    | 'editor'
+    | 'redis-browser'
+    | 'mongo-browser'
+    | 'ssh-terminal'
+    // Terminal del SISTEMA OPERATIVO (la shell de esta máquina), abierta desde
+    // el módulo SSH. Es un tipo aparte de 'ssh-terminal' y no una variante suya
+    // porque no tiene conexión detrás: lo que la identifica es el intérprete
+    // (`shellId`), y confundirlas haría que el resto del workspace la trate
+    // como una sesión remota que se puede desconectar.
+    | 'local-terminal'
+    | 'sftp'
+    | 'git-repo'
+    | 'remote-file'
+    | 'ssh-hybrid'
+    | 'note'
 
 // El rótulo de tipo que lleva cada pestaña delante del nombre.
 //
@@ -50,6 +65,7 @@ const KIND_BADGE: Record<TabKind, {text: string; className: string; hint: string
     'redis-browser': {text: 'REDIS', className: 'text-error', hint: 'Explorador de claves Redis'},
     'mongo-browser': {text: 'MONGO', className: 'text-secondary', hint: 'Explorador de colecciones MongoDB'},
     'ssh-terminal': {text: 'SSH', className: 'text-secondary', hint: 'Terminal remota'},
+    'local-terminal': {text: 'LOCAL', className: 'text-primary', hint: 'Terminal de esta máquina'},
     sftp: {text: 'SFTP', className: 'text-secondary', hint: 'Transferencia de archivos entre hosts'},
     'ssh-hybrid': {text: 'SSH+', className: 'text-secondary', hint: 'Terminal remota con explorador de archivos al lado'},
     'remote-file': {text: 'REMOTO', className: 'text-tertiary', hint: 'Archivo de un servidor, editado en vivo'},
@@ -111,6 +127,14 @@ export interface EditorTab {
     // campo por el mismo motivo que repoId: direcciona otro registro
     // (vault_notes), no las conexiones.
     noteId?: string
+    // Intérprete de una terminal local — solo para kind === 'local-terminal'.
+    // Vacío significa "el configurado en Configuración → Terminal".
+    shellId?: string
+    // Cómo se llama ese intérprete en pantalla ("PowerShell", "zsh"). Se guarda
+    // en la pestaña y no se deriva del id porque el backend cae al shell por
+    // defecto del sistema cuando el guardado no está instalado, y el rótulo
+    // tiene que decir la verdad sobre lo que está corriendo.
+    shellLabel?: string
 }
 
 interface EditorTabsProps {

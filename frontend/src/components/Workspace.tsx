@@ -31,6 +31,7 @@ import type {PaneHost} from './sftp/types'
 import GitErrorBoundary from './git/GitErrorBoundary'
 import GitRepoTab from './git/GitRepoTab'
 import AgentChatHost, {AgentChatButton, type AgentDock} from './agent/AgentChatHost'
+import LocalTerminalTab from './terminal/LocalTerminalTab'
 import {NO_CONTEXT, type WorkContext} from './agent/workContext'
 import GitRepoTree from './git/GitRepoTree'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
@@ -2084,6 +2085,30 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // "Abrir en pestaña" button on an SSH connection row. language is set
     // to 'sql' purely as a placeholder — SshTerminalTab never reads it,
     // same "unused field" treatment redis-browser tabs give `content`.
+    // Abre una terminal del SISTEMA OPERATIVO en una pestaña.
+    //
+    // A diferencia de las de SSH no se deduplica por conexión sino por
+    // INTÉRPRETE: dos terminales de zsh son dos ventanas de trabajo legítimas
+    // —una compilando, otra mirando un log— y forzar una sola convertiría la
+    // acción en un interruptor. Lo que sí se reusa es el id de sesión mientras
+    // la pestaña viva, que es lo que mantiene la shell y su directorio.
+    function openLocalTerminal(shellId: string, shellLabel: string) {
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: `Terminal — ${shellLabel}`,
+            path: null,
+            content: '',
+            dirty: false,
+            connId: null,
+            language: 'sql',
+            kind: 'local-terminal',
+            shellId,
+            shellLabel,
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
     function openSshTerminal(conn: vault.ConnectionSummary) {
         const existing = tabs.find((t) => t.kind === 'ssh-terminal' && t.connId === conn.id)
         if (existing) {
@@ -2503,6 +2528,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const isMongoActive = activeTabConnection?.dbType === 'mongodb'
     const isBrowserTabActive = activeTabData?.kind === 'redis-browser' || activeTabData?.kind === 'mongo-browser'
     const isSshTerminalTabActive = activeTabData?.kind === 'ssh-terminal'
+    // Una terminal local ocupa el panel entero, igual que las demás pestañas
+    // que no son el editor SQL: sin barra de acciones, sin editor y sin panel
+    // de resultados. Sin este flag la pestaña abría con el editor vacío
+    // detrás, la barra "Sin conexión" arriba y la grilla "Sin resultados"
+    // abajo, dejando la terminal aplastada en el medio.
+    const isLocalTerminalTabActive = activeTabData?.kind === 'local-terminal'
     const isSftpTabActive = activeTabData?.kind === 'sftp'
     const isHybridTabActive = activeTabData?.kind === 'ssh-hybrid'
     const isGitTabActive = activeTabData?.kind === 'git-repo'
@@ -2579,6 +2610,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onNewConnection={() => setConnectionDialog('new-ssh')}
                         onEditConnection={(conn) => setConnectionDialog(conn.id)}
                         onOpenSshTerminal={openSshTerminal}
+                        onOpenLocalTerminal={openLocalTerminal}
                         onOpenSftp={openSftp}
                         onOpenSshHybrid={openSshHybrid}
                         activeTabConnectionId={activeTabConnection?.id ?? null}
@@ -2801,7 +2833,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         conexión, ni esquema, ni auto-commit. Dejarla visible
                         mostraba "Sin conexión" sobre un documento de texto —
                         una advertencia sobre un problema que no existe. */}
-                    {!isNoteTabActive && (
+                    {/* Lo mismo vale para una terminal local: no tiene conexión
+                        que mostrar, y "Sin conexión" sobre la shell de tu propia
+                        máquina es una advertencia sobre un problema inexistente. */}
+                    {!isNoteTabActive && !isLocalTerminalTabActive && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 text-xs text-on-surface-variant">
                         {isSshTerminalTabActive && activeTabConnection ? (
                             <span
@@ -3020,7 +3055,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
-                    {editorAppearance.toolbar !== 'hidden' && !isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
+                    {editorAppearance.toolbar !== 'hidden' && !isBrowserTabActive && !isSshTerminalTabActive && !isLocalTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
                         <button
                             onClick={() => void saveActiveTab()}
@@ -3148,7 +3183,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     className="relative min-w-0 border-b border-outline-variant"
                     style={{
                         height: isRemoteFileActive ? '100%' : editorHeight,
-                        display: isBrowserTabActive || isSshTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive || isNoteTabActive ? 'none' : undefined,
+                        display: isBrowserTabActive || isSshTerminalTabActive || isLocalTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive || isNoteTabActive ? 'none' : undefined,
                     }}
                 >
                     {/* Asistente de consultas: flota SOBRE el editor en vez de
@@ -3262,6 +3297,31 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 onChangeTerminalTheme={changeTerminalTheme}
                                 terminalFontSize={terminalFontSize}
                                 onConnectedChange={(connected) => setSshConnected(t.connId as string, connected)}
+                            />
+                        </div>
+                    ))}
+
+                {/* Terminales locales. Mismo trato de "nunca desmontar, solo
+                    esconder" que las de SSH: adentro hay un proceso del sistema
+                    operativo con su directorio y su scrollback, y desmontarlo al
+                    cambiar de pestaña sería matarlo. */}
+                {tabs
+                    .filter((t) => t.kind === 'local-terminal')
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex min-h-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <LocalTerminalTab
+                                sessionId={`local-tab-${t.id}`}
+                                shellId={t.shellId ?? ''}
+                                shellLabel={t.shellLabel ?? ''}
+                                theme={theme}
+                                terminalThemeId={terminalThemeId}
+                                onChangeTerminalTheme={changeTerminalTheme}
+                                terminalFontSize={terminalFontSize}
+                                visible={activeTabId === t.id}
                             />
                         </div>
                     ))}
@@ -3398,7 +3458,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     hybrid-session tab has nothing to run, so it would sit there
                     permanently empty while stealing height from the terminal
                     and the file drawer, which is exactly the space they need. */}
-                {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
+                {!isBrowserTabActive && !isSshTerminalTabActive && !isLocalTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
                     <>
                         {/* Drag handle: resizes the editor pane against the
                             results grid below. Persisted on mouseup, see

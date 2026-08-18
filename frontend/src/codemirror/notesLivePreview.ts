@@ -1,7 +1,8 @@
 import {syntaxTree} from '@codemirror/language'
-import {RangeSetBuilder, type Extension} from '@codemirror/state'
+import {RangeSetBuilder, StateField, type EditorState, type Extension} from '@codemirror/state'
 import {Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate} from '@codemirror/view'
-import {GetNoteImage} from '../../wailsjs/go/main/App'
+import {cachedNoteImage, loadNoteImage} from '../lib/noteImages'
+import {isTableStart, parseTable} from '../lib/markdownTable'
 
 // Vista en vivo del editor de notas: el documento se ve como documento.
 //
@@ -26,14 +27,6 @@ import {GetNoteImage} from '../../wailsjs/go/main/App'
 // línea es una lista o una cita, y esconderlos dejaría un párrafo suelto.
 const HIDDEN_MARKS = new Set(['HeaderMark', 'EmphasisMark', 'StrikethroughMark', 'CodeMark', 'LinkMark'])
 
-// cache de imágenes ya descifradas, por id de asset. Sin esto, cada
-// redibujado del editor pediría la imagen de nuevo — y descifrarla no es
-// gratis.
-const imageCache = new Map<string, string>()
-// Ids que ya se pidieron, para no disparar la misma petición cinco veces
-// mientras la primera está en vuelo.
-const pending = new Set<string>()
-
 // ImageWidget dibuja la imagen en lugar del `![alt](nota:ID)`.
 class ImageWidget extends WidgetType {
     constructor(
@@ -53,7 +46,7 @@ class ImageWidget extends WidgetType {
         const wrap = document.createElement('div')
         wrap.className = 'cm-note-image'
 
-        const cached = imageCache.get(this.assetId)
+        const cached = cachedNoteImage(this.assetId)
         if (cached) {
             const img = document.createElement('img')
             img.src = cached
@@ -71,21 +64,19 @@ class ImageWidget extends WidgetType {
         ph.textContent = this.alt || 'imagen'
         wrap.appendChild(ph)
 
-        if (!pending.has(this.assetId)) {
-            pending.add(this.assetId)
-            GetNoteImage(this.assetId)
-                .then((asset) => {
-                    imageCache.set(this.assetId, `data:${asset.mime};base64,${asset.data}`)
-                    // Un cambio vacío obliga a recalcular las decoraciones, que
-                    // es lo que hace que el widget se vuelva a dibujar ya con
-                    // la imagen en el cache.
-                    view.dispatch({})
-                })
-                .catch(() => {
-                    ph.textContent = `${this.alt || 'imagen'} — no se pudo cargar`
-                })
-                .finally(() => pending.delete(this.assetId))
-        }
+        // La caché y el "ya lo pedí" los maneja lib/noteImages, compartidos
+        // con la vista de lectura: la misma imagen no se descifra dos veces por
+        // mirarla en las dos vistas.
+        loadNoteImage(this.assetId)
+            .then(() => {
+                // Un cambio vacío obliga a recalcular las decoraciones, que es
+                // lo que hace que el widget se vuelva a dibujar ya con la
+                // imagen en la caché.
+                view.dispatch({})
+            })
+            .catch(() => {
+                ph.textContent = `${this.alt || 'imagen'} — no se pudo cargar`
+            })
         return wrap
     }
 
@@ -94,6 +85,127 @@ class ImageWidget extends WidgetType {
     ignoreEvent() {
         return false
     }
+}
+
+// TableWidget dibuja una tabla de verdad en lugar de las barras verticales.
+//
+// **Por qué hace falta acá y no alcanza con la vista de lectura.** Una tabla es
+// justo lo que no se puede escribir a ciegas: las columnas se alinean con
+// barras y guiones, y en crudo son tres renglones de símbolos donde no se ve si
+// una celda quedó corrida. Mientras el cursor está adentro se muestra el texto
+// tal cual —hay que poder editarlo— y apenas se sale, se ve la tabla.
+class TableWidget extends WidgetType {
+    constructor(readonly source: string) {
+        super()
+    }
+
+    // Dos widgets con el mismo texto son intercambiables: sin esto, CodeMirror
+    // rearma la tabla en cada tecla y el scroll salta.
+    eq(other: TableWidget) {
+        return other.source === this.source
+    }
+
+    toDOM(): HTMLElement {
+        const lines = this.source.split('\n')
+        const {header, align, rows} = parseTable(lines, 0)
+
+        const wrap = document.createElement('div')
+        wrap.className = 'cm-note-table'
+        const table = document.createElement('table')
+
+        const thead = document.createElement('thead')
+        const htr = document.createElement('tr')
+        header.forEach((h, c) => {
+            const th = document.createElement('th')
+            th.textContent = h
+            th.style.textAlign = align[c] ?? 'left'
+            htr.appendChild(th)
+        })
+        thead.appendChild(htr)
+        table.appendChild(thead)
+
+        const tbody = document.createElement('tbody')
+        for (const row of rows) {
+            const tr = document.createElement('tr')
+            // Se recorre por el ENCABEZADO y no por la fila: una fila a la que
+            // le falta una celda tiene que dejar el hueco, no correr las
+            // columnas siguientes un lugar a la izquierda.
+            header.forEach((_, c) => {
+                const td = document.createElement('td')
+                td.textContent = row[c] ?? ''
+                td.style.textAlign = align[c] ?? 'left'
+                tr.appendChild(td)
+            })
+            tbody.appendChild(tr)
+        }
+        table.appendChild(tbody)
+        wrap.appendChild(table)
+        return wrap
+    }
+
+    // Un clic en la tabla coloca el cursor en el Markdown de abajo, que es lo
+    // que la vuelve a mostrar en crudo para editarla.
+    ignoreEvent() {
+        return false
+    }
+}
+
+// tableBlocks encuentra los bloques de tabla del documento.
+//
+// Se recorre el documento entero y no solo lo visible: una tabla arranca dos
+// renglones antes de donde uno mira, y detectarla por la mitad dibujaría media
+// tabla. Una nota entra de sobra en memoria, así que el costo es irrelevante.
+function tableBlocks(state: EditorState): {from: number; to: number; startLine: number; endLine: number}[] {
+    const all = state.doc.toString().split('\n')
+    const out: {from: number; to: number; startLine: number; endLine: number}[] = []
+    for (let n = 0; n < all.length; n++) {
+        if (!isTableStart(all, n)) continue
+        const {end} = parseTable(all, n)
+        out.push({
+            from: state.doc.line(n + 1).from,
+            to: state.doc.line(end).to,
+            startLine: n + 1,
+            endLine: end,
+        })
+        n = end - 1
+    }
+    return out
+}
+
+// tableField provee los widgets de tabla.
+//
+// **Va en un StateField y no en el ViewPlugin del resto de la vista en vivo**, y
+// no es una preferencia de diseño: CodeMirror rechaza las decoraciones de
+// bloque —y las que se comen un salto de línea— cuando vienen de un plugin
+// ("Block decorations may not be specified via plugins"). Una tabla ocupa
+// varias líneas enteras, así que es exactamente ese caso.
+const tableField = StateField.define<DecorationSet>({
+    create: (state) => buildTableDecorations(state),
+    update: (deco, tr) => (tr.docChanged || tr.selection ? buildTableDecorations(tr.state) : deco),
+    provide: (f) => EditorView.decorations.from(f),
+})
+
+function buildTableDecorations(state: EditorState): DecorationSet {
+    const builder = new RangeSetBuilder<Decoration>()
+    const all = state.doc.toString().split('\n')
+
+    // Líneas que el cursor toca: ahí la tabla se deja en crudo para poder
+    // editarla, igual que el resto de la vista en vivo.
+    const activeLines = new Set<number>()
+    for (const r of state.selection.ranges) {
+        const from = state.doc.lineAt(r.from).number
+        const to = state.doc.lineAt(r.to).number
+        for (let n = from; n <= to; n++) activeLines.add(n)
+    }
+
+    for (const block of tableBlocks(state)) {
+        let editing = false
+        for (let l = block.startLine; l <= block.endLine; l++) if (activeLines.has(l)) editing = true
+        if (editing) continue
+        const source = all.slice(block.startLine - 1, block.endLine).join('\n')
+        builder.add(block.from, block.to, Decoration.replace({widget: new TableWidget(source), block: true}))
+    }
+    return builder.finish()
 }
 
 // TAG_RE encuentra etiquetas al estilo Obsidian: `#produccion`, `#sgc/oracle`.
@@ -135,6 +247,11 @@ function tagDecorations(view: EditorView, add: (from: number, to: number, d: Dec
 }
 
 const tagMark = Decoration.mark({class: 'cm-note-tag'})
+
+// La pastilla del código en línea. Misma forma que la del modo lectura: que el
+// mismo texto cambie de aspecto al pasar de escribir a leer haría dudar de si
+// cambió algo del contenido.
+const codeMark = Decoration.mark({class: 'cm-note-code'})
 
 // WIKI_RE encuentra un enlace a otra nota: `[[Título]]` o `[[Título|alias]]`.
 //
@@ -224,12 +341,34 @@ function buildDecorations(view: EditorView): DecorationSet {
     const insideWiki = (from: number, to: number) =>
         wikiRanges.some((r) => from >= r.from && to <= r.to)
 
+    // Las tablas las dibuja tableField (ver por qué ahí). Acá solo se las
+    // esquiva: lo que cae adentro de una tabla no lleva ninguna otra
+    // decoración, porque el bloque entero ya se reemplazó.
+    const tables = tableBlocks(state)
+    const insideTable = (from: number, to: number) =>
+        tables.some((r) => from >= r.from && to <= r.to)
+
     for (const {from, to} of view.visibleRanges) {
         syntaxTree(state).iterate({
             from,
             to,
             enter: (node) => {
                 const line = state.doc.lineAt(node.from).number
+                if (insideTable(node.from, node.to)) return
+
+                // El código en línea se dibuja como pastilla SIEMPRE, también
+                // en la línea del cursor.
+                //
+                // Es lo que arregla el estado que se veía "roto": al pararse
+                // encima, las comillas invertidas reaparecen —hacen falta para
+                // poder borrarlas— y sin nada que las contenga el texto quedaba
+                // suelto entre dos símbolos, como si el formato se hubiera
+                // perdido. Con la pastilla, la línea del cursor y el resto se
+                // ven igual: lo único que cambia es que las marcas asoman.
+                if (node.name === 'InlineCode') {
+                    add(node.from, node.to, codeMark)
+                }
+
                 if (activeLines.has(line)) return
                 if (insideWiki(node.from, node.to)) return
 
@@ -254,7 +393,10 @@ function buildDecorations(view: EditorView): DecorationSet {
     // Las etiquetas se marcan SIEMPRE, también en la línea del cursor: a
     // diferencia de las marcas de sintaxis, acá no hay nada que esconder — la
     // etiqueta se sigue viendo entera, solo que con forma de etiqueta.
-    tagDecorations(view, add)
+    tagDecorations(view, (from, to, deco) => {
+        if (insideTable(from, to)) return
+        add(from, to, deco)
+    })
 
     found.sort((a, b) => a.from - b.from || a.to - b.to)
     const builder = new RangeSetBuilder<Decoration>()
@@ -268,6 +410,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 // nota o proponer crearla— es del contenedor: acá no se sabe qué notas existen.
 export function notesLivePreview(onWikiLink: (title: string) => void): Extension {
     return [
+        tableField,
         ViewPlugin.fromClass(
             class {
                 decorations: DecorationSet
@@ -329,6 +472,34 @@ export function notesLivePreview(onWikiLink: (title: string) => void): Extension
                 padding: '1px 7px',
                 fontSize: '0.88em',
                 fontWeight: '500',
+            },
+            // La tabla del editor se ve como la de la vista de lectura: mismos
+            // bordes, mismo encabezado. Que cambie de aspecto al pasar de
+            // escribir a leer haría dudar de si cambió algo del contenido.
+            '.cm-note-table': {
+                margin: '0.75rem 0',
+                overflowX: 'auto',
+            },
+            '.cm-note-table table': {
+                borderCollapse: 'collapse',
+                width: '100%',
+                fontSize: '0.92em',
+            },
+            '.cm-note-table th, .cm-note-table td': {
+                border: '1px solid var(--color-outline-variant)',
+                padding: '4px 8px',
+                verticalAlign: 'top',
+            },
+            '.cm-note-table th': {
+                backgroundColor: 'var(--color-surface-container)',
+                fontWeight: '600',
+                color: 'var(--color-on-surface)',
+            },
+            '.cm-note-table td': {color: 'var(--color-on-surface-variant)'},
+            '.cm-note-code': {
+                backgroundColor: 'var(--color-surface-container-highest)',
+                borderRadius: '4px',
+                padding: '1px 4px',
             },
             '.cm-note-image-loading': {
                 display: 'inline-block',

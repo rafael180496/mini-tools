@@ -7,6 +7,7 @@ import {
     LocalShellLabel,
     OpenAgentSession,
     OpenLocalTerminal,
+    OpenLocalTerminalWith,
     ResizeLocalTerminal,
     WriteLocalTerminal,
 } from '../../../wailsjs/go/main/App'
@@ -14,6 +15,7 @@ import {EventsOn} from '../../../wailsjs/runtime'
 import type {Theme} from '../../hooks/useTheme'
 import {resolveTerminalTheme} from '../../xterm/terminalThemes'
 import Icon from '../Icon'
+import {SshLineModel} from '../../lib/sshLineModel'
 
 interface LocalTerminalPanelProps {
     // Identifica la sesión en el backend Y es el nombre del evento de Wails
@@ -38,6 +40,23 @@ interface LocalTerminalPanelProps {
     // viene restaurada del layout guardado: relanzar un asistente que consume
     // cuota porque la app se reinició no es algo que nadie haya pedido.
     autoStart?: boolean
+    // Intérprete que abre ESTA sesión, elegido a mano. Vacío = el configurado
+    // en Configuración → Terminal.
+    //
+    // Existe para el módulo SSH, donde una terminal local es una más entre
+    // varias: en Windows conviven PowerShell, pwsh y cmd, y abrir siempre el
+    // mismo obligaría a cambiar la preferencia global de la app para probar
+    // algo en otro.
+    shellOverride?: string
+    // Se avisa cuando se ejecutó una línea (Enter). Es lo que alimenta el
+    // historial persistido de las terminales locales; sin manejador, no se
+    // registra nada.
+    //
+    // La línea se reconstruye del lado del cliente observando las teclas (ver
+    // lib/sshLineModel): la shell hace el eco, así que no hay un buffer de
+    // línea que leer. Es deliberadamente conservador — lo que no puede seguir
+    // con confianza no lo reporta.
+    onCommand?: (command: string) => void
     // Shell configurado en Configuración → Terminal (settings.localShell).
     // Solo se usa para ETIQUETAR la barra y para reabrir la sesión cuando
     // cambia — el backend lo relee del vault en cada apertura, este prop no
@@ -92,6 +111,8 @@ export default function LocalTerminalPanel({
     sessionId,
     repoId,
     kind,
+    shellOverride,
+    onCommand,
     agentId,
     agentLabel,
     autoStart,
@@ -114,6 +135,13 @@ export default function LocalTerminalPanel({
     // lo lee el efecto de apertura, donde un valor capturado del render
     // anterior sería el viejo.
     const startAgentRef = useRef(!!autoStart)
+    // Reconstrucción de la línea que se está escribiendo, para saber qué
+    // comando se ejecutó. Vive en un ref porque lo lee el manejador de teclas,
+    // que se registra UNA vez: una copia capturada ahí se quedaría con el
+    // estado del montaje para siempre.
+    const lineModelRef = useRef(new SshLineModel())
+    const onCommandRef = useRef(onCommand)
+    onCommandRef.current = onCommand
     const [agentStarted, setAgentStarted] = useState(!!autoStart)
 
     // El widget se crea UNA vez por sesión y se mantiene vivo mientras el
@@ -164,6 +192,9 @@ export default function LocalTerminalPanel({
         })
 
         const dataDisposable = term.onData((data) => {
+            // El modelo mira las mismas teclas que van al PTY y avisa cuando
+            // una línea se ejecutó. No intercepta nada: los bytes salen igual.
+            lineModelRef.current.process(data)
             void WriteLocalTerminal(sessionId, data)
         })
 
@@ -178,6 +209,13 @@ export default function LocalTerminalPanel({
         // borraría todo lo que hay en pantalla.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId])
+
+    // El aviso de "se ejecutó esto" se engancha una sola vez y llama SIEMPRE al
+    // manejador vigente a través del ref: si se enganchara el prop directo, un
+    // cambio de manejador dejaría de registrar comandos sin que se note.
+    useEffect(() => {
+        lineModelRef.current.onCommit = (command) => onCommandRef.current?.(command)
+    }, [])
 
     // Suscripción + apertura del proceso. Separado del efecto de arriba
     // porque se repite en cada "Reiniciar"/"Iniciar" (openToken), mientras que
@@ -215,7 +253,9 @@ export default function LocalTerminalPanel({
         const opening =
             kind === 'agent' && agentId
                 ? OpenAgentSession(sessionId, repoId, agentId, cols, rows, runAgent)
-                : OpenLocalTerminal(sessionId, repoId, cols, rows)
+                : shellOverride
+                  ? OpenLocalTerminalWith(sessionId, shellOverride, cols, rows)
+                  : OpenLocalTerminal(sessionId, repoId, cols, rows)
 
         opening
             .then(() => {
@@ -235,7 +275,7 @@ export default function LocalTerminalPanel({
             unsubscribe()
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId, repoId, kind, agentId, openToken])
+    }, [sessionId, repoId, kind, agentId, shellOverride, openToken])
 
     // Cerrar la shell al desmontar (se cerró la sesión o la pestaña de Git).
     // Es un proceso del sistema operativo, no un objeto en memoria: dejarlo

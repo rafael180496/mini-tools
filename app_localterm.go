@@ -11,6 +11,7 @@ import (
 	"mini-tools/backend/agentapprove"
 	"mini-tools/backend/agentchat"
 	"mini-tools/backend/agentctx"
+	"mini-tools/backend/agentlimits"
 	"mini-tools/backend/agentmodels"
 	"mini-tools/backend/agentplan"
 	"mini-tools/backend/agents"
@@ -117,6 +118,75 @@ func (a *App) OpenLocalTerminal(sessionID, repoID string, cols, rows int) error 
 // de ningún repositorio: arranca directamente en el home del usuario.
 func (a *App) OpenLocalTerminalAt(sessionID string, cols, rows int) error {
 	return a.OpenLocalTerminal(sessionID, "", cols, rows)
+}
+
+// OpenLocalTerminalWith abre una terminal local con un INTÉRPRETE elegido, sin
+// tocar el configurado en Configuración → Terminal.
+//
+// Existe para el módulo SSH: ahí una terminal local no es "la terminal de la
+// app" sino una más entre varias, y en Windows conviven PowerShell, pwsh y cmd
+// —abrir siempre el mismo obligaría a cambiar la preferencia global para probar
+// algo en otro—. `shellID` vacío usa el configurado, que es el comportamiento
+// de OpenLocalTerminal.
+//
+// El directorio es el home: una terminal del módulo SSH no cuelga de ningún
+// repositorio.
+func (a *App) OpenLocalTerminalWith(sessionID, shellID string, cols, rows int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	if sessionID == "" {
+		return fmt.Errorf("app: falta el id de sesión de la terminal")
+	}
+	if shellID == "" {
+		return a.OpenLocalTerminal(sessionID, "", cols, rows)
+	}
+	return a.localTerms.Open(sessionID, "", shellID, cols, rows)
+}
+
+// --- Historial de las terminales locales ------------------------------------
+//
+// Mismo trato que el de las terminales SSH y con el mismo interruptor
+// (`ssh_history_enabled`): para quien lo usa es "el historial de las
+// terminales", no dos ajustes separados que habría que apagar de a uno. Lo que
+// cambia es la clave por la que se agrupa — el intérprete y no el servidor, ver
+// backend/vault/local_history_repo.go.
+
+// AppendLocalHistory guarda un comando ejecutado en una terminal local.
+//
+// Devuelve false cuando no se guardó: puede ser porque el registro está apagado
+// o porque la línea parecía traer una credencial. Las dos son decisiones del
+// backend a propósito — el frontend manda todo y no hay dos lugares que puedan
+// discrepar sobre qué se guarda.
+func (a *App) AppendLocalHistory(shellID, command string) (bool, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return false, err
+	}
+	enabled, err := a.vault.SshHistoryEnabled()
+	if err != nil {
+		return false, err
+	}
+	if !enabled {
+		return false, nil
+	}
+	return a.vault.AppendLocalHistory(shellID, command)
+}
+
+// ListLocalHistory devuelve los últimos comandos de un intérprete.
+func (a *App) ListLocalHistory(shellID string, limit int) ([]vault.SshHistoryEntry, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListLocalHistory(shellID, limit)
+}
+
+// ClearLocalHistory borra el historial de un intérprete y devuelve cuántos
+// comandos se borraron.
+func (a *App) ClearLocalHistory(shellID string) (int64, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return 0, err
+	}
+	return a.vault.ClearLocalHistory(shellID)
 }
 
 // WriteLocalTerminal reenvía las teclas/pegado de xterm.js al stdin de la
@@ -846,6 +916,78 @@ func (a *App) AgentPlans() ([]agentplan.Plan, error) {
 		return nil, err
 	}
 	return agentplan.All(), nil
+}
+
+// AgentUsageLimits informa **cuánto se lleva usado del límite** de cada agente:
+// el porcentaje de la ventana corta, el de la semanal y los por modelo, cuando
+// el proveedor los publica.
+//
+// Es el complemento exacto de AgentUsageAll y no lo reemplaza, porque contestan
+// preguntas distintas con datos de distinto origen:
+//
+//   - `AgentUsageAll` mide CONSUMO —tokens contados de los transcripts locales—
+//     y sus porcentajes son proporciones de lo gastado, nunca de un tope.
+//   - `AgentUsageLimits` lee el porcentaje del TOPE **ya calculado por el
+//     servidor del proveedor** y cacheado por el propio CLI en el disco. No hay
+//     ninguna división inventada acá: lo único que agrega esta app es leerlo y
+//     decir de cuándo es, porque es un dato fechado y no en vivo.
+//
+// Ver backend/agentlimits para qué archivo publica cada CLI y qué se verificó
+// contra instalaciones reales.
+func (a *App) AgentUsageLimits() ([]agentlimits.AgentLimits, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return agentlimits.All(), nil
+}
+
+// AgentQueryLimits le PREGUNTA el límite al CLI de un agente que no lo deja
+// escrito en el disco, y lo cachea para el resto de la sesión de la app.
+//
+// Hoy solo Antigravity: no guarda su cuota en ningún archivo, pero contesta
+// `agy --print "/usage" --output-format json` con los grupos de modelos, sus
+// ventanas y cuánto queda de cada una. Es su interfaz pública, la misma que
+// usaría el usuario a mano — no se imita ningún protocolo interno.
+//
+// **Lo dispara un botón y no la apertura del panel**: cuesta un subproceso y
+// unos segundos, y falla por red de vez en cuando (el propio CLI devuelve
+// `context deadline exceeded` y anda al reintentar). No consume cuota: el CLI
+// informa cero tokens para este comando.
+func (a *App) AgentQueryLimits(agentID string) (agentlimits.AgentLimits, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return agentlimits.AgentLimits{}, err
+	}
+	if !agentlimits.Queryable(agentID) {
+		return agentlimits.AgentLimits{}, fmt.Errorf("app: a ese agente no se le puede preguntar el límite por línea de comandos")
+	}
+
+	agent, err := a.agentByID(agentID)
+	if err != nil {
+		return agentlimits.AgentLimits{}, err
+	}
+	if !agent.Available {
+		return agentlimits.AgentLimits{}, fmt.Errorf("app: %s no está instalado en esta máquina", agent.Label)
+	}
+
+	env, err := a.agentEnv(agent)
+	if err != nil {
+		return agentlimits.AgentLimits{}, err
+	}
+	// Directorio propio y vacío, el mismo criterio que las consultas puntuales:
+	// esto no se pregunta sobre ningún repositorio ni necesita ver archivos.
+	cwd, err := a.agentCwd("", "")
+	if err != nil {
+		return agentlimits.AgentLimits{}, err
+	}
+
+	return agentlimits.Query(context.Background(), agentlimits.QuerySpec{
+		AgentID: agentID,
+		// Ruta absoluta, igual que el resto: lanzarlo por nombre lo hace
+		// depender del PATH que heredó la ventana (fix de 1.3.1).
+		Argv: agents.Launcher(agent.Path),
+		Env:  env,
+		Cwd:  cwd,
+	})
 }
 
 // SetAgentChatSettings guarda el modelo, el esfuerzo y el modo con los que se

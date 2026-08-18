@@ -154,6 +154,68 @@ const fixtures: Record<string, unknown> = {
         {id: 'codex', label: 'Codex CLI', vendor: 'OpenAI', command: 'codex', defaultCommand: 'codex', path: '/usr/local/bin/codex', available: true, keyEnv: 'OPENAI_API_KEY', hasKey: false, loginHint: '', note: '', docsUrl: ''},
         {id: 'antigravity', label: 'Antigravity CLI', vendor: 'Google', command: 'agy', defaultCommand: 'agy', path: '/usr/local/bin/agy', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
     ],
+    AgentDraftCommit: {
+        message: 'feat(git): redactar el mensaje del commit con el agente por defecto',
+        files: ['A   backend/agentchat/conversations.go'],
+        insertions: 128,
+        deletions: 12,
+        diffTruncated: false,
+        agentLabel: 'Claude Code',
+    },
+    AgentUsageLimits: [
+        {
+            agent: 'claude',
+            known: true,
+            note: '',
+            source: '~/.claude.json',
+            plan: '',
+            queryable: false,
+            measuredAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+            windows: [
+                {kind: 'session', label: 'Sesión · 5 h', percent: 3, resetsAt: new Date(Date.now() + 3 * 3600_000).toISOString(), severity: 'normal', active: false},
+                {kind: 'weekly', label: 'Semana · todos los modelos', percent: 17, resetsAt: new Date(Date.now() + 40 * 3600_000).toISOString(), severity: 'normal', active: true},
+                {kind: 'weekly', label: 'Semana · Fable', percent: 0, resetsAt: '', severity: 'normal', active: false},
+            ],
+        },
+        {
+            agent: 'codex',
+            known: true,
+            note: '',
+            source: '~/.codex/sessions/…/rollout-….jsonl',
+            plan: 'plus',
+            queryable: false,
+            measuredAt: new Date(Date.now() - 26 * 3600_000).toISOString(),
+            windows: [{kind: 'session', label: 'Ventana · 5 h', percent: 74, resetsAt: new Date(Date.now() + 2 * 3600_000).toISOString(), severity: '', active: true}],
+        },
+        {
+            agent: 'antigravity',
+            known: false,
+            note: 'Antigravity no guarda su cuota en el disco. Se le puede preguntar a él mismo: tarda unos segundos y no consume cuota.',
+            source: '~/.gemini/antigravity-cli',
+            plan: '',
+            queryable: true,
+            measuredAt: '',
+            windows: [],
+        },
+    ],
+    // Lo que contesta el CLI de Antigravity cuando se le pregunta la cuota
+    // (`agy --print "/usage"`): grupos de modelos con su ventana semanal y la
+    // de cinco horas.
+    AgentQueryLimits: {
+        agent: 'antigravity',
+        known: true,
+        note: '',
+        source: 'agy --print /usage',
+        plan: '',
+        queryable: true,
+        measuredAt: new Date().toISOString(),
+        windows: [
+            {kind: 'weekly', label: 'Gemini Models · semana', percent: 12, resetsAt: new Date(Date.now() + 60 * 3600_000).toISOString(), severity: '', active: true},
+            {kind: 'session', label: 'Gemini Models · 5 h', percent: 0.4, resetsAt: new Date(Date.now() + 4 * 3600_000).toISOString(), severity: '', active: false},
+            {kind: 'weekly', label: 'Claude and GPT models · semana', percent: 0, resetsAt: new Date(Date.now() + 150 * 3600_000).toISOString(), severity: '', active: false},
+            {kind: 'session', label: 'Claude and GPT models · 5 h', percent: 0, resetsAt: new Date(Date.now() + 4 * 3600_000).toISOString(), severity: '', active: false},
+        ],
+    },
     AgentChatSupported: true,
     AgentChatModes: ['', 'plan', 'approve', 'auto', 'edit'],
     AgentModelCatalog: {
@@ -191,8 +253,12 @@ const fixtures: Record<string, unknown> = {
     },
     GitAgentUsage: {
         days: 30,
+        // Los tres agentes, como los devuelve el backend: uno con tokens
+        // medidos, uno con menos, y uno que no deja tokens en disco y solo
+        // tiene actividad — es el que estrena el botón de consultar la cuota.
         agents: [
             {agent: 'claude', available: true, note: '', source: '', all: {input: 37210, output: 8646915, cacheWrite: 60985113, cacheRead: 3604530546, total: 3674199784, messages: 9309}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 323200000, messages: 800}, firstDay: '2026-07-15', lastDay: '2026-08-14', byModel: [{key: 'claude-opus-5', total: 2055073573, percent: 60.1, messages: 5119}, {key: 'claude-opus-4-8', total: 834401643, percent: 21.5, messages: 1789}], byDay: [], cacheHitPercent: 98.4, activity: null},
+            {agent: 'antigravity', available: false, note: 'El CLI no deja los tokens en disco: se muestra la actividad registrada.', source: '~/.gemini', all: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '', lastDay: '', byModel: [], byDay: [], cacheHitPercent: 0, activity: {conversations: 1, steps: 4, repoConversations: 0, repoSteps: 0, lastUsed: '2026-08-14'}},
         ],
     },
     AgentPlans: [
@@ -225,6 +291,13 @@ const fixtures: Record<string, unknown> = {
         {id: 'pwsh', label: 'PowerShell', path: '', available: false},
     ],
     DefaultShellID: 'zsh',
+    LocalShellLabel: 'zsh',
+    // Historial de la terminal LOCAL: por intérprete, no por servidor.
+    ListLocalHistory: [
+        {id: 3, command: 'kubectl -n produccion logs -f deploy/api', ranAt: 1786741000},
+        {id: 2, command: 'scp rafael@prodmain:/var/log/api.log ~/Descargas/', ranAt: 1786740000},
+        {id: 1, command: 'tar -xzf backup-2026-08-14.tar.gz', ranAt: 1786700000},
+    ],
     GitProbe: {available: true, version: '2.45.0', path: '/usr/bin/git', error: ''},
     GitBranches: [
         {name: 'develop', current: true, remote: false, upstream: 'origin/develop', ahead: 8, behind: 0, hash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release'},
@@ -292,8 +365,43 @@ const fixtures: Record<string, unknown> = {
     // que solo existe con el panel CERRADO — de ahí que la fixture dependa de
     // la vista.
     gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' ? '' : 'agents', gitSideHidden: false, gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
-    GitChangedFiles: [],
-    GitDiff: {path: '', origPath: '', patch: '', isBinary: false, stat: {added: 0, removed: 0}},
+    // Los archivos de un commit, con su churn: es lo que dibuja el resumen del
+    // commit (metadatos + archivos desplegables). Vacío se fotografiaba como un
+    // commit que no tocó nada.
+    GitChangedFiles: [
+        {path: 'backend/agentchat/conversations.go', origPath: '', patch: '', isBinary: false, stat: {filesChanged: 1, insertions: 42, deletions: 6}},
+        {path: 'backend/agentchat/session.go', origPath: '', patch: '', isBinary: false, stat: {filesChanged: 1, insertions: 18, deletions: 3}},
+        {path: 'frontend/src/components/agent/AgentChat.tsx', origPath: '', patch: '', isBinary: false, stat: {filesChanged: 1, insertions: 96, deletions: 21}},
+        {path: 'frontend/src/assets/agent-chat.png', origPath: '', patch: '', isBinary: true, stat: {filesChanged: 1, insertions: 0, deletions: 0}},
+    ],
+    // Un parche de verdad: es lo que dibujan el panel de diff y el diff
+    // desplegable de la lista de cambios, y con `patch: ''` las dos vistas se
+    // fotografiaban vacías.
+    GitDiff: {
+        path: '',
+        origPath: '',
+        patch: [
+            'diff --git a/backend/agentchat/conversations.go b/backend/agentchat/conversations.go',
+            'index 3f2a1c4..9b7d0e2 100644',
+            '--- a/backend/agentchat/conversations.go',
+            '+++ b/backend/agentchat/conversations.go',
+            '@@ -12,7 +12,11 @@ func Conversations(agentID string) ([]Conversation, error) {',
+            ' \tif agentID == "" {',
+            ' \t\treturn nil, fmt.Errorf("agentchat: falta el agente")',
+            ' \t}',
+            '-\tlist, err := readAll(agentID)',
+            '+\tlist, err := readAll(agentID)',
+            '+\tif err != nil {',
+            '+\t\treturn nil, fmt.Errorf("agentchat: leyendo conversaciones de %s: %w", agentID, err)',
+            '+\t}',
+            '+',
+            ' \tsort.Slice(list, func(i, j int) bool { return list[i].UpdatedAt > list[j].UpdatedAt })',
+            ' \treturn list, nil',
+            ' }',
+        ].join('\n'),
+        isBinary: false,
+        stat: {added: 4, removed: 1},
+    },
     // Conversaciones que el propio CLI ya tiene del repositorio: la respuesta
     // depende del agente que se pregunte.
     AgentCLIConversations: (agentID: string) =>
@@ -359,6 +467,13 @@ const fixtures: Record<string, unknown> = {
     ],
     // Un árbol por scope: los cuatro módulos comparten la tabla `folders` pero
     // nunca las mismas carpetas (backend/vault/folders_repo.go).
+    // Snippets: la misma lista para las terminales SSH y para las locales — es
+    // global, lo único atado a la pestaña es a qué sesión se le mandan.
+    ListSshSnippets: [
+        {id: 's1', name: 'Ver logs del día', script: 'tail -f /var/log/app/$(date +%F).log', folderId: '', sortOrder: 0},
+        {id: 's2', name: 'Espacio en disco', script: 'df -h | sort -k5 -r | head', folderId: '', sortOrder: 1},
+        {id: 's3', name: 'Puertos escuchando', script: 'ss -ltnp', folderId: '', sortOrder: 2},
+    ],
     ListFolders: [
         {id: 'f-prod', name: 'Producción', parentId: '', sortOrder: 0, createdAt: 0, scope: 'db'},
         {id: 'f-qa', name: 'Pruebas', parentId: '', sortOrder: 1, createdAt: 0, scope: 'db'},
@@ -408,6 +523,32 @@ const fixtures: Record<string, unknown> = {
             'Si `current_utilization` está pegado al límite, casi siempre es **una sola',
             'aplicación** que no devuelve las conexiones. El detalle en',
             '[[Procedimiento de sesiones colgadas]].',
+            '',
+            '## 3. Umbrales',
+            '',
+            '| Recurso | Límite | Alerta |',
+            '|---|---:|:---:|',
+            '| processes | 1500 | 90% |',
+            '| sessions | 1800 | 90% |',
+            '| open_cursors | 300 | 85% |',
+            '',
+            '## 4. Antes de cerrar',
+            '',
+            '- [x] Guardar el estado del pool',
+            '- [ ] Identificar la app que no devuelve conexiones',
+            '  - [ ] Revisar el timeout del datasource',
+            '- [ ] Reiniciar ~~el server~~ solo el servicio',
+            '',
+            '1. Confirmar',
+            '2. Aislar',
+            '3. Reiniciar',
+            '',
+            '<details>',
+            '<summary>Detalle del parámetro `processes`</summary>',
+            '',
+            'Subirlo obliga a reiniciar la instancia: no es dinámico.',
+            '',
+            '</details>',
             '',
             '#produccion #oracle',
         ].join('\n'),
@@ -578,6 +719,7 @@ const {default: TitleBar} = await import('./components/TitleBar')
 const {default: ResultGrid} = await import('./components/results/ResultGrid')
 const {default: AgentUsagePanel} = await import('./components/agent/AgentUsagePanel')
 const {default: AiAccessPanel} = await import('./components/AiAccessPanel')
+const {default: LocalTerminalTab} = await import('./components/terminal/LocalTerminalTab')
 
 // --- Vistas ---------------------------------------------------------------
 
@@ -747,11 +889,31 @@ const views: Record<string, React.ReactNode> = {
         </div>
     ),
     usage: (
-        <div className="w-[420px]">
+        // Alto explícito: el panel de consumo pasó a ocupar el cuerpo del chat
+        // como una solapa (`h-full`), así que sin un contenedor con alto la
+        // captura salía aplastada.
+        <div className="h-full w-[420px]">
             <AgentUsagePanel
                 agentLabel={(id) => ({claude: 'Claude Code', codex: 'Codex CLI', antigravity: 'Antigravity CLI'})[id] ?? id}
                 session={{total: 15900, output: 974, cost: 0.0412}}
                 onClose={() => {}}
+            />
+        </div>
+    ),
+    // La terminal del sistema operativo abierta desde el módulo SSH: la barra
+    // con snippets/historial/tema es lo nuevo, el widget de abajo es el mismo
+    // que ya usaba el módulo Git.
+    localterm: (
+        <div className="h-full">
+            <LocalTerminalTab
+                sessionId="local-shot"
+                shellId="zsh"
+                shellLabel="zsh"
+                theme="dark"
+                terminalThemeId="Dracula"
+                onChangeTerminalTheme={() => {}}
+                terminalFontSize={13}
+                visible
             />
         </div>
     ),

@@ -39,12 +39,23 @@ type SshHistoryEntry struct {
 // un secreto por argumento con un nombre que nadie previó. Por eso lo de abajo
 // es un filtro, no una garantía, y lo que pasa igual queda cifrado.
 var secretPattern = regexp.MustCompile(`(?i)` + strings.Join([]string{
-	`-p\S`,                       // mysql -pSECRETO (pegado, que es el caso peligroso)
+	// mysql -pSECRETO (pegado, que es el caso peligroso). La `-p` va en
+	// MINÚSCULA obligatoria —de ahí el (?-i:…) contra el (?i) general— porque
+	// en PowerShell casi todo parámetro empieza con mayúscula: sin esto,
+	// `Get-Process`, `-Path` o `-Property` se leían como una contraseña
+	// pegada y la terminal local de Windows no guardaba prácticamente nada.
+	// El `(^|\s)` es lo que exige que la bandera EMPIECE un token: sin él,
+	// cualquier palabra con un guion en el medio ("top-priority", "no-push")
+	// se leía como una contraseña pegada.
+	`(^|\s)(?-i:-p)\S`,
 	`--password`,                 // --password=… / --password …
 	`\bsshpass\b`,                // sshpass -p …
 	`(pass|passwd|password)\s*=`, // PASSWORD=… en cualquier variante
 	`(token|secret|api[_-]?key|apikey)\s*=`,
-	`\bcurl\b.*\b-u\s`, // curl -u usuario:clave
+	// curl -u usuario:clave. El `\b` de antes NUNCA casaba: un límite de
+	// palabra entre un espacio y un guion no existe (los dos son no-palabra),
+	// así que esta regla estaba muerta desde que se escribió.
+	`\bcurl\b.*(^|\s)-u\s`,
 	`\bexport\s+\w*(KEY|TOKEN|SECRET|PASS)`,
 	`AKIA[0-9A-Z]{16}`, // access key de AWS, reconocible por su forma
 	`\bBEGIN\s+(RSA|OPENSSH|EC|DSA)?\s*PRIVATE KEY\b`,

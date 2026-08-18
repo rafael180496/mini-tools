@@ -51,7 +51,7 @@ import {
     GitSetDefaultAgent,
     AgentChatSupported,
     AgentCLIConversations,
-    AskAgentOnce,
+    AgentDraftCommit,
     CreateAgentChat,
     GitAgentContext,
     ListAgentChats,
@@ -65,9 +65,10 @@ import {
 import {GetSettings, ListAgents, SetGitLayout, SetGitPanelSessions} from '../../../wailsjs/go/main/App'
 import {ExternalEditors, OpenRepoInEditor, OpenRepoInFileManager} from '../../../wailsjs/go/main/App'
 import {osopen} from '../../../wailsjs/go/models'
-import {agentchat, agents as agentsModel, git, vault} from '../../../wailsjs/go/models'
+import {agentchat, agents as agentsModel, git, main, vault} from '../../../wailsjs/go/models'
 import type {Theme} from '../../hooks/useTheme'
 import type {TerminalThemeId} from '../../xterm/terminalThemes'
+import InlineDiff, {type InlineDiffState} from './InlineDiff'
 import {buildBranchTree, countBranches, expandedForBranch, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
 import {groupTags} from '../../lib/tagGroups'
 import {
@@ -881,50 +882,82 @@ export default function GitRepoTab({
     )
 
 
-    // draftAgent es con qué agente se redacta el mensaje de commit: el que
-    // esté fijado por defecto si sirve, o el primero con chat verificado. Sin
-    // ninguno, la acción no se ofrece — mejor que ofrecerla y fallar al
-    // tocarla.
-    const draftAgent = useMemo(() => {
-        if (defaultAgent && chatCapable.has(defaultAgent)) return defaultAgent
-        return agentList.find((a) => a.available && chatCapable.has(a.id))?.id ?? ''
-    }, [defaultAgent, chatCapable, agentList])
+    // Con qué agente se redacta el mensaje de commit.
+    //
+    // La elección la resuelve el BACKEND (`AgentDraftCommit`): el agente por
+    // defecto de la aplicación —el mismo que usan el generador de consultas y
+    // el análisis de EXPLAIN— y solo si no hay ninguno elegido, el por defecto
+    // de este repositorio. Acá solo se decide si la acción se OFRECE, que es
+    // otra pregunta: alcanza con que haya algún CLI instalado con chat
+    // verificado, porque sin eso el botón solo puede terminar en un error.
+    const draftables = useMemo(
+        () => agentList.filter((a) => a.available && chatCapable.has(a.id)),
+        [agentList, chatCapable],
+    )
 
     const [drafting, setDrafting] = useState(false)
+    // Última redacción, para poder decir quién la escribió y sobre qué. "¿Qué
+    // le mandaste de mi repositorio?" tiene que poder contestarse, igual que en
+    // el asistente de consultas.
+    const [draft, setDraft] = useState<main.CommitDraft | null>(null)
 
-    // draftCommitMessage le pide al agente el mensaje a partir del diff
-    // PREPARADO y lo escribe en el campo.
+    // Un mensaje editado a mano deja de ser el que redactó el agente: mantener
+    // la firma abajo diría que el agente escribió algo que no escribió.
+    useEffect(() => {
+        setDraft((prev) => (prev && prev.message !== commitMessage ? null : prev))
+    }, [commitMessage])
+
+    // draftCommitMessage pide el mensaje a partir del diff PREPARADO y lo
+    // escribe en el campo.
     //
-    // Tres decisiones que hacen que esto sirva en vez de estorbar:
-    //   - Se le pide que lea `git diff --staged` él mismo en vez de pegarle el
-    //     parche: el diff de un commit grande no entra cómodo en un prompt, y
-    //     git es una herramienta que los dos agentes ya tienen.
-    //   - Se le pide el mensaje PELADO, sin markdown ni explicación, porque va
-    //     derecho a un campo de texto.
+    // Dos decisiones que hacen que esto sirva en vez de estorbar:
+    //   - El contexto lo arma Go (parche recortado, archivos y los últimos
+    //     mensajes del repositorio como referencia de estilo) en vez de pedirle
+    //     al agente que corra `git diff` él mismo: así la respuesta no depende
+    //     de que el CLI decida ejecutar un comando, y se puede DECIR qué se le
+    //     mandó.
     //   - El prefijo de tipo/scope que el usuario ya haya elegido se vuelve a
     //     aplicar sobre lo que devuelva: la convención del proyecto la decide
     //     el selector, no el agente.
-    const draftCommitMessage = useCallback(async () => {
-        if (!draftAgent || drafting) return
-        setDrafting(true)
-        setError(null)
-        try {
-            const answer = await AskAgentOnce(
-                repoId,
-                draftAgent,
-                'Mirá el diff preparado para commitear en este repositorio (git diff --staged) y escribí el mensaje de commit. ' +
-                    'Respondé SOLO con el mensaje: primera línea de resumen en imperativo y menos de 72 caracteres, y si hace falta ' +
-                    'una línea en blanco y un cuerpo breve explicando el porqué. Sin markdown, sin comillas y sin ninguna explicación adicional.',
-            )
-            const {type, scope} = currentPrefixOf(commitMessage)
-            const clean = answer.trim()
-            setCommitMessage(type ? applyPrefix(clean, buildCommitPrefix(type, scope)) : clean)
-        } catch (e) {
-            setError(String(e))
-        } finally {
-            setDrafting(false)
-        }
-    }, [draftAgent, drafting, repoId, commitMessage])
+    const draftCommitMessage = useCallback(
+        async (agentId = '') => {
+            if (drafting) return
+            setDrafting(true)
+            setError(null)
+            try {
+                const result = await AgentDraftCommit(repoId, agentId)
+                const {type, scope} = currentPrefixOf(commitMessage)
+                const clean = result.message.trim()
+                const message = type ? applyPrefix(clean, buildCommitPrefix(type, scope)) : clean
+                setCommitMessage(message)
+                setDraft(main.CommitDraft.createFrom({...result, message}))
+            } catch (e) {
+                setError(String(e))
+            } finally {
+                setDrafting(false)
+            }
+        },
+        [drafting, repoId, commitMessage],
+    )
+
+    // Elegir OTRO proveedor para esta redacción no cambia el agente activo de
+    // la app: es una segunda opinión sobre el mismo diff, misma idea que el
+    // selector del análisis de EXPLAIN.
+    const pickDraftAgent = useCallback(
+        (e: {clientX: number; clientY: number}) => {
+            setMenu({
+                x: e.clientX,
+                y: e.clientY,
+                items: draftables.map((a) => ({
+                    label: `Redactar con ${a.label}`,
+                    icon: 'auto_awesome',
+                    hint: 'Solo para este mensaje — no cambia el agente por defecto de la aplicación',
+                    onSelect: () => void draftCommitMessage(a.id),
+                })),
+            })
+        },
+        [draftables, draftCommitMessage],
+    )
 
     // askAgentPicking resuelve CON QUÉ agente. Con uno por defecto va directo;
     // sin él abre el menú, porque elegir por el usuario un asistente que
@@ -1694,10 +1727,69 @@ export default function GitRepoTab({
         ]
     }
 
+    // Lo mismo, pero para los archivos de un COMMIT: el resumen de un commit se
+    // lee igual que se revisa uno propio —de arriba hacia abajo, archivo por
+    // archivo— y obligar a saltar al panel de diff por cada uno convierte esa
+    // lectura en veinte clics.
+    //
+    // Estado aparte del de la lista de cambios a propósito: son parches de
+    // fuentes distintas (`git show <hash>` contra `git diff`) y vaciarlos junto
+    // con el commit elegido tiene que ser una sola línea, no un filtro.
+    const [commitDiffs, setCommitDiffs] = useState<Record<string, InlineDiffState>>({})
+
+    const fetchCommitDiff = useCallback(
+        (path: string, hash: string) => {
+            GitDiff(repoId, new git.DiffTarget({mode: 'commit', commit: hash, path, contextLines: diffContext, ignoreWhitespace: diffIgnoreWs}))
+                .then((d) => setCommitDiffs((prev) => (prev[path] ? {...prev, [path]: {loading: false, patch: d.patch, isBinary: d.isBinary, error: null}} : prev)))
+                .catch((e) => setCommitDiffs((prev) => (prev[path] ? {...prev, [path]: {loading: false, patch: '', isBinary: false, error: String(e)}} : prev)))
+        },
+        [repoId, diffContext, diffIgnoreWs],
+    )
+
+    const toggleCommitDiff = useCallback(
+        (path: string) => {
+            const hash = selectedCommit?.hash
+            if (!hash) return
+            if (commitDiffs[path]) {
+                setCommitDiffs((prev) => {
+                    const next = {...prev}
+                    delete next[path]
+                    return next
+                })
+                return
+            }
+            setCommitDiffs((prev) => ({...prev, [path]: {loading: true, patch: '', isBinary: false, error: null}}))
+            fetchCommitDiff(path, hash)
+        },
+        [commitDiffs, selectedCommit?.hash, fetchCommitDiff],
+    )
+
+    // Expandir todo es una lectura de un parche por archivo. Es barato en un
+    // commit normal y no lo es en uno de cientos de archivos, así que el botón
+    // se apaga arriba de ese tope en vez de disparar la avalancha y dejar la
+    // pestaña trabada — ver CommitDetail, que explica el motivo en su tooltip.
+    const expandAllCommitDiffs = useCallback(
+        (paths: string[]) => {
+            const hash = selectedCommit?.hash
+            if (!hash) return
+            setCommitDiffs((prev) => {
+                const next = {...prev}
+                for (const p of paths) if (!next[p]) next[p] = {loading: true, patch: '', isBinary: false, error: null}
+                return next
+            })
+            for (const p of paths) if (!commitDiffs[p]) fetchCommitDiff(p, hash)
+        },
+        [commitDiffs, selectedCommit?.hash, fetchCommitDiff],
+    )
+
     // Selecting a commit loads its file list. The diff for a specific file is
     // a separate fetch, made only once a file is picked — a commit touching
     // hundreds of files must not pull hundreds of patches.
     useEffect(() => {
+        // Lo desplegado del commit anterior se pliega acá: dejar abierto el
+        // diff de un archivo de otro commit mostraría un cambio que este no
+        // hizo.
+        setCommitDiffs({})
         if (!selectedCommit) {
             setChangedFiles([])
             return
@@ -1708,16 +1800,23 @@ export default function GitRepoTab({
                 if (cancelled) return
                 const list = files ?? []
                 setChangedFiles(list)
-                // Auto-select the first file so the diff appears on commit
-                // click instead of leaving a blank "elegí un archivo" panel —
-                // the first file is almost always the one being looked for.
-                setSelectedPath(list.length > 0 ? list[0].path : null)
+                // Antes se auto-seleccionaba el primer archivo para no dejar el
+                // panel derecho en blanco. Ya no hace falta: el resumen ocupa el
+                // panel entero y muestra los archivos con su churn. En su lugar
+                // se DESPLIEGA el primero —una sola lectura de parche, la misma
+                // que costaba la auto-selección— así un clic en el commit ya
+                // muestra un cambio, y abrir el visor sigue siendo del usuario.
+                setSelectedPath(null)
+                const first = list.find((f) => !f.isBinary)
+                if (!first) return
+                setCommitDiffs({[first.path]: {loading: true, patch: '', isBinary: false, error: null}})
+                fetchCommitDiff(first.path, selectedCommit.hash)
             })
             .catch((e) => !cancelled && setError(String(e)))
         return () => {
             cancelled = true
         }
-    }, [repoId, selectedCommit])
+    }, [repoId, selectedCommit, fetchCommitDiff])
 
     // Fetch the diff for whatever is selected — a file inside a commit, or a
     // working-tree/staged file when the changes view is active.
@@ -1788,6 +1887,85 @@ export default function GitRepoTab({
             cancelled = true
         }
     }, [status, view, selectedPath, repoId, diffContext, diffIgnoreWs])
+
+    // Diffs desplegados DENTRO de la lista de cambios (uno por archivo).
+    //
+    // Viven acá y no en el panel porque el que sabe leer un diff es este
+    // componente —tiene el repoId y las preferencias de contexto/espacios—, y
+    // porque hay que refrescarlos cuando cambia el estado del repositorio:
+    // stagear un archivo con su diff abierto cambia de qué lado se lee el
+    // parche, y un panel que se quedara con el anterior mostraría un cambio que
+    // ya no está donde dice.
+    const [inlineDiffs, setInlineDiffs] = useState<Record<string, InlineDiffState>>({})
+
+    const fetchInlineDiff = useCallback(
+        (path: string, staged: boolean) => {
+            GitDiff(
+                repoId,
+                new git.DiffTarget({
+                    mode: staged ? 'staged' : 'worktree',
+                    path,
+                    contextLines: diffContext,
+                    ignoreWhitespace: diffIgnoreWs,
+                }),
+            )
+                .then((d) =>
+                    // Solo se escribe si el archivo SIGUE desplegado: cerrarlo
+                    // mientras cargaba no puede volver a abrirlo solo.
+                    setInlineDiffs((prev) => (prev[path] ? {...prev, [path]: {loading: false, patch: d.patch, isBinary: d.isBinary, error: null}} : prev)),
+                )
+                .catch((e) =>
+                    setInlineDiffs((prev) => (prev[path] ? {...prev, [path]: {loading: false, patch: '', isBinary: false, error: String(e)}} : prev)),
+                )
+        },
+        [repoId, diffContext, diffIgnoreWs],
+    )
+
+    const toggleInlineDiff = useCallback(
+        (path: string, staged: boolean) => {
+            if (inlineDiffs[path]) {
+                setInlineDiffs((prev) => {
+                    const next = {...prev}
+                    delete next[path]
+                    return next
+                })
+                return
+            }
+            setInlineDiffs((prev) => ({...prev, [path]: {loading: true, patch: '', isBinary: false, error: null}}))
+            fetchInlineDiff(path, staged)
+        },
+        [inlineDiffs, fetchInlineDiff],
+    )
+
+    // Refresco silencioso de los diffs abiertos, con el mismo criterio que el
+    // del panel derecho: el archivo que dejó de tener cambios se cierra —su
+    // parche ya no existe— y el resto se vuelve a leer sin spinner.
+    //
+    // Las rutas se leen de un ref y no del estado para que escribir el
+    // resultado no vuelva a disparar este efecto.
+    const openInlineRef = useRef<string[]>([])
+    useEffect(() => {
+        openInlineRef.current = Object.keys(inlineDiffs)
+    }, [inlineDiffs])
+
+    useEffect(() => {
+        // Sin `status` no se decide nada: todavía no se sabe si el archivo
+        // sigue teniendo cambios, y darlo por cerrado plegaría un diff que el
+        // usuario acababa de abrir.
+        if (view !== 'changes' || !status || openInlineRef.current.length === 0) return
+        for (const path of openInlineRef.current) {
+            const entry = status?.files.find((f) => f.path === path)
+            if (!entry) {
+                setInlineDiffs((prev) => {
+                    const next = {...prev}
+                    delete next[path]
+                    return next
+                })
+                continue
+            }
+            fetchInlineDiff(path, entry.staged)
+        }
+    }, [status, view, fetchInlineDiff])
 
     const persistDiffPrefs = useCallback((context: number, ignoreWs: boolean, wrap: boolean) => {
         setDiffContext(context)
@@ -2581,8 +2759,12 @@ export default function GitRepoTab({
                             onUnstage={(paths) => run('restore --staged', () => GitUnstage(repoId, paths))}
                             onDiscard={(paths) => setConfirmDiscard(paths)}
                             onChangeMessage={setCommitMessage}
+                            inlineDiffs={inlineDiffs}
+                            onToggleDiff={toggleInlineDiff}
                             drafting={drafting}
-                            onDraftMessage={draftAgent ? () => void draftCommitMessage() : undefined}
+                            draft={draft}
+                            onDraftMessage={draftables.length > 0 ? () => void draftCommitMessage() : undefined}
+                            onPickDraftAgent={draftables.length > 1 ? pickDraftAgent : undefined}
                             onCommit={() =>
                                 run('commit', async () => {
                                     await GitCommit(repoId, commitMessage, false)
@@ -2604,7 +2786,24 @@ export default function GitRepoTab({
                     dibujado fuera del panel. */}
                 {!diffHidden && (
                 <div style={{width: diffWidth}} className="flex shrink-0 flex-col overflow-hidden">
-                    {view === 'commits' && selectedCommit && <CommitDetail commit={selectedCommit} files={changedFiles} selectedPath={selectedPath} onSelectPath={setSelectedPath} />}
+                    {view === 'commits' && selectedCommit && (
+                        <CommitDetail
+                            commit={selectedCommit}
+                            files={changedFiles}
+                            selectedPath={selectedPath}
+                            onSelectPath={setSelectedPath}
+                            diffs={commitDiffs}
+                            onToggleDiff={toggleCommitDiff}
+                            onExpandAll={expandAllCommitDiffs}
+                            onCollapseAll={() => setCommitDiffs({})}
+                            full={!selectedPath}
+                        />
+                    )}
+                    {/* El visor solo ocupa lugar cuando hay algo que ver: con un
+                        commit elegido y ningún archivo abierto, el resumen se
+                        queda con el panel entero en vez de repartirlo con un
+                        cartel que dice "elegí un archivo". */}
+                    {!(view === 'commits' && selectedCommit && !selectedPath) && (
                     <div className="min-h-0 flex-1 overflow-hidden border-t border-outline-variant">
                         {selectedPath ? (
                             <DiffViewer
@@ -2694,6 +2893,7 @@ export default function GitRepoTab({
                             </div>
                         )}
                     </div>
+                    )}
                 </div>
                 )}
             </div>
@@ -3806,9 +4006,57 @@ function BranchRow({
     )
 }
 
-function CommitDetail({commit, files, selectedPath, onSelectPath}: {commit: git.CommitInfo; files: git.FileDiff[]; selectedPath: string | null; onSelectPath: (p: string) => void}) {
+// Resumen de un commit: metadatos, mensaje completo y los archivos que tocó,
+// cada uno desplegable con su diff adentro.
+//
+// Por qué se lee así y no como una lista que manda al panel de la derecha: un
+// commit se revisa entero, de arriba hacia abajo. Con la lista sola, entender
+// qué hizo un commit de veinte archivos son veinte clics de ida y veinte de
+// vuelta; desplegado, es un scroll. El panel de diff sigue existiendo para lo
+// que sí es de UN archivo —blame, ver con más contexto, buscar dentro—, y por
+// eso el nombre de cada archivo sigue abriéndolo ahí.
+// EXPAND_ALL_LIMIT es hasta cuántos archivos "Expandir todo" abre de una. Es
+// una lectura de parche por archivo: en un commit normal ni se nota, en uno de
+// cientos deja la pestaña dibujando durante segundos.
+const EXPAND_ALL_LIMIT = 50
+
+function CommitDetail({
+    commit,
+    files,
+    selectedPath,
+    onSelectPath,
+    diffs,
+    onToggleDiff,
+    onExpandAll,
+    onCollapseAll,
+    full,
+}: {
+    commit: git.CommitInfo
+    files: git.FileDiff[]
+    selectedPath: string | null
+    onSelectPath: (p: string) => void
+    // Diffs desplegados dentro del resumen, por ruta. Ausente = plegado.
+    diffs: Record<string, InlineDiffState>
+    onToggleDiff: (path: string) => void
+    onExpandAll: (paths: string[]) => void
+    onCollapseAll: () => void
+    // Si el resumen ocupa el panel entero. Lo hace cuando no hay ningún archivo
+    // abierto en el visor: repartir la altura con un panel que solo dice "elegí
+    // un archivo" es regalar la mitad de la pantalla a un cartel.
+    full?: boolean
+}) {
+    // El total sale de los archivos que ya trajo `GitChangedFiles`, no de una
+    // llamada aparte: es la misma cuenta que hace `git show --stat` y no hace
+    // falta pedirla dos veces.
+    const insertions = files.reduce((n, f) => n + f.stat.insertions, 0)
+    const deletions = files.reduce((n, f) => n + f.stat.deletions, 0)
+    const expandedCount = files.filter((f) => diffs[f.path]).length
+    // Tope de "expandir todo": arriba de esto son cientos de lecturas de parche
+    // seguidas, y la pestaña se traba antes de terminar de dibujar.
+    const canExpandAll = files.length > 0 && files.length <= EXPAND_ALL_LIMIT
+
     return (
-        <div className="flex max-h-[55%] shrink-0 flex-col">
+        <div className={`flex min-h-0 flex-col ${full ? 'flex-1' : 'max-h-[55%] shrink-0'}`}>
             <div className="shrink-0 space-y-1 border-b border-outline-variant bg-surface-container-lowest px-3 py-2">
                 <p className="text-xs font-medium text-on-surface">{commit.subject}</p>
                 {commit.body && <pre className="whitespace-pre-wrap break-words text-[11px] text-on-surface-variant">{commit.body}</pre>}
@@ -3825,28 +4073,96 @@ function CommitDetail({commit, files, selectedPath, onSelectPath}: {commit: git.
                             <dd className="truncate font-mono">{commit.parents.join(' ')}</dd>
                         </>
                     )}
+                    {/* Dónde vive este commit. Es la respuesta a "¿esto ya está
+                        en develop?", que es lo primero que se pregunta mirando
+                        uno ajeno. */}
+                    {((commit.branches?.length ?? 0) > 0 || (commit.tags?.length ?? 0) > 0) && (
+                        <>
+                            <dt className="text-on-surface-variant/60">Refs</dt>
+                            <dd className="flex flex-wrap gap-1">
+                                {commit.branches?.map((b) => (
+                                    <span key={b} title={`Este commit es alcanzable desde ${b}`} className="rounded-full bg-primary-container/60 px-1.5 text-[9px] text-on-primary-container">
+                                        {b}
+                                    </span>
+                                ))}
+                                {commit.tags?.map((t) => (
+                                    <span key={t} title={`Tag ${t} en este commit`} className="rounded-full bg-tertiary/20 px-1.5 text-[9px] text-tertiary">
+                                        {t}
+                                    </span>
+                                ))}
+                            </dd>
+                        </>
+                    )}
+                    <dt className="text-on-surface-variant/60">Cambios</dt>
+                    <dd className="font-mono">
+                        {files.length} {files.length === 1 ? 'archivo' : 'archivos'} · <span className="text-secondary">+{insertions}</span>{' '}
+                        <span className="text-error">−{deletions}</span>
+                    </dd>
                 </dl>
             </div>
+
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-3 py-1 text-[10px] text-on-surface-variant">
+                <span className="font-semibold uppercase tracking-wider text-on-surface-variant/70">Archivos</span>
+                <span className="rounded-full bg-surface-variant px-1.5 text-[9px] font-semibold text-on-surface-variant">{files.length}</span>
+                <button
+                    onClick={() => (expandedCount > 0 ? onCollapseAll() : onExpandAll(files.map((f) => f.path)))}
+                    disabled={expandedCount === 0 && !canExpandAll}
+                    title={
+                        expandedCount > 0
+                            ? 'Vuelve a plegar todos los diffs abiertos'
+                            : canExpandAll
+                              ? `Abre el diff de los ${files.length} archivos, para leer el commit entero de corrido`
+                              : `Este commit toca ${files.length} archivos: abrirlos todos son ${files.length} lecturas de parche seguidas y la pestaña se traba. Abrilos de a uno con el triangulito.`
+                    }
+                    className="ml-auto shrink-0 rounded px-1.5 py-0.5 hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
+                >
+                    {expandedCount > 0 ? 'Colapsar todo' : 'Expandir todo'}
+                </button>
+            </div>
+
             <div className="min-h-0 flex-1 overflow-y-auto">
-                {files.map((f) => (
-                    <button
-                        key={f.path}
-                        onClick={() => onSelectPath(f.path)}
-                        title={`Ver el diff de ${f.path}`}
-                        className={`flex w-full items-center gap-2 px-3 py-1 text-left text-[11px] ${
-                            selectedPath === f.path ? 'bg-primary-container/50 text-on-primary-container' : 'text-on-surface hover:bg-surface-variant/50'
-                        }`}
-                    >
-                        <span className="min-w-0 flex-1 truncate font-mono">{f.origPath ? `${f.origPath} → ${f.path}` : f.path}</span>
-                        {f.isBinary ? (
-                            <span className="shrink-0 text-[9px] text-on-surface-variant/60">binario</span>
-                        ) : (
-                            <span className="shrink-0 font-mono text-[9px]">
-                                <span className="text-secondary">+{f.stat.insertions}</span> <span className="text-error">−{f.stat.deletions}</span>
-                            </span>
-                        )}
-                    </button>
-                ))}
+                {files.map((f) => {
+                    const diff = diffs[f.path]
+                    return (
+                        <div key={f.path}>
+                            <div
+                                className={`group flex items-center gap-1.5 py-1 pl-1 pr-3 text-[11px] ${
+                                    selectedPath === f.path ? 'bg-primary-container/50' : 'hover:bg-surface-variant/50'
+                                }`}
+                            >
+                                <button
+                                    onClick={() => onToggleDiff(f.path)}
+                                    disabled={f.isBinary}
+                                    title={
+                                        f.isBinary
+                                            ? 'Archivo binario: git no produce un diff de texto para esto'
+                                            : diff
+                                              ? `Ocultar los cambios de ${f.path}`
+                                              : `Ver acá mismo lo que este commit le hizo a ${f.path}`
+                                    }
+                                    className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30"
+                                >
+                                    <Icon name={diff ? 'expand_more' : 'chevron_right'} size={13} />
+                                </button>
+                                <button
+                                    onClick={() => onSelectPath(f.path)}
+                                    title={`Abrir ${f.path} en el panel de diff — ahí se ve con blame, más contexto y búsqueda`}
+                                    className="min-w-0 flex-1 truncate text-left font-mono text-on-surface"
+                                >
+                                    {f.origPath ? `${f.origPath} → ${f.path}` : f.path}
+                                </button>
+                                {f.isBinary ? (
+                                    <span className="shrink-0 text-[9px] text-on-surface-variant/60">binario</span>
+                                ) : (
+                                    <span className="shrink-0 font-mono text-[9px]">
+                                        <span className="text-secondary">+{f.stat.insertions}</span> <span className="text-error">−{f.stat.deletions}</span>
+                                    </span>
+                                )}
+                            </div>
+                            {diff && <InlineDiff state={diff} onOpenFull={() => onSelectPath(f.path)} />}
+                        </div>
+                    )
+                })}
             </div>
         </div>
     )
@@ -3866,8 +4182,12 @@ function ChangesPanel({
     onDiscard,
     onChangeMessage,
     onCommit,
+    inlineDiffs,
+    onToggleDiff,
     onDraftMessage,
+    onPickDraftAgent,
     drafting,
+    draft,
 }: {
     staged: git.FileStatus[]
     unstaged: git.FileStatus[]
@@ -3884,30 +4204,43 @@ function ChangesPanel({
     onDiscard: (paths: string[]) => void
     onChangeMessage: (m: string) => void
     onCommit: () => void
-    // Ausente cuando no hay ningún agente con chat verificado instalado: la
+    // Diffs desplegados dentro de la lista, por ruta. Ausente = plegado.
+    inlineDiffs: Record<string, InlineDiffState>
+    onToggleDiff: (path: string, staged: boolean) => void
+    // Ausente cuando no hay ningún agente instalado con chat verificado: la
     // acción no se ofrece en vez de ofrecerla y fallar al tocarla.
     onDraftMessage?: () => void
+    // Ausente con un solo agente instalado: un menú de una sola opción es
+    // ruido, y el único que hay ya es el que usa el botón.
+    onPickDraftAgent?: (e: {clientX: number; clientY: number}) => void
     drafting?: boolean
+    // La última redacción del agente, mientras el campo siga siendo la suya.
+    draft?: main.CommitDraft | null
 }) {
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto">
                 <FileGroup
-                    title="Staged"
+                    title="Preparados"
                     files={staged}
                     selectedPath={selectedPath}
                     onSelectPath={onSelectPath}
                     action={{icon: 'remove', title: 'Quitar del stage (el archivo no se toca)', onClick: (p) => onUnstage([p])}}
                     empty="Nada en el stage todavía."
+                    inlineDiffs={inlineDiffs}
+                    onToggleDiff={onToggleDiff}
+                    staged
                 />
                 <FileGroup
-                    title="Sin stagear"
+                    title="Cambios"
                     files={unstaged}
                     selectedPath={selectedPath}
                     onSelectPath={onSelectPath}
                     action={{icon: 'add', title: 'Agregar al stage', onClick: (p) => onStage([p])}}
                     secondaryAction={{icon: 'undo', title: 'Descartar los cambios de este archivo — no se puede deshacer', danger: true, onClick: (p) => onDiscard([p])}}
                     empty="Sin cambios en el working tree."
+                    inlineDiffs={inlineDiffs}
+                    onToggleDiff={onToggleDiff}
                 />
             </div>
 
@@ -3916,8 +4249,9 @@ function ChangesPanel({
                     onClick={onStageAll}
                     disabled={busy || unstaged.length === 0}
                     title={unstaged.length === 0 ? 'No hay cambios sin stagear' : `Agregar los ${unstaged.length} archivos modificados al stage`}
-                    className="w-full rounded bg-surface-variant px-2 py-1 text-[11px] text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
+                    className="flex w-full items-center justify-center gap-1.5 rounded bg-surface-variant px-2 py-1 text-[11px] text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
                 >
+                    <Icon name="add" size={13} />
                     Stagear todo
                 </button>
 
@@ -3956,35 +4290,84 @@ function ChangesPanel({
                             {extractTicket(branchName)}
                         </button>
                     )}
-                    {/* Redactar el mensaje desde el diff preparado. Respeta el
-                        prefijo de tipo/scope que ya haya: el agente escribe el
-                        resumen, la convención del proyecto la sigue poniendo
-                        el selector de al lado. */}
+                </div>
+
+                {/* El campo del mensaje con el botón de redactar ADENTRO, en la
+                    esquina: la acción pertenece a lo que se está escribiendo,
+                    y una fila más de botones arriba del campo ya empujaba la
+                    lista de archivos hacia arriba sin decir nada nuevo. */}
+                <div className="relative rounded bg-surface-container-highest focus-within:ring-1 focus-within:ring-primary">
+                    <textarea
+                        value={commitMessage}
+                        onChange={(e) => onChangeMessage(e.target.value)}
+                        placeholder="Mensaje del commit…"
+                        rows={3}
+                        title="Mensaje del commit — la primera línea es el resumen, dejá una línea en blanco antes del cuerpo"
+                        className="w-full resize-none rounded border-none bg-transparent px-2 py-1.5 pr-14 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                    />
                     {onDraftMessage && (
-                        <button
-                            onClick={onDraftMessage}
-                            disabled={busy || staged.length === 0 || drafting}
-                            title={
-                                staged.length === 0
-                                    ? 'Agregá archivos al stage: el mensaje se redacta a partir de lo que está preparado'
-                                    : 'Le pasa el diff preparado al agente para que redacte el mensaje. Lo escribe en el campo — commitear sigue siendo tuyo.'
-                            }
-                            className="ml-auto flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-[10px] text-on-surface-variant hover:text-on-surface disabled:opacity-40"
-                        >
-                            <Icon name={drafting ? 'hourglass_top' : 'smart_toy'} size={11} />
-                            {drafting ? 'Redactando…' : 'Redactar'}
-                        </button>
+                        <div className="absolute right-1 top-1 flex items-center rounded bg-surface-container-highest">
+                            <button
+                                onClick={onDraftMessage}
+                                disabled={busy || staged.length === 0 || drafting}
+                                title={
+                                    drafting
+                                        ? 'El agente está leyendo el diff preparado y escribiendo el mensaje'
+                                        : staged.length === 0
+                                          ? 'Agregá archivos al stage: el mensaje se redacta a partir de lo que está preparado, no del working tree'
+                                          : 'Redactar el mensaje con el agente por defecto, a partir del diff preparado y del estilo de los últimos commits. Lo escribe en el campo — commitear sigue siendo tuyo.'
+                                }
+                                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-primary hover:bg-primary-container/50 disabled:opacity-40"
+                            >
+                                {drafting ? (
+                                    <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary" />
+                                ) : (
+                                    <Icon name="auto_awesome" size={14} />
+                                )}
+                                {/* El ícono solo alcanza cuando ya se sabe qué
+                                    hace. Con el campo vacío —que es cuando la
+                                    acción sirve— va con la palabra al lado, y
+                                    se calla apenas hay texto para no taparlo. */}
+                                {(!commitMessage.trim() || drafting) && (
+                                    <span className="text-[10px]">{drafting ? 'Redactando…' : 'Redactar'}</span>
+                                )}
+                            </button>
+                            {onPickDraftAgent && (
+                                <button
+                                    onClick={(e) => onPickDraftAgent({clientX: e.clientX, clientY: e.clientY})}
+                                    disabled={busy || staged.length === 0 || drafting}
+                                    title="Redactar con OTRO de los agentes instalados. Es para esta redacción nada más: no cambia el agente por defecto de la aplicación."
+                                    className="rounded px-0.5 py-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+                                >
+                                    <Icon name="expand_more" size={13} />
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
 
-                <textarea
-                    value={commitMessage}
-                    onChange={(e) => onChangeMessage(e.target.value)}
-                    placeholder="Mensaje del commit…"
-                    rows={3}
-                    title="Mensaje del commit — la primera línea es el resumen, dejá una línea en blanco antes del cuerpo"
-                    className="w-full resize-none rounded border-none bg-surface-container-highest px-2 py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary"
-                />
+                {/* Qué se le mandó al agente y quién contestó. "¿Qué le pasaste
+                    de mi repositorio?" tiene que poder contestarse, igual que
+                    en el asistente de consultas. */}
+                {draft && (
+                    <p
+                        title={`El agente vio el diff preparado de ${draft.files.length} ${draft.files.length === 1 ? 'archivo' : 'archivos'} y los últimos mensajes del repositorio como referencia de estilo.${
+                            draft.diffTruncated ? ' El parche era más grande que el tope y se le mandó recortado, con la lista completa de archivos.' : ''
+                        } Editar el mensaje a mano hace desaparecer esta línea.`}
+                        className="flex items-center gap-1 px-0.5 text-[10px] text-on-surface-variant/70"
+                    >
+                        <Icon name="auto_awesome" size={11} className="shrink-0 text-primary" />
+                        <span className="truncate">
+                            {draft.agentLabel} · {draft.files.length} {draft.files.length === 1 ? 'archivo' : 'archivos'} · +{draft.insertions}/−{draft.deletions}
+                        </span>
+                        {draft.diffTruncated && (
+                            <span className="shrink-0 text-tertiary" title="El parche superaba el tope que se le manda al agente: escribió sobre el principio del diff más la lista completa de archivos. Revisá el mensaje antes de commitear.">
+                                · recortado
+                            </span>
+                        )}
+                    </p>
+                )}
+
                 <button
                     onClick={onCommit}
                     disabled={busy || staged.length === 0 || !commitMessage.trim()}
@@ -3995,8 +4378,9 @@ function ChangesPanel({
                               ? 'Escribí un mensaje para el commit'
                               : `Commitear los ${staged.length} archivos en el stage`
                     }
-                    className="w-full rounded bg-secondary px-2 py-1.5 text-xs font-medium text-on-secondary hover:opacity-90 disabled:opacity-40"
+                    className="flex w-full items-center justify-center gap-1.5 rounded bg-secondary px-2 py-1.5 text-xs font-medium text-on-secondary hover:opacity-90 disabled:opacity-40"
                 >
+                    <Icon name="check" size={14} />
                     Commit{staged.length > 0 ? ` (${staged.length})` : ''}
                 </button>
             </div>
@@ -4012,6 +4396,9 @@ function FileGroup({
     action,
     secondaryAction,
     empty,
+    inlineDiffs,
+    onToggleDiff,
+    staged,
 }: {
     title: string
     files: git.FileStatus[]
@@ -4020,38 +4407,82 @@ function FileGroup({
     action: {icon: string; title: string; onClick: (path: string) => void}
     secondaryAction?: {icon: string; title: string; danger?: boolean; onClick: (path: string) => void}
     empty: string
+    inlineDiffs: Record<string, InlineDiffState>
+    onToggleDiff: (path: string, staged: boolean) => void
+    // Si este es el grupo que entra en el próximo commit. Decide el punto del
+    // encabezado —la distinción que más se mira en este panel, y la que un
+    // título en gris no alcanza a dar— y de qué lado se lee el diff de cada
+    // archivo: preparado se lee contra el índice, sin preparar contra el
+    // working tree, y confundirlos muestra el parche equivocado.
+    staged?: boolean
 }) {
     return (
         <div>
-            <p className="sticky top-0 bg-surface-container-low px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
-                {title} {files.length > 0 && `(${files.length})`}
+            <p className="sticky top-0 z-10 flex items-center gap-1.5 bg-surface-container-low px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
+                {staged && <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary" />}
+                {title}
+                {files.length > 0 && (
+                    <span className="rounded-full bg-surface-variant px-1.5 py-px text-[9px] font-semibold normal-case tracking-normal text-on-surface-variant">
+                        {files.length}
+                    </span>
+                )}
             </p>
             {files.length === 0 && <p className="px-3 py-1.5 text-[11px] text-on-surface-variant/50">{empty}</p>}
-            {files.map((f) => (
-                <div
-                    key={f.path}
-                    className={`group flex items-center gap-1.5 px-3 py-1 text-[11px] ${
-                        selectedPath === f.path ? 'bg-primary-container/50' : 'hover:bg-surface-variant/50'
-                    }`}
-                >
-                    <StatusChip file={f} />
-                    <button onClick={() => onSelectPath(f.path)} title={`Ver el diff de ${f.path}`} className="min-w-0 flex-1 truncate text-left font-mono text-on-surface">
-                        {f.origPath ? `${f.origPath} → ${f.path}` : f.path}
-                    </button>
-                    {secondaryAction && (
+            {files.map((f) => {
+                // Nombre y carpeta separados: en un repositorio real la ruta
+                // entera no entra en la columna, y truncar a la izquierda deja
+                // ver justo la parte que no distingue un archivo de otro.
+                const slash = f.path.lastIndexOf('/')
+                const name = slash < 0 ? f.path : f.path.slice(slash + 1)
+                const dir = f.origPath ? `← ${f.origPath}` : slash < 0 ? '' : f.path.slice(0, slash)
+                const diff = inlineDiffs[f.path]
+                return (
+                    <div key={f.path}>
+                    <div
+                        className={`group flex items-center gap-1.5 py-1 pl-1 pr-3 text-[11px] ${
+                            selectedPath === f.path ? 'bg-primary-container/50' : 'hover:bg-surface-variant/50'
+                        }`}
+                    >
+                        {/* Desplegar el diff acá mismo. Es lo que permite
+                            repasar el commit entero de arriba hacia abajo antes
+                            de escribirlo, sin ir y volver al panel derecho. */}
                         <button
-                            onClick={() => secondaryAction.onClick(f.path)}
-                            title={secondaryAction.title}
-                            className={`shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 ${secondaryAction.danger ? 'text-error hover:bg-error-container/40' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                            onClick={() => onToggleDiff(f.path, !!staged)}
+                            title={diff ? `Ocultar los cambios de ${name}` : `Ver los cambios de ${name} acá mismo, sin cambiar de panel`}
+                            className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
-                            <Icon name={secondaryAction.icon} size={13} />
+                            <Icon name={diff ? 'expand_more' : 'chevron_right'} size={13} />
                         </button>
-                    )}
-                    <button onClick={() => action.onClick(f.path)} title={action.title} className="shrink-0 rounded p-0.5 text-on-surface-variant opacity-0 hover:bg-surface-variant group-hover:opacity-100">
-                        <Icon name={action.icon} size={13} />
-                    </button>
-                </div>
-            ))}
+                        <button
+                            onClick={() => onSelectPath(f.path)}
+                            title={f.origPath ? `Ver el diff de ${f.path} (renombrado desde ${f.origPath})` : `Ver el diff de ${f.path}`}
+                            className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left"
+                        >
+                            <span className="shrink-0 truncate text-on-surface">{name}</span>
+                            {!!dir && <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-on-surface-variant/60">{dir}</span>}
+                        </button>
+                        {secondaryAction && (
+                            <button
+                                onClick={() => secondaryAction.onClick(f.path)}
+                                title={secondaryAction.title}
+                                className={`shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 ${secondaryAction.danger ? 'text-error hover:bg-error-container/40' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                            >
+                                <Icon name={secondaryAction.icon} size={13} />
+                            </button>
+                        )}
+                        <button
+                            onClick={() => action.onClick(f.path)}
+                            title={action.title}
+                            className="shrink-0 rounded p-0.5 text-on-surface-variant opacity-0 hover:bg-surface-variant group-hover:opacity-100"
+                        >
+                            <Icon name={action.icon} size={13} />
+                        </button>
+                        <StatusChip file={f} />
+                    </div>
+                    {diff && <InlineDiff state={diff} onOpenFull={() => onSelectPath(f.path)} />}
+                    </div>
+                )
+            })}
         </div>
     )
 }
