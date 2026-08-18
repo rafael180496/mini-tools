@@ -208,6 +208,23 @@ const fixtures: Record<string, unknown> = {
         {id: 'chat-6', repoId: 'r1', agentId: 'codex', title: 'Configurar git push upstream en la rama de feature', conversationId: 'conv-6', createdAt: 1785200000, updatedAt: 1785282000, model: '', effort: '', mode: ''},
     ],
     GitRepoWorkspace: {openFiles: ['app_git.go'], defaultAgent: ''},
+    // Devuelve un archivo para cualquier ruta: las pestañas guardadas se
+    // restauran abriendo su archivo, así que sin esto la tira de pestañas
+    // salía siempre con una sola.
+    OpenSQLFilePath: (path: string) => ({
+        path,
+        content: path.includes('facturacion')
+            ? "SELECT f.num_factura, f.fecha_emision, c.nombre, f.total\nFROM SGCPRO.facturas f\nJOIN SGCPRO.clientes c ON c.id_cliente = f.id_cliente\nWHERE f.estado = :estado\n  AND f.fecha_emision BETWEEN :desde AND :hasta\nORDER BY f.fecha_emision DESC;"
+            : "SELECT lower(email) AS email, count(*) AS veces\nFROM contacts\nGROUP BY lower(email)\nHAVING count(*) > 1\nORDER BY veces DESC;",
+    }),
+    // --- Configuración -----------------------------------------------------
+    AppVersion: '2.0.0',
+    ListShells: [
+        {id: 'zsh', label: 'zsh', path: '/bin/zsh', available: true},
+        {id: 'bash', label: 'bash', path: '/bin/bash', available: true},
+        {id: 'pwsh', label: 'PowerShell', path: '', available: false},
+    ],
+    DefaultShellID: 'zsh',
     GitProbe: {available: true, version: '2.45.0', path: '/usr/bin/git', error: ''},
     GitBranches: [
         {name: 'develop', current: true, remote: false, upstream: 'origin/develop', ahead: 8, behind: 0, hash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release'},
@@ -250,7 +267,28 @@ const fixtures: Record<string, unknown> = {
     GitForgeInfo: {provider: 'github', webUrl: 'https://github.com/rafael180496/mini-tools', compareUrl: 'https://github.com/rafael180496/mini-tools/compare/develop'},
     GitCommandLog: [],
     GitWorktrees: [],
-    GetSettings: {gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
+    GetSettings: {sidebarWidth: 276,
+    // Apariencia del editor, manejable por query string para poder
+    // fotografiar variantes: `&size=18&gutter=0&toolbar=compact` es la forma
+    // de comprobar que el ajuste llega de verdad al editor y no solo al
+    // formulario que lo configura.
+    editorAppearance: {
+        fontFamily: new URLSearchParams(location.search).get('font') || 'jetbrains',
+        fontSize: Number(new URLSearchParams(location.search).get('size')) || 13,
+        lineWrap: new URLSearchParams(location.search).get('wrap') === '1',
+        lineNumbers: new URLSearchParams(location.search).get('gutter') !== '0',
+        tabSize: 4,
+        toolbar: new URLSearchParams(location.search).get('toolbar') || 'normal',
+    }, sidebarCollapsed: new URLSearchParams(location.search).get('view') === 'sidebarmin',
+    // Una tanda de pestañas como queda una sesión de verdad: dos consultas
+    // contra bases distintas, una terminal y un repositorio. Es lo que hace
+    // fotografiable el rótulo de tipo de cada pestaña — con una sola pestaña
+    // abierta no hay nada que distinguir.
+    openTabs: [
+        {path: '/consultas/facturacion-pendiente.sql', connId: 'c1', language: 'sql', kind: 'editor'},
+        {path: '/consultas/contactos-duplicados.sql', connId: 'c5', language: 'sql', kind: 'editor'},
+        {path: '', connId: 'c3', language: 'redis-cli', kind: 'redis-browser'},
+    ], sidebarModule: new URLSearchParams(location.search).get('module') || 'connections', gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
     // que solo existe con el panel CERRADO — de ahí que la fixture dependa de
     // la vista.
     gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' ? '' : 'agents', gitSideHidden: false, gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
@@ -300,17 +338,41 @@ const fixtures: Record<string, unknown> = {
         ],
     },
     // --- Módulo de base de datos ---
+    // Conexiones repartidas en carpetas, como queda un equipo real después de
+    // unos meses: un entorno productivo aparte, uno de pruebas, y lo local
+    // suelto en la raíz. Plano no probaba nada de lo que hay que mirar —el
+    // árbol de carpetas es la mitad del diseño de la barra— y con todo en la
+    // raíz la captura mentía sobre cómo se ve la app en uso.
     ListConnections: [
-        {id: 'c1', name: 'Producción Oracle', dbType: 'oracle', host: 'db.ejemplo.local', port: 1521, database: 'SGCPRO', username: 'app', folderId: '', sortOrder: 0, environment: 'production', metadataSchemas: []},
-        {id: 'c2', name: 'Postgres local', dbType: 'postgres', host: 'localhost', port: 5432, database: 'chatwoot', username: 'dev', folderId: '', sortOrder: 1, environment: 'development', metadataSchemas: []},
-        {id: 'c3', name: 'Redis caché', dbType: 'redis', host: 'localhost', port: 6379, database: '0', username: '', folderId: '', sortOrder: 2, environment: 'development', metadataSchemas: []},
-        {id: 'c4', name: 'Mongo eventos', dbType: 'mongodb', host: 'localhost', port: 27017, database: 'events', username: '', folderId: '', sortOrder: 3, environment: 'development', metadataSchemas: []},
-        {id: 's1', name: 'app-prod', dbType: 'ssh', host: 'app.ejemplo.local', port: 22, database: '', username: 'deploy', folderId: '', sortOrder: 4, environment: 'production', metadataSchemas: []},
+        {id: 'c1', name: 'SGCPRO · producción', dbType: 'oracle', host: 'ora-prod.energuate.local', port: 1521, database: 'SGCPRO', username: 'app_sgc', folderId: 'f-prod', sortOrder: 0, environment: 'production', color: '#ef5350', metadataSchemas: ['SGCPRO']},
+        {id: 'c2', name: 'SGCPRO · réplica lectura', dbType: 'oracle', host: 'ora-ro.energuate.local', port: 1521, database: 'SGCPRO', username: 'lector', folderId: 'f-prod', sortOrder: 1, environment: 'production', metadataSchemas: ['SGCPRO']},
+        {id: 'c3', name: 'Redis · sesiones', dbType: 'redis', host: 'redis-prod.energuate.local', port: 6379, database: '0', username: '', folderId: 'f-prod', sortOrder: 2, environment: 'production', metadataSchemas: []},
+        {id: 'c4', name: 'SGCTEST', dbType: 'oracle', host: 'ora-qa.energuate.local', port: 1521, database: 'SGCTEST', username: 'app_sgc', folderId: 'f-qa', sortOrder: 0, environment: 'staging', metadataSchemas: ['SGCPRO']},
+        {id: 'c5', name: 'chatwoot · staging', dbType: 'postgres', host: 'pg-qa.energuate.local', port: 5432, database: 'chatwoot', username: 'chatwoot', folderId: 'f-qa', sortOrder: 1, environment: 'staging', metadataSchemas: ['public']},
+        {id: 'c6', name: 'eventos', dbType: 'mongodb', host: 'mongo-qa.energuate.local', port: 27017, database: 'events', username: 'app', folderId: 'f-qa', sortOrder: 2, environment: 'staging', metadataSchemas: []},
+        {id: 'c7', name: 'chatwoot local', dbType: 'postgres', host: 'localhost', port: 5432, database: 'chatwoot_dev', username: 'dev', folderId: '', sortOrder: 3, environment: 'development', metadataSchemas: ['public']},
+        {id: 'c8', name: 'vault.db', dbType: 'sqlite', host: '', port: 0, database: '~/Library/Application Support/mini-tools/vault.db', username: '', folderId: '', sortOrder: 4, environment: 'development', metadataSchemas: []},
+        {id: 's1', name: 'app-01 · producción', dbType: 'ssh', host: 'app01.energuate.local', port: 22, database: '', username: 'deploy', folderId: 'f-ssh-prod', sortOrder: 0, environment: 'production', metadataSchemas: []},
+        {id: 's2', name: 'app-02 · producción', dbType: 'ssh', host: 'app02.energuate.local', port: 22, database: '', username: 'deploy', folderId: 'f-ssh-prod', sortOrder: 1, environment: 'production', metadataSchemas: []},
+        {id: 's3', name: 'batch-nocturno', dbType: 'ssh', host: 'batch.energuate.local', port: 22, database: '', username: 'sgc', folderId: 'f-ssh-prod', sortOrder: 2, environment: 'production', metadataSchemas: []},
+        {id: 's4', name: 'qa-app', dbType: 'ssh', host: 'qa.energuate.local', port: 22, database: '', username: 'deploy', folderId: '', sortOrder: 3, environment: 'staging', metadataSchemas: []},
     ],
-    ListFolders: [],
+    // Un árbol por scope: los cuatro módulos comparten la tabla `folders` pero
+    // nunca las mismas carpetas (backend/vault/folders_repo.go).
+    ListFolders: [
+        {id: 'f-prod', name: 'Producción', parentId: '', sortOrder: 0, createdAt: 0, scope: 'db'},
+        {id: 'f-qa', name: 'Pruebas', parentId: '', sortOrder: 1, createdAt: 0, scope: 'db'},
+        {id: 'f-ssh-prod', name: 'Producción', parentId: '', sortOrder: 0, createdAt: 0, scope: 'ssh'},
+        {id: 'f-git-trabajo', name: 'Trabajo', parentId: '', sortOrder: 0, createdAt: 0, scope: 'git'},
+        {id: 'f-notes-runbooks', name: 'Runbooks', parentId: '', sortOrder: 0, createdAt: 0, scope: 'note'},
+        {id: 'f-notes-guardia', name: 'Guardia', parentId: '', sortOrder: 1, createdAt: 0, scope: 'note'},
+    ],
     GitListRepos: [
-        {id: 'r1', name: 'chatwoot-clone', path: '/repos/chatwoot-clone', folderId: '', sortOrder: 0, createdAt: 0, pinnedBranches: []},
-        {id: 'r2', name: 'mini-tools', path: '/repos/mini-tools', folderId: '', sortOrder: 1, createdAt: 0, pinnedBranches: []},
+        {id: 'r1', name: 'chatwoot-clone', path: '/repos/chatwoot-clone', folderId: 'f-git-trabajo', sortOrder: 0, createdAt: 0, pinnedBranches: []},
+        {id: 'r2', name: 'ISGL_WEB', path: '/repos/ISGL_WEB', folderId: 'f-git-trabajo', sortOrder: 1, createdAt: 0, pinnedBranches: []},
+        {id: 'r3', name: 'ISGL_BATCH', path: '/repos/ISGL_BATCH', folderId: 'f-git-trabajo', sortOrder: 2, createdAt: 0, pinnedBranches: []},
+        {id: 'r4', name: 'mini-tools', path: '/repos/mini-tools', folderId: '', sortOrder: 3, createdAt: 0, pinnedBranches: []},
+        {id: 'r5', name: 'support-lab', path: '/repos/support-lab', folderId: '', sortOrder: 4, createdAt: 0, pinnedBranches: []},
     ],
     ListRecentFiles: [],
     ListSchemas: ['SGCPRO', 'PUBLIC'],
@@ -392,7 +454,14 @@ const fixtures: Record<string, unknown> = {
         brokenLinks: 2,
         selfLinks: 0,
     },
-    SearchNotesSmart: [],
+    SearchNotesSmart: [
+        {id: 'n1', title: 'Runbook · caída del pool de conexiones', isPrivate: false, updatedAt: 1786650000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-runbooks'},
+        {id: 'n3', title: 'Procedimiento de sesiones colgadas', isPrivate: false, updatedAt: 1786480000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-runbooks'},
+        {id: 'n6', title: 'Postmortem 2026-07-30', isPrivate: false, updatedAt: 1786390000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-runbooks'},
+        {id: 'n4', title: 'Guardia · qué mirar primero', isPrivate: false, updatedAt: 1786300000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-guardia'},
+        {id: 'n5', title: 'Credenciales de laboratorio', isPrivate: true, updatedAt: 1786200000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-guardia'},
+        {id: 'n2', title: 'Inventario de entornos', isPrivate: false, updatedAt: 1786100000, score: 1, snippet: '', matchedTitle: true, folderId: ''},
+    ],
 
     // --- Grilla editable ---------------------------------------------------
     ResultEditTarget: {
@@ -474,6 +543,22 @@ anyWindow.runtime = {
     LogError: () => {},
     WindowGetSize: () => ({w: 1280, h: 860}),
     ClipboardSetText: () => Promise.resolve(true),
+    // La barra de título propia (components/TitleBar.tsx) le pregunta al
+    // runtime en qué sistema corre para decidir si dibuja los botones de
+    // ventana: macOS conserva sus semáforos y solo se le reserva el hueco,
+    // Windows y Linux los dibuja la app. `?platform=` permite fotografiar
+    // los dos casos desde una sola máquina, que es exactamente lo que no se
+    // puede comprobar a ojo acá.
+    Environment: () =>
+        Promise.resolve({
+            buildType: 'dev',
+            platform: new URLSearchParams(location.search).get('platform') || 'darwin',
+            arch: 'arm64',
+        }),
+    WindowIsMaximised: () => Promise.resolve(true),
+    WindowMinimise: () => {},
+    WindowToggleMaximise: () => {},
+    Quit: () => {},
 }
 
 // Los componentes se importan DESPUÉS de definir los mocks: el módulo generado
@@ -487,6 +572,9 @@ const {default: Workspace} = await import('./components/Workspace')
 const {default: RedisBrowserTab} = await import('./components/redis/RedisBrowserTab')
 const {default: NoteEditorTab} = await import('./components/notes/NoteEditorTab')
 const {default: NotesGraphView} = await import('./components/notes/NotesGraphView')
+const {default: SettingsDialog} = await import('./components/SettingsDialog')
+const {DEFAULT_EDITOR_APPEARANCE} = await import('./codemirror/editorAppearance')
+const {default: TitleBar} = await import('./components/TitleBar')
 const {default: ResultGrid} = await import('./components/results/ResultGrid')
 const {default: AgentUsagePanel} = await import('./components/agent/AgentUsagePanel')
 const {default: AiAccessPanel} = await import('./components/AiAccessPanel')
@@ -500,6 +588,7 @@ const views_repo = (
         repoId="r1"
         repoName="mini-tools"
         editorThemeId="auto"
+        appearance={DEFAULT_EDITOR_APPEARANCE}
         appTheme="dark"
         terminalThemeId="Dracula"
         onChangeTerminalTheme={() => {}}
@@ -556,6 +645,49 @@ const views: Record<string, React.ReactNode> = {
     // El módulo de base de datos entero: sidebar de conexiones, editor SQL y
     // resultados. Es el otro producto que vive en esta app.
     workspace: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    // Mismo montaje: lo que cambia es qué se está mirando. La barra lateral y
+    // la tira de pestañas no son componentes sueltos que se puedan montar
+    // aparte —viven del estado del workspace— así que se fotografían dentro
+    // de él, con `&module=` para elegir qué módulo abre el menú master:
+    //
+    //     ./scripts/uishot.sh sidebar          # conexiones
+    //     UISHOT_MODULE=git ./scripts/uishot.sh sidebar
+    sidebar: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    tabs: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    // La búsqueda global escrita, que es lo único que hace aparecer los
+    // contadores del menú master — el mecanismo por el que, viendo un módulo
+    // solo, uno se entera de que lo que busca está en otro.
+    sidebarsearch: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    // La barra oculta: queda la columna con el menú master.
+    sidebarmin: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    // La ventana entera con su barra de título propia. `?platform=windows`
+    // (o linux) dibuja los botones de ventana de la app; el default, darwin,
+    // deja el hueco de los semáforos, que en el navegador se ve vacío porque
+    // los pone el sistema y acá no hay sistema.
+    window: (
+        <div className="flex h-full w-full flex-col overflow-hidden">
+            <TitleBar />
+            <div className="min-h-0 flex-1">
+                {/* `&update=1` simula que hay una versión nueva: es la única
+                    forma de fotografiar el aviso del pie de la barra, que en
+                    una instalación al día no existe. */}
+                <Workspace
+                    theme="dark"
+                    onToggleTheme={() => {}}
+                    onLocked={() => {}}
+                    updateInfo={
+                        new URLSearchParams(location.search).get('update')
+                            ? ({available: true, latest: '2.1.0', current: '2.0.0', releaseUrl: 'https://example.invalid'} as never)
+                            : null
+                    }
+                />
+            </div>
+        </div>
+    ),
+    // El menú de una pestaña con su selector de conexión desplegado: es la
+    // lista más larga que dibuja el Select de la app, así que es la que dice
+    // si las filas se leen o no.
+    tabmenu: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
     // La pestaña Git entera: es la única forma de ver el modo agente, la tira
     // de solapas y los acordeones, que dependen del layout completo.
     repo: views_repo,
@@ -564,6 +696,7 @@ const views: Record<string, React.ReactNode> = {
             repoId="r1"
             editorThemeId="auto"
             appTheme="dark"
+            appearance={DEFAULT_EDITOR_APPEARANCE}
             initialFiles={['app_git.go']}
             // El estado de git es lo que pinta los indicadores de cambio del
             // árbol: sin pasarlo, la vista se veía bien pero no probaba nada.
@@ -627,6 +760,40 @@ const views: Record<string, React.ReactNode> = {
             <AiAccessPanel />
         </div>
     ),
+    // El modal de configuración, que dejó de ser un scroll único y pasó a
+    // tener sus secciones aparte. `&section=` elige cuál abre, porque el
+    // punto de la captura es justamente que cada una se ve sola.
+    settings: (
+        <SettingsDialog
+            rememberMasterKey
+            onToggleRememberMasterKey={() => {}}
+            editorThemeId="auto"
+            onChangeEditorThemeId={() => {}}
+            editorAppearance={DEFAULT_EDITOR_APPEARANCE}
+            onChangeEditorAppearance={() => {}}
+            terminalThemeId="dracula"
+            onChangeTerminalThemeId={() => {}}
+            terminalFontSize={13}
+            onChangeTerminalFontSize={() => {}}
+            localShellId=""
+            onChangeLocalShellId={() => {}}
+            onBackupVault={() => {}}
+            onRestoreVault={() => {}}
+            autoBackupEnabled
+            onToggleAutoBackup={() => {}}
+            autoBackupIntervalHours={6}
+            onChangeAutoBackupInterval={() => {}}
+            autoBackupPath="~/Backups/mini-tools"
+            onPickAutoBackupFolder={() => {}}
+            autoSaveEnabled
+            onToggleAutoSave={() => {}}
+            autoSaveIntervalSeconds={30}
+            onChangeAutoSaveInterval={() => {}}
+            updateInfo={null}
+            onOpenRepo={() => {}}
+            onClose={() => {}}
+        />
+    ),
     // Mismo componente: lo que cambia es que el harness le manda un mensaje,
     // que es la única forma de que exista un turno en curso que fotografiar.
     thinking: views_chat,
@@ -678,6 +845,40 @@ if (view === 'thinking') {
         set?.call(ta, 'de qué trata el proyecto')
         ta.dispatchEvent(new Event('input', {bubbles: true}))
         return [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Manda el mensaje'))
+    })
+}
+if (view === 'workspace' || view === 'sidebar') {
+    // Se abre una carpeta del árbol: la barra rediseñada se trata justamente
+    // de la jerarquía, y con todas las carpetas plegadas la captura muestra
+    // una lista plana que no prueba nada.
+    // El que abre la carpeta es el chevron, no la fila: buscarlo por su
+    // title es lo mismo que hacen las demás vistas — el Icon renderiza su
+    // ligadura como texto, así que textContent no sirve para encontrarlo.
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title === 'Expandir carpeta'))
+}
+if (view === 'tabmenu') {
+    // Dos clics encadenados, como los daría una persona: el rótulo de la
+    // pestaña abre su menú, y adentro está el selector de conexión.
+    autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.title.startsWith('Vinculada a')))
+    setTimeout(() => {
+        autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.getAttribute('aria-label') === 'Conexión de la pestaña'))
+    }, 400)
+}
+if (view === 'settings') {
+    const section = new URLSearchParams(location.search).get('section')
+    if (section) autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find((b) => b.title.startsWith(section)))
+}
+if (view === 'sidebarsearch') {
+    // Se escribe en el buscador como lo haría una persona: el contador de
+    // cada módulo del menú master solo existe con una búsqueda activa, así
+    // que sin tipear no hay nada que fotografiar.
+    autoClick(() => {
+        const input = [...document.querySelectorAll('input')].find((i) => i.placeholder.startsWith('Buscar en todo'))
+        if (!input) return undefined
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+        set?.call(input, 'prod')
+        input.dispatchEvent(new Event('input', {bubbles: true}))
+        return undefined
     })
 }
 if (view === 'history') {

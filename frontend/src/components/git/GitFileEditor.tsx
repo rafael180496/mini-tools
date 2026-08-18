@@ -4,6 +4,7 @@ import {EditorView, keymap} from '@codemirror/view'
 import {indentWithTab} from '@codemirror/commands'
 import {search} from '@codemirror/search'
 import {basicSetup} from 'codemirror'
+import {editorAppearanceExtension, type EditorAppearance} from '../../codemirror/editorAppearance'
 import {GitListWorkTree, GitReadWorkFile, GitWriteWorkFile} from '../../../wailsjs/go/main/App'
 import {git} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
@@ -57,6 +58,7 @@ interface GitFileEditorProps {
     repoId: string
     editorThemeId: string
     appTheme: Theme
+    appearance: EditorAppearance
     // Archivo que el padre pide abrir al entrar a la vista (el botón "Editar"
     // del diff). Lleva un token además de la ruta porque pedir DOS VECES el
     // mismo archivo tiene que volver a enfocarlo: sin el token, el efecto no
@@ -136,15 +138,17 @@ function statusTitle(code?: string): string {
     }
 }
 
-const baseTheme = EditorView.theme({
-    '&': {height: '100%', fontSize: '13px'},
-    '.cm-scroller': {fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace", overflow: 'auto'},
-})
+// Fuente, cuerpo y demás llegan por prop y viajan en el mismo compartment
+// que el tema — ver frontend/src/codemirror/editorAppearance.ts. Antes esto
+// era un EditorView.theme fijo, idéntico por copiar y pegar al del editor
+// SQL, que es exactamente la forma en que dos editores de la misma app
+// terminan viéndose distinto sin que nadie lo haya decidido.
 
 export default function GitFileEditor({
     repoId,
     editorThemeId,
     appTheme,
+    appearance,
     request,
     initialFiles,
     onOpenFilesChange,
@@ -414,7 +418,6 @@ export default function GitFileEditor({
                 doc: file.content,
                 extensions: [
                     basicSetup,
-                    baseTheme,
                     search(),
                     keymap.of([
                         indentWithTab,
@@ -452,7 +455,7 @@ export default function GitFileEditor({
     // Montaje único de la vista compartida.
     useEffect(() => {
         if (!containerRef.current) return
-        const view = new EditorView({parent: containerRef.current, state: EditorState.create({extensions: [basicSetup, baseTheme]})})
+        const view = new EditorView({parent: containerRef.current, state: EditorState.create({extensions: [basicSetup, ...editorAppearanceExtension(appearance)]})})
         viewRef.current = view
         return () => {
             view.destroy()
@@ -467,7 +470,7 @@ export default function GitFileEditor({
         if (!view || !active) return
         let state = statesRef.current.get(active.path)
         if (!state) {
-            state = createState(active, resolveEditorTheme(editorThemeId, appTheme))
+            state = createState(active, [resolveEditorTheme(editorThemeId, appTheme), ...editorAppearanceExtension(appearance)])
             statesRef.current.set(active.path, state)
         }
         view.setState(state)
@@ -504,7 +507,7 @@ export default function GitFileEditor({
     useEffect(() => {
         const view = viewRef.current
         if (!view) return
-        const themeExt = resolveEditorTheme(editorThemeId, appTheme)
+        const themeExt: Extension = [resolveEditorTheme(editorThemeId, appTheme), ...editorAppearanceExtension(appearance)]
         for (const [path, state] of statesRef.current) {
             statesRef.current.set(path, state.update({effects: themeCompartment.reconfigure(themeExt)}).state)
         }
@@ -513,7 +516,7 @@ export default function GitFileEditor({
             if (state) view.setState(state)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editorThemeId, appTheme])
+    }, [editorThemeId, appTheme, appearance])
 
     // Cambio manual de lenguaje desde el selector de la barra.
     const setLanguage = useCallback(

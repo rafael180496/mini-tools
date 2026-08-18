@@ -102,7 +102,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
     }
 
     return (
-        <div className="relative flex h-screen w-screen items-center justify-center bg-background font-sans text-on-background">
+        <div className="relative flex h-full w-full items-center justify-center bg-background font-sans text-on-background">
             <button
                 type="button"
                 onClick={onToggleTheme}

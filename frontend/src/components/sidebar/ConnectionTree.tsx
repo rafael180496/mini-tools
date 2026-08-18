@@ -7,8 +7,7 @@ import DbTypeIcon from '../DbTypeIcon'
 import Icon from '../Icon'
 import RedisKeyTree from '../redis/RedisKeyTree'
 import MongoCollectionTree from '../mongo/MongoCollectionTree'
-import SidebarModule from './SidebarModule'
-import {RailGroup, RailItem} from './SidebarRail'
+import SidebarSection from './SidebarSection'
 import SchemaObjectsList from './SchemaObjectsList'
 import {flattenForMenu} from './MoveToFolderMenu'
 import ConnectionRowMenu from './ConnectionRowMenu'
@@ -76,43 +75,29 @@ interface ConnectionTreeProps {
     // deleteConnection).
     onDeleteConnection: (connId: string) => void
     onConfigureSchemas: (conn: vault.ConnectionSummary) => void
-    collapsed: boolean
-    onToggleCollapsed: () => void
     // True while GetSchemaMetadata is in flight for the selected connection
     // — without this, the table list under a freshly-selected connection
     // just looks empty/broken until the fetch resolves.
     metadataLoading: boolean
     // Folder tree (organizational only — never affects which connection is
-    // "selected"/active). moduleCollapsed/onToggleModuleCollapsed is the
-    // "Conexiones" accordion header (SidebarModule) — distinct from
-    // collapsed/onToggleCollapsed above, which is the whole-sidebar
-    // icon-only rail mode.
+    // "selected"/active).
     folders: vault.Folder[]
-    moduleCollapsed: boolean
-    onToggleModuleCollapsed: () => void
     onCreateFolder: (name: string, parentId: string) => void
     onRenameFolder: (id: string, name: string) => void
     onDeleteFolder: (id: string) => void
     onReorderFolder: (id: string, direction: 'up' | 'down') => void
     onMoveConnectionToFolder: (connId: string, folderId: string) => void
-    // Búsqueda compartida por los tres módulos de la barra. Cuando llega, el
-    // módulo la usa y NO dibuja su propia caja: tres cajas "Buscar…" apiladas
-    // gastaban un tercio del alto útil de la barra y obligaban a elegir de
-    // antemano en cuál de los tres buscar algo que uno recuerda por el nombre.
-    sharedFilter?: string
-    onSharedFilterChange?: (v: string) => void
-    // SSH connections get their own sidebar module (SshConnectionTree.tsx) —
-    // a fundamentally different interaction (open a terminal, not browse a
-    // schema) that doesn't belong mixed into "Conexiones". Rendered here, as
-    // a sibling SidebarModule below "Conexiones" inside the same <aside>, so
-    // both share this component's header/rail-mode chrome instead of
-    // duplicating it.
-    //
-    // Se renderiza en LOS DOS modos. Antes solo aparecía expandido, y por eso
-    // minimizar la barra escondía SSH y Git por completo; ahora cada módulo
-    // sabe dibujarse como un grupo de íconos cuando recibe `rail` (ver
-    // components/sidebar/SidebarRail.tsx), así que el rail muestra los tres.
-    extraModules?: ReactNode
+    // Búsqueda global de la barra, la misma para los cuatro módulos — la
+    // dibuja el marco (Sidebar.tsx), no el árbol. El módulo solo la lee: no
+    // tiene ninguna razón para cambiarla, y cuando cada uno tenía su propia
+    // caja "Buscar…" había que decidir de antemano en cuál de los cuatro
+    // estaba lo que uno recuerda nada más que por el nombre.
+    filter: string
+    // Cuántos elementos coinciden con la búsqueda global. Se informa hacia
+    // arriba porque el contador vive en el menú master (SidebarMasterMenu):
+    // con un módulo a la vez, es lo único que dice que lo que se busca está
+    // en otro módulo y no perdido.
+    onMatchCount: (n: number | null) => void
 }
 
 // Conexiones → carpetas (árbol de proyecto) → schemas → tablas/vistas.
@@ -148,29 +133,17 @@ export default function ConnectionTree({
     onDisconnect,
     onDeleteConnection,
     onConfigureSchemas,
-    collapsed,
-    onToggleCollapsed,
     metadataLoading,
     folders,
-    moduleCollapsed,
-    onToggleModuleCollapsed,
     onCreateFolder,
     onRenameFolder,
     onDeleteFolder,
     onReorderFolder,
     onMoveConnectionToFolder,
-    sharedFilter,
-    onSharedFilterChange,
-    extraModules,
+    filter,
+    onMatchCount,
 }: ConnectionTreeProps) {
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
-    // El filtro puede venir de afuera: la barra tiene UN buscador arriba que
-    // filtra los tres módulos a la vez (ver ConnectionTree). El estado local
-    // queda como respaldo para cuando el módulo se use suelto, sin que nadie
-    // le pase `sharedFilter`.
-    const [ownFilter, setOwnFilter] = useState('')
-    const filter = sharedFilter ?? ownFilter
-    const setFilter = onSharedFilterChange ?? setOwnFilter
     // Which connection is pending a delete confirmation — a themed
     // ConfirmDialog (never window.confirm), holds the connection so its
     // name can be shown in the confirmation text.
@@ -262,6 +235,11 @@ export default function ConnectionTree({
 
     const rootConnections = dbConnections.filter((c) => !c.folderId && connectionMatches(c))
     const visibleFolderNodes = folderTree.filter((node) => !q || folderHasVisibleContent(node))
+
+    const matchCount = q ? rootConnections.length + visibleFolderNodes.length : null
+    useEffect(() => {
+        onMatchCount(matchCount)
+    }, [matchCount, onMatchCount])
 
     function selectConnection(c: vault.ConnectionSummary) {
         if (c.id !== selectedId) {
@@ -395,25 +373,10 @@ export default function ConnectionTree({
     function renderConnectionRow(c: vault.ConnectionSummary, depth: number) {
         const isSelected = c.id === selectedId
         const isLive = liveConnIds.has(c.id)
-        const isExpanded = !collapsed && isSelected && collapsedId !== c.id
+        const isExpanded = isSelected && collapsedId !== c.id
         return (
             <div key={c.id} className="mb-0.5">
-                {collapsed ? (
-                    <RailItem
-                        onClick={() => selectConnection(c)}
-                        onDoubleClick={() => {
-                            if (c.dbType === 'redis') onOpenRedisBrowser(c)
-                            else if (c.dbType === 'mongodb') onOpenMongoBrowser(c)
-                        }}
-                        title={`${c.name} (${c.dbType})${isLive ? ' · conectada' : ''} — conectar y trabajar con esta conexión`}
-                        active={isSelected}
-                        live={isLive}
-                        color={c.color}
-                        environment={c.environment}
-                    >
-                        <DbTypeIcon dbType={c.dbType} size={18} />
-                    </RailItem>
-                ) : (
+                {(
                     <div
                         style={{paddingLeft: `${8 + depth * 14}px`}}
                         // La franja de color del entorno va también acá, no
@@ -871,131 +834,36 @@ export default function ConnectionTree({
     }
 
     return (
-        <aside
-            className={`flex h-full shrink-0 flex-col border-r border-outline-variant bg-surface-container-low text-on-surface transition-[width] duration-150 ${
-                collapsed ? 'w-14' : 'w-64'
-            }`}
-        >
-            <div className={`flex items-center border-b border-outline-variant p-3 ${collapsed ? 'justify-center' : 'gap-2'}`}>
-                {!collapsed && (
-                    <>
-                        <img src={logo} alt="mini-tools" className="h-7 w-7 object-contain" />
-                        <span className="flex-1 text-sm font-bold text-primary">mini-tools</span>
-                    </>
-                )}
-                <button
-                    onClick={onToggleCollapsed}
-                    title={collapsed ? 'Expandir la barra de conexiones' : 'Minimizar la barra de conexiones (queda solo con íconos)'}
-                    className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant"
-                >
-                    <Icon name={collapsed ? 'menu' : 'menu_open'} size={18} />
-                </button>
-            </div>
-
-            {/* Un solo buscador para los tres módulos. Antes cada uno tenía el
-                suyo: tres cajas "Buscar…" apiladas se comían un tercio del alto
-                útil de la barra y, peor, obligaban a decidir de antemano en cuál
-                de los tres estaba lo que uno recuerda solo por el nombre. El
-                contador que cada módulo muestra en su encabezado dice dónde
-                cayeron las coincidencias, incluso si ese módulo está plegado. */}
-            {!collapsed && onSharedFilterChange && (
-                <div className="shrink-0 px-3 pt-2">
-                    <div className="flex items-center gap-1.5 rounded-lg bg-surface-container-highest px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-primary">
-                        <Icon name="search" size={14} className="shrink-0 text-on-surface-variant/60" />
-                        <input
-                            value={sharedFilter ?? ''}
-                            onChange={(e) => onSharedFilterChange(e.target.value)}
-                            placeholder="Buscar en todo…"
-                            title="Busca a la vez en conexiones de base de datos, servidores SSH y repositorios Git — por nombre de la conexión, del repositorio o de la carpeta que la contiene"
-                            className="min-w-0 flex-1 bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
-                        />
-                        {sharedFilter && (
-                            <button
-                                onClick={() => onSharedFilterChange('')}
-                                title="Limpiar la búsqueda y volver a ver los tres módulos completos"
-                                className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
-                            >
-                                <Icon name="close" size={14} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {collapsed ? (
+        <SidebarSection
+            title="Conexiones"
+            count={q ? `${rootConnections.length + visibleFolderNodes.length} de ${dbConnections.length}` : dbConnections.length ? String(dbConnections.length) : null}
+            actions={
                 <>
-                    <div className="flex justify-center p-3 pb-2">
-                        <button
-                            onClick={onNewConnection}
-                            title="Crea una nueva conexión a una base de datos (PostgreSQL, Oracle o SQLite)"
-                            className="rounded p-1 text-primary hover:bg-surface-variant"
-                        >
-                            <Icon name="add" size={18} />
-                        </button>
-                    </div>
-                    {/* Los tres módulos siguen presentes minimizados: cada uno
-                        dibuja su propio grupo (ver extraModules abajo, que
-                        antes solo se renderizaba expandido). Sin esto,
-                        minimizar equivalía a esconder SSH y Git. */}
-                    <div className="flex-1 overflow-y-auto py-1">
-                        <RailGroup icon="database" title={`Conexiones a base de datos — ${connections.length}`} count={connections.length}>
-                            {connections.map((c) => renderConnectionRow(c, 0))}
-                        </RailGroup>
-                        {extraModules}
-                    </div>
+                    <button
+                        onClick={() => startCreateFolder('')}
+                        title="Crea una carpeta para agrupar conexiones — las carpetas solo organizan, nunca cambian a qué base apunta una conexión"
+                        className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="create_new_folder" size={16} />
+                    </button>
+                    <button
+                        onClick={onNewConnection}
+                        title="Crea una nueva conexión a una base de datos (PostgreSQL, Oracle, SQLite, SQL Server, Redis o MongoDB)"
+                        className="rounded p-1 text-primary hover:bg-surface-variant"
+                    >
+                        <Icon name="add" size={16} />
+                    </button>
                 </>
-            ) : (
-                <SidebarModule
-                    title="Conexiones"
-                    matchCount={q ? rootConnections.length + visibleFolderNodes.length : null}
-                    collapsed={moduleCollapsed}
-                    onToggleCollapsed={onToggleModuleCollapsed}
-                    actions={
-                        <div className="flex shrink-0 items-center gap-0.5">
-                            <button
-                                onClick={() => startCreateFolder('')}
-                                title="Nueva carpeta"
-                                className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                            >
-                                <Icon name="create_new_folder" size={18} />
-                            </button>
-                            <button
-                                onClick={onNewConnection}
-                                title="Crea una nueva conexión a una base de datos (PostgreSQL, Oracle o SQLite)"
-                                className="rounded p-1 text-primary hover:bg-surface-variant"
-                            >
-                                <Icon name="add" size={18} />
-                            </button>
-                        </div>
-                    }
-                >
-                    {/* Solo cuando el módulo no recibe la búsqueda compartida
-                        de la barra (ver sharedFilter). */}
-                    {sharedFilter === undefined && (
-                        <div className="px-3">
-                            <input
-                                value={filter}
-                                onChange={(e) => setFilter(e.target.value)}
-                                placeholder="Buscar..."
-                                title="Busca por nombre de conexión o de carpeta — una carpeta que contenga una coincidencia se expande automáticamente"
-                                className="w-full rounded-lg border-none bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
-                            />
-                        </div>
-                    )}
-                    {creatingFolderParentId === '' && <div className="px-3 pt-1">{renderNewFolderInput()}</div>}
-                    <div className="mt-0.5 flex-1 overflow-y-auto pb-1">
-                        {rootConnections.length === 0 && visibleFolderNodes.length === 0 && (
-                            <p className="p-3 text-xs text-on-surface-variant/60">
-                                {q ? `Sin coincidencias para "${filter}".` : 'Sin conexiones todavía.'}
-                            </p>
-                        )}
-                        {visibleFolderNodes.map((node) => renderFolderNode(node, 0))}
-                        {rootConnections.map((c) => renderConnectionRow(c, 0))}
-                    </div>
-                </SidebarModule>
+            }
+        >
+            {creatingFolderParentId === '' && <div className="px-3 pt-1">{renderNewFolderInput()}</div>}
+            {rootConnections.length === 0 && visibleFolderNodes.length === 0 && (
+                <p className="p-3 text-xs text-on-surface-variant/60">
+                    {q ? `Sin coincidencias para "${filter}".` : 'Sin conexiones todavía.'}
+                </p>
             )}
-
-            {!collapsed && extraModules}
+            {visibleFolderNodes.map((node) => renderFolderNode(node, 0))}
+            {rootConnections.map((c) => renderConnectionRow(c, 0))}
 
             {confirmDelete && (
                 <ConfirmDialog
@@ -1017,6 +885,6 @@ export default function ConnectionTree({
                     onClose={() => setConfirmDeleteFolder(null)}
                 />
             )}
-        </aside>
+        </SidebarSection>
     )
 }

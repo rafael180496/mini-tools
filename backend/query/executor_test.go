@@ -62,7 +62,7 @@ func waitForTerminal(t *testing.T, events chan Event) Event {
 func TestExecutorRunsSelectAndStreamsRows(t *testing.T) {
 	exec, events := newTestExecutor(t)
 
-	exec.Execute("conn-1", "q1", "SELECT 1 AS one", true)
+	exec.Execute("conn-1", "q1", "SELECT 1 AS one", true, nil)
 
 	final := waitForTerminal(t, events)
 	if final.Type != "done" {
@@ -82,7 +82,7 @@ func TestExecutorRunsSelectAndStreamsRows(t *testing.T) {
 func TestExecutorSelectWithLeadingCommentStillReturnsRows(t *testing.T) {
 	exec, events := newTestExecutor(t)
 
-	exec.Execute("conn-1", "q1b", "-- explanatory comment\n\nSELECT 1 AS one", true)
+	exec.Execute("conn-1", "q1b", "-- explanatory comment\n\nSELECT 1 AS one", true, nil)
 
 	var sawColumns bool
 	deadline := time.After(5 * time.Second)
@@ -113,7 +113,7 @@ func TestExecutorSelectWithLeadingCommentStillReturnsRows(t *testing.T) {
 func TestExecutorRunsExecStatement(t *testing.T) {
 	exec, events := newTestExecutor(t)
 
-	exec.Execute("conn-1", "q2", "CREATE TABLE t (id INTEGER)", true)
+	exec.Execute("conn-1", "q2", "CREATE TABLE t (id INTEGER)", true, nil)
 
 	final := waitForTerminal(t, events)
 	if final.Type != "done" {
@@ -124,7 +124,7 @@ func TestExecutorRunsExecStatement(t *testing.T) {
 func TestExecutorUnknownConnectionEmitsError(t *testing.T) {
 	exec, events := newTestExecutor(t)
 
-	exec.Execute("no-such-conn", "q3", "SELECT 1", true)
+	exec.Execute("no-such-conn", "q3", "SELECT 1", true, nil)
 
 	final := waitForTerminal(t, events)
 	if final.Type != "error" {
@@ -151,7 +151,7 @@ func TestExecutorCancelStopsLongRunningQuery(t *testing.T) {
 		) SELECT x FROM cnt
 	)`
 
-	exec.Execute("conn-1", "q4", slowQuery, true)
+	exec.Execute("conn-1", "q4", slowQuery, true, nil)
 	time.Sleep(50 * time.Millisecond) // let it actually start running
 	exec.Cancel("q4")
 

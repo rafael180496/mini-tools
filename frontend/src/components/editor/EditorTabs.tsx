@@ -33,6 +33,39 @@ export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 // vinculada" en cada búsqueda del workspace.
 export type TabKind = 'editor' | 'redis-browser' | 'mongo-browser' | 'ssh-terminal' | 'sftp' | 'git-repo' | 'remote-file' | 'ssh-hybrid' | 'note'
 
+// El rótulo de tipo que lleva cada pestaña delante del nombre.
+//
+// Antes el tipo se decía con un ícono dentro de un círculo, y con nueve
+// clases de pestaña eso significaba nueve glifos que hay que aprender: un
+// engranaje, una flecha doble y un commit no se distinguen a 12px, y la única
+// forma de saber qué era una pestaña era apuntarle con el mouse y esperar el
+// tooltip. Tres o cuatro letras se leen de una y no hay nada que aprender.
+//
+// El color agrupa, no decora: primary para lo que es una consulta, secondary
+// para lo que es un servidor remoto, tertiary para lo que es un documento.
+// Son tokens semánticos del sistema de diseño, así que siguen el tema claro/
+// oscuro sin una segunda definición.
+const KIND_BADGE: Record<TabKind, {text: string; className: string; hint: string}> = {
+    editor: {text: 'SQL', className: 'text-primary', hint: 'Editor de consultas'},
+    'redis-browser': {text: 'REDIS', className: 'text-error', hint: 'Explorador de claves Redis'},
+    'mongo-browser': {text: 'MONGO', className: 'text-secondary', hint: 'Explorador de colecciones MongoDB'},
+    'ssh-terminal': {text: 'SSH', className: 'text-secondary', hint: 'Terminal remota'},
+    sftp: {text: 'SFTP', className: 'text-secondary', hint: 'Transferencia de archivos entre hosts'},
+    'ssh-hybrid': {text: 'SSH+', className: 'text-secondary', hint: 'Terminal remota con explorador de archivos al lado'},
+    'remote-file': {text: 'REMOTO', className: 'text-tertiary', hint: 'Archivo de un servidor, editado en vivo'},
+    'git-repo': {text: 'GIT', className: 'text-tertiary', hint: 'Repositorio'},
+    note: {text: 'NOTA', className: 'text-tertiary', hint: 'Nota de la base de conocimiento'},
+}
+
+// Para una pestaña de editor el rótulo depende del lenguaje: "SQL" sobre una
+// consola de Redis sería directamente falso.
+function badgeFor(kind: TabKind, language: TabLanguage) {
+    if (kind !== 'editor') return KIND_BADGE[kind]
+    if (language === 'redis-cli') return {text: 'REDIS', className: 'text-error', hint: 'Consola de comandos Redis'}
+    if (language === 'mongosh') return {text: 'MONGO', className: 'text-secondary', hint: 'Consola mongosh'}
+    return KIND_BADGE.editor
+}
+
 // RemoteFileRef identifies a file being edited on a server: which browse
 // session to reach it through, its path, and the modification time it was
 // loaded with — that last one is what makes saving detect somebody else
@@ -127,10 +160,10 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
     const bindingTitle = boundConnection
         ? `Vinculada a "${boundConnection.name}" (${dbTypeLabel(boundConnection.dbType)}) — click para cambiar`
         : `Sin conexión vinculada (lenguaje: ${tab.language === 'redis-cli' ? 'Redis' : tab.language === 'mongosh' ? 'MongoDB' : 'SQL'}) — click para vincular una conexión o cambiar el lenguaje. La conexión vinculada se muestra arriba, en la barra de herramientas.`
-    const isBrowserTab = tab.kind === 'redis-browser'
-    const isSshTab = tab.kind === 'ssh-terminal'
-    const isSftpTab = tab.kind === 'sftp'
-    const isGitTab = tab.kind === 'git-repo'
+    const badge = badgeFor(tab.kind, tab.language)
+    // Solo el editor puede cambiar de conexión/lenguaje: el resto de las
+    // clases nace atado a lo suyo y no hay menú que ofrecer.
+    const isEditorTab = tab.kind === 'editor'
 
     // Posiciona el menú vía viewport coords + un portal a document.body, no
     // position:absolute dentro de esta fila — la fila de pestañas tiene
@@ -153,74 +186,43 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
             {...attributes}
             {...listeners}
             onClick={() => onSelect(tab.id)}
-            className={`flex max-w-48 cursor-pointer items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs font-mono ${
+            className={`flex max-w-52 cursor-pointer items-center gap-1.5 rounded-t-xs px-3 py-1 font-mono text-[11px] ${
                 isActive ? 'bg-surface text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
             }`}
             title={`${tab.path ?? 'Pestaña sin guardar'} — arrastrar para reordenar`}
         >
-            {/* Chip solo-ícono (nunca texto inline acá — mostrar el nombre
-                de la conexión en cada pestaña fue lo que empujó la barra a
-                un scroll horizontal no deseado). El nombre de la conexión
-                vinculada se muestra en la barra de contexto del toolbar
-                (Workspace.tsx, "Pestaña vinculada a: X"), que tiene espacio
-                de sobra y no compite por ancho con las demás pestañas. */}
-            {isBrowserTab ? (
-                <span
-                    title="Redis Browser — no se puede vincular a otra conexión, abrí uno nuevo para eso"
-                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
-                >
-                    <DbTypeIcon dbType="redis" size={12} />
-                </span>
-            ) : isSshTab ? (
-                <span
-                    title="Terminal SSH — no se puede vincular a otra conexión, abrí una nueva para eso"
-                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
-                >
-                    <Icon name="terminal" size={12} />
-                </span>
-            ) : isSftpTab ? (
-                <span
-                    title="Transferencia SFTP — explorador de archivos entre hosts"
-                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
-                >
-                    <Icon name="swap_horiz" size={12} />
-                </span>
-            ) : isGitTab ? (
-                <span
-                    title="Repositorio Git — no se vincula a una conexión de base de datos"
-                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
-                >
-                    <Icon name="commit" size={12} />
-                </span>
-            ) : tab.kind === 'note' ? (
-                // Una nota es un documento: no hay conexión que vincular ni
-                // lenguaje que elegir. El menú de la pestaña ofrecía las dos
-                // cosas sobre un texto, que es ofrecer una opción que no
-                // significa nada.
-                <span
-                    title="Nota de la base de conocimiento — es un documento, no se vincula a ninguna conexión"
-                    className="flex shrink-0 items-center justify-center rounded-full border border-outline-variant bg-surface-container-highest p-0.5"
-                >
-                    <Icon name="description" size={12} />
-                </span>
-            ) : (
+            {/* El tipo, delante del nombre. Para una pestaña vinculada a
+                una conexión el logo real del motor va antes del rótulo: el
+                rótulo dice QUÉ es la pestaña ("SQL") y el logo dice CONTRA
+                QUÉ corre (Oracle, Postgres, SQLite…), que son dos preguntas
+                distintas y las dos importan cuando hay ocho pestañas
+                abiertas. El nombre de la conexión sigue sin entrar acá —
+                ponerlo fue lo que empujó la barra a un scroll horizontal no
+                deseado— y se muestra en la barra de contexto del toolbar.
+
+                Solo la pestaña de editor abre el menú al clickear el rótulo:
+                es la única que puede cambiar de conexión o de lenguaje. En un
+                repositorio o una nota no hay nada que elegir, y ofrecer el
+                menú igual sería ofrecer una opción que no significa nada. */}
+            {isEditorTab ? (
                 <button
                     ref={chipRef}
                     onClick={openMenu}
                     onPointerDown={(e) => e.stopPropagation()}
                     title={bindingTitle}
-                    className={`flex shrink-0 items-center justify-center rounded-full border p-0.5 ${
-                        boundConnection
-                            ? 'border-outline-variant bg-surface-container-highest hover:bg-surface-variant'
-                            : 'border-dashed border-error/60 hover:bg-error-container/40'
-                    }`}
+                    className="flex shrink-0 items-center gap-1 rounded px-0.5 hover:bg-surface-variant"
                 >
-                    {boundConnection ? (
-                        <DbTypeIcon dbType={boundConnection.dbType} size={12} />
-                    ) : (
-                        <Icon name={tab.language === 'redis-cli' ? 'terminal' : tab.language === 'mongosh' ? 'database' : 'code'} size={12} className="text-error" />
-                    )}
+                    {boundConnection && <DbTypeIcon dbType={boundConnection.dbType} size={12} />}
+                    <span className={`font-semibold tracking-wide ${boundConnection ? badge.className : 'text-error'}`}>{badge.text}</span>
                 </button>
+            ) : (
+                <span
+                    title={`${badge.hint} — no se vincula a una conexión de base de datos, abrí una pestaña nueva para eso`}
+                    className="flex shrink-0 items-center gap-1 px-0.5"
+                >
+                    {boundConnection && <DbTypeIcon dbType={boundConnection.dbType} size={12} />}
+                    <span className={`font-semibold tracking-wide ${badge.className}`}>{badge.text}</span>
+                </span>
             )}
             <span className="min-w-0 shrink truncate">
                 {tab.title}
@@ -274,7 +276,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                 <Select
                                     value={tab.connId ?? ''}
                                     options={[
-                                        {value: '', label: 'Sin conexión'},
+                                        {value: '', label: 'Sin conexión', separatorAfter: true},
                                         // The engine logo, not just its name: this
                                         // list mixes SQL, Redis and MongoDB
                                         // connections, and the icon is what makes

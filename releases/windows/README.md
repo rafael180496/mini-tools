@@ -13,53 +13,59 @@ etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.0.0 |
-| Archivo | `mini-tools-v2.0.0-windows-amd64.exe` |
+| Versión | 2.1.0 |
+| Archivo | `mini-tools-v2.1.0-windows-amd64.exe` |
 | Tamaño | ~54 MB |
-| SHA-256 | `fdab69a6b54b8bebbfb55b7b9b154e8301563f2b47d7069c76047f2e051e467e` |
+| SHA-256 | `0f05b5db5bb224293ac96dbd0bf41004da516b6137739ef9dd7944e33d6b4cc1` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.0.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.1.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
 ## Estado de verificación en Windows real
 
-**Verificado en esta versión (2.0.0), en Windows 10 y 11:** la **aprobación
-acción por acción** de los agentes. Era lo que en 1.3.1 quedaba explícitamente
-sin confirmar, porque en macOS y Linux usa un socket Unix, que en Windows no
-existe. Ahora usa un **named pipe** con la ACL restringida al usuario actual, y
-se corrió sobre las dos versiones de Windows durante el desarrollo de esta
-versión.
+**Verificado en esta versión (2.1.0), en Windows 10 y 11**, según lo confirmó
+quien mantiene el proyecto: la app arranca y se usa en las dos.
 
-**El resto no se verificó con el `.exe` empaquetado.** Lo confirmado de ese lado
-es que cross-compila limpio desde macOS (ninguno de los conectores de base de
-datos —PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni `go-redis` ni el PTY
-usan CGO, así que no hace falta un toolchain de Windows/mingw). Lo pendiente se
-acumula desde la 1.1.0: lo último que se corrió de punta a punta en Windows 10 y
-11 fue la 1.0.0.
+**Lo nuevo de 2.1.0 del lado de Windows es el chrome de la ventana, y es lo
+primero a mirar si algo se ve raro.** Esta versión pasa la ventana a
+**frameless**: Windows deja de dibujar el marco y la barra de título, y los
+botones de minimizar / maximizar-restaurar / cerrar los dibuja la app. Eso
+cambia cosas que el propio sistema resolvía solo:
+
+- **Redimensionar desde los bordes** ahora depende del hit-test que hace Wails,
+  no del marco nativo.
+- **Arrastrar la ventana** se hace por la zona marcada con la propiedad CSS
+  `--wails-draggable`, no por el marco.
+- **Ajustar a los lados (Aero Snap)** y el doble clic para maximizar dependen de
+  ese mismo camino.
+
+Si alguna de esas tres falla, el síntoma es de esta versión y no de una
+anterior — vale reportarlo indicando la versión de Windows.
+
+**El resto se arrastra sin verificar desde antes**, y sigue igual: lo confirmado
+de ese lado es que cross-compila limpio desde macOS (ninguno de los conectores
+de base de datos —PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni `go-redis`
+ni el PTY usan CGO, así que no hace falta un toolchain de Windows/mingw).
 
 Queda sin confirmar en Windows, en orden de riesgo:
 
-- **Las migraciones 33 a 39 del vault, nuevas en esta versión.** Al primer
-  arranque crean las tablas de notas (`vault_notes`, `vault_note_links`,
-  `vault_note_assets`) y agregan columnas a `agent_chats` y a `settings`, sobre
-  el `vault.db` que ya existe en la máquina. Se suman a las 29–32, que siguen
-  sin verificarse. Es SQLite puro y el camino es el mismo en todos los SO, pero
-  una migración que falle deja la app sin arrancar: es lo primero a mirar si
-  alguien la prueba.
-- **El servidor MCP**, nuevo en esta versión. En Windows el canal es un **named
-  pipe** en vez de un socket Unix — el mismo mecanismo que sí se verificó para
-  la aprobación de acciones, pero con otro proceso del lado del cliente (el CLI
-  que lanza el propio usuario). Falta confirmarlo de punta a punta con un CLI
-  real conectado.
-- **Abrir el proyecto en VS Code y en el explorador de archivos**, nuevo acá. En
-  Windows resuelve `code` del `PATH` y usa `explorer`; sin probarlo no está
-  confirmado que encuentre una instalación típica de VS Code.
+- **Las migraciones 40 a 42 del vault, nuevas en esta versión.** Al primer
+  arranque agregan a `settings` las columnas del módulo abierto y el ancho de la
+  barra lateral, y las seis de la apariencia del editor, sobre el `vault.db` que
+  ya existe en la máquina. Se suman a las 29–39, que siguen sin verificarse. Es
+  SQLite puro y el camino es el mismo en todos los SO, pero una migración que
+  falle deja la app sin arrancar: es lo primero a mirar si alguien la prueba.
+- **El servidor MCP.** En Windows el canal es un **named pipe** en vez de un
+  socket Unix. Falta confirmarlo de punta a punta con un CLI real conectado.
+- **Abrir el proyecto en VS Code y en el explorador de archivos.** En Windows
+  resuelve `code` del `PATH` y usa `explorer`; sin probarlo no está confirmado
+  que encuentre una instalación típica de VS Code.
 - **El resto del subsistema agéntico**: lanzar los CLIs (`claude`, `codex`,
   `agy`) como procesos hijos implica otra resolución de ejecutables
   (`.cmd`/`.exe` del `PATH`) y otro manejo de saltos de línea.
@@ -73,10 +79,11 @@ Queda sin confirmar en Windows, en orden de riesgo:
 - **Las transferencias SFTP con lecturas/escrituras concurrentes**: código Go
   idéntico en todos los SO, pero el rendimiento real depende de la red y no se
   midió desde Windows.
-- **WebView2 arranca sin instalar nada.** Confirmado en 1.0.0 sobre Windows 10 y
-  11; es razonable esperar lo mismo (no cambió el bootstrap), pero no se volvió
-  a comprobar.
-- **DPI scaling, tamaño y posición de ventana.**
+- **Las fuentes del sistema que ofrece Configuración → Editor.** Consolas
+  existe en Windows y Menlo no; la app cae en silencio a la monoespaciada
+  genérica cuando la elegida falta, pero no se comprobó ahí.
+- **DPI scaling, tamaño y posición de ventana** — con más motivo ahora que la
+  ventana es frameless.
 - **Diálogos nativos** (abrir/guardar archivo, backup del vault).
 
 Si alguien la corre entera en una Windows real, corresponde reemplazar esta
@@ -85,9 +92,9 @@ borrarla sin más.
 
 ## Compatibilidad del sistema
 
-- **Windows 10 y Windows 11**. En esta versión se verificó ahí la aprobación
-  acción por acción; el resto del `.exe` empaquetado no se corrió (ver la
-  sección de arriba). Wails v2 en Windows depende del
+- **Windows 10 y Windows 11**, donde se verificó que esta versión arranca y se
+  usa (ver la sección de arriba para qué quedó sin confirmar). Wails v2 en
+  Windows depende del
   WebView2 Runtime de Microsoft: Windows 11 lo trae preinstalado y los
   Windows 10 con Edge al día también (llega con las actualizaciones de
   Edge). Un Windows 10 viejo o sin actualizar puede no tenerlo — ahí se
@@ -111,7 +118,7 @@ borrarla sin más.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.0.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.1.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

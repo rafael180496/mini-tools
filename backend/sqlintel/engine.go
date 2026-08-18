@@ -260,6 +260,11 @@ func (c *collector) qualified(idx *SchemaIndex, ctx Context) {
 		for _, t := range schemaTables {
 			c.add(t.Name, KindTable, t.Qualified, "", "", 400)
 		}
+	default:
+		// Not a table and not a schema: on Oracle the remaining thing a
+		// qualifier can name is a package, and its members are exactly what
+		// "PKG." is asking for.
+		c.packageMembers(idx.PackageMembers(ctx.DotPrefix))
 	}
 }
 
@@ -294,6 +299,11 @@ func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context)
 		c.keywords(dialect, 100)
 		c.tables(idx)
 		c.functions(dialect, ctx.Clause)
+		// A statement that opens with a routine call is the normal way to
+		// invoke one — "CALL x(...)", "EXEC x ...", or a bare "PKG.PROC(...)"
+		// inside a PL/SQL block. Without this the completion knew the
+		// routines but never offered them where they are actually written.
+		c.routines(idx)
 	}
 }
 
@@ -495,22 +505,28 @@ func (c *collector) functions(d *Dialect, clause Clause) {
 
 // routines offers the connection's own stored procedures and functions,
 // scored just under the dialect built-ins.
+//
+// Each item carries the full signature: the parameter list on the detail
+// line, the expanded declaration in the info panel, and a snippet with one
+// tab stop per argument. Accepting a routine therefore lands a call whose
+// arguments are already named and ordered, instead of an empty pair of
+// parentheses the caller has to go look the signature up for.
 func (c *collector) routines(idx *SchemaIndex) {
 	if idx == nil || c.schemaOnly {
 		return
 	}
 	for _, r := range idx.Routines {
-		detail := "procedimiento"
-		if r.IsFunction {
-			detail = "función"
-			if r.ReturnType != "" {
-				detail += " → " + r.ReturnType
-			}
-		}
-		if r.Schema != "" {
-			detail = r.Schema + " · " + detail
-		}
-		c.add(r.Name, KindRoutine, detail, r.Name+"(${1})", "", 120)
+		c.add(r.Call, KindRoutine, r.Detail(), r.Snippet(), r.Info(), 120)
+	}
+}
+
+// packageMembers offers what an Oracle package declares, for the "PKG.|"
+// path. Scored high for the same reason a table's columns are: the
+// qualifier already said what scope is meant, so nothing else belongs in
+// the list.
+func (c *collector) packageMembers(members []RoutineEntry) {
+	for _, r := range members {
+		c.add(r.Name, KindRoutine, r.Detail(), r.Name+r.ArgSnippet(), r.Info(), 400)
 	}
 }
 

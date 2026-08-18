@@ -10,12 +10,21 @@
 #   ./scripts/uishot.sh files            # árbol + editor
 #   ./scripts/uishot.sh agents 900 1200  # panel de agentes, con tamaño
 #   ./scripts/uishot.sh chat
+#   UISHOT_MODULE=git ./scripts/uishot.sh sidebar   # barra lateral, módulo Git
+#
+# UISHOT_MODULE elige qué módulo abre el menú master de la barra lateral
+# (connections | ssh | git | notes). Solo lo miran las vistas que montan el
+# workspace entero; el resto lo ignora.
 set -euo pipefail
 
 VIEW="${1:-files}"
 W="${2:-1280}"
 H="${3:-860}"
 OUT="${UISHOT_OUT:-/tmp/uishot-$VIEW.png}"
+MODULE="${UISHOT_MODULE:-}"
+# Sistema operativo simulado para la barra de título propia de la ventana
+# (darwin | windows | linux). Solo lo mira la vista `window`.
+PLATFORM="${UISHOT_PLATFORM:-}"
 PORT="${UISHOT_PORT:-5199}"
 
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -40,7 +49,7 @@ done
     --window-size="$W,$H" \
     --virtual-time-budget=4000 \
     --screenshot="$OUT" \
-    "http://localhost:$PORT/uishot.html?view=$VIEW" >/dev/null 2>&1
+    "http://localhost:$PORT/uishot.html?view=$VIEW&module=$MODULE&platform=$PLATFORM" >/dev/null 2>&1
 
 [ -s "$OUT" ] || { echo "La captura salió vacía. Log de vite:"; tail -5 /tmp/uishot-vite.log; exit 1; }
 echo "$OUT"

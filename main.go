@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	goruntime "runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -86,7 +87,31 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		// El color con el que la ventana se pinta ANTES de que cargue el
+		// webview. Tiene que ser el fondo real del tema oscuro de la app
+		// (--md-background en frontend/src/styles/globals.css); el valor
+		// anterior era el azul por defecto del scaffold de Wails, y con la
+		// barra de título propia se veía como un destello de otro color en
+		// cada arranque.
+		BackgroundColour: &options.RGBA{R: 11, G: 19, B: 38, A: 1},
+		// Chrome de ventana propio, con la barra que dibuja el frontend
+		// (frontend/src/components/TitleBar.tsx). Las dos mitades de esto
+		// NO son la misma decisión:
+		//
+		//   - Windows y Linux van sin marco (Frameless): ahí los botones de
+		//     ventana son parte del marco del sistema, así que sacarlo es la
+		//     única forma de tener unos propios, y el frontend los dibuja.
+		//
+		//   - macOS NO va frameless, va con la barra oculta e insertada
+		//     (TitleBarHiddenInset, abajo). En macOS los semáforos no son
+		//     decoración del marco sino el control estándar de la ventana:
+		//     un usuario los busca ahí, el sistema les da el menú
+		//     contextual, el atajo de pantalla completa y el comportamiento
+		//     de "arrastrar a otro escritorio". Redibujarlos a mano sería
+		//     imitar peor algo que el sistema ya hace bien. Lo que sí se
+		//     saca es la barra gris de alrededor, que es lo que no combinaba
+		//     con el tema.
+		Frameless: goruntime.GOOS != "darwin",
 		// Maximised, not a fixed size: Wails sizes this to the current
 		// monitor's actual work area, so the app opens filling the screen
 		// without needing internal scroll — no manual resolution detection
@@ -97,6 +122,21 @@ func main() {
 			// Explicit (matches the zero-value default) so the native
 			// green title-bar button stays enabled for maximize/fullscreen.
 			DisableZoom: false,
+			// La barra de título nativa desaparece y los semáforos quedan
+			// flotando sobre el contenido, en su posición estándar. El
+			// frontend les reserva el hueco a la izquierda de la barra
+			// propia — ver TITLE_BAR_MAC_INSET en TitleBar.tsx.
+			//
+			// **Hidden y no HiddenInset**, que es lo que estaba primero: el
+			// "Inset" activa `UseToolbar`, o sea que macOS agrega una
+			// NSToolbar de verdad. Eso hace la banda de la barra de título
+			// bastante más alta (la altura estándar de una toolbar) y baja
+			// los semáforos hasta el medio de esa banda — contra una barra
+			// propia de 34px, los botones terminan colgando abajo del borde,
+			// encima de la fila de pestañas. Sin toolbar, los semáforos
+			// quedan donde una ventana normal los pone y la barra propia les
+			// calza.
+			TitleBar: mac.TitleBarHidden(),
 		},
 		// Lets files be dragged from Finder/Explorer onto the SFTP pane.
 		// CSSDropProperty/CSSDropValue mark WHICH elements accept a drop:

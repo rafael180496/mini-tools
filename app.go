@@ -981,13 +981,36 @@ func (a *App) MoveConnectionToFolder(connID, folderID string) error {
 	return a.vault.MoveConnectionToFolder(connID, folderID)
 }
 
-// SetCollapsedSidebarModules persists which sidebar module ids are
-// collapsed to an accordion header.
-func (a *App) SetCollapsedSidebarModules(ids []string) error {
+// SetEditorAppearance persists how the editors render — font, size, line
+// wrapping, gutter, tab width and whether the action row is shown. One call
+// for the whole group: the settings dialog edits them together and every
+// editor reads them together, so splitting it into six bindings would only
+// mean six chances for them to get out of sync.
+func (a *App) SetEditorAppearance(appearance vault.EditorAppearance) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.vault.SetCollapsedSidebarModules(ids)
+	return a.vault.SetEditorAppearance(appearance)
+}
+
+// SetSidebarWidth persists the sidebar's dragged width. Called once on
+// mouseup, not per pointer move — the vault write has no reason to keep up
+// with the pointer, only to record where it stopped.
+func (a *App) SetSidebarWidth(px int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetSidebarWidth(px)
+}
+
+// SetSidebarModule persists which sidebar module the master menu has open,
+// so the next launch reopens the one that was in use instead of always
+// landing on the connection tree.
+func (a *App) SetSidebarModule(id string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetSidebarModule(id)
 }
 
 // DeleteConnection closes any open pool for id and removes it from the
@@ -1113,7 +1136,7 @@ func (a *App) ensureRedisPoolOpen(connID string) error {
 // EventsOn(queryID, ...) before invoking this — see
 // .claude/skills/mini-tools-patterns/SKILL.md. captureDBMSOutput is the
 // toolbar's "DBMS_OUTPUT" toggle — ignored outside Oracle PL/SQL blocks.
-func (a *App) ExecuteQuery(connID, queryID, sqlText string, captureDBMSOutput bool) error {
+func (a *App) ExecuteQuery(connID, queryID, sqlText string, captureDBMSOutput bool, params []query.ParamValue) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
@@ -1121,8 +1144,32 @@ func (a *App) ExecuteQuery(connID, queryID, sqlText string, captureDBMSOutput bo
 		return err
 	}
 
-	a.executor.Execute(connID, queryID, sqlText, captureDBMSOutput)
+	a.executor.Execute(connID, queryID, sqlText, captureDBMSOutput, params)
 	return nil
+}
+
+// DetectQueryParams lists the bind placeholders sqlText declares, so the
+// frontend can ask for their values before running it. Which syntaxes count
+// depends on the connection's engine, which is why this needs connID and
+// cannot be answered in the frontend — see backend/query/params.go.
+//
+// An empty result means "run it as-is": the dialog is only shown when there
+// is something to fill in.
+func (a *App) DetectQueryParams(connID, sqlText string) ([]query.Param, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	dbType, err := a.vault.ConnectionDBType(connID)
+	if err != nil {
+		return nil, err
+	}
+	params := query.ExtractParams(sqlText, dbType)
+	if params == nil {
+		// Wails marshals a nil slice as null; the frontend wants a list it
+		// can check the length of without a null guard at every call site.
+		params = []query.Param{}
+	}
+	return params, nil
 }
 
 // CancelQuery cancels the in-flight query registered under queryID, if any.
@@ -2822,6 +2869,21 @@ func (a *App) CompleteSQL(req sqlintel.Request) (*sqlintel.Response, error) {
 		return nil, err
 	}
 	resp := sqlintel.Complete(a.sqlIntel.Index(req.ConnID), req, a.sqlIntel.UsageFor(req.ConnID))
+	return &resp, nil
+}
+
+// SignatureSQL answers "which argument am I on?" for the call under the
+// cursor — the parameter-info tooltip. Separate from CompleteSQL because it
+// is asked at a different moment: completion stops being useful the instant
+// the opening parenthesis is typed, which is exactly when this starts.
+//
+// Like CompleteSQL it never fails on malformed SQL; an unresolvable cursor
+// yields an empty response, which the editor renders as no tooltip.
+func (a *App) SignatureSQL(req sqlintel.SignatureRequest) (*sqlintel.SignatureResponse, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	resp := sqlintel.Signature(a.sqlIntel.Index(req.ConnID), req)
 	return &resp, nil
 }
 

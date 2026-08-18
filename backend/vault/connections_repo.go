@@ -227,6 +227,23 @@ func (s *Store) ConnectionEnvironment(id string) (string, error) {
 	return env.String, nil
 }
 
+// ConnectionDBType reads just the engine of one connection. The db_type
+// column is not encrypted (it is not a secret — the DSN beside it is), so
+// this answers without touching the master key or materialising a DSN,
+// which matters for callers that only need to know which SQL dialect they
+// are dealing with: bind-parameter detection asks this on every run.
+func (s *Store) ConnectionDBType(id string) (db.DBType, error) {
+	var dbType string
+	err := s.db.QueryRow(`SELECT db_type FROM connections WHERE id = ?`, id).Scan(&dbType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("vault: conexión %q no encontrada", id)
+	}
+	if err != nil {
+		return "", fmt.Errorf("vault: leyendo motor de conexión: %w", err)
+	}
+	return db.DBType(dbType), nil
+}
+
 // DeleteConnection removes a saved connection. The caller is responsible for
 // closing any open pool for id first (see db.PoolManager.Close).
 func (s *Store) DeleteConnection(id string) error {

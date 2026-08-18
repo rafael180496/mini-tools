@@ -94,7 +94,12 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
             })
 
             try {
-                await ExecuteQuery(conn.id, queryId, sql, false)
+                // Sin parámetros: un bloque de runbook se ejecuta tal como
+                // quedó guardado, sin diálogo de por medio. Si el SQL
+                // declara un placeholder (":desde"), el backend responde con
+                // "falta el valor del parámetro" y ese error se muestra acá
+                // — es más honesto que enlazar NULL en silencio.
+                await ExecuteQuery(conn.id, queryId, sql, false, [])
             } catch (e) {
                 setError(String(e))
                 setRunning(false)

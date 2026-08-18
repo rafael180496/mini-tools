@@ -28,7 +28,9 @@ const maxDBMSOutputLines = 1000
 // all (not just a skipped fetch), which matters when running a large
 // multi-statement script full of PL/SQL blocks and the output isn't
 // needed.
-func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string, captureOutput bool) (sql.Result, []string, error) {
+// args carries the values for the block's bind placeholders; nil when it
+// declares none.
+func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string, args []interface{}, captureOutput bool) (sql.Result, []string, error) {
 	// SplitStatements deliberately strips the delimiting ";" from every
 	// flushed statement (fine for plain SQL sent via a single Exec call —
 	// Oracle's SQL engine rejects a trailing ";" there) — but Oracle's
@@ -40,7 +42,7 @@ func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string, c
 	stmtText = ensureTrailingSemicolon(stmtText)
 
 	if !captureOutput {
-		result, err := conn.ExecContext(ctx, stmtText)
+		result, err := conn.ExecContext(ctx, stmtText, args...)
 		return result, nil, err
 	}
 
@@ -48,7 +50,7 @@ func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string, c
 		return nil, nil, fmt.Errorf("query: habilitando DBMS_OUTPUT: %w", err)
 	}
 
-	result, err := conn.ExecContext(ctx, stmtText)
+	result, err := conn.ExecContext(ctx, stmtText, args...)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -241,8 +241,13 @@ func (e *Executor) RollbackAll(ctx context.Context) {
 // calls this — queryID is client-generated precisely so there is no race
 // with the first emitted event. captureDBMSOutput is the toolbar toggle —
 // see runOraclePLSQLBlock's doc comment.
-func (e *Executor) Execute(connID, queryID, sqlText string, captureDBMSOutput bool) {
-	go e.run(connID, queryID, sqlText, captureDBMSOutput)
+// params supplies a value for every bind placeholder the script declares
+// (see params.go); pass nil when there are none. The placeholders are
+// rewritten into the driver's ordinal form and the values travel as
+// arguments — the SQL the user wrote is never rewritten with a value
+// spliced into it.
+func (e *Executor) Execute(connID, queryID, sqlText string, captureDBMSOutput bool, params []ParamValue) {
+	go e.run(connID, queryID, sqlText, captureDBMSOutput, params)
 }
 
 // Cancel cancels the in-flight script registered under queryID, if any —
@@ -260,7 +265,7 @@ func (e *Executor) Cancel(queryID string) {
 	}
 }
 
-func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool) {
+func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool, params []ParamValue) {
 	// A new run on this connection supersedes whatever result set was paused
 	// on it, freeing the pooled connection that cursor was pinning (see
 	// paging.go's "one paused cursor per connection" rule).
@@ -301,6 +306,13 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool) 
 		}
 	}()
 
+	paramValues := ParamValuesByName(params)
+	// Anonymous "?" placeholders are numbered across the whole script, the
+	// same way ExtractParams numbered them for the dialog — otherwise the
+	// second statement's first "?" would be handed the first statement's
+	// value.
+	positionalBase := 0
+
 	for idx, stmt := range statements {
 		if ctx.Err() != nil {
 			// The script was cancelled while an earlier statement was
@@ -312,17 +324,42 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool) 
 
 		start := time.Now()
 
+		// The bound text goes to the driver; stmt.Text — what the user
+		// actually wrote, ":desde" and all — is what gets echoed back in
+		// events and recorded in history. Showing the rewritten ":1" form
+		// in the console would be showing them a statement they never
+		// typed.
+		bound, args, bindErr := BindStatement(stmt.Text, dbType, paramValues, positionalBase)
+		positionalBase += countPositional(stmt.Text, dbType, positionalBase)
+		if bindErr != nil {
+			e.emitError(connID, queryID, stmt.Text, bindErr, idx, total)
+			continue
+		}
+
 		if stmt.Kind == KindPLSQLBlock && dbType == db.DBTypeOracle {
-			e.runPLSQLBlock(ctx, pool, connID, queryID, stmt.Text, idx, total, start, captureDBMSOutput)
+			e.runPLSQLBlock(ctx, pool, connID, queryID, stmt.Text, bound, args, idx, total, start, captureDBMSOutput)
 			continue
 		}
 
 		if isSelectLike(stmt.Text) {
-			e.runQuery(ctx, execer, connID, queryID, stmt.Text, idx, total, start)
+			e.runQuery(ctx, execer, connID, queryID, stmt.Text, bound, args, idx, total, start)
 		} else {
-			e.runExec(ctx, execer, connID, queryID, stmt.Text, idx, total, start)
+			e.runExec(ctx, execer, connID, queryID, stmt.Text, bound, args, idx, total, start)
 		}
 	}
+}
+
+// countPositional reports how many anonymous "?" placeholders a statement
+// consumed, so the next statement's numbering continues where this one
+// stopped.
+func countPositional(stmt string, dbType db.DBType, base int) int {
+	n := 0
+	for _, t := range scanParamTokens(stmt, dbType, base) {
+		if t.Positional {
+			n++
+		}
+	}
+	return n
 }
 
 // isSelectLike decides which of runQuery/runExec a statement goes through.
@@ -343,8 +380,11 @@ func isSelectLike(sqlText string) bool {
 	return false
 }
 
-func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, queryID, sqlText string, idx, total int, start time.Time) {
-	rows, err := execer.QueryContext(ctx, sqlText)
+// runQuery takes sqlText (what the user wrote, used for every event and
+// for history) and boundSQL/args (what the driver receives) separately —
+// see the call site in run().
+func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, queryID, sqlText, boundSQL string, args []interface{}, idx, total int, start time.Time) {
+	rows, err := execer.QueryContext(ctx, boundSQL, args...)
 	if err != nil {
 		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
@@ -446,8 +486,8 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 	})
 }
 
-func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, queryID, sqlText string, idx, total int, start time.Time) {
-	result, err := execer.ExecContext(ctx, sqlText)
+func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, queryID, sqlText, boundSQL string, args []interface{}, idx, total int, start time.Time) {
+	result, err := execer.ExecContext(ctx, boundSQL, args...)
 	if err != nil {
 		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return
@@ -459,7 +499,7 @@ func (e *Executor) runExec(ctx context.Context, execer queryExecer, connID, quer
 	e.emit(queryID, Event{Type: "done", StatementIndex: idx, TotalStatements: total, RowsAffected: affected, DurationMs: durationMs, SQLText: sqlText})
 }
 
-func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, queryID, sqlText string, idx, total int, start time.Time, captureDBMSOutput bool) {
+func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, queryID, sqlText, boundSQL string, args []interface{}, idx, total int, start time.Time, captureDBMSOutput bool) {
 	// If a transaction is open for connID, DBMS_OUTPUT must run on that SAME
 	// reserved connection (its ENABLE/PUT_LINE/GET_LINE state is
 	// per-session) — reusing it here also means an explicit COMMIT/ROLLBACK
@@ -478,7 +518,7 @@ func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, quer
 		defer conn.Close()
 	}
 
-	result, dbmsOutput, err := runOraclePLSQLBlock(ctx, conn, sqlText, captureDBMSOutput)
+	result, dbmsOutput, err := runOraclePLSQLBlock(ctx, conn, boundSQL, args, captureDBMSOutput)
 	if err != nil {
 		e.emitTerminal(ctx, connID, queryID, sqlText, err, idx, total)
 		return

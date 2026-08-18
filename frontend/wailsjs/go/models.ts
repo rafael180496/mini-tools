@@ -504,11 +504,32 @@ export namespace db {
 	        this.referencedColumn = source["referencedColumn"];
 	    }
 	}
+	export class RoutineArg {
+	    name?: string;
+	    dataType?: string;
+	    mode?: string;
+	    hasDefault?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RoutineArg(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.dataType = source["dataType"];
+	        this.mode = source["mode"];
+	        this.hasDefault = source["hasDefault"];
+	    }
+	}
 	export class Function {
 	    schema?: string;
 	    name: string;
 	    returnType?: string;
 	    oid?: number;
+	    args?: RoutineArg[];
+	    overload?: string;
+	    comment?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Function(source);
@@ -520,7 +541,28 @@ export namespace db {
 	        this.name = source["name"];
 	        this.returnType = source["returnType"];
 	        this.oid = source["oid"];
+	        this.args = this.convertValues(source["args"], RoutineArg);
+	        this.overload = source["overload"];
+	        this.comment = source["comment"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class MongoCollectionInfo {
 	    name: string;
@@ -590,9 +632,48 @@ export namespace db {
 	        this.sparse = source["sparse"];
 	    }
 	}
+	export class PackageMember {
+	    name: string;
+	    isFunction?: boolean;
+	    returnType?: string;
+	    overload?: string;
+	    args?: RoutineArg[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PackageMember(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.isFunction = source["isFunction"];
+	        this.returnType = source["returnType"];
+	        this.overload = source["overload"];
+	        this.args = this.convertValues(source["args"], RoutineArg);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Package {
 	    schema?: string;
 	    name: string;
+	    members?: PackageMember[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Package(source);
@@ -602,12 +683,35 @@ export namespace db {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.schema = source["schema"];
 	        this.name = source["name"];
+	        this.members = this.convertValues(source["members"], PackageMember);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
+	
 	export class Procedure {
 	    schema?: string;
 	    name: string;
 	    oid?: number;
+	    args?: RoutineArg[];
+	    overload?: string;
+	    comment?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Procedure(source);
@@ -618,7 +722,28 @@ export namespace db {
 	        this.schema = source["schema"];
 	        this.name = source["name"];
 	        this.oid = source["oid"];
+	        this.args = this.convertValues(source["args"], RoutineArg);
+	        this.overload = source["overload"];
+	        this.comment = source["comment"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class RedisFieldValue {
 	    field: string;
@@ -938,6 +1063,7 @@ export namespace db {
 		    return a;
 		}
 	}
+	
 	export class Trigger {
 	    schema?: string;
 	    name: string;
@@ -2324,6 +2450,43 @@ export namespace osopen {
 
 }
 
+export namespace query {
+	
+	export class Param {
+	    name: string;
+	    raw: string;
+	    positional?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Param(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.raw = source["raw"];
+	        this.positional = source["positional"];
+	    }
+	}
+	export class ParamValue {
+	    name: string;
+	    value: string;
+	    type: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ParamValue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.value = source["value"];
+	        this.type = source["type"];
+	    }
+	}
+
+}
+
 export namespace redisquery {
 	
 	export class LuaResult {
@@ -2556,6 +2719,115 @@ export namespace sqlintel {
 		    return a;
 		}
 	}
+	export class SignatureParam {
+	    label: string;
+	    optional?: boolean;
+	    out?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SignatureParam(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.optional = source["optional"];
+	        this.out = source["out"];
+	    }
+	}
+	export class SignatureInfo {
+	    label: string;
+	    name?: string;
+	    return?: string;
+	    doc?: string;
+	    params: SignatureParam[];
+	    active: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SignatureInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.name = source["name"];
+	        this.return = source["return"];
+	        this.doc = source["doc"];
+	        this.params = this.convertValues(source["params"], SignatureParam);
+	        this.active = source["active"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class SignatureRequest {
+	    connId: string;
+	    dbType: string;
+	    sql: string;
+	    offset: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SignatureRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connId = source["connId"];
+	        this.dbType = source["dbType"];
+	        this.sql = source["sql"];
+	        this.offset = source["offset"];
+	    }
+	}
+	export class SignatureResponse {
+	    signatures?: SignatureInfo[];
+	    from: number;
+	    to: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SignatureResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.signatures = this.convertValues(source["signatures"], SignatureInfo);
+	        this.from = source["from"];
+	        this.to = source["to"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Status {
 	    connId: string;
 	    state: string;
@@ -2660,6 +2932,28 @@ export namespace vault {
 	        this.color = source["color"];
 	        this.folderId = source["folderId"];
 	        this.environment = source["environment"];
+	    }
+	}
+	export class EditorAppearance {
+	    fontFamily?: string;
+	    fontSize?: number;
+	    lineWrap?: boolean;
+	    lineNumbers: boolean;
+	    tabSize?: number;
+	    toolbar?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAppearance(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fontFamily = source["fontFamily"];
+	        this.fontSize = source["fontSize"];
+	        this.lineWrap = source["lineWrap"];
+	        this.lineNumbers = source["lineNumbers"];
+	        this.tabSize = source["tabSize"];
+	        this.toolbar = source["toolbar"];
 	    }
 	}
 	export class ExplainHistoryEntry {
@@ -3083,7 +3377,9 @@ export namespace vault {
 	    queryPageSize: number;
 	    rememberMasterKey: boolean;
 	    editorTheme: string;
-	    collapsedSidebarModules: string[];
+	    editorAppearance: EditorAppearance;
+	    sidebarModule: string;
+	    sidebarWidth: number;
 	    sshTerminalTheme: string;
 	    localShell: string;
 	    gitTermDock: string;
@@ -3125,7 +3421,9 @@ export namespace vault {
 	        this.queryPageSize = source["queryPageSize"];
 	        this.rememberMasterKey = source["rememberMasterKey"];
 	        this.editorTheme = source["editorTheme"];
-	        this.collapsedSidebarModules = source["collapsedSidebarModules"];
+	        this.editorAppearance = this.convertValues(source["editorAppearance"], EditorAppearance);
+	        this.sidebarModule = source["sidebarModule"];
+	        this.sidebarWidth = source["sidebarWidth"];
 	        this.sshTerminalTheme = source["sshTerminalTheme"];
 	        this.localShell = source["localShell"];
 	        this.gitTermDock = source["gitTermDock"];

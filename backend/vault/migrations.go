@@ -846,6 +846,75 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 40,
+		desc:    "agrega settings.sidebar_module (qué módulo de la barra lateral está activo)",
+		apply: func(tx *sql.Tx) error {
+			// La barra lateral pasó de mostrar los cuatro módulos apilados a
+			// mostrar UNO, elegido desde el menú de íconos de arriba. Lo que
+			// hay que recordar entre sesiones cambió con eso: antes era "qué
+			// módulos están plegados" (una lista), ahora es "cuál está
+			// abierto" (uno solo), y no son la misma pregunta escrita
+			// distinto — con un módulo a la vez no existe el concepto de
+			// plegado.
+			//
+			// Por eso una columna nueva y no un reuso de
+			// collapsed_sidebar_modules: esa columna queda huérfana (las
+			// migraciones de este vault son solo aditivas, ver
+			// .claude/rules/technical.md punto 13, así que no se borra), pero
+			// guardar un id suelto donde antes iba un arreglo JSON dejaría el
+			// dato ilegible para cualquiera que mire la tabla sin conocer
+			// esta historia.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN sidebar_module TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
+	{
+		version: 41,
+		desc:    "agrega settings.sidebar_width (ancho arrastrado de la barra lateral)",
+		apply: func(tx *sql.Tx) error {
+			// Mismo trato que git_side_width/editor_height: el tamaño que el
+			// usuario arrastró se guarda para que la próxima sesión abra como
+			// la dejó. 0 significa "todavía no lo tocó" y deja decidir el
+			// ancho al frontend, en vez de congelar acá un número que después
+			// hay que mantener sincronizado en dos lados.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN sidebar_width INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
+	{
+		version: 42,
+		desc:    "agrega la apariencia del editor (fuente, cuerpo, ajuste de línea, numeración, tabulación, barra de acciones)",
+		apply: func(tx *sql.Tx) error {
+			// Todo lo que hasta ahora estaba fijo en el código de cada
+			// editor. Eran tres componentes distintos —el editor SQL, el de
+			// archivos del módulo Git y el de notas— cada uno con su propio
+			// `EditorView.theme` repitiendo el mismo 13px y la misma familia
+			// tipográfica, así que cambiar de idea significaba editar tres
+			// archivos y esperar no haberse olvidado de ninguno.
+			//
+			// Los valores por defecto son deliberadamente "vacíos" (cadena
+			// vacía o cero) y no los valores reales: el default vive en el
+			// frontend, en un solo lugar, y así una instalación que nunca
+			// tocó estos ajustes sigue exactamente lo que decida el código
+			// en vez de un número congelado en el schema el día que se
+			// escribió esta migración.
+			cols := []string{
+				`ALTER TABLE settings ADD COLUMN editor_font_family TEXT NOT NULL DEFAULT ''`,
+				`ALTER TABLE settings ADD COLUMN editor_font_size INTEGER NOT NULL DEFAULT 0`,
+				`ALTER TABLE settings ADD COLUMN editor_line_wrap INTEGER NOT NULL DEFAULT 0`,
+				`ALTER TABLE settings ADD COLUMN editor_line_numbers INTEGER NOT NULL DEFAULT 1`,
+				`ALTER TABLE settings ADD COLUMN editor_tab_size INTEGER NOT NULL DEFAULT 0`,
+				`ALTER TABLE settings ADD COLUMN editor_toolbar TEXT NOT NULL DEFAULT ''`,
+			}
+			for _, stmt := range cols {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

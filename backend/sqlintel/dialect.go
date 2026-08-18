@@ -85,6 +85,19 @@ func (d *Dialect) AllFunctions() []FunctionDef {
 }
 
 // AllKeywords is the dialect's reserved words merged with the shared ones.
+// Function looks a built-in up by name, case-insensitively. Used by
+// signature help, which has to answer for the dialect's own functions too —
+// a user typing NVL( wants the argument list as much as they do for a
+// stored routine.
+func (d *Dialect) Function(name string) (FunctionDef, bool) {
+	for _, f := range d.AllFunctions() {
+		if strings.EqualFold(f.Name, name) {
+			return f, true
+		}
+	}
+	return FunctionDef{}, false
+}
+
 func (d *Dialect) AllKeywords() []string {
 	out := make([]string, 0, len(commonKeywords)+len(d.Keywords))
 	out = append(out, commonKeywords...)

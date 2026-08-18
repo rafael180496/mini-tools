@@ -14,6 +14,11 @@ export interface SelectOption {
     // not Material Symbols — a name-based API could not express those.
     icon?: ReactNode
     disabled?: boolean
+    // Dibuja una línea debajo de esta opción. Sirve para separar una opción
+    // que no es par de las demás —"Sin conexión" no es una conexión más, es
+    // desvincular— de la lista real, sin inventar un modelo de grupos que
+    // ningún llamador necesita todavía.
+    separatorAfter?: boolean
 }
 
 interface SelectProps {
@@ -127,31 +132,60 @@ export default function Select({
                             role="listbox"
                             style={{position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width}}
                             onPointerDown={(e) => e.stopPropagation()}
-                            className="z-50 max-h-72 min-w-44 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-highest p-1 text-on-surface shadow-lg"
+                            className="z-50 max-h-72 min-w-52 max-w-[22rem] overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-highest p-1 text-on-surface shadow-lg"
                         >
-                            {options.map((o) => (
-                                <button
-                                    key={o.value}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={o.value === value}
-                                    disabled={o.disabled}
-                                    onClick={() => {
-                                        onChange(o.value)
-                                        setOpen(false)
-                                    }}
-                                    className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                                        o.value === value ? 'bg-primary/15 text-primary' : 'hover:bg-surface-variant'
-                                    }`}
-                                >
-                                    <Icon name="check" size={16} className={`shrink-0 ${o.value === value ? '' : 'invisible'}`} />
-                                    {o.icon}
-                                    <span className="min-w-0 flex-1">
-                                        <span className="block truncate">{o.label}</span>
-                                        {o.hint && <span className="block truncate text-xs text-on-surface-variant">{o.hint}</span>}
-                                    </span>
-                                </button>
-                            ))}
+                            {options.map((o) => {
+                                const selected = o.value === value
+                                const row = (
+                                    <button
+                                        key={o.value}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={selected}
+                                        disabled={o.disabled}
+                                        onClick={() => {
+                                            onChange(o.value)
+                                            setOpen(false)
+                                        }}
+                                        // Una línea por opción, no dos. La pista
+                                        // (el motor de la conexión, el formato de
+                                        // un tema) iba abajo del nombre, y eso
+                                        // duplicaba el alto de cada fila: una
+                                        // lista de ocho conexiones no entraba en
+                                        // pantalla y el ojo tenía que saltar dos
+                                        // renglones por opción para leer los
+                                        // nombres, que es lo único que se está
+                                        // buscando. Ahora el nombre manda y la
+                                        // pista lo acompaña a la derecha, tenue,
+                                        // alineada en su propia columna.
+                                        className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[13px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                            selected ? 'bg-primary/12 text-primary' : 'hover:bg-surface-variant'
+                                        }`}
+                                    >
+                                        {o.icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center">{o.icon}</span>}
+                                        <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                                        {o.hint && (
+                                            <span className={`shrink-0 truncate text-[11px] ${selected ? 'text-primary/70' : 'text-on-surface-variant/60'}`}>
+                                                {o.hint}
+                                            </span>
+                                        )}
+                                        {/* El check ocupa lugar solo cuando marca
+                                            algo: reservarle una columna a la
+                                            izquierda de TODAS las filas —como
+                                            estaba— corría los nombres 22px hacia
+                                            adentro para señalar una sola. */}
+                                        <Icon name="check" size={14} className={`shrink-0 ${selected ? '' : 'invisible'}`} />
+                                    </button>
+                                )
+                                return o.separatorAfter ? (
+                                    <div key={o.value}>
+                                        {row}
+                                        <div className="my-1 border-t border-outline-variant" />
+                                    </div>
+                                ) : (
+                                    row
+                                )
+                            })}
                         </div>
                     </>,
                     document.body,

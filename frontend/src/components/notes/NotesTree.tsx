@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react'
 import {CreateNote, DeleteNote, NotesGraph, SearchNotesSmart, SetNoteFolder} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
-import SidebarModule from '../sidebar/SidebarModule'
+import SidebarSection from '../sidebar/SidebarSection'
 import MoveToFolderMenu from '../sidebar/MoveToFolderMenu'
 import ConfirmDialog from '../ConfirmDialog'
 import PromptDialog from '../git/PromptDialog'
@@ -21,9 +21,19 @@ interface Props {
     // Nota abierta, para marcarla en la lista.
     activeNoteId: string | null
     onOpenNote: (id: string) => void
-    moduleCollapsed: boolean
-    onToggleModuleCollapsed: () => void
-    rail: boolean
+    // Búsqueda global de la barra, dibujada por el marco (Sidebar.tsx). Acá
+    // no es solo un filtro: alimenta SearchNotesSmart, que busca en títulos y
+    // cuerpos, y además es el título que se propone al crear una nota o una
+    // carpeta desde el buscador. Por eso el módulo también necesita poder
+    // limpiarla: cuando el texto se convierte en el nombre de algo, dejarlo
+    // puesto escondería justamente lo que se acaba de crear.
+    filter: string
+    onClearFilter: () => void
+    // Cuántos elementos coinciden con la búsqueda global. Se informa hacia
+    // arriba porque el contador vive en el menú master (SidebarMasterMenu):
+    // con un módulo a la vez, es lo único que dice que lo que se busca está
+    // en otro módulo y no perdido.
+    onMatchCount: (n: number | null) => void
     // Se dispara al crear una nota, para que el workspace la abra.
     onCreated: (id: string) => void
     // Token que fuerza recargar la lista desde afuera (al guardar una nota).
@@ -52,9 +62,9 @@ function flatten(nodes: FolderNode[], depth = 0): {folder: vault.Folder; depth: 
 export default function NotesTree({
     activeNoteId,
     onOpenNote,
-    moduleCollapsed,
-    onToggleModuleCollapsed,
-    rail,
+    filter,
+    onClearFilter,
+    onMatchCount,
     onCreated,
     reloadToken,
     onOpenGraph,
@@ -64,7 +74,7 @@ export default function NotesTree({
     onDeleteFolder,
     onChanged,
 }: Props) {
-    const [query, setQuery] = useState('')
+    const query = filter
     const [hits, setHits] = useState<vault.NoteHit[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
@@ -101,13 +111,21 @@ export default function NotesTree({
         const title = query.trim() || 'Nota sin título'
         CreateNote(title, '')
             .then((id) => {
-                setQuery('')
+                // Limpiar la búsqueda es parte de crear: el texto acaba de
+                // convertirse en el título de la nota nueva, y dejarlo puesto
+                // la escondería detrás del filtro que lo nombró.
+                onClearFilter()
                 onCreated(id)
             })
             .catch((e) => setError(String(e)))
-    }, [query, onCreated])
+    }, [query, onCreated, onClearFilter])
 
     const searching = query.trim().length > 0
+
+    const matchCount = searching ? hits.length : null
+    useEffect(() => {
+        onMatchCount(matchCount)
+    }, [matchCount, onMatchCount])
 
     // Aristas del grafo, para colgar cada nota de la que la enlaza. Se piden
     // todas juntas y no por nota: el árbol necesita el conjunto para saber
@@ -186,17 +204,15 @@ export default function NotesTree({
     }
 
     return (
-        <SidebarModule
+        <SidebarSection
             title="Notas"
-            collapsed={moduleCollapsed}
-            onToggleCollapsed={onToggleModuleCollapsed}
-            matchCount={searching ? hits.length : null}
+            count={searching ? `${hits.length} ${hits.length === 1 ? 'resultado' : 'resultados'}` : hits.length ? String(hits.length) : null}
             actions={
                 <>
                 <button
                     onClick={() => {
                         const name = query.trim() || 'Nueva carpeta'
-                        setQuery('')
+                        onClearFilter()
                         onCreateFolder(name, '')
                     }}
                     title="Crea una carpeta en la raíz. Si hay algo escrito en el buscador, lo usa como nombre."
@@ -225,60 +241,48 @@ export default function NotesTree({
                 </>
             }
         >
-            {!rail && (
-                <div className="flex flex-col gap-1 px-2 pb-1">
-                    <div className="flex items-center gap-1 rounded border border-outline-variant bg-surface px-1.5 py-0.5">
-                        <Icon name="search" size={13} className="shrink-0 text-on-surface-variant" />
-                        <input
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Buscar en tus notas…"
-                            title="Busca en títulos y cuerpos, sin importar tildes ni mayúsculas. Varias palabras: todas tienen que aparecer. Entre comillas: frase exacta."
-                            className="min-w-0 flex-1 bg-transparent py-0.5 text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/60"
-                        />
-                        {query && (
-                            <button
-                                onClick={() => setQuery('')}
-                                title="Limpia la búsqueda"
-                                className="shrink-0 rounded text-on-surface-variant hover:text-on-surface"
-                            >
-                                <Icon name="close" size={12} />
-                            </button>
-                        )}
-                        <button
-                            onClick={() => setShowHelp((v) => !v)}
-                            title="Qué más se puede escribir en el buscador"
-                            className={`shrink-0 rounded ${showHelp ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
-                        >
-                            <Icon name="help" size={12} />
-                        </button>
+            {/* La caja de búsqueda vive arriba, en el marco de la barra, y es
+                la misma para los cuatro módulos. Lo que NO se puede mover
+                allá es esto: la sintaxis de búsqueda de las notas
+                (tag:, enlaza:, privado:) es propia de este módulo, y un
+                signo de pregunta en el buscador global prometería que sirve
+                también para conexiones y repositorios, donde no significa
+                nada. */}
+            <div className="flex items-center justify-end px-2 pb-1">
+                <button
+                    onClick={() => setShowHelp((v) => !v)}
+                    title={showHelp ? 'Ocultar la ayuda de búsqueda' : 'Qué más se puede escribir en el buscador para filtrar notas: etiquetas, frases exactas, enlaces entre notas'}
+                    className={`flex items-center gap-1 rounded px-1 text-[10px] ${showHelp ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+                >
+                    <Icon name="help" size={12} />
+                    Sintaxis de búsqueda
+                </button>
+            </div>
+            <div className="px-2">
+                {showHelp && (
+                    <div className="rounded border border-outline-variant bg-surface-container-low p-1.5 text-[10px] leading-4 text-on-surface-variant">
+                        <p>
+                            <span className="font-mono text-on-surface">oracle tablespace</span> — las dos palabras,
+                            en cualquier orden
+                        </p>
+                        <p>
+                            <span className="font-mono text-on-surface">"plan de contingencia"</span> — frase exacta
+                        </p>
+                        <p>
+                            <span className="font-mono text-on-surface">tag:produccion</span> — por etiqueta del
+                            frontmatter
+                        </p>
+                        <p>
+                            <span className="font-mono text-on-surface">enlaza:Runbook SGC</span> — las que apuntan a
+                            esa nota
+                        </p>
+                        <p>
+                            <span className="font-mono text-on-surface">privado:no</span> — solo las que un agente
+                            puede leer
+                        </p>
                     </div>
-
-                    {showHelp && (
-                        <div className="rounded border border-outline-variant bg-surface-container-low p-1.5 text-[10px] leading-4 text-on-surface-variant">
-                            <p>
-                                <span className="font-mono text-on-surface">oracle tablespace</span> — las dos palabras,
-                                en cualquier orden
-                            </p>
-                            <p>
-                                <span className="font-mono text-on-surface">"plan de contingencia"</span> — frase exacta
-                            </p>
-                            <p>
-                                <span className="font-mono text-on-surface">tag:produccion</span> — por etiqueta del
-                                frontmatter
-                            </p>
-                            <p>
-                                <span className="font-mono text-on-surface">enlaza:Runbook SGC</span> — las que apuntan a
-                                esa nota
-                            </p>
-                            <p>
-                                <span className="font-mono text-on-surface">privado:no</span> — solo las que un agente
-                                puede leer
-                            </p>
-                        </div>
-                    )}
-                </div>
-            )}
+                )}
+            </div>
 
             {error && <p className="px-2 pb-1 text-[10px] text-error">{error}</p>}
 
@@ -372,7 +376,7 @@ export default function NotesTree({
                     onClose={() => setRenamingFolder(null)}
                 />
             )}
-        </SidebarModule>
+        </SidebarSection>
     )
 }
 

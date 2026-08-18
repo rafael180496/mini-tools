@@ -42,13 +42,47 @@ type Procedure struct {
 	Schema string `json:"schema,omitempty"`
 	Name   string `json:"name"`
 	OID    int64  `json:"oid,omitempty"`
+	// Args is the declared parameter list, in declaration order. Populated
+	// by fetchRoutineArgs (routineargs.go) on every engine that has stored
+	// routines at all; SQLite leaves it nil. Overload is the discriminator
+	// when the same name is declared more than once (Oracle package
+	// overloads, Postgres function overloads) — an empty Overload on a
+	// routine that has siblings still identifies a distinct signature.
+	Args     []RoutineArg `json:"args,omitempty"`
+	Overload string       `json:"overload,omitempty"`
+	// Comment is the routine's documentation string where the engine keeps
+	// one (Postgres COMMENT ON FUNCTION). Empty elsewhere: Oracle and SQL
+	// Server have no per-routine comment in the catalog.
+	Comment string `json:"comment,omitempty"`
 }
 
 type Function struct {
-	Schema     string `json:"schema,omitempty"`
-	Name       string `json:"name"`
-	ReturnType string `json:"returnType,omitempty"`
-	OID        int64  `json:"oid,omitempty"`
+	Schema     string       `json:"schema,omitempty"`
+	Name       string       `json:"name"`
+	ReturnType string       `json:"returnType,omitempty"`
+	OID        int64        `json:"oid,omitempty"`
+	Args       []RoutineArg `json:"args,omitempty"`
+	Overload   string       `json:"overload,omitempty"`
+	Comment    string       `json:"comment,omitempty"`
+}
+
+// RoutineArg is one declared parameter of a stored procedure or function.
+// It is what turns a completion item from a bare name into the signature a
+// caller actually needs: which arguments, in which order, of which type,
+// and which of them the engine will hand back rather than read.
+type RoutineArg struct {
+	// Name is the declared parameter name, empty for a positional-only
+	// argument (Postgres allows unnamed ones) or for a function's return
+	// slot.
+	Name string `json:"name,omitempty"`
+	// DataType is the type as the catalog spells it, already including any
+	// length/precision the engine reports.
+	DataType string `json:"dataType,omitempty"`
+	// Mode is "IN", "OUT" or "INOUT" — the caller needs it to know which
+	// arguments it has to supply and which come back.
+	Mode string `json:"mode,omitempty"`
+	// HasDefault marks an argument the caller may omit.
+	HasDefault bool `json:"hasDefault,omitempty"`
 }
 
 type Trigger struct {
@@ -62,6 +96,23 @@ type Trigger struct {
 type Package struct {
 	Schema string `json:"schema,omitempty"`
 	Name   string `json:"name"`
+	// Members are the procedures and functions the package declares. They
+	// are carried here rather than folded into SchemaMetadata.Procedures /
+	// .Functions so the sidebar tree keeps rendering exactly what it always
+	// did (a flat list of standalone routines plus package names), while
+	// completion can still offer PKG.MEMBER with its full signature — which
+	// on Oracle is where most callable code actually lives.
+	Members []PackageMember `json:"members,omitempty"`
+}
+
+// PackageMember is one procedure or function declared inside an Oracle
+// package.
+type PackageMember struct {
+	Name       string       `json:"name"`
+	IsFunction bool         `json:"isFunction,omitempty"`
+	ReturnType string       `json:"returnType,omitempty"`
+	Overload   string       `json:"overload,omitempty"`
+	Args       []RoutineArg `json:"args,omitempty"`
 }
 
 // SchemaMetadata is the unified shape used to populate the sidebar tree and
@@ -82,18 +133,35 @@ type SchemaMetadata struct {
 // visible to the connection, the historical default for both); ignored for
 // SQLite, which has no equivalent multi-schema catalog to restrict.
 func FetchSchemaMetadata(ctx context.Context, pool *sql.DB, dbType DBType, schemas []string) (*SchemaMetadata, error) {
+	var (
+		meta *SchemaMetadata
+		err  error
+	)
 	switch dbType {
 	case DBTypeSQLite:
-		return fetchSQLiteMetadata(ctx, pool)
+		meta, err = fetchSQLiteMetadata(ctx, pool)
 	case DBTypePostgres:
-		return fetchPostgresMetadata(ctx, pool, schemas)
+		meta, err = fetchPostgresMetadata(ctx, pool, schemas)
 	case DBTypeOracle:
-		return fetchOracleMetadata(ctx, pool, schemas)
+		meta, err = fetchOracleMetadata(ctx, pool, schemas)
 	case DBTypeSQLServer:
-		return fetchSQLServerMetadata(ctx, pool, schemas)
+		meta, err = fetchSQLServerMetadata(ctx, pool, schemas)
 	default:
 		return nil, fmt.Errorf("db: metadata no soportada para %q", dbType)
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Parameter signatures are enrichment, not a precondition — see
+	// routineargs.go. A user who can list ALL_OBJECTS but was never granted
+	// ALL_ARGUMENTS still gets the whole tree and every table/column
+	// completion; only the signatures are missing. Failing the entire scan
+	// over that would be a strict regression against what worked before
+	// signatures existed, so the error is dropped on purpose.
+	_ = attachRoutineArgs(ctx, pool, dbType, schemas, meta)
+
+	return meta, nil
 }
 
 // ListSchemas returns just the schema/owner names visible to pool — cheap

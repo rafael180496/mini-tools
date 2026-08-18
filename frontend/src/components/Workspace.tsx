@@ -1,4 +1,4 @@
-import {lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
+import {lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react'
 import ConnectionTree from './sidebar/ConnectionTree'
 import DbmsOutputPanel from './results/DbmsOutputPanel'
 import SshConnectionTree from './sidebar/SshConnectionTree'
@@ -48,6 +48,7 @@ import {
     DeleteConnection,
     DeleteFolder,
     DeleteQueryHistoryEntry,
+    DetectQueryParams,
     DisconnectConnection,
     ExecuteMongoQuery,
     ExecuteQuery,
@@ -88,8 +89,10 @@ import {
     SetAutoBackupIntervalHours,
     SetAutoSaveEnabled,
     SetAutoSaveIntervalSeconds,
-    SetCollapsedSidebarModules,
+    SetSidebarModule,
+    SetSidebarWidth,
     SetEditorHeight,
+    SetEditorAppearance,
     SetEditorTheme,
     SetOpenTabs,
     SetRememberMasterKey,
@@ -101,6 +104,11 @@ import {
 } from '../../wailsjs/go/main/App'
 import {BrowserOpenURL, EventsOn} from '../../wailsjs/runtime'
 import {db, explain, updatecheck, vault} from '../../wailsjs/go/models'
+import type {query} from '../../wailsjs/go/models'
+import type {ParamDraftMap} from './editor/QueryParamsDialog'
+import Sidebar from './sidebar/Sidebar'
+import type {SidebarModuleId} from './sidebar/SidebarMasterMenu'
+import {DEFAULT_EDITOR_APPEARANCE, editorAppearanceFromSettings, type EditorAppearance} from '../codemirror/editorAppearance'
 import type {EditorView} from '@codemirror/view'
 import {statementAt} from '../lib/sqlStatementAt'
 import {lintSQL} from '../lib/linter'
@@ -118,6 +126,7 @@ const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
 const HistoryPanel = lazy(() => import('./HistoryPanel'))
 const SettingsDialog = lazy(() => import('./SettingsDialog'))
+const QueryParamsDialog = lazy(() => import('./editor/QueryParamsDialog'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'page' | 'done' | 'cancelled' | 'error'
@@ -221,6 +230,35 @@ function newScratchTab(): EditorTab {
 function Divider() {
     return <div className="mx-0.5 h-4 w-px shrink-0 bg-outline-variant" />
 }
+
+// Kbd es el atajo de teclado que acompaña a la etiqueta de un botón.
+//
+// Iba como texto normal con opacidad, del mismo cuerpo que la etiqueta, así
+// que "Bloque Ctrl+Shift+Enter" se leía como un nombre de cuatro palabras en
+// vez de como una acción y su atajo. Acá va en monoespaciada y más chico —la
+// forma en que se escribe una tecla en cualquier lado— y hereda el color del
+// botón en vez de fijar uno, que es lo que permite usarlo igual dentro del
+// botón relleno y dentro de los planos.
+function Kbd({children}: {children: ReactNode}) {
+    return <kbd className="font-mono text-[10px] font-normal not-italic tracking-tight opacity-55">{children}</kbd>
+}
+
+// Clases de la barra de acciones del editor.
+//
+// La barra tenía DOS botones rellenos en verde (Ejecutar y Bloque) más uno
+// rojo permanente (Cancelar, que casi siempre está deshabilitado) y uno con
+// borde y fondo naranja (Explain Analyze). Cuatro botones gritando a la vez
+// es lo mismo que ninguno gritando: nada dice cuál es la acción principal, y
+// el rojo de un Cancelar que no se puede tocar y el naranja de un botón que
+// todavía no hiciste nada mal son alarmas que no corresponden a ningún
+// estado real.
+//
+// Ahora hay UNA acción rellena —Ejecutar— y todo lo demás es plano, con el
+// color reservado para cuando significa algo: Cancelar se tiñe de error solo
+// mientras hay algo corriendo, y Explain Analyze marca en tertiary la única
+// palabra que importa ("ejecuta"), sin caja ni borde alrededor.
+const TOOLBAR_BTN = 'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40'
+const TOOLBAR_GHOST = `${TOOLBAR_BTN} text-on-surface-variant hover:bg-surface-variant hover:text-on-surface`
 
 // LIMIT/FETCH syntax differs per engine — spec: "doble click tabla en árbol
 // → SELECT * LIMIT 100 auto". Schema-qualified when the table came from a
@@ -354,20 +392,61 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             .catch((err) => setStatusMessage(String(err)))
     }
 
-    // Which sidebar module ids ("connections", more later) are collapsed to
-    // an accordion header — distinct from sidebarCollapsed below, which is
-    // the whole-sidebar icon-only rail toggle.
-    const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set())
+    // Qué módulo muestra la barra lateral. Uno a la vez: lo elige el menú
+    // master (components/sidebar/SidebarMasterMenu.tsx), que reemplazó al
+    // acordeón de cuatro módulos apilados.
+    const [activeModule, setActiveModule] = useState<SidebarModuleId>('connections')
 
-    function toggleModuleCollapsed(moduleId: string) {
-        setCollapsedModules((prev) => {
-            const next = new Set(prev)
-            if (next.has(moduleId)) next.delete(moduleId)
-            else next.add(moduleId)
-            void SetCollapsedSidebarModules(Array.from(next))
-            return next
-        })
+    function selectSidebarModule(id: SidebarModuleId) {
+        setActiveModule(id)
+        void SetSidebarModule(id)
     }
+
+    // Coincidencias de la búsqueda global por módulo. Las informa cada árbol
+    // (onMatchCount) y las consume el menú master: con un solo módulo a la
+    // vista, es lo único que dice que lo que se busca está en otro. Los
+    // setters de useState son estables, así que se pasan tal cual y el efecto
+    // que los llama no se re-dispara solo.
+    const [connectionsMatches, setConnectionsMatches] = useState<number | null>(null)
+    const [sshMatches, setSshMatches] = useState<number | null>(null)
+    const [gitMatches, setGitMatches] = useState<number | null>(null)
+    const [notesMatches, setNotesMatches] = useState<number | null>(null)
+
+    const clearSidebarFilter = useCallback(() => setSidebarFilter(''), [])
+
+    const sidebarModules = useMemo(
+        () => [
+            {
+                id: 'connections' as const,
+                icon: 'database',
+                label: 'Conexiones',
+                hint: 'bases de datos: explorar el esquema y correr consultas',
+                matchCount: connectionsMatches,
+            },
+            {
+                id: 'ssh' as const,
+                icon: 'terminal',
+                label: 'SSH',
+                hint: 'servidores remotos: abrir una terminal o transferir archivos',
+                matchCount: sshMatches,
+            },
+            {
+                id: 'git' as const,
+                icon: 'commit',
+                label: 'Git',
+                hint: 'repositorios: ver cambios, ramas y trabajar con los agentes',
+                matchCount: gitMatches,
+            },
+            {
+                id: 'notes' as const,
+                icon: 'description',
+                label: 'Notas',
+                hint: 'tu base de conocimiento cifrada: runbooks y apuntes',
+                matchCount: notesMatches,
+            },
+        ],
+        [connectionsMatches, sshMatches, gitMatches, notesMatches],
+    )
 
     // Schema metadata cached per connection id — shared by the sidebar tree
     // (keyed on `selected`) and the editor's autocomplete/toolbar (keyed on
@@ -448,6 +527,20 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // está marcada como Producción y el script trae sentencias destructivas.
     // `risks` vacío = fue el linter; con contenido = fue el entorno.
     const [pendingSqlRun, setPendingSqlRun] = useState<{text: string; title: string; description: string} | null>(null)
+    // The statement waiting on its bind values, plus everything needed to
+    // run it once they arrive (see runText).
+    const [paramPrompt, setParamPrompt] = useState<{
+        connection: vault.ConnectionSummary
+        sqlText: string
+        params: query.Param[]
+    } | null>(null)
+    // Last values entered, per editor tab, so re-running the same
+    // parameterised query does not mean retyping them. A ref rather than
+    // state because nothing renders from it until the dialog opens, and
+    // deliberately in memory only: these are query arguments, which can be
+    // an account number or a document id, and persisting them would put
+    // them on disk for a convenience that costs one keystroke to redo.
+    const paramDraftsRef = useRef<Map<string, ParamDraftMap>>(new Map())
     // Explain Analyze on a mutating statement: confirmed first, same themed
     // ConfirmDialog pattern as pendingRedisCommandRun. The dialog is the
     // courtesy; the guarantee is that the backend wraps a mutating analyzed
@@ -670,11 +763,25 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const EDITOR_HEIGHT_DEFAULT = 256
     const EDITOR_HEIGHT_MIN = 120
     const EDITOR_HEIGHT_MAX = 900
+    // Los mismos topes que aplica el backend al guardar
+    // (vault.SetSidebarWidth): por debajo el árbol no se lee, por encima la
+    // barra le come el ancho al editor, que es para lo que se abre la app.
+    const SIDEBAR_WIDTH_MIN = 180
+    const SIDEBAR_WIDTH_MAX = 640
+    // 256px es el w-64 que la barra tenía fijo antes de poder arrastrarse.
+    const SIDEBAR_WIDTH_DEFAULT = 256
     // Tamaño de página de resultados (0 = "All"). Se restaura de settings y se
     // persiste al cambiarlo — ver backend/query/paging.go.
     const [pageSize, setPageSize] = useState(500)
     const [gitSyncToken, setGitSyncToken] = useState(0)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    // Ancho arrastrado de la barra, mismo trato que el alto del editor: se
+    // persiste una vez al soltar, no en cada movimiento del puntero.
+    const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH_DEFAULT)
+    // Apariencia de los editores de código (SQL y archivos de Git). Vive acá
+    // y no en cada editor porque es una preferencia de la app, no de una
+    // pestaña: se elige una vez en Configuración y la usan los dos.
+    const [editorAppearance, setEditorAppearanceState] = useState<EditorAppearance>(DEFAULT_EDITOR_APPEARANCE)
     // Búsqueda única de la barra lateral: la comparten los tres módulos
     // (conexiones, SSH y Git), que antes tenían una caja "Buscar…" cada uno.
     // Vive acá y no en ConnectionTree porque los otros dos módulos se montan
@@ -728,6 +835,13 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             .then(async (settings) => {
                 if (cancelled) return
                 setSidebarCollapsed(!!settings.sidebarCollapsed)
+                // 0 = nunca se arrastró, así que manda el default del
+                // frontend en vez de un cero que dejaría la barra invisible.
+                if (settings.sidebarWidth) {
+                    setSidebarWidth(Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, settings.sidebarWidth)))
+                }
+                if (settings.sidebarModule) setActiveModule(settings.sidebarModule as SidebarModuleId)
+                setEditorAppearanceState(editorAppearanceFromSettings(settings.editorAppearance))
                 setRememberMasterKeyState(!!settings.rememberMasterKey)
                 // 0 es "All", un valor válido — por eso se compara con
                 // undefined/null en vez de usar un truthy check.
@@ -744,9 +858,6 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 // siempre en vez de detrás de un truthy check.
                 setLocalShellIdState(settings.localShell ?? '')
                 if (settings.terminalFontSize) setTerminalFontSizeState(settings.terminalFontSize)
-                if (settings.collapsedSidebarModules) {
-                    setCollapsedModules(new Set(settings.collapsedSidebarModules))
-                }
                 if (settings.editorHeight) {
                     setEditorHeightState(Math.min(EDITOR_HEIGHT_MAX, Math.max(EDITOR_HEIGHT_MIN, settings.editorHeight)))
                 }
@@ -870,6 +981,14 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         void SetEditorTheme(id)
     }
 
+    // Un solo guardado para todo el grupo: el diálogo cambia un campo por
+    // vez, pero mandar el objeto entero deja el vault siempre consistente y
+    // ahorra seis bindings que podrían desincronizarse entre sí.
+    function changeEditorAppearance(next: EditorAppearance) {
+        setEditorAppearanceState(next)
+        void SetEditorAppearance(next)
+    }
+
     function changeTerminalTheme(id: TerminalThemeId) {
         setTerminalThemeIdState(id)
         void SetSshTerminalTheme(id)
@@ -990,6 +1109,33 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             window.removeEventListener('mouseup', onUp)
             const finalHeight = Math.min(EDITOR_HEIGHT_MAX, Math.max(EDITOR_HEIGHT_MIN, startHeight + (upEvent.clientY - startY)))
             void SetEditorHeight(finalHeight)
+        }
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+    }
+
+    // Arrastrar el borde derecho de la barra lateral. Misma mecánica que
+    // startEditorResize —listeners en window, persistir una sola vez al
+    // soltar— porque es el mismo problema: mousemove dispara decenas de
+    // veces por segundo y la escritura al vault no tiene por qué seguirle el
+    // ritmo al puntero, solo registrar dónde se detuvo.
+    const sidebarResizingRef = useRef(false)
+    function startSidebarResize(e: ReactMouseEvent) {
+        e.preventDefault()
+        sidebarResizingRef.current = true
+        const startX = e.clientX
+        const startWidth = sidebarWidth
+        const clamp = (px: number) => Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, px))
+
+        function onMove(moveEvent: MouseEvent) {
+            if (!sidebarResizingRef.current) return
+            setSidebarWidth(clamp(startWidth + (moveEvent.clientX - startX)))
+        }
+        function onUp(upEvent: MouseEvent) {
+            sidebarResizingRef.current = false
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+            void SetSidebarWidth(clamp(startWidth + (upEvent.clientX - startX)))
         }
         window.addEventListener('mousemove', onMove)
         window.addEventListener('mouseup', onUp)
@@ -1209,8 +1355,11 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         }
     }
 
-    const runText = useCallback(
-        (connection: vault.ConnectionSummary, sqlText: string) => {
+    // runWithParams is the original runText body: it assumes the bind
+    // values are already decided. runText below is what callers use — it
+    // asks for them first when the statement declares any.
+    const runWithParams = useCallback(
+        (connection: vault.ConnectionSummary, sqlText: string, params: query.ParamValue[]) => {
             if (running || !sqlText.trim()) return
 
             // Drop any subscription still live from a previous run before
@@ -1350,7 +1499,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
 
             unsubscribeRef.current = unsubscribe
 
-            ExecuteQuery(connection.id, queryId, sqlText, dbmsOutputEnabled).catch((err) => {
+            ExecuteQuery(connection.id, queryId, sqlText, dbmsOutputEnabled, params).catch((err) => {
                 if (queryIdRef.current !== queryId) return
                 setResultSets([{...emptyResultSet(), status: 'error', error: String(err)}])
                 setRunning(false)
@@ -1359,6 +1508,34 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
             })
         },
         [running, dbmsOutputEnabled, activeBottomTab],
+    )
+
+    // runText is what every "run this SQL" path calls. It asks Go whether
+    // the text declares bind placeholders and, if it does, opens the dialog
+    // instead of executing — the values then come back through
+    // paramPrompt's onRun. With no placeholders it is the plain run it
+    // always was, and costs one extra (local, in-process) call.
+    const runText = useCallback(
+        (connection: vault.ConnectionSummary, sqlText: string) => {
+            if (running || !sqlText.trim()) return
+            void (async () => {
+                let params: query.Param[] = []
+                try {
+                    params = await DetectQueryParams(connection.id, sqlText)
+                } catch {
+                    // Detection is a convenience, never a gate: if it fails
+                    // the statement still runs, and the engine's own error
+                    // about an unbound variable is a perfectly good message.
+                    params = []
+                }
+                if (params.length > 0) {
+                    setParamPrompt({connection, sqlText, params})
+                    return
+                }
+                runWithParams(connection, sqlText, [])
+            })()
+        },
+        [running, runWithParams],
     )
 
     // Redis counterpart of runText — same client-generated queryId +
@@ -2338,10 +2515,29 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // it has nothing to run — so the results panel below would sit there
     // permanently empty. The editor takes the whole height instead.
     const isRemoteFileActive = activeTabData?.kind === 'remote-file'
+    // Barra compacta: los botones quedan solo con su ícono. Las etiquetas son
+    // lo que más ancho ocupa, y el `title` de cada botón —que ya explicaba
+    // qué hace y con qué atajo— sigue estando, así que no se pierde nada que
+    // no estuviera a un hover de distancia.
+    const compactToolbar = editorAppearance.toolbar === 'compact'
 
     return (
-        <div className="flex h-screen w-screen overflow-hidden bg-background font-sans text-on-background">
-            <ConnectionTree
+        <div className="flex h-full w-full overflow-hidden bg-background font-sans text-on-background">
+            <Sidebar
+                modules={sidebarModules}
+                activeModule={activeModule}
+                onSelectModule={selectSidebarModule}
+                collapsed={sidebarCollapsed}
+                onToggleCollapsed={toggleSidebarCollapsed}
+                filter={sidebarFilter}
+                onFilterChange={setSidebarFilter}
+                width={sidebarWidth}
+                onStartResize={startSidebarResize}
+                updateAvailable={updateInfo?.available ? updateInfo.latest : null}
+                onOpenRepo={openRepo}
+                bodies={{
+                    connections: (
+                        <ConnectionTree
                 selectedId={selected?.id ?? null}
                 liveConnIds={liveDbConnIds}
                 onSelect={setSelected}
@@ -2368,21 +2564,18 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 onDisconnect={(connId) => void disconnectConnection(connId)}
                 onDeleteConnection={(connId) => void deleteConnection(connId)}
                 onConfigureSchemas={setSchemaPickerConn}
-                collapsed={sidebarCollapsed}
-                onToggleCollapsed={toggleSidebarCollapsed}
-                sharedFilter={sidebarFilter}
-                onSharedFilterChange={setSidebarFilter}
                 folders={folders}
-                moduleCollapsed={collapsedModules.has('connections')}
-                onToggleModuleCollapsed={() => toggleModuleCollapsed('connections')}
                 onCreateFolder={(name, parentId) => createFolder(name, parentId, 'db')}
                 onRenameFolder={renameFolder}
                 onDeleteFolder={deleteFolder}
                 onReorderFolder={reorderFolder}
                 onMoveConnectionToFolder={moveConnectionToFolder}
-                extraModules={
-                    <>
-                    <SshConnectionTree
+                filter={sidebarFilter}
+                onMatchCount={setConnectionsMatches}
+            />
+                    ),
+                    ssh: (
+                        <SshConnectionTree
                         onNewConnection={() => setConnectionDialog('new-ssh')}
                         onEditConnection={(conn) => setConnectionDialog(conn.id)}
                         onOpenSshTerminal={openSshTerminal}
@@ -2394,25 +2587,19 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onDisconnect={(connId) => void disconnectConnection(connId)}
                         onDeleteConnection={(connId) => void deleteConnection(connId)}
                         reloadToken={reloadToken}
-                        moduleCollapsed={collapsedModules.has('ssh-connections')}
-                        onToggleModuleCollapsed={() => toggleModuleCollapsed('ssh-connections')}
-                        rail={sidebarCollapsed}
-                        sharedFilter={sidebarFilter}
-                        onSharedFilterChange={setSidebarFilter}
                         folders={folders}
                         onCreateFolder={(name, parentId) => createFolder(name, parentId, 'ssh')}
                         onRenameFolder={renameFolder}
                         onDeleteFolder={deleteFolder}
                         onReorderFolder={reorderFolder}
                         onMoveConnectionToFolder={moveConnectionToFolder}
+                        filter={sidebarFilter}
+                        onMatchCount={setSshMatches}
                     />
-                    <GitErrorBoundary label="sidebar Git">
-                    <GitRepoTree
-                        moduleCollapsed={collapsedModules.has('git-repos')}
-                        onToggleModuleCollapsed={() => toggleModuleCollapsed('git-repos')}
-                        rail={sidebarCollapsed}
-                        sharedFilter={sidebarFilter}
-                        onSharedFilterChange={setSidebarFilter}
+                    ),
+                    git: (
+                        <GitErrorBoundary label="sidebar Git">
+                            <GitRepoTree
                         onOpenRepo={openGitRepo}
                         activeTabRepoId={activeTabData?.repoId ?? null}
                         reloadToken={reloadToken}
@@ -2424,18 +2611,15 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onDeleteFolder={deleteFolder}
                         onReorderFolder={reorderFolder}
                         onMoveRepoToFolder={moveGitRepoToFolder}
+                        filter={sidebarFilter}
+                        onMatchCount={setGitMatches}
                     />
-                    </GitErrorBoundary>
-                    {/* Notas: módulo hermano de los otros tres. Buscar en la
-                        documentación propia pasa MIENTRAS se está haciendo otra
-                        cosa —depurando una consulta, mirando un log—, así que
-                        vive en la barra lateral y no en una pantalla aparte. */}
-                    <NotesTree
+                        </GitErrorBoundary>
+                    ),
+                    notes: (
+                        <NotesTree
                         activeNoteId={activeTabData?.noteId ?? null}
                         onOpenNote={(id) => openNote(id)}
-                        moduleCollapsed={collapsedModules.has('notes')}
-                        onToggleModuleCollapsed={() => toggleModuleCollapsed('notes')}
-                        rail={sidebarCollapsed}
                         onCreated={(id) => {
                             setNotesToken((n) => n + 1)
                             openNote(id)
@@ -2447,9 +2631,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onRenameFolder={renameFolder}
                         onDeleteFolder={deleteFolder}
                         onChanged={() => setNotesToken((n) => n + 1)}
+                        filter={sidebarFilter}
+                        onClearFilter={clearSidebarFilter}
+                        onMatchCount={setNotesMatches}
                     />
-                    </>
-                }
+                    ),
+                }}
             />
 
             {showNotesGraph && (
@@ -2833,48 +3020,67 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
-                    {!isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
+                    {editorAppearance.toolbar !== 'hidden' && !isBrowserTabActive && !isSshTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
                         <button
                             onClick={() => void saveActiveTab()}
                             title="Guarda el contenido de la pestaña activa en disco (atajo: Ctrl+S). Si es una pestaña nueva, te pide dónde guardarla"
-                            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant"
+                            className={TOOLBAR_GHOST}
                         >
                             <Icon name="save" size={16} />
-                            Guardar
-                            <span className="font-normal opacity-60">Ctrl+S</span>
+                            {!compactToolbar && (
+                                <>
+                                    Guardar
+                                    <Kbd>Ctrl+S</Kbd>
+                                </>
+                            )}
                         </button>
 
                         <Divider />
 
+                        {/* La única acción rellena de la barra. Es la que se
+                            aprieta veinte veces por sesión; el resto son
+                            utilidades que se usan de a ratos. */}
                         <button
                             onClick={runSelectionOrLine}
                             disabled={!activeTabConnection || running}
                             title="Ejecuta el texto seleccionado, o si no hay selección, la línea donde está el cursor (atajo: Ctrl+Enter)"
-                            className="flex items-center gap-1.5 rounded-md bg-secondary-container px-3 py-1.5 text-xs font-semibold text-on-secondary-container transition-colors hover:opacity-90 disabled:opacity-50"
+                            className={`${TOOLBAR_BTN} bg-secondary-container font-semibold text-on-secondary-container hover:opacity-90`}
                         >
                             <Icon name="play_arrow" size={16} filled />
-                            Ejecutar
-                            <span className="font-normal opacity-60">Ctrl+Enter</span>
+                            {!compactToolbar && (
+                                <>
+                                    Ejecutar
+                                    <Kbd>Ctrl+Enter</Kbd>
+                                </>
+                            )}
                         </button>
                         <button
                             onClick={runFullScript}
                             disabled={!activeTabConnection || running}
                             title="Ejecuta todos los statements del editor en orden, uno por uno (atajo: Ctrl+Shift+Enter)"
-                            className="flex items-center gap-1.5 rounded-md bg-secondary-container px-3 py-1.5 text-xs font-medium text-on-secondary-container transition-colors hover:opacity-90 disabled:opacity-50"
+                            className={TOOLBAR_GHOST}
                         >
                             <Icon name="playlist_play" size={16} />
-                            Bloque
-                            <span className="font-normal opacity-60">Ctrl+Shift+Enter</span>
+                            {!compactToolbar && (
+                                <>
+                                    Bloque
+                                    <Kbd>Ctrl+Shift+Enter</Kbd>
+                                </>
+                            )}
                         </button>
+                        {/* Rojo solo mientras hay algo que cancelar. Un botón
+                            de alarma permanentemente encendido y permanentemente
+                            deshabilitado enseña a ignorar el color justo antes
+                            de que haga falta. */}
                         <button
                             onClick={cancelQuery}
                             disabled={!running}
-                            title="Interrumpe la consulta que está corriendo ahora mismo"
-                            className="flex items-center gap-1.5 rounded-md bg-error-container px-3 py-1.5 text-xs font-medium text-on-error-container transition-colors hover:opacity-90 disabled:opacity-40"
+                            title={running ? 'Interrumpe la consulta que está corriendo ahora mismo' : 'Deshabilitado: no hay ninguna consulta corriendo para interrumpir'}
+                            className={running ? `${TOOLBAR_BTN} bg-error-container text-on-error-container hover:opacity-90` : TOOLBAR_GHOST}
                         >
                             <Icon name="stop" size={16} filled />
-                            Cancelar
+                            {!compactToolbar && 'Cancelar'}
                         </button>
                         {isSqlActive && (
                             <>
@@ -2884,26 +3090,36 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     onClick={() => void runExplain(false)}
                                     disabled={!activeTabConnection}
                                     title="Muestra el plan de ejecución (EXPLAIN) sin correr nada. Explica lo que tengas SELECCIONADO; sin selección, la sentencia donde está el cursor — no el archivo entero."
-                                    className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-50"
+                                    className={TOOLBAR_GHOST}
                                 >
                                     <Icon name="query_stats" size={16} />
-                                    Explain
+                                    {!compactToolbar && 'Explain'}
                                 </button>
-                                {/* Visually distinct from Explain on purpose: this
-                                    one RUNS the query. The tertiary tint and the
-                                    "ejecuta" badge are what keep the two from
-                                    looking like the same harmless button. */}
+                                {/* La diferencia con Explain es que este SÍ corre
+                                    la consulta, y eso hay que decirlo. Antes se
+                                    decía con borde, fondo y una pastilla naranja
+                                    —tres señales para un solo dato, en un botón
+                                    que además no es peligroso hasta que se
+                                    aprieta—. Ahora lo dice una palabra: la única
+                                    en tertiary de toda la barra, que es
+                                    exactamente lo que la hace visible. */}
                                 <button
                                     onClick={() => void runExplain(true)}
                                     disabled={!activeTabConnection}
                                     title="Ejecuta el query de verdad contra la base y muestra el plan con filas y tiempos REALES (EXPLAIN ANALYZE). Corre lo que tengas SELECCIONADO; sin selección, la sentencia donde está el cursor. A diferencia de Explain, sí ejecuta: si modifica datos se te pide confirmación y la ejecución se envuelve en una transacción que se revierte."
-                                    className="flex items-center gap-1.5 rounded-md border border-tertiary/40 bg-tertiary/10 px-3 py-1.5 text-xs font-medium text-tertiary transition-colors hover:bg-tertiary/20 disabled:opacity-50"
+                                    className={`${TOOLBAR_GHOST} hover:bg-tertiary/10`}
                                 >
-                                    <Icon name="analytics" size={16} />
-                                    Explain Analyze
-                                    <span className="rounded-sm bg-tertiary/20 px-1 text-[9px] font-semibold uppercase tracking-wide">
-                                        ejecuta
-                                    </span>
+                                    {/* En compacta la advertencia se muda al
+                                        ícono: la palabra suelta al lado de un
+                                        glifo, sin la etiqueta que la explica,
+                                        deja de decir qué es lo que ejecuta. */}
+                                    <Icon name="analytics" size={16} className={compactToolbar ? 'text-tertiary' : undefined} />
+                                    {!compactToolbar && (
+                                        <>
+                                            Explain Analyze
+                                            <span className="text-[10px] font-semibold uppercase tracking-wide text-tertiary">ejecuta</span>
+                                        </>
+                                    )}
                                 </button>
 
                                 <Divider />
@@ -2912,11 +3128,15 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     onClick={refreshMetadata}
                                     disabled={!activeTabConnection}
                                     title="Vuelve a leer las tablas y columnas de la base de datos (atajo: F5) — usalo si acabás de crear/alterar una tabla"
-                                    className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-50"
+                                    className={TOOLBAR_GHOST}
                                 >
                                     <Icon name="refresh" size={16} />
-                                    Refrescar
-                                    <span className="font-normal opacity-60">F5</span>
+                                    {!compactToolbar && (
+                                        <>
+                                            Refrescar
+                                            <Kbd>F5</Kbd>
+                                        </>
+                                    )}
                                 </button>
                             </>
                         )}
@@ -2965,6 +3185,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         connId={activeTabConnection?.id ?? null}
                         schemaMetadata={filteredEditorMetadata}
                         editorThemeId={editorThemeId}
+                        appearance={editorAppearance}
                         appTheme={theme}
                     />
                 </div>
@@ -3110,6 +3331,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     repoId={t.repoId as string}
                                     repoName={t.title.replace(/^Git — /, '')}
                                     editorThemeId={editorThemeId}
+                                    appearance={editorAppearance}
                                     appTheme={theme}
                                     terminalThemeId={terminalThemeId}
                                     onChangeTerminalTheme={changeTerminalTheme}
@@ -3495,6 +3717,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onToggleRememberMasterKey={(checked) => void toggleRememberMasterKey(checked)}
                         editorThemeId={editorThemeId}
                         onChangeEditorThemeId={changeEditorTheme}
+                        editorAppearance={editorAppearance}
+                        onChangeEditorAppearance={changeEditorAppearance}
                         terminalThemeId={terminalThemeId}
                         onChangeTerminalThemeId={changeTerminalTheme}
                         terminalFontSize={terminalFontSize}
@@ -3569,6 +3793,29 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     onConfirm={() => runText(activeTabConnection, pendingSqlRun.text)}
                     onClose={() => setPendingSqlRun(null)}
                 />
+            )}
+            {paramPrompt && (
+                <Suspense fallback={null}>
+                    <QueryParamsDialog
+                        params={paramPrompt.params}
+                        initial={paramDraftsRef.current.get(activeTabIdRef.current) ?? {}}
+                        onClose={() => setParamPrompt(null)}
+                        onRun={(drafts) => {
+                            paramDraftsRef.current.set(activeTabIdRef.current, drafts)
+                            const {connection, sqlText} = paramPrompt
+                            setParamPrompt(null)
+                            runWithParams(
+                                connection,
+                                sqlText,
+                                Object.entries(drafts).map(([name, draft]) => ({
+                                    name,
+                                    value: draft.value,
+                                    type: draft.type,
+                                })),
+                            )
+                        }}
+                    />
+                </Suspense>
             )}
             {pendingMongoCommandRun && activeTabConnection && (
                 <ConfirmDialog

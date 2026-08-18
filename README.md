@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.0.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.1.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -14,60 +14,53 @@ Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en
 **Oracle · PostgreSQL · SQLite · SQL Server · Redis · MongoDB · SSH · SFTP · Git · Claude Code · Codex · Antigravity**
 
 <p align="center">
-  <img src="docs/screenshots/ui-workspace.png" width="900" alt="mini-tools: sidebar con conexiones de base de datos, SSH y repositorios Git; editor SQL al centro y panel de resultados abajo">
+  <img src="docs/screenshots/ui-workspace.png" width="900" alt="mini-tools: barra lateral con el menú de módulos arriba (bases, SSH, Git, notas) y el árbol de conexiones en carpetas; editor SQL al centro con pestañas rotuladas por tipo y panel de resultados abajo">
 </p>
 
 ---
 
-## Novedades — 2.0.0
+## Novedades — 2.1.0
 
-**La versión donde la IA deja de vivir en una pestaña.** Hasta la 1.3.x el agente
-existía adentro del módulo Git; ahora atraviesa la aplicación entera — y llegan
-dos módulos nuevos: **Notas** y una **grilla de resultados que escribe el
-UPDATE por vos**.
+**La versión que se ocupa de la app en sí.** La 2.0.0 trajo la IA a todos los
+módulos; esta se dedica a lo que uno mira ocho horas por día — la ventana, la
+barra lateral, el editor — y a dos cosas que le faltaban al editor SQL para
+sentirse como un cliente de base de datos de verdad.
 
-- **Un solo chat, el mismo en todos los módulos.** Se abre con `⌘L` / `Ctrl+L`
-  desde donde estés, y **cada módulo tiene su propia conversación**: la de una
-  conexión no arrastra lo que hablaste sobre un servidor SSH. La pestaña Git
-  conserva su banco de trabajo agéntico, con sus permisos y su diff — ahí el
-  agente trabaja sobre código, que es otro objetivo.
-- **El chat ve la consulta que estás escribiendo**, adjunta como ficha que se
-  puede abrir y sacar. Cada bloque de código de la respuesta trae **Copiar** y
-  **Al editor**: el SQL corregido entra donde está el cursor sin pisar nada.
-- **Referencias `@`**: `@db:Conexión/tabla` inyecta el DDL de esa tabla,
-  `@explain:last` el último plan, `@note:"Runbook"` una nota, `@ssh:Servidor`
-  las últimas líneas de una terminal. **Cada una se ve como ficha desplegable
-  antes de mandarse**: lo que sale de tu máquina tiene que poder verse.
-- **`⌘I` / `Ctrl+I` en el editor SQL**: describís la consulta en castellano y
-  la escribe **en el dialecto de tu motor** — Oracle con `FETCH FIRST` y `NVL`,
-  Postgres con `ILIKE` y JSONB, T-SQL con `TOP`, pipelines en Mongo. Llega como
-  diff, y **nunca se ejecuta sola**. Más "Explicar y corregir" pegado al error
-  del motor, y "Analizar con el agente" sobre el plan de ejecución — **eligiendo
-  con qué proveedor**, para pedir la misma segunda opinión a otro modelo sin
-  cambiar el agente de toda la app.
-- **Módulo nuevo: Notas.** Tu documentación técnica cifrada dentro del vault,
-  con editor tipo Notion, imágenes pegadas con `⌘V`, grafo de conocimiento y
-  bloques SQL ejecutables. [Abajo, con capturas](#notas--tu-documentación-viva-y-cifrada).
-- **La grilla de resultados ahora escribe.** Doble clic en una celda, corregís
-  el dato y la app arma el `UPDATE` con su `WHERE` por clave primaria.
-  [Abajo, con captura](#la-grilla-que-escribe-el-update).
-- **Servidor MCP nativo**, para que los agentes te **pidan** datos en vez de que
-  se los mandes. **Nace apagado y apagado no hay nada corriendo** — ni socket,
-  ni proceso. Y sin la ventana abierta no hay datos: el proceso que lanza el CLI
-  no tiene la clave maestra. Con el instructivo de conexión adentro de la app.
-- **Abrir el proyecto en VS Code o en el explorador de archivos**, desde la
-  barra del repositorio — y solo si están instalados de verdad.
-- **"Aprobar cada acción" ya funciona en Windows** (10 y 11, verificado), con un
-  named pipe cuya ACL está restringida a tu usuario.
+- **Los procedures y functions se ofrecen con su firma completa**, como en
+  DataGrip: qué parámetros piden, en qué orden, de qué tipo y cuáles son `OUT`.
+  Al aceptar uno se inserta la llamada con **un tab stop por parámetro ya
+  rotulado**, y mientras escribís los argumentos un **tooltip resalta en cuál
+  estás parado** — entiende llamadas anidadas y la notación `p_total =>` de
+  Oracle. En Oracle se indexan además **los miembros de cada package**, que es
+  donde vive casi todo el código invocable y hasta ahora era un punto ciego.
+- **Consultas con parámetros**: escribís `:desde` y la app pregunta el valor
+  antes de correr, con su tipo, y los recuerda por pestaña. **Nunca entran al
+  texto del SQL** — viajan aparte y se enlazan como argumentos del driver.
+  Reconoce `:nombre`, `$1` y `?` según el motor, y reconoce lo que **no** es un
+  parámetro: el `:=` de PL/SQL, el `::` de los casts, el `:NEW`/`:OLD` de los
+  triggers y todo lo que esté dentro de un literal o un comentario.
+- **Barra lateral con menú de módulos.** Los cuatro módulos —bases, SSH, Git,
+  notas— se eligen desde una fila de íconos y se ve **uno a la vez**, así que el
+  que estás usando se queda con toda la altura en vez de la franja que le
+  dejaban los otros tres apilados. La búsqueda sigue siendo **una sola para los
+  cuatro** y los íconos muestran cuántas coincidencias tiene cada uno. La barra
+  se arrastra para cambiarle el ancho y se oculta entera; ancho y módulo abierto
+  quedan guardados.
+- **Barra de título propia, con el tema de la app, en los tres sistemas.** En
+  macOS se conservan los semáforos —son el control estándar de la ventana, no
+  decoración— y se saca la franja gris de alrededor; en Windows y Linux la
+  ventana va sin marco y los botones los dibuja la app.
+- **El editor se configura como cualquier editor de texto**: tema, fuente,
+  cuerpo, ajuste de línea, números de línea y tabulación, con muestra en vivo y
+  aplicado a la vez al editor SQL y al de archivos de Git. La **barra de
+  acciones** tiene tres modos: normal, compacta u oculta —ocultarla no desactiva
+  nada, porque todo tiene atajo—.
+- **Cada pestaña dice de qué tipo es, escrito** (`SQL`, `REDIS`, `SSH`, `GIT`,
+  `NOTA`…) y, si está vinculada a una conexión, con el logo real del motor: qué
+  es la pestaña y contra qué corre se leen sin pasar el mouse.
 
-**Lo que un agente nunca ve, en ningún camino**: filas de tus bases, DSN, hosts,
-usuarios, contraseñas, ni el contenido de una nota que marcaste como privada. Y
-los secretos que quedan impresos en una terminal —un `mysql -p…`, un token en
-una cabecera— se ocultan antes de salir, diciéndote cuántos.
+Changelog completo, incluida la 2.0.0, en [CHANGELOG.md](CHANGELOG.md).
 
-Detalle completo en [CHANGELOG.md](CHANGELOG.md).
-
----
 
 ## Lo que lo hace distinto
 
@@ -295,8 +288,8 @@ diferencia.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.0.0.dmg](releases/macos/mini-tools-v2.0.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.0.0-windows-amd64.exe](releases/windows/mini-tools-v2.0.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). De esta versión se verificó en Windows 10 y 11 la **aprobación acción por acción**; el resto del `.exe` empaquetado no se corrió ahí, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.1.0.dmg](releases/macos/mini-tools-v2.1.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.1.0-windows-amd64.exe](releases/windows/mini-tools-v2.1.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Verificado en Windows 10 y 11; lo nuevo de esta versión del lado de Windows es la **ventana sin marco con botones propios**, ver [detalle](releases/windows/README.md). |
 
 Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -356,18 +349,21 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
 - **Backup/restore protegido por clave maestra**: exportar e importar el vault completo (conexiones + salt) como un solo archivo. Tanto generar el backup como restaurarlo piden tu clave maestra — se verifica contra el propio archivo antes de tocar nada, así que un backup que termine en otra máquina, USB o la nube no sirve de nada sin ella.
 - **Pegar connection string**: copiá una URL de Postgres, un Easy Connect/SID/TNS de Oracle, un JDBC, o una ruta SQLite (directo de un `.env`) y el formulario de conexión se completa solo, detectando el motor.
 - **Ícono real por motor y color de etiqueta por conexión**: cada conexión muestra el logo de Oracle/PostgreSQL/SQLite/Redis y un color a elección (elegible al crear o editar) — distinguís de un vistazo cuál es cuál sin leer el nombre, sobre todo útil con muchas conexiones abiertas.
-- **Carpetas para organizar conexiones**: crear, renombrar, mover y reordenar carpetas desde el propio árbol — "Conexiones" es un módulo de acordeón colapsable en el sidebar.
-- **Conexiones SSH** en su propio módulo de sidebar — "SSH", separado de "Conexiones" — con el mismo patrón de carpetas (crear/renombrar/mover/reordenar) pero un árbol completamente propio, nunca mezclado con las carpetas de base de datos. Auth por password o private key (+ passphrase opcional) más Agent Forwarding, y Test Connection antes de guardar como cualquier otro motor.
+- **Carpetas para organizar conexiones**: crear, renombrar, mover y reordenar carpetas desde el propio árbol, con la carpeta que contiene una coincidencia expandiéndose sola al buscar.
+- **Conexiones SSH** en su propio módulo de la barra lateral — "SSH", separado de "Conexiones" — con el mismo patrón de carpetas (crear/renombrar/mover/reordenar) pero un árbol completamente propio, nunca mezclado con las carpetas de base de datos. Auth por password o private key (+ passphrase opcional) más Agent Forwarding, y Test Connection antes de guardar como cualquier otro motor.
 - **Terminal interactiva real (xterm.js)** por conexión SSH: se abre en su propia pestaña — reabrir la misma conexión enfoca esa pestaña en vez de duplicarla — con streaming de la sesión remota vía PTY y resize automático. Cerrar la pestaña corta la sesión del lado remoto, no la deja colgada.
 - **Temas de terminal**: selector visual con muestra de paleta (Dracula, Nord, Solarized Dark/Light, Gruvbox, One Half, Tomorrow Night, GitHub Light…) o Automático siguiendo el tema de la app — un ajuste global que aplica a todas las sesiones SSH abiertas.
 - **Snippets SSH**: comandos o scripts guardados, reutilizables en cualquier sesión SSH abierta (no atados a una conexión), con carpetas propias y buscador por nombre/contenido — botones Ejecutar (corre cada línea) y Pegar (los escribe sin confirmar).
 - **Transferencia de archivos por SFTP** reutilizando tus conexiones SSH: explorador de doble panel (estilo Termius) que se abre desde el árbol SSH. Transferí en cualquier dirección — **local → remoto, remoto → local y remoto → remoto** (streaming a través de tu máquina) — arrastrando entre paneles o con el botón Enviar. Cola de transferencias con **porcentaje/bytes/archivos en vivo** y **cancelación** por transferencia; los lotes grandes se procesan en paralelo (pool de goroutines) y **no dejan procesos colgados** al cancelar o perder la conexión. Listado tipo Finder con columnas ordenables (Nombre, Fecha, Tamaño, Kind, Permisos), menú contextual (Enviar/Renombrar/Eliminar/Nueva carpeta/Refrescar) y diálogo de **permisos (chmod)** con toggles Lectura/Escritura/Ejecución para Propietario/Grupo/Otros.
 - **Guardar sin depender de un ping**: crear o editar una conexión nunca exige que el Test Connection haya sido exitoso — guardás igual si el servidor está apagado ahora pero lo vas a usar más tarde. Test Connection sigue ahí como verificación opcional.
 - **Selector de esquemas al crear la conexión**: en Postgres, después de un Test Connection exitoso elegís qué esquemas escanear — clave en catálogos con cientos de esquemas donde un escaneo completo es lento. Editable después desde el árbol de conexiones.
-- **Editor** (CodeMirror 6, sin CDN) con syntax highlighting real para SQL y para comandos Redis, tabs reordenables por drag-and-drop, archivos recientes, y pestañas restauradas automáticamente al reabrir la app — incluidas las pestañas del Redis Browser.
+- **Editor** (CodeMirror 6, sin CDN) con syntax highlighting real para SQL y para comandos Redis, tabs reordenables por drag-and-drop, archivos recientes, y pestañas restauradas automáticamente al reabrir la app — incluidas las pestañas del Redis Browser. Cada pestaña lleva **su tipo escrito** (`SQL`, `REDIS`, `SSH`, `SFTP`, `GIT`, `NOTA`) y, si está vinculada a una conexión, el logo real del motor: qué es la pestaña y contra qué corre se leen sin pasar el mouse.
+- **El editor se configura como cualquier editor de texto**: tema de colores, fuente, cuerpo, ajuste de línea, números de línea y ancho de la tabulación — con muestra en vivo, y aplicado a la vez al editor SQL y al de archivos del módulo Git. La **barra de acciones** tiene tres modos: normal, compacta (solo íconos) u oculta, que no desactiva nada porque todo tiene atajo de teclado. Todo queda guardado en el vault.
 - **Redis Browser**: pestaña de ventana completa por conexión Redis — filtro por tipo con badges de color, buscador por patrón, stats de header (total de keys / memoria), selección múltiple con exportación a JSON/CSV, y edición inline del valor (string, JSON, hash, list, set, zset — streams de solo lectura) que siempre preserva el TTL existente.
 - **Scanner de objetos de esquema**: procedures, functions y triggers (PostgreSQL, Oracle) y packages (Oracle) además de tablas, agrupados en categorías colapsables por schema. Un click muestra el DDL actual en un visor con syntax highlighting (CodeMirror), botón de copiar y de exportar a `.sql`.
 - **Autocompletado consciente del contexto**: sugiere tablas después de `FROM`/`INSERT INTO`/`UPDATE` y columnas acotadas a las tablas realmente referenciadas después de `SELECT`/`WHERE`/`SET`; resuelve alias y esquema al tipear un punto (`u.` → columnas de `users` si `u` es su alias).
+- **Procedures y functions con su firma completa**, como en DataGrip: el autocompletado dice qué parámetros pide cada uno, en qué orden, de qué tipo y cuáles son `OUT`, e inserta la llamada con un tab stop por parámetro ya rotulado. Mientras escribís los argumentos, un **tooltip resalta en cuál estás parado** — entiende llamadas anidadas y la notación nombrada `p_total =>` de Oracle. En Oracle se indexan además **los miembros de cada package** (`PKG.PROCEDIMIENTO`), que es donde vive casi todo el código invocable.
+- **Consultas con parámetros**: escribís `:desde` y la app pregunta el valor antes de correr, con el tipo de cada uno (texto, número, booleano o `NULL`) y los valores recordados por pestaña. **Nunca entran al texto del SQL**: viajan aparte y se enlazan como argumentos del driver. Reconoce `:nombre` en los cuatro motores, `$1` en PostgreSQL y `?` en SQLite/SQL Server — y reconoce lo que **no** es un parámetro: el `:=` de PL/SQL, el `::` de los casts, el `:NEW`/`:OLD` de los triggers, y todo lo que esté dentro de un literal, un comentario o un `CREATE PROCEDURE`.
 - **Transacciones explícitas**: auto-commit es un checkbox, Commit/Rollback siempre visibles (deshabilitados cuando no aplican) — nunca hay ambigüedad sobre si un cambio quedó confirmado.
 - **Ejecución con streaming**: resultados en vivo statement por statement, cancelación en caliente, soporte de scripts multi-statement y bloques PL/SQL de Oracle (con `DBMS_OUTPUT` capturado). Múltiples resultados (uno por statement) en pestañas que se cierran individualmente o todas juntas.
 - **Consola de ejecución** (estilo DataGrip/SQL Developer): pestaña propia junto a Resultados/Historial que registra cada statement de un script con su texto completo y una línea de resultado con hora (`N filas obtenidas en Xms`, `completado en Xms`, o el `ERROR` completo sin recortar) — se activa sola en cualquier script de más de un statement.
@@ -375,7 +371,12 @@ Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/ma
 - **Grid de resultados** virtualizado para miles de filas sin lag, columnas redimensionables/ordenables (el sort reemite la query con `ORDER BY`, no ordena en cliente). Seleccionar una fila habilita copiarla como texto, `INSERT` o `UPDATE` listos para pegar en el editor.
 - **Grid editable**: doble clic en una celda y la app escribe el `UPDATE` con su `WHERE` por clave primaria. Los cambios quedan pendientes hasta que los mandás (`⌘↵`), con vista previa del SQL exacto, en una transacción donde cada sentencia tiene que afectar exactamente una fila. Solo se habilita cuando la consulta sale de una sola tabla con clave primaria; si no, dice por qué.
 - **Explain y Explain Analyze sobre lo seleccionado**, o sobre la sentencia donde está el cursor — no sobre el archivo entero.
-- **Árbol de conexiones** colapsable a una barra de solo íconos, con buscador que cubre tablas y también procedures/functions/triggers/packages, categoría de tablas colapsable y siempre ordenada alfabéticamente (probado con un schema real de 342 tablas), export de DDL (objeto puntual o esquema completo) desde el propio árbol, y layout (sidebar colapsado, alto del editor) recordado entre sesiones.
+- **Barra lateral con menú de módulos**: los cuatro módulos —bases de datos, SSH, Git y notas— se eligen desde una fila de íconos arriba y se ve **uno a la vez**, así que el que estás usando se queda con toda la altura en vez de la franja que le dejaban los otros tres apilados. La **búsqueda sigue siendo una sola para los cuatro**: los íconos muestran cuántas coincidencias tiene cada módulo, que es lo que evita tener que decidir de antemano en cuál buscar algo que recordás nada más que por el nombre. La barra se **arrastra para cambiarle el ancho** y se oculta entera dejando una columna de íconos; ancho, módulo abierto y alto del editor quedan **guardados entre sesiones**.
+<p align="center">
+  <img src="docs/screenshots/sidebar-modules.png" width="900" alt="Barra lateral con el menú de módulos arriba: el ícono de bases activo, y sobre cada ícono el contador de coincidencias de la búsqueda escrita abajo — 1 en bases, 1 en SSH, ninguna en Git, 6 en notas; el árbol filtrado muestra la carpeta Producción abierta con la única conexión que coincide">
+</p>
+
+- **Árbol de conexiones** con buscador que cubre tablas y también procedures/functions/triggers/packages, categoría de tablas colapsable y siempre ordenada alfabéticamente (probado con un schema real de 342 tablas), y export de DDL (objeto puntual o esquema completo) desde el propio árbol.
 - **Configuración centralizada**: backup del vault y "recordar clave maestra" viven en un modal de Configuración propio, abierto desde el ícono de engranaje — no sueltos en la barra de herramientas.
 - **EXPLAIN PLAN visual**: árbol de plan de ejecución para los 3 motores, con detección de full table scan resaltada.
 - **Linter SQL básico**: marca `SELECT *` como sugerencia visual (no bloquea) y `UPDATE`/`DELETE` sin `WHERE` con confirmación antes de ejecutar.
@@ -453,11 +454,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.0.0 |
+| Versión | 2.1.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.0.0.dmg](releases/macos/mini-tools-v2.0.0.dmg)** |
-| SHA-256 | `b93cbdeb0038f04513f1caabf55bc87e5ccee377899d67215e112aed8f34ab23` |
+| Archivo | **[⬇ Descargar mini-tools-v2.1.0.dmg](releases/macos/mini-tools-v2.1.0.dmg)** |
+| SHA-256 | `3e1fd6a7e78e5f4b5de6ecf4c57192cb3f3221e11b60a97a9dfd577ce1f7c8f7` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -469,7 +470,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **De la 2.0.0 se verificó una parte en Windows 10 y 11: la aprobación acción por acción**, que era justamente lo que quedaba pendiente en 1.3.1 — en Windows no hay sockets Unix, así que ahora usa un named pipe con la ACL restringida a tu usuario. **El `.exe` empaquetado no se corrió en una Windows real**, y lo pendiente se acumula desde la 1.1.0: las migraciones 33 a 39 del vault (que crean las tablas de notas sobre el `vault.db` que ya está en la máquina), el servidor MCP —que en Windows también es un named pipe, pero con el CLI del otro lado—, abrir el proyecto en VS Code/Explorador, la terminal integrada con ConPTY y pegar imágenes en una nota. Lo último que corrió de punta a punta en Windows 10 y 11 fue la 1.0.0. Detalle en [releases/windows/README.md](releases/windows/README.md).
+> ⚠️ **La 2.1.0 se verificó en Windows 10 y 11: arranca y se usa.** Lo nuevo de esta versión del lado de Windows es el **chrome de la ventana**: ahora es *frameless* —Windows deja de dibujar el marco y la barra de título, y los botones de minimizar/maximizar/cerrar los dibuja la app—, así que redimensionar desde los bordes, arrastrar la ventana y Aero Snap dependen del hit-test de Wails y no del marco nativo. Si algo de eso falla, es de esta versión. Sigue sin verificarse lo que ya venía pendiente: las migraciones 40 a 42 del vault (columnas nuevas en `settings` sobre el `vault.db` que ya está en la máquina), el servidor MCP por named pipe, abrir el proyecto en VS Code/Explorador, la terminal integrada con ConPTY y pegar imágenes en una nota. Detalle en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -477,10 +478,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.0.0 |
-| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS y **no verificado** en una Windows real |
-| Archivo | **[⬇ Descargar mini-tools-v2.0.0-windows-amd64.exe](releases/windows/mini-tools-v2.0.0-windows-amd64.exe)** |
-| SHA-256 | `fdab69a6b54b8bebbfb55b7b9b154e8301563f2b47d7069c76047f2e051e467e` |
+| Versión | 2.1.0 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS y verificado en Windows 10 y 11 |
+| Archivo | **[⬇ Descargar mini-tools-v2.1.0-windows-amd64.exe](releases/windows/mini-tools-v2.1.0-windows-amd64.exe)** |
+| SHA-256 | `0f05b5db5bb224293ac96dbd0bf41004da516b6137739ef9dd7944e33d6b4cc1` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

@@ -59,12 +59,32 @@ func (t *TableEntry) Column(name string) (*ColumnEntry, bool) {
 
 // RoutineEntry is a stored procedure or function from the catalog — the
 // user's own routines, offered alongside the dialect's built-in functions.
+//
+// It carries the full parameter list rather than just the name because a
+// name on its own is the one thing a caller already knows. What they cannot
+// remember is the order, the types and which arguments come back OUT — so
+// that is what the completion item, its info panel and the signature
+// tooltip are all built from. See signature.go for the formatting.
 type RoutineEntry struct {
-	Schema     string
-	Name       string
-	Lower      string
+	Schema string
+	// Package is the owning Oracle package, empty for a standalone routine
+	// and always empty on the other engines.
+	Package string
+	Name    string
+	Lower   string
+	// Call is what has to be written to invoke it: "PKG.MEMBER" for a
+	// package member, the bare name otherwise. It is the completion label,
+	// which is why it is precomputed instead of concatenated per keystroke.
+	Call string
+	// CallLower is Call folded once, for the fuzzy matcher.
+	CallLower  string
 	ReturnType string
 	IsFunction bool
+	// Overload distinguishes same-named declarations; empty when the
+	// routine is the only one with its name.
+	Overload string
+	Comment  string
+	Args     []db.RoutineArg
 }
 
 // SchemaIndex is the in-memory, read-only index one connection's metadata
@@ -83,6 +103,9 @@ type SchemaIndex struct {
 
 	tablesBy  map[string][]*TableEntry
 	schemasBy map[string][]*TableEntry
+	// packageMembers indexes an Oracle package's routines by the lowercased
+	// package name, so "PKG." can be completed without scanning Routines.
+	packageMembers map[string][]RoutineEntry
 	// incoming is the reverse of TableEntry.outgoing: referenced table (lower
 	// case) → the tables holding a foreign key at it. Join prediction needs
 	// both directions, and without this the only way to answer "what can join
@@ -134,9 +157,10 @@ func (idx *SchemaIndex) scriptTable(schema, name string) (*TableEntry, bool) {
 // empty (but usable) index, so callers never need a nil check.
 func BuildIndex(meta *db.SchemaMetadata) *SchemaIndex {
 	idx := &SchemaIndex{
-		tablesBy:  map[string][]*TableEntry{},
-		schemasBy: map[string][]*TableEntry{},
-		incoming:  map[string][]*TableEntry{},
+		tablesBy:       map[string][]*TableEntry{},
+		schemasBy:      map[string][]*TableEntry{},
+		incoming:       map[string][]*TableEntry{},
+		packageMembers: map[string][]RoutineEntry{},
 	}
 	if meta == nil {
 		return idx
@@ -196,19 +220,61 @@ func BuildIndex(meta *db.SchemaMetadata) *SchemaIndex {
 	}
 
 	for _, p := range meta.Procedures {
-		idx.Routines = append(idx.Routines, RoutineEntry{
-			Schema: p.Schema, Name: p.Name, Lower: strings.ToLower(p.Name),
+		idx.addRoutine(RoutineEntry{
+			Schema: p.Schema, Name: p.Name,
+			Overload: p.Overload, Comment: p.Comment, Args: p.Args,
 		})
 	}
 	for _, f := range meta.Functions {
-		idx.Routines = append(idx.Routines, RoutineEntry{
-			Schema: f.Schema, Name: f.Name, Lower: strings.ToLower(f.Name),
+		idx.addRoutine(RoutineEntry{
+			Schema: f.Schema, Name: f.Name,
 			ReturnType: f.ReturnType, IsFunction: true,
+			Overload: f.Overload, Comment: f.Comment, Args: f.Args,
 		})
+	}
+	// Package members are indexed as routines in their own right, under the
+	// "PKG.MEMBER" name a call has to write. On Oracle this is where most
+	// callable code lives, so leaving them out would mean the completion
+	// knows about the package and nothing inside it.
+	for _, pkg := range meta.Packages {
+		for _, m := range pkg.Members {
+			idx.addRoutine(RoutineEntry{
+				Schema: pkg.Schema, Package: pkg.Name, Name: m.Name,
+				ReturnType: m.ReturnType, IsFunction: m.IsFunction,
+				Overload: m.Overload, Args: m.Args,
+			})
+		}
 	}
 
 	sort.Strings(idx.Schemas)
 	return idx
+}
+
+// addRoutine derives the call name and the lookup keys a RoutineEntry needs
+// and appends it to the index. Every routine goes through here so the
+// derived fields can never drift between the three call sites that build
+// them.
+func (idx *SchemaIndex) addRoutine(r RoutineEntry) {
+	r.Lower = strings.ToLower(r.Name)
+	r.Call = r.Name
+	if r.Package != "" {
+		r.Call = r.Package + "." + r.Name
+	}
+	r.CallLower = strings.ToLower(r.Call)
+	idx.Routines = append(idx.Routines, r)
+	if r.Package != "" {
+		lower := strings.ToLower(r.Package)
+		idx.packageMembers[lower] = append(idx.packageMembers[lower], r)
+	}
+}
+
+// PackageMembers returns the routines declared by an Oracle package, for
+// the "PKG.|" completion path. Nil for anything that is not a package.
+func (idx *SchemaIndex) PackageMembers(name string) []RoutineEntry {
+	if idx == nil {
+		return nil
+	}
+	return idx.packageMembers[strings.ToLower(name)]
 }
 
 // Empty reports whether the index holds nothing to suggest — the state

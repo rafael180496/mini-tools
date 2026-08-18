@@ -12,6 +12,7 @@ import {redisquery} from '../models';
 import {sftpx} from '../models';
 import {sqlintel} from '../models';
 import {vault} from '../models';
+import {query} from '../models';
 import {explain} from '../models';
 import {osopen} from '../models';
 import {git} from '../models';
@@ -156,6 +157,8 @@ export function DeleteSftpPath(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteSshSnippet(arg1:string):Promise<void>;
 
+export function DetectQueryParams(arg1:string,arg2:string):Promise<Array<query.Param>>;
+
 export function DetectSQLiteEncryption(arg1:string):Promise<boolean>;
 
 export function DiscardRedisTransaction(arg1:string):Promise<void>;
@@ -166,7 +169,7 @@ export function ExecRedisTransaction(arg1:string):Promise<any>;
 
 export function ExecuteMongoQuery(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
-export function ExecuteQuery(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
+export function ExecuteQuery(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5:Array<query.ParamValue>):Promise<void>;
 
 export function ExecuteRedisCommand(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -598,9 +601,9 @@ export function SetAutoSaveEnabled(arg1:boolean):Promise<void>;
 
 export function SetAutoSaveIntervalSeconds(arg1:number):Promise<void>;
 
-export function SetCollapsedSidebarModules(arg1:Array<string>):Promise<void>;
-
 export function SetConnectionSchemas(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function SetEditorAppearance(arg1:vault.EditorAppearance):Promise<void>;
 
 export function SetEditorHeight(arg1:number):Promise<void>;
 
@@ -638,6 +641,10 @@ export function SetRememberMasterKey(arg1:boolean):Promise<void>;
 
 export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 
+export function SetSidebarModule(arg1:string):Promise<void>;
+
+export function SetSidebarWidth(arg1:number):Promise<void>;
+
 export function SetSshHistoryEnabled(arg1:boolean):Promise<void>;
 
 export function SetSshTerminalTheme(arg1:string):Promise<void>;
@@ -649,6 +656,8 @@ export function SetTheme(arg1:string):Promise<void>;
 export function SftpHomeDir(arg1:string):Promise<string>;
 
 export function SftpPathPermissions(arg1:string,arg2:string):Promise<sftpx.PermInfo>;
+
+export function SignatureSQL(arg1:sqlintel.SignatureRequest):Promise<sqlintel.SignatureResponse>;
 
 export function SshHistoryEnabled():Promise<boolean>;
 

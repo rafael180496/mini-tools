@@ -38,8 +38,11 @@ type Settings struct {
 	// connection/language binding), in tab order, so the workspace can
 	// restore them on the next launch — see SetOpenTabs.
 	OpenTabs []OpenTabInfo `json:"openTabs"`
-	// SidebarCollapsed persists the connection tree's icon-only rail mode
-	// (toggled in the sidebar header) — see SetSidebarCollapsed.
+	// SidebarCollapsed persists whether the sidebar is hidden altogether
+	// (toggled from its header) — see SetSidebarCollapsed. It used to mean
+	// the icon-only rail mode, which the master menu replaced: the menu is
+	// already the compact form, so the remaining useful state is simply
+	// "give the editor the whole width".
 	SidebarCollapsed bool `json:"sidebarCollapsed"`
 	// EditorHeight is the SQL editor pane's height in pixels, dragged via
 	// the resize handle between the editor and the results grid — see
@@ -70,13 +73,24 @@ type Settings struct {
 	// "githubDark", "dracula") — "auto" (the default) follows the app's own
 	// dark/light Theme above instead of naming a fixed CodeMirror theme.
 	EditorTheme string `json:"editorTheme"`
-	// CollapsedSidebarModules is which sidebar module ids (e.g.
-	// "connections") the user has collapsed to an accordion header —
-	// unrelated to SidebarCollapsed above, which is the whole-sidebar
-	// icon-only rail toggle. A JSON array (not a single bool) because more
-	// modules besides "connections" are expected later. See
-	// SetCollapsedSidebarModules.
-	CollapsedSidebarModules []string `json:"collapsedSidebarModules"`
+	// EditorAppearance is everything else about how the editors look and
+	// behave. It is a nested struct rather than six more flat fields
+	// because the six travel together: the settings dialog edits them as
+	// one group and every editor consumes them as one group. EditorTheme
+	// stays flat above only because it predates this and is already wired
+	// through half the frontend — moving it would be churn for symmetry.
+	EditorAppearance EditorAppearance `json:"editorAppearance"`
+	// SidebarModule is which sidebar module the master menu has open —
+	// "connections", "ssh", "git" or "notes". The sidebar shows one at a
+	// time, so this is a single id and not a set; empty means "the default"
+	// and lets the frontend decide, rather than baking a module name into
+	// the schema. See SetSidebarModule.
+	SidebarModule string `json:"sidebarModule"`
+	// SidebarWidth is the sidebar's dragged width in pixels — same
+	// "persist a dragged size" pattern as EditorHeight/GitSideWidth. 0 means
+	// never dragged, so the frontend applies its own default. Clamped on
+	// write, not here.
+	SidebarWidth int `json:"sidebarWidth"`
 	// SshTerminalTheme is the xterm.js color theme id (one of
 	// frontend/src/xterm/terminalThemes.ts's registry, e.g. "auto",
 	// "dracula", "nord") — same "auto follows the app's own dark/light
@@ -217,7 +231,9 @@ func (s *Store) GetSettings() (Settings, error) {
 	var editorHeight int
 	var rememberMasterKey bool
 	var editorTheme string
-	var collapsedModulesJSON sql.NullString
+	var sidebarModule sql.NullString
+	var sidebarWidth int
+	var editorAppearance EditorAppearance
 	var sshTerminalTheme string
 	var autoBackupEnabled bool
 	var autoBackupIntervalHours int
@@ -236,9 +252,9 @@ func (s *Store) GetSettings() (Settings, error) {
 	var agentSize, notesSideWidth int
 	var mcpEnabled bool
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, collapsed_sidebar_modules, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &collapsedModulesJSON, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -262,13 +278,6 @@ func (s *Store) GetSettings() (Settings, error) {
 		}
 	}
 
-	var collapsedModules []string
-	if collapsedModulesJSON.Valid && collapsedModulesJSON.String != "" {
-		if err := json.Unmarshal([]byte(collapsedModulesJSON.String), &collapsedModules); err != nil {
-			return Settings{}, fmt.Errorf("vault: parseando collapsed_sidebar_modules: %w", err)
-		}
-	}
-
 	// Una lista ilegible se trata como "sin sesiones guardadas" y no como un
 	// error: perder el layout del panel es molesto, pero no poder leer las
 	// settings deja la app entera sin tema, sin pestañas y sin nada.
@@ -283,7 +292,7 @@ func (s *Store) GetSettings() (Settings, error) {
 	return Settings{
 		Theme: theme, OpenTabs: openTabs, SidebarCollapsed: sidebarCollapsed,
 		EditorHeight: editorHeight, RememberMasterKey: rememberMasterKey,
-		EditorTheme: editorTheme, CollapsedSidebarModules: collapsedModules,
+		EditorTheme: editorTheme, SidebarModule: sidebarModule.String, SidebarWidth: sidebarWidth, EditorAppearance: editorAppearance,
 		SshTerminalTheme:  sshTerminalTheme,
 		AutoBackupEnabled: autoBackupEnabled, AutoBackupIntervalHours: autoBackupIntervalHours,
 		AutoBackupPath:          autoBackupPath,
@@ -682,15 +691,92 @@ func (s *Store) SetAutoSaveIntervalSeconds(seconds int) error {
 	return nil
 }
 
-// SetCollapsedSidebarModules persists which sidebar module ids are
-// collapsed to an accordion header.
-func (s *Store) SetCollapsedSidebarModules(ids []string) error {
-	encoded, err := json.Marshal(ids)
-	if err != nil {
-		return fmt.Errorf("vault: serializando collapsed_sidebar_modules: %w", err)
+// EditorAppearance is how every CodeMirror editor in the app renders: the
+// SQL editor, the Git module's file editor and the notes editor.
+//
+// One shape for the three of them on purpose. Each used to carry its own
+// hard-coded font, size and behaviour, which is how they drifted apart in
+// the first place — a preference the user sets once should not depend on
+// which of the three they happen to be looking at.
+//
+// The zero value means "use the frontend's defaults" for every field, so a
+// vault that predates this (or a user who never opened the settings) gets
+// whatever the code decides rather than a number frozen into the schema.
+type EditorAppearance struct {
+	// FontFamily is an id from the frontend's curated list, not a CSS font
+	// stack: the app is offline and ships exactly one font, so the list has
+	// to be able to say which options depend on the OS having them. Empty =
+	// the default.
+	FontFamily string `json:"fontFamily,omitempty"`
+	// FontSize in px; 0 = the default.
+	FontSize int `json:"fontSize,omitempty"`
+	// LineWrap wraps long lines instead of scrolling horizontally.
+	LineWrap bool `json:"lineWrap,omitempty"`
+	// LineNumbers toggles the gutter. Defaults to on, which is why it is
+	// the one field whose column defaults to 1 rather than 0.
+	LineNumbers bool `json:"lineNumbers"`
+	// TabSize in spaces; 0 = the default.
+	TabSize int `json:"tabSize,omitempty"`
+	// Toolbar is the editor's action row: "normal" (icons and labels),
+	// "compact" (icons only) or "hidden" (no row at all — the keyboard
+	// shortcuts keep working). Empty = "normal".
+	Toolbar string `json:"toolbar,omitempty"`
+}
+
+// SetEditorAppearance persists the whole appearance group at once. Values
+// are clamped here rather than trusted: a font size of 0 or 400 stored once
+// would be re-applied on every launch afterwards, and an editor that cannot
+// be read is not a preference, it is a lockout.
+func (s *Store) SetEditorAppearance(a EditorAppearance) error {
+	if a.FontSize != 0 {
+		if a.FontSize < 9 {
+			a.FontSize = 9
+		}
+		if a.FontSize > 32 {
+			a.FontSize = 32
+		}
 	}
-	if _, err := s.db.Exec(`UPDATE settings SET collapsed_sidebar_modules = ? WHERE id = 1`, string(encoded)); err != nil {
-		return fmt.Errorf("vault: guardando collapsed_sidebar_modules: %w", err)
+	if a.TabSize != 0 {
+		if a.TabSize < 1 {
+			a.TabSize = 1
+		}
+		if a.TabSize > 8 {
+			a.TabSize = 8
+		}
+	}
+	_, err := s.db.Exec(
+		`UPDATE settings SET editor_font_family = ?, editor_font_size = ?, editor_line_wrap = ?,
+		 editor_line_numbers = ?, editor_tab_size = ?, editor_toolbar = ? WHERE id = 1`,
+		a.FontFamily, a.FontSize, a.LineWrap, a.LineNumbers, a.TabSize, a.Toolbar,
+	)
+	if err != nil {
+		return fmt.Errorf("vault: guardando apariencia del editor: %w", err)
+	}
+	return nil
+}
+
+// SetSidebarWidth persists the sidebar's dragged width, clamped to a range
+// that keeps it usable: too narrow and the tree is unreadable, too wide and
+// it crowds out the editor the app exists for. Clamping here rather than
+// trusting the caller means a bad value can never be stored and re-applied
+// on every launch afterwards.
+func (s *Store) SetSidebarWidth(px int) error {
+	if px < 180 {
+		px = 180
+	}
+	if px > 640 {
+		px = 640
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET sidebar_width = ? WHERE id = 1`, px); err != nil {
+		return fmt.Errorf("vault: guardando sidebar_width: %w", err)
+	}
+	return nil
+}
+
+// SetSidebarModule persists which sidebar module the master menu has open.
+func (s *Store) SetSidebarModule(id string) error {
+	if _, err := s.db.Exec(`UPDATE settings SET sidebar_module = ? WHERE id = 1`, id); err != nil {
+		return fmt.Errorf("vault: guardando sidebar_module: %w", err)
 	}
 	return nil
 }

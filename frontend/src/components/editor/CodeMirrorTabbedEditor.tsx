@@ -4,6 +4,7 @@ import {EditorView, keymap} from '@codemirror/view'
 import {indentWithTab} from '@codemirror/commands'
 import {search} from '@codemirror/search'
 import {basicSetup} from 'codemirror'
+import {editorAppearanceExtension, type EditorAppearance} from '../../codemirror/editorAppearance'
 import {db} from '../../../wailsjs/go/models'
 import type {EditorTab, TabLanguage} from './EditorTabs'
 import {sqlLanguageExtension, sqlSchemaHover} from '../../codemirror/sqlSchema'
@@ -22,10 +23,11 @@ import type {Theme} from '../../hooks/useTheme'
 const languageCompartment = new Compartment()
 const themeCompartment = new Compartment()
 
-const baseTheme = EditorView.theme({
-    '&': {height: '100%', fontSize: '13px'},
-    '.cm-scroller': {fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace", overflow: 'auto'},
-})
+// La apariencia (fuente, cuerpo, ajuste de línea, numeración, tabulación)
+// viaja en el MISMO compartment que el tema de colores, no como extensión
+// fija: las dos cosas cambian desde Configuración mientras el editor está
+// abierto, y reconfigurar un compartment es lo único que evita recrear el
+// estado de cada pestaña —y con él el historial de deshacer— en cada cambio.
 
 function languageExtensions(
     language: TabLanguage,
@@ -59,6 +61,10 @@ interface CodeMirrorTabbedEditorProps {
     schemaMetadata: db.SchemaMetadata | null
     editorThemeId: string
     appTheme: Theme
+    // Cómo se ve el texto: fuente, cuerpo, ajuste de línea, numeración y
+    // tabulación. Compartido con el editor de archivos de Git y el de notas
+    // — ver frontend/src/codemirror/editorAppearance.ts.
+    appearance: EditorAppearance
 }
 
 // One shared CodeMirror EditorView for the whole workspace, with one
@@ -83,6 +89,7 @@ export default function CodeMirrorTabbedEditor({
     schemaMetadata,
     editorThemeId,
     appTheme,
+    appearance,
 }: CodeMirrorTabbedEditorProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
@@ -92,12 +99,16 @@ export default function CodeMirrorTabbedEditor({
     const tabsRef = useRef(tabs)
     tabsRef.current = tabs
 
+    // Colores + apariencia, que es lo que va adentro del compartment.
+    function lookExtensions(): Extension {
+        return [resolveEditorTheme(editorThemeId, appTheme), ...editorAppearanceExtension(appearance)]
+    }
+
     function createStateForTab(tab: EditorTab, theme: Extension): EditorState {
         return EditorState.create({
             doc: tab.content,
             extensions: [
                 basicSetup,
-                baseTheme,
                 search(),
                 keymap.of([indentWithTab]),
                 languageCompartment.of(languageExtensions(tab.language, dbType, connId, schemaMetadata)),
@@ -117,7 +128,7 @@ export default function CodeMirrorTabbedEditor({
     useEffect(() => {
         if (!containerRef.current) return
         const tab = tabsRef.current.find((t) => t.id === activeTabId) ?? tabsRef.current[0]
-        const state = tab ? createStateForTab(tab, resolveEditorTheme(editorThemeId, appTheme)) : EditorState.create({extensions: [basicSetup, baseTheme]})
+        const state = tab ? createStateForTab(tab, lookExtensions()) : EditorState.create({extensions: [basicSetup, ...editorAppearanceExtension(appearance)]})
         if (tab) statesRef.current.set(tab.id, state)
 
         const view = new EditorView({parent: containerRef.current, state})
@@ -153,7 +164,7 @@ export default function CodeMirrorTabbedEditor({
 
         let state = statesRef.current.get(tab.id)
         if (!state) {
-            state = createStateForTab(tab, resolveEditorTheme(editorThemeId, appTheme))
+            state = createStateForTab(tab, lookExtensions())
             statesRef.current.set(tab.id, state)
         }
         view.setState(state)
@@ -186,14 +197,14 @@ export default function CodeMirrorTabbedEditor({
     useEffect(() => {
         const view = viewRef.current
         if (!view) return
-        const themeExt = resolveEditorTheme(editorThemeId, appTheme)
+        const look = lookExtensions()
         for (const [id, state] of statesRef.current) {
-            statesRef.current.set(id, state.update({effects: themeCompartment.reconfigure(themeExt)}).state)
+            statesRef.current.set(id, state.update({effects: themeCompartment.reconfigure(look)}).state)
         }
         const activeState = statesRef.current.get(activeTabId)
         if (activeState) view.setState(activeState)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editorThemeId, appTheme])
+    }, [editorThemeId, appTheme, appearance])
 
     // Push content set from OUTSIDE the editor (e.g. double-click a
     // table/key auto-filling a query, or opening a file) into the active

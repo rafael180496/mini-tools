@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
+import type {EditorAppearance} from '../../codemirror/editorAppearance'
 import {
     GitAbort,
     GitApplyPatch,
@@ -137,6 +138,9 @@ interface GitRepoTabProps {
     repoId: string
     repoName: string
     editorThemeId: string
+    // Apariencia compartida de los editores de código — se pasa tal cual al
+    // editor de archivos (ver codemirror/editorAppearance.ts).
+    appearance: EditorAppearance
     appTheme: Theme
     // Tema de colores de xterm.js — el MISMO prop global que reciben las
     // pestañas SSH (Workspace.tsx). La terminal de este panel es una
@@ -235,6 +239,7 @@ export default function GitRepoTab({
     repoId,
     repoName,
     editorThemeId,
+    appearance,
     appTheme,
     terminalThemeId,
     onChangeTerminalTheme,
@@ -2525,6 +2530,7 @@ export default function GitRepoTab({
                         <GitFileEditor
                             repoId={repoId}
                             editorThemeId={editorThemeId}
+                            appearance={appearance}
                             appTheme={appTheme}
                             request={editRequest}
                             initialFiles={openFiles ?? undefined}

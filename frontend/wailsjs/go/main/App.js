@@ -274,6 +274,10 @@ export function DeleteSshSnippet(arg1) {
   return window['go']['main']['App']['DeleteSshSnippet'](arg1);
 }
 
+export function DetectQueryParams(arg1, arg2) {
+  return window['go']['main']['App']['DetectQueryParams'](arg1, arg2);
+}
+
 export function DetectSQLiteEncryption(arg1) {
   return window['go']['main']['App']['DetectSQLiteEncryption'](arg1);
 }
@@ -294,8 +298,8 @@ export function ExecuteMongoQuery(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ExecuteMongoQuery'](arg1, arg2, arg3, arg4);
 }
 
-export function ExecuteQuery(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['ExecuteQuery'](arg1, arg2, arg3, arg4);
+export function ExecuteQuery(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['ExecuteQuery'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function ExecuteRedisCommand(arg1, arg2, arg3) {
@@ -1158,12 +1162,12 @@ export function SetAutoSaveIntervalSeconds(arg1) {
   return window['go']['main']['App']['SetAutoSaveIntervalSeconds'](arg1);
 }
 
-export function SetCollapsedSidebarModules(arg1) {
-  return window['go']['main']['App']['SetCollapsedSidebarModules'](arg1);
-}
-
 export function SetConnectionSchemas(arg1, arg2) {
   return window['go']['main']['App']['SetConnectionSchemas'](arg1, arg2);
+}
+
+export function SetEditorAppearance(arg1) {
+  return window['go']['main']['App']['SetEditorAppearance'](arg1);
 }
 
 export function SetEditorHeight(arg1) {
@@ -1238,6 +1242,14 @@ export function SetSidebarCollapsed(arg1) {
   return window['go']['main']['App']['SetSidebarCollapsed'](arg1);
 }
 
+export function SetSidebarModule(arg1) {
+  return window['go']['main']['App']['SetSidebarModule'](arg1);
+}
+
+export function SetSidebarWidth(arg1) {
+  return window['go']['main']['App']['SetSidebarWidth'](arg1);
+}
+
 export function SetSshHistoryEnabled(arg1) {
   return window['go']['main']['App']['SetSshHistoryEnabled'](arg1);
 }
@@ -1260,6 +1272,10 @@ export function SftpHomeDir(arg1) {
 
 export function SftpPathPermissions(arg1, arg2) {
   return window['go']['main']['App']['SftpPathPermissions'](arg1, arg2);
+}
+
+export function SignatureSQL(arg1) {
+  return window['go']['main']['App']['SignatureSQL'](arg1);
 }
 
 export function SshHistoryEnabled() {

@@ -1,4 +1,5 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useState, type ReactNode} from 'react'
+import TitleBar from './components/TitleBar'
 import UnlockScreen from './components/lock/UnlockScreen'
 import Workspace from './components/Workspace'
 import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackupFirstRun, TryAutoUnlock, CheckForUpdate} from '../wailsjs/go/main/App'
@@ -39,16 +40,25 @@ function App() {
             .catch(() => {})
     }, [])
 
+    // La barra de título envuelve TODO, incluidas la pantalla de carga y la
+    // de desbloqueo: es el marco de la ventana, no una parte del workspace.
+    // Si solo estuviera adentro del workspace, la ventana arrancaría sin
+    // forma de moverse ni de cerrarse hasta desbloquear el vault.
+    const frame = (children: ReactNode) => (
+        <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-on-background">
+            <TitleBar />
+            <div className="min-h-0 flex-1">{children}</div>
+        </div>
+    )
+
     if (isInitialized === null) {
-        return (
-            <div className="flex h-screen w-screen items-center justify-center bg-background font-sans text-sm text-on-surface-variant">
-                Cargando…
-            </div>
+        return frame(
+            <div className="flex h-full w-full items-center justify-center text-sm text-on-surface-variant">Cargando…</div>,
         )
     }
 
     if (!unlocked) {
-        return (
+        return frame(
             <UnlockScreen
                 isInitialized={isInitialized}
                 theme={theme}
@@ -65,11 +75,11 @@ function App() {
                     await RestoreVaultBackupFirstRun(path, backupPassword)
                     setIsInitialized(await IsVaultInitialized())
                 }}
-            />
+            />,
         )
     }
 
-    return <Workspace theme={theme} onToggleTheme={toggleTheme} onLocked={() => setUnlocked(false)} updateInfo={updateInfo} />
+    return frame(<Workspace theme={theme} onToggleTheme={toggleTheme} onLocked={() => setUnlocked(false)} updateInfo={updateInfo} />)
 }
 
 export default App

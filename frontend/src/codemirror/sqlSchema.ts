@@ -17,6 +17,7 @@ import {hoverTooltip} from '@codemirror/view'
 import type {Extension} from '@codemirror/state'
 import {db} from '../../wailsjs/go/models'
 import {sqlIntelCompletionSource, sqlInlineSuggestions, sqlCompletionTheme} from './sqlIntel'
+import {sqlSignatureHelp} from './sqlSignature'
 
 // Real dialects from @codemirror/lang-sql instead of a hand-rolled keyword
 // list per engine (see the retired frontend/src/monaco/sqlLanguage.ts) —
@@ -119,6 +120,11 @@ export function sqlLanguageExtension(dbType: string | null | undefined, connId: 
         // Grey inline prediction (a FK join condition, or the rest of an
         // unambiguous name) accepted with Tab.
         sqlInlineSuggestions(connId, dbType),
+        // Parameter info for the call under the cursor. It takes over
+        // exactly where completion stops being useful — once the opening
+        // parenthesis is in, the question is no longer "which routine?" but
+        // "what goes in this argument?".
+        sqlSignatureHelp(connId, dbType),
     ]
 }
 
