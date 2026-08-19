@@ -38,6 +38,11 @@ type Event struct {
 	DurationMs   int64           `json:"durationMs,omitempty"`
 	Error        string          `json:"error,omitempty"`
 	DBMSOutput   []string        `json:"dbmsOutput,omitempty"`
+	// Note explains a terminal event that isn't a plain success or failure —
+	// today only "this statement was a SQL*Plus client command, so it was
+	// skipped instead of being sent to the server". Rendered by the
+	// execution console next to the result line; empty for everything else.
+	Note string `json:"note,omitempty"`
 	// HasMore rides on "done" and "page" events for a paged SELECT: true means
 	// the result set still has rows and FetchMore(queryID) will deliver the
 	// next page. RowsAffected carries how many rows have been delivered so far,
@@ -323,6 +328,24 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool, 
 		}
 
 		start := time.Now()
+
+		// SQL*Plus client commands (SHOW ERRORS, SET SERVEROUTPUT ON, …) are
+		// interpreted by the sqlplus CLI itself and are not SQL: forwarding
+		// one to Oracle just earns an ORA-00900 and, in a generated install
+		// script, buries the real result of the statement it was reporting
+		// on. Reported as skipped instead of silently dropped, so the console
+		// still accounts for every statement in the script. On the other
+		// engines they fall through and run normally — see sqlplusCommandEnd
+		// for why the match is deliberately Oracle-shaped.
+		if stmt.Kind == KindSQLPlus && dbType == db.DBTypeOracle {
+			e.recordHistory(connID, stmt.Text, "done", 0, 0, "")
+			e.emit(queryID, Event{
+				Type: "done", StatementIndex: idx, TotalStatements: total,
+				SQLText: stmt.Text,
+				Note:    "omitido: comando de cliente SQL*Plus, no se envía a Oracle",
+			})
+			continue
+		}
 
 		// The bound text goes to the driver; stmt.Text — what the user
 		// actually wrote, ":desde" and all — is what gets echoed back in

@@ -78,7 +78,11 @@ func ExtractParams(sqlText string, dbType db.DBType) []Param {
 	positionalBase := 0
 
 	for _, stmt := range SplitStatements(sqlText) {
-		if isStoredProgramDDL(stmt.Text) {
+		if stmt.Kind == KindSQLPlus || isStoredProgramDDL(stmt.Text) {
+			// A SQL*Plus command never reaches the server, so its text must
+			// not raise a parameter prompt either — `EXIT :VN_RETORNO` at the
+			// end of an install script would otherwise ask the user to fill
+			// in a bind variable for a line nothing is going to run.
 			continue
 		}
 		for _, t := range scanParamTokens(stmt.Text, dbType, positionalBase) {

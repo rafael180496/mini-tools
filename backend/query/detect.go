@@ -10,14 +10,24 @@ type Kind string
 const (
 	KindSQL        Kind = "sql"
 	KindPLSQLBlock Kind = "plsql"
+	// KindSQLPlus is a SQL*Plus/SQLcl CLIENT command (SHOW ERRORS, SET
+	// SERVEROUTPUT ON, WHENEVER SQLERROR ..., SPOOL, PROMPT, @script, ...).
+	// SQL*Plus interprets these itself and never sends them to the server,
+	// so Oracle answers ORA-00900 ("invalid SQL statement") if one is
+	// forwarded verbatim — which is exactly what happened with the
+	// `SHOW ERRORS PROCEDURE ...` lines of a generated install script. The
+	// executor skips them on Oracle; see sqlplusCommandEnd in splitter.go.
+	KindSQLPlus Kind = "sqlplus"
 )
 
 // plsqlUnitKeywords are the CREATE [OR REPLACE] units whose body opens with
-// BEGIN (Oracle-style) rather than a Postgres dollar-quoted body. A CREATE
-// PACKAGE BODY with multiple member procedures (multiple independent
-// BEGIN/END pairs) is not guaranteed to split correctly — see
-// .claude/rules/technical.md point 7: this is a hand-rolled classifier, not
-// a full PL/SQL grammar, and that's the accepted scope.
+// BEGIN (Oracle-style) rather than a Postgres dollar-quoted body. The
+// splitter tracks their declarative sections with a frame stack, so a
+// PACKAGE BODY (or any unit) with several nested subprograms — each with
+// its own BEGIN/END — does split correctly now. Still a hand-rolled
+// classifier and not a full PL/SQL grammar (see .claude/rules/technical.md
+// point 7): shapes with no BEGIN at all, like `CREATE TYPE t AS OBJECT
+// (...)`, rely on the trailing SQL*Plus "/" line to close the statement.
 var plsqlUnitKeywords = []string{"PROCEDURE", "FUNCTION", "PACKAGE", "TRIGGER", "TYPE"}
 
 // IsPLSQLBlock reports whether stmt is an Oracle PL/SQL unit — an anonymous
@@ -30,17 +40,19 @@ func IsPLSQLBlock(stmt string) bool {
 
 // classifyStatementStart looks at the start of a (possibly multi-statement)
 // text and reports:
-//   - awaitingBegin: true if semicolons must be suppressed until the first
-//     BEGIN is seen (DECLARE section, or a CREATE unit's IS/AS section) —
-//     used by the splitter.
+//   - unitHeader: true if the text opens with a CREATE [OR REPLACE]
+//     PROCEDURE/FUNCTION/PACKAGE/TRIGGER/TYPE header, i.e. the splitter is
+//     waiting for the IS/AS that opens the unit's declarative section.
+//     False for DECLARE and for a bare BEGIN: those keywords are seen by
+//     the splitter's own tokenizer, which pushes the right frame for them.
 //   - isPLSQL: true if this statement is a PL/SQL unit at all.
-func classifyStatementStart(s string) (awaitingBegin, isPLSQL bool) {
+func classifyStatementStart(s string) (unitHeader, isPLSQL bool) {
 	trimmed := skipLeadingNoise(s)
 	upper := strings.ToUpper(trimmed)
 
 	switch {
 	case strings.HasPrefix(upper, "DECLARE"):
-		return true, true
+		return false, true
 	case strings.HasPrefix(upper, "BEGIN"):
 		return false, true
 	case strings.HasPrefix(upper, "CREATE"):

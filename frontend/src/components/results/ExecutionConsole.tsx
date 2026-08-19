@@ -14,6 +14,11 @@ export interface ConsoleLogEntry {
     // for everything else) — shown right under the result line, same place a
     // desktop SQL client's console echoes server output.
     dbmsOutput: string[]
+    // Aclaración de por qué el statement terminó como terminó cuando no fue
+    // ni un éxito ni un error normal — hoy, un comando de cliente SQL*Plus
+    // que mini-tools omite en vez de mandárselo a Oracle. Vacío para todo lo
+    // demás.
+    note: string
     timestamp: number
 }
 
@@ -46,6 +51,13 @@ function ResultLine({entry}: {entry: ConsoleLogEntry}) {
         return (
             <span className="text-error">
                 {time} ERROR: {entry.error || 'Error desconocido'}
+            </span>
+        )
+    }
+    if (entry.note) {
+        return (
+            <span className="text-tertiary">
+                {time} {entry.note}
             </span>
         )
     }

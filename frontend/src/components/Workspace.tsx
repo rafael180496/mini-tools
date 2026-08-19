@@ -140,6 +140,10 @@ interface QueryEvent {
     durationMs?: number
     error?: string
     dbmsOutput?: string[]
+    // Aclaración para un evento terminal que no es ni éxito ni error común:
+    // hoy, "este statement era un comando de cliente SQL*Plus y se omitió"
+    // (ver backend/query/executor.go).
+    note?: string
     // Llega en 'done' y 'page': quedan filas sin traer y FetchMoreRows(queryId)
     // entrega la próxima página (ver backend/query/paging.go).
     hasMore?: boolean
@@ -177,6 +181,7 @@ interface ResultSet {
     durationMs: number
     error: string
     dbmsOutput: string[]
+    note: string
     sourceSql: string
     sortColumn: string | null
     sortDirection: 'asc' | 'desc' | null
@@ -191,7 +196,7 @@ const MAX_CONSOLE_ENTRIES = 500
 
 function emptyResultSet(): ResultSet {
     return {
-        columns: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: [],
+        columns: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: [], note: '',
         sourceSql: '', sortColumn: null, sortDirection: null, hasMore: false, loadingMore: false,
     }
 }
@@ -1434,6 +1439,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             cur.rowsAffected = event.rowsAffected ?? 0
                             cur.durationMs = event.durationMs ?? 0
                             cur.dbmsOutput = event.dbmsOutput ?? []
+                            cur.note = event.note ?? ''
                             break
                         case 'cancelled':
                             cur.status = 'cancelled'
@@ -1463,6 +1469,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         durationMs: event.durationMs ?? 0,
                         error: event.error ?? '',
                         dbmsOutput: event.dbmsOutput ?? [],
+                        note: event.note ?? '',
                         timestamp: Date.now(),
                     }
                     // The console is a running history now (it is no longer

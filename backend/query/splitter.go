@@ -12,17 +12,19 @@ type Statement struct {
 	Kind Kind
 }
 
-// classifyLookaheadRunes bounds how far ensureStarted looks ahead to find
-// the real first keyword (DECLARE/BEGIN/CREATE) for classifyStatementStart.
-// Needs to be generous: a real script can have a long header/boilerplate
-// comment block before a statement (an auto-generated init.sql's file
-// banner ran ~400 runes in one real case that tripped the previous 200-rune
-// cap — classification silently fell through to "not PL/SQL", and the
-// declare section's first semicolon then split the block in half). Cheap
-// per statement either way (ensureStarted runs once per statement, guarded
-// by `started`), so err on the generous side rather than re-tuning this
-// every time a longer comment header shows up in practice.
-const classifyLookaheadRunes = 8192
+// classifyLookaheadRunes is how much text classifyStatementStart gets,
+// measured from the first REAL character of the statement — the leading
+// whitespace/comments are skipped first, over the rune slice and without
+// allocating (skipNoiseRunes), so the size of a statement's comment header
+// no longer matters. It used to be a raw cap counted from the start of the
+// statement instead, and every long banner comment silently broke
+// classification: with 200 runes an auto-generated init.sql's file header
+// did it, then with 8192 a 9.5KB PL/SQL header comment in a real install
+// script did it again (SGCPRO.PR_PASE_LECTURAS_MAIN — classified as plain
+// SQL, so its declare section's first ';' shattered the procedure into
+// twenty invalid fragments). Only the opening keywords are ever needed
+// here, so this only has to clear "CREATE OR REPLACE PACKAGE BODY".
+const classifyLookaheadRunes = 128
 
 // SplitStatements splits sqlText into individual statements on top-level
 // `;`, respecting single/double-quoted strings, line (--) and block (/* */)
@@ -33,20 +35,53 @@ const classifyLookaheadRunes = 8192
 // a batch boundary (see isLoneGoLine). See detect.go's doc comment for the
 // accepted scope/limitations of the PL/SQL handling. Empty statements (blank
 // lines, a stray trailing `;`) are dropped.
+// PL/SQL frames tracked by SplitStatements' stack, innermost last.
+//
+//   - frameDecl:  the declarative section of a unit (a CREATE PROCEDURE's
+//     IS/AS section, a DECLARE section, or a nested subprogram's own IS/AS
+//     section). Closes by turning into frameBlock at that unit's BEGIN.
+//   - frameBlock: an executable BEGIN…END block. A CASE pushes one too,
+//     because a CASE *expression* closes with a bare END exactly like a
+//     block does.
+//
+// A ';' only ends the statement when the stack is empty, which is what
+// makes every ';' inside a unit — declarations, statements, and the ones
+// closing nested subprograms — harmless.
+const (
+	frameDecl = iota
+	frameBlock
+)
+
+// SplitStatements splits sqlText into individual statements on top-level
+// `;`, respecting single/double-quoted strings, line (--) and block (/* */)
+// comments, Postgres dollar-quoting ($$...$$ / $tag$...$tag$), and Oracle
+// PL/SQL block structure (DECLARE sections, CREATE
+// PROCEDURE/FUNCTION/PACKAGE/TRIGGER/TYPE bodies, and the subprograms
+// nested inside their declarative sections) — a `;` inside any of those
+// never splits the statement. A lone `/` line (SQL*Plus's "run the
+// buffered block" terminator) closes whatever statement is open, and a
+// T-SQL `GO` alone on its own line is honored as a batch boundary (see
+// isLoneGoLine). SQL*Plus client commands (SHOW ERRORS, SET SERVEROUTPUT,
+// …) come out as their own KindSQLPlus statements — see sqlplusCommandEnd.
+// See detect.go's doc comment for the accepted scope/limitations of the
+// PL/SQL handling. Empty statements (blank lines, a stray trailing `;`) are
+// dropped.
 func SplitStatements(sqlText string) []Statement {
 	runes := []rune(sqlText)
 	n := len(runes)
 
 	var out []Statement
 	stmtStart := 0
-	blockDepth := 0
-	awaitingBegin := false
+	// Open PL/SQL frames, innermost last — see the frameDecl/frameBlock
+	// constants above.
+	var stack []int
+	// headerPending: a PL/SQL unit header has been read (the statement's own
+	// CREATE … PROCEDURE, or a PROCEDURE/FUNCTION declared inside a
+	// declarative section) and we are waiting for the IS/AS that opens its
+	// declarative section — or for the `;` that means it was only a forward
+	// declaration and no body follows.
+	headerPending := false
 	inPLSQL := false
-	// Ver el bloque de BEGIN más abajo: juntos distinguen el BEGIN del cuerpo
-	// de un objeto PL/SQL del de un subprograma declarado en su sección
-	// declarativa.
-	unitDeclSection := false
-	nestedPending := 0
 	started := false // whether we've classified the statement starting at stmtStart yet
 
 	var inSingle, inDouble, inLineComment, inBlockComment bool
@@ -61,11 +96,9 @@ func SplitStatements(sqlText string) []Statement {
 			}
 			out = append(out, Statement{Text: text, Kind: kind})
 		}
-		blockDepth = 0
-		awaitingBegin = false
+		stack = nil
+		headerPending = false
 		inPLSQL = false
-		unitDeclSection = false
-		nestedPending = 0
 		started = false
 	}
 
@@ -74,11 +107,21 @@ func SplitStatements(sqlText string) []Statement {
 			return
 		}
 		started = true
-		lookahead := i + classifyLookaheadRunes
+		code := skipNoiseRunes(runes, i)
+		lookahead := code + classifyLookaheadRunes
 		if lookahead > n {
 			lookahead = n
 		}
-		awaitingBegin, inPLSQL = classifyStatementStart(string(runes[i:lookahead]))
+		headerPending, inPLSQL = classifyStatementStart(string(runes[code:lookahead]))
+	}
+
+	topIs := func(kind int) bool {
+		return len(stack) > 0 && stack[len(stack)-1] == kind
+	}
+	pop := func() {
+		if len(stack) > 0 {
+			stack = stack[:len(stack)-1]
+		}
 	}
 
 	i := 0
@@ -137,19 +180,45 @@ func SplitStatements(sqlText string) []Statement {
 		}
 
 		// A "/" alone on its own line is SQL*Plus's client-side "run the
-		// buffered block" terminator (the classic `END;\n/\n` convention
-		// pasted from tnsnames/sqlplus scripts) — never valid Oracle syntax
-		// on its own. Left in, it would (a) survive as a stray character in
-		// whatever statement follows, which Oracle chokes on, and (b) as
-		// the very next non-space character, break classifyStatementStart's
-		// DECLARE/BEGIN/CREATE prefix check for that next statement. Only
-		// treated as noise between statements (!started, nothing real
-		// accumulated yet) so a genuine division operator elsewhere is
-		// never touched.
-		if !started && c == '/' && (i+1 >= n || runes[i+1] != '*') && isLoneSlashLine(runes, i) {
-			stmtStart = i + 1
+		// buffered block" terminator (the classic `END;\n/\n` convention of
+		// every generated install script) — never valid Oracle syntax on its
+		// own. It is authoritative: whatever statement is still open ends
+		// here, whatever the frame stack believes. That makes it the safety
+		// net for the shapes this hand-rolled tokenizer can't model (a
+		// `CREATE TYPE … AS OBJECT (…)` never reaches a BEGIN, for one), and
+		// it can only ever END a statement early — never swallow the next
+		// one — so it costs nothing on scripts that don't use it.
+		//
+		// Left in, the "/" would also (a) survive as a stray character in
+		// whatever statement follows, which Oracle chokes on, and (b) as the
+		// next non-space character, break classifyStatementStart's
+		// DECLARE/BEGIN/CREATE prefix check for that next statement.
+		if c == '/' && (i+1 >= n || runes[i+1] != '*') && isLoneSlashLine(runes, i) {
+			if started {
+				flush(i)
+			}
 			i++
+			stmtStart = i
 			continue
+		}
+
+		// SQL*Plus client commands are line-oriented and never reach the
+		// server, so they end at the newline rather than at a ';' — without
+		// this, a `SHOW ERRORS PROCEDURE x` line (which carries no ';' at
+		// all) glued itself to the GRANT that followed it and took that
+		// GRANT down with it under one ORA-00900.
+		if !started {
+			if end, ok := sqlplusCommandEnd(runes, i); ok {
+				if text := strings.TrimSpace(string(runes[stmtStart:end])); text != "" {
+					out = append(out, Statement{Text: text, Kind: KindSQLPlus})
+				}
+				i = end
+				if i < n && runes[i] == '\n' {
+					i++
+				}
+				stmtStart = i
+				continue
+			}
 		}
 
 		ensureStarted(i)
@@ -158,9 +227,9 @@ func SplitStatements(sqlText string) []Statement {
 		// is T-SQL's batch separator — sqlcmd/SSMS split on it and never send
 		// it to the server. Treated as a statement/batch boundary here, the
 		// same idea as the SQL*Plus lone "/" above, and flushing regardless of
-		// blockDepth because GO always ends the current batch in T-SQL. Safe
-		// for the non-T-SQL engines: a line that is only "GO" isn't valid SQL
-		// in any of them either, so this never mis-splits a real statement.
+		// the frame stack because GO always ends the current batch in T-SQL.
+		// Safe for the non-T-SQL engines: a line that is only "GO" isn't valid
+		// SQL in any of them either, so this never mis-splits a real statement.
 		if matchKeywordAt(runes, i, "GO") && isLoneGoLine(runes, i) {
 			flush(i)
 			j := i
@@ -198,88 +267,110 @@ func SplitStatements(sqlText string) []Statement {
 		if c == '$' {
 			if tag, ok := matchDollarTag(runes, i); ok {
 				dollarTag = tag
-				awaitingBegin = false // dollar-quoted bodies are self-delimiting; see detect.go
+				headerPending = false // dollar-quoted bodies are self-delimiting; see detect.go
 				i += len(tag)
 				continue
 			}
 		}
 
 		// La sección declarativa de un CREATE PROCEDURE/FUNCTION/PACKAGE BODY
-		// puede declarar SUBPROGRAMAS anidados, y cada uno trae su propio
-		// BEGIN…END. Eso rompía la suposición de que "el primer BEGIN es el del
-		// cuerpo": el primer BEGIN de este procedure real
+		// puede declarar SUBPROGRAMAS anidados, y cada uno trae su propia
+		// sección declarativa y su propio BEGIN…END:
 		//
 		//     CREATE PROCEDURE p AS
-		//       PROCEDURE registrar_anomalia IS BEGIN … END registrar_anomalia;
-		//       FUNCTION  es_detectable      IS BEGIN … END es_detectable;
-		//     BEGIN            <-- éste es el de verdad
+		//       v_x NUMBER;
+		//       FUNCTION ya_procesado (...) RETURN BOOLEAN IS
+		//           v_estado NUMBER;          <-- este ';' NO cierra nada
+		//       BEGIN … END ya_procesado;
+		//     BEGIN            <-- éste es el BEGIN del cuerpo
 		//
-		// es el de `registrar_anomalia`. Con awaitingBegin ya apagado, su
-		// `END registrar_anomalia;` devolvía blockDepth a 0 y el `;` siguiente
-		// se tomaba como fin de statement: el procedure se partía en pedazos y
-		// el `BEGIN` principal viajaba solo a Oracle, que respondía
-		// PLS-00201 por cada variable de la sección declarativa que ese
-		// fragmento ya no tenía (caso real: SGCPRO.PR_FACT_INCONSISTENCIAS).
-		//
-		// unitDeclSection marca que estamos entre el IS/AS del objeto y su
-		// BEGIN; nestedPending cuenta los subprogramas declarados ahí que
-		// todavía no cerraron. Mientras haya alguno pendiente, un BEGIN es de
-		// ese subprograma y no del cuerpo.
-		// Las tres formas de abrir la sección declarativa: IS/AS en un
-		// procedure, función o package body; DECLARE en un trigger o en un
-		// bloque anónimo, que también pueden declarar subprogramas anidados.
-		if awaitingBegin && blockDepth == 0 && !unitDeclSection {
-			opener := ""
-			for _, kw := range [...]string{"IS", "AS", "DECLARE"} {
+		// Por eso el anidamiento se lleva con una pila de frames en vez de
+		// con un contador de "subprogramas pendientes": el contador se
+		// decrementaba con el PRIMER ';' de la sección declarativa del
+		// subprograma (el de `v_estado NUMBER;`), así que su `END
+		// ya_procesado;` se tomaba como fin del statement y el procedure se
+		// partía en pedazos — el BEGIN principal viajaba solo a Oracle, que
+		// respondía PLS-00201 por cada variable que ese fragmento ya no
+		// tenía (casos reales: SGCPRO.PR_LECB0100, SGCPRO.PR_LECB0200,
+		// SGCPRO.PR_FACT_INCONSISTENCIAS).
+		if !headerPending && topIs(frameDecl) {
+			nested := ""
+			for _, kw := range [...]string{"PROCEDURE", "FUNCTION"} {
 				if matchKeywordAt(runes, i, kw) {
-					opener = kw
+					nested = kw
 					break
 				}
 			}
-			if opener != "" {
-				unitDeclSection = true
-				i += len(opener)
+			if nested != "" {
+				headerPending = true
+				i += len(nested)
 				continue
 			}
 		}
-		if awaitingBegin && unitDeclSection && blockDepth == 0 {
-			if matchKeywordAt(runes, i, "PROCEDURE") {
-				nestedPending++
-				i += len("PROCEDURE")
+		// Un COMPOUND TRIGGER abre su sección declarativa con esas dos
+		// palabras en vez de con IS/AS, y adentro no declara subprogramas
+		// sino puntos de disparo (`BEFORE STATEMENT IS … END BEFORE
+		// STATEMENT;`), que sí se comportan como subprogramas anidados: cada
+		// uno trae su propio IS/BEGIN/END.
+		if headerPending && matchKeywordAt(runes, i, "COMPOUND") {
+			if next, end := peekNextWordSpan(runes, i+len("COMPOUND")); next == "TRIGGER" {
+				stack = append(stack, frameDecl)
+				headerPending = false
+				i = end
 				continue
 			}
-			if matchKeywordAt(runes, i, "FUNCTION") {
-				nestedPending++
-				i += len("FUNCTION")
+		}
+		if !headerPending && topIs(frameDecl) {
+			if end, ok := timingPointEnd(runes, i); ok {
+				headerPending = true
+				i = end
 				continue
 			}
+		}
+		// IS/AS abre la sección declarativa del header que veníamos leyendo.
+		// Sólo con headerPending: un `CURSOR c IS SELECT …` o un `TYPE t IS
+		// RECORD (…)` dentro de la misma sección no abre nada.
+		if headerPending && (matchKeywordAt(runes, i, "IS") || matchKeywordAt(runes, i, "AS")) &&
+			!isComparisonIS(runes, i+2) {
+			stack = append(stack, frameDecl)
+			headerPending = false
+			i += 2 // IS / AS
+			continue
 		}
 
+		if matchKeywordAt(runes, i, "DECLARE") {
+			stack = append(stack, frameDecl)
+			headerPending = false
+			i += len("DECLARE")
+			continue
+		}
 		if matchKeywordAt(runes, i, "BEGIN") {
-			// Sin subprogramas pendientes, éste es el BEGIN del cuerpo.
-			if nestedPending == 0 {
-				awaitingBegin = false
+			// El BEGIN del cuerpo convierte la sección declarativa de ESA
+			// unidad en su bloque ejecutable; un BEGIN dentro de un cuerpo
+			// abre un bloque anónimo anidado.
+			if topIs(frameDecl) {
+				stack[len(stack)-1] = frameBlock
+			} else {
+				stack = append(stack, frameBlock)
 			}
-			blockDepth++
+			headerPending = false
 			i += len("BEGIN")
 			continue
 		}
-		// CASE opens its own nesting level on the SAME counter as BEGIN.
-		// Real bug found live: a CASE *expression* (CASE WHEN ... THEN ...
-		// ELSE ... END, used as a value — e.g. an argument in a function
-		// call) closes with a BARE "END", no trailing "CASE" — indistinguishable
-		// from a real BEGIN...END block closer by the old END-handling below
-		// alone. Without tracking CASE's own open here, that bare END wrongly
-		// decremented the ENCLOSING block's depth one level early, so the
-		// next semicolon after it got treated as a top-level statement
-		// terminator — shattering the rest of a real procedure body into
-		// dozens of invalid fragments (confirmed: SGCPRO.PR_REFACT_NIR, whose
-		// v_ctx := T_REFACT_CTX(..., FECHA_TAR => CASE WHEN ... END, ...)
-		// call sits inside its BEGIN block). A CASE *statement* (ending in
-		// "END CASE;") already worked before this fix (see the END-handling
-		// below); this only had to stop miscounting the expression form.
+		// CASE opens its own frame, the same kind BEGIN does. Real bug found
+		// live: a CASE *expression* (CASE WHEN ... THEN ... ELSE ... END,
+		// used as a value — e.g. an argument in a function call) closes with
+		// a BARE "END", no trailing "CASE" — indistinguishable from a real
+		// BEGIN...END block closer by the END-handling below alone. Without
+		// tracking CASE's own open here, that bare END wrongly popped the
+		// ENCLOSING block one level early, so the next semicolon after it got
+		// treated as a top-level statement terminator — shattering the rest
+		// of a real procedure body into dozens of invalid fragments
+		// (confirmed: SGCPRO.PR_REFACT_NIR, whose v_ctx := T_REFACT_CTX(...,
+		// FECHA_TAR => CASE WHEN ... END, ...) call sits inside its BEGIN
+		// block).
 		if matchKeywordAt(runes, i, "CASE") {
-			blockDepth++
+			stack = append(stack, frameBlock)
 			i += len("CASE")
 			continue
 		}
@@ -287,48 +378,38 @@ func SplitStatements(sqlText string) []Statement {
 			next, nextEnd := peekNextWordSpan(runes, i+len("END"))
 			switch next {
 			case "IF", "LOOP":
-				// END IF / END LOOP never incremented this counter (see
-				// above), so there's nothing to undo here either.
+				// END IF / END LOOP never pushed a frame (see above), so
+				// there's nothing to undo here either.
 				i += len("END")
 			case "CASE":
-				// END CASE — closes the CASE pushed above. Consume the
-				// trailing "CASE" word too, or the next loop iteration would
-				// match it as a brand new CASE keyword and push again.
-				if blockDepth > 0 {
-					blockDepth--
-				}
+				// END CASE — pops the CASE pushed above. Consume the trailing
+				// "CASE" word too, or the next loop iteration would match it
+				// as a brand new CASE keyword and push again.
+				pop()
 				i = nextEnd
 			default:
-				// Bare END: closes whatever's actually open — a real BEGIN
-				// block, or a CASE *expression* (no trailing CASE word).
-				// Either way the counter it incremented is the same one, so
-				// popping it here is correct regardless of which it was.
-				if blockDepth > 0 {
-					blockDepth--
-				}
+				// Bare END (optionally followed by the unit's name): closes
+				// whatever's actually open — a BEGIN block, a CASE
+				// expression, or a package/type spec that never had a BEGIN.
+				pop()
 				i += len("END")
 			}
 			continue
 		}
 
-		// Un ';' a profundidad 0 dentro de la sección declarativa cierra el
-		// subprograma anidado que se venía contando: sirve tanto para el
-		// `END registrar_anomalia;` de uno con cuerpo como para el `PROCEDURE
-		// x(...);` de una declaración adelantada, que nunca va a traer BEGIN.
-		// Nunca parte el statement: ahí adentro el ';' separa declaraciones,
-		// no sentencias.
-		if c == ';' && awaitingBegin && blockDepth == 0 {
-			if nestedPending > 0 {
-				nestedPending--
+		if c == ';' {
+			if len(stack) == 0 {
+				flush(i)
+				i++
+				stmtStart = i
+				continue
 			}
+			// Dentro de una unidad el ';' separa declaraciones y sentencias,
+			// nunca statements. Si veníamos leyendo el header de un
+			// subprograma anidado, este ';' significa que era una declaración
+			// adelantada (`PROCEDURE x(...);`) y nunca va a traer IS/BEGIN.
+			headerPending = false
 			i++
-			continue
-		}
-
-		if c == ';' && !awaitingBegin && blockDepth == 0 {
-			flush(i)
-			i++
-			stmtStart = i
 			continue
 		}
 
@@ -337,6 +418,136 @@ func SplitStatements(sqlText string) []Statement {
 
 	flush(n)
 	return out
+}
+
+// timingPointEnd matches a COMPOUND TRIGGER timing-point header ("BEFORE
+// STATEMENT", "AFTER EACH ROW", "INSTEAD OF EACH ROW", …) at runes[i],
+// returning the index just past the two keywords that identify it. Inside a
+// compound trigger these play the role a nested PROCEDURE/FUNCTION plays
+// inside an ordinary unit: each one opens with IS and closes with its own
+// `END BEFORE STATEMENT;`.
+func timingPointEnd(runes []rune, i int) (int, bool) {
+	for _, kw := range [...]string{"BEFORE", "AFTER", "INSTEAD"} {
+		if !matchKeywordAt(runes, i, kw) {
+			continue
+		}
+		next, end := peekNextWordSpan(runes, i+len(kw))
+		switch next {
+		case "STATEMENT", "EACH", "OF":
+			return end, true
+		}
+	}
+	return 0, false
+}
+
+// isComparisonIS reports whether the IS/AS keyword just consumed (rest
+// starts right after it) is really the `IS [NOT] NULL`-style predicate
+// rather than the opener of a declarative section. Needed because a trigger
+// header can carry one before its body — `CREATE TRIGGER … WHEN (:new.x IS
+// NOT NULL) BEGIN …` — while headerPending is still set.
+func isComparisonIS(runes []rune, rest int) bool {
+	word, _ := peekNextWordSpan(runes, rest)
+	switch word {
+	case "NOT", "NULL", "EMPTY", "JSON", "NAN", "INFINITE":
+		return true
+	}
+	return false
+}
+
+// sqlplusOneWordCommands are SQL*Plus/SQLcl client commands whose first word
+// alone identifies them; everything to the end of the line is arguments.
+// None of them is valid SQL in any engine mini-tools supports, and they are
+// only ever matched at the very start of a statement AND of a line, so a
+// `CONNECT BY` inside a query or an `EXIT WHEN` inside a PL/SQL loop is
+// never mistaken for one.
+var sqlplusOneWordCommands = map[string]bool{
+	"SPOOL": true, "PROMPT": true, "REM": true, "REMARK": true,
+	"DEFINE": true, "UNDEFINE": true, "ACCEPT": true, "PAUSE": true,
+	"TTITLE": true, "BTITLE": true, "WHENEVER": true, "CLEAR": true,
+	"HOST": true, "EXIT": true, "QUIT": true, "CONNECT": true,
+	"DISCONNECT": true, "STARTUP": true, "SHUTDOWN": true,
+	"COLUMN": true, "VARIABLE": true, "PRINT": true, "TIMING": true,
+	"STORE": true, "REPFOOTER": true, "REPHEADER": true,
+}
+
+// sqlplusSetOptions are the SET options that belong to SQL*Plus's client
+// state, not to a server-side SET. Deliberately a whitelist: Postgres
+// (`SET search_path …`) and SQL Server (`SET NOCOUNT ON`) both have a real
+// SET statement, and neither uses any of these names.
+var sqlplusSetOptions = map[string]bool{
+	"SERVEROUTPUT": true, "ECHO": true, "FEEDBACK": true, "FEED": true,
+	"HEADING": true, "HEADS": true, "VERIFY": true, "VER": true,
+	"LINESIZE": true, "LIN": true, "PAGESIZE": true, "PAGES": true,
+	"TERMOUT": true, "TERM": true, "TRIMSPOOL": true, "TRIMOUT": true,
+	"DEFINE": true, "ESCAPE": true, "TIMING": true, "TIME": true,
+	"SQLBLANKLINES": true, "SQLPROMPT": true, "SQLTERMINATOR": true,
+	"BLOCKTERMINATOR": true, "LONG": true, "LONGCHUNKSIZE": true,
+	"NEWPAGE": true, "NUMWIDTH": true, "NUMFORMAT": true, "COLSEP": true,
+	"RECSEP": true, "WRAP": true, "AUTOPRINT": true, "AUTOTRACE": true,
+	"MARKUP": true, "CONCAT": true, "ARRAYSIZE": true, "CMDSEP": true,
+	"SCAN": true, "PAUSE": true, "EDITFILE": true, "EMBEDDED": true,
+	"FLUSH": true, "SPACE": true, "TAB": true, "UNDERLINE": true,
+	"ERRORLOGGING": true, "COPYCOMMIT": true, "SUFFIX": true,
+	"APPINFO": true, "COLINVISIBLE": true,
+}
+
+// sqlplusShowOptions are the SHOW arguments that mean the SQL*Plus command.
+// Also a whitelist, and for the same reason: Postgres's `SHOW <parameter>`
+// is a real statement, so only names that are unambiguously SQL*Plus's are
+// listed (`SHOW ALL`, a valid Postgres statement, is deliberately absent).
+var sqlplusShowOptions = map[string]bool{
+	"ERRORS": true, "ERR": true, "SERVEROUTPUT": true, "SPOOL": true,
+	"RELEASE": true, "USER": true, "SGA": true, "PARAMETERS": true,
+	"PARAMETER": true, "RECYCLEBIN": true, "PDBS": true, "CON_ID": true,
+	"CON_NAME": true, "TTITLE": true, "BTITLE": true, "AUTOCOMMIT": true,
+	"LNO": true, "PNO": true, "EDITION": true,
+}
+
+// sqlplusCommandEnd reports whether runes[i] starts a SQL*Plus/SQLcl client
+// command, returning the index of the end of its line (the '\n' itself, or
+// len(runes)). Requires i to be at the start of its line — SQL*Plus only
+// recognises these commands there, and requiring it keeps the match from
+// firing on anything that merely follows a ';' on the same line.
+func sqlplusCommandEnd(runes []rune, i int) (int, bool) {
+	for j := i - 1; j >= 0; j-- {
+		if runes[j] == '\n' {
+			break
+		}
+		if !unicode.IsSpace(runes[j]) {
+			return 0, false
+		}
+	}
+
+	n := len(runes)
+	lineEnd := i
+	for lineEnd < n && runes[lineEnd] != '\n' {
+		lineEnd++
+	}
+
+	// "@script.sql" / "@@script.sql" — run another script, client-side.
+	if runes[i] == '@' {
+		return lineEnd, true
+	}
+
+	first, afterFirst := peekNextWordSpan(runes, i)
+	switch {
+	case sqlplusOneWordCommands[first]:
+		return lineEnd, true
+	case first == "SET":
+		second, _ := peekNextWordSpan(runes, afterFirst)
+		if sqlplusSetOptions[second] {
+			return lineEnd, true
+		}
+	case first == "SHOW":
+		second, _ := peekNextWordSpan(runes, afterFirst)
+		// A bare "SHOW" is SQL*Plus too (it errors out client-side); an
+		// argument we don't know is left alone so a Postgres `SHOW work_mem`
+		// still reaches the server.
+		if second == "" || sqlplusShowOptions[second] {
+			return lineEnd, true
+		}
+	}
+	return 0, false
 }
 
 func isWordChar(r rune) bool {
@@ -458,6 +669,42 @@ func isLoneGoLine(runes []rune, i int) bool {
 		j++
 	}
 	return true
+}
+
+// skipNoiseRunes is skipLeadingNoise over the rune slice: it returns the
+// index of the first character of runes[i:] that is neither whitespace, a
+// "--" line comment, a "/* */" block comment, nor a lone SQL*Plus "/"
+// terminator line. Same rules as skipLeadingNoise, but it allocates nothing
+// and never has to materialise the rest of the script as a string — which
+// is what lets the splitter classify a statement without capping how much
+// comment header it is willing to look past.
+func skipNoiseRunes(runes []rune, i int) int {
+	n := len(runes)
+	for i < n {
+		switch {
+		case unicode.IsSpace(runes[i]):
+			i++
+		case runes[i] == '-' && i+1 < n && runes[i+1] == '-':
+			for i < n && runes[i] != '\n' {
+				i++
+			}
+		case runes[i] == '/' && i+1 < n && runes[i+1] == '*':
+			i += 2
+			for i+1 < n && !(runes[i] == '*' && runes[i+1] == '/') {
+				i++
+			}
+			if i+1 < n {
+				i += 2
+			} else {
+				i = n
+			}
+		case runes[i] == '/' && isLoneSlashLine(runes, i):
+			i++
+		default:
+			return i
+		}
+	}
+	return n
 }
 
 // skipLeadingNoise strips whitespace, "--" line comments, "/* */" block
