@@ -633,6 +633,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // tiene que reflejarlo YA. Un control de privacidad que muestra el estado
     // anterior es peor que no mostrarlo.
     useEffect(() => EventsOn('note:privacy', () => setNotesToken((n) => n + 1)), [])
+    // Una nota creada o reescrita por un agente vía MCP cambia sin que la
+    // interfaz haya hecho nada: sin este aviso, el árbol la mostraría recién al
+    // reabrir la app, que se lee como que no se guardó.
+    useEffect(() => EventsOn('note:changed', () => setNotesToken((n) => n + 1)), [])
 
     // Editores de las notas abiertas, por pestaña. Son vistas de CodeMirror
     // distintas de la del editor SQL, y hay una por nota montada.

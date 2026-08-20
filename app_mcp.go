@@ -8,10 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"mini-tools/backend/appdata"
 	"mini-tools/backend/db"
 	"mini-tools/backend/git"
 	"mini-tools/backend/mcpserver"
+	"mini-tools/backend/vault"
 )
 
 // Servidor MCP: las herramientas que la aplicación le ofrece a un agente.
@@ -47,6 +50,11 @@ type mcpAudit struct {
 // escribirlo en disco sería empezar a guardar rastros de lo que se consultó.
 const maxAuditEntries = 200
 
+// maxMCPNoteBytes acota lo que un agente puede dejar escrito de una. 64 KB son
+// muchísimo para una nota que alguien va a leer y poquísimo para lo que un
+// modelo puede generar si se lo deja suelto.
+const maxMCPNoteBytes = 64 * 1024
+
 type mcpState struct {
 	mu     sync.Mutex
 	bridge *mcpserver.Bridge
@@ -60,6 +68,9 @@ type MCPStatus struct {
 	SocketPath string `json:"socketPath"`
 	// Tools es cuántas herramientas se exponen con la configuración actual.
 	Tools int `json:"tools"`
+	// NotesWrite es si el agente puede CREAR notas. Es un permiso aparte del
+	// interruptor del servidor: ver SetMCPNotesWrite.
+	NotesWrite bool `json:"notesWrite"`
 	// Audit son los últimos accesos, del más reciente al más viejo.
 	Audit []mcpAudit `json:"audit"`
 	// Executable es la ruta absoluta de este binario, que es lo que hay que
@@ -82,6 +93,7 @@ func (a *App) MCPServerStatus() (MCPStatus, error) {
 		Enabled:    a.mcp.bridge != nil,
 		SocketPath: a.mcp.bridge.Path(),
 		Tools:      len(a.mcpTools()),
+		NotesWrite: a.mcpNotesWrite(),
 		Executable: exe,
 	}
 	// Del más reciente al más viejo, que es como se lee.
@@ -149,6 +161,39 @@ func (a *App) CallTool(name string, args map[string]any) (string, error) {
 	return out, err
 }
 
+// mcpNotesWrite lee el permiso de escritura. Se consulta EN CADA llamada y no
+// se cachea: revocarlo tiene que valer para la herramienta que el agente está
+// por invocar, no para la próxima vez que se abra la app.
+//
+// Un error leyendo la preferencia devuelve false: ante la duda, el agente no
+// escribe.
+func (a *App) mcpNotesWrite() bool {
+	settings, err := a.vault.GetSettings()
+	if err != nil {
+		return false
+	}
+	return settings.MCPNotesWrite
+}
+
+// SetMCPNotesWrite deja —o deja de dejar— que el agente cree notas por MCP.
+//
+// **Es una decisión aparte de encender el servidor.** Hasta acá todas las
+// herramientas eran de lectura, y esa era la promesa del módulo: el agente mira
+// lo que se le comparte y no toca nada. Poder crear notas rompe esa promesa, así
+// que no llega de arrastre al encender el servidor.
+//
+// Lo que este permiso NO habilita, y por eso sigue siendo acotado: **tocar lo
+// que escribió el usuario, y borrar**. El agente agrega conocimiento nuevo y
+// puede corregir SUS notas mientras nadie las haya editado después — ver
+// vault.AgentCanEdit. Una nota privada le queda fuera de alcance también para
+// escribir, porque la edición pasa por la misma puerta que la lectura.
+func (a *App) SetMCPNotesWrite(enabled bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetMCPNotesWrite(enabled)
+}
+
 func (a *App) recordMCPAccess(tool, resource string, denied bool) {
 	a.mcp.mu.Lock()
 	defer a.mcp.mu.Unlock()
@@ -173,7 +218,7 @@ func (a *App) mcpTools() []mcpserver.ToolInfo {
 		return m
 	}
 
-	return []mcpserver.ToolInfo{
+	tools := []mcpserver.ToolInfo{
 		{
 			Name: "vault_search_notes",
 			Description: "Busca en la base de conocimiento del usuario (runbooks, procedimientos, notas técnicas). " +
@@ -225,6 +270,36 @@ func (a *App) mcpTools() []mcpserver.ToolInfo {
 			InputSchema: obj(map[string]any{"repo": str("Nombre del repositorio tal como aparece en la app.")}, "repo"),
 		},
 	}
+
+	// La herramienta de ESCRITURA solo existe si el usuario la habilitó. No se
+	// declara y se rechaza al llamarla: una herramienta que aparece en la lista
+	// y siempre falla es una invitación a que el modelo la intente igual, y el
+	// catálogo es lo único que el agente lee antes de decidir.
+	if a.mcpNotesWrite() {
+		tools = append(tools, mcpserver.ToolInfo{
+			Name: "vault_create_note",
+			Description: "Crea una nota NUEVA en la base de conocimiento del usuario (su 'cerebro'), con título y contenido en Markdown. " +
+				"Sirve para dejar asentado lo que se averiguó: un procedimiento, un diagnóstico, una decisión. " +
+				"NO pisa nada: un título repetido se rechaza, elegí otro. Para corregir una nota que creaste vos, usá vault_update_note. " +
+				"La nota queda marcada como creada por un agente y visible para el usuario en su aplicación.",
+			InputSchema: obj(map[string]any{
+				"title":   str("Título de la nota. Único: es lo que la hace enlazable con [[…]] desde otras notas."),
+				"content": str("Contenido en Markdown. Podés enlazar otras notas con [[Título]] y etiquetar con #etiqueta."),
+			}, "title", "content"),
+		})
+		tools = append(tools, mcpserver.ToolInfo{
+			Name: "vault_update_note",
+			Description: "Reescribe el contenido de una nota que VOS creaste antes con vault_create_note — para corregirla o ampliarla. " +
+				"Solo funciona sobre tus propias notas: las que escribió el usuario, y las tuyas que él haya editado después, se rechazan. " +
+				"Tampoco toca ninguna nota marcada como privada. " +
+				"REEMPLAZA el contenido entero: leelo antes con vault_read_note si querés conservar parte.",
+			InputSchema: obj(map[string]any{
+				"title":   str("Título exacto de la nota a reescribir. El título no cambia."),
+				"content": str("El contenido completo en Markdown que reemplaza al anterior."),
+			}, "title", "content"),
+		})
+	}
+	return tools
 }
 
 // runMCPTool ejecuta una herramienta. Devuelve además qué recurso se tocó, para
@@ -261,6 +336,80 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 			return "", title, err
 		}
 		return note.Content, title, nil
+
+	case "vault_create_note":
+		// El permiso se vuelve a comprobar acá y no solo al armar el catálogo:
+		// entre que el agente leyó la lista y llama pueden pasar minutos, y en
+		// el medio el usuario pudo revocarlo. Un permiso que solo se mira al
+		// listar es un permiso que no se puede revocar.
+		if !a.mcpNotesWrite() {
+			return "", "", fmt.Errorf("el usuario no habilitó que un agente cree notas. Se activa en la aplicación, en Acceso de IA")
+		}
+		title := strings.TrimSpace(mcpserver.StringArg(args, "title"))
+		content := mcpserver.StringArg(args, "content")
+		if title == "" || strings.TrimSpace(content) == "" {
+			return "", title, fmt.Errorf("hacen falta un título y un contenido")
+		}
+		// Tope de tamaño: una nota es algo que una persona va a leer. Sin
+		// límite, una respuesta larga del modelo termina volcada entera en el
+		// vault del usuario.
+		if len(content) > maxMCPNoteBytes {
+			return "", title, fmt.Errorf("la nota es demasiado grande (%d KB, máximo %d KB) — resumila o partila en varias", len(content)/1024, maxMCPNoteBytes/1024)
+		}
+
+		// El frontmatter es lo que hace que "¿esto lo escribí yo o el agente?"
+		// tenga respuesta seis meses después. Va como metadato y no dentro del
+		// texto: la nota se lee limpia, y el dato sigue ahí.
+		fm := vault.NewAgentFrontmatter(time.Now())
+		id, err := a.createNote(title, content, fm)
+		if err != nil {
+			return "", title, err
+		}
+		// La nota nace NO privada a propósito: la escribió el agente, no es un
+		// secreto del usuario, y marcarla privada haría que ni siquiera pueda
+		// releer lo que acaba de dejar asentado. Esconderla después es un clic
+		// en la aplicación.
+		runtime.EventsEmit(a.ctx, NoteChangedEvent, map[string]string{"id": id, "title": title})
+		return fmt.Sprintf("Nota creada: %q. El usuario ya la ve en su base de conocimiento.", title), title, nil
+
+	case "vault_update_note":
+		if !a.mcpNotesWrite() {
+			return "", "", fmt.Errorf("el usuario no habilitó que un agente escriba notas. Se activa en la aplicación, en Acceso de IA")
+		}
+		title := strings.TrimSpace(mcpserver.StringArg(args, "title"))
+		content := mcpserver.StringArg(args, "content")
+		if title == "" || strings.TrimSpace(content) == "" {
+			return "", title, fmt.Errorf("hacen falta el título de la nota y el contenido nuevo")
+		}
+		if len(content) > maxMCPNoteBytes {
+			return "", title, fmt.Errorf("la nota es demasiado grande (%d KB, máximo %d KB)", len(content)/1024, maxMCPNoteBytes/1024)
+		}
+
+		// **La misma puerta que para leer.** NoteForAI ya rechaza las notas
+		// privadas con un mensaje que explica por qué, así que la regla "una
+		// nota privada no se toca" no se vuelve a escribir acá: si el agente no
+		// la puede leer, tampoco la puede editar, y las dos cosas dependen de
+		// una sola comprobación.
+		note, err := a.vault.NoteForAI(title)
+		if err != nil {
+			return "", title, err
+		}
+		if !vault.AgentCanEdit(note.Frontmatter) {
+			return "", title, fmt.Errorf(
+				"la nota %q no la creaste vos: la escribió el usuario, o vos la creaste y él la editó después. "+
+					"Un agente solo puede reescribir sus propias notas intactas. "+
+					"Si hace falta cambiarla, decíselo al usuario o creá una nota nueva que la complemente", title)
+		}
+
+		// El frontmatter conserva el origen y suma cuándo fue la última
+		// reescritura: la nota sigue diciendo quién la escribió y cuándo se
+		// tocó por última vez.
+		fm := vault.WithAgentUpdate(note.Frontmatter, time.Now())
+		if err := a.vault.UpdateNote(note.ID, title, content, fm); err != nil {
+			return "", title, err
+		}
+		runtime.EventsEmit(a.ctx, NoteChangedEvent, map[string]string{"id": note.ID, "title": title})
+		return fmt.Sprintf("Nota %q actualizada.", title), title, nil
 
 	case "db_list_connections":
 		conns, err := a.vault.ListConnections()

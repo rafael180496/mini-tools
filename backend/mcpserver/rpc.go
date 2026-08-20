@@ -79,6 +79,17 @@ type Tool struct {
 type Server struct {
 	mu    sync.Mutex
 	tools []Tool
+	// provider vuelve a pedir el catálogo en cada `tools/list`, cuando quien
+	// arma el servidor puede hacerlo. Es lo que permite que habilitar una
+	// herramienta desde la aplicación se note sin reiniciar el CLI: sin esto,
+	// la lista que se registró al arrancar era la única que se iba a ver.
+	provider  func() []Tool
+	afterCall func()
+	// enc y encMu son la salida compartida: las respuestas las escribe Serve y
+	// las notificaciones cualquier goroutine, y dos escrituras encimadas
+	// producen una línea JSON ilegible para el cliente.
+	enc   *json.Encoder
+	encMu sync.Mutex
 	name  string
 	// version se informa en initialize, para que el CLI pueda decir con qué
 	// está hablando.
@@ -90,6 +101,39 @@ func New(name, version string) *Server {
 }
 
 // Register agrega una herramienta. Se llama antes de Serve.
+// SetAfterCall instala un gancho que corre DESPUÉS de cada `tools/call`. Lo usa
+// el proceso MCP para avisar que el catálogo cambió — ver RunStdio.
+func (s *Server) SetAfterCall(f func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.afterCall = f
+}
+
+// SetProvider instala el catálogo dinámico. Se llama antes de Serve.
+func (s *Server) SetProvider(f func() []Tool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.provider = f
+}
+
+// Notify manda una notificación JSON-RPC al cliente (sin id, sin respuesta).
+//
+// Se usa para `notifications/tools/list_changed`: el cliente MCP cachea el
+// catálogo, así que un permiso nuevo no lo ve hasta que alguien le dice que
+// vuelva a preguntar.
+func (s *Server) Notify(method string, params any) {
+	s.encMu.Lock()
+	defer s.encMu.Unlock()
+	if s.enc == nil {
+		return
+	}
+	msg := map[string]any{"jsonrpc": "2.0", "method": method}
+	if params != nil {
+		msg["params"] = params
+	}
+	_ = s.enc.Encode(msg)
+}
+
 func (s *Server) Register(t Tool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,6 +153,10 @@ func (s *Server) Serve(r io.Reader, w io.Writer) error {
 	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 
 	enc := json.NewEncoder(w)
+	s.encMu.Lock()
+	s.enc = enc
+	s.encMu.Unlock()
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
@@ -128,7 +176,10 @@ func (s *Server) Serve(r io.Reader, w io.Writer) error {
 		if !hasResponse {
 			continue
 		}
-		if err := enc.Encode(resp); err != nil {
+		s.encMu.Lock()
+		err := enc.Encode(resp)
+		s.encMu.Unlock()
+		if err != nil {
 			return fmt.Errorf("mcpserver: escribiendo la respuesta: %w", err)
 		}
 	}
@@ -152,12 +203,21 @@ func (s *Server) handle(req Request) (Response, bool) {
 			// Solo se declara `tools`. No hay `resources` ni `prompts` a
 			// propósito: declarar una capacidad que después no se atiende hace
 			// que el cliente pregunte y se lleve un error.
-			"capabilities": map[string]any{"tools": map[string]any{}},
+			// `listChanged` se declara porque de verdad se manda: ver Notify y
+			// el reenvío del proceso MCP. Declarar una capacidad que no se
+			// cumple es peor que no declararla.
+			"capabilities": map[string]any{"tools": map[string]any{"listChanged": true}},
 			"serverInfo":   map[string]any{"name": s.name, "version": s.version},
 		}
 
 	case "tools/list":
+		// Con proveedor se vuelve a pedir el catálogo entero: es la única forma
+		// de que una herramienta habilitada (o revocada) hace un minuto en la
+		// aplicación aparezca acá sin reiniciar el CLI.
 		s.mu.Lock()
+		if s.provider != nil {
+			s.tools = s.provider()
+		}
 		list := make([]Tool, len(s.tools))
 		copy(list, s.tools)
 		s.mu.Unlock()
@@ -165,6 +225,15 @@ func (s *Server) handle(req Request) (Response, bool) {
 
 	case "tools/call":
 		resp.Result = s.callTool(req.Params)
+		// El gancho corre en otra goroutine: la respuesta de la herramienta ya
+		// está lista y hacerla esperar un viaje más al socket sería cobrarle al
+		// usuario el precio de una comprobación que no pidió.
+		s.mu.Lock()
+		after := s.afterCall
+		s.mu.Unlock()
+		if after != nil {
+			go after()
+		}
 
 	case "ping":
 		resp.Result = map[string]any{}

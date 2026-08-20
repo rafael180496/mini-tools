@@ -148,6 +148,10 @@ export default function NoteEditorTab({
     const [preview, setPreview] = useState(false)
     const [links, setLinks] = useState<vault.NoteLink[]>([])
     const [backlinks, setBacklinks] = useState<vault.NoteLink[]>([])
+    // Un agente reescribió ESTA nota mientras estaba abierta y hay cambios sin
+    // guardar. No se recarga sola: pisar lo que la persona está escribiendo es
+    // peor que mostrarle texto viejo. Se avisa y ella decide.
+    const [externalChange, setExternalChange] = useState(false)
     const [confirmShare, setConfirmShare] = useState(false)
     const [confirmDelete, setConfirmDelete] = useState(false)
     // Números de la barra de estado: cuántas notas la enlazan y cuánto tiene
@@ -166,6 +170,11 @@ export default function NoteEditorTab({
     contentRef.current = content
     const titleRef = useRef(title)
     titleRef.current = title
+    // Lo lee el manejador del evento de "cambió por fuera", que se registra una
+    // sola vez por nota: una copia capturada ahí se quedaría en el `false` del
+    // montaje y recargaría encima de lo que se está escribiendo.
+    const dirtyRef = useRef(dirty)
+    dirtyRef.current = dirty
 
     // --- carga -------------------------------------------------------------
 
@@ -208,6 +217,38 @@ export default function NoteEditorTab({
                 setNote((n) => (n ? ({...n, isPrivate: payload.isPrivate} as vault.Note) : n))
             }),
         [noteId],
+    )
+
+    // Una nota puede cambiar por fuera de esta pestaña: hoy, porque un agente la
+    // reescribió por MCP. Sin esto el editor seguiría mostrando el texto viejo
+    // y su autoguardado terminaría pisando lo que el agente acaba de escribir.
+    //
+    // Sin cambios sin guardar se recarga sola —no hay nada que perder—; con
+    // cambios propios se avisa y decide la persona.
+    const reloadFromDisk = useCallback(() => {
+        GetNote(noteId)
+            .then((n) => {
+                setNote(n)
+                setTitle(n.title)
+                setContent(n.content)
+                setAlign(parseAlign(n.frontmatter))
+                setDirty(false)
+                setExternalChange(false)
+            })
+            .catch((e) => setError(String(e)))
+    }, [noteId])
+
+    useEffect(
+        () =>
+            EventsOn('note:changed', (payload: {id: string; title: string}) => {
+                if (payload?.id !== noteId) return
+                if (dirtyRef.current) {
+                    setExternalChange(true)
+                    return
+                }
+                reloadFromDisk()
+            }),
+        [noteId, reloadFromDisk],
     )
 
     // Los números se recalculan al guardar, no en cada tecla: contar palabras
@@ -616,6 +657,32 @@ export default function NoteEditorTab({
                         view.focus()
                     }}
                 />
+            )}
+
+            {/* Un agente reescribió esta nota mientras se editaba. No se recarga
+                sola porque hay cambios sin guardar: se ofrecen las dos salidas
+                y ninguna se toma por el usuario. */}
+            {externalChange && (
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-tertiary/10 px-3 py-1.5 text-[11px] text-on-surface">
+                    <Icon name="smart_toy" size={14} className="shrink-0 text-tertiary" />
+                    <span className="min-w-0 flex-1">
+                        Un agente reescribió esta nota mientras la editabas. Tus cambios sin guardar siguen acá.
+                    </span>
+                    <button
+                        onClick={reloadFromDisk}
+                        title="Descarta lo que escribiste sin guardar y muestra la versión que dejó el agente"
+                        className="shrink-0 rounded border border-outline-variant px-2 py-0.5 text-on-surface-variant hover:text-on-surface"
+                    >
+                        Ver la del agente
+                    </button>
+                    <button
+                        onClick={() => setExternalChange(false)}
+                        title="Sigue editando lo tuyo. Al guardar, tu versión reemplaza a la del agente — y la nota pasa a ser tuya: no la va a poder volver a cambiar."
+                        className="shrink-0 rounded border border-outline-variant px-2 py-0.5 text-on-surface-variant hover:text-on-surface"
+                    >
+                        Seguir con lo mío
+                    </button>
+                </div>
             )}
 
             {/* Elegir una imagen del disco. Input oculto y no un diálogo nativo

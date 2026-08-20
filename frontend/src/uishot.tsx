@@ -635,9 +635,12 @@ const fixtures: Record<string, unknown> = {
     MCPServerStatus: {
         enabled: true,
         socketPath: '/Users/tu-usuario/Library/Application Support/mini-tools/mcp.sock',
-        tools: 7,
+        tools: 9,
+        notesWrite: true,
         executable: '/Applications/mini-tools.app/Contents/MacOS/mini-tools',
         audit: [
+            {tool: 'vault_update_note', resource: 'Diagnóstico · pool lleno el 18/08', denied: false, at: 1786741450},
+            {tool: 'vault_create_note', resource: 'Diagnóstico · pool lleno el 18/08', denied: false, at: 1786741420},
             {tool: 'vault_search_notes', resource: 'pool de conexiones', denied: false, at: 1786741380},
             {tool: 'db_get_schema', resource: 'SGCPRO.FACTURAS', denied: false, at: 1786741260},
             {tool: 'vault_read_note', resource: 'Credenciales de laboratorio', denied: true, at: 1786741100},

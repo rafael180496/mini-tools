@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.1.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.2.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -19,58 +19,49 @@ Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en
 
 ---
 
-## Novedades — 2.1.0
+## Novedades — 2.2.0
 
-**La versión que se ocupa de la app en sí.** La 2.0.0 trajo la IA a todos los
-módulos; esta se dedica a lo que uno mira ocho horas por día — la ventana, la
-barra lateral, el editor — y a dos cosas que le faltaban al editor SQL para
-sentirse como un cliente de base de datos de verdad.
+**La versión en la que el agente deja de ser solo un lector.** La 2.0.0 trajo la
+IA a todos los módulos y la 2.1.0 se ocupó de la app en sí; esta le da al
+asistente permiso para escribir en tu base de conocimiento, suma las terminales
+del sistema operativo al módulo SSH, y pone a la vista cuánta cuota te queda en
+cada proveedor.
 
-- **Los procedures y functions se ofrecen con su firma completa**, como en
-  DataGrip: qué parámetros piden, en qué orden, de qué tipo y cuáles son `OUT`.
-  Al aceptar uno se inserta la llamada con **un tab stop por parámetro ya
-  rotulado**, y mientras escribís los argumentos un **tooltip resalta en cuál
-  estás parado** — entiende llamadas anidadas y la notación `p_total =>` de
-  Oracle. En Oracle se indexan además **los miembros de cada package**, que es
-  donde vive casi todo el código invocable y hasta ahora era un punto ciego.
-- **Consultas con parámetros**: escribís `:desde` y la app pregunta el valor
-  antes de correr, con su tipo, y los recuerda por pestaña. **Nunca entran al
-  texto del SQL** — viajan aparte y se enlazan como argumentos del driver.
-  Reconoce `:nombre`, `$1` y `?` según el motor, y reconoce lo que **no** es un
-  parámetro: el `:=` de PL/SQL, el `::` de los casts, el `:NEW`/`:OLD` de los
-  triggers y todo lo que esté dentro de un literal o un comentario.
-- **Barra lateral con menú de módulos.** Los cuatro módulos —bases, SSH, Git,
-  notas— se eligen desde una fila de íconos y se ve **uno a la vez**, así que el
-  que estás usando se queda con toda la altura en vez de la franja que le
-  dejaban los otros tres apilados. La búsqueda sigue siendo **una sola para los
-  cuatro** y los íconos muestran cuántas coincidencias tiene cada uno. La barra
-  se arrastra para cambiarle el ancho y se oculta entera; ancho y módulo abierto
-  quedan guardados.
-- **Barra de título propia, con el tema de la app, en los tres sistemas.** En
-  macOS se conservan los semáforos —son el control estándar de la ventana, no
-  decoración— y se saca la franja gris de alrededor; en Windows y Linux la
-  ventana va sin marco y los botones los dibuja la app.
-- **El editor se configura como cualquier editor de texto**: tema, fuente,
-  cuerpo, ajuste de línea, números de línea y tabulación, con muestra en vivo y
-  aplicado a la vez al editor SQL y al de archivos de Git. La **barra de
-  acciones** tiene tres modos: normal, compacta u oculta —ocultarla no desactiva
-  nada, porque todo tiene atajo—.
-- **Cada pestaña dice de qué tipo es, escrito** (`SQL`, `REDIS`, `SSH`, `GIT`,
-  `NOTA`…) y, si está vinculada a una conexión, con el logo real del motor: qué
-  es la pestaña y contra qué corre se leen sin pasar el mouse.
-
-Changelog completo, incluida la 2.0.0, en [CHANGELOG.md](CHANGELOG.md).
-
-
-## Lo que lo hace distinto
-
-**Un solo programa para todo el día.** La consulta a Oracle, el `tail -f` por SSH, el rebase, el archivo que hay que subir por SFTP y la charla con el agente: todo en la misma ventana, con los mismos atajos y el mismo tema.
-
-**Los agentes de IA como parte de la herramienta, no como una pestaña de navegador.** Claude Code, Codex y Antigravity corren sobre el repositorio abierto, con el diff al lado. Podés chatear con ellos, ver **qué hace cada acción antes de autorizarla**, y saber cuántos tokens llevás gastados y con qué plan.
-
-**Nada se va de tu máquina.** El vault es un SQLite local con los DSN cifrados columna a columna (AES-256-GCM, clave derivada con Argon2id). No hay servidor, no hay cuenta, no hay telemetría. Sin la clave maestra no hay acceso — y no hay bypass.
-
-**Pesa lo que pesa un binario nativo.** 50 MB, arranque instantáneo, sin un runtime de Node ni una JVM detrás.
+- **El servidor MCP ahora escribe: el agente puede crear notas y corregir las
+  suyas.** Con el permiso activado —apagado por defecto, con su propio
+  interruptor— cualquier CLI conectado puede dejar asentado lo que averiguó como
+  una nota nueva en tu «cerebro», y volver sobre ella para ampliarla. **Nunca
+  toca lo que escribiste vos**: solo reescribe notas que creó él y que nadie
+  editó después, apenas guardás una de las suyas pasa a ser tuya, una nota
+  privada le queda fuera de alcance igual que para leer, y borrar no puede nunca.
+  Cada nota que crea queda marcada como suya en su frontmatter, y cada alta y
+  cada cambio quedan en el registro de accesos.
+- **Terminales de tu máquina dentro del módulo SSH.** PowerShell, zsh, bash o el
+  intérprete que tengas configurado, cada uno en su pestaña, con **los mismos
+  snippets** que ya usabas contra los servidores y **su propio historial** por
+  intérprete —cifrado, con el mismo filtro que descarta las líneas que parecen
+  traer una contraseña—. El trabajo real cruza las dos orillas todo el tiempo: se
+  mira un log en el server, se copia algo a la máquina de uno, se corre un `scp`.
+- **Cuánta cuota llevás usada, por proveedor y sin salir de la app.** Barras con
+  el porcentaje de la ventana de 5 horas y de la semanal, la hora en que se
+  midieron y cuándo se reinician. No es una división inventada: se lee el número
+  que ya calculó el servidor de cada proveedor y que su CLI dejó cacheado en
+  disco. Antigravity, que no lo guarda en ningún archivo, se consulta
+  preguntándole a su propio CLI con un botón.
+- **Las notas entienden tablas** —y listas numeradas, de verificación, anidadas,
+  tachado, imágenes y bloques plegables—. Las tablas se dibujan como tablas
+  **mientras escribís** y vuelven a texto plano cuando el cursor entra en ellas,
+  igual que ya pasaba con los títulos y los enlaces. Y cada renglón que escribís
+  es un renglón al leer la nota, como en Obsidian.
+- **Git: el commit se escribe solo si querés.** Un botón ✦ dentro del campo del
+  mensaje se lo pide al agente por defecto, a partir del diff **preparado** y del
+  estilo de los últimos commits del repositorio. Y hacer clic en un commit ahora
+  muestra qué hizo: mensaje, refs, churn y **cada archivo desplegable con su
+  diff adentro**, sin ir y volver al panel de la derecha.
+- **El chat deja de hacerte esperar.** Escribí mientras el agente trabaja: el
+  mensaje queda en cola y sale al terminar el turno (y si el turno falla o lo
+  cortás, la cola se frena en vez de vaciarse). Además se puede **buscar dentro
+  de la conversación** y **reusar** un mensaje propio para mandarlo corregido.
 
 ---
 
@@ -288,10 +279,10 @@ diferencia.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.1.0.dmg](releases/macos/mini-tools-v2.1.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.1.0-windows-amd64.exe](releases/windows/mini-tools-v2.1.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Verificado en Windows 10 y 11; lo nuevo de esta versión del lado de Windows es la **ventana sin marco con botones propios**, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.2.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.2.0/mini-tools-v2.2.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.2.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.2.0/mini-tools-v2.2.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**: lo nuevo de ese lado son las terminales locales (detección de PowerShell/cmd y ConPTY), ver [detalle](releases/windows/README.md). |
 
-Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
+Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
 ## Todo lo que trae
 
@@ -454,11 +445,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.1.0 |
+| Versión | 2.2.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.1.0.dmg](releases/macos/mini-tools-v2.1.0.dmg)** |
-| SHA-256 | `3e1fd6a7e78e5f4b5de6ecf4c57192cb3f3221e11b60a97a9dfd577ce1f7c8f7` |
+| Archivo | **[⬇ Descargar mini-tools-v2.2.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.2.0/mini-tools-v2.2.0.dmg)** |
+| SHA-256 | `3e5bb7dc70752ecbab13a284662522324e0e293f98e524611af52c270814601f` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -470,7 +461,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **La 2.1.0 se verificó en Windows 10 y 11: arranca y se usa.** Lo nuevo de esta versión del lado de Windows es el **chrome de la ventana**: ahora es *frameless* —Windows deja de dibujar el marco y la barra de título, y los botones de minimizar/maximizar/cerrar los dibuja la app—, así que redimensionar desde los bordes, arrastrar la ventana y Aero Snap dependen del hit-test de Wails y no del marco nativo. Si algo de eso falla, es de esta versión. Sigue sin verificarse lo que ya venía pendiente: las migraciones 40 a 42 del vault (columnas nuevas en `settings` sobre el `vault.db` que ya está en la máquina), el servidor MCP por named pipe, abrir el proyecto en VS Code/Explorador, la terminal integrada con ConPTY y pegar imágenes en una nota. Detalle en [releases/windows/README.md](releases/windows/README.md).
+> ⚠️ **La 2.2.0 NO se probó en una Windows real** — solo se confirmó que cross-compila limpio desde macOS. Que la 2.1.0 se haya verificado en Windows 10 y 11 no dice nada de esta versión, y por eso se anota. Lo nuevo de este lado son las **terminales del sistema operativo**: que el menú liste PowerShell/pwsh/cmd con su ruta real, que ConPTY levante la shell y reflowe bien, y que el historial de esas terminales guarde comandos normales de PowerShell (el filtro de contraseñas se corrigió justamente por eso). Sigue sin verificarse lo que ya venía pendiente: las migraciones del vault —ahora 43 y 44, que crean el historial local y el permiso de escritura del MCP—, el servidor MCP por named pipe (que ahora además escribe), abrir el proyecto en VS Code/Explorador y pegar imágenes en una nota. Detalle en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -478,10 +469,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.1.0 |
-| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS y verificado en Windows 10 y 11 |
-| Archivo | **[⬇ Descargar mini-tools-v2.1.0-windows-amd64.exe](releases/windows/mini-tools-v2.1.0-windows-amd64.exe)** |
-| SHA-256 | `0f05b5db5bb224293ac96dbd0bf41004da516b6137739ef9dd7944e33d6b4cc1` |
+| Versión | 2.2.0 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; esta versión sin probar en Windows real |
+| Archivo | **[⬇ Descargar mini-tools-v2.2.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.2.0/mini-tools-v2.2.0-windows-amd64.exe)** |
+| SHA-256 | `ea04fcd7125b29c03c4990fca6758c579843cf91cbcfb16c55124c1b76df3cc1` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

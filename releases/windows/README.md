@@ -13,77 +13,77 @@ etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.1.0 |
-| Archivo | `mini-tools-v2.1.0-windows-amd64.exe` |
+| Versión | 2.2.0 |
+| Archivo | `mini-tools-v2.2.0-windows-amd64.exe` |
 | Tamaño | ~54 MB |
-| SHA-256 | `0f05b5db5bb224293ac96dbd0bf41004da516b6137739ef9dd7944e33d6b4cc1` |
+| SHA-256 | `ea04fcd7125b29c03c4990fca6758c579843cf91cbcfb16c55124c1b76df3cc1` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.1.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.2.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
 ## Estado de verificación en Windows real
 
-**Verificado en esta versión (2.1.0), en Windows 10 y 11**, según lo confirmó
-quien mantiene el proyecto: la app arranca y se usa en las dos.
+**2.2.0 NO se probó en una Windows real.** Lo único confirmado es que
+cross-compila limpio desde macOS (ninguno de los conectores de base de datos
+—PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni `go-redis` ni el PTY usan
+CGO, así que no hace falta un toolchain de Windows/mingw). Que 2.1.0 se haya
+verificado en Windows 10 y 11 **no dice nada de esta versión**: se anota acá
+justamente para no arrastrar esa confirmación de una versión a la siguiente.
 
-**Lo nuevo de 2.1.0 del lado de Windows es el chrome de la ventana, y es lo
-primero a mirar si algo se ve raro.** Esta versión pasa la ventana a
-**frameless**: Windows deja de dibujar el marco y la barra de título, y los
-botones de minimizar / maximizar-restaurar / cerrar los dibuja la app. Eso
-cambia cosas que el propio sistema resolvía solo:
+**Lo nuevo de 2.2.0 del lado de Windows son las terminales locales, y es lo
+primero a mirar.** Esta versión abre shells del sistema operativo como pestañas
+del módulo SSH, con un menú que lista los intérpretes instalados. En Windows eso
+toca dos caminos que no se ejercitaban:
 
-- **Redimensionar desde los bordes** ahora depende del hit-test que hace Wails,
-  no del marco nativo.
-- **Arrastrar la ventana** se hace por la zona marcada con la propiedad CSS
-  `--wails-draggable`, no por el marco.
-- **Ajustar a los lados (Aero Snap)** y el doble clic para maximizar dependen de
-  ese mismo camino.
+- **Detección de intérpretes**: el menú tiene que listar PowerShell, pwsh y cmd
+  con su ruta real, y marcar como "falta" lo que no esté instalado.
+- **ConPTY** (`github.com/aymanbagabas/go-pty`), que es un camino de código
+  distinto al `openpty` de Unix: que la shell arranque, que el redimensionado
+  reflowe bien y que el prompt se dibuje derecho.
+- **El historial de esas terminales**: se guarda por intérprete y filtra las
+  líneas que parecen traer una contraseña. Ese filtro se corrigió en esta versión
+  precisamente por Windows —`Get-Process`, `-Path` y `-Property` se leían como
+  una contraseña pegada y se descartaba casi todo lo que se escribe en
+  PowerShell— así que confirmar que ahora **sí** se guarda un comando normal de
+  PowerShell es parte de probar esta versión.
 
-Si alguna de esas tres falla, el síntoma es de esta versión y no de una
-anterior — vale reportarlo indicando la versión de Windows.
+Después de eso, lo que sigue sin confirmarse en Windows, en orden de riesgo:
 
-**El resto se arrastra sin verificar desde antes**, y sigue igual: lo confirmado
-de ese lado es que cross-compila limpio desde macOS (ninguno de los conectores
-de base de datos —PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni `go-redis`
-ni el PTY usan CGO, así que no hace falta un toolchain de Windows/mingw).
-
-Queda sin confirmar en Windows, en orden de riesgo:
-
-- **Las migraciones 40 a 42 del vault, nuevas en esta versión.** Al primer
-  arranque agregan a `settings` las columnas del módulo abierto y el ancho de la
-  barra lateral, y las seis de la apariencia del editor, sobre el `vault.db` que
-  ya existe en la máquina. Se suman a las 29–39, que siguen sin verificarse. Es
-  SQLite puro y el camino es el mismo en todos los SO, pero una migración que
-  falle deja la app sin arrancar: es lo primero a mirar si alguien la prueba.
-- **El servidor MCP.** En Windows el canal es un **named pipe** en vez de un
-  socket Unix. Falta confirmarlo de punta a punta con un CLI real conectado.
+- **Las migraciones 43 y 44 del vault, nuevas en esta versión.** Al primer
+  arranque crean la tabla del historial de terminales locales y agregan a
+  `settings` el permiso de escritura del servidor MCP, sobre el `vault.db` que ya
+  existe en la máquina. Se suman a las 29–42, que siguen sin verificarse ahí. Es
+  SQLite puro y el camino es igual en todos los SO, pero una migración que falle
+  deja la app sin arrancar: es lo primero a mirar si alguien la prueba.
+- **El servidor MCP, ahora que además escribe.** En Windows el canal es un
+  **named pipe** en vez de un socket Unix, y esta versión suma dos herramientas
+  que crean y reescriben notas, más el aviso de catálogo cambiado. Falta
+  confirmarlo de punta a punta con un CLI real conectado.
 - **Abrir el proyecto en VS Code y en el explorador de archivos.** En Windows
   resuelve `code` del `PATH` y usa `explorer`; sin probarlo no está confirmado
   que encuentre una instalación típica de VS Code.
 - **El resto del subsistema agéntico**: lanzar los CLIs (`claude`, `codex`,
   `agy`) como procesos hijos implica otra resolución de ejecutables
   (`.cmd`/`.exe` del `PATH`) y otro manejo de saltos de línea.
-- **La terminal local integrada** (pendiente desde 1.1.0). En Windows usa
-  ConPTY vía `github.com/aymanbagabas/go-pty`, un camino de código distinto al
-  `openpty` de Unix: sin probarlo no está confirmado que la shell arranque, que
-  el redimensionado reflowe bien, ni que PowerShell/cmd/Git Bash/WSL se
-  detecten.
+- **El chrome frameless de la ventana**, que se estrenó en 2.1.0 y ahí sí se
+  probó: redimensionar desde los bordes, arrastrar por la zona marcada y Aero
+  Snap dependen del hit-test de Wails, no del marco nativo. En esta versión no
+  se tocó, pero tampoco se volvió a verificar.
 - **Pegar imágenes en una nota** (`Ctrl+V` desde Recortes), que depende de cómo
   el WebView2 expone el portapapeles.
 - **Las transferencias SFTP con lecturas/escrituras concurrentes**: código Go
   idéntico en todos los SO, pero el rendimiento real depende de la red y no se
   midió desde Windows.
-- **Las fuentes del sistema que ofrece Configuración → Editor.** Consolas
-  existe en Windows y Menlo no; la app cae en silencio a la monoespaciada
-  genérica cuando la elegida falta, pero no se comprobó ahí.
-- **DPI scaling, tamaño y posición de ventana** — con más motivo ahora que la
-  ventana es frameless.
+- **Las fuentes del sistema que ofrece Configuración → Editor.** Consolas existe
+  en Windows y Menlo no; la app cae en silencio a la monoespaciada genérica
+  cuando la elegida falta, pero no se comprobó ahí.
+- **DPI scaling, tamaño y posición de ventana.**
 - **Diálogos nativos** (abrir/guardar archivo, backup del vault).
 
 Si alguien la corre entera en una Windows real, corresponde reemplazar esta
@@ -92,8 +92,8 @@ borrarla sin más.
 
 ## Compatibilidad del sistema
 
-- **Windows 10 y Windows 11**, donde se verificó que esta versión arranca y se
-  usa (ver la sección de arriba para qué quedó sin confirmar). Wails v2 en
+- **Windows 10 y Windows 11** son los objetivos declarados — 2.1.0 se verificó
+  ahí, esta versión todavía no (ver la sección de arriba). Wails v2 en
   Windows depende del
   WebView2 Runtime de Microsoft: Windows 11 lo trae preinstalado y los
   Windows 10 con Edge al día también (llega con las actualizaciones de
@@ -118,7 +118,7 @@ borrarla sin más.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.1.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.2.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

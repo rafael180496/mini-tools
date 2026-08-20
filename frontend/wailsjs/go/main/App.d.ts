@@ -630,6 +630,8 @@ export function SetGitPanelSessions(arg1:Array<vault.GitPanelSession>):Promise<v
 
 export function SetLocalShell(arg1:string):Promise<void>;
 
+export function SetMCPNotesWrite(arg1:boolean):Promise<void>;
+
 export function SetMCPServerEnabled(arg1:boolean):Promise<void>;
 
 export function SetNoteFolder(arg1:string,arg2:string):Promise<void>;

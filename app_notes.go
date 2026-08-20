@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
 	"mini-tools/backend/vault"
 
@@ -66,6 +67,14 @@ func (a *App) GetNote(id string) (vault.Note, error) {
 // 34); esconderla es `SetNotePrivacy`. El id lo genera el backend con
 // `crypto/rand`, la convención de ids de este proyecto.
 func (a *App) CreateNote(title, content string) (string, error) {
+	return a.createNote(title, content, "")
+}
+
+// createNote es el alta de verdad: la usa el binding de la interfaz y también
+// el servidor MCP, que además guarda un frontmatter diciendo que la escribió un
+// agente. Un segundo camino de alta terminaría, tarde o temprano, sin la
+// comprobación de títulos duplicados que hay acá abajo.
+func (a *App) createNote(title, content, frontmatter string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
 	}
@@ -90,13 +99,19 @@ func (a *App) CreateNote(title, content string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := a.vault.CreateNote(id, title, content, ""); err != nil {
+	if err := a.vault.CreateNote(id, title, content, frontmatter); err != nil {
 		return "", err
 	}
 	return id, nil
 }
 
 // UpdateNote guarda una nota. No toca la privacidad: eso es SetNotePrivacy.
+//
+// **Guardar desde la aplicación marca la nota como tocada por el usuario.** Solo
+// importa en las notas que creó un agente por MCP: desde el momento en que una
+// persona la edita, deja de ser editable por el agente (ver mcpCanEditNote). Es
+// la garantía que hace aceptable darle permiso de escritura — lo que escribió
+// una persona no lo pisa un modelo, ni siquiera en una nota que él empezó.
 func (a *App) UpdateNote(id, title, content, frontmatter string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
@@ -104,7 +119,7 @@ func (a *App) UpdateNote(id, title, content, frontmatter string) error {
 	if strings.TrimSpace(title) == "" {
 		return fmt.Errorf("app: la nota necesita un título")
 	}
-	return a.vault.UpdateNote(id, title, content, frontmatter)
+	return a.vault.UpdateNote(id, title, content, vault.WithUserTouch(frontmatter, time.Now()))
 }
 
 // NotePrivacyEvent es el nombre del evento que avisa que una nota cambió de
@@ -119,6 +134,19 @@ func (a *App) UpdateNote(id, title, content, frontmatter string) error {
 // es un detalle de refresco: es la diferencia entre creer que algo está
 // escondido y que lo esté.
 const NotePrivacyEvent = "note:privacy"
+
+// NoteChangedEvent avisa que una nota apareció o cambió SIN que la interfaz lo
+// haya hecho.
+//
+// Existe por el servidor MCP: cuando un agente crea o reescribe una nota, el
+// árbol, el grafo y —sobre todo— la pestaña que la tenga abierta tienen que
+// enterarse. Una nota que aparece recién al reabrir la app se lee como que no
+// se guardó; y un editor que sigue mostrando el texto viejo puede pisar con su
+// autoguardado lo que el agente acaba de escribir.
+//
+// Payload: {id, title}. El id es lo que permite al editor saber si le habla a
+// él sin comparar títulos, que además pueden repetirse en el camino.
+const NoteChangedEvent = "note:changed"
 
 // SetNotePrivacy esconde o vuelve a mostrar una nota a los agentes.
 func (a *App) SetNotePrivacy(id string, private bool) error {

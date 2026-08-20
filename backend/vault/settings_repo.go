@@ -186,6 +186,10 @@ type Settings struct {
 	// **No lo enciende al arrancar**: es un recordatorio para la interfaz, no
 	// un arranque automático — ver la migración 37.
 	MCPEnabled bool `json:"mcpEnabled"`
+	// MCPNotesWrite es si el servidor MCP puede CREAR notas. Interruptor
+	// aparte del anterior a propósito: encender el servidor comparte lectura,
+	// esto además deja escribir. Ver la migración 44.
+	MCPNotesWrite bool `json:"mcpNotesWrite"`
 }
 
 // GitPanelSession es una pestaña del panel de la pestaña Git: una terminal
@@ -250,11 +254,11 @@ func (s *Store) GetSettings() (Settings, error) {
 	var gitPanelSessionsJSON sql.NullString
 	var activeAgent, activeModel, activeEffort, agentDock, notesLastOpen string
 	var agentSize, notesSideWidth int
-	var mcpEnabled bool
+	var mcpEnabled, mcpNotesWrite bool
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -320,6 +324,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		NotesLastOpen:           notesLastOpen,
 		NotesSideWidth:          notesSideWidth,
 		MCPEnabled:              mcpEnabled,
+		MCPNotesWrite:           mcpNotesWrite,
 	}, nil
 }
 
@@ -777,6 +782,19 @@ func (s *Store) SetSidebarWidth(px int) error {
 func (s *Store) SetSidebarModule(id string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET sidebar_module = ? WHERE id = 1`, id); err != nil {
 		return fmt.Errorf("vault: guardando sidebar_module: %w", err)
+	}
+	return nil
+}
+
+// SetMCPNotesWrite persiste si el servidor MCP puede crear notas.
+//
+// Separado de SetMCPEnabled porque son dos decisiones distintas: una comparte
+// lectura, la otra deja escribir en la base de conocimiento. Apagar el servidor
+// no borra este permiso —al volver a encenderlo queda como estaba— pero sin
+// servidor no hay nadie que pueda usarlo.
+func (s *Store) SetMCPNotesWrite(enabled bool) error {
+	if _, err := s.db.Exec(`UPDATE settings SET mcp_notes_write = ? WHERE id = 1`, enabled); err != nil {
+		return fmt.Errorf("vault: guardando mcp_notes_write: %w", err)
 	}
 	return nil
 }

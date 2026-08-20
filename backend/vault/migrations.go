@@ -951,6 +951,24 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 44,
+		desc:    "agrega settings.mcp_notes_write — el agente NO puede escribir notas hasta que se lo permitan",
+		apply: func(tx *sql.Tx) error {
+			// Permiso de ESCRITURA del servidor MCP sobre la base de
+			// conocimiento. Nace en 0 y es un interruptor aparte del que
+			// enciende el servidor, no una consecuencia suya.
+			//
+			// **Por qué su propio permiso.** Hasta acá todas las herramientas
+			// MCP eran de lectura y esa era la promesa del módulo: el agente
+			// mira lo que el usuario le comparte y no toca nada. Crear notas
+			// rompe esa promesa, así que no puede llegar de arrastre al
+			// encender el servidor — tiene que ser una decisión propia, visible
+			// y revocable.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN mcp_notes_write INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

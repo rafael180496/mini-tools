@@ -2231,6 +2231,7 @@ export namespace main {
 	    enabled: boolean;
 	    socketPath: string;
 	    tools: number;
+	    notesWrite: boolean;
 	    audit: mcpAudit[];
 	    executable: string;
 	
@@ -2243,6 +2244,7 @@ export namespace main {
 	        this.enabled = source["enabled"];
 	        this.socketPath = source["socketPath"];
 	        this.tools = source["tools"];
+	        this.notesWrite = source["notesWrite"];
 	        this.audit = this.convertValues(source["audit"], mcpAudit);
 	        this.executable = source["executable"];
 	    }
@@ -3497,6 +3499,7 @@ export namespace vault {
 	    notesLastOpen: string;
 	    notesSideWidth: number;
 	    mcpEnabled: boolean;
+	    mcpNotesWrite: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -3541,6 +3544,7 @@ export namespace vault {
 	        this.notesLastOpen = source["notesLastOpen"];
 	        this.notesSideWidth = source["notesSideWidth"];
 	        this.mcpEnabled = source["mcpEnabled"];
+	        this.mcpNotesWrite = source["mcpNotesWrite"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -189,19 +190,39 @@ func (c *client) call(req bridgeCall) (bridgeReply, error) {
 // RunStdio es el modo `mini-tools --mcp`: atiende un cliente MCP por stdin y
 // stdout, reenviando todo a la ventana.
 //
-// Las herramientas se piden a la ventana en cada `tools/list` y no se cachean:
-// activar o desactivar el acceso desde la app tiene que notarse sin reiniciar
-// el CLI.
+// **El catálogo se vuelve a pedir en cada `tools/list`.** Antes se armaba una
+// sola vez al arrancar —el comentario decía lo contrario, pero el código
+// registraba y listo—, así que habilitar una herramienta desde la aplicación no
+// se veía hasta reiniciar el CLI. Ahora se pide de nuevo, y además se AVISA:
+// después de cada llamada, si el catálogo cambió, sale un
+// `notifications/tools/list_changed` para que el cliente vuelva a preguntar.
+// Los clientes MCP cachean la lista, así que sin ese aviso nadie relista.
+//
+// El aviso viaja pegado al tráfico que ya existe en vez de por un canal nuevo:
+// el proceso MCP no tiene forma de que la ventana lo despierte —cada llamada
+// abre su propia conexión y la cierra— y montar un canal persistente para esto
+// sería mucha maquinaria para lo que es.
 func RunStdio(dataDir string, version string) error {
 	c := &client{path: SocketPath(dataDir)}
 	s := New("mini-tools", version)
 
-	// El catálogo se arma en el arranque para poder declarar las herramientas;
-	// si la ventana no está, se declara vacío y cada llamada explica por qué.
-	if reply, err := c.call(bridgeCall{Op: "list"}); err == nil && reply.Error == "" {
+	// known es la firma del último catálogo que vio el cliente: nombres, en
+	// orden. Alcanza para saber si cambió sin comparar esquemas enteros.
+	var known string
+
+	// build arma las herramientas con su handler. Si la ventana no está, el
+	// catálogo queda vacío y cada llamada explica por qué.
+	build := func() []Tool {
+		reply, err := c.call(bridgeCall{Op: "list"})
+		if err != nil || reply.Error != "" {
+			return nil
+		}
+		out := make([]Tool, 0, len(reply.Tools))
+		names := make([]string, 0, len(reply.Tools))
 		for _, t := range reply.Tools {
 			t := t
-			s.Register(Tool{
+			names = append(names, t.Name)
+			out = append(out, Tool{
 				Name:        t.Name,
 				Description: t.Description,
 				InputSchema: t.InputSchema,
@@ -217,7 +238,34 @@ func RunStdio(dataDir string, version string) error {
 				},
 			})
 		}
+		known = strings.Join(names, ",")
+		return out
 	}
+
+	s.SetProvider(build)
+	// El primer armado es el del arranque: declara lo que hay antes de que el
+	// cliente pregunte nada.
+	for _, t := range build() {
+		s.Register(t)
+	}
+
+	// Después de cada llamada se comprueba si el catálogo cambió. Es un
+	// viaje más por el socket local por cada herramienta ejecutada —barato— y
+	// es lo que hace que habilitar un permiso se note en la sesión abierta.
+	s.SetAfterCall(func() {
+		before := known
+		reply, err := c.call(bridgeCall{Op: "list"})
+		if err != nil || reply.Error != "" {
+			return
+		}
+		names := make([]string, 0, len(reply.Tools))
+		for _, t := range reply.Tools {
+			names = append(names, t.Name)
+		}
+		if strings.Join(names, ",") != before {
+			s.Notify("notifications/tools/list_changed", nil)
+		}
+	})
 
 	return s.Serve(os.Stdin, os.Stdout)
 }

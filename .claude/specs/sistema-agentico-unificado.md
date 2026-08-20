@@ -566,10 +566,26 @@ todo el vault, disponible para cualquier proceso que sepa invocar el binario.
 | 6.2.5 | `db_explain_query(alias, query)` | Árbol de plan | Solo `EXPLAIN`; una sentencia que no sea `SELECT`/`WITH` se rechaza |
 | 6.2.6 | `ssh_get_recent_logs(alias, lines)` | Últimas N líneas del buffer | Tope duro de N; solo sesiones ya abiertas por el usuario |
 | 6.2.7 | `git_status(repo)` | Estado + diff preparado | Solo repos ya abiertos en la app |
+| 6.2.8 | `vault_create_note(title, content)` | Confirmación del alta | **Solo con `settings.mcp_notes_write` en 1**; título duplicado se rechaza; tope de 64 KB; la nota nace con `origen: agente-mcp` en su frontmatter |
+| 6.2.9 | `vault_update_note(title, content)` | Confirmación del cambio | Además de lo anterior: **solo notas del propio agente que nadie editó después** (`vault.AgentCanEdit`), y pasa por `NoteForAI`, así que una nota privada tampoco se puede escribir |
 
 Cada herramienta declara su política en el mismo lugar donde se implementa, y
 todas pasan por el guard del 6.3 antes de responder. Ninguna herramienta abre
 una conexión nueva: opera sobre lo que el usuario ya tiene abierto.
+
+**6.2.8 y 6.2.9 son la única escritura de todo el módulo y llegaron después**
+(post-2.1.0), con su propio interruptor y apagadas por defecto: hasta entonces
+la promesa era "el agente mira y no toca", y cambiarla no podía ser un efecto
+colateral de encender el servidor. Las dos herramientas **ni se declaran** en el
+catálogo mientras el permiso esté apagado —una herramienta visible que siempre
+falla es una invitación a intentarla— y el permiso se vuelve a comprobar al
+ejecutar, para que revocarlo valga para la llamada que está por hacerse.
+
+La regla de autoría vive en `backend/vault/notes_provenance.go` y se guarda en
+el **frontmatter de la nota**, no en una columna: así la procedencia viaja con
+la nota exportada. No es un control de seguridad (el usuario puede editar ese
+texto: es su vault) sino la dirección que importa — sin la marca, el agente no
+toca la nota.
 
 **Verificación:** conectar el servidor a Claude Code real y pedirle
 explícitamente que lea una nota privada; debe recibir el error del firewall.

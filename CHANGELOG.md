@@ -4,7 +4,23 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-08-19
+
 ### Agregado
+
+- **El servidor MCP puede crear notas: el agente ya no solo lee tu «cerebro», también lo hace crecer.** Con el permiso activado, cualquier CLI conectado (Claude Code, Codex, Antigravity) gana una herramienta `vault_create_note` para dejar asentado lo que averiguó —un procedimiento, un diagnóstico, una decisión— como una nota nueva en Markdown, con `[[enlaces]]` y `#etiquetas` como cualquier otra. Aparece en el árbol al instante, sin recargar nada.
+
+  **Es un permiso aparte y nace apagado.** Hasta ahora todas las herramientas MCP eran de lectura y esa era la promesa del módulo: el agente mira lo que le compartís y no toca nada. Poder escribir cambia esa promesa, así que no llega de arrastre al encender el servidor — se habilita en Acceso de IA, con su propio interruptor, y se revoca igual de rápido.
+
+  **También puede corregir las suyas** (`vault_update_note`), y ahí está la regla que hace aceptable todo esto: **solo reescribe notas que creó él y que nadie editó después**. Apenas guardás una de sus notas desde la aplicación, la nota pasa a ser tuya y el agente deja de poder cambiarla — lo que escribió una persona no lo pisa un modelo, ni siquiera en una nota que él empezó. Lo que escribiste vos nunca fue tocable, y **borrar no puede nunca**.
+
+  **Una nota privada le queda fuera de alcance también para escribir**, y no por una segunda comprobación: la edición pasa por la misma puerta que la lectura (`NoteForAI`), así que si no la puede leer, tampoco la puede tocar. Una sola regla, un solo lugar.
+
+  **Si tenés la nota abierta mientras el agente la reescribe**, la pestaña se entera: sin cambios propios se recarga sola —no hay nada que perder— y con cambios sin guardar avisa y te deja elegir entre ver la versión del agente o seguir con la tuya. Sin eso, el autoguardado del editor habría pisado en silencio lo que el agente acababa de escribir.
+
+  Además: un título repetido se rechaza (no pisa nada), hay tope de tamaño para que una respuesta larga no termine volcada entera en el vault, y **cada nota que crea queda marcada como suya** en su frontmatter (`origen: agente-mcp` con la fecha, `actualizada:` en cada reescritura, `editada-por-el-usuario:` cuando la tomás vos) — así, seis meses después, "¿esto lo escribí yo o el agente?" tiene respuesta, y viaja dentro de la nota: exportada a Obsidian se lleva su procedencia. Cada alta y cada cambio quedan en el registro de accesos del panel.
+
+  El permiso se vuelve a comprobar **al ejecutar la herramienta**, no solo al listarla: entre que el agente lee el catálogo y llama pueden pasar minutos, y revocarlo tiene que valer para la llamada que está por hacer. Y el cambio **se nota sobre la sesión que ya esté abierta**, sin reiniciar el CLI: quitarlo rechaza la llamada aunque el agente todavía crea que puede, y darlo le avisa que vuelva a pedir la lista.
 
 - **El módulo SSH ahora abre también terminales de TU máquina**, no solo sesiones remotas. El ícono de terminal en el encabezado de la sección SSH despliega los intérpretes instalados —PowerShell, pwsh, zsh, bash, o el que tengas configurado por defecto— y cada uno abre en su propia pestaña. La razón es que el trabajo real es uno solo: se mira un log en el servidor, se copia algo a la máquina de uno, se corre un `scp` o un `kubectl` local; tener que salir de la app para esa mitad partía la tarea en dos.
 
@@ -25,6 +41,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
   Debajo del campo queda dicho **qué se le mandó y quién contestó** (el agente, cuántos archivos, el churn, y si el parche se recortó), la misma respuesta a "¿qué le pasaste de mi repositorio?" que ya da el asistente de consultas. Editar el mensaje a mano hace desaparecer esa firma, porque a partir de ahí el mensaje ya no es el que escribió el agente. **Commitear sigue siendo un clic del usuario**: la acción escribe en el campo y nada más — no stagea, no commitea y no toca el repositorio.
 
 ### Corregido
+
+- **El servidor MCP no rearmaba su catálogo nunca, aunque el comentario dijera lo contrario.** El proceso `mini-tools --mcp` registraba las herramientas una sola vez al arrancar, así que habilitar o revocar un acceso desde la aplicación no se veía hasta reiniciar el CLI — y el código decía, literalmente, que se pedían de nuevo en cada `tools/list`. Ahora se piden de verdad, y además **se avisa**: después de cada llamada, si el catálogo cambió, sale un `notifications/tools/list_changed` para que el cliente vuelva a preguntar (los clientes MCP cachean la lista; sin ese aviso nadie relista). La capacidad `listChanged` se declara en el `initialize` porque ahora se cumple.
+
+  El aviso viaja pegado al tráfico que ya existe, no por un canal nuevo: el proceso MCP no tiene forma de que la ventana lo despierte —cada llamada abre su conexión y la cierra— y montar un canal persistente para esto sería mucha maquinaria para lo que es.
 
 - **Un procedimiento con subprogramas adentro ya no se parte en pedazos al correr el script.** Un `CREATE PROCEDURE` que declara funciones o procedimientos anidados en su sección declarativa —el patrón normal de un batch migrado: un `ya_procesado`, un `registrar`, un `despachar` antes del `BEGIN` principal— se rompía en el primer `;` de la sección declarativa de ese subprograma anidado. A Oracle le llegaban fragmentos sueltos y contestaba `PLS-00201: identifier 'P_RETORNO' must be declared` una vez por cada variable que el pedazo ya no tenía, o `ORA-00900` por un `EXCEPTION … END` viajando solo. El seguimiento del anidamiento pasó de un contador de "subprogramas pendientes" a una **pila de bloques**, que es la única forma de distinguir el `;` que cierra una declaración del que termina el statement. De paso queda bien un `CREATE PACKAGE BODY` con varios procedimientos miembro, que la limitación anterior daba por perdido, y un **COMPOUND TRIGGER** con sus puntos de disparo (`BEFORE STATEMENT IS … END BEFORE STATEMENT;`), que se partía renglón por renglón.
 
@@ -47,6 +67,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
   Solo salta cuando entre el cursor y el fin de la línea **queda únicamente el cierre**, y cuando su apertura está antes en la misma línea: una línea que termina en `***` es una regla horizontal y un paréntesis suelto es puntuación, y ninguno de los dos tiene que mover el cursor a ningún lado.
 
 ### Mejorado
+
+- **Se puede escribir mientras el agente trabaja: el mensaje queda en cola y sale solo al terminar el turno.** Antes, Enter con el agente ocupado no hacía absolutamente nada — se escribía la corrección que se te acababa de ocurrir, se apretaba Enter y el texto se quedaba ahí sin que nada dijera por qué. Mandarlo igual no es una opción (el CLI atiende un turno por vez), así que ahora se guarda: los mensajes en cola se ven arriba de la caja, se pueden sacar de a uno antes de que salgan, y salen en orden. El texto de la caja lo dice mientras tanto, y con el mouse hay un botón propio para encolar —con el agente ocupado el botón principal es Detener, así que sin él la única forma de encolar sería saber que Enter lo hace.
+
+  **Un turno que falla —o que cortás vos— frena la cola** en vez de vaciarla: contra un CLI que acaba de morir, mandar los cinco mensajes encolados produce cinco errores más y ninguna respuesta; y quien aprieta Detener casi nunca quiere que el siguiente salga solo un segundo después, antes de ver por qué cortó. Se quedan, se avisa y hay un botón para insistir. Reiniciar la conversación también vacía la cola: un mensaje escrito para el hilo anterior, mandado dentro de uno que arranca de cero, llega sin el contexto que le daba sentido.
+
+  **Y un mensaje propio se puede reusar**: al pasar por encima aparece "Reusar", que trae ese texto a la caja para mandarlo otra vez —casi siempre con un cambio: *lo mismo pero para la otra tabla*—. No rebobina la conversación, y no puede: el hilo vive en el CLI, no en la app. Lo que hace es traer el texto para editarlo y mandarlo como mensaje nuevo, que es lo único que se puede ofrecer sin fingir que borra lo dicho; y nunca pisa lo que ya tengas escrito, se agrega al final.
+
+  **Y se puede buscar dentro de la conversación** (la lupa del encabezado): filtra los mensajes que contienen lo que escribas y dice cuántos son de cuántos. Una sesión de una hora son decenas de mensajes, y hasta ahora volver a uno era scrollear hasta encontrarlo. Busca también en **lo que hizo el agente** —qué herramienta, sobre qué archivo—, que es donde se contesta "¿en cuál archivo era?"; y filtra en vez de resaltar porque el texto pasa por el renderizador de Markdown: ver qué mensajes coinciden y poder copiarlos o reusarlos resuelve lo que uno vino a hacer.
+
+  Vale para **el chat del panel de agente y para el de la pestaña Git a la vez**: son el mismo componente.
 
 - **Las notas ahora dibujan tablas, y el resto de lo que la barra de formato sabe escribir.** El botón de tabla insertaba `| Campo | Valor |` y ahí terminaba: en el editor quedaban las barras verticales en crudo y en la vista de lectura las tres líneas se juntaban en un solo renglón, porque el renderizador no conocía las tablas. Ahora se ven como tabla **en las dos vistas**, con encabezado, bordes y la alineación que pida la fila de separadores (`|---|---:|:--:|`), y respetando la barra escapada (`\|`) dentro de una celda.
 

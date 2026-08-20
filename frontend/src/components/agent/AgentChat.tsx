@@ -366,6 +366,28 @@ export default function AgentChat({
     // Imágenes adjuntas al próximo mensaje: rutas ya escritas en el disco,
     // porque los tres CLIs las reciben por ruta y no en memoria.
     const [attachments, setAttachments] = useState<string[]>([])
+    // Mensajes escritos MIENTRAS el agente trabaja. Se mandan solos cuando
+    // termina el turno, en orden.
+    //
+    // **El vacío que llena.** Enter con el agente ocupado no hacía nada: se
+    // escribía la corrección que a uno se le acababa de ocurrir, se apretaba
+    // Enter y el texto se quedaba ahí, sin que nada dijera por qué. La opción
+    // de mandarlo igual no existe —el CLI atiende un turno a la vez— así que
+    // lo que corresponde es guardarlo y mandarlo cuando se pueda.
+    const [queue, setQueue] = useState<string[]>([])
+    // Un turno que falló corta el envío automático: mandar los cinco mensajes
+    // encolados contra un CLI que acaba de morir produce cinco errores más y
+    // ninguna respuesta. Se quedan en la cola con un botón para insistir.
+    const [queueHeld, setQueueHeld] = useState(false)
+    // Búsqueda dentro de la conversación. Una sesión de una hora son decenas de
+    // mensajes y hasta ahora la única forma de volver a uno era scrollear
+    // hasta encontrarlo — justo lo que no se puede hacer con la mano ocupada.
+    //
+    // Filtra en vez de resaltar: el texto pasa por el renderizador de Markdown,
+    // así que marcar dentro obligaría a intervenir el árbol renderizado. Ver
+    // qué mensajes coinciden y poder copiarlos o reusarlos resuelve lo que uno
+    // vino a hacer.
+    const [search, setSearch] = useState<string | null>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     // El modo vigente para el manejador de eventos, que se registra una sola
     // vez y no puede cerrarse sobre el `mode` de un render viejo.
@@ -635,12 +657,13 @@ export default function AgentChat({
         return true
     }, [])
 
-    const send = useCallback(async () => {
-        const text = input.trim()
-        if (!text || busy) return
+    const sendText = useCallback(
+        async (raw: string) => {
+        const text = raw.trim()
+        if (!text) return
         setTurns((prev) => [...prev, {role: 'user', text, tools: []}])
-        setInput('')
         setBusy(true)
+        setQueueHeld(false)
         // El contexto de trabajo se antepone al mensaje, no lo reemplaza: el
         // agente ve primero qué estás mirando y después qué le preguntás.
         const fence = '```'
@@ -657,8 +680,60 @@ export default function AgentChat({
         } catch (e) {
             setTurns((prev) => [...prev, {role: 'agent', text: '', tools: [], error: String(e)}])
             setBusy(false)
+            // Ver `queueHeld`: lo que quedaba encolado no sale solo detrás de
+            // un fallo.
+            setQueueHeld(true)
         }
-    }, [input, busy, sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend, attachWorking, working])
+        },
+        [sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend, attachWorking, working],
+    )
+
+    // Los turnos que se muestran. Se conserva el índice REAL de cada uno: los
+    // botones de copiar y reusar lo usan, y renumerarlos al filtrar haría que
+    // "copiado" se encendiera en el mensaje equivocado.
+    const visibleTurns = useMemo(() => {
+        const q = (search ?? '').trim().toLowerCase()
+        const all = turns.map((t, i) => ({t, i}))
+        if (!q) return all
+        return all.filter(
+            ({t}) =>
+                t.text.toLowerCase().includes(q) ||
+                // También se busca en lo que HIZO el agente: media conversación
+                // son llamadas a herramientas, y "¿en qué archivo era?" se
+                // contesta ahí y no en la prosa.
+                t.tools.some((tool) => `${tool.name} ${tool.detail ?? ''}`.toLowerCase().includes(q)),
+        )
+    }, [turns, search])
+
+    // Enter con el agente ocupado ENCOLA en vez de no hacer nada.
+    const send = useCallback(() => {
+        const text = input.trim()
+        if (!text) return
+        setInput('')
+        if (busy) {
+            setQueue((prev) => [...prev, text])
+            return
+        }
+        void sendText(text)
+    }, [input, busy, sendText])
+
+    // Cuando el turno termina sale el siguiente de la cola. Un solo mensaje por
+    // vez: el CLI atiende un turno a la vez y encimarlos sería pedirle algo que
+    // no puede hacer.
+    // El pestillo evita el envío doble: en desarrollo React monta y corre los
+    // efectos dos veces (StrictMode), y sin él el primer mensaje de la cola
+    // salía repetido. Vale también fuera de StrictMode — entre que se decide
+    // sacar uno y que `busy` vuelve a ser true hay un render de por medio.
+    const dequeuingRef = useRef(false)
+    useEffect(() => {
+        if (busy || queueHeld || queue.length === 0 || dequeuingRef.current) return
+        dequeuingRef.current = true
+        const [next, ...rest] = queue
+        setQueue(rest)
+        void sendText(next).finally(() => {
+            dequeuingRef.current = false
+        })
+    }, [busy, queueHeld, queue, sendText])
 
     return (
         <div
@@ -716,10 +791,25 @@ export default function AgentChat({
                     </button>
                 )}
                 <button
+                    onClick={() => setSearch((v) => (v === null ? '' : null))}
+                    title="Buscar en esta conversación. Filtra los mensajes que contienen lo que escribas — útil para volver a un comando o a una explicación de hace media hora."
+                    className={`shrink-0 rounded p-0.5 ${
+                        search !== null ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                    } ${onValidateWithAnother ? '' : 'ml-auto'}`}
+                >
+                    <Icon name="search" size={14} />
+                </button>
+                <button
                     onClick={() => {
                         void ResetAgentChat(sessionId)
                         setTurns([])
                         setInfo(null)
+                        // La cola también se va: un mensaje escrito para la
+                        // conversación anterior, mandado dentro de una que
+                        // arranca de cero, llega sin el contexto que le daba
+                        // sentido.
+                        setQueue([])
+                        setQueueHeld(false)
                     }}
                     title="Olvida la conversación: el próximo mensaje arranca de cero en vez de encadenar con lo anterior."
                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
@@ -727,6 +817,35 @@ export default function AgentChat({
                     <Icon name="restart_alt" size={14} />
                 </button>
             </div>
+
+            {search !== null && (
+                <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+                    <Icon name="search" size={13} className="shrink-0 text-on-surface-variant" />
+                    <input
+                        autoFocus
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Escape') setSearch(null)
+                        }}
+                        placeholder="Buscar en esta conversación… (Esc cierra)"
+                        title="Muestra solo los mensajes que contienen este texto. La conversación no se toca: es un filtro de lectura."
+                        className="min-w-0 flex-1 bg-transparent text-on-surface outline-none placeholder:text-on-surface-variant/60"
+                    />
+                    {!!search.trim() && (
+                        <span className="shrink-0 tabular-nums text-on-surface-variant">
+                            {visibleTurns.length} de {turns.length}
+                        </span>
+                    )}
+                    <button
+                        onClick={() => setSearch(null)}
+                        title="Cierra la búsqueda y vuelve a mostrar la conversación entera"
+                        className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="close" size={13} />
+                    </button>
+                </div>
+            )}
 
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-xs">
                 {turns.length === 0 && (
@@ -771,28 +890,55 @@ export default function AgentChat({
                     </div>
                 )}
 
-                {turns.map((t, i) => (
+                {visibleTurns.map(({t, i}) => (
                     <div key={i} className={`group mb-2 ${t.role === 'user' ? 'text-on-surface' : ''}`}>
                         <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wider text-on-surface-variant">
                             <Icon name={t.role === 'user' ? 'person' : 'smart_toy'} size={11} />
                             {t.role === 'user' ? 'Vos' : agentLabel}
 
-                            {/* Copiar el mensaje entero. Aparece al pasar por
-                                encima para no ensuciar la lectura, y copia el
-                                TEXTO —no el Markdown renderizado— que es lo
-                                que sirve para pegar en otro lado. */}
+                            {/* Acciones del mensaje. Aparecen al pasar por
+                                encima para no ensuciar la lectura, y las dos
+                                trabajan sobre el TEXTO —no sobre el Markdown
+                                renderizado— que es lo que sirve para pegar o
+                                reescribir. */}
                             {t.text && (
-                                <button
-                                    onClick={() => {
-                                        void navigator.clipboard.writeText(t.text)
-                                        setCopiedTurn(i)
-                                    }}
-                                    title="Copia este mensaje al portapapeles"
-                                    className="ml-auto hidden shrink-0 items-center gap-1 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface group-hover:flex"
-                                >
-                                    <Icon name={copiedTurn === i ? 'check' : 'content_copy'} size={11} />
-                                    {copiedTurn === i ? 'Copiado' : 'Copiar'}
-                                </button>
+                                <span className="ml-auto hidden shrink-0 items-center gap-1 group-hover:flex">
+                                    {/* Volver a mandar algo que ya preguntaste,
+                                        casi siempre con un cambio: "lo mismo
+                                        pero para la otra tabla".
+                                        **No rebobina la conversación**, y no
+                                        puede: el hilo vive en el CLI, no acá.
+                                        Trae el texto a la caja para editarlo y
+                                        mandarlo como un mensaje nuevo, que es lo
+                                        único honesto que se puede ofrecer sin
+                                        fingir que borra lo dicho. Nunca pisa lo
+                                        que ya tengas escrito: se agrega al
+                                        final. */}
+                                    {t.role === 'user' && (
+                                        <button
+                                            onClick={() => {
+                                                setInput((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n${t.text}` : t.text))
+                                                inputRef.current?.focus()
+                                            }}
+                                            title="Trae este mensaje a la caja para mandarlo otra vez, corregido si hace falta. No borra lo que ya tengas escrito ni deshace la conversación: la respuesta anterior sigue estando."
+                                            className="flex items-center gap-1 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                        >
+                                            <Icon name="reply" size={11} />
+                                            Reusar
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            void navigator.clipboard.writeText(t.text)
+                                            setCopiedTurn(i)
+                                        }}
+                                        title="Copia este mensaje al portapapeles"
+                                        className="flex items-center gap-1 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                    >
+                                        <Icon name={copiedTurn === i ? 'check' : 'content_copy'} size={11} />
+                                        {copiedTurn === i ? 'Copiado' : 'Copiar'}
+                                    </button>
+                                </span>
                             )}
                         </div>
 
@@ -996,6 +1142,45 @@ export default function AgentChat({
                             )}
                         </details>
                     ))}
+                </div>
+            )}
+
+            {/* Lo que espera turno. Se ve —y se puede sacar— antes de que salga:
+                un mensaje encolado que uno ya no quiere mandar es lo primero
+                que se necesita poder deshacer. */}
+            {queue.length > 0 && (
+                <div className="flex shrink-0 flex-col gap-1 border-t border-outline-variant px-1.5 pt-1">
+                    {queue.map((q, i) => (
+                        <div
+                            key={i}
+                            className="flex items-start gap-1.5 rounded border border-outline-variant bg-surface-container px-1.5 py-1 text-[10px] text-on-surface-variant"
+                        >
+                            <Icon name="schedule_send" size={11} className="mt-0.5 shrink-0 text-primary" />
+                            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{q}</span>
+                            <button
+                                onClick={() => setQueue((prev) => prev.filter((_, n) => n !== i))}
+                                title="Sacar de la cola: este mensaje no se manda"
+                                className="shrink-0 rounded hover:text-on-surface"
+                            >
+                                <Icon name="close" size={10} />
+                            </button>
+                        </div>
+                    ))}
+                    {queueHeld && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-tertiary">
+                            <Icon name="warning" size={11} className="shrink-0" />
+                            <span className="min-w-0 flex-1">
+                                La cola quedó esperando: el turno anterior falló o lo cortaste.
+                            </span>
+                            <button
+                                onClick={() => setQueueHeld(false)}
+                                title="Manda igual lo que quedó en cola, uno por uno"
+                                className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 hover:text-on-surface"
+                            >
+                                Mandar igual
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -1280,24 +1465,50 @@ export default function AgentChat({
                         // donde Enter es del programa.
                         if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault()
-                            void send()
+                            send()
                         }
                     }}
                     rows={2}
-                    placeholder={`Preguntale a ${agentLabel}… (Enter manda, Shift+Enter salta de línea)`}
+                    placeholder={
+                        busy
+                            ? `${agentLabel} está trabajando — escribí y Enter lo deja en cola para cuando termine`
+                            : `Preguntale a ${agentLabel}… (Enter manda, Shift+Enter salta de línea)`
+                    }
                     className="min-w-0 flex-1 resize-none rounded border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface outline-none focus:border-primary"
                 />
                 {busy ? (
-                    <button
-                        onClick={() => void CancelAgentChat(sessionId)}
-                        title="Corta el turno en curso"
-                        className="shrink-0 rounded bg-error px-2 py-1.5 text-xs text-on-error"
-                    >
-                        <Icon name="stop" size={14} />
-                    </button>
+                    <>
+                        {/* Encolar también con el mouse: con el agente ocupado
+                            el botón principal es Detener, así que sin esto la
+                            única forma de encolar sería saber que Enter lo
+                            hace. */}
+                        <button
+                            onClick={send}
+                            disabled={!input.trim()}
+                            title="Deja este mensaje en cola: sale solo cuando termine el turno en curso"
+                            className="shrink-0 rounded border border-outline-variant px-2 py-1.5 text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+                        >
+                            <Icon name="schedule_send" size={14} />
+                        </button>
+                        <button
+                            onClick={() => {
+                                void CancelAgentChat(sessionId)
+                                // Frenar la cola es parte de cortar: quien
+                                // detiene un turno casi nunca quiere que el
+                                // siguiente salga solo un segundo después, y
+                                // sobre todo no antes de ver por qué cortó.
+                                // Queda con el botón de "Mandar igual".
+                                setQueueHeld(true)
+                            }}
+                            title="Corta el turno en curso. Lo que haya en cola no sale solo: queda esperando con un botón para mandarlo."
+                            className="shrink-0 rounded bg-error px-2 py-1.5 text-xs text-on-error"
+                        >
+                            <Icon name="stop" size={14} />
+                        </button>
+                    </>
                 ) : (
                     <button
-                        onClick={() => void send()}
+                        onClick={send}
                         disabled={!input.trim()}
                         title="Manda el mensaje (Enter)"
                         className="shrink-0 rounded bg-primary px-2 py-1.5 text-xs text-on-primary disabled:opacity-40"

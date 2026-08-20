@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from 'react'
-import {MCPServerStatus, SetMCPServerEnabled} from '../../wailsjs/go/main/App'
+import {MCPServerStatus, SetMCPNotesWrite, SetMCPServerEnabled} from '../../wailsjs/go/main/App'
 import {main} from '../../wailsjs/go/models'
 import Icon from './Icon'
 import Toggle from './Toggle'
@@ -20,6 +20,8 @@ const TOOL_LABELS: Record<string, string> = {
     db_explain_query: 'Analizó un plan de ejecución',
     ssh_get_recent_logs: 'Leyó una terminal SSH',
     git_status: 'Miró el estado de un repositorio',
+    vault_create_note: 'Creó una nota',
+    vault_update_note: 'Reescribió una nota suya',
 }
 
 // Cómo se conecta cada CLI. Son tres formatos distintos porque cada uno guarda
@@ -80,6 +82,17 @@ export default function AiAccessPanel() {
         return () => clearInterval(t)
     }, [status?.enabled, refresh])
 
+    // Permiso de escritura. Aparte del interruptor del servidor a propósito:
+    // ver el texto de la tarjeta y SetMCPNotesWrite en el backend.
+    const toggleNotesWrite = (enabled: boolean) => {
+        setBusy(true)
+        setError('')
+        SetMCPNotesWrite(enabled)
+            .then(refresh)
+            .catch((e) => setError(String(e)))
+            .finally(() => setBusy(false))
+    }
+
     const toggle = (enabled: boolean) => {
         setBusy(true)
         setError('')
@@ -138,6 +151,60 @@ export default function AiAccessPanel() {
                             {status.tools} herramientas expuestas. Ninguna devuelve filas de tus bases, ni DSN, ni
                             contraseñas, ni el contenido de una nota que hayas marcado como privada.
                         </p>
+
+                        {/* Escritura en la base de conocimiento. Va acá adentro
+                            —solo con el servidor encendido— porque es un permiso
+                            sobre algo que no existe si no hay servidor, y va con
+                            su propio interruptor porque cambia la promesa del
+                            módulo: hasta acá el agente solo miraba. */}
+                        <div className="flex items-start gap-3 rounded border border-outline-variant bg-surface-container-low p-2">
+                            <Icon
+                                name="note_add"
+                                size={16}
+                                className={`mt-0.5 shrink-0 ${status.notesWrite ? 'text-primary' : 'text-on-surface-variant'}`}
+                            />
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[11px] font-medium text-on-surface">
+                                    Dejar que el agente escriba en tu base de conocimiento
+                                </p>
+                                <p className="mt-0.5 text-[11px] leading-4 text-on-surface-variant">
+                                    Le agrega herramientas para <strong>crear notas nuevas</strong> —dejar asentado un
+                                    procedimiento, un diagnóstico, una decisión— y para <strong>corregir las suyas</strong>.
+                                    Cada nota que crea queda marcada como suya.
+                                </p>
+                                <p className="mt-1 text-[11px] leading-4 text-on-surface-variant">
+                                    <strong>Nunca toca lo que escribiste vos.</strong> Solo puede reescribir notas que
+                                    creó él y que nadie editó después: apenas guardás una de sus notas, pasa a ser tuya y
+                                    él deja de poder cambiarla. Una nota marcada como privada le queda fuera de alcance,
+                                    igual que para leer. <strong>Borrar no puede nunca.</strong> Apagado, las
+                                    herramientas ni siquiera aparecen en su catálogo.
+                                </p>
+                                {/* Honestidad sobre el momento en que cada
+                                    cambio surte efecto. Quitar el permiso vale
+                                    al instante porque se vuelve a comprobar al
+                                    ejecutar; darlo puede necesitar que el CLI
+                                    vuelva a pedir la lista, y eso no lo decide
+                                    esta aplicación. Callarlo dejaría a alguien
+                                    peleando con un agente que "no ve" la
+                                    herramienta que acaba de habilitar. */}
+                                <p className="mt-1 text-[10px] leading-4 text-on-surface-variant/70">
+                                    <strong>Vale sobre la sesión que ya esté abierta</strong>, sin reiniciar el CLI:
+                                    quitarlo rechaza la llamada aunque el agente todavía crea que puede, y darlo le
+                                    avisa —después de su próxima acción— que vuelva a pedir la lista de herramientas. Si
+                                    su CLI ignora ese aviso, alcanza con reiniciarlo.
+                                </p>
+                            </div>
+                            <Toggle
+                                checked={!!status.notesWrite}
+                                disabled={busy}
+                                onChange={toggleNotesWrite}
+                                title={
+                                    status.notesWrite
+                                        ? 'Quitarle el permiso: la herramienta desaparece de su catálogo y una llamada en curso se rechaza. Las notas que ya creó quedan como están.'
+                                        : 'Darle permiso para crear notas nuevas. Seguirá sin poder modificar ni borrar las tuyas, y vas a ver cada alta en el registro de acceso de abajo.'
+                                }
+                            />
+                        </div>
                     </>
                 )}
 

@@ -40,10 +40,9 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
    (`build/bin/mini-tools-vX.Y.Z.dmg`, `build/bin/mini-tools-vX.Y.Z-windows-amd64.exe`)
    a su `releases/<os>/` correspondiente. `build/bin/` sigue siendo la
    salida cruda y efímera de los scripts de build; `releases/<os>/` es la
-   copia "publicada" y estable, y **sí se versiona en git** (ver "Por qué
-   los artefactos se versionan en git" abajo) — no agregar
-   `releases/**/*.dmg`/`releases/**/*.exe` (ni ningún patrón equivalente)
-   a `.gitignore`.
+   **zona de preparación** desde donde el usuario sube los binarios al
+   GitHub Release del tag. **No se commitean** — ver "Dónde viven los
+   binarios" abajo.
 4. Calcular el checksum de cada artefacto:
    `shasum -a 256 releases/<os>/mini-tools-vX.Y.Z*`.
 5. Escribir/actualizar `releases/<os>/README.md` de **cada** SO empaquetado
@@ -85,11 +84,12 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
 6. Actualizar **ambas** secciones de distribución del `README.md` raíz
    (`## Distribución / Empaquetado macOS` y `## Distribución / Empaquetado
    Windows`) con la versión/checksum/compatibilidad actuales de cada una
-   (resumen, no duplicar todo el detalle) y un link directo al archivo
-   (`.dmg`/`.exe`) dentro de su `releases/<os>/` (no solo a la carpeta) —
-   así el link del README descarga el binario directo desde GitHub. Si el
-   README tiene una sección "Descargas" cerca del inicio, actualizar
-   también esos links ahí.
+   (resumen, no duplicar todo el detalle) y un link directo al **asset del
+   GitHub Release** de esa versión:
+   `https://github.com/rafael180496/mini-tools/releases/download/vX.Y.Z/<archivo>`.
+   Si el README tiene una sección "Descargas" cerca del inicio, actualizar
+   también esos links ahí. **Nunca linkear a `releases/<os>/<archivo>`**:
+   ese archivo no está en el repositorio y el link daría 404.
 7. **Actualizar `CHANGELOG.md`** (formato [Keep a
    Changelog](https://keepachangelog.com/en/1.1.0/), ver cabecera del
    archivo — SemVer, fuente de verdad en `VERSION`). Este paso es la
@@ -116,10 +116,11 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
    - Dejar `## [Unreleased]` en el archivo (encabezado vacío, sin
      contenido debajo) para que la próxima tanda de cambios post-release
      tenga dónde acumularse hasta el siguiente empaquetado.
-8. Los artefactos **sí se versionan en git** (`.dmg` y `.exe` por igual) —
-   no agregar `releases/**/*.dmg`, `releases/**/*.exe` (ni patrón
-   equivalente) a `.gitignore`. Ver "Por qué los artefactos se versionan
-   en git" abajo para el porqué de esta decisión.
+8. Los artefactos **no se commitean**: el usuario los sube al GitHub
+   Release del tag `vX.Y.Z` y después borra las copias de `releases/<os>/`.
+   Lo que sí queda versionado de esa carpeta es el `README.md` de cada SO,
+   que es donde viven los checksums y las instrucciones. Ver "Dónde viven
+   los binarios" abajo.
 9. **Nunca `git add`/`commit`/`push` nada de esto — ni los artefactos, ni
    las docs tocadas.** Regla dura y sin excepción (ver "Commits / PRs" en
    [conventions.md](../rules/conventions.md)): el usuario hace todo el
@@ -129,19 +130,29 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
    en una conversación anterior pidió explícitamente subir algo puntual,
    eso no habilita hacerlo de nuevo sin que lo pida otra vez.
 
-## Por qué los artefactos sí se versionan en git
+## Dónde viven los binarios
 
-Decisión explícita del usuario (corrigiendo un intento anterior de este
-mismo proceso que lo excluía vía `.gitignore` con el argumento de "no
-inflar el repo con binarios"): cada artefacto tiene que estar disponible
-directamente desde un link del repo en GitHub, sin depender de un flujo
-aparte (GitHub Releases, USB, etc.). El repo acepta el costo de que cada
-versión empaquetada sume ~15-45MB permanentes por SO al historial de git
-a cambio de que "bajar la última versión" sea un solo link del README. Si
-el tamaño del repo se vuelve un problema real más adelante, la
-alternativa a evaluar es Git LFS para `releases/**/*.dmg`/`*.exe` — no
-volver a excluirlos silenciosamente vía `.gitignore` sin discutirlo
-primero con el usuario.
+**En el GitHub Release del tag, no en el árbol del repositorio.**
+
+Esto corrige lo que decía antes esta misma sección. La decisión original fue
+versionar los `.dmg`/`.exe` para que "bajar la última versión" fuera un link del
+README sin depender de otro flujo; en la práctica el usuario terminó subiendo
+igual cada artefacto al GitHub Release de su tag —que es el canal que la gente
+espera— y borrando después las copias del repositorio, porque tener las dos
+cosas suma decenas de MB permanentes al historial de git por cada versión y no
+agrega ninguna forma de descarga que el Release no dé.
+
+Consecuencias prácticas, y son las que hay que respetar en cada empaquetado:
+
+- `releases/<os>/` es **zona de preparación**: ahí se dejan los artefactos recién
+  generados para subirlos, y se borran cuando ya están en el Release. Lo único
+  permanente de esa carpeta es el `README.md` de cada SO.
+- Los links de descarga del `README.md` raíz apuntan al **asset del Release**
+  (`.../releases/download/vX.Y.Z/<archivo>`), nunca a una ruta del árbol: un link
+  a `releases/macos/mini-tools-vX.Y.Z.dmg` da 404 apenas se borra la copia.
+- El `.gitignore` sigue **sin** patrones para `releases/**/*.dmg`/`*.exe`. No es
+  un descuido: dejarlos ignorados escondería un artefacto recién generado del
+  `git status`, que es justo donde el usuario lo ve para acordarse de subirlo.
 
 ## Estado multi-plataforma
 

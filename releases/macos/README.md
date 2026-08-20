@@ -9,17 +9,17 @@ a ningún lado — solo empaqueta el `.dmg` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.1.0 |
-| Archivo | `mini-tools-v2.1.0.dmg` |
+| Versión | 2.2.0 |
+| Archivo | `mini-tools-v2.2.0.dmg` |
 | Tamaño | ~21 MB |
-| SHA-256 | `3e1fd6a7e78e5f4b5de6ecf4c57192cb3f3221e11b60a97a9dfd577ce1f7c8f7` |
+| SHA-256 | `3e5bb7dc70752ecbab13a284662522324e0e293f98e524611af52c270814601f` |
 | Arquitectura | `arm64` (Apple Silicon) — verificado con `file` sobre el binario dentro del `.dmg` |
 | Generado | `wails build -clean` (modo producción, sin devtools) |
 
 Verificar la integridad del archivo descargado:
 
 ```bash
-shasum -a 256 mini-tools-v2.1.0.dmg
+shasum -a 256 mini-tools-v2.2.0.dmg
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -46,7 +46,7 @@ shasum -a 256 mini-tools-v2.1.0.dmg
 
 ## Instalación
 
-1. Descargar `mini-tools-v2.1.0.dmg` y abrirlo (doble click).
+1. Descargar `mini-tools-v2.2.0.dmg` y abrirlo (doble click).
 2. Arrastrar `mini-tools.app` al symlink de `Applications` que trae el `.dmg`.
 3. Al abrir la app por primera vez, Gatekeeper bloquea la app sin firma.
    Cualquiera de estas tres opciones lo resuelve:
@@ -69,9 +69,9 @@ Intel además del de Apple Silicon hace falta correrlo también en (o desde)
 un Mac `x86_64`, o extender el script con `-platform darwin/universal`
 (cambio no incluido acá).
 
-Este directorio guarda el `.dmg` fuera de `build/bin/` (que es artefacto de
-build efímero, gitignoreado) para tener un lugar estable de "última versión
-empaquetada" — a diferencia de `build/bin/`, el `.dmg` acá **sí se versiona
-en git y se pushea** (decisión explícita: el link de descarga del README
-tiene que funcionar directo desde GitHub, sin depender de un release
-aparte).
+Este directorio es la **zona de preparación**: acá se deja el `.dmg` recién
+generado para subirlo como asset del [GitHub Release](https://github.com/rafael180496/mini-tools/releases)
+de su tag, y se borra después. El binario **no se commitea** — lo permanente de
+esta carpeta es este `README.md`, que es donde viven el checksum y las
+instrucciones. Por eso el link de descarga del README raíz apunta al asset del
+Release y no a una ruta del repositorio.

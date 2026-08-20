@@ -1218,6 +1218,10 @@ export function SetLocalShell(arg1) {
   return window['go']['main']['App']['SetLocalShell'](arg1);
 }
 
+export function SetMCPNotesWrite(arg1) {
+  return window['go']['main']['App']['SetMCPNotesWrite'](arg1);
+}
+
 export function SetMCPServerEnabled(arg1) {
   return window['go']['main']['App']['SetMCPServerEnabled'](arg1);
 }
