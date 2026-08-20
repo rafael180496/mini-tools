@@ -33,6 +33,7 @@ func init() {
 			{Label: "page", Detail: "OFFSET … FETCH NEXT … (paginado)", Body: "SELECT ${1:*}\nFROM ${2:tabla}\nORDER BY ${3:columna}\nOFFSET ${4:0} ROWS FETCH NEXT ${5:50} ROWS ONLY;"},
 			{Label: "upsert", Detail: "MERGE … (upsert de T-SQL)", Body: "MERGE ${1:destino} AS d\nUSING ${2:origen} AS o\n    ON d.${3:id} = o.${3:id}\nWHEN MATCHED THEN\n    UPDATE SET d.${4:columna} = o.${4:columna}\nWHEN NOT MATCHED THEN\n    INSERT (${3:id}, ${4:columna}) VALUES (o.${3:id}, o.${4:columna});"},
 			{Label: "proc", Detail: "CREATE OR ALTER PROCEDURE", Body: "CREATE OR ALTER PROCEDURE ${1:nombre}\n    @${2:param} ${3:int}\nAS\nBEGIN\n    SET NOCOUNT ON;\n    ${4:SELECT 1;}\nEND\nGO"},
+			{Label: "updj", Detail: "UPDATE … FROM … JOIN … (sintaxis de T-SQL)", Body: "UPDATE d\nSET d.${1:columna} = o.${1:columna}\nFROM ${2:destino} d\nJOIN ${3:origen} o ON o.${4:id} = d.${4:id};"},
 			{Label: "try", Detail: "BEGIN TRY … BEGIN CATCH", Body: "BEGIN TRY\n    ${1:SELECT 1;}\nEND TRY\nBEGIN CATCH\n    SELECT ERROR_MESSAGE();\nEND CATCH"},
 		},
 	})

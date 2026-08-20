@@ -234,6 +234,8 @@ export function GitAddRemote(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function GitAddRepo(arg1:string):Promise<vault.GitRepo>;
 
+export function GitAddSubmodule(arg1:string,arg2:string,arg3:string,arg4:string,arg5:git.AuthConfig):Promise<string>;
+
 export function GitAddWorktree(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
 
 export function GitAgentContext(arg1:string):Promise<agentctx.Context>;
@@ -268,6 +270,8 @@ export function GitCreateBranch(arg1:string,arg2:string,arg3:string,arg4:boolean
 
 export function GitCreateTag(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
+export function GitCredentialHelper(arg1:string):Promise<git.CredentialCache>;
+
 export function GitDeleteBranch(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function GitDeleteCredential(arg1:string):Promise<void>;
@@ -285,6 +289,12 @@ export function GitDiscard(arg1:string,arg2:Array<string>):Promise<void>;
 export function GitFetch(arg1:string,arg2:git.FetchOptions,arg3:git.AuthConfig):Promise<string>;
 
 export function GitFileAtCommit(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function GitFlowInit(arg1:string,arg2:git.GitFlowConfig):Promise<void>;
+
+export function GitFlowStart(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function GitFlowStatus(arg1:string):Promise<git.GitFlowConfig>;
 
 export function GitForgeInfo(arg1:string,arg2:string,arg3:string,arg4:string):Promise<git.ForgeInfo>;
 
@@ -328,6 +338,8 @@ export function GitReadConflictFile(arg1:string,arg2:string):Promise<string>;
 
 export function GitReadWorkFile(arg1:string,arg2:string):Promise<git.WorkFile>;
 
+export function GitRebase(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function GitRebaseApply(arg1:string,arg2:string,arg3:Array<git.RebaseAction>):Promise<void>;
 
 export function GitRebaseTodo(arg1:string,arg2:string):Promise<Array<git.RebaseAction>>;
@@ -343,6 +355,8 @@ export function GitRemoveMCPServer(arg1:string,arg2:string):Promise<void>;
 export function GitRemoveRemote(arg1:string,arg2:string):Promise<void>;
 
 export function GitRemoveRepo(arg1:string):Promise<void>;
+
+export function GitRemoveSubmodule(arg1:string,arg2:string):Promise<void>;
 
 export function GitRemoveWorktree(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
@@ -361,6 +375,8 @@ export function GitResolveConflictFile(arg1:string,arg2:string,arg3:string):Prom
 export function GitRevert(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function GitSaveCredential(arg1:string,arg2:string,arg3:string):Promise<vault.GitCredential>;
+
+export function GitSetCredentialHelper(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function GitSetDefaultAgent(arg1:string,arg2:string):Promise<void>;
 
@@ -394,11 +410,19 @@ export function GitStashes(arg1:string):Promise<Array<git.Stash>>;
 
 export function GitStatus(arg1:string):Promise<git.RepoStatus>;
 
+export function GitSubmodules(arg1:string):Promise<Array<git.Submodule>>;
+
+export function GitSyncSubmodules(arg1:string,arg2:boolean):Promise<string>;
+
 export function GitTags(arg1:string):Promise<Array<git.Tag>>;
 
 export function GitUnsetUpstream(arg1:string,arg2:string):Promise<void>;
 
 export function GitUnstage(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function GitUpdateSubmodule(arg1:string,arg2:string,arg3:boolean,arg4:boolean,arg5:git.AuthConfig):Promise<string>;
+
+export function GitUpdateSubmodules(arg1:string,arg2:boolean,arg3:boolean,arg4:git.AuthConfig):Promise<string>;
 
 export function GitUpsertMCPServer(arg1:string,arg2:mcpconf.ServerInput):Promise<void>;
 

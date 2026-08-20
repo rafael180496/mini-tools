@@ -171,15 +171,15 @@ func (r *Runner) runRaw(ctx context.Context, repoPath string, env []string, args
 		msg := strings.TrimSpace(stderr.String())
 		r.record(repoPath, args, started, true, msg)
 		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("git %s: la operación excedió el tiempo límite", args[0])
+			return nil, fmt.Errorf("git %s: la operación excedió el tiempo límite", subcommand(args))
 		}
 		if msg == "" {
-			return nil, fmt.Errorf("git %s: %w", args[0], err)
+			return nil, fmt.Errorf("git %s: %w", subcommand(args), err)
 		}
 		// The error text is git's own stderr, which may name a remote or a
 		// path but never a credential — tokens travel through askpass, not
 		// argv, so they cannot appear here.
-		return nil, fmt.Errorf("git %s: %s", args[0], msg)
+		return nil, fmt.Errorf("git %s: %s", subcommand(args), msg)
 	}
 	r.record(repoPath, args, started, false, "")
 	return stdout.Bytes(), nil
@@ -197,6 +197,30 @@ func (r *Runner) runLocalRaw(repoPath string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 	return r.runRaw(ctx, repoPath, nil, args...)
+}
+
+// subcommand is the name to blame in an error message: the first argument
+// that is not a global flag.
+//
+// Some calls prepend "-c key=value" to neutralise the editor, and labelling
+// their failures with args[0] produced "git -c: cannot rebase…" — the one
+// word in the message that tells the user WHICH command failed, replaced by
+// a flag. Falls back to args[0] so a call made entirely of flags still says
+// something.
+func subcommand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-c" || args[i] == "--config-env" {
+			i++ // skip its value too
+			continue
+		}
+		if !strings.HasPrefix(args[i], "-") {
+			return args[i]
+		}
+	}
+	if len(args) > 0 {
+		return args[0]
+	}
+	return "git"
 }
 
 // checkRefArg rejects a user-supplied ref, path, or remote name that would be

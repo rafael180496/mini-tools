@@ -1,6 +1,7 @@
 import {useEffect} from 'react'
 import {createPortal} from 'react-dom'
 import Icon from '../Icon'
+import {tidySeparators} from './DropdownMenu'
 import type {DropdownItem} from './DropdownMenu'
 
 interface ContextMenuProps {
@@ -29,7 +30,8 @@ export default function ContextMenu({x, y, items, onClose, width = 220}: Context
         return () => window.removeEventListener('keydown', onKey)
     }, [onClose])
 
-    const rowCount = items.filter((i) => i !== 'separator').length
+    const entries = tidySeparators(items)
+    const rowCount = entries.filter((i) => i !== 'separator').length
     const estimatedHeight = rowCount * 28 + 8
     const left = Math.max(8, Math.min(x, window.innerWidth - width - 8))
     const top = Math.max(8, Math.min(y, window.innerHeight - estimatedHeight - 8))
@@ -50,7 +52,7 @@ export default function ContextMenu({x, y, items, onClose, width = 220}: Context
                 style={{position: 'fixed', top, left, width}}
                 className="z-50 rounded-lg border border-outline-variant bg-surface-container-high p-1 text-xs text-on-surface shadow-lg"
             >
-                {items.map((item, i) =>
+                {entries.map((item, i) =>
                     item === 'separator' ? (
                         <div key={`sep-${i}`} className="my-1 border-t border-outline-variant" />
                     ) : (

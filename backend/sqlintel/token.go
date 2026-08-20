@@ -98,6 +98,13 @@ func Tokenize(src []rune) []Token {
 			tokens = append(tokens, mkToken(TokenComment, src, start, i))
 
 		case c == '/' && i+1 < n && src[i+1] == '*':
+			// Un /* sin cerrar SÍ se lleva el resto del archivo, y es a
+			// propósito: eso es exactamente lo que significa. Es la
+			// asimetría deliberada con el literal de abajo — un texto entre
+			// comillas que cruza líneas existe pero siempre cierra, así que
+			// uno abierto es un error de tipeo; un comentario de bloque que
+			// cruza líneas es el caso normal. Confinarlo a su línea sería
+			// mentir sobre qué está comentado.
 			start := i
 			i += 2
 			for i < n && !(src[i] == '*' && i+1 < n && src[i+1] == '/') {
@@ -108,9 +115,20 @@ func Tokenize(src []rune) []Token {
 			}
 			tokens = append(tokens, mkToken(TokenComment, src, start, i))
 
+		case isQQuoteStart(src, i):
+			// Oracle's alternative quoting (q'[…]', nq'!…!') has to be
+			// recognised before the plain-quote case below: its body is
+			// allowed to contain bare single quotes, so lexing it as an
+			// ordinary literal desynchronises every quote that follows and
+			// turns the rest of the buffer into one string token.
+			start := i
+			i = qQuoteEnd(src, i)
+			tokens = append(tokens, mkToken(TokenString, src, start, i))
+
 		case c == '\'':
 			start := i
 			i++
+			closed := false
 			for i < n {
 				if src[i] == '\'' {
 					// '' is an escaped quote inside the literal, not the end.
@@ -119,9 +137,18 @@ func Tokenize(src []rune) []Token {
 						continue
 					}
 					i++
+					closed = true
 					break
 				}
 				i++
+			}
+			// An unterminated literal is confined to its own line instead of
+			// swallowing everything below it. A real multi-line string is
+			// always closed; one that is not is a typo or a half-typed edit,
+			// and letting it run to the end of the buffer is what silently
+			// killed completion for every statement after it.
+			if !closed {
+				i = lineEnd(src, start)
 			}
 			tokens = append(tokens, mkToken(TokenString, src, start, i))
 
@@ -149,6 +176,9 @@ func Tokenize(src []rune) []Token {
 			}
 			if i < n {
 				i++
+			} else {
+				// Same containment rule as the string case above.
+				i = lineEnd(src, start)
 			}
 			tok := mkToken(TokenQuoted, src, start, i)
 			tok.Value = trimDelims(tok.Text, string(closer), string(closer))
@@ -165,6 +195,8 @@ func Tokenize(src []rune) []Token {
 			}
 			if i < n {
 				i++
+			} else {
+				i = lineEnd(src, start)
 			}
 			tok := mkToken(TokenQuoted, src, start, i)
 			tok.Value = trimDelims(tok.Text, "[", "]")
@@ -243,6 +275,74 @@ func trimDelims(text, open, close string) string {
 	text = strings.TrimPrefix(text, open)
 	text = strings.TrimSuffix(text, close)
 	return text
+}
+
+// lineEnd returns the offset of the newline that ends the line containing
+// from, or the end of input when there is none. It is what confines an
+// unterminated literal to its own line: the alternative — letting it run to
+// the end of the buffer — makes a single stray quote in a scratch script
+// turn every statement below it into "inside a string", where completion is
+// silent by design. That failure mode reads as "the autocomplete stopped
+// working" with nothing on screen to explain why.
+func lineEnd(src []rune, from int) int {
+	for i := from; i < len(src); i++ {
+		if src[i] == '\n' {
+			return i
+		}
+	}
+	return len(src)
+}
+
+// isQQuoteStart reports whether src[i] opens an Oracle alternative-quoted
+// literal: q'…', Q'…', nq'…' or NQ'…'. It is only reached at a token
+// boundary, so an identifier merely ending in q ("xq'a'") is already part
+// of the preceding word token and cannot land here.
+func isQQuoteStart(src []rune, i int) bool {
+	n := len(src)
+	j := i
+	if j < n && (src[j] == 'n' || src[j] == 'N') {
+		j++
+	}
+	if j >= n || (src[j] != 'q' && src[j] != 'Q') {
+		return false
+	}
+	j++
+	// Needs the quote AND a delimiter character after it; q'' is an empty
+	// ordinary literal preceded by an identifier, not a q-quote.
+	return j+1 < n && src[j] == '\'' && !isSpace(src[j+1])
+}
+
+// qQuoteEnd returns the offset just past the closing delimiter of the
+// q-quoted literal starting at i. The four bracket pairs close with their
+// mirror ([ ], ( ), { }, < >); any other delimiter closes with itself. An
+// unterminated one is confined to its line, same rule as lineEnd explains.
+func qQuoteEnd(src []rune, i int) int {
+	n := len(src)
+	j := i
+	if src[j] == 'n' || src[j] == 'N' {
+		j++
+	}
+	j += 2 // q'
+	open := src[j]
+	closer := open
+	switch open {
+	case '[':
+		closer = ']'
+	case '(':
+		closer = ')'
+	case '{':
+		closer = '}'
+	case '<':
+		closer = '>'
+	}
+	j++
+	for j < n {
+		if src[j] == closer && j+1 < n && src[j+1] == '\'' {
+			return j + 2
+		}
+		j++
+	}
+	return lineEnd(src, i)
 }
 
 // isDollarQuoteStart reports whether src[i] opens a Postgres dollar-quoted

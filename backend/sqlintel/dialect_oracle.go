@@ -41,6 +41,14 @@ func init() {
 			{Label: "upsert", Detail: "MERGE INTO … USING … (upsert de Oracle)", Body: "MERGE INTO ${1:destino} d\nUSING ${2:origen} o\n    ON (d.${3:id} = o.${3:id})\nWHEN MATCHED THEN\n    UPDATE SET d.${4:columna} = o.${4:columna}\nWHEN NOT MATCHED THEN\n    INSERT (${3:id}, ${4:columna}) VALUES (o.${3:id}, o.${4:columna});"},
 			{Label: "plsql", Detail: "Bloque anónimo PL/SQL", Body: "DECLARE\n    ${1:v_valor} ${2:NUMBER};\nBEGIN\n    ${3:NULL;}\nEXCEPTION\n    WHEN OTHERS THEN\n        DBMS_OUTPUT.PUT_LINE(SQLERRM);\nEND;\n/"},
 			{Label: "proc", Detail: "CREATE OR REPLACE PROCEDURE", Body: "CREATE OR REPLACE PROCEDURE ${1:nombre} (\n    ${2:p_param} IN ${3:NUMBER}\n) IS\nBEGIN\n    ${4:NULL;}\nEND ${1:nombre};\n/"},
+			// Oracle no acepta ADD COLUMN: la columna nueva va entre
+			// paréntesis, y ahí mismo entran varias de una.
+			{Label: "addcol", Detail: "ALTER TABLE … ADD (…) — sintaxis de Oracle", Body: "ALTER TABLE ${1:tabla} ADD (${2:columna} ${3:VARCHAR2(100)} NULL);"},
+			{Label: "updj", Detail: "UPDATE con subconsulta correlacionada", Body: "UPDATE ${1:destino} d\nSET d.${2:columna} = (\n    SELECT o.${3:columna}\n    FROM ${4:origen} o\n    WHERE o.${5:id} = d.${5:id}\n)\nWHERE EXISTS (\n    SELECT 1 FROM ${4:origen} o WHERE o.${5:id} = d.${5:id}\n);"},
+			{Label: "seq", Detail: "CREATE SEQUENCE …", Body: "CREATE SEQUENCE ${1:nombre}\n    START WITH ${2:1}\n    INCREMENT BY 1\n    NOCACHE\n    NOCYCLE;"},
+			{Label: "trg", Detail: "CREATE OR REPLACE TRIGGER (BEFORE INSERT)", Body: "CREATE OR REPLACE TRIGGER ${1:nombre}\nBEFORE INSERT ON ${2:tabla}\nFOR EACH ROW\nBEGIN\n    ${3:NULL;}\nEND;\n/"},
+			{Label: "exc", Detail: "EXCEPTION WHEN NO_DATA_FOUND / OTHERS", Body: "EXCEPTION\n    WHEN NO_DATA_FOUND THEN\n        ${1:NULL;}\n    WHEN OTHERS THEN\n        DBMS_OUTPUT.PUT_LINE(SQLERRM);\n        RAISE;"},
+			{Label: "bulk", Detail: "BULK COLLECT … LIMIT (lote de filas)", Body: "DECLARE\n    CURSOR c IS SELECT ${1:*} FROM ${2:tabla};\n    TYPE t_tab IS TABLE OF c%ROWTYPE;\n    v_filas t_tab;\nBEGIN\n    OPEN c;\n    LOOP\n        FETCH c BULK COLLECT INTO v_filas LIMIT ${3:1000};\n        EXIT WHEN v_filas.COUNT = 0;\n        FOR i IN 1 .. v_filas.COUNT LOOP\n            ${4:NULL;}\n        END LOOP;\n    END LOOP;\n    CLOSE c;\nEND;\n/"},
 			{Label: "cur", Detail: "FOR … IN (cursor implícito) LOOP", Body: "FOR ${1:r} IN (SELECT ${2:*} FROM ${3:tabla}) LOOP\n    ${4:NULL;}\nEND LOOP;"},
 		},
 	})

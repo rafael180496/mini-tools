@@ -21,6 +21,7 @@ import type {Extension} from '@codemirror/state'
 import {Decoration, EditorView, ViewPlugin, WidgetType, keymap} from '@codemirror/view'
 import type {ViewUpdate} from '@codemirror/view'
 import {CompleteSQL, PrimeSchemaIndex, RecordCompletionUse, SuggestInlineSQL} from '../../wailsjs/go/main/App'
+import {EventsOn} from '../../wailsjs/runtime'
 import type {sqlintel} from '../../wailsjs/go/models'
 
 // Item kinds mirrored from backend/sqlintel/engine.go's Kind* constants —
@@ -42,6 +43,8 @@ const KIND_TO_TYPE: Record<string, string> = {
     keyword: 'sqlintel-keyword',
     snippet: 'sqlintel-snippet',
     join: 'sqlintel-join',
+    alias: 'sqlintel-alias',
+    expand: 'sqlintel-expand',
 }
 
 // Go returns an absolute score (roughly 0-1800). CodeMirror expects a
@@ -135,8 +138,17 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
         // began mid-word ("…rgin ") cannot pass that fragment off as "in".
         const before = context.state.sliceDoc(Math.max(0, context.pos - 64), context.pos).replace(/^\S+/, '')
         const autoOpen = /(?:\b(?:from|join|where|on|select|set|by|having|and|or|like|in)\s+|[,(]\s*)$/i.test(before)
+        // "FROM clientes |" is the alias position, and it is the one place
+        // the engine PROPOSES a name instead of looking one up — so it has
+        // to open by itself. The rule above cannot see it: the word right
+        // before the cursor is the table, not a clause keyword.
+        // "into" queda deliberadamente afuera: después de INSERT INTO tabla
+        // no va un alias sino la lista de columnas, VALUES o un SELECT, y
+        // abrir ahí solo pondría la lista de tablas encima de lo que se está
+        // por escribir. Go aplica la misma exclusión del lado del motor.
+        const aliasSlot = /\b(?:from|join|update|using)\s+[\w$#]+(?:\.[\w$#]+){0,2}\s+$/i.test(before)
 
-        if (!context.explicit && !qualified && !autoOpen && (!word || word.from === word.to)) return null
+        if (!context.explicit && !qualified && !autoOpen && !aliasSlot && (!word || word.from === word.to)) return null
 
         let resp: sqlintel.Response
         try {
@@ -335,6 +347,19 @@ export const sqlCompletionTheme = EditorView.baseTheme({
         content: "'code'",
         color: 'var(--color-on-surface-variant)',
     },
+    // An alias is a name the engine PROPOSES (for a table just written) or
+    // one the query invented (a "AS total" in the SELECT list) — in both
+    // cases a label, not something looked up in the catalog.
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-alias::after': {
+        content: "'label'",
+        color: 'var(--color-tertiary)',
+    },
+    // The star expansion rewrites what is already there rather than adding a
+    // name, so it gets the "unfold" glyph instead of an identifier icon.
+    '.cm-tooltip-autocomplete .cm-completionIcon-sqlintel-expand::after': {
+        content: "'unfold_more'",
+        color: 'var(--color-primary)',
+    },
     // lang-sql contributes its own keyword completions from a separate
     // source and types them 'keyword'; without this they would keep the
     // library's 🔑 next to this engine's identical suggestions. The extra
@@ -517,7 +542,59 @@ export function sqlInlineSuggestions(connId: string, dbType: string | null | und
 // connection so the index is usually ready before the first keystroke.
 // Safe to call repeatedly: the manager ignores a prime for a connection
 // that is already indexed or already scanning.
+//
+// The cooldown guards the one case the manager cannot absorb: an extraction
+// that FAILED leaves the index empty, so every subsequent completion sees
+// `indexing` and asks again — turning a broken catalog into a full scan per
+// keystroke, each one blocking on a database that is already not answering.
+// Ten seconds is long enough that the retry is a retry and not a loop.
+//
+// It is CLEARED on every scan that settles without an error (see
+// onSchemaIndexReady), which is what keeps it from delaying a legitimate
+// rebuild. Disconnecting a connection drops its index on the Go side, and
+// the editor tab stays bound to the same connection id — so nothing
+// re-primes on reconnect except the `indexing` flag coming back from the
+// next completion. Without the clear, a disconnect/reconnect inside the
+// cooldown window would leave the editor on keywords alone until it
+// expired, for no reason: the previous scan had succeeded.
+const PRIME_COOLDOWN_MS = 10_000
+const lastPrime = new Map<string, number>()
+
 export function primeSchemaIndex(connId: string | null | undefined): void {
     if (!connId) return
+    const now = Date.now()
+    const previous = lastPrime.get(connId)
+    if (previous !== undefined && now - previous < PRIME_COOLDOWN_MS) return
+    lastPrime.set(connId, now)
     PrimeSchemaIndex(connId).catch(() => {})
 }
+
+// forgetPrimeCooldown drops the throttle for a connection, so an explicit
+// user action (rebinding a tab, refreshing metadata) primes immediately
+// instead of waiting out a cooldown started by a failed background attempt.
+export function forgetPrimeCooldown(connId: string | null | undefined): void {
+    if (connId) lastPrime.delete(connId)
+}
+
+// Mirrors sqlIntelIndexEvent in app.go — the two names are the contract.
+const SCHEMA_INDEX_EVENT = 'sqlintel:index'
+
+// onSchemaIndexReady subscribes to the backend's "sqlintel:index" event —
+// the notification Go already emits when a background extraction settles.
+// Until now nothing listened to it, so the whole point of the event was
+// lost: a popup opened while the index was still building stayed
+// keyword-only until the user retyped, which reads as completion having
+// silently forgotten the schema. The callback fires only for a settled
+// scan of the connection asked about.
+export function onSchemaIndexReady(connId: string | null, callback: (status: sqlintel.Status) => void): () => void {
+    if (!connId) return () => {}
+    return EventsOn(SCHEMA_INDEX_EVENT, (status: sqlintel.Status) => {
+        if (!status || status.connId !== connId) return
+        if (status.state === 'loading') return
+        // A scan that settled without an error proves the connection answers,
+        // so the throttle has nothing left to protect against.
+        if (status.state !== 'error') lastPrime.delete(connId)
+        callback(status)
+    })
+}
+

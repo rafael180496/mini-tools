@@ -1,9 +1,11 @@
 import {useCallback, useEffect, useState} from 'react'
 import {
+    GitCredentialHelper,
     GitDeleteCredential,
     GitIdentity,
     GitListCredentials,
     GitSaveCredential,
+    GitSetCredentialHelper,
     GitSetIdentity,
 } from '../../../wailsjs/go/main/App'
 import type {git, vault} from '../../../wailsjs/go/models'
@@ -57,7 +59,7 @@ export default function GitSettingsDialog({repoId, repoName, onClose, onChanged}
                     {tab === 'identity' ? (
                         <IdentityPanel repoId={repoId} onError={setError} onChanged={onChanged} />
                     ) : (
-                        <TokensPanel onError={setError} />
+                        <TokensPanel repoId={repoId} onError={setError} />
                     )}
                 </div>
             </div>
@@ -208,7 +210,114 @@ function ScopeButton({active, onClick, label, title}: {active: boolean; onClick:
     )
 }
 
-function TokensPanel({onError}: {onError: (e: string | null) => void}) {
+// Cómo recuerda GIT las contraseñas HTTPS, que es otra cosa que cómo las
+// recuerda esta app.
+//
+// Van juntos en la misma pestaña justamente porque son las dos mitades de la
+// misma pregunta y elegir mal se paga: el token del vault lo usa la app, el
+// credential helper lo usa git — o sea la terminal, los hooks, y esta app
+// cuando no hay token guardado. Alguien que clona acá y hace pull desde una
+// shell necesita el segundo, y hasta ahora no había forma de verlo ni de
+// cambiarlo sin editar .gitconfig a mano.
+function CredentialHelperPanel({repoId, onError}: {repoId: string; onError: (e: string | null) => void}) {
+    const [cache, setCache] = useState<git.CredentialCache | null>(null)
+    const [scope, setScope] = useState<'local' | 'global'>('global')
+    const [saving, setSaving] = useState(false)
+
+    const load = useCallback(async () => {
+        try {
+            const c = await GitCredentialHelper(repoId)
+            setCache(c)
+            // Arranca mostrando el ámbito donde el valor ya vive, para que
+            // apagarlo apague lo que se está viendo y no cree un override
+            // local encima de un global que sigue activo.
+            setScope(c.helper && !c.global ? 'local' : 'global')
+        } catch (e) {
+            onError(String(e))
+        }
+    }, [repoId, onError])
+
+    useEffect(() => {
+        void load()
+    }, [load])
+
+    async function apply(helper: string) {
+        setSaving(true)
+        onError(null)
+        try {
+            await GitSetCredentialHelper(repoId, helper, scope === 'global')
+            await load()
+        } catch (e) {
+            onError(String(e))
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    if (!cache) return null
+
+    const current = cache.helper ?? ''
+    const known = cache.available.some((o) => o.value === current)
+
+    return (
+        <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Contraseñas recordadas por git</p>
+
+            <div className="mb-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3 text-[10px] leading-relaxed text-on-surface-variant">
+                Esto <strong>no</strong> es el vault de arriba: es la configuración del propio git (<span className="font-mono">credential.helper</span>), la que usan la terminal, los hooks y esta app cuando no hay token guardado para ese servidor. Solo aplica a remotos HTTPS — con SSH quien decide es el ssh-agent.
+            </div>
+
+            <div className="mb-2 flex gap-1">
+                <ScopeButton
+                    active={scope === 'local'}
+                    onClick={() => setScope('local')}
+                    label="Este repositorio"
+                    title="Guarda en .git/config: solo afecta a este proyecto y pisa la configuración global"
+                />
+                <ScopeButton
+                    active={scope === 'global'}
+                    onClick={() => setScope('global')}
+                    label="Todos"
+                    title="Guarda en ~/.gitconfig: afecta a todos tus repositorios que no tengan un valor propio"
+                />
+            </div>
+
+            <select
+                value={known ? current : ''}
+                disabled={saving}
+                onChange={(e) => void apply(e.target.value)}
+                title="Cómo va a recordar git tu contraseña la próxima vez que un remoto HTTPS te la pida. «Preguntar siempre» borra la configuración y vuelve al comportamiento por defecto."
+                className="w-full rounded bg-surface-container-highest px-2 py-1.5 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            >
+                <option value="">Preguntar siempre (sin recordar)</option>
+                {cache.available.map((o) => (
+                    <option key={o.value} value={o.value}>
+                        {o.label}
+                        {o.secure ? '' : ' — sin cifrar'}
+                    </option>
+                ))}
+            </select>
+
+            {current !== '' && !known && (
+                <p className="mt-1.5 text-[10px] text-tertiary">
+                    Configurado a mano como <span className="font-mono">{current}</span>. No lo toco desde acá: elegir una opción de la lista lo reemplaza.
+                </p>
+            )}
+            {current !== '' && known && cache.global && scope === 'local' && (
+                <p className="mt-1.5 text-[10px] text-tertiary">
+                    El valor actual viene de tu configuración global. Si elegís algo con «Este repositorio» seleccionado, vas a crear un valor propio que la pisa solo acá.
+                </p>
+            )}
+            {current === '' && (
+                <p className="mt-1.5 text-[10px] text-on-surface-variant/70">
+                    Hoy git no recuerda nada: cada operación HTTPS sin token guardado en el vault te va a pedir la contraseña.
+                </p>
+            )}
+        </div>
+    )
+}
+
+function TokensPanel({repoId, onError}: {repoId: string; onError: (e: string | null) => void}) {
     const [creds, setCreds] = useState<vault.GitCredential[]>([])
     const [host, setHost] = useState('')
     const [username, setUsername] = useState('')
@@ -255,6 +364,8 @@ function TokensPanel({onError}: {onError: (e: string | null) => void}) {
                 <br />
                 Si no guardás ninguno, git resuelve las credenciales como siempre (llavero del sistema, credential helper, ssh-agent).
             </div>
+
+            <CredentialHelperPanel repoId={repoId} onError={onError} />
 
             <div>
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Guardados</p>

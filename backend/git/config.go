@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 )
 
@@ -126,6 +127,142 @@ func (r *Runner) setOrUnset(root, scope, key, value string) error {
 		return fmt.Errorf("no se pudo escribir %s: %w", key, err)
 	}
 	return nil
+}
+
+// CredentialCache is how git itself remembers HTTPS passwords, which is a
+// different thing from how this app remembers them.
+//
+// The two coexist on purpose. The app stores a PAT in its own vault and
+// feeds it to git through askpass (see auth.go), which never touches git's
+// configuration; git's credential helper is what answers when the app
+// defers ("let git decide" — the AuthConfig zero value) and, more to the
+// point, what answers when the SAME repository is used from a terminal.
+// Someone who clones here and pulls from a shell wants the second one, and
+// until now there was no way to see or set it without editing .gitconfig.
+type CredentialCache struct {
+	// Helper is the configured credential.helper, "" when none is set.
+	Helper string `json:"helper"`
+	// Global reports that the value comes from ~/.gitconfig rather than
+	// from this repository. It changes what turning it off means — unsetting
+	// a global helper affects every repository on the machine — so it is
+	// reported rather than inferred.
+	Global bool `json:"global"`
+	// Available are the helpers worth offering on THIS operating system.
+	// Listing "osxkeychain" on Linux or "wincred" on macOS would offer a
+	// setting that silently fails on the next fetch, which is the worst
+	// kind of broken: it looks configured.
+	Available []CredentialHelperOption `json:"available"`
+}
+
+// CredentialHelperOption is one offerable helper.
+type CredentialHelperOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+	// Secure distinguishes a helper backed by the OS keychain from one that
+	// writes the password to a plain file (`store`) or keeps it in memory
+	// for a while (`cache`). The UI is expected to say so: "remember my
+	// password" and "write my password to ~/.git-credentials in clear text"
+	// are not the same offer.
+	Secure bool `json:"secure"`
+}
+
+// CredentialHelpers reports the effective credential.helper and the options
+// that make sense on this machine.
+//
+// Read with --get rather than --get-all: a repository can legitimately
+// configure several helpers that git consults in order, but offering that in
+// a dropdown would be a configuration editor, not a setting. What the UI
+// shows is the first one, which is the one that answers.
+func (r *Runner) CredentialHelpers(repoPath string) (CredentialCache, error) {
+	root, err := r.resolveRepo(repoPath)
+	if err != nil {
+		return CredentialCache{}, err
+	}
+
+	out := CredentialCache{Available: credentialHelperOptions()}
+	// El scope local sale del listado completo, que siempre sale con 0.
+	// Preguntar con `--get` una clave que no está sale con 1 y deja una
+	// entrada en rojo en "Comandos ejecutados" cada vez que se abre este
+	// diálogo — y no tener credential.helper configurado es el caso normal.
+	if local := r.localConfig(root)["credential.helper"]; local != "" {
+		out.Helper = local
+		return out, nil
+	}
+	// Igual que el local: `--list` en vez de `--get`. En una máquina que ya
+	// tenga ~/.gitconfig —o sea cualquiera con user.name configurado— sale
+	// con 0 y no deja rastro rojo; sin el archivo falla igual que `--get`,
+	// así que nunca es peor.
+	if global := r.configList(root, "--global")["credential.helper"]; global != "" {
+		out.Helper = global
+		out.Global = true
+	}
+	return out, nil
+}
+
+// SetCredentialHelper writes (or clears) credential.helper.
+//
+// An empty helper unsets the key, which restores "git asks every time" —
+// and, when the value being cleared is the global one, does so for every
+// repository on the machine. That is why the scope is a parameter and not a
+// guess: the caller knows which of the two the user was looking at.
+func (r *Runner) SetCredentialHelper(repoPath, helper string, global bool) error {
+	root, err := r.resolveRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	if helper != "" && !isKnownCredentialHelper(helper) {
+		// Not a security boundary — setOrUnset already refuses a leading
+		// "-" and there is no shell — but a typo'd helper name turns into
+		// "git: 'credential-xyz' is not a git command" on the next fetch,
+		// far from where it was introduced.
+		return fmt.Errorf("credential helper desconocido: %q", helper)
+	}
+	scope := "--local"
+	if global {
+		scope = "--global"
+	}
+	return r.setOrUnset(root, scope, "credential.helper", helper)
+}
+
+// credentialHelperOptions is the per-OS list. `cache` is deliberately given
+// a timeout: bare `cache` expires in 15 minutes, which is short enough that
+// people conclude the setting did not work.
+func credentialHelperOptions() []CredentialHelperOption {
+	switch runtime.GOOS {
+	case "darwin":
+		return []CredentialHelperOption{
+			{Value: "osxkeychain", Label: "Llavero de macOS", Secure: true},
+			{Value: "cache --timeout=3600", Label: "Recordar 1 hora (en memoria)", Secure: true},
+			{Value: "store", Label: "Archivo en texto plano (~/.git-credentials)"},
+		}
+	case "windows":
+		return []CredentialHelperOption{
+			{Value: "manager", Label: "Administrador de credenciales de Windows", Secure: true},
+			{Value: "wincred", Label: "Credenciales de Windows (clásico)", Secure: true},
+			{Value: "store", Label: "Archivo en texto plano (~/.git-credentials)"},
+		}
+	default:
+		return []CredentialHelperOption{
+			{Value: "cache --timeout=3600", Label: "Recordar 1 hora (en memoria)", Secure: true},
+			// El único de toda la lista que NO viene con git: hay que
+			// instalarlo aparte (o compilarlo, en varias distros) y suele
+			// vivir en /usr/lib/git-core, fuera del PATH, así que sondear
+			// con LookPath daría falsos negativos. Entre un sondeo que se
+			// equivoca la mitad de las veces y una etiqueta honesta, la
+			// etiqueta: el usuario sabe si lo tiene, la app no.
+			{Value: "libsecret", Label: "Llavero del escritorio (requiere git-credential-libsecret)", Secure: true},
+			{Value: "store", Label: "Archivo en texto plano (~/.git-credentials)"},
+		}
+	}
+}
+
+func isKnownCredentialHelper(helper string) bool {
+	for _, o := range credentialHelperOptions() {
+		if o.Value == helper {
+			return true
+		}
+	}
+	return false
 }
 
 // RemoteHost returns the host of a remote's URL, for looking up a stored

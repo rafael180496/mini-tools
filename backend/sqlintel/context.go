@@ -22,7 +22,7 @@ const (
 	// ClauseOn is a join condition: ON …, USING (…).
 	ClauseOn Clause = "on"
 	// ClauseWhere is a predicate: WHERE …, AND/OR continuations.
-	ClauseWhere Clause = "where"
+	ClauseWhere   Clause = "where"
 	ClauseGroupBy Clause = "group"
 	ClauseHaving  Clause = "having"
 	ClauseOrderBy Clause = "order"
@@ -58,6 +58,21 @@ func (r TableRef) Label() string {
 	return r.Name
 }
 
+// ProjectedItem is one entry of a SELECT list. Name is what the rest of the
+// statement can refer to it by: the alias when the item defines one, the
+// column name otherwise.
+type ProjectedItem struct {
+	Name string
+	// IsAlias distinguishes "SELECT COUNT(*) AS total" (total exists only
+	// inside this statement) from "SELECT nombre" (nombre is a real column
+	// the catalog also knows). The two deserve different detail text and a
+	// different rank: an alias is unguessable, so it leads.
+	IsAlias bool
+	// Expr is the expression an alias renames, for the detail line. Empty
+	// for a bare column.
+	Expr string
+}
+
 // Context is everything the cursor position implies, resolved from the
 // statement around it.
 type Context struct {
@@ -87,6 +102,18 @@ type Context struct {
 	// LeftRefs are the references that precede JoinTarget in the same query
 	// block, i.e. the candidates the join condition can point back at.
 	LeftRefs []TableRef
+	// Projected is what the statement's SELECT list names: the columns it
+	// projects and the aliases it defines. GROUP BY, ORDER BY and HAVING
+	// can only legally talk about those, and an alias in particular exists
+	// NOWHERE else — no catalog knows that this query calls something
+	// "total", so without reading the projection the engine cannot suggest
+	// the one name the position is most likely to want.
+	Projected []ProjectedItem `json:"-"`
+	// AliasSlot is the table reference whose alias the cursor is about to
+	// write — "FROM clientes |". Nothing in the catalog answers that
+	// position, so it is the one place the engine has to propose a name
+	// instead of looking one up.
+	AliasSlot *TableRef `json:"-"`
 	// Script are the tables the edited buffer declares itself — a CREATE
 	// TABLE further up the file, a CTE of this statement. They exist only in
 	// the text and will never be in the catalog index, which is exactly why
@@ -126,7 +153,247 @@ func Analyze(src []rune, cursor int) Context {
 	ctx.Refs = an.visibleRefs()
 	ctx.JoinTarget, ctx.LeftRefs = an.pendingJoin()
 	ctx.Script = ScriptTables(tokens, stmt)
+	ctx.Projected = projectedItems(stmt)
+	ctx.AliasSlot = aliasSlot(stmt, ctx)
 	return ctx
+}
+
+// projectedItems reads the SELECT list of the statement — everything between
+// the first top-level SELECT and its FROM — and returns what the rest of the
+// statement can name. Parenthesised depth is tracked so a subquery or a
+// function call in the projection ("SELECT (SELECT …) x, COUNT(a, b)") does
+// not have its internals or its argument commas mistaken for list entries.
+//
+// It reads TOKENS rather than re-lexing text because the statement was
+// already tokenised for everything else; this is a second pass over a slice,
+// not a second parse.
+func projectedItems(stmt []Token) []ProjectedItem {
+	start := -1
+	for i, t := range stmt {
+		if t.Is("SELECT") {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+
+	var out []ProjectedItem
+	depth := 0
+	segment := make([]Token, 0, 8)
+
+	flush := func() {
+		if item, ok := projectedFrom(segment); ok {
+			out = append(out, item)
+		}
+		segment = segment[:0]
+	}
+
+	for _, t := range stmt[start:] {
+		if t.Kind == TokenPunct {
+			switch t.Text {
+			case "(":
+				depth++
+			case ")":
+				depth--
+			case ",":
+				if depth == 0 {
+					flush()
+					continue
+				}
+			}
+		}
+		// FROM at the top level ends the projection. Inside a paren it
+		// belongs to a subquery whose own list is not this statement's.
+		if depth == 0 && t.Is("FROM") {
+			break
+		}
+		segment = append(segment, t)
+	}
+	flush()
+	return out
+}
+
+// projectedFrom turns one comma-separated SELECT-list entry into the name it
+// contributes, if any. "*" and expressions with no name contribute nothing —
+// there is nothing for a later clause to refer to.
+func projectedFrom(segment []Token) (ProjectedItem, bool) {
+	// DISTINCT/ALL lead the list, not an entry of it.
+	for len(segment) > 0 && segment[0].Kind == TokenWord &&
+		(segment[0].Is("DISTINCT") || segment[0].Is("ALL") || segment[0].Is("TOP")) {
+		segment = segment[1:]
+	}
+	if len(segment) == 0 {
+		return ProjectedItem{}, false
+	}
+
+	// Explicit alias: "<expr> AS name", and only an AS at the TOP level of
+	// the entry. Scanning without tracking depth reads the AS of a
+	// "CAST(fecha AS DATE)" as a rename and offers "DATE" as a name the
+	// query defined — a suggestion for something that does not exist.
+	as := -1
+	depth := 0
+	for i, t := range segment {
+		if t.Kind == TokenPunct {
+			switch t.Text {
+			case "(":
+				depth++
+			case ")":
+				depth--
+			}
+			continue
+		}
+		if depth == 0 && t.Is("AS") && i > 0 && i+1 < len(segment) && segment[i+1].IsWordLike() {
+			as = i
+		}
+	}
+	if as >= 0 {
+		name := segment[as+1]
+		// An alias is never a reserved word; a match there means the parse
+		// ran off the end of the entry, not that someone named a column SET.
+		if name.Kind != TokenWord || !isReserved(name.Upper()) {
+			return ProjectedItem{Name: name.Value, IsAlias: true, Expr: exprText(segment[:as])}, true
+		}
+	}
+
+	last := segment[len(segment)-1]
+	if !last.IsWordLike() || (last.Kind == TokenWord && isReserved(last.Upper())) {
+		return ProjectedItem{}, false
+	}
+
+	// A bare column, or "tabla.columna": the name is the last word and
+	// nothing renames it.
+	if len(segment) == 1 {
+		return ProjectedItem{Name: last.Value}, true
+	}
+	prev := segment[len(segment)-2]
+	if prev.Kind == TokenPunct && prev.Text == "." {
+		return ProjectedItem{Name: last.Value}, true
+	}
+	// Implicit alias, only right after a closing paren — "COUNT(*) total".
+	// Any looser rule starts reading the tail of an arithmetic expression
+	// as a name.
+	if prev.Kind == TokenPunct && prev.Text == ")" {
+		return ProjectedItem{Name: last.Value, IsAlias: true, Expr: exprText(segment[:len(segment)-1])}, true
+	}
+	return ProjectedItem{}, false
+}
+
+// exprText renders an expression back to something readable for a detail
+// line. Spacing is approximate on purpose — this is a label, not a
+// round-trip of the user's formatting.
+func exprText(tokens []Token) string {
+	var b strings.Builder
+	// Tracked instead of re-read off the builder: b.String() allocates a
+	// copy on every call, and this runs once per SELECT-list entry.
+	var lastPunct byte
+	for _, t := range tokens {
+		if b.Len() > 0 && t.Kind != TokenPunct && lastPunct != '.' && lastPunct != '(' {
+			b.WriteByte(' ')
+		}
+		b.WriteString(t.Text)
+		lastPunct = 0
+		if t.Kind == TokenPunct && len(t.Text) == 1 {
+			lastPunct = t.Text[0]
+		}
+		if b.Len() > 60 {
+			return b.String()[:60] + "…"
+		}
+	}
+	return b.String()
+}
+
+// clauseKeywordBefore returns the keyword that put the parser into a table
+// position — the nearest FROM/INTO/UPDATE/USING/JOIN at or before i.
+func clauseKeywordBefore(stmt []Token, i int) (string, bool) {
+	for j := i - 1; j >= 0; j-- {
+		if stmt[j].Kind != TokenWord {
+			continue
+		}
+		switch stmt[j].Upper() {
+		case "FROM", "INTO", "UPDATE", "USING", "JOIN":
+			return stmt[j].Upper(), true
+		}
+	}
+	return "", false
+}
+
+// aliasSlot reports the table whose alias the cursor is about to type:
+// the clause is FROM or JOIN and the text immediately behind the cursor is a
+// table name (possibly schema-qualified) that has not been aliased yet.
+//
+// The check runs on tokens rather than on ctx.Refs because the refs carry no
+// positions: two references to the same table in one statement are
+// indistinguishable there, and only one of them is under the cursor.
+func aliasSlot(stmt []Token, ctx Context) *TableRef {
+	if ctx.Clause != ClauseFrom && ctx.Clause != ClauseJoin {
+		return nil
+	}
+	if ctx.DotPrefix != "" {
+		return nil
+	}
+
+	// Index of the last token that ends at or before where the typed word
+	// starts — i.e. the token the cursor is sitting behind.
+	last := -1
+	for i, t := range stmt {
+		if t.End <= ctx.From {
+			last = i
+			continue
+		}
+		break
+	}
+	if last < 0 {
+		return nil
+	}
+
+	tok := stmt[last]
+	if !tok.IsWordLike() || (tok.Kind == TokenWord && isReserved(tok.Upper())) {
+		return nil
+	}
+
+	ref := TableRef{Name: tok.Value}
+	// Walk back over a qualified name so "FROM hr.employees |" is still the
+	// alias slot of employees and not of hr. A three-part name needs no
+	// extra case: only the last two parts name a catalog object, and those
+	// are the two this reads.
+	nameStart := last
+	if last-2 >= 0 && stmt[last-1].Kind == TokenPunct && stmt[last-1].Text == "." && stmt[last-2].IsWordLike() {
+		ref.Schema = stmt[last-2].Value
+		nameStart = last - 2
+	}
+
+	// INSERT INTO maps to the same clause as FROM, but nothing sensible
+	// follows the table there: the next token is a column list, VALUES or a
+	// SELECT — never an alias. UPDATE and MERGE's USING do take one, so the
+	// check is on the keyword that opened the clause, not on the clause.
+	if k, ok := clauseKeywordBefore(stmt, nameStart); ok && k == "INTO" {
+		return nil
+	}
+
+	// The table has to be the LAST thing written: "FROM clientes c |" is
+	// past the alias slot, and proposing a second name there is noise.
+	//
+	// Two ways the slot is already closed, and both have to be checked
+	// against the analyzer's own refs rather than against the token alone:
+	// the word behind the cursor IS the alias that was just written, or it
+	// is the table name of a ref that already carries one. The word being
+	// typed is the exception to both — "FROM clientes c|" is still writing
+	// the alias, and the analyzer has already recorded that partial word as
+	// if it were finished.
+	for _, r := range ctx.Refs {
+		if r.Alias != "" && strings.EqualFold(r.Alias, ctx.Prefix) {
+			continue
+		}
+		if r.Alias != "" && strings.EqualFold(r.Alias, ref.Name) {
+			return nil
+		}
+		if strings.EqualFold(r.Name, ref.Name) && r.Alias != "" {
+			return nil
+		}
+	}
+	return &ref
 }
 
 // stmtStarters are the words that can begin a statement of their own. Used

@@ -67,9 +67,15 @@ func lengthBonus(query, candidate string) int {
 // boundaryPrefix matches a query against the start of any word inside the
 // candidate, where words are split on "_" and on digit runs — the shape of
 // almost every SQL identifier ("customer_address", "line_item_2").
+//
+// The digit half of that sentence used to be documentation only: the loop
+// checked for "_" and nothing else, so "2" did not reach "line_item_2" and
+// neither did "01" reach "tab01". A numeric suffix is often the only thing
+// telling two otherwise identical names apart, which makes it exactly what
+// someone types to pick between them.
 func boundaryPrefix(query, candidate string) (int, bool) {
 	for i := 1; i < len(candidate); i++ {
-		if candidate[i-1] != '_' {
+		if !isSegmentStart(candidate, i) {
 			continue
 		}
 		if strings.HasPrefix(candidate[i:], query) {
@@ -79,6 +85,20 @@ func boundaryPrefix(query, candidate string) (int, bool) {
 	return 0, false
 }
 
+// isSegmentStart reports whether index i begins a new word inside an
+// identifier: right after an underscore, or where a digit run starts.
+// Candidates are pre-lowered, so there is no camelCase boundary left to
+// find — the capital that would have marked one is gone before this runs.
+func isSegmentStart(candidate string, i int) bool {
+	prev, cur := candidate[i-1], candidate[i]
+	if prev == '_' {
+		return true
+	}
+	return isASCIIDigit(cur) && !isASCIIDigit(prev)
+}
+
+func isASCIIDigit(c byte) bool { return c >= '0' && c <= '9' }
+
 // acronym matches the initials of the candidate's underscore-separated
 // segments: "ca" → customer_address, "oid" → order_item_detail.
 func acronym(query, candidate string) (int, bool) {
@@ -86,13 +106,14 @@ func acronym(query, candidate string) (int, bool) {
 		return 0, false
 	}
 	initials := make([]byte, 0, 8)
-	prev := byte('_')
 	for i := 0; i < len(candidate); i++ {
 		c := candidate[i]
-		if prev == '_' && c != '_' {
+		if c == '_' {
+			continue
+		}
+		if i == 0 || isSegmentStart(candidate, i) {
 			initials = append(initials, c)
 		}
-		prev = c
 	}
 	if strings.HasPrefix(string(initials), query) {
 		return 500, true

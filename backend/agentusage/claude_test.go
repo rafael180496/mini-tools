@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -189,8 +188,20 @@ func TestAntigravityReportsActivityNotTokens(t *testing.T) {
 	if u.Available || u.All.Total != 0 {
 		t.Errorf("Antigravity no guarda tokens: no puede reportarlos: %+v", u)
 	}
-	if u.Note == "" || !strings.Contains(u.Note, "/usage") {
-		t.Errorf("la nota debe decir dónde se ve la cuota de verdad: %q", u.Note)
+	// La nota tiene que ESTAR: un panel que informa "sin datos de tokens" sin
+	// explicar por qué es peor que no informar nada.
+	//
+	// Su texto exacto, en cambio, NO se fija acá a propósito. Esta aserción
+	// exigía la subcadena "/usage" porque la primera versión de la nota
+	// mandaba a escribir /usage adentro de la sesión de Antigravity. Cuando
+	// se agregó el botón que hace esa consulta por vos (AgentQueryLimits,
+	// que corre `agy --print "/usage"`), la nota pasó a apuntar al botón —
+	// una mejora — y este test empezó a fallar sin que hubiera nada roto.
+	// Clavar copia de producto en un test convierte cada mejora de redacción
+	// en un fallo; lo que el test cuida de verdad es la invariante de más
+	// arriba: Antigravity reporta actividad, nunca tokens.
+	if u.Note == "" {
+		t.Error("hace falta una nota que explique por qué no hay tokens")
 	}
 	if u.Activity == nil {
 		t.Fatal("debería haber actividad leída de la base")

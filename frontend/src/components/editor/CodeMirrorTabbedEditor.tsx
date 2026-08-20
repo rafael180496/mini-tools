@@ -8,7 +8,8 @@ import {editorAppearanceExtension, type EditorAppearance} from '../../codemirror
 import {db} from '../../../wailsjs/go/models'
 import type {EditorTab, TabLanguage} from './EditorTabs'
 import {sqlLanguageExtension, sqlSchemaHover} from '../../codemirror/sqlSchema'
-import {primeSchemaIndex} from '../../codemirror/sqlIntel'
+import {completionStatus, startCompletion} from '@codemirror/autocomplete'
+import {forgetPrimeCooldown, onSchemaIndexReady, primeSchemaIndex} from '../../codemirror/sqlIntel'
 import {redisCli} from '../../codemirror/redisLanguage'
 import {mongosh} from '../../codemirror/mongoLanguage'
 import {lintExtension} from '../../codemirror/lintAdapter'
@@ -188,7 +189,25 @@ export default function CodeMirrorTabbedEditor({
     // the first character is typed instead of warming up on the first
     // request. Idempotent — an index that already exists is not rebuilt.
     useEffect(() => {
+        // Binding a tab is an explicit user action, so it primes even if a
+        // failed background attempt is still inside its cooldown.
+        forgetPrimeCooldown(connId)
         primeSchemaIndex(connId)
+    }, [connId])
+
+    // The index usually lands before the first keystroke, but on a large
+    // catalog or a slow link it does not — and a popup already on screen
+    // when it arrives was built from keywords alone. Re-running the request
+    // the moment the scan settles is what turns that into the schema-aware
+    // list the user was waiting for, instead of one that only comes back
+    // after retyping the word.
+    useEffect(() => {
+        return onSchemaIndexReady(connId, () => {
+            const view = viewRef.current
+            if (!view) return
+            if (completionStatus(view.state) === null) return
+            startCompletion(view)
+        })
     }, [connId])
 
     // Theme changes are app-wide, not per-tab — reconfigure every cached

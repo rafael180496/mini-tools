@@ -34,6 +34,8 @@ func init() {
 			{Label: "limit", Detail: "LIMIT … OFFSET …", Body: "SELECT ${1:*}\nFROM ${2:tabla}\nORDER BY ${3:columna}\nLIMIT ${4:50} OFFSET ${5:0};"},
 			{Label: "upsert", Detail: "INSERT … ON CONFLICT DO UPDATE (upsert)", Body: "INSERT INTO ${1:tabla} (${2:id}, ${3:columna})\nVALUES (${4:valor_id}, ${5:valor})\nON CONFLICT (${2:id}) DO UPDATE\n    SET ${3:columna} = EXCLUDED.${3:columna};"},
 			{Label: "fn", Detail: "CREATE OR REPLACE FUNCTION (plpgsql)", Body: "CREATE OR REPLACE FUNCTION ${1:nombre}(${2:p_param} ${3:integer})\nRETURNS ${4:integer} AS $$\nBEGIN\n    RETURN ${5:0};\nEND;\n$$ LANGUAGE plpgsql;"},
+			{Label: "updj", Detail: "UPDATE … FROM otra tabla", Body: "UPDATE ${1:destino} d\nSET ${2:columna} = o.${2:columna}\nFROM ${3:origen} o\nWHERE o.${4:id} = d.${4:id};"},
+			{Label: "delj", Detail: "DELETE … USING otra tabla", Body: "DELETE FROM ${1:destino} d\nUSING ${2:origen} o\nWHERE o.${3:id} = d.${3:id};"},
 			{Label: "expl", Detail: "EXPLAIN (ANALYZE, BUFFERS)", Body: "EXPLAIN (ANALYZE, BUFFERS)\n${1:SELECT 1};"},
 		},
 	})

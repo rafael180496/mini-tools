@@ -174,6 +174,14 @@ var commonSnippets = []SnippetDef{
 	{Label: "case", Detail: "CASE WHEN … THEN … END", Body: "CASE WHEN ${1:condicion} THEN ${2:valor} ELSE ${3:otro} END"},
 	{Label: "grp", Detail: "GROUP BY … HAVING …", Body: "GROUP BY ${1:columna}\nHAVING ${2:COUNT(*) > 1}"},
 	{Label: "ct", Detail: "CREATE TABLE …", Body: "CREATE TABLE ${1:tabla} (\n    ${2:id} ${3:INTEGER} NOT NULL,\n    PRIMARY KEY (${2:id})\n);"},
+	{Label: "inssel", Detail: "INSERT INTO … SELECT … (copiar filas)", Body: "INSERT INTO ${1:destino} (${2:columnas})\nSELECT ${2:columnas}\nFROM ${3:origen}\nWHERE ${4:condicion};"},
+	{Label: "exists", Detail: "WHERE EXISTS (subconsulta correlacionada)", Body: "WHERE EXISTS (\n    SELECT 1\n    FROM ${1:otra_tabla} o\n    WHERE o.${2:id} = ${3:t}.${2:id}\n)"},
+	{Label: "cnt", Detail: "Contar por grupo y quedarse con los repetidos", Body: "SELECT ${1:columna}, COUNT(*) AS total\nFROM ${2:tabla}\nGROUP BY ${1:columna}\nHAVING COUNT(*) > 1\nORDER BY total DESC;"},
+	{Label: "win", Detail: "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …)", Body: "ROW_NUMBER() OVER (PARTITION BY ${1:columna} ORDER BY ${2:fecha} DESC)"},
+	{Label: "dedup", Detail: "Quedarse con la última fila de cada grupo", Body: "SELECT *\nFROM (\n    SELECT t.*,\n           ROW_NUMBER() OVER (PARTITION BY ${1:clave} ORDER BY ${2:fecha} DESC) AS rn\n    FROM ${3:tabla} t\n) x\nWHERE rn = 1;"},
+	{Label: "ci", Detail: "CREATE INDEX …", Body: "CREATE INDEX ${1:ix_tabla_columna} ON ${2:tabla} (${3:columna});"},
+	{Label: "cv", Detail: "CREATE VIEW …", Body: "CREATE VIEW ${1:nombre} AS\nSELECT ${2:*}\nFROM ${3:tabla}\nWHERE ${4:condicion};"},
+	{Label: "addcol", Detail: "ALTER TABLE … ADD COLUMN …", Body: "ALTER TABLE ${1:tabla} ADD COLUMN ${2:columna} ${3:VARCHAR(100)};"},
 }
 
 // standardDialect backs an editor tab with no connection bound: shared

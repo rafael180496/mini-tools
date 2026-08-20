@@ -29,6 +29,7 @@ func init() {
 			{Label: "limit", Detail: "LIMIT … OFFSET …", Body: "SELECT ${1:*}\nFROM ${2:tabla}\nORDER BY ${3:columna}\nLIMIT ${4:50} OFFSET ${5:0};"},
 			{Label: "upsert", Detail: "INSERT … ON CONFLICT DO UPDATE (upsert)", Body: "INSERT INTO ${1:tabla} (${2:id}, ${3:columna})\nVALUES (${4:valor_id}, ${5:valor})\nON CONFLICT(${2:id}) DO UPDATE\n    SET ${3:columna} = excluded.${3:columna};"},
 			{Label: "ct", Detail: "CREATE TABLE … (con rowid autoincremental)", Body: "CREATE TABLE ${1:tabla} (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    ${2:nombre} TEXT NOT NULL,\n    creado_en TEXT NOT NULL DEFAULT (datetime('now'))\n);"},
+			{Label: "updj", Detail: "UPDATE … FROM otra tabla (SQLite 3.33+)", Body: "UPDATE ${1:destino}\nSET ${2:columna} = o.${2:columna}\nFROM ${3:origen} o\nWHERE o.${4:id} = ${1:destino}.${4:id};"},
 			{Label: "expl", Detail: "EXPLAIN QUERY PLAN", Body: "EXPLAIN QUERY PLAN\n${1:SELECT 1};"},
 			{Label: "pragma", Detail: "PRAGMA table_info(…)", Body: "PRAGMA table_info(${1:tabla});"},
 		},

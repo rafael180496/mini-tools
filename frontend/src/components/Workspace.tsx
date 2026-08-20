@@ -65,6 +65,7 @@ import {
     GetMongoDefaultDatabase,
     ListMongoCollections,
     ListMongoDatabases,
+    GetSchemaIndexStatus,
     GetSchemaMetadata,
     CreateNote,
     GetNote,
@@ -1244,6 +1245,41 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const editorMetadataLoading = activeTabConnection ? loadingConnIds.has(activeTabConnection.id) : false
     const editorSchemas = schemasOf(editorMetadata)
     const editorActiveSchema = activeTabConnection ? activeSchemaByConn[activeTabConnection.id] ?? null : null
+
+    // Estado del índice de autocompletado de la conexión activa.
+    //
+    // Existe por un motivo puntual: cuando la lectura del catálogo FALLA
+    // (permisos, conexión caída, un esquema que el usuario no puede leer) el
+    // editor seguía autocompletando palabras clave y nada más, sin decir una
+    // palabra. Desde afuera eso es indistinguible de "el autocompletado está
+    // roto", que es exactamente el reporte que llegó. Un índice sano no
+    // muestra nada — la fila de contexto ya está bastante poblada.
+    const [indexError, setIndexError] = useState<string | null>(null)
+    const editorConnId = activeTabConnection?.id ?? null
+    useEffect(() => {
+        let alive = true
+        setIndexError(null)
+        if (!editorConnId) return
+
+        const read = () => {
+            GetSchemaIndexStatus(editorConnId)
+                .then((st) => {
+                    if (!alive) return
+                    setIndexError(st?.state === 'error' ? st.error || 'no se pudo leer el catálogo' : null)
+                })
+                .catch(() => {})
+        }
+        read()
+        // El backend avisa cuándo termina cada extracción; sin esto el aviso
+        // quedaría congelado en lo que valía al abrir la pestaña.
+        const off = EventsOn('sqlintel:index', (st: {connId?: string}) => {
+            if (st?.connId === editorConnId) read()
+        })
+        return () => {
+            alive = false
+            off()
+        }
+    }, [editorConnId])
 
     // Keep the active schema valid as metadata changes (new connection, F5):
     // preserve it if it still exists, default to "public" if present,
@@ -2879,6 +2915,16 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
                                 />
                                 Cargando esquema…
+                            </span>
+                        )}
+
+                        {activeTabConnection && !editorMetadataLoading && indexError && (
+                            <span
+                                className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap text-error"
+                                title={`El editor no pudo leer el catálogo de esta conexión, así que el autocompletado solo ofrece palabras clave y funciones — sin tablas ni columnas. Motivo: ${indexError}. Suele ser permisos sobre el diccionario de datos o una conexión que se cayó; reconectar vuelve a intentarlo.`}
+                            >
+                                <Icon name="warning" size={14} />
+                                Autocompletado sin esquema
                             </span>
                         )}
 

@@ -100,6 +100,34 @@ func (a *App) GitSetIdentity(repoID, name, email string, global bool) error {
 	return a.gitRunner.SetIdentity(path, name, email, global)
 }
 
+// --- Credential helper de git (distinto del vault de la app) ----------------
+
+// GitCredentialHelper reports how GIT itself remembers HTTPS passwords for
+// this repository, plus the helpers worth offering on this OS.
+//
+// Deliberately separate from GitListCredentials below, which is the app's
+// own vault: one answers "what does the terminal use", the other "what does
+// this app send through askpass". Showing them as one setting would suggest
+// that changing either one changes the other.
+func (a *App) GitCredentialHelper(repoID string) (git.CredentialCache, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return git.CredentialCache{}, err
+	}
+	return a.gitRunner.CredentialHelpers(root)
+}
+
+// GitSetCredentialHelper writes credential.helper. An empty helper restores
+// "git asks every time"; global=true does it for every repository on this
+// machine, which is why the scope is explicit.
+func (a *App) GitSetCredentialHelper(repoID, helper string, global bool) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.SetCredentialHelper(root, helper, global)
+}
+
 // --- Stored tokens ----------------------------------------------------------
 
 // GitListCredentials returns the stored hosts and usernames. It never returns
@@ -691,6 +719,8 @@ func (a *App) GitAbort(repoID, op string) error {
 		return a.gitRunner.CherryPickAbort(path)
 	case "revert":
 		return a.gitRunner.RevertAbort(path)
+	case "rebase":
+		return a.gitRunner.RebaseAbort(path)
 	default:
 		return fmt.Errorf("no se puede abortar %q desde acá", op)
 	}
@@ -855,6 +885,16 @@ func (a *App) GitContinue(repoID, op string) error {
 	return a.gitRunner.ContinueOperation(root, op)
 }
 
+// GitRebase replays the current branch on top of another one. The plain
+// rebase; GitRebaseApply is the interactive, reorder-my-own-commits variant.
+func (a *App) GitRebase(repoID, upstream string, autostash bool) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.Rebase(root, upstream, autostash)
+}
+
 // GitRebaseTodo returns the default todo list for base..HEAD — every commit
 // picked, OLDEST FIRST, matching git's own file.
 func (a *App) GitRebaseTodo(repoID, base string) ([]git.RebaseAction, error) {
@@ -915,6 +955,110 @@ func (a *App) GitPruneWorktrees(repoID string) error {
 		return err
 	}
 	return a.gitRunner.PruneWorktrees(root)
+}
+
+// --- Git Flow ---------------------------------------------------------------
+
+// GitFlowStatus reports the repository's Git Flow convention: the branch
+// names and prefixes it declares, whether it is initialised, and whether the
+// branches the configuration names actually exist.
+func (a *App) GitFlowStatus(repoID string) (git.GitFlowConfig, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return git.GitFlowConfig{}, err
+	}
+	return a.gitRunner.GitFlowStatus(root)
+}
+
+// GitFlowInit writes the gitflow.* configuration and creates the develop
+// branch. Empty fields fall back to defaults resolved from the repository
+// itself — notably "main" vs "master", which is looked up rather than
+// assumed.
+func (a *App) GitFlowInit(repoID string, cfg git.GitFlowConfig) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.InitGitFlow(root, cfg)
+}
+
+// GitFlowStart creates a feature/release/hotfix/support branch from the base
+// its kind dictates and checks it out. Returns the full branch name so the UI
+// can say what it made.
+func (a *App) GitFlowStart(repoID, kind, name string) (string, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return "", err
+	}
+	return a.gitRunner.StartGitFlowBranch(root, git.GitFlowKind(kind), name)
+}
+
+// --- Submodules -------------------------------------------------------------
+
+// GitSubmodules lists the repository's submodules with the state each one is
+// in relative to the commit the parent pins. Returns an empty list — not an
+// error — for a repository that has none, which is almost all of them.
+func (a *App) GitSubmodules(repoID string) ([]git.Submodule, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return nil, err
+	}
+	return a.gitRunner.ListSubmodules(root)
+}
+
+// GitAddSubmodule registers a submodule and clones it. branch is optional and
+// only matters for `update --remote`; leaving it empty is the common case.
+//
+// Network operation: it takes an AuthConfig like clone/fetch/push, because a
+// private submodule needs the same credentials its own remote would.
+func (a *App) GitAddSubmodule(repoID, url, path, branch string, auth git.AuthConfig) (string, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return "", err
+	}
+	return a.gitRunner.AddSubmodule(root, url, path, branch, a.resolveGitAuth(repoID, "origin", auth))
+}
+
+// GitUpdateSubmodules checks submodules out at the pinned commits. init also
+// sets up submodules that were never cloned — a network clone against a URL
+// the user may have no credentials for, which is why it is a separate flag
+// and a separate menu entry rather than always-on.
+func (a *App) GitUpdateSubmodules(repoID string, init, recursive bool, auth git.AuthConfig) (string, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return "", err
+	}
+	return a.gitRunner.UpdateSubmodules(root, init, recursive, a.resolveGitAuth(repoID, "origin", auth))
+}
+
+// GitUpdateSubmodule is GitUpdateSubmodules for a single path.
+func (a *App) GitUpdateSubmodule(repoID, path string, init, recursive bool, auth git.AuthConfig) (string, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return "", err
+	}
+	return a.gitRunner.UpdateSubmodule(root, path, init, recursive, a.resolveGitAuth(repoID, "origin", auth))
+}
+
+// GitSyncSubmodules copies the URLs committed in .gitmodules into each
+// submodule's own config. Purely local: no auth, no remote.
+func (a *App) GitSyncSubmodules(repoID string, recursive bool) (string, error) {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return "", err
+	}
+	return a.gitRunner.SyncSubmodules(root, recursive)
+}
+
+// GitRemoveSubmodule unregisters a submodule and deletes the clone git keeps
+// cached under .git/modules — see RemoveSubmodule for why that last step is
+// not optional.
+func (a *App) GitRemoveSubmodule(repoID, path string) error {
+	root, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.RemoveSubmodule(root, path)
 }
 
 // --- Command log ------------------------------------------------------------

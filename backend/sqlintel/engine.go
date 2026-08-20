@@ -17,6 +17,13 @@ const (
 	KindKeyword  = "keyword"
 	KindSnippet  = "snippet"
 	KindJoin     = "join"
+	// KindAlias is a name the engine PROPOSES rather than looks up: the
+	// alias for a table just written, or an alias the SELECT list defined
+	// that no catalog can know about.
+	KindAlias = "alias"
+	// KindExpand is a rewrite of what is already there — today the one
+	// case is "*" turned into the column list it stands for.
+	KindExpand = "expand"
 )
 
 // Request is one completion query from the editor.
@@ -143,7 +150,7 @@ func Complete(idx *SchemaIndex, req Request, usage UsageFunc) Response {
 		return resp
 	}
 
-	c := &collector{prefix: prefix, usage: usage, clause: ctx.Clause, schemaOnly: autoOpen}
+	c := &collector{prefix: prefix, usage: usage, clause: ctx.Clause, schemaOnly: autoOpen, explicit: req.Explicit}
 
 	if ctx.DotPrefix != "" {
 		c.qualified(idx, ctx)
@@ -213,6 +220,17 @@ type collector struct {
 	// matches the empty prefix and would bury the handful of tables or
 	// columns the position is actually about.
 	schemaOnly bool
+	// explicit is true when the user asked for the popup (Ctrl-Space) rather
+	// than it opening on its own. It gates the suggestions whose insertion is
+	// large enough that landing one by accident is worse than not offering
+	// it — see starExpansion.
+	explicit bool
+	// boost is a per-request nudge keyed by lowercased label, applied on top
+	// of whatever bonus the category already carries. It exists for facts
+	// that are true of THIS statement rather than of the catalog — a column
+	// the SELECT list already projects is a far better GROUP BY candidate
+	// than one it does not, and that is not something the index can encode.
+	boost map[string]int
 }
 
 // add scores a candidate and keeps it if it matches the typed prefix.
@@ -225,6 +243,7 @@ func (c *collector) add(label, kind, detail, apply, info string, bonus int) {
 		return
 	}
 	score += bonus
+	score += c.boost[strings.ToLower(label)]
 	// Frequency of use inside this session, capped so a much-used table can
 	// climb over its peers without ever outranking a better textual match
 	// from a different tier.
@@ -273,12 +292,17 @@ func (c *collector) qualified(idx *SchemaIndex, ctx Context) {
 func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context) {
 	switch ctx.Clause {
 	case ClauseFrom, ClauseJoin:
+		// Proposed before the catalog sweep so it is in the list even if the
+		// table count later truncates it.
+		c.aliasHint(idx, ctx)
 		c.tables(idx)
 		c.schemas(idx)
 		c.keywords(dialect, 0)
 
 	case ClauseSelect, ClauseWhere, ClauseOn, ClauseGroupBy, ClauseHaving,
 		ClauseOrderBy, ClauseSet, ClauseInsertColumns:
+		c.projected(ctx)
+		c.starExpansion(idx, ctx)
 		c.columnsInScope(idx, ctx)
 		c.functions(dialect, ctx.Clause)
 		c.routines(idx)
@@ -305,6 +329,146 @@ func (c *collector) unqualified(idx *SchemaIndex, dialect *Dialect, ctx Context)
 		// routines but never offered them where they are actually written.
 		c.routines(idx)
 	}
+}
+
+// projected feeds the SELECT list back into the clauses that can only talk
+// about it. Two different things come out of it:
+//
+//   - An ALIAS the statement defined ("COUNT(*) AS total") is offered as an
+//     item of its own. It is the only suggestion in the whole engine that
+//     cannot come from the catalog — "total" exists nowhere but in these
+//     forty characters of text — and it is exactly what "ORDER BY |" wants.
+//   - A column the list already projects gets a boost rather than an item,
+//     because it is already coming from columnsInScope; suggesting it twice
+//     would be worse than ranking it once, correctly.
+//
+// Restricted to GROUP BY / ORDER BY / HAVING on purpose. In a WHERE the
+// projection means nothing (most engines reject an alias there), and
+// boosting by it would quietly teach the wrong thing.
+func (c *collector) projected(ctx Context) {
+	switch ctx.Clause {
+	case ClauseGroupBy, ClauseOrderBy, ClauseHaving:
+	default:
+		return
+	}
+	if c.boost == nil {
+		c.boost = map[string]int{}
+	}
+	for _, p := range ctx.Projected {
+		if p.IsAlias {
+			detail := "alias de esta consulta"
+			if p.Expr != "" {
+				detail += " · " + p.Expr
+			}
+			c.add(p.Name, KindAlias, detail, "", "Nombre definido en el SELECT de esta misma consulta. No existe en el catálogo.", 700)
+			continue
+		}
+		// Projected columns lead the list without displacing a better
+		// textual match from a different table.
+		c.boost[strings.ToLower(p.Name)] = 180
+	}
+}
+
+// aliasHint proposes the alias for the table just written — the "c" in
+// "FROM clientes c". The position has no catalog answer at all: before this,
+// the popup there offered the whole table list again, which is never what
+// comes next.
+//
+// The name is the same one the FK join templates generate (initials of the
+// underscore-separated parts, de-duplicated against what the statement
+// already uses), so an alias written by hand and one written by a generated
+// JOIN agree instead of drifting apart.
+func (c *collector) aliasHint(idx *SchemaIndex, ctx Context) {
+	if ctx.AliasSlot == nil {
+		return
+	}
+	_, taken := resolvedScope(idx, ctx.Refs)
+	if taken == nil {
+		taken = map[string]bool{}
+	}
+	// The slot's own table is in Refs, so its name is already "taken" — that
+	// is correct (an alias equal to the table name is pointless) and needs
+	// no special case.
+	alias := uniqueAlias(ctx.AliasSlot.Name, taken)
+	detail := "alias para " + ctx.AliasSlot.Name
+	if t, ok := idx.Resolve(*ctx.AliasSlot); ok {
+		detail = "alias para " + t.Qualified
+	}
+	c.add(alias, KindAlias, detail,
+		"", "Nombre corto para referirte a esta tabla en el resto de la consulta. Es el mismo que usan los JOIN sugeridos, así que no se contradicen.",
+		900)
+}
+
+// starExpansion offers "*" already expanded into the columns it stands for.
+//
+// It is the one suggestion that is worth MORE the less you want to type it:
+// the expansion is what you need the moment you want to drop one column, or
+// to see what a SELECT * actually returns, and writing it by hand means
+// going to look the table up. Only offered where the scope resolved — with
+// no FROM yet there is nothing to expand into.
+func (c *collector) starExpansion(idx *SchemaIndex, ctx Context) {
+	if idx == nil || ctx.Clause != ClauseSelect || ctx.DotPrefix != "" {
+		return
+	}
+	// A prefix means the user is typing a name; "*" is not a name.
+	if ctx.Prefix != "" {
+		return
+	}
+	// Ctrl-Space only, and this one is not a preference.
+	//
+	// "SELECT |" auto-opens the popup, CodeMirror binds Enter to accept the
+	// selected option, and this item outranks the columns — so on a
+	// self-opened popup a plain Enter (someone going to the next line) would
+	// paste the entire column list into the buffer. Every other suggestion
+	// this engine makes is one identifier long, where that mistake costs a
+	// backspace; this one can be three thousand characters. Asking for it is
+	// cheap, getting it by accident is not.
+	if !c.explicit {
+		return
+	}
+
+	scope, _ := resolvedScope(idx, ctx.Refs)
+	if len(scope) == 0 {
+		return
+	}
+
+	// Qualify only when there is more than one table in scope: in a
+	// single-table query "u.id, u.nombre" is noise, in a join it is the
+	// difference between valid and ambiguous.
+	qualify := len(scope) > 1
+
+	var cols []string
+	var from []string
+	for _, ref := range scope {
+		t, ok := idx.Resolve(ref)
+		if !ok || len(t.Columns) == 0 {
+			continue
+		}
+		from = append(from, ref.Label())
+		for _, col := range t.Columns {
+			if qualify {
+				cols = append(cols, ref.Label()+"."+col.Name)
+			} else {
+				cols = append(cols, col.Name)
+			}
+		}
+	}
+	if len(cols) == 0 {
+		return
+	}
+
+	label := "* → " + strconv.Itoa(len(cols)) + " columnas"
+	detail := strings.Join(from, ", ")
+	// Pre-scored rather than run through Match: the label is a sentence, not
+	// a name, so prefix matching would rank it by accident. The score sits
+	// just under a join condition and above an ordinary column, which is
+	// where "expand the star" belongs in a projection.
+	c.items = append(c.items, Item{
+		Label: label, Kind: KindExpand, Detail: detail,
+		Apply: strings.Join(cols, ", "),
+		Info:  "Reemplaza el * por la lista de columnas, en el orden del catálogo. Sirve para quitar una sola columna sin tener que escribir el resto.",
+		Score: 1200,
+	})
 }
 
 func (c *collector) tables(idx *SchemaIndex) { c.tablesWithBonus(idx, 300) }

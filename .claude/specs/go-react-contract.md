@@ -222,14 +222,25 @@ maestra, no una preferencia de UI como el tema).
 | Binding | Devuelve | Cuándo lo llama el frontend |
 |---|---|---|
 | `PrimeSchemaIndex(connID)` | `sqlintel.Status` | Al vincular una pestaña a una conexión (`CodeMirrorTabbedEditor`), y de nuevo si una respuesta llega con `indexing: true` |
-| `GetSchemaIndexStatus(connID)` | `sqlintel.Status` | Indicador de estado |
+| `GetSchemaIndexStatus(connID)` | `sqlintel.Status` | Aviso "Autocompletado sin esquema" en la fila de contexto del editor (`Workspace.tsx`): se lee al vincular la pestaña y otra vez con cada `sqlintel:index` |
 | `CompleteSQL(sqlintel.Request)` | `sqlintel.Response` | Cada vez que CodeMirror abre/reabre el popup de completado |
 | `SuggestInlineSQL(sqlintel.Request)` | `string` | Ghost text, 180 ms después de que el cursor se queda quieto |
 | `RecordCompletionUse(connID, kind, name)` | `error` | Al aceptar una sugerencia de tabla/columna/esquema/rutina |
 | `ResolveJoinCondition(connID, left, leftAlias, right, rightAlias)` | `[]sqlintel.JoinCondition` | "¿Cómo se unen estas dos tablas?" sin cursor de por medio |
 
 Evento Wails: **`sqlintel:index`** con un `sqlintel.Status` cuando termina una
-extracción en segundo plano.
+extracción en segundo plano. Lo consumen dos lugares, y ninguno es opcional:
+`CodeMirrorTabbedEditor` vuelve a pedir el completado si el popup está
+abierto (si no, una lista armada mientras el índice se construía se quedaba
+en modo palabras clave hasta reescribir la palabra), y `Workspace.tsx`
+refresca el aviso de índice fallido.
+
+**Un `PrimeSchemaIndex` que falla se reintenta con un margen de 10 s**
+(`primeSchemaIndex` en `sqlIntel.ts`). Sin eso, un catálogo ilegible deja el
+índice vacío, cada respuesta vuelve con `indexing: true`, y el frontend
+dispara un escaneo por tecla contra una base que ya no está respondiendo.
+Volver a vincular la pestaña limpia el margen (`forgetPrimeCooldown`), para
+que reconectar arregle el completado en el acto.
 
 **El índice es asíncrono por diseño, y el completado nunca depende de que
 esté listo.** `PrimeSchemaIndex` retorna al instante con `state: "loading"` y
@@ -244,6 +255,24 @@ normal es un statement a medio escribir: el motor está escrito para degradar
 a una lista más corta, jamás para errorear. Lo único que devuelve vacío a
 propósito es un cursor dentro de un literal o de un comentario.
 
+**Un literal sin cerrar se confina a su línea** (`token.go`). El tokenizador
+recorre el buffer entero antes de acotarse a la sentencia del cursor, así que
+una comilla suelta arriba del archivo hacía que TODO lo de abajo cayera en
+"estás dentro de un literal" — el completado se apagaba en las consultas
+siguientes sin nada en pantalla que lo explicara, y volvía solo al editar
+más arriba. Un literal multilínea legítimo siempre cierra; uno que no, es un
+error de tipeo y no puede contagiar al resto del archivo. Misma regla para
+identificadores delimitados (`"`, `` ` ``, `[`). El *alternative quoting* de
+Oracle (`q'[…]'`, `nq'!…!'`) se reconoce entero, porque su cuerpo puede
+llevar comillas y leerlo como literal común desfasaba todo lo que seguía.
+
+Un `/*` sin cerrar **sí** se lleva el resto del archivo, y la asimetría es
+deliberada: un comentario de bloque multilínea es el caso normal, así que
+confinarlo mentiría sobre qué está comentado. El arreglo alcanza también a
+`SignatureSQL` y a las tablas que el script declara (`CREATE TABLE` de más
+arriba, CTE de la sentencia actual), que comparten tokenizador y se apagaban
+por el mismo motivo.
+
 **Los offsets son unidades de código UTF-16, no bytes ni runas** — es lo que
 son las posiciones de CodeMirror (índices de string de JavaScript).
 `backend/sqlintel/offsets.go` convierte en ambas direcciones; `Response.from`
@@ -257,6 +286,20 @@ ASCII.
 serían la mayor parte del payload que cruza el puente. Es la única estructura
 del contrato con este criterio, justamente por su volumen; el resto
 (`Request`, `Status`, `JoinCondition`) usa nombres normales.
+
+**Dos `kind` de `Item` no salen del catálogo: `alias` y `expand`.** El resto
+(`table`, `column`, `schema`, `function`, `routine`, `keyword`, `snippet`,
+`join`) nombra algo que el índice o el dialecto conocen; estos dos los
+propone el motor. `alias` es el nombre corto para la tabla recién escrita
+(`FROM clientes |`) o un alias que el propio SELECT definió (`AS total`, que
+no existe en ningún catálogo). `expand` es el `*` reemplazado por su lista de
+columnas.
+
+**`expand` se ofrece SOLO con `explicit: true`.** CodeMirror ata Enter a
+aceptar la opción seleccionada, y en un popup que se abrió solo (`SELECT |`)
+un Enter para ir a la línea siguiente pegaría la lista entera de columnas en
+el buffer. Todas las demás sugerencias del motor miden un identificador,
+donde ese error cuesta un backspace; esta puede medir tres mil caracteres.
 
 **`SuggestInlineSQL` existe separado de `CompleteSQL` por payload, no por
 lógica** — los dos corren el mismo motor. El ghost text se recalcula con cada
@@ -374,6 +417,10 @@ se convierte en una ruta.
 | `GitConflictedFiles` / `GitReadConflictFile` / `GitResolveConflictFile` | F4 | Resolver **escribe y stagea** en un solo paso |
 | `GitContinue(repoID, op)` | F4 | `op` es lo que reportó `GitInProgress`; nunca se adivina |
 | `GitRebaseTodo` / `GitRebaseApply` | F5 | La lista va **oldest-first**, como el archivo de git |
+| `GitRebase(repoID, upstream, autostash)` | post-2.2.0 | El rebase PLANO, aparte del interactivo: reaplica la rama actual sobre otra. Sin override de `core.editor` — un rebase no interactivo nunca abre editor, y ponerlo metería `-c` en `args[0]`, que es con lo que se etiqueta el error y el log |
+| `GitFlowStatus` / `GitFlowInit` / `GitFlowStart(repoID, kind, name)` | post-2.2.0 | Git Flow **nativo**, sin el binario `git-flow` (no viene instalado en ninguna de las tres plataformas, así que envolverlo daría un módulo que a veces está). Escribe las mismas claves `gitflow.*`, así que la compatibilidad con el binario va en las dos direcciones. La rama de producción se resuelve mirando el repo (`main` vs `master`), no se asume. **`GitFlowStatus` cuesta 3 invocaciones de git y ninguna falla en el caso normal**, y eso es un requisito, no una casualidad: el frontend lo consulta en CADA refresco para saber si el menú dice "Inicializar" o "Nueva feature", así que preguntar clave por clave con `config --get` (que sale con 1 cuando la clave no está, o sea siempre en un repo que no usa Git Flow) metía 7 entradas rojas por refresco en el panel "Comandos ejecutados" — el mismo antipatrón que documenta `CheckoutBranch`. Se lee todo con un `config --local --list` y un `branch --list` con varios patrones. `finish` **no** está: son cuatro operaciones destructivas encadenadas y todas existen ya por separado con su confirmación |
+| `GitCredentialHelper` / `GitSetCredentialHelper(repoID, helper, global)` | post-2.2.0 | El `credential.helper` de git, **aparte** del vault de la app: uno contesta "qué usa la terminal", el otro "qué manda esta app por askpass". Las opciones se filtran por `runtime.GOOS` — ofrecer `osxkeychain` en Linux deja una configuración que parece puesta y falla en el próximo fetch. Un helper no listado se reporta pero no se pisa; un helper desconocido se rechaza antes de escribir |
+| `GitAbort(repoID, "rebase")` | post-2.2.0 | Faltaba: `GitAbort` aceptaba merge/cherry-pick/revert y rechazaba rebase, así que la UI escondía su propio botón de abortar para la única operación que reescribe historia |
 | `GitWorktrees` / `GitAddWorktree` / `GitRemoveWorktree` / `GitPruneWorktrees` | F6 | — |
 | `GitCommandLog` / `GitClearCommandLog` | F6 | Argumentos, **nunca** el entorno |
 | `GitForgeInfo` / `GitOpenInBrowser` | F6 | Solo construcción de URL; `GitOpenInBrowser` restringe a http/https |
@@ -383,6 +430,7 @@ se convierte en una ruta.
 | `AgentDraftCommit(repoID, agentID)` | post-2.1.0 | Redacta el mensaje del commit **preparado** (`app_gitagent.go`). `agentID` vacío = agente activo de la app y, si no hay, el `default_agent` del repo. El contexto (parche recortado a 64 KB, archivos y últimos asuntos como referencia de estilo) lo arma Go, no el agente; devuelve además qué se le mandó, para poder decirlo en la UI |
 | `AgentUsageLimits()` | post-2.1.0 | Porcentaje del **límite** por proveedor (`backend/agentlimits`), leído del caché que cada CLI deja en disco — no lo calcula la app. Complementa `AgentUsageAll`/`GitAgentUsage`, que miden consumo. Trae `measuredAt`: el dato es fechado, no en vivo |
 | `AgentQueryLimits(agentID)` | post-2.1.0 | Le PREGUNTA el límite al CLI del agente que no lo deja en disco (hoy solo Antigravity: `agy --print "/usage" --output-format json`). Lo dispara un botón, no la apertura del panel — es un subproceso de varios segundos que además falla por red de a ratos. El resultado queda cacheado en memoria y `AgentUsageLimits` lo devuelve desde ahí |
+| `GitSubmodules` / `GitAddSubmodule` / `GitUpdateSubmodules` / `GitUpdateSubmodule` / `GitSyncSubmodules` / `GitRemoveSubmodule` | post-2.2.0 | Repos anidados fijados en un commit (`backend/git/submodule.go`). `GitSubmodules` **no corre `git submodule status`** si no hay `.gitmodules`: un stat corta antes, porque no tener submódulos es el estado normal y un probe que falla llenaría de rojo el panel de comandos. `init` es un flag aparte en las dos variantes de update porque clona por red contra una URL que puede pedir credenciales, y eso tiene que ser una elección explícita. La ruta del alta es **opcional** (git usa el último tramo de la URL). `GitRemoveSubmodule` hace los tres pasos —`deinit`, `git rm` y borrar `.git/modules/<ruta>`— porque saltarse el tercero es lo que hace fallar un alta posterior del mismo submódulo; la ruta se revalida contra `.git/modules` antes de borrar nada, y es el único `RemoveAll` del paquete |
 | `OpenLocalTerminalWith(sessionID, shellID, cols, rows)` | post-2.1.0 | Terminal local con un intérprete ELEGIDO, sin tocar el configurado en Configuración. `shellID` vacío = el configurado. Arranca en el home: no cuelga de ningún repositorio |
 | `AppendLocalHistory` / `ListLocalHistory` / `ClearLocalHistory` | post-2.1.0 | Historial de las terminales locales, agrupado por **intérprete** y no por conexión (tabla `local_command_history`, migración 43). Mismo cifrado, mismo filtro de secretos y **mismo interruptor** (`ssh_history_enabled`) que el historial SSH |
 | `SetMCPNotesWrite(enabled)` | post-2.1.0 | Permiso de ESCRITURA del servidor MCP sobre las notas (`settings.mcp_notes_write`, migración 44, nace en 0). Interruptor aparte del que enciende el servidor: apagado, `vault_create_note`/`vault_update_note` **no se declaran** en el catálogo y una llamada en curso se rechaza. Editar exige además autoría del agente (`vault.AgentCanEdit` sobre el frontmatter) y pasa por `NoteForAI`, así que una nota privada tampoco se puede escribir. `MCPServerStatus` lo devuelve en `notesWrite` |

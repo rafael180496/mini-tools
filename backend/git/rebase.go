@@ -151,6 +151,63 @@ func (r *Runner) RebaseTodo(repoPath, base string, actions []RebaseAction) error
 	return err
 }
 
+// Rebase replays the current branch's commits on top of another branch —
+// the plain, non-interactive rebase, and the one people mean by "rebase
+// feature onto develop".
+//
+// Kept apart from RebaseTodo, which exists to REORDER the current branch's
+// own history: that one re-executes `rebase -i` with a scripted todo file
+// and needs the sequence-editor re-exec. This one hands the work to git
+// unchanged, so it needs none of that machinery — and conflating the two
+// would drag a fake editor into the common case for no reason.
+//
+// autostash is offered because the failure it prevents is the most common
+// one here: git refuses to rebase with a dirty working tree, and the
+// alternative is stash / rebase / stash pop by hand for something git can
+// do atomically.
+func (r *Runner) Rebase(repoPath, upstream string, autostash bool) error {
+	root, err := r.resolveRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	if err := checkRefArg("rama base", upstream); err != nil {
+		return err
+	}
+
+	// No core.editor override here, unlike RebaseTodo and
+	// ContinueOperation: a plain rebase never opens an editor — only `-i`
+	// and a --continue that has to amend a message do. Adding the override
+	// anyway would also push "-c" into args[0], which is what the error
+	// message and the command log are labelled with ("git -c: cannot
+	// rebase…" instead of "git rebase: cannot rebase…").
+	args := []string{"rebase"}
+	if autostash {
+		args = append(args, "--autostash")
+	}
+	args = append(args, upstream)
+
+	_, err = r.runLocal(root, args...)
+	return err
+}
+
+// RebaseAbort returns the repository to the state it had before the rebase
+// started.
+//
+// It was the one operation with no way back: InProgress reports "rebase",
+// ContinueOperation accepts "rebase", and the UI hid its own abort button
+// for rebases precisely because nothing behind it could do the job — so a
+// rebase that stopped on a conflict could only be finished, never undone.
+// An escape hatch that exists for merge, cherry-pick and revert but not for
+// the one operation that rewrites history is the wrong way round.
+func (r *Runner) RebaseAbort(repoPath string) error {
+	root, err := r.resolveRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	_, err = r.runLocal(root, "rebase", "--abort")
+	return err
+}
+
 // RebaseTodoFrom builds the default todo (every commit picked, newest last)
 // for the range base..HEAD, which is what the UI starts from before the user
 // reorders anything.

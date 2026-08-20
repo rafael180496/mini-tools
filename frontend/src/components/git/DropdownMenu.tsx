@@ -29,6 +29,25 @@ export interface DropdownHeader {
 
 type DropdownEntry = DropdownItem | DropdownHeader | 'separator'
 
+// tidySeparators saca los separadores que no separan nada: los del principio,
+// los del final y los repetidos.
+//
+// Hace falta porque estos menús se arman con spreads de grupos que pueden
+// venir vacíos (`...gitFlowItems()` no devuelve nada mientras no se sepa si
+// el repositorio usa Git Flow), y entonces dos separadores quedan pegados y
+// se dibujan como dos líneas. Se resuelve acá, en el componente que dibuja,
+// y no en cada armador de menú: cualquier grupo condicional que se agregue
+// después tropieza con lo mismo.
+export function tidySeparators<T extends {header?: unknown} | 'separator' | object>(items: (T | 'separator')[]): (T | 'separator')[] {
+    const out: (T | 'separator')[] = []
+    for (const item of items) {
+        if (item === 'separator' && (out.length === 0 || out[out.length - 1] === 'separator')) continue
+        out.push(item)
+    }
+    while (out.length > 0 && out[out.length - 1] === 'separator') out.pop()
+    return out
+}
+
 interface DropdownMenuProps {
     label: string
     icon?: string
@@ -92,7 +111,7 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
                     style={{position: 'fixed', top: pos.top, left: pos.left, width}}
                     className="z-50 rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg"
                 >
-                    {items.map((item, i) =>
+                    {tidySeparators(items).map((item, i) =>
                         item === 'separator' ? (
                             <div key={`sep-${i}`} className="my-1 border-t border-outline-variant" />
                         ) : 'header' in item ? (

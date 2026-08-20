@@ -426,6 +426,10 @@ export function GitAddRepo(arg1) {
   return window['go']['main']['App']['GitAddRepo'](arg1);
 }
 
+export function GitAddSubmodule(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['GitAddSubmodule'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function GitAddWorktree(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GitAddWorktree'](arg1, arg2, arg3, arg4);
 }
@@ -494,6 +498,10 @@ export function GitCreateTag(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GitCreateTag'](arg1, arg2, arg3, arg4);
 }
 
+export function GitCredentialHelper(arg1) {
+  return window['go']['main']['App']['GitCredentialHelper'](arg1);
+}
+
 export function GitDeleteBranch(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitDeleteBranch'](arg1, arg2, arg3);
 }
@@ -528,6 +536,18 @@ export function GitFetch(arg1, arg2, arg3) {
 
 export function GitFileAtCommit(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitFileAtCommit'](arg1, arg2, arg3);
+}
+
+export function GitFlowInit(arg1, arg2) {
+  return window['go']['main']['App']['GitFlowInit'](arg1, arg2);
+}
+
+export function GitFlowStart(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitFlowStart'](arg1, arg2, arg3);
+}
+
+export function GitFlowStatus(arg1) {
+  return window['go']['main']['App']['GitFlowStatus'](arg1);
 }
 
 export function GitForgeInfo(arg1, arg2, arg3, arg4) {
@@ -614,6 +634,10 @@ export function GitReadWorkFile(arg1, arg2) {
   return window['go']['main']['App']['GitReadWorkFile'](arg1, arg2);
 }
 
+export function GitRebase(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitRebase'](arg1, arg2, arg3);
+}
+
 export function GitRebaseApply(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitRebaseApply'](arg1, arg2, arg3);
 }
@@ -644,6 +668,10 @@ export function GitRemoveRemote(arg1, arg2) {
 
 export function GitRemoveRepo(arg1) {
   return window['go']['main']['App']['GitRemoveRepo'](arg1);
+}
+
+export function GitRemoveSubmodule(arg1, arg2) {
+  return window['go']['main']['App']['GitRemoveSubmodule'](arg1, arg2);
 }
 
 export function GitRemoveWorktree(arg1, arg2, arg3) {
@@ -680,6 +708,10 @@ export function GitRevert(arg1, arg2, arg3) {
 
 export function GitSaveCredential(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitSaveCredential'](arg1, arg2, arg3);
+}
+
+export function GitSetCredentialHelper(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GitSetCredentialHelper'](arg1, arg2, arg3);
 }
 
 export function GitSetDefaultAgent(arg1, arg2) {
@@ -746,6 +778,14 @@ export function GitStatus(arg1) {
   return window['go']['main']['App']['GitStatus'](arg1);
 }
 
+export function GitSubmodules(arg1) {
+  return window['go']['main']['App']['GitSubmodules'](arg1);
+}
+
+export function GitSyncSubmodules(arg1, arg2) {
+  return window['go']['main']['App']['GitSyncSubmodules'](arg1, arg2);
+}
+
 export function GitTags(arg1) {
   return window['go']['main']['App']['GitTags'](arg1);
 }
@@ -756,6 +796,14 @@ export function GitUnsetUpstream(arg1, arg2) {
 
 export function GitUnstage(arg1, arg2) {
   return window['go']['main']['App']['GitUnstage'](arg1, arg2);
+}
+
+export function GitUpdateSubmodule(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['GitUpdateSubmodule'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function GitUpdateSubmodules(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitUpdateSubmodules'](arg1, arg2, arg3, arg4);
 }
 
 export function GitUpsertMCPServer(arg1, arg2) {

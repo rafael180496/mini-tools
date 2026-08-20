@@ -17,6 +17,10 @@ import {
     GitRenameBranch,
     GitInProgress,
     GitMerge,
+    GitRebase,
+    GitFlowInit,
+    GitFlowStart,
+    GitFlowStatus,
     GitReset,
     GitRevert,
     GitSetUpstream,
@@ -32,6 +36,12 @@ import {
     GitOpenInBrowser,
     GitRemoveWorktree,
     GitWorktrees,
+    GitSubmodules,
+    GitAddSubmodule,
+    GitUpdateSubmodules,
+    GitUpdateSubmodule,
+    GitSyncSubmodules,
+    GitRemoveSubmodule,
     GitListRepos,
     GitLog,
     GitPull,
@@ -133,6 +143,11 @@ interface PendingConfirm {
     run: () => Promise<unknown>
     label: string
     danger?: boolean
+    // Same escape hatch run() takes: a confirmed action that knows how to
+    // recover from a specific failure handles it here instead of landing in
+    // the generic error banner. It is what lets a confirmed force push still
+    // offer the missing-upstream fix.
+    onError?: (e: unknown) => boolean
 }
 
 interface GitRepoTabProps {
@@ -344,6 +359,10 @@ export default function GitRepoTab({
     // hundred commits at a time, so a client-side filter would only ever
     // search what happens to be on screen.
     const [searchText, setSearchText] = useState('')
+    // Para poder dejar el cursor adentro del buscador cuando la búsqueda se
+    // dispara desde el menú de una rama: lo que se prellena es el ÁMBITO
+    // ("en esta rama"), lo que falta escribir es el término.
+    const searchInputRef = useRef<HTMLInputElement>(null)
     const [search, setSearch] = useState<GitSearch>(EMPTY_SEARCH)
     const [showSearchHelp, setShowSearchHelp] = useState(false)
     // Focus mode walks only the current branch plus the trunks, instead of
@@ -402,6 +421,16 @@ export default function GitRepoTab({
     const [logToken, setLogToken] = useState(0)
     const [worktrees, setWorktrees] = useState<git.Worktree[]>([])
     const [showWorktrees, setShowWorktrees] = useState(false)
+    // Submódulos: repositorios anidados que el padre fija en UN commit.
+    // Se cargan solo con el panel abierto, igual que los worktrees — la
+    // enorme mayoría de los repos no tiene ninguno y no hay por qué pagar
+    // una llamada por refresco para descubrirlo cada vez.
+    const [submodules, setSubmodules] = useState<git.Submodule[]>([])
+    const [showSubmodules, setShowSubmodules] = useState(false)
+    // Convención Git Flow del repositorio. Se lee siempre (son lecturas de
+    // config, baratas) porque de eso depende qué dice el menú: "Inicializar"
+    // o "Nueva feature/release/hotfix".
+    const [flow, setFlow] = useState<git.GitFlowConfig | null>(null)
     const [forge, setForge] = useState<git.ForgeInfo | null>(null)
 
     // Id de la sesión de terminal de ESTA pestaña. Un ref y no un valor
@@ -452,6 +481,22 @@ export default function GitRepoTab({
             .then((w) => setWorktrees(w ?? []))
             .catch(() => setWorktrees([]))
     }, [repoId, showWorktrees, logToken])
+
+    // logToken en las dependencias es lo que hace que la lista se refresque
+    // después de cada comando: actualizar o quitar un submódulo cambia el
+    // estado de la fila que acabás de tocar.
+    useEffect(() => {
+        GitFlowStatus(repoId)
+            .then(setFlow)
+            .catch(() => setFlow(null))
+    }, [repoId, logToken])
+
+    useEffect(() => {
+        if (!showSubmodules) return
+        GitSubmodules(repoId)
+            .then((m) => setSubmodules(m ?? []))
+            .catch(() => setSubmodules([]))
+    }, [repoId, showSubmodules, logToken])
     // Blame is opt-in: it is a full-file walk per file, and nobody wants it
     // running on every diff they click through.
     const [blame, setBlame] = useState<git.BlameLine[] | null>(null)
@@ -1449,6 +1494,8 @@ export default function GitRepoTab({
                     icon: 'merge',
                     onSelect: () => run(`merge ${b.name}`, () => GitMerge(repoId, b.name, false)),
                 },
+                rebaseOntoItem(b),
+                searchInBranchItem(b),
                 {label: `Copiar '${b.name}'`, icon: 'content_copy', onSelect: () => copy(b.name)},
                 'separator',
                 {
@@ -1483,6 +1530,8 @@ export default function GitRepoTab({
                 disabled: b.isCurrent,
                 onSelect: () => run(`merge ${b.name}`, () => GitMerge(repoId, b.name, false)),
             },
+            rebaseOntoItem(b),
+            searchInBranchItem(b),
             'separator',
             {
                 label: `Renombrar ${b.name}…`,
@@ -1991,33 +2040,223 @@ export default function GitRepoTab({
         {label: 'pull --rebase --autostash', hint: 'Guarda y restaura cambios sin commitear', onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({rebase: true, autostash: true}), new git.AuthConfig({})))},
     ]
 
+    // La recuperación de "esta rama todavía no tiene upstream" vale para
+    // TODAS las variantes de push, no solo para el push pelado.
+    //
+    // Era el motivo real por el que "push --force no funcionaba": git rechaza
+    // un --force en una rama sin publicar exactamente igual que un push
+    // simple ("The current branch X has no upstream branch"), y el arreglo
+    // inline estaba escrito a mano dentro del ítem "push" nada más. Desde
+    // --force, --force-with-lease, --tags o --no-verify el error caía en el
+    // banner genérico y la acción no pasaba nunca — se veía como que la
+    // opción estaba rota, cuando lo que faltaba era el vínculo con el remoto.
+    //
+    // El reintento CONSERVA los flags originales: forzar y vincular es un
+    // solo `push --force --set-upstream`, no dos pasos donde el primero
+    // publica sin forzar.
+    const recoverMissingUpstream = useCallback(
+        (opts: Record<string, unknown>, label: string) => (e: unknown): boolean => {
+            if (!current?.name || !String(e).includes('no upstream branch')) return false
+            setConfirm({
+                title: 'Publicar y vincular la rama',
+                description: `"${current.name}" todavía no tiene upstream configurado, así que \`${label}\` no sabe a dónde publicarla. ¿Publicarla en "origin" y vincularla (--set-upstream), manteniendo el resto de las opciones?`,
+                confirmLabel: 'Publicar y vincular',
+                label: `${label} --set-upstream`,
+                danger: false,
+                run: () =>
+                    GitPush(repoId, new git.PushOptions({...opts, setUpstream: true, remote: 'origin', branch: current.name}), new git.AuthConfig({})),
+            })
+            return true
+        },
+        [repoId, current?.name],
+    )
+
+    // Único punto por el que sale un push, para que la recuperación de arriba
+    // no haya que acordarse de enchufarla en cada ítem nuevo del menú.
+    const pushWith = useCallback(
+        (opts: Record<string, unknown>, label: string) =>
+            run('push', () => GitPush(repoId, new git.PushOptions(opts), new git.AuthConfig({})), recoverMissingUpstream(opts, label)),
+        [repoId, run, recoverMissingUpstream],
+    )
+
+    // Alta de ramas y tags DESDE EL PANEL LATERAL.
+    //
+    // Faltaba entera: el panel listaba, filtraba, plegaba, anclaba, borraba y
+    // publicaba ramas y tags, pero para CREAR uno había que irse al grafo,
+    // encontrar un commit y usar su menú contextual. Un rodeo largo para lo
+    // que casi siempre arranca donde ya estás parado — por eso las dos altas
+    // de acá parten de HEAD y lo dicen en la descripción, en vez de pedir un
+    // punto de partida que el 90% de las veces es "acá".
+    const promptCreateBranch = useCallback(
+        (prefix: string) =>
+            setPrompt({
+                title: prefix ? `Crear rama en "${prefix}"` : 'Crear rama',
+                label: 'Nombre de la rama',
+                // Con el prefijo puesto, una convención de nombres se sostiene
+                // sola en vez de depender de que cada uno lo escriba igual.
+                initial: prefix ? `${prefix}/` : '',
+                placeholder: 'mi-rama',
+                confirmLabel: 'Crear y cambiar',
+                description: current?.name
+                    ? `Arranca en "${current.name}", donde estás parado ahora, y te cambia a la rama nueva.`
+                    : 'Arranca donde estás parado ahora y te cambia a la rama nueva.',
+                onSubmit: (v) => run(`checkout -b ${v}`, () => GitCreateBranch(repoId, v, '', true)),
+            }),
+        [repoId, current?.name, run],
+    )
+
+    const promptCreateTag = useCallback(
+        () =>
+            setPrompt({
+                title: 'Crear tag',
+                label: 'Nombre del tag',
+                placeholder: 'v1.0.0',
+                secondLabel: 'Mensaje (opcional)',
+                secondPlaceholder: 'Con mensaje crea un tag anotado; sin mensaje, uno liviano.',
+                confirmLabel: 'Crear tag',
+                description: current?.name
+                    ? `Se crea sobre "${current.name}", donde estás parado ahora, y queda solo local: para publicarlo usá "Push" desde el menú del tag.`
+                    : 'Se crea donde estás parado ahora y queda solo local: para publicarlo usá "Push" desde el menú del tag.',
+                onSubmit: (v, msg) => run(`tag ${v}`, () => GitCreateTag(repoId, v, '', msg)),
+            }),
+        [repoId, current?.name, run],
+    )
+
+    const openFolderMenu = useCallback(
+        (folderPath: string, e: React.MouseEvent) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setMenu({
+                x: e.clientX,
+                y: e.clientY,
+                items: [
+                    {
+                        label: `Crear rama en "${folderPath}"…`,
+                        icon: 'account_tree',
+                        hint: 'Abre el nombre con el prefijo ya puesto',
+                        onSelect: () => promptCreateBranch(folderPath),
+                    },
+                    {label: `Copiar "${folderPath}/"`, icon: 'content_copy', onSelect: () => copy(`${folderPath}/`)},
+                ],
+            })
+        },
+        // `copy` se define nueva en cada render (no está memoizada), así que
+        // ponerla acá anularía el useCallback sin ganar nada: no cierra sobre
+        // ningún estado que cambie.
+        [promptCreateBranch],
+    )
+
+    // Git Flow, nativo: solo escribe la configuración y crea ramas.
+    //
+    // El menú cambia de forma según el estado porque son dos preguntas
+    // distintas y mezclarlas confunde: sin inicializar hay una sola cosa que
+    // hacer, y una vez inicializado "inicializar" no vuelve a ofrecerse.
+    const gitFlowItems = (): (DropdownItem | 'separator')[] => {
+        if (!flow) return []
+        if (!flow.initialized) {
+            return [
+                {
+                    label: 'Inicializar Git Flow…',
+                    icon: 'account_tree',
+                    hint: `Crea "${flow.develop}" a partir de "${flow.master}"`,
+                    onSelect: () =>
+                        setConfirm({
+                            title: 'Inicializar Git Flow',
+                            description: `Escribe la convención de nombres en la configuración de este repositorio (${flow.feature}, ${flow.release}, ${flow.hotfix}) y crea la rama "${flow.develop}" a partir de "${flow.master}" si todavía no existe. Son las mismas claves que usa el comando \`git flow\`, así que el repositorio queda compatible con quien lo use desde una terminal. No te cambia de rama y no toca ningún commit.`,
+                            confirmLabel: 'Inicializar',
+                            label: 'git flow init',
+                            danger: false,
+                            run: () => GitFlowInit(repoId, new git.GitFlowConfig({})),
+                        }),
+                },
+            ]
+        }
+
+        // La BASE de cada tipo va en el hint porque es lo único de git-flow
+        // que hay que saber y lo que más se equivoca a mano: un hotfix
+        // arrancado desde develop se lleva a producción todo lo que develop
+        // tenga sin publicar.
+        const start = (kind: string, label: string, prefix: string, base: string): DropdownItem => ({
+            label: `${label}…`,
+            icon: kind === 'hotfix' ? 'emergency' : 'account_tree',
+            hint: `${prefix}… desde ${base}`,
+            onSelect: () =>
+                setPrompt({
+                    title: label,
+                    label: 'Nombre',
+                    placeholder: kind === 'release' || kind === 'hotfix' ? '1.2.0' : 'TIGOCHAT-1234',
+                    confirmLabel: 'Crear y cambiar',
+                    description: `Crea "${prefix}<nombre>" a partir de "${base}" y te cambia a ella. Si escribís el prefijo, no se duplica.`,
+                    onSubmit: (v) => run(`git flow ${kind} start`, () => GitFlowStart(repoId, kind, v)),
+                }),
+        })
+
+        return [
+            start('feature', 'Nueva feature', flow.feature, flow.develop),
+            start('release', 'Nueva release', flow.release, flow.develop),
+            start('hotfix', 'Nuevo hotfix', flow.hotfix, flow.master),
+        ]
+    }
+
+    // "Buscar en esta rama…" — acota el grafo a la historia de esa rama y
+    // deja el cursor listo para el término.
+    //
+    // No es una búsqueda nueva: el buscador ya entendía `hash:<algo>`, que
+    // acepta un hash, un tag o una rama. Lo que faltaba era la puerta de
+    // entrada — había que saber que el prefijo existía y escribir el nombre
+    // de la rama a mano, con lo cual la función existía sin ser usable desde
+    // donde se piensa ("quiero buscar algo en ESTA rama").
+    const searchInBranchItem = (b: git.Branch): DropdownItem => ({
+        label: `Buscar en ${b.name}…`,
+        icon: 'manage_search',
+        hint: 'Acota el historial a esa rama',
+        onSelect: () => {
+            const text = `hash:${b.name} `
+            setSearchText(text)
+            setSearch(parseGitSearch(text))
+            // Después del frame en que se cierra el menú contextual: enfocar
+            // mientras se está desmontando pierde el foco.
+            requestAnimationFrame(() => {
+                const el = searchInputRef.current
+                if (!el) return
+                el.focus()
+                el.setSelectionRange(text.length, text.length)
+            })
+        },
+    })
+
+    // "Rebase la rama actual SOBRE esta" — el rebase plano, que hasta ahora
+    // no existía: lo único que el módulo sabía hacer era el interactivo
+    // (reordenar los commits de la propia rama desde el grafo), que es otra
+    // operación y se pide desde otro lado.
+    //
+    // La dirección importa y por eso está escrita entera en la etiqueta: lo
+    // que se reescribe es la rama en la que estás parado, no la que tocaste
+    // con el botón derecho. Al revés es lo que la gente teme al ver "rebase"
+    // en el menú de una rama ajena.
+    const rebaseOntoItem = (b: git.Branch): DropdownItem => ({
+        label: `Rebase ${current?.name ?? 'la rama actual'} sobre ${b.name}`,
+        icon: 'low_priority',
+        hint: 'Reescribe TUS commits encima de esa rama',
+        disabled: b.isCurrent,
+        danger: true,
+        onSelect: () =>
+            setConfirm({
+                title: 'Rebasar sobre otra rama',
+                description: `Reaplica los commits de ${current?.name ? `"${current.name}"` : 'la rama actual'} encima de "${b.name}". Quedan con hash nuevo: si esta rama ya está publicada, el push que venga después va a necesitar --force y cualquiera que la tenga bajada va a tener que rehacerla. Si aparecen conflictos el rebase se detiene y desde la barra de arriba podés resolverlos o abortar. Los cambios sin commitear se guardan y se restauran solos.`,
+                confirmLabel: 'Rebasar',
+                label: `rebase ${b.name}`,
+                danger: true,
+                run: () => GitRebase(repoId, b.name, true),
+            }),
+    })
+
     const pushItems: (DropdownItem | 'separator')[] = [
         {
             label: 'push',
             hint: 'Publica tus commits',
             icon: 'upload',
-            // The common failure the first time a branch is published: git
-            // refuses a plain push with no upstream to compare against
-            // instead of guessing a remote. Offer the fix inline via confirm
-            // rather than making the user find "push --set-upstream" in this
-            // same menu after reading the error banner.
-            onSelect: () =>
-                void run(
-                    'push',
-                    () => GitPush(repoId, new git.PushOptions({}), new git.AuthConfig({})),
-                    (e) => {
-                        if (!current?.name || !String(e).includes('no upstream branch')) return false
-                        setConfirm({
-                            title: 'Publicar y vincular la rama',
-                            description: `"${current.name}" todavía no tiene upstream configurado, así que un push simple no sabe a dónde publicarla. ¿Publicarla en "origin" y vincularla (--set-upstream)?`,
-                            confirmLabel: 'Publicar y vincular',
-                            label: 'push --set-upstream',
-                            danger: false,
-                            run: () => GitPush(repoId, new git.PushOptions({setUpstream: true, remote: 'origin', branch: current.name}), new git.AuthConfig({})),
-                        })
-                        return true
-                    },
-                ),
+            onSelect: () => void pushWith({}, 'push'),
         },
         {
             label: 'push --set-upstream',
@@ -2025,7 +2264,7 @@ export default function GitRepoTab({
             disabled: !!upstream,
             onSelect: () => run('push', () => GitPush(repoId, new git.PushOptions({setUpstream: true, remote: 'origin', branch: current?.name ?? ''}), new git.AuthConfig({}))),
         },
-        {label: 'push --tags', hint: 'Incluye los tags', onSelect: () => run('push', () => GitPush(repoId, new git.PushOptions({tags: true}), new git.AuthConfig({})))},
+        {label: 'push --tags', hint: 'Incluye los tags', onSelect: () => void pushWith({tags: true}, 'push --tags')},
         'separator',
         // Revisar ANTES de publicar, que es cuando todavía se puede arreglar
         // barato. No pushea: abre el chat con el prompt escrito.
@@ -2046,15 +2285,29 @@ export default function GitRepoTab({
             label: 'push --force-with-lease',
             hint: 'Reescribe, pero aborta si alguien subió algo',
             danger: true,
-            onSelect: () => run('push', () => GitPush(repoId, new git.PushOptions({forceWithLease: true}), new git.AuthConfig({}))),
+            onSelect: () => void pushWith({forceWithLease: true}, 'push --force-with-lease'),
         },
         {
+            // La única variante que pide confirmación, por la misma regla que
+            // ya siguen `reset --hard`, `branch -D` y `push --delete` en este
+            // mismo menú: lo que se pierde no está en el reflog de nadie.
+            // --force-with-lease no la pide porque aborta solo cuando habría
+            // pisado algo.
             label: 'push --force',
             hint: 'Reescribe el remoto y descarta commits ajenos',
             danger: true,
-            onSelect: () => run('push', () => GitPush(repoId, new git.PushOptions({force: true}), new git.AuthConfig({}))),
+            onSelect: () =>
+                setConfirm({
+                    title: 'Forzar la publicación',
+                    description: `Esto reescribe ${upstream ? `"${upstream}"` : 'la rama en el remoto'} con lo que tenés local. Los commits que otra persona haya subido y vos no tengas desaparecen del remoto, y quien los tenga solo en su máquina los va a tener que recuperar a mano. Si lo que querés es reescribir tu propia historia (un rebase, un amend) sin riesgo de pisar a nadie, cancelá y usá "push --force-with-lease": hace lo mismo pero aborta si el remoto se movió desde tu último fetch.`,
+                    confirmLabel: 'Forzar el push',
+                    label: 'push --force',
+                    danger: true,
+                    run: () => GitPush(repoId, new git.PushOptions({force: true}), new git.AuthConfig({})),
+                    onError: recoverMissingUpstream({force: true}, 'push --force'),
+                }),
         },
-        {label: 'push --no-verify', hint: 'Saltea los hooks de pre-push', danger: true, onSelect: () => run('push', () => GitPush(repoId, new git.PushOptions({noVerify: true}), new git.AuthConfig({})))},
+        {label: 'push --no-verify', hint: 'Saltea los hooks de pre-push', danger: true, onSelect: () => void pushWith({noVerify: true}, 'push --no-verify')},
     ]
 
     const staged = status?.files?.filter((f) => f.staged) ?? []
@@ -2220,16 +2473,18 @@ export default function GitRepoTab({
                     >
                         Resolver conflictos
                     </button>
-                    {inProgress !== 'rebase' && (
-                        <button
-                            onClick={() => run(`${inProgress} --abort`, () => GitAbort(repoId, inProgress))}
-                            disabled={!!busy}
-                            title={`Cancelar el ${inProgress} y volver al estado que tenía el repositorio antes de empezarlo`}
-                            className="shrink-0 rounded bg-error px-2 py-0.5 text-on-error hover:opacity-90 disabled:opacity-40"
-                        >
-                            Abortar
-                        </button>
-                    )}
+                    {/* El abortar valía para merge, cherry-pick y revert pero
+                        NO para rebase — justamente la única que reescribe
+                        historia— porque no había backend detrás. Ahora sí:
+                        RebaseAbort devuelve el repositorio a donde estaba. */}
+                    <button
+                        onClick={() => run(`${inProgress} --abort`, () => GitAbort(repoId, inProgress))}
+                        disabled={!!busy}
+                        title={`Cancelar el ${inProgress} y volver al estado que tenía el repositorio antes de empezarlo`}
+                        className="shrink-0 rounded bg-error px-2 py-0.5 text-on-error hover:opacity-90 disabled:opacity-40"
+                    >
+                        Abortar
+                    </button>
                 </div>
             )}
             <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-[11px]">
@@ -2317,6 +2572,41 @@ export default function GitRepoTab({
                             icon: 'dashboard',
                             hint: 'Varias ramas a la vez, en carpetas distintas',
                             onSelect: () => setShowWorktrees((v) => !v),
+                        },
+                        {
+                            label: showSubmodules ? 'Ocultar submódulos' : 'Ver submódulos',
+                            icon: 'account_tree',
+                            hint: 'Repos anidados, fijados en un commit',
+                            onSelect: () => setShowSubmodules((v) => !v),
+                        },
+                        'separator',
+                        // Los dos archivos de configuración que se editan a
+                        // mano y viven en la raíz del repositorio. Estaban a
+                        // tiro solo si te acordabas de buscarlos en el árbol
+                        // de archivos — y .gitattributes ni siquiera existe
+                        // en la mayoría de los repos, así que no aparecía.
+                        // El editor ya abre como NUEVO y vacío un archivo que
+                        // no existe, así que "crear" y "editar" son lo mismo
+                        // acá y no hace falta distinguirlos en el menú.
+                        ...gitFlowItems(),
+                        'separator',
+                        {
+                            label: 'Editar .gitignore',
+                            icon: 'rule',
+                            hint: 'Qué archivos git no tiene que versionar',
+                            onSelect: () => {
+                                setEditRequest({path: '.gitignore', token: Date.now()})
+                                setView('files')
+                            },
+                        },
+                        {
+                            label: 'Editar .gitattributes',
+                            icon: 'tune',
+                            hint: 'Finales de línea, diff y merge por tipo de archivo',
+                            onSelect: () => {
+                                setEditRequest({path: '.gitattributes', token: Date.now()})
+                                setView('files')
+                            },
                         },
                     ]}
                 />
@@ -2407,6 +2697,135 @@ export default function GitRepoTab({
                 </div>
             )}
 
+            {showSubmodules && (
+                <div className="shrink-0 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+                    {/* Acciones de todo el conjunto. "Actualizar" y
+                        "Actualizar e inicializar" son dos botones y no uno
+                        con checkbox porque son dos decisiones distintas: el
+                        segundo CLONA por red los submódulos que nunca se
+                        bajaron, contra URLs para las que puede que no tengas
+                        credenciales. */}
+                    <div className="flex flex-wrap items-center gap-1 pb-1">
+                        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Submódulos</span>
+                        <button
+                            onClick={() =>
+                                setPrompt({
+                                    title: 'Agregar submódulo',
+                                    label: 'URL del repositorio',
+                                    placeholder: 'git@servidor:grupo/proyecto.git',
+                                    secondLabel: 'Carpeta (opcional)',
+                                    secondPlaceholder: 'Vacío = el último tramo de la URL',
+                                    confirmLabel: 'Agregar y clonar',
+                                    description:
+                                        'Lo clona adentro de este repositorio y lo deja fijado en el commit que tenga ahora. Queda como un cambio sin commitear: hay que commitear .gitmodules y la carpeta para que le llegue al resto.',
+                                    onSubmit: (url, path) =>
+                                        run('submodule add', () => GitAddSubmodule(repoId, url, path, '', new git.AuthConfig({}))),
+                                })
+                            }
+                            title="Clona otro repositorio adentro de este y lo deja fijado en un commit. Vas a tener que commitear el resultado para que le llegue a los demás."
+                            className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            Agregar…
+                        </button>
+                        <button
+                            onClick={() => void run('submodule update', () => GitUpdateSubmodules(repoId, false, true, new git.AuthConfig({})))}
+                            title="Deja cada submódulo YA clonado en el commit exacto que fija este repositorio. Es lo que hay que correr después de un pull que movió alguno."
+                            className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            Actualizar todos
+                        </button>
+                        <button
+                            onClick={() => void run('submodule update --init', () => GitUpdateSubmodules(repoId, true, true, new git.AuthConfig({})))}
+                            title="Como el anterior, pero además CLONA los que nunca se bajaron. Va por red contra la URL de cada uno, así que puede pedir credenciales."
+                            className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            Actualizar e inicializar
+                        </button>
+                        <button
+                            onClick={() => void run('submodule sync', () => GitSyncSubmodules(repoId, true))}
+                            title="Copia las URLs de .gitmodules a la configuración de cada submódulo. Hace falta cuando alguien cambió la URL de un submódulo y commiteó: sin esto tu copia sigue yendo a la dirección vieja para siempre."
+                            className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            Sincronizar URLs
+                        </button>
+                    </div>
+
+                    {submodules.length === 0 ? (
+                        <p className="text-on-surface-variant">Este repositorio no tiene submódulos.</p>
+                    ) : (
+                        submodules.map((m) => (
+                            <div key={m.path} className="flex items-center gap-2 py-0.5">
+                                <Icon
+                                    name={m.conflicted ? 'error' : m.initialized ? 'account_tree' : 'download'}
+                                    size={12}
+                                    className={`shrink-0 ${m.conflicted ? 'text-error' : 'text-on-surface-variant'}`}
+                                />
+                                <span className="shrink-0 font-mono text-on-surface" title={m.url || 'Sin URL en .gitmodules'}>
+                                    {m.path}
+                                </span>
+                                <span
+                                    className="min-w-0 flex-1 truncate font-mono text-on-surface-variant/70"
+                                    title={`Este repositorio lo fija en el commit ${m.hash}`}
+                                >
+                                    {m.described || m.hash.slice(0, 7)}
+                                </span>
+                                {!m.initialized && (
+                                    <span
+                                        className="shrink-0 text-tertiary"
+                                        title="Registrado pero nunca clonado: la carpeta está vacía. Es el estado normal de un clon recién hecho, se arregla con «Actualizar e inicializar»."
+                                    >
+                                        sin inicializar
+                                    </span>
+                                )}
+                                {m.modified && (
+                                    <span
+                                        className="shrink-0 text-tertiary"
+                                        title="Está parado en un commit distinto del que fija este repositorio. No es un error, pero es la forma más común de que una compilación deje de ser reproducible — y no se ve en la lista de cambios del padre."
+                                    >
+                                        movido
+                                    </span>
+                                )}
+                                {m.conflicted && (
+                                    <span className="shrink-0 text-error" title="Un merge dejó en conflicto cuál es el commit fijado. Se resuelve eligiendo el commit y commiteándolo en el padre.">
+                                        conflicto
+                                    </span>
+                                )}
+                                <button
+                                    onClick={() =>
+                                        void run('submodule update', () =>
+                                            GitUpdateSubmodule(repoId, m.path, !m.initialized, true, new git.AuthConfig({})),
+                                        )
+                                    }
+                                    title={
+                                        m.initialized
+                                            ? `Deja "${m.path}" en el commit que fija este repositorio.`
+                                            : `Clona "${m.path}" por primera vez y lo deja en el commit fijado. Va por red.`
+                                    }
+                                    className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                >
+                                    {m.initialized ? 'Actualizar' : 'Inicializar'}
+                                </button>
+                                <button
+                                    onClick={() =>
+                                        setConfirm({
+                                            title: 'Quitar el submódulo',
+                                            description: `Saca "${m.path}" de este repositorio: vacía su carpeta, lo borra de .gitmodules y del índice, y elimina el clon que git deja cacheado en .git/modules. Ese último paso es el que permite volver a agregarlo después; sin él, git rechaza el alta diciendo que ya hay un directorio local. El repositorio del submódulo en su propio servidor no se toca. Queda como un cambio sin commitear.`,
+                                            confirmLabel: 'Quitar',
+                                            label: `submodule deinit ${m.path}`,
+                                            run: () => GitRemoveSubmodule(repoId, m.path),
+                                        })
+                                    }
+                                    title={`Desregistra "${m.path}" de este repositorio. No borra nada en el servidor del submódulo.`}
+                                    className="shrink-0 rounded px-1 text-error hover:bg-error-container"
+                                >
+                                    Quitar
+                                </button>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+
             {error && <Banner kind="error" text={error} onClose={() => setError(null)} />}
             {notice && <Banner kind="info" text={notice} onClose={() => setNotice(null)} />}
 
@@ -2489,6 +2908,7 @@ export default function GitRepoTab({
                         <div className="flex items-center gap-1 rounded bg-surface-container px-1.5 py-1 focus-within:ring-1 focus-within:ring-primary">
                             <Icon name="manage_search" size={13} className="shrink-0 text-on-surface-variant/60" />
                             <input
+                                ref={searchInputRef}
                                 value={searchText}
                                 onChange={(e) => setSearchText(e.target.value)}
                                 onKeyDown={(e) => {
@@ -2572,6 +2992,12 @@ export default function GitRepoTab({
                             count={localBranches.length}
                             open={!collapsedSections.has('local')}
                             onToggle={() => toggleSection('local')}
+                            action={{
+                                title: current?.name
+                                    ? `Crear una rama nueva a partir de "${current.name}" y cambiarte a ella`
+                                    : 'Crear una rama nueva a partir de donde estás parado y cambiarte a ella',
+                                onSelect: () => promptCreateBranch(''),
+                            }}
                         >
                             Ramas
                         </SectionLabel>
@@ -2589,6 +3015,7 @@ export default function GitRepoTab({
                                 expanded={expandedFolders}
                                 expandAll={filtering}
                                 onToggleFolder={toggleFolder}
+                                onFolderMenu={openFolderMenu}
                                 renderBranch={(b, folderPath) => (
                                     <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
                                 )}
@@ -2630,6 +3057,12 @@ export default function GitRepoTab({
                                     count={visibleTags.length}
                                     open={!collapsedSections.has('tags')}
                                     onToggle={() => toggleSection('tags')}
+                                    action={{
+                                        title: current?.name
+                                            ? `Etiquetar el commit actual de "${current.name}". El tag queda local hasta que lo publiques`
+                                            : 'Etiquetar el commit donde estás parado. El tag queda local hasta que lo publiques',
+                                        onSelect: promptCreateTag,
+                                    }}
                                 >
                                     Tags
                                 </SectionLabel>
@@ -3606,7 +4039,7 @@ export default function GitRepoTab({
                     description={confirm.description}
                     confirmLabel={confirm.confirmLabel}
                     danger={confirm.danger ?? true}
-                    onConfirm={() => run(confirm.label, confirm.run)}
+                    onConfirm={() => run(confirm.label, confirm.run, confirm.onError)}
                     onClose={() => setConfirm(null)}
                 />
             )}
@@ -3755,11 +4188,19 @@ function SectionLabel({
     count,
     open,
     onToggle,
+    action,
 }: {
     children: React.ReactNode
     count?: number
     open?: boolean
     onToggle?: () => void
+    // Acción de ALTA de la sección: crear una rama en "Ramas", crear un tag
+    // en "Tags". Va en la cabecera y no en un menú porque era lo único que
+    // el panel no dejaba hacer — se podían listar, filtrar, plegar, borrar y
+    // publicar ramas y tags, pero crear uno obligaba a ir al grafo y buscar
+    // un commit. Se ve siempre (atenuada, no escondida detrás de un hover):
+    // una acción que no se descubre es la que motivó agregarla.
+    action?: {title: string; onSelect: () => void}
 }) {
     const label = (
         <>
@@ -3779,14 +4220,27 @@ function SectionLabel({
             </p>
         )
     }
+    // El botón de alta es hermano del de plegar, no hijo: un <button> adentro
+    // de otro <button> es HTML inválido y el click interno no llega.
     return (
-        <button
-            onClick={onToggle}
-            title={open === false ? 'Desplegar esta sección' : 'Plegar esta sección — el contador sigue a la vista'}
-            className="flex w-full items-center gap-1.5 rounded px-2 pb-1 pt-2 text-left text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface-variant"
-        >
-            {label}
-        </button>
+        <div className="flex w-full items-center pb-1 pt-2 pr-1">
+            <button
+                onClick={onToggle}
+                title={open === false ? 'Desplegar esta sección' : 'Plegar esta sección — el contador sigue a la vista'}
+                className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 text-left text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface-variant"
+            >
+                {label}
+            </button>
+            {action && (
+                <button
+                    onClick={action.onSelect}
+                    title={action.title}
+                    className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
+                >
+                    <Icon name="add" size={14} />
+                </button>
+            )}
+        </div>
     )
 }
 
@@ -3804,16 +4258,22 @@ function BranchFolderRow({
     depth,
     open,
     onToggle,
+    onContextMenu,
 }: {
     node: BranchTreeNode
     depth: number
     open: boolean
     onToggle: () => void
+    // Botón derecho sobre la carpeta: crear una rama YA dentro de ella, con
+    // el prefijo puesto. Es la diferencia entre "feature/" escrito a mano
+    // cada vez y una convención de nombres que se sostiene sola.
+    onContextMenu?: (e: React.MouseEvent) => void
 }) {
     const total = countBranches(node)
     return (
         <button
             onClick={onToggle}
+            onContextMenu={onContextMenu}
             title={
                 open
                     ? `Plegar "${node.path}" — sus ${total} ramas dejan de ocupar la lista`
@@ -3840,6 +4300,7 @@ function BranchTree({
     expanded,
     expandAll,
     onToggleFolder,
+    onFolderMenu,
     renderBranch,
 }: {
     node: BranchTreeNode
@@ -3849,6 +4310,9 @@ function BranchTree({
     // de carpetas que el usuario abrió a mano.
     expandAll?: boolean
     onToggleFolder: (path: string) => void
+    // Menú contextual de una carpeta. Opcional para que el árbol siga
+    // sirviendo en una vista que no ofrezca acciones.
+    onFolderMenu?: (folderPath: string, e: React.MouseEvent) => void
     renderBranch: (branch: git.Branch, folderPath: string) => React.ReactNode
 }) {
     return (
@@ -3857,7 +4321,13 @@ function BranchTree({
                 const open = expandAll || expanded.has(folder.path)
                 return (
                     <div key={folder.path}>
-                        <BranchFolderRow node={folder} depth={depth} open={open} onToggle={() => onToggleFolder(folder.path)} />
+                        <BranchFolderRow
+                            node={folder}
+                            depth={depth}
+                            open={open}
+                            onToggle={() => onToggleFolder(folder.path)}
+                            onContextMenu={onFolderMenu ? (e) => onFolderMenu(folder.path, e) : undefined}
+                        />
                         {open && (
                             <BranchTree
                                 node={folder}
@@ -3865,6 +4335,7 @@ function BranchTree({
                                 expanded={expanded}
                                 expandAll={expandAll}
                                 onToggleFolder={onToggleFolder}
+                                onFolderMenu={onFolderMenu}
                                 renderBranch={renderBranch}
                             />
                         )}
