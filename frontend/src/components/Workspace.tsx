@@ -62,7 +62,6 @@ import {
     WriteSftpFileFromEdit,
     ExportConnectionConfig,
     ExportSchemaDDL,
-    ExportTableDDL,
     GetMongoDefaultDatabase,
     ListMongoCollections,
     ListMongoDatabases,
@@ -2281,20 +2280,6 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         }
     }
 
-    async function exportTableDDL(table: string, schema?: string) {
-        if (!selected) return
-        try {
-            // "public" only matters for Postgres (SQLite/Oracle ignore the
-            // schema param) — table.schema from metadata is the real value
-            // when available, this is just the fallback for engines/tables
-            // that don't report one.
-            const dest = await ExportTableDDL(selected.id, schema || 'public', table)
-            setStatusMessage(dest ? `DDL exportado a ${dest}` : '')
-        } catch (err) {
-            setStatusMessage(String(err))
-        }
-    }
-
     async function exportSchemaDDL() {
         if (!selected) return
         try {
@@ -2601,7 +2586,6 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 onOpenRedisBrowser={openRedisBrowser}
                 activeTabConnectionId={activeTabConnection?.id ?? null}
                 onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
-                onExportTableDDL={(table, schema) => void exportTableDDL(table, schema)}
                 onExportSchemaDDL={() => void exportSchemaDDL()}
                 onDisconnect={(connId) => void disconnectConnection(connId)}
                 onDeleteConnection={(connId) => void deleteConnection(connId)}

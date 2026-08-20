@@ -4,6 +4,19 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Corregido
+
+- **El DDL de una tabla Oracle de otro esquema ya no falla con "no existe".** Pedir el `CREATE TABLE` de `SGCPRO.ABONADOS_AUSENTES` estando conectado con otro usuario devolvía un `ORA-31603: object not found in schema "GCD001"` con diez líneas de pila de `SYS.DBMS_METADATA` — el objeto existía y se estaba viendo en el árbol. La causa: las consultas a `DBMS_METADATA.GET_DDL` no pasaban el **dueño**, así que Oracle lo buscaba en el esquema de la sesión. Ahora se pasa siempre que el árbol lo conozca, y vale para los cinco tipos de objeto (tabla, procedure, function, trigger y package).
+
+  Lo mismo pasaba al **exportar el DDL del esquema**: en Oracle se exportaban las tablas del usuario conectado en vez de las del esquema que estabas mirando, sin decir nada.
+
+  Y si Oracle igual lo rechaza, el mensaje ahora explica el motivo real en vez de repetir la pila: leer la metadata de otro esquema **pide privilegio** (`SELECT_CATALOG_ROLE` o `SELECT ANY DICTIONARY`), y tener `SELECT` sobre la tabla no alcanza.
+
+### Mejorado
+
+- **El `CREATE TABLE` de una tabla ahora se puede VER, no solo exportar.** El botón de código de cada tabla del árbol abría directo el diálogo de guardar archivo, así que la tabla era el único objeto del árbol cuyo DDL no se podía simplemente mirar — cuando es justamente el que más se mira: para copiar una columna, comparar dos entornos o pegarlo en una migración. Ahora abre el mismo visor de DDL que ya usaban procedures, functions, triggers y packages, con su botón de copiar y el de **exportar a `.sql`** (que es la acción de antes, un clic más adentro). Vale igual para las tablas que aparecen filtrando en el buscador del árbol.
+
+
 ## [2.2.0] - 2026-08-19
 
 ### Agregado

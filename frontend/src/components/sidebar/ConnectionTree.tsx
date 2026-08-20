@@ -61,7 +61,6 @@ interface ConnectionTreeProps {
     // RedisKeyTree's isActiveTabConnection prop).
     activeTabConnectionId: string | null
     onExportConnectionConfig: (connId: string) => void
-    onExportTableDDL: (table: string, schema?: string) => void
     onExportSchemaDDL: (connId: string) => void
     // connIds with an open pool/client right now (App.ActiveConnectionIds).
     // Drives both the dot next to the name and whether the disconnect button
@@ -127,7 +126,6 @@ export default function ConnectionTree({
     onOpenRedisBrowser,
     activeTabConnectionId,
     onExportConnectionConfig,
-    onExportTableDDL,
     onExportSchemaDDL,
     liveConnIds,
     onDisconnect,
@@ -337,7 +335,7 @@ export default function ConnectionTree({
         )
     }
 
-    function renderTableRow(t: db.Table) {
+    function renderTableRow(t: db.Table, connId: string) {
         return (
             <div
                 key={`${t.schema ?? ''}.${t.name}`}
@@ -348,12 +346,19 @@ export default function ConnectionTree({
                 <Icon name="table_chart" size={14} className="shrink-0 opacity-60" />
                 <span className="truncate">{t.schema ? `${t.schema}.${t.name}` : t.name}</span>
                 <div className="flex-1" />
+                {/* Ver el CREATE TABLE, igual que un procedure o un trigger.
+                    Antes este botón mandaba directo al diálogo de guardar
+                    archivo: la tabla era el ÚNICO objeto del árbol cuyo DDL no
+                    se podía simplemente mirar, cuando es el que más se mira —
+                    para copiar una columna, comparar dos entornos o pegarlo en
+                    una migración. Exportar a `.sql` sigue estando, un clic más
+                    adentro, en el propio visor. */}
                 <button
                     onClick={(e) => {
                         e.stopPropagation()
-                        onExportTableDDL(t.name, t.schema)
+                        onOpenObjectDDL(connId, {objectType: 'table', schema: t.schema ?? '', name: t.name, oid: 0})
                     }}
-                    title="Exportar DDL de la tabla"
+                    title={`Ver el CREATE TABLE de ${t.schema ? `${t.schema}.${t.name}` : t.name} — desde el visor se copia entero o se exporta a un .sql`}
                     className="hidden shrink-0 opacity-70 hover:opacity-100 group-hover/table:block"
                 >
                     <Icon name="code" size={14} />
@@ -604,7 +609,7 @@ export default function ConnectionTree({
 
                                 return (
                                     <>
-                                        {visibleTables.map((t) => renderTableRow(t))}
+                                        {visibleTables.map((t) => renderTableRow(t, c.id))}
                                         <SchemaObjectsList
                                             procedures={visibleProcedures}
                                             functions={visibleFunctions}
@@ -678,7 +683,7 @@ export default function ConnectionTree({
                                                             <span className="truncate">Tablas</span>
                                                             <span className="shrink-0 opacity-60">({schemaTables.length})</span>
                                                         </button>
-                                                        {!tablesCollapsed && <div className="pl-4">{schemaTables.map((t) => renderTableRow(t))}</div>}
+                                                        {!tablesCollapsed && <div className="pl-4">{schemaTables.map((t) => renderTableRow(t, c.id))}</div>}
                                                     </div>
                                                 )}
                                                 <SchemaObjectsList

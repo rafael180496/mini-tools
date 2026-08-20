@@ -14,6 +14,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 
+	"mini-tools/backend/agentapprove"
+	"mini-tools/backend/agentchat"
+	"mini-tools/backend/appdata"
 	"mini-tools/backend/autobackup"
 	"mini-tools/backend/claudemd"
 	"mini-tools/backend/db"
@@ -21,9 +24,6 @@ import (
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
 	"mini-tools/backend/git"
-	"mini-tools/backend/agentapprove"
-	"mini-tools/backend/appdata"
-	"mini-tools/backend/agentchat"
 	"mini-tools/backend/localterm"
 	"mini-tools/backend/mongoquery"
 	"mini-tools/backend/query"
@@ -3072,8 +3072,10 @@ func (a *App) ExportResult(columns []string, rows [][]interface{}, format string
 	return dest, nil
 }
 
-// ExportTableDDL writes table's CREATE TABLE statement (schema is only
-// meaningful for Postgres) to a user-chosen .sql file.
+// ExportTableDDL writes table's CREATE TABLE statement to a user-chosen .sql
+// file. schema matters everywhere except SQLite (que no tiene esquemas): en
+// Oracle es el dueño del objeto, y omitirlo hacía fallar cualquier tabla que no
+// fuera del usuario conectado.
 func (a *App) ExportTableDDL(connID, schema, table string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
@@ -3090,7 +3092,7 @@ func (a *App) ExportTableDDL(connID, schema, table string) (string, error) {
 	case db.DBTypePostgres:
 		ddl, err = export.PostgresTableDDL(a.ctx, pool, schema, table)
 	case db.DBTypeOracle:
-		ddl, err = export.OracleTableDDL(a.ctx, pool, table)
+		ddl, err = export.OracleTableDDL(a.ctx, pool, schema, table)
 	case db.DBTypeSQLServer:
 		ddl, err = export.SQLServerTableDDL(a.ctx, pool, schema, table)
 	default:
@@ -3103,8 +3105,8 @@ func (a *App) ExportTableDDL(connID, schema, table string) (string, error) {
 	return a.saveSQLTextAs("Exportar DDL de tabla", table+".sql", ddl)
 }
 
-// ExportSchemaDDL writes every table's DDL (schema is only meaningful for
-// Postgres) to a user-chosen .sql file.
+// ExportSchemaDDL writes every table's DDL of `schema` to a user-chosen .sql
+// file — en Oracle, las tablas de ESE dueño y no las del usuario conectado.
 func (a *App) ExportSchemaDDL(connID, schema string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
@@ -3121,7 +3123,7 @@ func (a *App) ExportSchemaDDL(connID, schema string) (string, error) {
 	case db.DBTypePostgres:
 		ddl, err = export.PostgresSchemaDDL(a.ctx, pool, schema)
 	case db.DBTypeOracle:
-		ddl, err = export.OracleSchemaDDL(a.ctx, pool)
+		ddl, err = export.OracleSchemaDDL(a.ctx, pool, schema)
 	case db.DBTypeSQLServer:
 		ddl, err = export.SQLServerSchemaDDL(a.ctx, pool, schema)
 	default:
@@ -3171,16 +3173,19 @@ func (a *App) GetObjectDDL(connID, objectType, schema, name string, oid int64) (
 		}
 	case db.DBTypeOracle:
 		switch objectType {
+		// El esquema se pasa SIEMPRE que el árbol lo conozca: sin él,
+		// DBMS_METADATA busca en el esquema de la sesión y un objeto de otro
+		// dueño falla con "no existe" aunque se lo esté viendo en pantalla.
 		case "table":
-			return export.OracleTableDDL(a.ctx, pool, name)
+			return export.OracleTableDDL(a.ctx, pool, schema, name)
 		case "procedure":
-			return export.OracleProcedureDDL(a.ctx, pool, name)
+			return export.OracleProcedureDDL(a.ctx, pool, schema, name)
 		case "function":
-			return export.OracleFunctionDDL(a.ctx, pool, name)
+			return export.OracleFunctionDDL(a.ctx, pool, schema, name)
 		case "trigger":
-			return export.OracleTriggerDDL(a.ctx, pool, name)
+			return export.OracleTriggerDDL(a.ctx, pool, schema, name)
 		case "package":
-			return export.OraclePackageDDL(a.ctx, pool, name)
+			return export.OraclePackageDDL(a.ctx, pool, schema, name)
 		}
 	case db.DBTypeSQLServer:
 		switch objectType {
