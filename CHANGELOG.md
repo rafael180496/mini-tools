@@ -4,17 +4,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-08-21
+
 ### Agregado
 
-- **Arreglado: el hueco entre «..» y el primer archivo en el explorador SFTP.** Quedaba una fila vacía —a veces dos— entre el «subir un nivel» y el listado.
-
-  Era un doble conteo en la lista virtualizada: la librería **suma** `scrollMargin` al `start` de cada fila (las medidas arrancan en `paddingStart + scrollMargin`) pero lo **resta** de `getTotalSize()`. El relleno de arriba se calculaba con el `start` crudo, así que sumaba otra vez la altura del «..» que ya se dibujaba como fila de verdad. Comprobado leyendo el fuente de `@tanstack/virtual-core`, no de memoria. De paso, el relleno de abajo quedaba una fila corto: el scroll terminaba antes de la última fila.
-
-- **El explorador SFTP esconde las columnas que no entran, en vez de cortarlas.** Con los anchos por defecto la tabla mide 688 px y un panel de un explorador partido al medio en una ventana de 1280 tiene 640: **siempre** había barra horizontal y la última columna salía cortada por la mitad.
-
-  Ahora se van solas, en orden de utilidad: primero *Kind* —que es la extensión del archivo, y ya está en el nombre— y después *Permisos*, que importa en un servidor y casi nunca en la máquina propia. Nombre y fecha no se esconden nunca. La regla se calcula contra los anchos **reales** de las columnas, así que si ensanchás *Nombre* las opcionales se retiran en vez de volver a desbordar; y si hay espacio, vuelven todas.
-
-- **La fila «..» del SFTP dice a dónde sube.** En una ruta profunda saber que subís no alcanza: ahora muestra la carpeta destino al lado, tiene tooltip, y mide lo mismo que el resto de las filas —antes no, y por eso la lista arrancaba desalineada—. También se corrigió un `display:flex` sobre un `<td>`, que saca a la celda del layout de la tabla y desalineaba esa columna respecto del encabezado.
+- **Empaquetado 2.3.0 para macOS y Windows.** `.dmg` de 21,4 MB (`arm64`, Apple Silicon — macOS 11 o superior, aunque el `Info.plist` que genera Wails siga declarando 10.13) y `.exe` portable de 57,0 MB (`x86-64`), los dos sin firmar y con su checksum en `releases/<so>/README.md`. **El `.exe` no se probó en una Windows real**: lo nuevo de ese lado es el módulo HTTP —el flujo OAuth levanta un servidor en `127.0.0.1` y puede disparar el aviso del Firewall, los diálogos nativos de archivo, y los volcados de respuestas grandes que van a `%TEMP%`— además de las migraciones 45 a 49 del vault, que corren sobre el `vault.db` que ya existe en la máquina.
 
 - **El explorador SFTP entró al banco de capturas y a la documentación.** Vista nueva (`sftp`) con dos paneles y datos inventados, y una sección propia en la página con la captura: cómo moverse (doble clic, «..», el buscador de cada panel, columnas ordenables), cómo transferir en cuatro pasos —incluidas las cuatro direcciones posibles y qué pasa si el archivo ya existe del otro lado—, el diálogo de permisos sin tener que acordarse del octal, y el permiso de macOS de la primera vez.
 
@@ -31,18 +25,6 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
   La regla dice qué mirar entrada por entrada: si cambia lo que el usuario puede hacer, va; si es interno, no. Módulo nuevo → sección propia con captura y ejemplo; funcionalidad de un módulo existente → dentro de esa sección, **con el ejemplo de cómo se usa**, porque nombrarla no alcanza; algo que cambia el flujo de punta a punta → una receta más. Y lo que acaba de publicarse sale del bloque «En desarrollo» del README.
 
 - **El README promociona la documentación**: insignia arriba, enlace destacado bajo la lista de motores, y los **pasos exactos para publicarla** con GitHub Pages — incluido qué mirar si las capturas no cargan (casi siempre `docs/screenshots/` sin subir) y por qué acá no hace falta `.nojekyll`.
-
-- **Arreglado: el explorador local del SFTP no podía entrar a Descargas, Escritorio ni Documentos.** Daba `operation not permitted` y —lo peor— **ya no preguntaba nada**: antes macOS mostraba el diálogo de permiso y ahora denegaba en silencio.
-
-  La causa estaba en el paquete de la app, no en el código: el `Info.plist` era el de plantilla de Wails y **no declaraba ninguna cadena de uso**. macOS solo muestra el diálogo de «¿permitir el acceso?» si la app dice para qué lo quiere; sin esa cadena deniega sin preguntar. Ahora están las seis que corresponden —Descargas, Escritorio, Documentos, discos externos, unidades de red y carpetas sincronizadas—, cada una con un texto que dice para qué la necesita **esta** app, porque es lo que el usuario lee dentro del diálogo. Verificado sobre el `.app` ya compilado, no solo sobre la plantilla.
-
-  Y el error, cuando aparece, dejó de ser un mensaje de Go. Ahora dice que es un permiso de macOS, dónde concederlo a mano (*Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas*) y algo que confunde a cualquiera: **una versión recién compilada cuenta como otra aplicación** para el sistema —el permiso se recuerda por firma y cada compilación se autofirma de nuevo—, así que el permiso que diste ayer no vale para el binario de hoy. Un error que no es de permisos se sigue devolviendo tal cual: inventarle una explicación de permisos a un «no existe» sería peor que el error crudo.
-
-- **Arreglado: «Autocompletado sin esquema» aparecía en pestañas que no son de base de datos.** El aviso salía sobre un explorador SFTP, una terminal SSH o un archivo remoto — avisando de un problema que ahí no existe.
-
-  La causa: la fila de contexto consultaba el estado del índice de esquema para **cualquier** conexión vinculada a la pestaña activa, y una pestaña SFTP está vinculada a una conexión SSH. El backend contestaba «error» porque nunca hubo un índice que construir —una conexión SSH no tiene catálogo—, y la fila lo mostraba como si el autocompletado estuviera roto.
-
-  Ahora el índice **solo se consulta para conexiones SQL**, así que el aviso no puede encenderse donde no corresponde, y los tres controles de esa fila que son del editor SQL —«Cargando esquema…», el aviso y el selector de esquema— se muestran con el mismo criterio que el resto de la fila que ya era del editor. La pestaña SFTP sigue mostrando contra qué servidor está trabajando, que es lo único de esa fila que ahí significa algo.
 
 - **`index.html`: la página del proyecto, para publicar con GitHub Pages.** (Se pidió `index.htm`, pero Pages solo sirve `index.html` como índice de un directorio: con `.htm` la raíz del sitio daría 404.) Un solo archivo que documenta la app entera para alguien que nunca la vio: qué es y por qué, cómo instalarla en macOS y Windows o compilarla, la primera conexión, **una sección por módulo** —bases de datos, HTTP, notas, Git, SSH/SFTP y los agentes de IA— cada una con sus capturas y **ejemplos de uso concretos**, más una tabla de atajos, la sección de seguridad y preguntas frecuentes.
 
@@ -119,12 +101,6 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
   **Ningún secreto llega al modelo.** Los `{{marcadores}}` van sin resolver, los valores de las cabeceras de credencial se tapan, el texto entero pasa por el enmascarado de variables secretas y por el tapado de credenciales escritas a mano —en la URL, en el cuerpo o en un `-H` pegado—, y de la autenticación viaja solo el tipo. Comprobado con seis formas distintas de filtración a la vez: ninguna sobrevive en ninguno de los cinco prompts. Y cada prompt aclara que lo tapado **existe**: sin esa línea, un agente que ve `Authorization: «oculto»` diagnostica que falta la autenticación en una petición que sí la lleva.
 
   El chat unificado reconoce ahora el módulo: el encabezado dice «HTTP · nombre de la petición» y el historial agrupa esas conversaciones aparte.
-
-- **Arreglado: el autocompletado de SQL se moría después de usar un atajo y no volvía ni con Ctrl+Espacio.** Había que cerrar y reabrir la pestaña. La causa no estaba donde parecía: CodeMirror anota cada consulta de sugerencias en una lista de pendientes y **no le vuelve a preguntar a esa fuente mientras haya una consulta suya sin terminar**. Si la llamada al motor no se resuelve ni falla —simplemente no vuelve—, esa entrada no se saca nunca y el autocompletado queda muerto para esa pestaña.
-
-  Y que una llamada no vuelva es posible: Wails no le pone tiempo límite a ninguna, y cuando el código de Go entra en pánico responde con una cadena vacía que el navegador no puede interpretar, así que la promesa queda pendiente para siempre. Ahora está tapado por los dos lados: las tres llamadas del editor (completado, ayuda de firma y sugerencia en gris) recuperan el pánico del lado de Go y contestan vacío en vez de no contestar, y del lado del editor cada llamada tiene un tope de tres segundos. En el peor caso ahora ves una lista vacía una vez; antes tenías que reabrir la pestaña.
-
-  Verificado en un banco de pruebas con CodeMirror real y el motor de verdad: **antes**, una sola llamada perdida y el autocompletado no se recuperaba ni escribiendo sesenta caracteres; **ahora** vuelve solo a los tres segundos. Y 400 pasos de edición aleatoria —atajos, Tab entre campos, comillas sueltas, comentarios, acentos, emoji— sin una sola excepción.
 
 - **Casi el doble de atajos en el editor SQL.** De 25 a 46 comunes, y por motor: Oracle 64, PostgreSQL 58, SQLite 55, SQL Server 56.
 
@@ -248,6 +224,28 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Corregido
 
+- **Arreglado: el autocompletado de SQL se moría después de usar un atajo y no volvía ni con Ctrl+Espacio.** Había que cerrar y reabrir la pestaña. La causa no estaba donde parecía: CodeMirror anota cada consulta de sugerencias en una lista de pendientes y **no le vuelve a preguntar a esa fuente mientras haya una consulta suya sin terminar**. Si la llamada al motor no se resuelve ni falla —simplemente no vuelve—, esa entrada no se saca nunca y el autocompletado queda muerto para esa pestaña.
+
+  Y que una llamada no vuelva es posible: Wails no le pone tiempo límite a ninguna, y cuando el código de Go entra en pánico responde con una cadena vacía que el navegador no puede interpretar, así que la promesa queda pendiente para siempre. Ahora está tapado por los dos lados: las tres llamadas del editor (completado, ayuda de firma y sugerencia en gris) recuperan el pánico del lado de Go y contestan vacío en vez de no contestar, y del lado del editor cada llamada tiene un tope de tres segundos. En el peor caso ahora ves una lista vacía una vez; antes tenías que reabrir la pestaña.
+
+  Verificado en un banco de pruebas con CodeMirror real y el motor de verdad: **antes**, una sola llamada perdida y el autocompletado no se recuperaba ni escribiendo sesenta caracteres; **ahora** vuelve solo a los tres segundos. Y 400 pasos de edición aleatoria —atajos, Tab entre campos, comillas sueltas, comentarios, acentos, emoji— sin una sola excepción.
+
+- **Arreglado: «Autocompletado sin esquema» aparecía en pestañas que no son de base de datos.** El aviso salía sobre un explorador SFTP, una terminal SSH o un archivo remoto — avisando de un problema que ahí no existe.
+
+  La causa: la fila de contexto consultaba el estado del índice de esquema para **cualquier** conexión vinculada a la pestaña activa, y una pestaña SFTP está vinculada a una conexión SSH. El backend contestaba «error» porque nunca hubo un índice que construir —una conexión SSH no tiene catálogo—, y la fila lo mostraba como si el autocompletado estuviera roto.
+
+  Ahora el índice **solo se consulta para conexiones SQL**, así que el aviso no puede encenderse donde no corresponde, y los tres controles de esa fila que son del editor SQL —«Cargando esquema…», el aviso y el selector de esquema— se muestran con el mismo criterio que el resto de la fila que ya era del editor. La pestaña SFTP sigue mostrando contra qué servidor está trabajando, que es lo único de esa fila que ahí significa algo.
+
+- **Arreglado: el explorador local del SFTP no podía entrar a Descargas, Escritorio ni Documentos.** Daba `operation not permitted` y —lo peor— **ya no preguntaba nada**: antes macOS mostraba el diálogo de permiso y ahora denegaba en silencio.
+
+  La causa estaba en el paquete de la app, no en el código: el `Info.plist` era el de plantilla de Wails y **no declaraba ninguna cadena de uso**. macOS solo muestra el diálogo de «¿permitir el acceso?» si la app dice para qué lo quiere; sin esa cadena deniega sin preguntar. Ahora están las seis que corresponden —Descargas, Escritorio, Documentos, discos externos, unidades de red y carpetas sincronizadas—, cada una con un texto que dice para qué la necesita **esta** app, porque es lo que el usuario lee dentro del diálogo. Verificado sobre el `.app` ya compilado, no solo sobre la plantilla.
+
+  Y el error, cuando aparece, dejó de ser un mensaje de Go. Ahora dice que es un permiso de macOS, dónde concederlo a mano (*Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas*) y algo que confunde a cualquiera: **una versión recién compilada cuenta como otra aplicación** para el sistema —el permiso se recuerda por firma y cada compilación se autofirma de nuevo—, así que el permiso que diste ayer no vale para el binario de hoy. Un error que no es de permisos se sigue devolviendo tal cual: inventarle una explicación de permisos a un «no existe» sería peor que el error crudo.
+
+- **Arreglado: el hueco entre «..» y el primer archivo en el explorador SFTP.** Quedaba una fila vacía —a veces dos— entre el «subir un nivel» y el listado.
+
+  Era un doble conteo en la lista virtualizada: la librería **suma** `scrollMargin` al `start` de cada fila (las medidas arrancan en `paddingStart + scrollMargin`) pero lo **resta** de `getTotalSize()`. El relleno de arriba se calculaba con el `start` crudo, así que sumaba otra vez la altura del «..» que ya se dibujaba como fila de verdad. Comprobado leyendo el fuente de `@tanstack/virtual-core`, no de memoria. De paso, el relleno de abajo quedaba una fila corto: el scroll terminaba antes de la última fila.
+
 - **El build de release fallaba aunque todo compilara en local.** Dos tipos del módulo HTTP (`Variable` y `Computed`) estaban escritos a mano en los modelos generados de Wails, porque el generador **no los emite**: solo produce los tipos que alcanza desde la firma de un binding, y esos dos viajan adentro de un JSON guardado como columna de texto. `wails build` regenera ese archivo y se los llevaba puestos. El síntoma era el peor: `tsc` y `vite build` pasaban en local, y el empaquetado rompía al regenerar. Ahora se definen del lado del frontend, que es donde corresponde. Se agregó `scripts/check-bindings.py`, que compara las firmas de los tres lados y verifica que toda clase que el frontend usa exista en los modelos — probado borrando una clase a propósito para confirmar que la detecta.
 
 - **URGENTE — los backups automáticos podían quedar sin la pieza que los hace restaurables, y pisaban al último bueno.** `Backup` escribía directamente sobre el archivo de destino. Si algo fallaba a mitad —el caso real fue que faltara `salt.bin`— la función devolvía error, pero el archivo ya estaba creado y el escritor de ZIP alcanzaba a cerrar su índice: quedaba un `.mtbackup` **válido, abrible y del tamaño esperado, pero con solo `vault.db` adentro**. Sin el salt no hay forma de derivar la clave, así que ese backup no sirve. Y como el backup automático escribe siempre sobre la misma ruta, cada fallo destruía el último backup bueno. Nadie se enteraba hasta el día que lo necesitaba.
@@ -257,6 +255,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 - **Un backup que ya quedó sin `salt.bin` ahora se puede recuperar.** Al verificar y al restaurar, si el archivo no trae salt se usa el de esta instalación —que es el mismo con el que se cifró, porque el salt no cambia una vez creado—. Solo repliega cuando el backup no trae ninguno: si trae el suyo, ese manda, porque un backup que viene de otra máquina tiene un salt distinto. Sin esto, quien tuviera uno de esos backups rotos se quedaba sin sus datos teniendo la clave al lado.
 
 - **Los tests dejaban de borrar el vault real del usuario.** El helper de `backend/vault` abría el vault contra el directorio de datos **real** —su propio comentario admitía que "no había forma de inyectar otra ruta"— y borraba `vault.db` y `salt.bin` antes y después de cada caso para empezar limpio. Correr `go test ./backend/...` en una máquina con la aplicación instalada **destruía el vault**. Ahora `appdata` acepta la variable `MINI_TOOLS_DATA_DIR` y los tests se sandboxean con ella, con una guarda que aborta el borrado si la ruta no quedó dentro del temporal. Es la causa raíz de los dos puntos anteriores: el `salt.bin` borrado por una corrida de tests fue lo que dejó a los backups automáticos posteriores escribiéndose sin él.
+
 - **Un rebase con conflictos ya se puede abortar.** La barra que avisa "hay un rebase en curso" ofrecía *Continuar* pero escondía *Abortar* justo para el rebase — la única de las cuatro operaciones que reescribe historia. No era un olvido de la interfaz: detrás no había nada, `GitAbort` aceptaba merge, cherry-pick y revert y rechazaba rebase. Quien se quedaba trabado a mitad de un rebase interactivo solo podía terminarlo, nunca deshacerlo, y tenía que salir a la terminal. Ahora el botón está y devuelve el repositorio exactamente a donde estaba antes de empezar.
 
 - **Los errores de git decían `git -c:` en vez de nombrar el comando.** Algunas llamadas anteponen `-c core.editor=true` para que git no intente abrir un editor que no existe en una app de ventanas, y el mensaje de error se etiquetaba con el primer argumento — o sea con la opción, no con el comando. "git -c: fatal: no rebase in progress" perdía justamente la palabra que dice qué falló. Ahora se etiqueta con el subcomando real, y lo mismo vale para el panel "Comandos ejecutados".
@@ -280,6 +279,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
   Y si Oracle igual lo rechaza, el mensaje ahora explica el motivo real en vez de repetir la pila: leer la metadata de otro esquema **pide privilegio** (`SELECT_CATALOG_ROLE` o `SELECT ANY DICTIONARY`), y tener `SELECT` sobre la tabla no alcanza.
 
 ### Mejorado
+
+- **La fila «..» del SFTP dice a dónde sube.** En una ruta profunda saber que subís no alcanza: ahora muestra la carpeta destino al lado, tiene tooltip, y mide lo mismo que el resto de las filas —antes no, y por eso la lista arrancaba desalineada—. También se corrigió un `display:flex` sobre un `<td>`, que saca a la celda del layout de la tabla y desalineaba esa columna respecto del encabezado.
+
+- **El explorador SFTP esconde las columnas que no entran, en vez de cortarlas.** Con los anchos por defecto la tabla mide 688 px y un panel de un explorador partido al medio en una ventana de 1280 tiene 640: **siempre** había barra horizontal y la última columna salía cortada por la mitad.
+
+  Ahora se van solas, en orden de utilidad: primero *Kind* —que es la extensión del archivo, y ya está en el nombre— y después *Permisos*, que importa en un servidor y casi nunca en la máquina propia. Nombre y fecha no se esconden nunca. La regla se calcula contra los anchos **reales** de las columnas, así que si ensanchás *Nombre* las opcionales se retiran en vez de volver a desbordar; y si hay espacio, vuelven todas.
 
 - **El autocompletado propone el alias de la tabla que acabás de escribir.** En `FROM CLIENTES |` el popup volvía a ofrecer la lista entera de tablas, que es lo único que esa posición **no** puede recibir. Ahora sugiere el alias (`c`), y usa el **mismo criterio** que los JOIN que el motor genera solo a partir de las llaves foráneas — así un alias escrito a mano y uno generado no se contradicen. Se abre solo en esa posición, sin Ctrl-Espacio, y evita colisionar con los alias que la consulta ya usa. Funciona con nombres calificados (`FROM SGCPRO.CLIENTES `), después de `UPDATE` y del `USING` de un `MERGE`, y **no** después de `INSERT INTO`, donde lo que sigue es la lista de columnas y no un alias.
 

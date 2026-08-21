@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.2.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.3.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -24,22 +24,39 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 
 ---
 
-## En desarrollo — todavía sin publicar
+## Novedades — 2.3.0
 
-Lo que ya está en el código y sale en la próxima versión. La última publicada
-sigue siendo la 2.2.0, que es de lo que habla la sección de abajo.
+**La versión del módulo nuevo.** mini-tools deja de ser cuatro herramientas y
+pasa a ser cinco: un **cliente HTTP con colecciones** compatible con Postman,
+guardado en el mismo vault cifrado que tus conexiones. Además, Git gana la red
+que le faltaba, las notas se ordenan de verdad, y la app estrena documentación
+pública.
 
-- **Módulo nuevo: peticiones HTTP con colecciones**, compatible con Postman de
-  ida y de vuelta. [Ver abajo ↓](#peticiones-http--un-cliente-de-api-que-no-se-lleva-tus-secretos)
-- **Reflog en la pestaña Git**: recuperar el commit que un `reset` o un rebase
-  dejaron sin referencia, sin salir a la terminal. [Ver abajo ↓](#git-completo)
-- **Las carpetas de notas se abren como tabla**, con fecha de creación y de
-  última modificación y buscador propio. Y se arreglaron dos cosas viejas: mover
-  una nota a una carpeta **no hacía nada visible**, y la lista se reordenaba sola
-  cada vez que guardabas. [Ver abajo ↓](#notas--tu-documentación-viva-y-cifrada)
-- **El autocompletado de SQL dejó de morirse.** Después de usar un atajo podía
+- **Módulo nuevo: peticiones HTTP con colecciones.** Import y export de Postman
+  v2.1 **sin perder nada** —cada petición conserva su JSON original—, variables
+  de entorno y de colección con resolución anidada, autenticación con herencia
+  (Basic, Bearer, API Key, JWT, Digest, AWS SigV4 y OAuth 2.0 con PKCE), cuerpos
+  con archivos, generación de código en diez lenguajes, runner de colección,
+  cookies por entorno y firmas declarativas sin motor de JavaScript. Los
+  secretos **nunca** salen en un export ni llegan a un prompt de IA.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#peticiones-http--un-cliente-de-api-que-no-se-lleva-tus-secretos)
+- **Reflog en la pestaña Git.** El módulo ya sabía hacer `reset --hard`, rebase y
+  `push --force` — todas las operaciones que dejan commits huérfanos— y no tenía
+  la red que va debajo. Ahora recuperás el commit perdido creando una rama ahí,
+  sin salir a la terminal.
+- **Notas: mover a una carpeta ya funciona** (no hacía nada visible; la lectura
+  perdía la carpeta), **la lista dejó de reordenarse sola** con cada guardado, y
+  **cada carpeta se abre como tabla** con fecha de creación, de modificación y
+  buscador propio.
+- **El autocompletado de SQL dejó de morirse**: después de usar un atajo podía
   quedar mudo hasta cerrar y reabrir la pestaña. Y trae casi el doble de atajos:
-  46 comunes, y hasta 64 según el motor.
+  46 comunes, hasta 64 según el motor.
+- **Documentación pública** en [rafael180496.github.io/mini-tools](https://rafael180496.github.io/mini-tools/),
+  con ejemplos de uso y recetas de principio a fin — a un clic desde la app, con
+  el **?** del pie de la barra lateral.
+- **Explorador SFTP**: se arregló el hueco entre «..» y el listado, las columnas
+  que no entran se esconden en vez de cortarse, y en macOS **vuelve a pedir
+  permiso** para Descargas, Escritorio y Documentos en vez de fallar en silencio.
 
 ---
 
@@ -384,8 +401,8 @@ diferencia.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.2.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.2.0/mini-tools-v2.2.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.2.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.2.0/mini-tools-v2.2.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**: lo nuevo de ese lado son las terminales locales (detección de PowerShell/cmd y ConPTY), ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.3.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.3.0/mini-tools-v2.3.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.3.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.3.0/mini-tools-v2.3.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**: lo nuevo de ese lado es el módulo HTTP (aviso del Firewall en el flujo OAuth, diálogos de archivo, temporales en `%TEMP%`), ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -568,11 +585,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.2.0 |
+| Versión | 2.3.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.2.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.2.0/mini-tools-v2.2.0.dmg)** |
-| SHA-256 | `3e5bb7dc70752ecbab13a284662522324e0e293f98e524611af52c270814601f` |
+| Archivo | **[⬇ Descargar mini-tools-v2.3.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.3.0/mini-tools-v2.3.0.dmg)** |
+| SHA-256 | `03da48e2839b1b7ae1b7a72a245d48e4fb15dc1e9fd134fa375849a978f36a5b` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -584,7 +601,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **La 2.2.0 NO se probó en una Windows real** — solo se confirmó que cross-compila limpio desde macOS. Que la 2.1.0 se haya verificado en Windows 10 y 11 no dice nada de esta versión, y por eso se anota. Lo nuevo de este lado son las **terminales del sistema operativo**: que el menú liste PowerShell/pwsh/cmd con su ruta real, que ConPTY levante la shell y reflowe bien, y que el historial de esas terminales guarde comandos normales de PowerShell (el filtro de contraseñas se corrigió justamente por eso). Sigue sin verificarse lo que ya venía pendiente: las migraciones del vault —ahora 43 y 44, que crean el historial local y el permiso de escritura del MCP—, el servidor MCP por named pipe (que ahora además escribe), abrir el proyecto en VS Code/Explorador y pegar imágenes en una nota. Detalle en [releases/windows/README.md](releases/windows/README.md).
+> ⚠️ **La 2.3.0 NO se probó en una Windows real** — solo se confirmó que cross-compila limpio desde macOS. Que la 2.1.0 se haya verificado en Windows 10 y 11 no dice nada de esta versión, y por eso se anota. Lo nuevo de este lado es el **módulo HTTP**: el flujo OAuth 2.0 levanta un servidor efímero en `127.0.0.1` (puede disparar el aviso del Firewall la primera vez), los diálogos nativos para elegir un archivo de cuerpo y para guardar una respuesta, y los volcados de respuestas grandes, que en Windows van a `%TEMP%`. Sigue sin verificarse lo que ya venía pendiente: las migraciones del vault —ahora 45 a 49, las del módulo HTTP—, el servidor MCP por named pipe, abrir el proyecto en VS Code/Explorador y pegar imágenes en una nota. Detalle en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -592,10 +609,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.2.0 |
+| Versión | 2.3.0 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; esta versión sin probar en Windows real |
-| Archivo | **[⬇ Descargar mini-tools-v2.2.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.2.0/mini-tools-v2.2.0-windows-amd64.exe)** |
-| SHA-256 | `ea04fcd7125b29c03c4990fca6758c579843cf91cbcfb16c55124c1b76df3cc1` |
+| Archivo | **[⬇ Descargar mini-tools-v2.3.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.3.0/mini-tools-v2.3.0-windows-amd64.exe)** |
+| SHA-256 | `a6b5256cf055246b34c1af6e696056a5f7a7383a48263802106e2a9d338f8a12` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

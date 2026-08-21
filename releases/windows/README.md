@@ -13,54 +13,55 @@ etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.2.0 |
-| Archivo | `mini-tools-v2.2.0-windows-amd64.exe` |
+| Versión | 2.3.0 |
+| Archivo | `mini-tools-v2.3.0-windows-amd64.exe` |
 | Tamaño | ~54 MB |
-| SHA-256 | `ea04fcd7125b29c03c4990fca6758c579843cf91cbcfb16c55124c1b76df3cc1` |
+| SHA-256 | `a6b5256cf055246b34c1af6e696056a5f7a7383a48263802106e2a9d338f8a12` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.2.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.3.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
 ## Estado de verificación en Windows real
 
-**2.2.0 NO se probó en una Windows real.** Lo único confirmado es que
+**2.3.0 NO se probó en una Windows real.** Lo único confirmado es que
 cross-compila limpio desde macOS (ninguno de los conectores de base de datos
 —PostgreSQL, Oracle, SQLite, SQL Server, MongoDB— ni `go-redis` ni el PTY usan
 CGO, así que no hace falta un toolchain de Windows/mingw). Que 2.1.0 se haya
 verificado en Windows 10 y 11 **no dice nada de esta versión**: se anota acá
 justamente para no arrastrar esa confirmación de una versión a la siguiente.
 
-**Lo nuevo de 2.2.0 del lado de Windows son las terminales locales, y es lo
-primero a mirar.** Esta versión abre shells del sistema operativo como pestañas
-del módulo SSH, con un menú que lista los intérpretes instalados. En Windows eso
-toca dos caminos que no se ejercitaban:
+**Lo nuevo de 2.3.0 del lado de Windows es el módulo HTTP, y es lo primero a
+mirar.** Es un módulo entero que se estrena en esta versión y toca tres caminos
+que dependen del sistema operativo:
 
-- **Detección de intérpretes**: el menú tiene que listar PowerShell, pwsh y cmd
-  con su ruta real, y marcar como "falta" lo que no esté instalado.
-- **ConPTY** (`github.com/aymanbagabas/go-pty`), que es un camino de código
-  distinto al `openpty` de Unix: que la shell arranque, que el redimensionado
-  reflowe bien y que el prompt se dibuje derecho.
-- **El historial de esas terminales**: se guarda por intérprete y filtra las
-  líneas que parecen traer una contraseña. Ese filtro se corrigió en esta versión
-  precisamente por Windows —`Get-Process`, `-Path` y `-Property` se leían como
-  una contraseña pegada y se descartaba casi todo lo que se escribe en
-  PowerShell— así que confirmar que ahora **sí** se guarda un comando normal de
-  PowerShell es parte de probar esta versión.
+- **El flujo OAuth 2.0 de aplicación nativa** levanta un servidor efímero en
+  `127.0.0.1` para capturar el redirect del navegador. En Windows eso puede
+  disparar el **aviso del Firewall** la primera vez; hay que confirmar que
+  alcanza con permitir "redes privadas" y que el redirect vuelve a la app.
+- **Los diálogos nativos de archivo**: elegir un archivo para un cuerpo
+  `form-data` o binario, y "Guardar…" una respuesta. Son los mismos diálogos que
+  el backup del vault, pero por un camino nuevo.
+- **Los volcados de respuestas grandes**, que van al temporal del sistema y se
+  borran al cerrar la app: en Windows eso es `%TEMP%`, no `/tmp`.
+
+También se estrena la **página de documentación** y su botón de ayuda, que abre
+el navegador predeterminado — en Windows es otra llamada del runtime de Wails.
 
 Después de eso, lo que sigue sin confirmarse en Windows, en orden de riesgo:
 
-- **Las migraciones 43 y 44 del vault, nuevas en esta versión.** Al primer
-  arranque crean la tabla del historial de terminales locales y agregan a
-  `settings` el permiso de escritura del servidor MCP, sobre el `vault.db` que ya
-  existe en la máquina. Se suman a las 29–42, que siguen sin verificarse ahí. Es
-  SQLite puro y el camino es igual en todos los SO, pero una migración que falle
-  deja la app sin arrancar: es lo primero a mirar si alguien la prueba.
+- **Las migraciones 45 a 49 del vault, nuevas en esta versión.** Al primer
+  arranque crean las tablas del módulo HTTP (colecciones, ítems, historial,
+  entornos), suman los scripts y las variables calculadas, y agregan el vínculo
+  entre una colección y su nota de documentación — todo sobre el `vault.db` que
+  ya existe en la máquina. Se suman a las 29–44, que siguen sin verificarse ahí.
+  Es SQLite puro y el camino es igual en todos los SO, pero una migración que
+  falle deja la app sin arrancar: es lo primero a mirar si alguien la prueba.
 - **El servidor MCP, ahora que además escribe.** En Windows el canal es un
   **named pipe** en vez de un socket Unix, y esta versión suma dos herramientas
   que crean y reescriben notas, más el aviso de catálogo cambiado. Falta
@@ -118,7 +119,7 @@ borrarla sin más.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.2.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.3.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.
