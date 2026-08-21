@@ -20,6 +20,7 @@ import type {Extension} from '@codemirror/state'
 import {EditorView, ViewPlugin, keymap, showTooltip} from '@codemirror/view'
 import type {Tooltip, ViewUpdate} from '@codemirror/view'
 import {SignatureSQL} from '../../wailsjs/go/main/App'
+import {settled} from './sqlIntel'
 import type {sqlintel} from '../../wailsjs/go/models'
 
 // activeSignature is what the tooltip renders, plus the document range the
@@ -224,19 +225,19 @@ function signatureFetcher(connId: string, dbType: string | null | undefined) {
                 const pos = state.selection.main.head
                 if (!state.selection.main.empty) return
 
-                let resp: sqlintel.SignatureResponse
-                try {
-                    resp = await SignatureSQL({
+                // Vault bloqueado, conexión cerrada o una respuesta que no
+                // llega: sin tooltip, nunca un error dentro del editor. Con
+                // tope de tiempo por el mismo motivo que la fuente de
+                // completado — ver `settled` en sqlIntel.ts.
+                const resp = await settled(
+                    SignatureSQL({
                         connId,
                         dbType: dbType ?? '',
                         sql: state.doc.toString(),
                         offset: pos,
-                    })
-                } catch {
-                    // A locked vault or a closed connection: no tooltip,
-                    // never an error surfaced into the editor.
-                    return
-                }
+                    }),
+                )
+                if (!resp) return
 
                 if (!this.alive || generation !== this.generation) return
                 if (this.view.state.selection.main.head !== pos) return

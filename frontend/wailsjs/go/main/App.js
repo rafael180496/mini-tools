@@ -50,12 +50,32 @@ export function AgentChatSupported(arg1) {
   return window['go']['main']['App']['AgentChatSupported'](arg1);
 }
 
+export function AgentDiagnoseHTTP(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['AgentDiagnoseHTTP'](arg1, arg2, arg3, arg4);
+}
+
 export function AgentDraftCommit(arg1, arg2) {
   return window['go']['main']['App']['AgentDraftCommit'](arg1, arg2);
 }
 
+export function AgentDraftHTTPDocs(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['AgentDraftHTTPDocs'](arg1, arg2, arg3, arg4);
+}
+
+export function AgentDraftHTTPTests(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AgentDraftHTTPTests'](arg1, arg2, arg3);
+}
+
+export function AgentExplainHTTP(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['AgentExplainHTTP'](arg1, arg2, arg3, arg4);
+}
+
 export function AgentFixSQL(arg1, arg2, arg3) {
   return window['go']['main']['App']['AgentFixSQL'](arg1, arg2, arg3);
+}
+
+export function AgentGenerateHTTP(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AgentGenerateHTTP'](arg1, arg2, arg3);
 }
 
 export function AgentGenerateSQL(arg1, arg2, arg3) {
@@ -236,6 +256,10 @@ export function CreateFolder(arg1, arg2, arg3) {
 
 export function CreateNote(arg1, arg2) {
   return window['go']['main']['App']['CreateNote'](arg1, arg2);
+}
+
+export function CreateNoteInFolder(arg1, arg2) {
+  return window['go']['main']['App']['CreateNoteInFolder'](arg1, arg2);
 }
 
 export function CreateSshSnippet(arg1, arg2) {
@@ -646,6 +670,10 @@ export function GitRebaseTodo(arg1, arg2) {
   return window['go']['main']['App']['GitRebaseTodo'](arg1, arg2);
 }
 
+export function GitReflog(arg1, arg2) {
+  return window['go']['main']['App']['GitReflog'](arg1, arg2);
+}
+
 export function GitRefreshProbe() {
   return window['go']['main']['App']['GitRefreshProbe']();
 }
@@ -820,6 +848,158 @@ export function GitWriteWorkFile(arg1, arg2, arg3, arg4) {
 
 export function HasOpenTransaction(arg1) {
   return window['go']['main']['App']['HasOpenTransaction'](arg1);
+}
+
+export function HttpActiveEnvironment() {
+  return window['go']['main']['App']['HttpActiveEnvironment']();
+}
+
+export function HttpAuthPreview(arg1, arg2) {
+  return window['go']['main']['App']['HttpAuthPreview'](arg1, arg2);
+}
+
+export function HttpAuthorizeOAuth2(arg1) {
+  return window['go']['main']['App']['HttpAuthorizeOAuth2'](arg1);
+}
+
+export function HttpBuildRequest(arg1) {
+  return window['go']['main']['App']['HttpBuildRequest'](arg1);
+}
+
+export function HttpCancel(arg1) {
+  return window['go']['main']['App']['HttpCancel'](arg1);
+}
+
+export function HttpCancelRun(arg1) {
+  return window['go']['main']['App']['HttpCancelRun'](arg1);
+}
+
+export function HttpClearCookies(arg1, arg2) {
+  return window['go']['main']['App']['HttpClearCookies'](arg1, arg2);
+}
+
+export function HttpClearHistory(arg1) {
+  return window['go']['main']['App']['HttpClearHistory'](arg1);
+}
+
+export function HttpCodeLanguages() {
+  return window['go']['main']['App']['HttpCodeLanguages']();
+}
+
+export function HttpCookies(arg1) {
+  return window['go']['main']['App']['HttpCookies'](arg1);
+}
+
+export function HttpDefaultSettings() {
+  return window['go']['main']['App']['HttpDefaultSettings']();
+}
+
+export function HttpDeleteCollection(arg1) {
+  return window['go']['main']['App']['HttpDeleteCollection'](arg1);
+}
+
+export function HttpDeleteEnvironment(arg1) {
+  return window['go']['main']['App']['HttpDeleteEnvironment'](arg1);
+}
+
+export function HttpDeleteItem(arg1) {
+  return window['go']['main']['App']['HttpDeleteItem'](arg1);
+}
+
+export function HttpDocsPreview(arg1) {
+  return window['go']['main']['App']['HttpDocsPreview'](arg1);
+}
+
+export function HttpExportPostman(arg1) {
+  return window['go']['main']['App']['HttpExportPostman'](arg1);
+}
+
+export function HttpFetchOAuth2Token(arg1) {
+  return window['go']['main']['App']['HttpFetchOAuth2Token'](arg1);
+}
+
+export function HttpFormatBody(arg1, arg2) {
+  return window['go']['main']['App']['HttpFormatBody'](arg1, arg2);
+}
+
+export function HttpGenerateCode(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['HttpGenerateCode'](arg1, arg2, arg3, arg4);
+}
+
+export function HttpGetItem(arg1) {
+  return window['go']['main']['App']['HttpGetItem'](arg1);
+}
+
+export function HttpHistory(arg1) {
+  return window['go']['main']['App']['HttpHistory'](arg1);
+}
+
+export function HttpImportCurl(arg1) {
+  return window['go']['main']['App']['HttpImportCurl'](arg1);
+}
+
+export function HttpImportPostman() {
+  return window['go']['main']['App']['HttpImportPostman']();
+}
+
+export function HttpListCollections() {
+  return window['go']['main']['App']['HttpListCollections']();
+}
+
+export function HttpListEnvironments() {
+  return window['go']['main']['App']['HttpListEnvironments']();
+}
+
+export function HttpListItems(arg1) {
+  return window['go']['main']['App']['HttpListItems'](arg1);
+}
+
+export function HttpMoveItem(arg1, arg2, arg3) {
+  return window['go']['main']['App']['HttpMoveItem'](arg1, arg2, arg3);
+}
+
+export function HttpPickFile(arg1) {
+  return window['go']['main']['App']['HttpPickFile'](arg1);
+}
+
+export function HttpPublishDocs(arg1) {
+  return window['go']['main']['App']['HttpPublishDocs'](arg1);
+}
+
+export function HttpResolvePreview(arg1, arg2) {
+  return window['go']['main']['App']['HttpResolvePreview'](arg1, arg2);
+}
+
+export function HttpRunCollection(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['HttpRunCollection'](arg1, arg2, arg3, arg4);
+}
+
+export function HttpSaveCollection(arg1) {
+  return window['go']['main']['App']['HttpSaveCollection'](arg1);
+}
+
+export function HttpSaveEnvironment(arg1) {
+  return window['go']['main']['App']['HttpSaveEnvironment'](arg1);
+}
+
+export function HttpSaveItem(arg1) {
+  return window['go']['main']['App']['HttpSaveItem'](arg1);
+}
+
+export function HttpSaveResponseExample(arg1, arg2, arg3) {
+  return window['go']['main']['App']['HttpSaveResponseExample'](arg1, arg2, arg3);
+}
+
+export function HttpSaveResponseToFile(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['HttpSaveResponseToFile'](arg1, arg2, arg3, arg4);
+}
+
+export function HttpSend(arg1, arg2, arg3) {
+  return window['go']['main']['App']['HttpSend'](arg1, arg2, arg3);
+}
+
+export function HttpSetActiveEnvironment(arg1) {
+  return window['go']['main']['App']['HttpSetActiveEnvironment'](arg1);
 }
 
 export function InitializeVault(arg1) {

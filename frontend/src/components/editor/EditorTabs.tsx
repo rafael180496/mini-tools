@@ -47,6 +47,12 @@ export type TabKind =
     | 'remote-file'
     | 'ssh-hybrid'
     | 'note'
+    // Una petición HTTP del módulo de colecciones. Tipo propio y no una
+    // variante de 'editor' porque no tiene lenguaje ni conexión de base de
+    // datos: lo que la identifica es el ítem guardado (`httpItemId`), o nada
+    // en absoluto si es una **petición rápida** — una que se manda sin
+    // guardarla, y que vive solo mientras la pestaña esté abierta.
+    | 'http-request'
 
 // El rótulo de tipo que lleva cada pestaña delante del nombre.
 //
@@ -71,6 +77,7 @@ const KIND_BADGE: Record<TabKind, {text: string; className: string; hint: string
     'remote-file': {text: 'REMOTO', className: 'text-tertiary', hint: 'Archivo de un servidor, editado en vivo'},
     'git-repo': {text: 'GIT', className: 'text-tertiary', hint: 'Repositorio'},
     note: {text: 'NOTA', className: 'text-tertiary', hint: 'Nota de la base de conocimiento'},
+    'http-request': {text: 'HTTP', className: 'text-primary', hint: 'Petición HTTP de una colección'},
 }
 
 // Para una pestaña de editor el rótulo depende del lenguaje: "SQL" sobre una
@@ -127,6 +134,12 @@ export interface EditorTab {
     // campo por el mismo motivo que repoId: direcciona otro registro
     // (vault_notes), no las conexiones.
     noteId?: string
+    // Ítem de una colección HTTP — solo para kind === 'http-request'. Su
+    // propio campo por el mismo motivo que repoId y noteId: direcciona la
+    // tabla http_items, no las conexiones.
+    // Sin valor en una petición rápida: esa pestaña no direcciona ningún
+    // ítem, y toma uno recién cuando el usuario la guarda en una colección.
+    httpItemId?: string
     // Intérprete de una terminal local — solo para kind === 'local-terminal'.
     // Vacío significa "el configurado en Configuración → Terminal".
     shellId?: string

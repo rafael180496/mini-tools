@@ -2,22 +2,39 @@ package vault
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"mini-tools/backend/appdata"
 	"mini-tools/backend/vaultgate"
 )
 
-// openTestStore opens a fresh vault against this install's real appdata
-// path (there's no injectable path today), scrubbing any leftover
-// vault.db/salt.bin first and after so runs don't interfere with each other
-// or with a real running instance of the app.
+// openTestStore abre un vault limpio en un directorio TEMPORAL propio de
+// cada test.
+//
+// Antes corría contra el directorio de datos real del usuario —no había
+// forma de inyectar otra ruta— y borraba vault.db y salt.bin para empezar de
+// cero. Correr `go test ./backend/...` en una máquina con la aplicación
+// instalada destruía el vault: pasó de verdad, ver appdata.OverrideEnv.
+//
+// Ahora se sandboxea con esa variable, así que el borrado de abajo solo
+// puede tocar el temporal del test. t.Setenv además restaura el valor
+// anterior al terminar y hace que el test falle si alguien lo pone en
+// paralelo, que es justo lo que no se quiere acá.
 func openTestStore(t *testing.T) (*Store, *vaultgate.Gate) {
 	t.Helper()
+
+	t.Setenv(appdata.OverrideEnv, t.TempDir())
 
 	dir, err := appdata.Dir()
 	if err != nil {
 		t.Fatalf("appdata.Dir: %v", err)
+	}
+	// Guarda de seguridad: si por lo que sea la ruta NO quedó dentro de un
+	// temporal, se aborta antes de borrar nada. Un test no tiene por qué
+	// poder tocar datos de una persona.
+	if !strings.HasPrefix(dir, os.TempDir()) {
+		t.Fatalf("el sandbox no se aplicó: %q está fuera del temporal, no se borra nada", dir)
 	}
 
 	cleanup := func() {

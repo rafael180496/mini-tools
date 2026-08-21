@@ -106,6 +106,7 @@ import DropdownMenu, {type DropdownHeader, type DropdownItem} from './DropdownMe
 import GitSettingsDialog from './GitSettingsDialog'
 import GitConflictResolver from './GitConflictResolver'
 import GitCommandLogDrawer from './GitCommandLog'
+import GitReflogPanel from './GitReflogPanel'
 import GitRebaseDialog from './GitRebaseDialog'
 import GitStashPanel from './GitStashPanel'
 import GitFileEditor from './GitFileEditor'
@@ -193,7 +194,7 @@ type CenterView = 'commits' | 'changes' | 'stash' | 'conflicts' | 'files'
 // settings.git_term_dock/git_panel_tab (migración 27); null es la solapa
 // vacía, que en la base es ''.
 type Dock = 'bottom' | 'left' | 'right'
-type PanelTab = 'terminal' | 'commands' | 'agents' | null
+type PanelTab = 'terminal' | 'commands' | 'agents' | 'reflog' | null
 
 // Una sesión abierta del panel. `id` es a la vez el id de sesión del backend
 // y el nombre del evento de Wails por el que llegan sus bytes, así que tiene
@@ -604,7 +605,10 @@ export default function GitRepoTab({
                 // que viene de la versión de una sola terminal), se abre una
                 // terminal, que es exactamente lo que había antes.
                 const openTab =
-                    st.gitPanelTab === 'terminal' || st.gitPanelTab === 'commands' || st.gitPanelTab === 'agents'
+                    st.gitPanelTab === 'terminal' ||
+                    st.gitPanelTab === 'commands' ||
+                    st.gitPanelTab === 'agents' ||
+                    st.gitPanelTab === 'reflog'
                         ? st.gitPanelTab
                         : null
                 const initial =
@@ -3400,6 +3404,17 @@ export default function GitRepoTab({
                         </button>
                         <button
                             onClick={() => {
+                                setPanelTab('reflog')
+                                persistLayout({tab: 'reflog'})
+                            }}
+                            title="Por dónde estuvo HEAD: el registro local que permite recuperar un commit que un reset, un rebase o un cambio de rama dejaron sin referencia"
+                            className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'reflog' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
+                        >
+                            <Icon name="restore" size={13} />
+                            Reflog
+                        </button>
+                        <button
+                            onClick={() => {
                                 setPanelTab('agents')
                                 persistLayout({tab: 'agents'})
                                 enterAgentMode()
@@ -3954,6 +3969,21 @@ export default function GitRepoTab({
                                 >
                                     <Icon name="close" size={14} />
                                 </button>
+                            </div>
+                        )}
+                        {panelTab === 'reflog' && (
+                            <div className="absolute inset-0 flex flex-col">
+                                <GitReflogPanel
+                                    repoId={repoId}
+                                    onChanged={() => void reload()}
+                                    // Reusa el mismo camino que un clic en una
+                                    // etiqueta: un commit del reflog casi
+                                    // siempre queda FUERA de la ventana cargada
+                                    // del grafo —es lo que uno viene a
+                                    // recuperar—, y revealCommit ya sabe
+                                    // resolver ese caso y decirlo.
+                                    onOpenCommit={(hash) => void revealCommit(hash)}
+                                />
                             </div>
                         )}
                         {panelTab === 'commands' && (

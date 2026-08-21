@@ -47,6 +47,7 @@ const GROUPS: {kind: WorkContextKind; label: string}[] = [
     {kind: 'git', label: 'Repositorios'},
     {kind: 'ssh', label: 'Servidores'},
     {kind: 'note', label: 'Notas'},
+    {kind: 'http', label: 'Peticiones HTTP'},
     {kind: 'none', label: 'Sin módulo'},
 ]
 

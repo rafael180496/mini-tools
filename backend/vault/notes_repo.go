@@ -67,6 +67,10 @@ type NoteSummary struct {
 	LinkCount int `json:"linkCount"`
 	// FolderID es la carpeta donde está, o "" para la raíz (migración 38).
 	FolderID string `json:"folderId"`
+	// CreatedAt es cuándo se creó. Va en el resumen porque la vista de tabla
+	// de una carpeta ordena y muestra por fecha de creación, y sin él habría
+	// que abrir cada nota para saberla.
+	CreatedAt int64 `json:"createdAt"`
 }
 
 // NoteLink es una arista del grafo ya resuelta contra las notas existentes.
@@ -276,7 +280,7 @@ func (s *Store) scanNote(row *sql.Row) (Note, error) {
 // ListNotes devuelve los títulos, sin cuerpos.
 func (s *Store) ListNotes() ([]NoteSummary, error) {
 	rows, err := s.db.Query(
-		`SELECT n.id, n.encrypted_title, n.title_nonce, n.is_private, n.updated_at,
+		`SELECT n.id, n.encrypted_title, n.title_nonce, n.is_private, n.updated_at, n.created_at,
 		        (SELECT COUNT(*) FROM vault_note_links l WHERE l.source_note_id = n.id),
 		        COALESCE(n.folder_id, '')
 		 FROM vault_notes n ORDER BY n.updated_at DESC`)
@@ -290,7 +294,7 @@ func (s *Store) ListNotes() ([]NoteSummary, error) {
 		var s2 NoteSummary
 		var enc, nonce []byte
 		var private int
-		if err := rows.Scan(&s2.ID, &enc, &nonce, &private, &s2.UpdatedAt, &s2.LinkCount, &s2.FolderID); err != nil {
+		if err := rows.Scan(&s2.ID, &enc, &nonce, &private, &s2.UpdatedAt, &s2.CreatedAt, &s2.LinkCount, &s2.FolderID); err != nil {
 			return nil, err
 		}
 		s2.IsPrivate = private != 0

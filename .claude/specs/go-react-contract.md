@@ -312,6 +312,330 @@ pista de ranking (lo que esta sesión viene usando sube en la lista): perderla
 al cerrar la app no cuesta nada y persistirla exigiría una migración de vault
 para algo que se reaprende en tres clicks.
 
+## Trampa del generador de bindings (incidente real, 21/08/2026)
+
+**El generador de Wails solo emite en `models.ts` los tipos que alcanza
+desde la firma de un binding.** Un tipo que solo viaja adentro de un JSON
+opaco —guardado como columna de texto en el vault, por ejemplo— **nunca se
+genera**, por más que exista en Go y esté perfectamente serializado.
+
+Y escribirlo a mano en `models.ts` **no funciona**: `wails build` regenera
+ese archivo entero y se lo lleva puesto. El síntoma es el peor posible —
+`tsc --noEmit` y `vite build` pasan en local con el archivo editado a mano,
+y el build de release falla recién al regenerar.
+
+Pasó con `httpclient.Variable` y `httpclient.Computed`, que viven adentro de
+`http_environments.variables` y `http_items.computed` como texto JSON.
+
+**La regla:** un tipo que no está en ninguna firma de binding **se define en
+el frontend**, no en los modelos generados — `components/http/httpShared.ts`
+tiene `HttpVariable` y `HttpComputed` como ejemplo, con los nombres de campo
+calcados de los tags JSON de Go. La alternativa (inventar un binding que
+devuelva ese tipo solo para que se genere) sería mentirle a la superficie de
+la API para satisfacer a una herramienta.
+
+**Guarda automática:** `python3 scripts/check-bindings.py` compara App.js,
+App.d.ts y los métodos de `*App`, y verifica que toda clase
+`namespace.Clase` que el frontend usa exista en `models.ts`. Correrlo antes
+de un release cuesta un segundo y ataja exactamente este fallo.
+
+Dos avisos del generador son **preexistentes y benignos**: `db.Function` y
+`db.Package` chocan con palabras reservadas de TypeScript, así que no se les
+genera clase. Ningún componente las usa.
+
+## Módulo HTTP — F1 (`backend/httpclient`, `app_http.go`)
+
+Quince bindings, todos detrás de `requireUnlocked` (una colección guarda
+cuerpos, headers y documentación del usuario) y direccionando por **ID
+opaco**, igual que el módulo Git.
+
+| Binding | Nota |
+|---|---|
+| `HttpListCollections` / `HttpSaveCollection` / `HttpDeleteCollection` | El borrado arrastra ítems e historial **en una transacción**: media colección borrada es peor que ninguna, y no hay claves foráneas declaradas que lo hagan solas |
+| `HttpListItems` / `HttpGetItem` / `HttpSaveItem` / `HttpDeleteItem` / `HttpMoveItem` | Un solo tipo `HTTPItem` para carpetas y peticiones, distinguidas por `kind` — es la forma del formato de Postman, así que el import de F6 mapea uno a uno. `MoveHTTPItem` **rechaza** mover una carpeta dentro de su propio subárbol (la desconectaría del árbol sin ningún error visible) |
+| `HttpSend(execID, itemID, request)` | Devuelve `HttpSendResult`, con el error **adentro** y no como error de Go: un 500, un timeout y un certificado inválido son resultados normales de probar un endpoint, no fallas de la app, y devolverlos como error dejaría a la UI sin la duración ni la URL que los produjo. `itemID` puede ir vacío (petición sin guardar) |
+| `HttpCancel(execID)` | El `execID` lo elige el frontend para poder cancelar sin esperar a que `HttpSend` vuelva. Cancelar algo ya terminado no es error |
+| `HttpHistory` / `HttpClearHistory` | Tope de 50 por ítem, **no global**: quien depura corre la misma petición veinte veces y un tope global le borraría el historial de todas las demás. La URL se archiva con los parámetros que parecen secretos reemplazados por `***` |
+| `HttpFormatBody(lang, text)` | JSON con `json.Indent` (**no** un round-trip por `map`, que reordenaría las claves alfabéticamente y convertiría "formatear" en "reescribirme el cuerpo"). Un texto que no parsea vuelve **intacto y sin error**: el caso normal de apretar el botón es un JSON a medio escribir |
+| `HttpDefaultSettings` | Vive en Go para que `verifyTls: true` tenga una sola definición |
+| `HttpBuildRequest(itemID)` | Arma la petición ejecutable desde el ítem guardado. Existe como binding desde F1 —aunque hoy solo copie campos— porque es el punto donde F2 resuelve variables y F4 la auth heredada: que la UI ya llame acá significa que esas fases no tocan el frontend |
+
+**El motor no comparte `http.Transport` entre peticiones**, a diferencia de
+lo habitual. Cada una puede pedir otra configuración de TLS o de versión de
+HTTP, y un transport compartido reusaría conexiones establecidas con la
+configuración de otra — el bug de "apagué la verificación TLS y sigue
+fallando", o peor, al revés.
+
+**Los settings de redirección se implementan sobre `CheckRedirect`**, y dos
+merecen nota: "conservar el método" contradice a propósito lo que hace Go
+por defecto (convertir a GET en 301/302/303, que es lo que manda el
+estándar), y "conservar el header Authorization al cambiar de host" vuelve a
+poner a mano una credencial que `net/http` quita solo — mandar credenciales
+a otro host es filtrarlas, así que nunca es el default y la UI lo marca en
+rojo.
+
+### F2 — variables y entornos
+
+Seis bindings más: `HttpListEnvironments` / `HttpSaveEnvironment` /
+`HttpDeleteEnvironment` / `HttpActiveEnvironment` /
+`HttpSetActiveEnvironment` / `HttpResolvePreview`.
+
+**La resolución ocurre en Go al ENVIAR, y el frontend manda el texto sin
+resolver.** Lo guardado conserva siempre `{{HOST}}`; resolver al guardar
+congelaría la petición contra el entorno que estaba activo cuando se
+escribió, que es lo contrario de para qué existen los entornos.
+
+**Precedencia: entorno → colección** (el orden de Postman). El documento del
+plan decía "colección → entorno" y **estaba mal**: con la colección ganando,
+cambiar de entorno no haría nada. Corregido en F2, en el plan y en el código.
+
+**El entorno elegido es el ANCLADO a la colección si lo hay, y el activo si
+no** — el anclaje es una decisión tomada sobre esa colección en particular,
+el activo es la preferencia general. `SaveHTTPEnvironment` libera el anclaje
+anterior de esa colección en la misma operación: con dos entornos anclados a
+la misma colección, cuál gana dependería del orden de lectura.
+
+**Una variable sin resolver se deja literal**, no se reemplaza por vacío
+(`http:///dev/blocks` falla con un error del transporte que no nombra la
+causa). `HttpResolvePreview` existe para que la UI la marque **antes** de
+mandar, y devuelve los valores secretos ya enmascarados porque su resultado
+se muestra en pantalla.
+
+**`MaskSecrets` busca por VALOR, no por nombre**, y omite los secretos de
+menos de cuatro caracteres —enmascararían media URL—. Es la última barrera
+antes del historial: para entonces la sustitución ya ocurrió y el token está
+adentro del texto.
+
+### F3 — cuerpos y archivos
+
+Dos bindings más: `HttpPickFile` y `HttpSaveResponseToFile(spillPath,
+base64Body, textBody, suggestedName)` — recibe las **tres** formas en que
+puede venir un cuerpo y elige la correcta; sin el caso del volcado, guardar
+una descarga grande escribiría solo lo que entró en memoria.
+
+**`buildBody` devuelve también el TAMAÑO**, y `Send` lo pone en
+`Request.ContentLength` cuando se conoce. `net/http` solo lo deduce solo para
+los lectores que reconoce (`strings.Reader`, `bytes.Reader`); un cuerpo que
+sale de un archivo o de un pipe iría `chunked`, y hay servidores PHP y
+proxies viejos que rechazan una subida chunked. Solo el multipart va
+chunked, a cambio de no cargar el archivo en memoria.
+
+**El multipart se arma sobre `io.Pipe` en una goroutine** que cierra
+*siempre* con `CloseWithError`: irse sin cerrar deja al lector esperando y
+cuelga la petición hasta el timeout sin decir por qué. Los archivos se abren
+**antes** de arrancar el envío, para fallar nombrando el archivo en vez de a
+mitad de la subida.
+
+**Una respuesta que supera el tope se vuelca ENTERA a un temporal**
+(`Response.SpillPath`), y `SizeBytes` pasa a ser el total real, no lo
+mostrado. El archivo no se borra al terminar: la UI puede ofrecer guardarlo
+minutos después, y limpiar el temporal del sistema es trabajo del sistema.
+
+### F4 — autenticación con herencia
+
+Tres bindings más: `HttpAuthPreview`, `HttpFetchOAuth2Token`,
+`HttpAuthorizeOAuth2`. La cadena la arma el vault (`HTTPAuthChain`) en **una**
+lectura del árbol, no una llamada por nivel, y trae un tope de profundidad de
+64: un `parent_id` corrupto que apunte a un ancestro haría un ciclo, y un
+bucle infinito ahí cuelga la aplicación.
+
+**La auth se resuelve DESPUÉS de las variables**, y sus campos pasan por el
+resolvedor: `{{token}}` adentro de un Bearer se resuelve igual que en un
+header, que es lo que permite guardar el secreto en el entorno (cifrado,
+enmascarado, fuera del export) en vez de repetirlo en cada petición.
+
+**AWS SigV4 va escrito a mano** — el SDK sumaría decenas de MB por cuatro
+hashes en un orden concreto, y la canonicalización (que es la parte difícil)
+hay que escribirla igual. Dos detalles que invalidan la firma entera si se
+copian de `url.QueryEscape`: el espacio va `%20` y no `+`, y la tilde queda
+literal.
+
+**Digest reintenta una vez** dentro de `Send` (necesita el nonce del
+desafío), y para eso el cuerpo se materializa en memoria — igual que para
+SigV4, que lo hashea. Solo en esos dos casos: el resto sigue en streaming.
+
+**OAuth 2.0 authorization code**: loopback en puerto efímero (RFC 8252),
+**PKCE S256 siempre**, y `state` comparado con `subtle.ConstantTimeCompare`.
+`openBrowser` entra como parámetro de `AuthorizeOAuth2` en vez de llamarse
+desde adentro, para que el paquete no dependa del runtime de Wails y el flujo
+se pueda ejercitar sin abrir un navegador.
+
+### F5 — variables calculadas (sin motor JS)
+
+Sin bindings nuevos: las calculadas viajan dentro de `HTTPItem.computed` /
+`HTTPCollection.computed` y se evalúan adentro de `HttpSend` y de
+`HttpResolvePreview`, que ahora devuelven `computedErrors`.
+
+**Orden de precedencia final**: calculadas → dinámicas → entorno → colección.
+Las dinámicas (`{{$timestamp}}`, `{{$randomUUID}}`) se calculan **una vez por
+llamada a `varScopes`** y no por aparición: un timestamp distinto en la URL y
+en la firma haría que la firma no validara nunca.
+
+**Todo lo calculado se marca `Secret: true`** automáticamente — lo que sale de
+ahí es una firma o un token, y depender de que el usuario lo marque sería
+depender de que se acuerde.
+
+**Costo de binario: 0.** La decisión de no incorporar goja (+19,8 MB medidos)
+está en `.claude/specs/http-client.md` con la tabla de mediciones.
+
+### Trampa: un binding que entra en pánico deja la promesa colgada PARA SIEMPRE
+
+Wails recupera el pánico por su cuenta (`internal/frontend/dispatcher.ProcessMessage`)
+y responde con `Callback("")`. Esa cadena vacía el runtime de JavaScript no la
+puede parsear, así que **la promesa de esa llamada no se resuelve ni se rechaza
+nunca** — y `Call` no tiene tiempo límite (timeout 0 = infinito).
+
+No es teórico: así se moría el autocompletado de SQL. CodeMirror no le vuelve a
+preguntar a una fuente mientras haya una consulta suya pendiente, así que una
+sola llamada sin respuesta lo mataba para esa pestaña hasta reabrirla —
+comprobado en un banco con CodeMirror real: no se recuperaba ni con Ctrl+Espacio
+ni escribiendo sesenta caracteres.
+
+Regla, para cualquier binding en el camino de una interacción continua
+(completado, ayuda de firma, sugerencias, cualquier cosa que se pregunte por
+tecla):
+
+1. **En Go**, `defer recoverEditorCall(nombre, fallback)`: un pánico se convierte
+   en una respuesta vacía, se loguea, y deja de ser mortal.
+2. **En el frontend**, la llamada va envuelta en `settled()`
+   (`codemirror/sqlIntel.ts`), que le pone tope de tiempo y devuelve `null` tanto
+   si falló como si tardó de más. Nunca lanza.
+
+Las dos mitades, no una: la primera tapa el caso conocido, la segunda cualquier
+otra forma de perder una respuesta.
+
+### Peticiones HTTP rápidas (`itemId` vacío)
+
+`HttpSend`, `HttpHistory`, `HttpClearHistory`, `HttpAuthPreview`,
+`HttpResolvePreview` y `HttpGenerateCode` aceptan `itemID == ""`: es una petición
+que se manda sin guardarla en ninguna colección.
+
+Qué significa vacío, con precisión: sin colección → sin variables de colección y
+**sin herencia de autenticación** (`authFor` con id vacío devuelve `none`, y solo
+respeta el override que viene de la pantalla). Las variables del entorno activo
+sí valen, porque el entorno es transversal a las colecciones.
+
+El historial de las rápidas es un cajón compartido (`item_id` NULL) que se lee y
+se poda como cualquier otro. Del lado del frontend, la pestaña pasa
+`itemId: string | null`; guardar una rápida crea el ítem y avisa por `onSaved`,
+que es lo que hace que la pestaña deje de serlo.
+
+### F9 — runner de colección y cookies
+
+Bindings: `HttpRunCollection(runID, collectionID, folderID, delayMs)` →
+`HTTPRunSummary`, `HttpCancelRun(runID)`, `HttpCookies(collectionID)`,
+`HttpClearCookies(collectionID, domain)`, `HttpSaveResponseExample(...)`.
+
+**La corrida bloquea el binding y el progreso va por evento** (`http:run`, con
+`runId`, `index`, `total` y el `HTTPRunResult`). Treinta peticiones tardan, y un
+botón girando sin decir por cuál va no sirve. La UI filtra por `runId`: dos
+paneles no pueden pisarse.
+
+**El emisor se inyecta.** `HttpRunCollection` es una cáscara sobre
+`runCollection(..., emit func(map[string]any))`. `runtime.EventsEmit` exige el
+contexto del ciclo de vida de Wails —con cualquier otro aborta el proceso—, así
+que una corrida que emitiera directo solo sería ejercitable con la ventana
+abierta. Mismo patrón para cualquier binding largo que reporte progreso.
+
+**Cancelar es cooperativo y entre peticiones.** La que está en vuelo se deja
+terminar: ya salió, y cortarla del lado del cliente no la deshace del lado del
+servidor. Lo que queda se informa como `skipped`, nunca como fallido.
+
+**El tarro de cookies se elige por ENTORNO**, no por colección
+(`scopesAndEnv` devuelve el id del entorno junto con los scopes, a propósito en
+una sola función: dos recorridos separados serían la forma segura de que un día
+las variables salgan de un entorno y las cookies de otro).
+
+### F8 — IA sobre una petición
+
+Cinco bindings: `AgentExplainHTTP`, `AgentDiagnoseHTTP`, `AgentGenerateHTTP`,
+`AgentDraftHTTPDocs`, `AgentDraftHTTPTests`. Todos toman
+`(itemID string, req httpclient.Request, resp httpclient.Response, …)`.
+
+**La respuesta viaja como VALOR, no como puntero.** Wails no expresa `*T` del
+lado de TypeScript (emite `Response`, no `Response | null`), así que la ausencia
+de respuesta se dice con `status: 0` — ningún servidor contesta con 0. Un
+puntero acá compila en Go y rompe el `tsc` del frontend.
+
+**El filtrado de secretos vive en `app_httpagent.go`, nunca en `agentctx`.**
+`agentctx` solo formatea texto y no tiene acceso al vault; si el filtro viviera
+ahí, agregar un campo al prompt sería una forma silenciosa de filtrarlo.
+`redactExchange` pasa TODOS los campos de texto de una sola vez y como último
+paso, por la misma razón que en la documentación (F7): son ocho caminos hasta el
+mismo prompt.
+
+`AgentGenerateHTTP` devuelve `HTTPGenerated{answer, request?, curl}`. `request`
+puede venir vacío: un cURL que no se pudo interpretar **no es un error de la
+acción** — la explicación y el comando siguen sirviendo, y la UI ofrece copiarlo
+en vez de fallar.
+
+### F7 — documentación como nota del vault
+
+Dos bindings: `HttpDocsPreview(collectionId)` y `HttpPublishDocs(collectionId)`
+→ `HttpDocsResult{noteId, title, status, requests, markdown}`.
+
+`status` es `"created"`, `"updated"` o `"skipped"`. **El markdown viaja también
+cuando es `"skipped"`**: la UI necesita poder mostrar lo que se habría escrito,
+porque una negativa sin el documento a la vista obliga al usuario a borrar la
+nota para ver qué se estaba perdiendo.
+
+**Regenerar no pisa una nota que editó una persona** — `vault.GeneratorCanEdit`
+con `vault.HTTPDocsOriginMark`, el mismo contrato que tiene el agente por MCP.
+`WithUserTouch` conoce ahora las dos marcas de origen: se aplica en el único
+lugar por donde el usuario guarda una nota (`UpdateNote` en app_notes.go), así
+que un generador nuevo queda cubierto registrando su marca ahí.
+
+`HttpPublishDocs` escribe con `a.vault.UpdateNote` (el método del store) y **no**
+con el binding `App.UpdateNote`: ese estampa `WithUserTouch`, y una regeneración
+que se marque a sí misma como edición humana se bloquearía en la siguiente.
+
+El vínculo colección↔nota es `http_collections.docs_note_id` (migración 49) y se
+escribe SOLO con `SetHTTPCollectionNote`, fuera de `SaveHTTPCollection` — por la
+misma razón que `postman_raw`: un guardado hecho con una copia leída antes de
+publicar desvincularía la nota en silencio.
+
+`HttpDocsResult` lo emite Wails como `main.HttpDocsResult` en models.ts porque
+aparece en la firma de un binding. Nada que escribir a mano (ver la trampa de
+F6 más abajo).
+
+### F6 — interop (Postman, cURL, snippets)
+
+Cinco bindings: `HttpImportPostman`, `HttpExportPostman`, `HttpImportCurl`,
+`HttpCodeLanguages`, `HttpGenerateCode`.
+
+**Round-trip por preservación, no por modelado completo.** Cada ítem guarda
+su JSON original en `postman_raw` (cifrado) y el exportador **parte de ese
+crudo y pisa solo lo modelado**. Así sobreviven las respuestas de ejemplo,
+`protocolProfileBehavior` y lo que Postman agregue después, sin que este
+código los conozca. Las columnas `postman_raw` se leen y escriben **aparte
+del CRUD normal** (`SaveHTTPItemRaw`/`HTTPItemRaw`): meterlas en
+`SaveHTTPItem` haría que cada guardado desde el editor arrastre —y pueda
+pisar— un dato que no está editando.
+
+**La URL tiene una sola fuente de verdad: `raw`.** Postman la guarda tres
+veces (raw, host[]+path[], query[]) y mantener las tres sincronizadas al
+exportar es una fuente de discrepancias silenciosas. Al importar se le quita
+la query, que pasa a la tabla de params — dejarla en los dos lados la
+duplicaría al enviar.
+
+**El export nunca incluye secretos**: las variables marcadas secretas salen
+declaradas y vacías (como hace Postman) y el `accessToken` de OAuth 2.0 no
+viaja. Un archivo de colección se comparte por chat y se sube a repos.
+
+**`HttpGenerateCode` vuelca la auth a headers** (`AuthAsHeaders`) para que el
+snippet reproduzca la petición: un `fetch` de ejemplo sin el `Authorization`
+que la app sí manda es un snippet que no funciona. Digest y OAuth 2.0 sin
+token se omiten — inventar un header ahí sería mostrar algo que no es lo que
+va a viajar.
+
+**Qué se cifra en `http_items`**: cuerpo, auth, docs y el crudo de Postman.
+`url`, `params` y `headers` quedan en claro porque son las columnas por las
+que se lista y se busca el árbol, y cifrarlas obligaría a descifrar la
+colección entera para dibujar la barra lateral. La contrapartida honesta es
+que un `Bearer` escrito a mano en un header queda en claro dentro del
+archivo del vault; el lugar para un token son las variables secretas de F2,
+que sí se cifran.
+
 ## EXPLAIN enriquecido (`backend/explain`)
 
 Un binding nuevo, `CheckSQLMutation(sqlText) → bool`, detrás de

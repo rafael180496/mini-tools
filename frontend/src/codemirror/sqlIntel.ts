@@ -115,6 +115,50 @@ function toCompletion(item: sqlintel.Item, connId: string): Completion {
     }
 }
 
+// Tope de espera de una llamada al motor, y la razón por la que existe.
+//
+// **Una respuesta que no llega mata el autocompletado de la pestaña, no la
+// petición.** CodeMirror guarda cada consulta en curso en una lista y no
+// vuelve a preguntarle a esa misma fuente mientras haya una consulta suya
+// pendiente (`startQuery` en @codemirror/autocomplete). Si la promesa no se
+// resuelve NI se rechaza, esa entrada no se saca nunca: el popup deja de
+// abrirse, Ctrl+Espacio no hace nada, y la única salida es cerrar y volver a
+// abrir la pestaña. Reproducido en un banco de pruebas con CodeMirror real:
+// una sola llamada colgada y el editor no se recupera ni escribiendo sesenta
+// caracteres más.
+//
+// Y que una llamada quede colgada es posible: Wails no le pone tiempo límite
+// a ninguna (`Call` con timeout 0 = infinito), y ante un pánico del lado de
+// Go responde con una cadena vacía que el runtime no puede parsear, así que
+// la promesa queda pendiente para siempre. El backend ahora recupera esos
+// pánicos (ver recoverEditorCall en app.go); este tope es la segunda mitad
+// del cinturón, para cualquier otra forma de perder una respuesta.
+//
+// Tres segundos: el motor contesta en microsegundos y el puente en
+// milisegundos, así que llegar acá ya significa que algo se rompió — pero
+// una lista vacía por una vez es infinitamente mejor que un editor al que
+// hay que reabrirle la pestaña.
+const BRIDGE_TIMEOUT_MS = 3_000
+
+// settled corre una llamada al puente con tope de tiempo. Nunca lanza: el
+// caller recibe `null` tanto si falló como si tardó demasiado, que para el
+// editor son la misma cosa (no hay nada que mostrar).
+export async function settled<T>(call: Promise<T>): Promise<T | null> {
+    let timer: number | undefined
+    try {
+        return await Promise.race([
+            call,
+            new Promise<null>((resolve) => {
+                timer = window.setTimeout(() => resolve(null), BRIDGE_TIMEOUT_MS)
+            }),
+        ])
+    } catch {
+        return null
+    } finally {
+        window.clearTimeout(timer)
+    }
+}
+
 // sqlIntelCompletionSource is the editor's only schema-aware completion
 // source. It replaces @codemirror/lang-sql's own (which is never given a
 // `schema`, so it contributes nothing) as well as the retired frontend
@@ -150,21 +194,20 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
 
         if (!context.explicit && !qualified && !autoOpen && !aliasSlot && (!word || word.from === word.to)) return null
 
-        let resp: sqlintel.Response
-        try {
-            resp = await CompleteSQL({
+        // Vault bloqueado, conexión cerrada o una respuesta que nunca llega:
+        // en los tres casos no hay nada que sugerir, y en ninguno se deja la
+        // promesa sin resolver (ver BRIDGE_TIMEOUT_MS).
+        const resp = await settled(
+            CompleteSQL({
                 connId,
                 dbType: dbType ?? '',
                 sql: context.state.doc.toString(),
                 offset: context.pos,
                 explicit: context.explicit,
                 limit: 0,
-            })
-        } catch {
-            // A locked vault or a closed connection: silently no
-            // suggestions, never a popup full of an error message.
-            return null
-        }
+            }),
+        )
+        if (!resp) return null
 
         if (context.aborted) return null
 
@@ -178,9 +221,21 @@ export function sqlIntelCompletionSource(connId: string, dbType: string | null |
 
         if (!resp.items || resp.items.length === 0) return null
 
+        // Armar las opciones no puede tirar abajo la fuente: `snippetCompletion`
+        // parsea la plantilla acá mismo, y una excepción en este map rechazaría
+        // la promesa — con el mismo final que una respuesta perdida, porque
+        // CodeMirror tampoco saca de su lista una consulta que rechazó.
+        let options: Completion[]
+        try {
+            options = resp.items.map((item) => toCompletion(item, connId))
+        } catch (e) {
+            console.error('sqlintel: no se pudo armar la lista de sugerencias', e)
+            return null
+        }
+
         return {
             from: resp.from,
-            options: resp.items.map((item) => toCompletion(item, connId)),
+            options,
             // Local re-filtering while the user keeps typing word
             // characters: this is what keeps the bridge off the keystroke
             // path. A dot, a space or a new clause fails the pattern and
@@ -493,19 +548,17 @@ function ghostFetcher(connId: string, dbType: string | null | undefined) {
                 // selection has nowhere sensible to render.
                 if (!state.selection.main.empty) return
 
-                let inline = ''
-                try {
-                    inline = await SuggestInlineSQL({
+                const inline = await settled(
+                    SuggestInlineSQL({
                         connId,
                         dbType: dbType ?? '',
                         sql: state.doc.toString(),
                         offset: pos,
                         explicit: false,
                         limit: 0,
-                    })
-                } catch {
-                    return
-                }
+                    }),
+                )
+                if (inline === null) return
 
                 if (!this.alive || generation !== this.generation) return
                 if (this.view.state.selection.main.head !== pos) return

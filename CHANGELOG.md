@@ -6,6 +6,166 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Agregado
 
+- **Reflog en la pestaña Git: recuperar lo que un reset o un rebase dejaron sin referencia.** Solapa nueva al lado de Sesiones, Comandos y Agentes, con los últimos doscientos movimientos de HEAD: qué hizo git (`commit`, `reset`, `rebase`, `checkout`, `merge`), sobre qué commit, con qué mensaje y cuándo. Las acciones que reescriben historia van marcadas, que es lo que uno busca cuando entra acá preguntándose «qué pasó recién».
+
+  Era el hueco que quedaba: el módulo ya sabe hacer `reset --hard`, rebase, cambiar de rama con cambios encima y `push --force` — todas las operaciones que dejan commits huérfanos— y no tenía la red que va debajo. Sin esto, la salida de un reset equivocado era la línea de comandos, justo de lo que la pestaña pretende sacarte.
+
+  **La acción que se ofrece primero es crear una rama** en esa posición: no mueve nada, no toca lo que tenés sin commitear y le da nombre propio al commit perdido. El `reset --hard` también está, pero detrás de una confirmación que dice qué se pierde — recuperar algo pisando otra cosa es el error que sigue al error. Clic en el hash y el grafo salta al commit; si queda fuera de la ventana cargada —que es lo normal para algo que se está recuperando— lo dice y lo muestra al costado.
+
+  El panel aclara lo que la gente asume mal: el reflog es **local y temporal**, no se clona, no se empuja, y git lo poda solo a los 90 días (30 lo inalcanzable). Sirve para recuperar lo de ayer, no como historial.
+
+  Dos detalles que salieron de probarlo contra repositorios de verdad: `--date` reescribe también el selector, y `HEAD@{0}` salía como `HEAD@{2026-08-20T16:10:20-06:00}` —válido para git, pero significa otra cosa y no sirve para copiar—, así que el selector se arma con la posición; y el marcador `%gI` no existe, git lo imprime literal, así que la fecha del movimiento sale del propio selector con fecha.
+
+- **Notas: mover a una carpeta ya funciona, la lista dejó de reordenarse sola, y cada carpeta se puede abrir como tabla.**
+
+  **El bug de mover.** Mover una nota a una carpeta no hacía nada visible: la nota se quedaba donde estaba. El backend guardaba bien; lo que fallaba era la lectura. La barra lateral usa el buscador aunque no estés buscando, y ese camino —el de la búsqueda vacía, o sea el estado normal— armaba cada resultado **sin copiar la carpeta**. Todas las notas decían «raíz», así que el árbol las dibujaba en la raíz. El detalle que lo delata: si escribías algo en el buscador, las notas sí aparecían dentro de sus carpetas, porque ese otro camino sí leía la carpeta.
+
+  **La lista se quedó quieta.** Sin búsqueda, las notas salían ordenadas por fecha de modificación: abrir una la guardaba, guardarla la subía al primer lugar, y la próxima vez ya no estaba donde la habías dejado. Ahora el orden es alfabético e insensible a tildes y mayúsculas —«Ámbito» cae junto a «ambito», no al final—, así que una nota está siempre en el mismo lugar. El orden por lo-último-que-toqué sigue existiendo donde tiene sentido: cuando de verdad estás buscando algo, manda la relevancia.
+
+  **Un «+» de nota en cada carpeta**, al lado del de subcarpeta: crea la nota ya adentro, en una sola operación —crear y después mover la mostraba un instante en la raíz— y usa lo que haya escrito en el buscador como título.
+
+  **La carpeta se abre en una tabla.** Clic en el nombre de la carpeta y se abre una ventana con sus notas numeradas, su título, la fecha de creación y la de última modificación, ordenable por cualquiera de las tres, con un buscador propio que filtra solo adentro de esa carpeta. Cuenta también las subcarpetas. La flecha de la izquierda sigue plegando y desplegando como siempre: nombre para abrir, flecha para desplegar, igual que cualquier explorador de archivos. Desde la tabla se puede crear una nota en la carpeta o sacar una a la raíz.
+
+  La numeración es del orden que estás viendo, no un identificador de la nota: sirve para decir «la 7» mirando la misma pantalla y para saber cuántas hay sin contarlas.
+
+- **Auditoría del módulo HTTP: cinco bugs encontrados y corregidos.** Con las nueve fases adentro hice una pasada buscando defectos, contrastando lo que se puede contrastar contra implementaciones de referencia independientes.
+
+  **Las variables de ruta viajaban escapadas dos veces.** Un `:id` con valor `cañón` salía como `ca%25C3%25B1%25C3%25B3n`, y el servidor recibía el texto literal `ca%C3%B1%C3%B3n` como identificador. Afectaba a cualquier valor con espacio, acento o `%` — es decir, a media API en español. La sustitución se hacía sobre la ruta ya decodificada con el valor ya escapado, y la biblioteca lo volvía a escapar al cerrar la URL.
+
+  **Una variable que usaba otra quedaba literal, y sin avisar.** `baseUrl = {{protocol}}://{{host}}` es un patrón normal en las colecciones de Postman: la URL salía con las llaves adentro y la lista de «sin definir» aparecía vacía, porque esos nombres nunca estuvieron en el texto original. Ahora se resuelve en varias pasadas, con tope para las circulares (`a = {{a}}`), y lo que quede sin resolver se informa siempre.
+
+  **Los volcados de respuestas grandes no se borraban nunca.** Cada respuesta que pasa de 8 MiB deja un archivo temporal de ese tamaño; en macOS el temporal del sistema se limpia al reiniciar, así que se acumulaban. Ahora se borran al cerrar la aplicación — no antes: mientras la pestaña muestra una respuesta cortada, su botón «Guardar…» promete justamente ese archivo.
+
+  **Dos peticiones rápidas compartían el identificador de ejecución.** Como no tienen ítem, las dos generaban `http-rapida-1`: cancelar en una cancelaba la de la otra. Lo introduje al agregarlas.
+
+  **Una respuesta vieja podía pisar a la nueva.** El botón se convierte en «Cancelar» mientras manda, pero Enter en la URL no: dos Enter seguidos dejaban dos envíos en el aire y ganaba el que contestara último, no el último que se mandó.
+
+  Lo que se verificó y **está bien**: la firma **AWS Signature v4** coincide byte por byte con una implementación independiente escrita desde la especificación —incluidos el colapso de espacios en las cabeceras y el escapado de la query—; el **JWT HS256** coincide con la referencia; **Digest** autentica de verdad contra un servidor que valida la respuesta con `qop=auth`; las **variables calculadas** (base64, SHA, HMAC y encadenadas) coinciden con la referencia y todas salen marcadas como secretas; el **import de Postman** aguanta JSON inválido, campos con tipos equivocados, `null` donde va una lista y mil carpetas anidadas sin entrar en pánico; y el **OAuth 2.0 de aplicación nativa** escucha solo en loopback, compara el `state` en tiempo constante y usa PKCE S256.
+
+- **Correr una colección entera, cookies por entorno y respuestas de ejemplo** (fase 9, la última del plan). «Correr la colección» manda todas sus peticiones **en orden y de a una** —una suite de pruebas casi siempre es una secuencia: login, después lo que usa la sesión, después lo que usa el id que devolvió la anterior— y muestra el avance en vivo, con el resultado de cada una, su código, su tiempo y las variables que quedaron sin definir. También por carpeta, con sus subcarpetas adentro. Hay pausa opcional entre peticiones, porque treinta seguidas sin respirar es exactamente lo que un cortafuegos de aplicación corta.
+
+  **«Pasó» significa una sola cosa y está escrita en el panel**: la petición salió y el servidor contestó con un código menor a 400. Los scripts de test no se ejecutan acá —esta aplicación no corre JavaScript— y decir «3 tests pasaron» sobre scripts que nadie ejecutó sería una mentira con formato de informe. Se guardan, viajan en el export y los corre Postman o newman.
+
+  Cortar una corrida marca lo que queda como **salteado**, no como fallido, y solo corta entre peticiones: la que está en vuelo ya salió, y cancelarla del lado del cliente no la deshace del lado del servidor.
+
+  **Un tarro de cookies por entorno.** El login de una petición vale para las siguientes sin copiar nada a mano, y probar producción y desarrollo a la vez no mezcla las sesiones — con un tarro por colección, la segunda petición saldría con la sesión de la primera, que es un error carísimo de ver. Se pueden mirar y borrar por dominio; los valores vienen tapados porque una cookie de sesión es una credencial. Viven en memoria: al cerrar la aplicación se pierden, y volver a hacer login es una petición más de la colección.
+
+  **«Guardar de ejemplo»** suma la respuesta recibida a la documentación de la petición en vez de reemplazar lo que hubiera: una petición útil tiene el caso que funciona y el 422 que explica qué valida el servidor. Pasa por el mismo filtro de secretos que todo lo que sale del vault.
+
+  Con esto el módulo HTTP queda completo: las nueve fases del plan.
+
+- **Ayuda con IA en las peticiones HTTP** (fase 8 del plan). Cinco acciones en el menú de la petición: **explicar la respuesta** (qué contestó la API y qué significa este código de estado en este caso concreto), **diagnosticar el fallo** (con la configuración del cliente delante, porque la mitad de los fallos de transporte se explican ahí: un timeout corto, la verificación de TLS contra un certificado interno, las redirecciones apagadas), **escribir la petición** desde una descripción o un cURL pegado, **redactar la documentación** —que cae en la pestaña Docs y de ahí a la nota de la colección— y **escribir los tests**.
+
+  Las dos primeras quedan deshabilitadas hasta que haya una respuesta, en vez de dejar que el agente conteste sobre la nada. Y como en el resto de la aplicación, **el agente propone**: ninguna acción manda la petición ni escribe en la colección, devuelven texto y lo que lo mete en el editor es el botón «Aplicar».
+
+  «Escribir la petición» contesta con un comando cURL y no con un formato inventado: es lo que se puede leer y verificar de un vistazo, y lo que la aplicación ya sabe importar. Probándolo apareció un bug de verdad — el importador no reconocía `{{baseUrl}}/pedidos` como URL, así que justo el comando que se le pide al agente era el único que no se podía importar.
+
+  «Escribir los tests» los pide en el formato de Postman, y lo dice sin vueltas: esta aplicación no ejecuta scripts, el test se guarda, viaja en el export y quien lo corre es Postman o newman.
+
+  **Ningún secreto llega al modelo.** Los `{{marcadores}}` van sin resolver, los valores de las cabeceras de credencial se tapan, el texto entero pasa por el enmascarado de variables secretas y por el tapado de credenciales escritas a mano —en la URL, en el cuerpo o en un `-H` pegado—, y de la autenticación viaja solo el tipo. Comprobado con seis formas distintas de filtración a la vez: ninguna sobrevive en ninguno de los cinco prompts. Y cada prompt aclara que lo tapado **existe**: sin esa línea, un agente que ve `Authorization: «oculto»` diagnostica que falta la autenticación en una petición que sí la lleva.
+
+  El chat unificado reconoce ahora el módulo: el encabezado dice «HTTP · nombre de la petición» y el historial agrupa esas conversaciones aparte.
+
+- **Arreglado: el autocompletado de SQL se moría después de usar un atajo y no volvía ni con Ctrl+Espacio.** Había que cerrar y reabrir la pestaña. La causa no estaba donde parecía: CodeMirror anota cada consulta de sugerencias en una lista de pendientes y **no le vuelve a preguntar a esa fuente mientras haya una consulta suya sin terminar**. Si la llamada al motor no se resuelve ni falla —simplemente no vuelve—, esa entrada no se saca nunca y el autocompletado queda muerto para esa pestaña.
+
+  Y que una llamada no vuelva es posible: Wails no le pone tiempo límite a ninguna, y cuando el código de Go entra en pánico responde con una cadena vacía que el navegador no puede interpretar, así que la promesa queda pendiente para siempre. Ahora está tapado por los dos lados: las tres llamadas del editor (completado, ayuda de firma y sugerencia en gris) recuperan el pánico del lado de Go y contestan vacío en vez de no contestar, y del lado del editor cada llamada tiene un tope de tres segundos. En el peor caso ahora ves una lista vacía una vez; antes tenías que reabrir la pestaña.
+
+  Verificado en un banco de pruebas con CodeMirror real y el motor de verdad: **antes**, una sola llamada perdida y el autocompletado no se recuperaba ni escribiendo sesenta caracteres; **ahora** vuelve solo a los tres segundos. Y 400 pasos de edición aleatoria —atajos, Tab entre campos, comillas sueltas, comentarios, acentos, emoji— sin una sola excepción.
+
+- **Casi el doble de atajos en el editor SQL.** De 25 a 46 comunes, y por motor: Oracle 64, PostgreSQL 58, SQLite 55, SQL Server 56.
+
+  Condiciones que se escriben mal justo cuando se necesitan: `in`, `notin`, `bet` (BETWEEN), `like`, `null`, `notnull`. Los JOIN que faltaban: `rjoin`, `fjoin`, `cjoin` y `sjoin` (la tabla consigo misma, para jerarquías). Consultas de todos los días: `dist`, `ord`, `union`, `notex`, `sub` (subconsulta en el FROM), `delx`, `insmulti`. Diagnóstico de una tabla que no conocés: `nulls` (cuántos nulos tiene una columna), `minmax` (mínimo, máximo, distintos y total de un tirón) y `sumif`. Y mantenimiento: `trunc`, `dt`, `dropcol`, `uix`, `pk`, `fk`, `ren`.
+
+  Por motor, lo que cambia de verdad entre uno y otro: transacción (`tx`) con la sintaxis y el manejo de error de cada uno, columnas de una tabla (`cols`) contra el catálogo que corresponde, tamaño de las tablas (`size`), consultas en curso (`act` en PostgreSQL y SQL Server, `sess` en Oracle), y en Oracle además `fnc`, `pkg` y `datef`. Donde un motor no acepta la sintaxis común, la pisa con la suya: SQLite no tiene TRUNCATE y `trunc` le sale como `DELETE FROM`, SQL Server renombra con `sp_rename`.
+
+- **Peticiones HTTP rápidas: probar un endpoint sin guardarlo en ninguna colección.** El rayo de la cabecera de Colecciones abre una pestaña con una petición que no pertenece a nada: se manda, se ve la respuesta, se genera el código, y si no servía se cierra la pestaña y no quedó nada. Es la mitad del uso real de un cliente HTTP —probar lo que alguien pasó por chat, reproducir un error una vez— y hasta ahora obligaba a crear y nombrar una colección para eso.
+
+  La pestaña dice con todas las letras lo que implica: no hereda variables ni autenticación de ninguna colección, y lo que está en pantalla es todo lo que se manda. Las variables del entorno activo sí valen, porque el entorno es transversal a las colecciones. Si al final resultó útil, «Guardar en…» la mete en la colección que elijas con el nombre que propone la URL, y desde ese momento es un ítem normal, con su herencia y su historial.
+
+  Las rápidas comparten un historial propio, así que «¿qué acabo de mandar?» tiene respuesta aunque no hayas guardado nada. De paso se arreglaron dos cosas de esa tabla: ese cajón compartido no se podaba nunca (crecía sin techo), y la poda desempataba mal cuando varias ejecuciones caían en el mismo segundo — al depurar una petición mandándola cinco veces seguidas, borraba justo la más nueva.
+
+- **La documentación de una colección se publica como nota del vault** (fase 7 del plan). Cada petición tiene ahora una pestaña **Docs** en Markdown —para qué sirve, qué devuelve, cuál hay que llamar antes—, y el menú de la colección tiene «Documentación…», que muestra el documento completo y lo escribe como una nota de la base de conocimiento.
+
+  **Publicar, no exportar.** La nota no es una copia muerta en una carpeta: se busca desde el buscador de notas, se enlaza desde un runbook con `[[API · Reserve v3]]` y el agente la puede consultar. Un `[[enlace]]` escrito en la pestaña Docs de una petición llega a la nota tal cual, así que se convierte en una arista real del grafo.
+
+  **Regenerar no pisa lo que escribió una persona.** Si alguien mejoró la nota a mano, la regeneración se detiene, lo dice, y muestra al lado lo que se habría escrito para poder copiar de ahí lo que sirva. Es el mismo trato que tiene el agente por MCP, y por el mismo motivo: una nota que se mejora a mano y que la próxima regeneración borra es una nota que nadie va a mejorar a mano nunca más.
+
+  **Ninguna credencial entra en la nota.** De la autenticación se documenta su forma —que es Basic con tal usuario, que el token viaja en tal cabecera, contra qué URL se pide, con qué ámbito—, nunca su valor. Las variables secretas se listan sin valor, y el documento entero pasa por el enmascarado como último paso, así que también se tapa un secreto que hubiera quedado escrito a mano dentro de una URL o de un cuerpo. Una nota la puede leer el agente: el filtro tenía que ser el último paso y no una precaución repartida por cada campo.
+
+  Ese filtro se probó contra una colección real capturada del navegador, y ahí apareció el caso que importaba: las descripciones que Postman escribe al importar de cURL («Generated from cURL: curl …») llevan adentro la cookie de sesión y el token de acceso completos. Ahora se tapan los valores de las cabeceras que son credenciales —`Authorization`, `Cookie`, `access-token`, `client`, `uid` y compañía—, los `-b` y `-u` de cURL, los campos de un JSON que se llaman `password`, `secret`, `token` o `client_secret`, y los mismos nombres en la query de una URL. Se tapa el valor y se conserva el nombre: que la petición necesita `Authorization` es justamente lo que hay que documentar. Una cookie copiada del navegador ocupa varias líneas y trae apóstrofos escapados adentro, así que el tapado sigue el valor hasta su comilla de cierre real en vez de cortarse en la primera.
+
+  De paso, las descripciones larguísimas que Postman le pone a cada cabecera se recortan en las tablas: la documentación de veintitrés peticiones bajó de 184.000 a 57.000 caracteres sin perder nada propio. El texto completo sigue en la colección; la nota es un resumen navegable, y uno de doscientas mil letras no lo es.
+
+  Los `{{marcadores}}` quedan sin resolver a propósito, al revés que al enviar: la documentación describe la forma de la petición, y resolverlos dejaría escrito el valor del entorno de hoy.
+
+- **Importar y exportar colecciones de Postman, pegar cURL y generar código** (fase 6 del plan). El botón de importar trae una colección exportada de Postman completa —peticiones, carpetas, variables, autenticación, descripciones y scripts— y la guarda cifrada en el vault. Al terminar dice qué entró y con qué salvedades: una autenticación que esta versión no firma, o un archivo cuya ruta no viajaba en el export, se avisan **al importar** en vez de descubrirse al mandar la petición.
+
+  **El export no pierde nada.** Cada ítem conserva su JSON original y el exportador parte de él para pisar solo lo que la aplicación entiende: las respuestas de ejemplo guardadas, el `_postman_id`, `protocolProfileBehavior` y cualquier campo que Postman agregue mañana sobreviven sin que este código tenga que conocerlos. Verificado con la colección real del usuario: 23 peticiones importadas, guardadas, exportadas y reimportadas sin perder un campo.
+
+  **Los secretos no salen en el export.** Una variable marcada como secreta se exporta declarada pero vacía —igual que hace Postman—, y el token de acceso de OAuth 2.0 directamente no viaja: una colección exportada se manda por chat y se sube a repositorios.
+
+  **Pegar un «Copy as cURL»** del navegador crea una petición lista para editar: método, URL, headers, cuerpo, formularios con archivos, usuario y contraseña, y `-k` respetado como "no verificar el certificado".
+
+  **Panel de código** con la petición escrita en cURL, HTTP, Go, JavaScript, Python, Java, C#, PHP, Ruby y PowerShell, con las variables ya resueltas —un snippet con `{{HOST}}` adentro no sirve para pegarlo en ningún lado— y **los secretos tapados por defecto**, porque el destino típico de un snippet es un ticket o un chat.
+
+- **Variables calculadas: firmar una petición sin escribir JavaScript** (fase 5 del plan). Cada petición y cada colección puede derivar valores antes de enviar —HMAC-SHA1/256/512, SHA, MD5, base64— encadenando filas: la primera arma el texto a firmar, la segunda lo firma, y el resultado se usa como `{{sig}}` en la URL, un header o el cuerpo. La entrada admite variables **dinámicas**: `{{$timestamp}}`, `{{$isoTimestamp}}`, `{{$randomUUID}}`.
+
+  **El timestamp se calcula una sola vez por envío.** Si `{{$timestamp}}` diera un valor distinto en la URL y en la firma, la firma no validaría nunca — y ese es exactamente el error que este flujo existe para evitar.
+
+  **Lo calculado nace secreto**: queda enmascarado en el historial y fuera del export sin que haya que acordarse de marcarlo, porque lo que sale de ahí es una firma o un token. Una fila mal configurada **se reporta señalando cuál es y no tumba el envío**: las otras se calculan igual.
+
+  **Por qué declarativo y no un motor de JavaScript.** Se midió: goja suma **+19,8 MB** al binario y otto **+15,1**, contra un techo de 80 MB que el ejecutable de Windows ya roza con 55,66. Decisión explícita: no entra ningún motor JS. El costo honesto es que **un script existente no corre**: hay que traducirlo a su equivalente declarativo.
+
+- **Los scripts de una colección ya no se pierden** (primera mitad de la fase 5 del plan). Las peticiones y las colecciones guardan sus scripts de **pre-request** y de **test** al estilo Postman, cifrados en el vault —un script de firma lleva la clave adentro— y visibles en una pestaña Scripts propia. **Todavía no se ejecutan**, y la pestaña lo dice sin vueltas: una petición que dependa de su pre-request para firmarse va a salir sin firmar. Están para que una colección importada no pierda su configuración y para poder leerlos y traducirlos a variables calculadas.
+
+- **Corregido en la autenticación antes de cerrarla**: las `{{variables}}` no se resolvían en todos los campos —un `{{authHost}}/oauth/token` salía literal y el token nunca se pedía—, y OAuth 2.0 no renovaba solo. Ahora la sustitución recorre **todos** los campos de texto por reflexión, así que un campo nuevo queda cubierto sin que nadie se acuerde, y un token vencido **se renueva antes de mandar** y se guarda en el mismo nivel donde estaba configurado (rotando el refresh token si el servidor lo rota). Sin eso, un token de una hora convertía el módulo en "andá a la pestaña Auth y apretá Obtener token" cada hora.
+
+- **Autenticación con herencia en el módulo HTTP** (fase 4 del plan). Una petición hereda de su carpeta, la carpeta de la suya, y al final de la colección — que es lo que hace que **cambiar el token de una API sea una edición y no treinta**. La pestaña Auth dice cuál ganó y de qué nivel salió, porque con herencia "qué credencial estoy mandando" deja de ser obvio y esa es la diferencia entre entender un 401 y adivinarlo.
+
+  **Ocho tipos que se firman de verdad**: Basic, Bearer, API Key (header o query), JWT (HS256/384/512), Digest, OAuth 2.0, AWS Signature v4 y «sin autenticación». Las `{{variables}}` también valen adentro de la auth: podés poner `{{token}}` y guardar el valor real como variable **secreta** del entorno, así queda cifrado, enmascarado y fuera del export.
+
+  **AWS SigV4 escrito a mano, sin el SDK**: traerlo por una función de firma sumaría decenas de megabytes a un binario con techo de 80. La parte difícil de SigV4 no es la criptografía sino la canonicalización, y eso hay que escribirlo igual. El servicio se deduce del host cuando es de AWS, para no pedir un dato que la URL ya dice.
+
+  **Digest hace el ida y vuelta que exige el protocolo**: la primera petición sale sin firmar, el servidor responde 401 con su desafío, y recién ahí se calcula la respuesta. Un solo reintento — si el segundo 401 llega, las credenciales están mal y repetir no lo arregla.
+
+  **OAuth 2.0 con los cuatro flujos.** El de *authorization code* abre tu navegador y recibe la respuesta en un puerto local (`127.0.0.1`), con **PKCE S256 siempre** — es lo que manda la RFC 8252 para aplicaciones de escritorio. Sin PKCE, cualquier proceso local que escuche antes que nosotros en ese puerto podría robarse el código; con PKCE ese código no sirve sin el verificador, que nunca sale de la aplicación. El parámetro `state` se compara en tiempo constante, así que otra página abierta en el navegador no puede inyectar su propio código.
+
+  **Los tipos que todavía no se firman se muestran igual, y lo dicen.** OAuth 1.0, Hawk, NTLM, Akamai EdgeGrid y ASAP se guardan y se exportan intactos para que una colección importada no pierda su configuración, con un aviso claro de que la petición va a salir sin autenticar. Ocultarlos daría a entender que se perdieron; ofrecerlos sin avisar, que funcionan.
+
+- **Cuerpos completos y archivos en el módulo HTTP** (fase 3 del plan). Se suman **form-data** (campos y archivos), **x-www-form-urlencoded**, **binary** (un archivo del disco como cuerpo entero) y **GraphQL** (query y variables, empaquetadas en el JSON que espera el servidor).
+
+  **Los archivos se suben en streaming**, no cargados en memoria: subir 500 MB no cuesta 500 MB de RAM. De una fila de archivo se guarda la **ruta**, no el contenido — guardar el contenido metería megabytes cifrados en el vault por petición y dejaría una copia congelada de un archivo que seguís editando afuera. Un archivo que no existe **falla antes de mandar nada, nombrándolo**, en vez de a mitad de la subida con el servidor ya recibiendo medio cuerpo.
+
+  **Se informa el `Content-Length` cuando se puede saber** (raw, urlencoded, binary) y solo el multipart sale `chunked`. No es un detalle: hay servidores PHP y proxies viejos que rechazan una subida chunked, y mandar todo chunked por comodidad los habría roto.
+
+  **Una respuesta grande ya no se pierde.** Antes se mostraba cortada y el resto se descartaba; ahora el cuerpo **completo se vuelca a un archivo temporal** al recibirlo, y «Guardar…» escribe el archivo entero. Sin eso, guardar una descarga de 200 MB habría escrito los primeros 8: un archivo corrupto con nombre bueno, que es peor que no ofrecer el botón. El nombre propuesto sale del `Content-Disposition` —y se le saca cualquier `../`, que es un intento de escribir fuera de la carpeta elegida— o del último tramo de la URL.
+
+  Las respuestas de imagen se previsualizan. PDF no: es el único tipo que el webview dibuja desde base64 sin ayuda, y prometer una vista previa que a veces no aparece sería peor que no ofrecerla.
+
+- **Variables y entornos en el módulo HTTP** (fase 2 del plan). Escribís `{{HOST}}` en la URL, en un header o en el cuerpo, y el valor sale del entorno activo o de la colección. **Se resuelve al enviar, nunca al guardar**: lo persistido conserva siempre las llaves literales, así que la misma petición sirve contra dev y contra producción sin tocarla.
+
+  **El entorno le gana a la colección**, que es el orden de Postman y el sentido mismo de tener entornos: la colección define el `HOST` por defecto y `dev` o `prod` lo pisan. (El plan decía lo contrario y **se corrigió durante la implementación** — con la colección ganando, cambiar de entorno no habría hecho nada, y una colección importada se habría comportado distinto que en su origen.)
+
+  **Un entorno se puede anclar a una colección**: al abrir sus peticiones se usa ese entorno sin importar cuál esté seleccionado, y solo uno puede estar anclado a cada colección — con dos, "cambiar solo" dependería del orden de lectura.
+
+  **Variables secretas**: se marcan con una casilla, se muestran enmascaradas con un ojo para revelarlas, y quedan cifradas en el vault. El enmascarado del historial busca **el valor, no el nombre**: para cuando se archiva, la sustitución ya ocurrió y el token está adentro del texto.
+
+  **Lo que falta se avisa antes de mandar.** Una `{{variable}}` que no define ni el entorno ni la colección se lista en una franja sobre el editor, y se envía **tal cual** en vez de reemplazarse por vacío: vaciarla produciría un `http:///dev/blocks` que falla con un error de transporte que no nombra la causa; dejándola, el error dice qué faltó.
+
+- **Módulo nuevo: peticiones HTTP con colecciones** (fase 1 de [.claude/specs/http-client.md](.claude/specs/http-client.md)). Quinto ícono en la barra lateral, al lado de bases, SSH, Git y notas. Colecciones con carpetas y peticiones anidadas, guardadas en el vault con el mismo cifrado por columna que el resto: **cuerpo, autenticación y documentación se cifran**; la URL, los params y los headers quedan en claro porque son por lo que se lista y se busca el árbol —cifrarlos obligaría a descifrar la colección entera para dibujar la barra lateral—.
+
+  **La petición**: método con color según lo que hace (lo que solo lee en un color tranquilo, lo que borra en rojo), URL con **variables de ruta** —un `:id` en la URL aparece solo como fila para completar, y desaparece si lo borrás del texto—, query params y headers con casilla para dejar una fila guardada pero fuera del envío, y cuerpo raw con resaltado JSON/XML/HTML y **botón de formatear**. Si el texto no parsea se deja tal cual en vez de vaciarlo: el caso normal de apretar ese botón es un JSON a medio escribir.
+
+  **La respuesta**: status, tiempo y tamaño; cuerpo con resaltado y alternancia formateado/crudo; headers completos; y la **URL que realmente salió** —con las variables de ruta y los query params ya aplicados—, que es lo que resuelve la mitad de los problemas de un endpoint. Una respuesta binaria se reconoce y se dice, en vez de volcar bytes ilegibles.
+
+  **Settings por petición**, como en Postman: verificación TLS, seguir redirecciones y sus variantes, versión de HTTP y tiempo límite. Dos vienen con aviso porque se pagan caro: apagar la verificación TLS es exactamente lo que necesita alguien en el medio, y conservar el header `Authorization` al redirigir a **otro** servidor es filtrar la credencial —`net/http` la quita solo, y esta opción la vuelve a poner—. La verificación TLS nace **encendida** aunque las capturas de referencia la muestren apagada: un default que desactiva la verificación convierte una decisión consciente en un descuido silencioso.
+
+  **Historial por petición** (últimas 50), con el status, la duración y el tamaño de cada corrida. La URL se archiva con los parámetros que parecen secretos (`token`, `api_key`, `signature`…) reemplazados por `***`: el historial es persistente y se lee semanas después, y sin eso sería un archivo de credenciales con fecha.
+
+  **Enviar no exige guardar**: se manda lo que está en pantalla. Lo contrario es la trampa clásica de "lo cambié y sigue haciendo lo mismo", y probar antes de decidir si vale la pena guardar es justamente para lo que sirve el módulo. Guardar es explícito, con Ctrl+S o el botón.
+
+  Cero dependencias nuevas: todo el motor sale de `net/http`. Import/export de Postman, variables de entorno, autenticación, archivos y scripts vienen en las fases siguientes del plan.
+
 - **Rebase de una rama sobre otra, desde el menú de la rama.** Lo único que el módulo sabía hacer era el rebase *interactivo* (reordenar y combinar los commits de la propia rama, desde el grafo). El caso corriente —"reaplicá lo mío encima de `develop`"— no estaba. Ahora está en el menú contextual de cualquier rama, local o remota, con la dirección escrita entera en la etiqueta: **"Rebase `dev-rafa` sobre `develop`"**, para que quede claro que lo que se reescribe es la rama en la que estás parado y no la que tocaste con el botón derecho. Pide confirmación (reescribe hashes) y usa `--autostash`, así no hace falta guardar los cambios sin commitear a mano.
 
 - **Git Flow, nativo y sin instalar nada.** En el menú de paneles: si el repositorio no está inicializado ofrece **"Inicializar Git Flow…"** —escribe las claves `gitflow.*` y crea `develop` a partir de la rama de producción—, y una vez inicializado ofrece **"Nueva feature / release / hotfix…"**. Escribe exactamente las mismas claves que el comando `git flow`, así que el repositorio queda compatible en las dos direcciones: quien lo use desde una terminal lo encuentra inicializado, y uno inicializado con el binario se lee acá sin más.
@@ -34,6 +194,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Corregido
 
+- **El build de release fallaba aunque todo compilara en local.** Dos tipos del módulo HTTP (`Variable` y `Computed`) estaban escritos a mano en los modelos generados de Wails, porque el generador **no los emite**: solo produce los tipos que alcanza desde la firma de un binding, y esos dos viajan adentro de un JSON guardado como columna de texto. `wails build` regenera ese archivo y se los llevaba puestos. El síntoma era el peor: `tsc` y `vite build` pasaban en local, y el empaquetado rompía al regenerar. Ahora se definen del lado del frontend, que es donde corresponde. Se agregó `scripts/check-bindings.py`, que compara las firmas de los tres lados y verifica que toda clase que el frontend usa exista en los modelos — probado borrando una clase a propósito para confirmar que la detecta.
+
+- **URGENTE — los backups automáticos podían quedar sin la pieza que los hace restaurables, y pisaban al último bueno.** `Backup` escribía directamente sobre el archivo de destino. Si algo fallaba a mitad —el caso real fue que faltara `salt.bin`— la función devolvía error, pero el archivo ya estaba creado y el escritor de ZIP alcanzaba a cerrar su índice: quedaba un `.mtbackup` **válido, abrible y del tamaño esperado, pero con solo `vault.db` adentro**. Sin el salt no hay forma de derivar la clave, así que ese backup no sirve. Y como el backup automático escribe siempre sobre la misma ruta, cada fallo destruía el último backup bueno. Nadie se enteraba hasta el día que lo necesitaba.
+
+  Ahora el backup **se escribe en un temporal y se renombra sobre el destino solo si salió todo bien**, así que un backup fallido deja intacto al anterior. Antes de publicarlo se **relee y se comprueba que tenga las dos piezas** —un backup se prueba el día que hace falta, y ese es el peor momento para descubrir que le falta algo—. Y la ausencia del salt se detecta **antes** de crear nada, con un mensaje que dice qué falta y dónde.
+
+- **Un backup que ya quedó sin `salt.bin` ahora se puede recuperar.** Al verificar y al restaurar, si el archivo no trae salt se usa el de esta instalación —que es el mismo con el que se cifró, porque el salt no cambia una vez creado—. Solo repliega cuando el backup no trae ninguno: si trae el suyo, ese manda, porque un backup que viene de otra máquina tiene un salt distinto. Sin esto, quien tuviera uno de esos backups rotos se quedaba sin sus datos teniendo la clave al lado.
+
+- **Los tests dejaban de borrar el vault real del usuario.** El helper de `backend/vault` abría el vault contra el directorio de datos **real** —su propio comentario admitía que "no había forma de inyectar otra ruta"— y borraba `vault.db` y `salt.bin` antes y después de cada caso para empezar limpio. Correr `go test ./backend/...` en una máquina con la aplicación instalada **destruía el vault**. Ahora `appdata` acepta la variable `MINI_TOOLS_DATA_DIR` y los tests se sandboxean con ella, con una guarda que aborta el borrado si la ruta no quedó dentro del temporal. Es la causa raíz de los dos puntos anteriores: el `salt.bin` borrado por una corrida de tests fue lo que dejó a los backups automáticos posteriores escribiéndose sin él.
 - **Un rebase con conflictos ya se puede abortar.** La barra que avisa "hay un rebase en curso" ofrecía *Continuar* pero escondía *Abortar* justo para el rebase — la única de las cuatro operaciones que reescribe historia. No era un olvido de la interfaz: detrás no había nada, `GitAbort` aceptaba merge, cherry-pick y revert y rechazaba rebase. Quien se quedaba trabado a mitad de un rebase interactivo solo podía terminarlo, nunca deshacerlo, y tenía que salir a la terminal. Ahora el botón está y devuelve el repositorio exactamente a donde estaba antes de empezar.
 
 - **Los errores de git decían `git -c:` en vez de nombrar el comando.** Algunas llamadas anteponen `-c core.editor=true` para que git no intente abrir un editor que no existe en una app de ventanas, y el mensaje de error se etiquetaba con el primer argumento — o sea con la opción, no con el comando. "git -c: fatal: no rebase in progress" perdía justamente la palabra que dice qué falló. Ahora se etiqueta con el subcomando real, y lo mismo vale para el panel "Comandos ejecutados".

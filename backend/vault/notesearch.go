@@ -186,18 +186,39 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 	}
 	q := ParseNoteQuery(raw)
 	if len(q.Terms) == 0 && len(q.Phrases) == 0 && len(q.Tags) == 0 && q.LinksTo == "" && !q.OnlyPrivate && !q.OnlyShared {
-		// Sin nada que buscar, la lista completa por fecha es la respuesta
-		// correcta: es la pantalla de "todas mis notas".
+		// Sin nada que buscar esto es "todas mis notas", y ahí manda el orden
+		// ALFABÉTICO, no la fecha.
+		//
+		// Antes salía por fecha de modificación, y eso convertía la barra
+		// lateral en una lista que se reordena sola: abrir una nota la guarda,
+		// guardarla la sube al primer lugar, y la próxima vez que la buscás no
+		// está donde estaba. Una lista de navegación tiene que quedarse
+		// quieta; para "lo último que toqué" está el orden por relevancia
+		// cuando de verdad se está buscando algo.
 		list, err := s.ListNotes()
 		if err != nil {
 			return nil, err
 		}
+		sort.SliceStable(list, func(i, j int) bool {
+			// foldText: sin tildes y en minúsculas, así "Ámbito" y "ambito"
+			// caen juntas en vez de irse al final por su byte.
+			return foldText(list[i].Title) < foldText(list[j].Title)
+		})
 		out := make([]NoteHit, 0, len(list))
 		for i, n := range list {
 			if i >= limit {
 				break
 			}
-			out = append(out, NoteHit{ID: n.ID, Title: n.Title, IsPrivate: n.IsPrivate, UpdatedAt: n.UpdatedAt})
+			// FolderID va SIEMPRE: sin él, la barra lateral dibuja todas las
+			// notas en la raíz y mover una a una carpeta parece no hacer
+			// nada. Y como este es el camino de la búsqueda vacía —el estado
+			// normal de la barra—, el bug se veía siempre salvo justo
+			// mientras se estaba buscando algo, que es el único momento en
+			// que la carpeta sí llegaba.
+			out = append(out, NoteHit{
+				ID: n.ID, Title: n.Title, IsPrivate: n.IsPrivate,
+				UpdatedAt: n.UpdatedAt, FolderID: n.FolderID,
+			})
 		}
 		return out, nil
 	}

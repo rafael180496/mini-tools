@@ -686,6 +686,21 @@ func (a *App) GitCherryPick(repoID, commit string, noCommit bool) error {
 // GitReset moves the current branch to commit. mode is "soft", "mixed" or
 // "hard"; "hard" destroys uncommitted work irrecoverably — the frontend
 // confirms it separately from the other two. See git.Runner.Reset.
+// GitReflog devuelve los últimos movimientos de HEAD: el registro local que
+// permite recuperar un commit que un reset, un rebase o un cambio de rama
+// dejaron sin referencia.
+//
+// Es la contraparte de las operaciones destructivas que este módulo ya expone.
+// Sin esto, la única salida de un `reset --hard` equivocado es la línea de
+// comandos — justo de lo que la pestaña Git pretende sacar al usuario.
+func (a *App) GitReflog(repoID string, limit int) ([]git.ReflogEntry, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return nil, err
+	}
+	return a.gitRunner.Reflog(path, limit)
+}
+
 func (a *App) GitReset(repoID, commit, mode string) error {
 	path, err := a.gitRepo(repoID)
 	if err != nil {

@@ -35,6 +35,17 @@
 - **Regla dura: nunca `git add`/`git commit`/`git push` de forma automática, bajo ningún proceso ni trigger (incluido el de Releases más abajo).** El usuario hace todos los commits y el staging manualmente, siempre — incluso después de haber pedido explícitamente en una conversación que se suba algo puntual (eso no crea un precedente que se repita solo). Dejar los cambios listos en el working tree y avisar qué archivos tocar; nunca stagear/commitear/pushear por iniciativa propia.
 - Cada fase del plan (`.claude/specs/`, ver historial de planning) es idealmente un commit o PR separado, con su propio criterio de "listo" verificado antes de pasar a la siguiente — pero el commit en sí lo arma el usuario.
 
+## Bindings de Wails
+
+- **Nunca escribir a mano un tipo en `frontend/wailsjs/go/models.ts`.** Ese
+  archivo lo regenera `wails build` y borra lo agregado. Si un tipo de Go no
+  aparece en la firma de ningún binding, el generador **no lo emite**: se
+  define en el frontend (ver `components/http/httpShared.ts`). Detalle del
+  incidente en [go-react-contract.md](../specs/go-react-contract.md).
+- Antes de empaquetar, correr `python3 scripts/check-bindings.py`: compara
+  `App.js`, `App.d.ts` y los métodos de `*App`, y verifica que toda clase
+  que el frontend usa exista en los modelos generados.
+
 ## CodeGraph
 
 - Este repo tiene `.codegraph/` (índice de símbolos/edges). Después de agregar o eliminar un archivo de código, correr `codegraph sync` para mantener el índice al día antes de seguir trabajando.
@@ -81,3 +92,15 @@
 - **Regla dura, no solo convención:** `vault.db` ya está instalado en varias máquinas con datos reales (conexiones, historial, settings). Toda columna o tabla nueva se agrega vía migración — nunca borrando/recreando la base, ni siquiera "momentáneamente" para probar algo local. Ver [.claude/rules/technical.md](technical.md) punto 13.
 - Para agregar una migración nueva: agregar una entrada `migration{version: N, ...}` en `backend/vault/migrations.go`, mantenerla aditiva (nunca `DELETE`/`DROP`/mutar filas, nunca tocar `vault_meta`), verificar con el patrón de script efímero sandboxeado (`HOME=$(mktemp -d) go run ./tmp_xxx`, nunca commiteado), y correr `codegraph sync` al final. Ver [.claude/specs/vault-migrations.md](../specs/vault-migrations.md) para el diseño completo y el porqué.
 - El `CREATE TABLE IF NOT EXISTS settings (...)` (y demás tablas) en `backend/vault/store.go` está congelado como la definición de la versión 1 — no se le agregan columnas directamente ahí ni para una instalación nueva. Una instalación nueva y una que actualiza deben terminar en el mismo camino: crear la tabla base (versión 1) y después aplicar las mismas migraciones que cualquier otra. Ver `open_tabs`/`sidebar_collapsed`/`editor_height` en `settings` como precedente — ninguna de las tres está en el `CREATE TABLE` de `store.go`, las tres llegaron por `ALTER TABLE ... ADD COLUMN` en `migrations.go`.
+
+## Bindings en el camino de una tecla: nunca dejar una promesa colgada
+
+Un pánico dentro de un método bindeado NO llega al frontend como error: Wails lo
+recupera y contesta `Callback("")`, que el runtime no puede parsear, así que la
+promesa queda pendiente para siempre (y `Call` no tiene timeout). Un solo caso
+así mató el autocompletado de SQL hasta reabrir la pestaña.
+
+Para todo binding que se llame por tecla o por movimiento del cursor:
+`defer recoverEditorCall(...)` del lado de Go **y** `settled()` del lado del
+editor. Detalle y por qué en
+[.claude/specs/go-react-contract.md](../specs/go-react-contract.md).

@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"mini-tools/backend/explain"
 	"mini-tools/backend/export"
 	"mini-tools/backend/git"
+	"mini-tools/backend/httpclient"
 	"mini-tools/backend/localterm"
 	"mini-tools/backend/mongoquery"
 	"mini-tools/backend/query"
@@ -132,6 +135,10 @@ type App struct {
 	// package doc for why exec rather than go-git.
 	gitRunner *git.Runner
 
+	// httpRunner ejecuta las peticiones del módulo HTTP y lleva el registro de
+	// las que están en vuelo, para poder cancelarlas. Ver backend/httpclient.
+	httpRunner *httpclient.Runner
+
 	// autoBackup ticks a periodic vault.Backup while the app is open,
 	// gated by the settings.auto_backup_* columns — see
 	// backend/autobackup's package doc.
@@ -183,6 +190,7 @@ func NewApp() *App {
 		mongoPools: db.NewMongoPoolManager(),
 
 		gitRunner:     git.NewRunner(),
+		httpRunner:    httpclient.NewRunner(),
 		metadataCache: make(map[string]*db.SchemaMetadata),
 		sqlIntel:      sqlintel.NewManager(),
 	}
@@ -312,6 +320,12 @@ func (a *App) shutdown(ctx context.Context) {
 	// holder lets go. Closing it first would leave them releasing leases on
 	// a pool that no longer has the entry.
 	a.sshPool.CloseAll()
+	// Los temporales con el cuerpo completo de las respuestas grandes: se
+	// borran al salir, no antes. Mientras una pestaña muestra una respuesta
+	// cortada, su botón «Guardar…» promete ese archivo.
+	if a.httpRunner != nil {
+		a.httpRunner.CleanSpills()
+	}
 	a.gate.Lock()
 	if a.vault != nil {
 		_ = a.vault.Close()
@@ -2864,12 +2878,43 @@ func (a *App) GetSchemaIndexStatus(connID string) (*sqlintel.Status, error) {
 //
 // It never fails on malformed SQL: half-typed input is the normal case, and
 // the engine is written to degrade to a shorter list rather than error.
-func (a *App) CompleteSQL(req sqlintel.Request) (*sqlintel.Response, error) {
+//
+// El `recover` de abajo NO es decorativo. Ver recoverEditorCall: un pánico
+// acá no se manifiesta como un error, sino como un autocompletado que deja
+// de funcionar hasta reabrir la pestaña.
+func (a *App) CompleteSQL(req sqlintel.Request) (resp *sqlintel.Response, err error) {
+	defer recoverEditorCall("CompleteSQL", func() {
+		resp, err = &sqlintel.Response{}, nil
+	})
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
 	}
-	resp := sqlintel.Complete(a.sqlIntel.Index(req.ConnID), req, a.sqlIntel.UsageFor(req.ConnID))
-	return &resp, nil
+	out := sqlintel.Complete(a.sqlIntel.Index(req.ConnID), req, a.sqlIntel.UsageFor(req.ConnID))
+	return &out, nil
+}
+
+// recoverEditorCall convierte un pánico de una llamada del editor en una
+// respuesta vacía.
+//
+// **Por qué no basta con "no entrar en pánico".** Wails recupera el pánico
+// por su cuenta (internal/frontend/dispatcher.ProcessMessage) y responde con
+// `Callback("")`, una cadena vacía que el runtime de JavaScript no puede
+// parsear — así que la promesa de esa llamada **no se resuelve ni se rechaza
+// nunca**. Y una promesa colgada de CompleteSQL deja la consulta de
+// CodeMirror para siempre en su lista de pendientes, que es lo que hace que
+// el autocompletado no vuelva ni con Ctrl+Espacio hasta cerrar y abrir la
+// pestaña. Comprobado en un banco de pruebas con CodeMirror real: una sola
+// llamada que no vuelve y no se recupera ni escribiendo sesenta caracteres.
+//
+// Recuperar acá cierra ese agujero para toda esta familia de llamadas: en el
+// peor caso el usuario ve una lista vacía una vez, no un editor que hay que
+// reabrir. El pánico se registra, porque sigue siendo un error que hay que
+// arreglar; simplemente deja de ser mortal.
+func recoverEditorCall(name string, fallback func()) {
+	if r := recover(); r != nil {
+		log.Printf("pánico recuperado en %s: %v\n%s", name, r, debug.Stack())
+		fallback()
+	}
 }
 
 // SignatureSQL answers "which argument am I on?" for the call under the
@@ -2879,12 +2924,15 @@ func (a *App) CompleteSQL(req sqlintel.Request) (*sqlintel.Response, error) {
 //
 // Like CompleteSQL it never fails on malformed SQL; an unresolvable cursor
 // yields an empty response, which the editor renders as no tooltip.
-func (a *App) SignatureSQL(req sqlintel.SignatureRequest) (*sqlintel.SignatureResponse, error) {
+func (a *App) SignatureSQL(req sqlintel.SignatureRequest) (resp *sqlintel.SignatureResponse, err error) {
+	defer recoverEditorCall("SignatureSQL", func() {
+		resp, err = &sqlintel.SignatureResponse{}, nil
+	})
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
 	}
-	resp := sqlintel.Signature(a.sqlIntel.Index(req.ConnID), req)
-	return &resp, nil
+	out := sqlintel.Signature(a.sqlIntel.Index(req.ConnID), req)
+	return &out, nil
 }
 
 // SuggestInlineSQL returns just the ghost-text continuation for the cursor.
@@ -2892,7 +2940,8 @@ func (a *App) SignatureSQL(req sqlintel.SignatureRequest) (*sqlintel.SignatureRe
 // move, not only while the popup is open: answering it with a bare string
 // keeps that frequent call's payload at a few bytes instead of the full
 // item list.
-func (a *App) SuggestInlineSQL(req sqlintel.Request) (string, error) {
+func (a *App) SuggestInlineSQL(req sqlintel.Request) (out string, err error) {
+	defer recoverEditorCall("SuggestInlineSQL", func() { out, err = "", nil })
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
 	}

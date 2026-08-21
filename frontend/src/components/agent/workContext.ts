@@ -10,12 +10,15 @@
 // AgentChat.Module en backend/vault/agent_chats_repo.go) justamente para que
 // renombrar una conexión no deje el historial mintiendo.
 
-export type WorkContextKind = 'git' | 'db' | 'ssh' | 'note' | 'none'
+export type WorkContextKind = 'git' | 'db' | 'ssh' | 'note' | 'http' | 'none'
 
 export interface WorkContext {
     kind: WorkContextKind
     // Id opaco del recurso: id de repositorio, id de conexión, id de conexión
-    // SSH, id de nota. Vacío cuando kind es 'none'.
+    // SSH, id de nota, id de petición HTTP. Vacío cuando kind es 'none' — y
+    // también en una petición rápida, que no tiene ítem guardado: todas
+    // comparten entonces una conversación, que es lo correcto para pruebas
+    // sueltas que no son "sobre" nada en particular.
     id: string
     // Nombre visible para el encabezado ("mini-tools", "Prod_Analytics"). Es
     // presentación: nunca se manda al agente ni se guarda.
@@ -32,6 +35,9 @@ export const CONTEXT_ICONS: Record<WorkContextKind, string> = {
     db: 'database',
     ssh: 'terminal',
     note: 'description',
+    // El mismo ícono que el módulo en la barra lateral: el encabezado del chat
+    // tiene que leerse como "esto es la pestaña de al lado".
+    http: 'api',
     none: 'smart_toy',
 }
 
@@ -42,6 +48,7 @@ export const CONTEXT_NOUNS: Record<WorkContextKind, string> = {
     db: 'conexión',
     ssh: 'servidor',
     note: 'nota',
+    http: 'petición',
     none: '',
 }
 
@@ -60,7 +67,15 @@ export function repoIdOf(context: WorkContext): string {
 export function describeContext(context: WorkContext): string {
     if (context.kind === 'none' || !context.label) return ''
     const prefix =
-        context.kind === 'git' ? 'Git' : context.kind === 'db' ? 'Base' : context.kind === 'ssh' ? 'SSH' : 'Nota'
+        context.kind === 'git'
+            ? 'Git'
+            : context.kind === 'db'
+              ? 'Base'
+              : context.kind === 'ssh'
+                ? 'SSH'
+                : context.kind === 'http'
+                  ? 'HTTP'
+                  : 'Nota'
     return `${prefix} · ${context.label}`
 }
 

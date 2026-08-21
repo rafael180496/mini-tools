@@ -1894,6 +1894,32 @@ export namespace git {
 	        this.message = source["message"];
 	    }
 	}
+	export class ReflogEntry {
+	    selector: string;
+	    hash: string;
+	    short: string;
+	    action: string;
+	    detail: string;
+	    subject: string;
+	    author: string;
+	    date: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReflogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.selector = source["selector"];
+	        this.hash = source["hash"];
+	        this.short = source["short"];
+	        this.action = source["action"];
+	        this.detail = source["detail"];
+	        this.subject = source["subject"];
+	        this.author = source["author"];
+	        this.date = source["date"];
+	    }
+	}
 	export class Remote {
 	    name: string;
 	    fetchUrl: string;
@@ -2079,6 +2105,349 @@ export namespace git {
 	        this.prunable = source["prunable"];
 	        this.reason = source["reason"];
 	    }
+	}
+
+}
+
+export namespace httpclient {
+	
+	export class Auth {
+	    type: string;
+	    username?: string;
+	    password?: string;
+	    token?: string;
+	    key?: string;
+	    value?: string;
+	    in?: string;
+	    algorithm?: string;
+	    secret?: string;
+	    secretBase64?: boolean;
+	    payload?: string;
+	    headerPrefix?: string;
+	    addTokenTo?: string;
+	    queryParamName?: string;
+	    accessKey?: string;
+	    secretKey?: string;
+	    sessionToken?: string;
+	    region?: string;
+	    service?: string;
+	    grantType?: string;
+	    accessTokenUrl?: string;
+	    authUrl?: string;
+	    clientId?: string;
+	    clientSecret?: string;
+	    scope?: string;
+	    refreshToken?: string;
+	    redirectUri?: string;
+	    accessToken?: string;
+	    expiresAt?: number;
+	    raw?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Auth(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.token = source["token"];
+	        this.key = source["key"];
+	        this.value = source["value"];
+	        this.in = source["in"];
+	        this.algorithm = source["algorithm"];
+	        this.secret = source["secret"];
+	        this.secretBase64 = source["secretBase64"];
+	        this.payload = source["payload"];
+	        this.headerPrefix = source["headerPrefix"];
+	        this.addTokenTo = source["addTokenTo"];
+	        this.queryParamName = source["queryParamName"];
+	        this.accessKey = source["accessKey"];
+	        this.secretKey = source["secretKey"];
+	        this.sessionToken = source["sessionToken"];
+	        this.region = source["region"];
+	        this.service = source["service"];
+	        this.grantType = source["grantType"];
+	        this.accessTokenUrl = source["accessTokenUrl"];
+	        this.authUrl = source["authUrl"];
+	        this.clientId = source["clientId"];
+	        this.clientSecret = source["clientSecret"];
+	        this.scope = source["scope"];
+	        this.refreshToken = source["refreshToken"];
+	        this.redirectUri = source["redirectUri"];
+	        this.accessToken = source["accessToken"];
+	        this.expiresAt = source["expiresAt"];
+	        this.raw = source["raw"];
+	    }
+	}
+	export class KeyValue {
+	    key: string;
+	    value: string;
+	    enabled: boolean;
+	    description?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KeyValue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.value = source["value"];
+	        this.enabled = source["enabled"];
+	        this.description = source["description"];
+	    }
+	}
+	export class FormField {
+	    key: string;
+	    value: string;
+	    type: string;
+	    enabled: boolean;
+	    description?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FormField(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.value = source["value"];
+	        this.type = source["type"];
+	        this.enabled = source["enabled"];
+	        this.description = source["description"];
+	    }
+	}
+	export class Body {
+	    mode: string;
+	    raw?: string;
+	    rawLang?: string;
+	    formData?: FormField[];
+	    urlEncoded?: KeyValue[];
+	    binaryPath?: string;
+	    graphqlQuery?: string;
+	    graphqlVariables?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Body(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.raw = source["raw"];
+	        this.rawLang = source["rawLang"];
+	        this.formData = this.convertValues(source["formData"], FormField);
+	        this.urlEncoded = this.convertValues(source["urlEncoded"], KeyValue);
+	        this.binaryPath = source["binaryPath"];
+	        this.graphqlQuery = source["graphqlQuery"];
+	        this.graphqlVariables = source["graphqlVariables"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CodeLanguage {
+	    id: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CodeLanguage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	    }
+	}
+	export class Cookie {
+	    domain: string;
+	    name: string;
+	    value: string;
+	    path: string;
+	    secure: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Cookie(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.name = source["name"];
+	        this.value = source["value"];
+	        this.path = source["path"];
+	        this.secure = source["secure"];
+	    }
+	}
+	
+	
+	export class OAuth2Result {
+	    accessToken: string;
+	    refreshToken?: string;
+	    tokenType?: string;
+	    expiresAt?: number;
+	    scope?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OAuth2Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.accessToken = source["accessToken"];
+	        this.refreshToken = source["refreshToken"];
+	        this.tokenType = source["tokenType"];
+	        this.expiresAt = source["expiresAt"];
+	        this.scope = source["scope"];
+	    }
+	}
+	export class Settings {
+	    timeoutMs: number;
+	    verifyTls: boolean;
+	    followRedirects: boolean;
+	    maxRedirects: number;
+	    keepMethodOnRedirect: boolean;
+	    keepAuthOnRedirect: boolean;
+	    removeRefererOnRedirect: boolean;
+	    httpVersion: string;
+	    maxBodyBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Settings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timeoutMs = source["timeoutMs"];
+	        this.verifyTls = source["verifyTls"];
+	        this.followRedirects = source["followRedirects"];
+	        this.maxRedirects = source["maxRedirects"];
+	        this.keepMethodOnRedirect = source["keepMethodOnRedirect"];
+	        this.keepAuthOnRedirect = source["keepAuthOnRedirect"];
+	        this.removeRefererOnRedirect = source["removeRefererOnRedirect"];
+	        this.httpVersion = source["httpVersion"];
+	        this.maxBodyBytes = source["maxBodyBytes"];
+	    }
+	}
+	export class Request {
+	    method: string;
+	    url: string;
+	    params?: KeyValue[];
+	    pathVars?: KeyValue[];
+	    headers?: KeyValue[];
+	    body: Body;
+	    settings: Settings;
+	    auth: Auth;
+	
+	    static createFrom(source: any = {}) {
+	        return new Request(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.method = source["method"];
+	        this.url = source["url"];
+	        this.params = this.convertValues(source["params"], KeyValue);
+	        this.pathVars = this.convertValues(source["pathVars"], KeyValue);
+	        this.headers = this.convertValues(source["headers"], KeyValue);
+	        this.body = this.convertValues(source["body"], Body);
+	        this.settings = this.convertValues(source["settings"], Settings);
+	        this.auth = this.convertValues(source["auth"], Auth);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Response {
+	    status: number;
+	    statusText: string;
+	    headers: KeyValue[];
+	    body: string;
+	    bodyBase64?: string;
+	    isBinary: boolean;
+	    truncated: boolean;
+	    sizeBytes: number;
+	    durationMs: number;
+	    finalUrl: string;
+	    redirects: number;
+	    contentType: string;
+	    lang: string;
+	    spillPath?: string;
+	    filename?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Response(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.statusText = source["statusText"];
+	        this.headers = this.convertValues(source["headers"], KeyValue);
+	        this.body = source["body"];
+	        this.bodyBase64 = source["bodyBase64"];
+	        this.isBinary = source["isBinary"];
+	        this.truncated = source["truncated"];
+	        this.sizeBytes = source["sizeBytes"];
+	        this.durationMs = source["durationMs"];
+	        this.finalUrl = source["finalUrl"];
+	        this.redirects = source["redirects"];
+	        this.contentType = source["contentType"];
+	        this.lang = source["lang"];
+	        this.spillPath = source["spillPath"];
+	        this.filename = source["filename"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -2315,6 +2684,238 @@ export namespace main {
 	        this.path = source["path"];
 	        this.content = source["content"];
 	    }
+	}
+	export class HTTPGenerated {
+	    answer: string;
+	    request?: httpclient.Request;
+	    curl?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HTTPGenerated(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.answer = source["answer"];
+	        this.request = this.convertValues(source["request"], httpclient.Request);
+	        this.curl = source["curl"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class HTTPRunResult {
+	    itemId: string;
+	    name: string;
+	    folder: string;
+	    method: string;
+	    url: string;
+	    status: number;
+	    statusText: string;
+	    durationMs: number;
+	    sizeBytes: number;
+	    passed: boolean;
+	    error?: string;
+	    missing?: string[];
+	    skipped?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new HTTPRunResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.itemId = source["itemId"];
+	        this.name = source["name"];
+	        this.folder = source["folder"];
+	        this.method = source["method"];
+	        this.url = source["url"];
+	        this.status = source["status"];
+	        this.statusText = source["statusText"];
+	        this.durationMs = source["durationMs"];
+	        this.sizeBytes = source["sizeBytes"];
+	        this.passed = source["passed"];
+	        this.error = source["error"];
+	        this.missing = source["missing"];
+	        this.skipped = source["skipped"];
+	    }
+	}
+	export class HTTPRunSummary {
+	    runId: string;
+	    collection: string;
+	    environment: string;
+	    total: number;
+	    passed: number;
+	    failed: number;
+	    skipped: number;
+	    durationMs: number;
+	    canceled: boolean;
+	    results: HTTPRunResult[];
+	
+	    static createFrom(source: any = {}) {
+	        return new HTTPRunSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runId = source["runId"];
+	        this.collection = source["collection"];
+	        this.environment = source["environment"];
+	        this.total = source["total"];
+	        this.passed = source["passed"];
+	        this.failed = source["failed"];
+	        this.skipped = source["skipped"];
+	        this.durationMs = source["durationMs"];
+	        this.canceled = source["canceled"];
+	        this.results = this.convertValues(source["results"], HTTPRunResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class HttpAuthPreviewResult {
+	    type: string;
+	    executable: boolean;
+	    needsToken: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new HttpAuthPreviewResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.executable = source["executable"];
+	        this.needsToken = source["needsToken"];
+	    }
+	}
+	export class HttpDocsResult {
+	    noteId: string;
+	    title: string;
+	    status: string;
+	    requests: number;
+	    markdown: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HttpDocsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.noteId = source["noteId"];
+	        this.title = source["title"];
+	        this.status = source["status"];
+	        this.requests = source["requests"];
+	        this.markdown = source["markdown"];
+	    }
+	}
+	export class HttpImportResult {
+	    collectionId: string;
+	    name: string;
+	    requests: number;
+	    folders: number;
+	    warnings?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new HttpImportResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.collectionId = source["collectionId"];
+	        this.name = source["name"];
+	        this.requests = source["requests"];
+	        this.folders = source["folders"];
+	        this.warnings = source["warnings"];
+	    }
+	}
+	export class HttpResolveResult {
+	    url: string;
+	    missing: string[];
+	    scopes: string[];
+	    computedErrors?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new HttpResolveResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.missing = source["missing"];
+	        this.scopes = source["scopes"];
+	        this.computedErrors = source["computedErrors"];
+	    }
+	}
+	export class HttpSendResult {
+	    response?: httpclient.Response;
+	    error?: string;
+	    sentUrl: string;
+	    durationMs: number;
+	    missing?: string[];
+	    computedErrors?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new HttpSendResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.response = this.convertValues(source["response"], httpclient.Response);
+	        this.error = source["error"];
+	        this.sentUrl = source["sentUrl"];
+	        this.durationMs = source["durationMs"];
+	        this.missing = source["missing"];
+	        this.computedErrors = source["computedErrors"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class mcpAudit {
 	    tool: string;
@@ -3294,6 +3895,144 @@ export namespace vault {
 	        this.defaultAgent = source["defaultAgent"];
 	    }
 	}
+	export class HTTPCollection {
+	    id: string;
+	    name: string;
+	    description: string;
+	    folderId?: string;
+	    sortOrder: number;
+	    variables?: string;
+	    auth?: string;
+	    preRequest?: string;
+	    testScript?: string;
+	    computed?: string;
+	    docsNoteId?: string;
+	    createdAt: number;
+	    updatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HTTPCollection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.folderId = source["folderId"];
+	        this.sortOrder = source["sortOrder"];
+	        this.variables = source["variables"];
+	        this.auth = source["auth"];
+	        this.preRequest = source["preRequest"];
+	        this.testScript = source["testScript"];
+	        this.computed = source["computed"];
+	        this.docsNoteId = source["docsNoteId"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class HTTPEnvironment {
+	    id: string;
+	    name: string;
+	    variables?: string;
+	    pinnedCollectionId?: string;
+	    sortOrder: number;
+	    createdAt: number;
+	    updatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HTTPEnvironment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.variables = source["variables"];
+	        this.pinnedCollectionId = source["pinnedCollectionId"];
+	        this.sortOrder = source["sortOrder"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class HTTPHistoryEntry {
+	    id: string;
+	    itemId?: string;
+	    method: string;
+	    url: string;
+	    status: number;
+	    durationMs: number;
+	    sizeBytes: number;
+	    error?: string;
+	    executedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HTTPHistoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.itemId = source["itemId"];
+	        this.method = source["method"];
+	        this.url = source["url"];
+	        this.status = source["status"];
+	        this.durationMs = source["durationMs"];
+	        this.sizeBytes = source["sizeBytes"];
+	        this.error = source["error"];
+	        this.executedAt = source["executedAt"];
+	    }
+	}
+	export class HTTPItem {
+	    id: string;
+	    collectionId: string;
+	    parentId?: string;
+	    kind: string;
+	    name: string;
+	    sortOrder: number;
+	    method?: string;
+	    url?: string;
+	    params?: string;
+	    pathVars?: string;
+	    headers?: string;
+	    settings?: string;
+	    body?: string;
+	    auth?: string;
+	    docs?: string;
+	    preRequest?: string;
+	    testScript?: string;
+	    computed?: string;
+	    createdAt: number;
+	    updatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HTTPItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.collectionId = source["collectionId"];
+	        this.parentId = source["parentId"];
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.sortOrder = source["sortOrder"];
+	        this.method = source["method"];
+	        this.url = source["url"];
+	        this.params = source["params"];
+	        this.pathVars = source["pathVars"];
+	        this.headers = source["headers"];
+	        this.settings = source["settings"];
+	        this.body = source["body"];
+	        this.auth = source["auth"];
+	        this.docs = source["docs"];
+	        this.preRequest = source["preRequest"];
+	        this.testScript = source["testScript"];
+	        this.computed = source["computed"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
 	export class HistoryEntry {
 	    id: string;
 	    connectionId: string;
@@ -3485,6 +4224,7 @@ export namespace vault {
 	    updatedAt: number;
 	    linkCount: number;
 	    folderId: string;
+	    createdAt: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new NoteSummary(source);
@@ -3498,6 +4238,7 @@ export namespace vault {
 	        this.updatedAt = source["updatedAt"];
 	        this.linkCount = source["linkCount"];
 	        this.folderId = source["folderId"];
+	        this.createdAt = source["createdAt"];
 	    }
 	}
 	export class NoteTag {

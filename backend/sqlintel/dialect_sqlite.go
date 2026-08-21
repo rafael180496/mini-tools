@@ -31,7 +31,14 @@ func init() {
 			{Label: "ct", Detail: "CREATE TABLE … (con rowid autoincremental)", Body: "CREATE TABLE ${1:tabla} (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    ${2:nombre} TEXT NOT NULL,\n    creado_en TEXT NOT NULL DEFAULT (datetime('now'))\n);"},
 			{Label: "updj", Detail: "UPDATE … FROM otra tabla (SQLite 3.33+)", Body: "UPDATE ${1:destino}\nSET ${2:columna} = o.${2:columna}\nFROM ${3:origen} o\nWHERE o.${4:id} = ${1:destino}.${4:id};"},
 			{Label: "expl", Detail: "EXPLAIN QUERY PLAN", Body: "EXPLAIN QUERY PLAN\n${1:SELECT 1};"},
-			{Label: "pragma", Detail: "PRAGMA table_info(…)", Body: "PRAGMA table_info(${1:tabla});"},
+			{Label: "tx", Detail: "Transacción explícita", Body: "BEGIN TRANSACTION;\n    ${1:UPDATE tabla SET columna = valor WHERE condicion;}\nCOMMIT;"},
+			{Label: "cols", Detail: "Columnas de una tabla (pragma table_info)", Body: "SELECT name, type, \"notnull\", dflt_value, pk\nFROM pragma_table_info('${1:tabla}');"},
+			{Label: "idxs", Detail: "Índices declarados en la base", Body: "SELECT name, tbl_name, sql\nFROM sqlite_master\nWHERE type = 'index' AND sql IS NOT NULL\nORDER BY tbl_name, name;"},
+			{Label: "vac", Detail: "VACUUM (compactar el archivo)", Body: "VACUUM;"},
+			// SQLite no tiene TRUNCATE: el DELETE sin WHERE está optimizado
+			// justamente para este caso.
+			{Label: "trunc", Detail: "Vaciar una tabla (SQLite no tiene TRUNCATE)", Body: "DELETE FROM ${1:tabla};"},
+						{Label: "pragma", Detail: "PRAGMA table_info(…)", Body: "PRAGMA table_info(${1:tabla});"},
 		},
 	})
 }

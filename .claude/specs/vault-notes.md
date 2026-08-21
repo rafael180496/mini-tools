@@ -206,3 +206,34 @@ contenido es válido— y el backend intercepta la referencia y lo dice.
 - **Sincronizar entre máquinas** — cifrado por columna + salt por instalación
   significa que el `vault.db` de una máquina no se descifra en otra. Es un plan
   propio, no un renglón de este.
+
+## La carpeta como vista, no solo como rama del árbol
+
+La barra lateral está hecha para **navegar**: títulos, jerarquía, poco ancho.
+Revisar una carpeta es otra cosa —cuántas notas hay, cuál se tocó la última
+vez, cuál quedó sin actualizar desde hace un año— y necesita lo contrario: una
+tabla con fechas, ordenable, con su propio buscador.
+
+Por eso el clic está partido: **el nombre abre la tabla, la flecha pliega**, que
+es la separación de cualquier explorador de archivos. Cambiar el clic del nombre
+por "plegar" fue lo que hizo falta discutir: plegar y desplegar es lo que sirve
+para navegar, y no se podía perder.
+
+**El orden de la lista sin búsqueda es alfabético, no por fecha.** Es una
+decisión de navegación, no de presentación: con orden por fecha de modificación,
+abrir una nota la guardaba y la guardaba arriba de todo, así que la lista se
+reordenaba sola y una nota nunca estaba dos veces en el mismo lugar. El orden
+por relevancia sigue mandando cuando hay algo escrito en el buscador, que es
+cuando "lo último que toqué" sí es la respuesta.
+
+### Trampa que costó un bug
+
+`SearchNotesSmart` tiene un camino rápido para la búsqueda vacía —devuelve
+`ListNotes` sin descifrar cuerpos— y ese camino armaba el `NoteHit` **campo por
+campo**, así que olvidarse de uno era silencioso. Se olvidó `FolderID`, y como
+la barra lateral usa el buscador aunque no se esté buscando, el efecto fue que
+mover una nota a una carpeta no hacía nada visible: todas se dibujaban en la
+raíz. Solo aparecían en su carpeta mientras había texto en el buscador, que es
+el único momento en que corre el otro camino.
+
+Cualquier campo nuevo de `NoteHit` hay que llenarlo **en los dos caminos**.

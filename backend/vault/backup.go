@@ -34,14 +34,43 @@ func (s *Store) Backup(destPath string) error {
 	if err != nil {
 		return err
 	}
+	// El salt se comprueba ANTES de crear nada: sin él el backup no sirve, y
+	// descubrirlo a mitad de la escritura es lo que producía el desastre
+	// descrito abajo.
+	if _, err := os.Stat(saltPath); err != nil {
+		return fmt.Errorf("vault: falta salt.bin (%s), sin el cual un backup no se puede restaurar: %w", saltPath, err)
+	}
 
-	out, err := os.Create(destPath)
+	// # Por qué se escribe a un temporal y se renombra al final
+	//
+	// Antes se escribía DIRECTO sobre destPath. Si algo fallaba a mitad —el
+	// salt ausente era el caso real— la función devolvía error, pero el
+	// archivo ya estaba creado y el `zip.Writer` alcanzaba a cerrar su
+	// directorio central: quedaba un .mtbackup **válido y abrible, con solo
+	// vault.db adentro**. Y como el backup automático escribe SIEMPRE sobre
+	// la misma ruta, ese archivo inservible pisaba al último bueno.
+	//
+	// El resultado es el peor de todos: backups que existen, pesan lo
+	// esperado y abren, pero no se pueden restaurar — y nadie se entera
+	// hasta que los necesita. Escribir a un temporal y renombrar sobre el
+	// destino solo cuando todo salió bien hace que un backup fallido deje
+	// intacto al anterior.
+	tmpOut, err := os.CreateTemp(filepath.Dir(destPath), ".mini-tools-backup-*.tmp")
 	if err != nil {
 		return fmt.Errorf("vault: creando archivo de backup: %w", err)
 	}
-	defer out.Close()
+	tmpOutPath := tmpOut.Name()
+	// Si algo falla, el temporal se borra: no queda basura al lado del
+	// backup bueno.
+	committed := false
+	defer func() {
+		tmpOut.Close()
+		if !committed {
+			os.Remove(tmpOutPath)
+		}
+	}()
 
-	zw := zip.NewWriter(out)
+	zw := zip.NewWriter(tmpOut)
 	if err := addFileToZip(zw, "vault.db", tmpDBPath); err != nil {
 		zw.Close()
 		return err
@@ -53,7 +82,49 @@ func (s *Store) Backup(destPath string) error {
 	if err := zw.Close(); err != nil {
 		return fmt.Errorf("vault: finalizando archivo de backup: %w", err)
 	}
+	if err := tmpOut.Sync(); err != nil {
+		return fmt.Errorf("vault: sincronizando el backup a disco: %w", err)
+	}
+	if err := tmpOut.Close(); err != nil {
+		return fmt.Errorf("vault: cerrando el backup: %w", err)
+	}
 
+	// Se relee lo que se acabó de escribir antes de darlo por bueno. Un
+	// backup se prueba el día que hace falta, y ese es el peor momento para
+	// descubrir que le falta una pieza.
+	if err := checkBackupComplete(tmpOutPath); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpOutPath, destPath); err != nil {
+		return fmt.Errorf("vault: publicando el backup en %q: %w", destPath, err)
+	}
+	committed = true
+	return nil
+}
+
+// checkBackupComplete abre el archivo recién escrito y comprueba que tenga
+// las dos piezas. Es barato y convierte un backup roto en un error visible
+// en el momento de hacerlo, no meses después.
+func checkBackupComplete(path string) error {
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		return fmt.Errorf("vault: el backup recién creado no se puede abrir: %w", err)
+	}
+	defer r.Close()
+
+	var hasDB, hasSalt bool
+	for _, f := range r.File {
+		switch f.Name {
+		case "vault.db":
+			hasDB = true
+		case "salt.bin":
+			hasSalt = true
+		}
+	}
+	if !hasDB || !hasSalt {
+		return fmt.Errorf("vault: el backup quedó incompleto (vault.db=%v, salt.bin=%v) y no se publicó", hasDB, hasSalt)
+	}
 	return nil
 }
 
@@ -100,8 +171,8 @@ func VerifyBackupPassword(backupPath, password string) error {
 			saltFile = f
 		}
 	}
-	if dbFile == nil || saltFile == nil {
-		return fmt.Errorf("vault: backup inválido (falta vault.db o salt.bin)")
+	if dbFile == nil {
+		return fmt.Errorf("vault: backup inválido: no contiene vault.db")
 	}
 
 	tmpDir, err := os.MkdirTemp("", "mini-tools-restore-check-*")
@@ -111,17 +182,13 @@ func VerifyBackupPassword(backupPath, password string) error {
 	defer os.RemoveAll(tmpDir)
 
 	tmpDBPath := filepath.Join(tmpDir, "vault.db")
-	tmpSaltPath := filepath.Join(tmpDir, "salt.bin")
 	if err := extractZipFile(dbFile, tmpDBPath); err != nil {
 		return err
 	}
-	if err := extractZipFile(saltFile, tmpSaltPath); err != nil {
-		return err
-	}
 
-	salt, err := os.ReadFile(tmpSaltPath)
+	salt, err := backupSalt(saltFile, tmpDir)
 	if err != nil {
-		return fmt.Errorf("vault: leyendo salt del backup: %w", err)
+		return err
 	}
 
 	db, err := sql.Open("sqlite", tmpDBPath)
@@ -144,6 +211,48 @@ func VerifyBackupPassword(backupPath, password string) error {
 		return ErrWrongPassword
 	}
 	return nil
+}
+
+// backupSalt devuelve el salt con el que se derivó la clave del backup.
+//
+// # El repliegue al salt local, y por qué existe
+//
+// Lo normal es que el backup traiga el suyo. Pero hubo backups —los
+// automáticos, hasta que se arregló Backup— que quedaron **sin salt.bin**:
+// la escritura fallaba a mitad y dejaba un zip válido con solo la base
+// adentro. Rechazarlos de plano dejaría a esos usuarios sin forma de
+// recuperar sus datos, cuando en la enorme mayoría de los casos el salt que
+// hace falta está justo al lado: el de esta instalación, que no cambia nunca
+// una vez creado.
+//
+// Solo repliega si el backup NO trae salt. Si trae uno, ese manda: un backup
+// que viene de otra máquina tiene su propio salt y usar el local daría una
+// clave equivocada.
+func backupSalt(saltFile *zip.File, tmpDir string) ([]byte, error) {
+	if saltFile != nil {
+		tmpSaltPath := filepath.Join(tmpDir, "salt.bin")
+		if err := extractZipFile(saltFile, tmpSaltPath); err != nil {
+			return nil, err
+		}
+		salt, err := os.ReadFile(tmpSaltPath)
+		if err != nil {
+			return nil, fmt.Errorf("vault: leyendo salt del backup: %w", err)
+		}
+		return salt, nil
+	}
+
+	localPath, err := appdata.SaltPath()
+	if err != nil {
+		return nil, err
+	}
+	salt, err := os.ReadFile(localPath)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"vault: este backup no incluye salt.bin y esta instalación tampoco tiene uno en %s. "+
+				"Sin el salt no hay forma de derivar la clave: buscá un backup anterior que sí lo traiga "+
+				"y copiale su salt.bin a este archivo", localPath)
+	}
+	return salt, nil
 }
 
 // RestoreBackup extracts a backup created by Backup, overwriting this
@@ -169,8 +278,8 @@ func RestoreBackup(backupPath string) error {
 			saltFile = f
 		}
 	}
-	if dbFile == nil || saltFile == nil {
-		return fmt.Errorf("vault: backup inválido (falta vault.db o salt.bin)")
+	if dbFile == nil {
+		return fmt.Errorf("vault: backup inválido: no contiene vault.db")
 	}
 
 	dbPath, err := appdata.VaultPath()
@@ -185,8 +294,17 @@ func RestoreBackup(backupPath string) error {
 	if err := extractZipFile(dbFile, dbPath); err != nil {
 		return err
 	}
-	if err := extractZipFile(saltFile, saltPath); err != nil {
-		return err
+	// Un backup sin salt se restaura conservando el LOCAL: es el mismo con
+	// el que se cifró (ver backupSalt). Pisarlo con nada, o negarse a
+	// restaurar, dejaría los datos inalcanzables teniendo la clave al lado.
+	if saltFile != nil {
+		if err := extractZipFile(saltFile, saltPath); err != nil {
+			return err
+		}
+	} else if _, err := os.Stat(saltPath); err != nil {
+		return fmt.Errorf(
+			"vault: el backup no incluye salt.bin y esta instalación tampoco lo tiene: " +
+				"la base restaurada quedaría ilegible, así que no se restauró nada")
 	}
 
 	// Stale WAL/SHM sidecar files from whatever vault.db was there before

@@ -34,7 +34,13 @@ func init() {
 			{Label: "upsert", Detail: "MERGE … (upsert de T-SQL)", Body: "MERGE ${1:destino} AS d\nUSING ${2:origen} AS o\n    ON d.${3:id} = o.${3:id}\nWHEN MATCHED THEN\n    UPDATE SET d.${4:columna} = o.${4:columna}\nWHEN NOT MATCHED THEN\n    INSERT (${3:id}, ${4:columna}) VALUES (o.${3:id}, o.${4:columna});"},
 			{Label: "proc", Detail: "CREATE OR ALTER PROCEDURE", Body: "CREATE OR ALTER PROCEDURE ${1:nombre}\n    @${2:param} ${3:int}\nAS\nBEGIN\n    SET NOCOUNT ON;\n    ${4:SELECT 1;}\nEND\nGO"},
 			{Label: "updj", Detail: "UPDATE … FROM … JOIN … (sintaxis de T-SQL)", Body: "UPDATE d\nSET d.${1:columna} = o.${1:columna}\nFROM ${2:destino} d\nJOIN ${3:origen} o ON o.${4:id} = d.${4:id};"},
-			{Label: "try", Detail: "BEGIN TRY … BEGIN CATCH", Body: "BEGIN TRY\n    ${1:SELECT 1;}\nEND TRY\nBEGIN CATCH\n    SELECT ERROR_MESSAGE();\nEND CATCH"},
+			{Label: "tx", Detail: "Transacción con TRY/CATCH y ROLLBACK", Body: "BEGIN TRY\n    BEGIN TRANSACTION;\n    ${1:UPDATE tabla SET columna = valor WHERE condicion;}\n    COMMIT TRANSACTION;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n    THROW;\nEND CATCH;"},
+			{Label: "cols", Detail: "Columnas de una tabla (INFORMATION_SCHEMA)", Body: "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE\nFROM INFORMATION_SCHEMA.COLUMNS\nWHERE TABLE_SCHEMA = '${1:dbo}'\n  AND TABLE_NAME = '${2:tabla}'\nORDER BY ORDINAL_POSITION;"},
+			{Label: "size", Detail: "Tamaño de las tablas más grandes", Body: "SELECT t.name AS tabla, SUM(p.rows) AS filas, SUM(a.total_pages) * 8 / 1024 AS mb\nFROM sys.tables t\nJOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)\nJOIN sys.allocation_units a ON a.container_id = p.partition_id\nGROUP BY t.name\nORDER BY mb DESC;"},
+			{Label: "act", Detail: "Consultas en curso (sys.dm_exec_requests)", Body: "SELECT r.session_id, r.status, r.wait_type, r.total_elapsed_time, t.text\nFROM sys.dm_exec_requests r\nCROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t\nWHERE r.session_id <> @@SPID;"},
+			// SQL Server no renombra con ALTER TABLE.
+			{Label: "ren", Detail: "Renombrar una tabla (sp_rename)", Body: "EXEC sp_rename '${1:tabla}', '${2:nombre_nuevo}';"},
+						{Label: "try", Detail: "BEGIN TRY … BEGIN CATCH", Body: "BEGIN TRY\n    ${1:SELECT 1;}\nEND TRY\nBEGIN CATCH\n    SELECT ERROR_MESSAGE();\nEND CATCH"},
 		},
 	})
 }

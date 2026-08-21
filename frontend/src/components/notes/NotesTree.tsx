@@ -1,10 +1,11 @@
 import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react'
-import {CreateNote, DeleteNote, NotesGraph, SearchNotesSmart, SetNoteFolder} from '../../../wailsjs/go/main/App'
+import {CreateNote, CreateNoteInFolder, DeleteNote, NotesGraph, SearchNotesSmart, SetNoteFolder} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import SidebarSection from '../sidebar/SidebarSection'
 import MoveToFolderMenu from '../sidebar/MoveToFolderMenu'
 import ConfirmDialog from '../ConfirmDialog'
+import FolderNotesDialog from './FolderNotesDialog'
 import PromptDialog from '../git/PromptDialog'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
 import {buildNoteLinkTree, childrenIndex, type NoteTreeRow} from '../../lib/noteLinkTree'
@@ -86,6 +87,9 @@ export default function NotesTree({
     // window.prompt: un diálogo nativo dentro del webview no se percibe como
     // un diálogo (ver .claude/rules/conventions.md).
     const [renamingFolder, setRenamingFolder] = useState<vault.Folder | null>(null)
+    // Carpeta abierta en la vista de tabla: el clic en el NOMBRE la abre, el
+    // chevron sigue plegando. Es lo que hace cualquier explorador de archivos.
+    const [openedFolder, setOpenedFolder] = useState<vault.Folder | null>(null)
 
     // Con retardo: cada búsqueda descifra las notas en memoria (ver
     // backend/vault/notesearch.go), así que buscar por pulsación las
@@ -94,7 +98,12 @@ export default function NotesTree({
         let cancelled = false
         const t = setTimeout(() => {
             setLoading(true)
-            SearchNotesSmart(query, 60)
+            // Sin búsqueda se piden TODAS (hasta 500): la lista está agrupada
+            // por carpeta y ordenada alfabéticamente, así que un tope de 60
+            // dejaría carpetas enteras vacías por empezar con una letra tarde.
+            // Buscando alcanza con 60: ahí manda la relevancia y lo que
+            // importa son los primeros resultados.
+            SearchNotesSmart(query, query.trim() ? 60 : 500)
                 .then((h) => !cancelled && setHits(h ?? []))
                 .catch((e) => !cancelled && setError(String(e)))
                 .finally(() => !cancelled && setLoading(false))
@@ -196,6 +205,38 @@ export default function NotesTree({
             else next.add(id)
             return next
         })
+
+    // Crea una nota YA adentro de la carpeta, en una sola llamada: crear y
+    // después mover la dibujaría un instante en la raíz.
+    const createNoteIn = (folderId: string) => {
+        const title = query.trim() || 'Nota sin título'
+        void CreateNoteInFolder(title, folderId)
+            .then((id) => {
+                onClearFilter()
+                setOpenFolders((prev) => new Set([...prev, folderId]))
+                onCreated(id)
+            })
+            .catch((e) => setError(String(e)))
+    }
+
+    // Ids de las subcarpetas de una carpeta, para que su tabla pueda contar la
+    // rama entera y no solo el primer nivel.
+    const descendantsOf = useCallback(
+        (id: string): string[] => {
+            const out: string[] = []
+            const walk = (parent: string) => {
+                for (const f of noteFolders) {
+                    if (f.parentId === parent) {
+                        out.push(f.id)
+                        walk(f.id)
+                    }
+                }
+            }
+            walk(id)
+            return out
+        },
+        [noteFolders],
+    )
 
     const moveNote = (noteId: string, folderId: string) => {
         void SetNoteFolder(noteId, folderId)
@@ -312,6 +353,8 @@ export default function NotesTree({
                         isOpen={foldersOpen}
                         onToggle={toggleFolder}
                         onCreateFolder={onCreateFolder}
+                        onCreateNote={createNoteIn}
+                        onOpenFolder={setOpenedFolder}
                         onRenameFolder={setRenamingFolder}
                         onDeleteFolder={onDeleteFolder}
                         renderNotes={(notes, depth) =>
@@ -362,6 +405,17 @@ export default function NotesTree({
                 />
             )}
 
+            {openedFolder && (
+                <FolderNotesDialog
+                    folder={openedFolder}
+                    descendantIds={descendantsOf(openedFolder.id)}
+                    activeNoteId={activeNoteId}
+                    onOpenNote={onOpenNote}
+                    onChanged={onChanged}
+                    onClose={() => setOpenedFolder(null)}
+                />
+            )}
+
             {renamingFolder && (
                 <PromptDialog
                     title="Cambiar el nombre de la carpeta"
@@ -388,6 +442,8 @@ function FolderRow({
     isOpen,
     onToggle,
     onCreateFolder,
+    onCreateNote,
+    onOpenFolder,
     onRenameFolder,
     onDeleteFolder,
     renderNotes,
@@ -398,6 +454,8 @@ function FolderRow({
     isOpen: (id: string) => boolean
     onToggle: (id: string) => void
     onCreateFolder: (name: string, parentId: string) => void
+    onCreateNote: (folderId: string) => void
+    onOpenFolder: (folder: vault.Folder) => void
     onRenameFolder: (folder: vault.Folder) => void
     onDeleteFolder: (id: string) => void
     // Recibe TODAS las notas de la carpeta y no una por una: el anidado por
@@ -424,18 +482,32 @@ function FolderRow({
                 <button
                     onClick={() => onToggle(node.folder.id)}
                     title={open ? 'Plegar la carpeta' : `Desplegar la carpeta (${total} ${total === 1 ? 'nota' : 'notas'})`}
+                    className="shrink-0 rounded text-on-surface-variant/70 hover:text-on-surface"
+                >
+                    <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} />
+                </button>
+                {/* El NOMBRE abre la carpeta en una tabla; la flecha la
+                    despliega en el árbol. Es la separación de cualquier
+                    explorador de archivos, y es lo que permite revisar una
+                    carpeta —fechas, cuántas hay, buscar adentro— sin perder el
+                    plegado que sirve para navegar. */}
+                <button
+                    onClick={() => onOpenFolder(node.folder)}
+                    title={`Abre «${node.folder.name}» en una tabla: sus notas con fecha de creación y de última modificación, y un buscador propio. La flecha de la izquierda solo despliega.`}
                     className="flex min-w-0 flex-1 items-center gap-1 text-left"
                 >
-                    <Icon
-                        name={open ? 'expand_more' : 'chevron_right'}
-                        size={13}
-                        className="shrink-0 text-on-surface-variant/70"
-                    />
                     <span className="min-w-0 truncate text-on-surface">{node.folder.name}</span>
                     <span className="shrink-0 text-[10px] text-on-surface-variant/50 group-hover:hidden">{total}</span>
                 </button>
 
                 <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+                    <button
+                        onClick={() => onCreateNote(node.folder.id)}
+                        title="Crea una nota adentro de esta carpeta. Si hay algo escrito en el buscador, lo usa como título."
+                        className="rounded p-0.5 text-on-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="note_add" size={12} />
+                    </button>
                     <button
                         onClick={() => onCreateFolder('Nueva carpeta', node.folder.id)}
                         title="Crea una subcarpeta acá adentro"
@@ -471,6 +543,8 @@ function FolderRow({
                             isOpen={isOpen}
                             onToggle={onToggle}
                             onCreateFolder={onCreateFolder}
+                            onCreateNote={onCreateNote}
+                            onOpenFolder={onOpenFolder}
                             onRenameFolder={onRenameFolder}
                             onDeleteFolder={onDeleteFolder}
                             renderNotes={renderNotes}

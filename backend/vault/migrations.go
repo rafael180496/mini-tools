@@ -969,6 +969,199 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 45,
+		desc:    "módulo HTTP: colecciones, ítems (carpetas y requests) e historial",
+		apply: func(tx *sql.Tx) error {
+			// Fase 1 de .claude/specs/http-client.md. Se crean las tres
+			// tablas del núcleo; entornos y cookies entran en sus propias
+			// migraciones cuando lleguen sus fases, para que cada una sea
+			// reversible por separado en el historial de git.
+			//
+			// Nada de esto es aditivo sobre tablas existentes: son tablas
+			// nuevas, el caso más seguro de migración.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS http_collections (
+				id           TEXT PRIMARY KEY,
+				name         TEXT NOT NULL,
+				description  TEXT NOT NULL DEFAULT '',
+				folder_id    TEXT,
+				sort_order   INTEGER NOT NULL DEFAULT 0,
+				variables    BLOB,
+				variables_nonce BLOB,
+				auth         BLOB,
+				auth_nonce   BLOB,
+				postman_raw  BLOB,
+				postman_raw_nonce BLOB,
+				created_at   INTEGER NOT NULL,
+				updated_at   INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+
+			// Un solo árbol con parent_id + kind, sin tabla de carpetas
+			// aparte: es la forma que ya tiene el formato de Postman, así
+			// que el import (F6) no necesita traducir la estructura.
+			//
+			// Las columnas cifradas son las que pueden llevar secretos: el
+			// cuerpo (un token en un JSON de login), la auth, la
+			// documentación (que la gente usa para pegar ejemplos reales) y
+			// el crudo de Postman preservado. url/params/headers quedan en
+			// claro porque son lo que se busca y se ordena en el árbol, y
+			// cifrarlos obligaría a descifrar la colección entera para
+			// listarla.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS http_items (
+				id            TEXT PRIMARY KEY,
+				collection_id TEXT NOT NULL,
+				parent_id     TEXT,
+				kind          TEXT NOT NULL,
+				name          TEXT NOT NULL,
+				sort_order    INTEGER NOT NULL DEFAULT 0,
+				method        TEXT NOT NULL DEFAULT '',
+				url           TEXT NOT NULL DEFAULT '',
+				params        TEXT NOT NULL DEFAULT '',
+				path_vars     TEXT NOT NULL DEFAULT '',
+				headers       TEXT NOT NULL DEFAULT '',
+				settings      TEXT NOT NULL DEFAULT '',
+				body          BLOB,
+				body_nonce    BLOB,
+				auth          BLOB,
+				auth_nonce    BLOB,
+				docs          BLOB,
+				docs_nonce    BLOB,
+				postman_raw   BLOB,
+				postman_raw_nonce BLOB,
+				created_at    INTEGER NOT NULL,
+				updated_at    INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// El árbol se lee siempre por colección y en orden; el índice es
+			// exactamente esa consulta.
+			if _, err := tx.Exec(
+				`CREATE INDEX IF NOT EXISTS idx_http_items_tree ON http_items (collection_id, parent_id, sort_order)`,
+			); err != nil {
+				return err
+			}
+
+			// La URL del historial se guarda YA RESUELTA pero sin secretos:
+			// sirve para reconocer qué se corrió sin volverse un archivo de
+			// tokens. Los headers de la petición no se guardan por lo mismo
+			// — mismo criterio que el historial de SSH.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS http_history (
+				id            TEXT PRIMARY KEY,
+				item_id       TEXT,
+				method        TEXT NOT NULL,
+				url           TEXT NOT NULL,
+				status        INTEGER NOT NULL DEFAULT 0,
+				duration_ms   INTEGER NOT NULL DEFAULT 0,
+				size_bytes    INTEGER NOT NULL DEFAULT 0,
+				error         TEXT NOT NULL DEFAULT '',
+				executed_at   INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(
+				`CREATE INDEX IF NOT EXISTS idx_http_history_item ON http_history (item_id, executed_at DESC)`,
+			); err != nil {
+				return err
+			}
+			return nil
+		},
+	},
+	{
+		version: 46,
+		desc:    "módulo HTTP: entornos y entorno activo",
+		apply: func(tx *sql.Tx) error {
+			// Fase 2 de .claude/specs/http-client.md. Tabla propia y no una
+			// columna más en http_collections porque un entorno es
+			// TRANSVERSAL: el mismo "prod" se usa desde varias colecciones,
+			// que es exactamente lo que lo distingue de las variables de
+			// colección.
+			//
+			// Las variables van cifradas enteras y no fila por fila: adentro
+			// de esa lista viajan las marcadas como secretas (tokens,
+			// claves), y separarlas en columnas distintas obligaría a
+			// decidir el nivel de protección al escribir en vez de al leer.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS http_environments (
+				id                   TEXT PRIMARY KEY,
+				name                 TEXT NOT NULL,
+				variables            BLOB,
+				variables_nonce      BLOB,
+				pinned_collection_id TEXT,
+				sort_order           INTEGER NOT NULL DEFAULT 0,
+				created_at           INTEGER NOT NULL,
+				updated_at           INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// Qué entorno está activo es una preferencia de sesión, del
+			// mismo tipo que el tema o la última nota abierta, así que vive
+			// en settings y no en una tabla propia.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN http_active_env TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
+	{
+		version: 47,
+		desc:    "módulo HTTP: scripts de pre-request y de test",
+		apply: func(tx *sql.Tx) error {
+			// Fase 5 de .claude/specs/http-client.md, primera mitad: GUARDAR
+			// los scripts. Ejecutarlos depende de una decisión de tamaño de
+			// binario que está pendiente, pero persistirlos no puede
+			// esperar: el import de Postman (F6) tiene que poder traerlos y
+			// devolverlos intactos, y una colección importada sin sus
+			// scripts es una colección perdida, no una a medias.
+			//
+			// Cifrados porque un script de firma lleva la clave adentro, o
+			// referencia variables secretas — es exactamente la clase de
+			// texto que no puede quedar en claro en el archivo del vault.
+			for _, table := range []string{"http_items", "http_collections"} {
+				for _, col := range []string{"pre_request", "pre_request_nonce", "test_script", "test_script_nonce"} {
+					if _, err := tx.Exec("ALTER TABLE " + table + " ADD COLUMN " + col + " BLOB"); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		},
+	},
+	{
+		version: 48,
+		desc:    "módulo HTTP: variables calculadas (firma declarativa)",
+		apply: func(tx *sql.Tx) error {
+			// Segunda mitad de la fase 5, después de la decisión del usuario
+			// de NO incorporar un motor JavaScript (+19,8 MB de goja contra
+			// un techo de 80 que Windows ya roza con 55,66).
+			//
+			// Cifradas: adentro va la clave de una firma, que es el secreto
+			// más sensible que puede guardar una colección.
+			for _, table := range []string{"http_collections", "http_items"} {
+				for _, col := range []string{"computed", "computed_nonce"} {
+					if _, err := tx.Exec("ALTER TABLE " + table + " ADD COLUMN " + col + " BLOB"); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		},
+	},
+	{
+		version: 49,
+		desc:    "módulo HTTP: nota de documentación por colección",
+		apply: func(tx *sql.Tx) error {
+			// Fase 7: la documentación de una colección se publica como una
+			// nota del vault, y hay que poder volver a encontrarla para
+			// regenerarla. Guardar el id de la nota en la colección —y no
+			// buscarla por título— es lo que permite que el usuario le
+			// cambie el nombre a la nota sin que la próxima regeneración
+			// cree una segunda.
+			//
+			// En claro: es un identificador, no contenido. El mismo criterio
+			// que el resto de los `id` de la base.
+			_, err := tx.Exec(`ALTER TABLE http_collections ADD COLUMN docs_note_id TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

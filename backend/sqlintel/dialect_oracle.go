@@ -49,7 +49,14 @@ func init() {
 			{Label: "trg", Detail: "CREATE OR REPLACE TRIGGER (BEFORE INSERT)", Body: "CREATE OR REPLACE TRIGGER ${1:nombre}\nBEFORE INSERT ON ${2:tabla}\nFOR EACH ROW\nBEGIN\n    ${3:NULL;}\nEND;\n/"},
 			{Label: "exc", Detail: "EXCEPTION WHEN NO_DATA_FOUND / OTHERS", Body: "EXCEPTION\n    WHEN NO_DATA_FOUND THEN\n        ${1:NULL;}\n    WHEN OTHERS THEN\n        DBMS_OUTPUT.PUT_LINE(SQLERRM);\n        RAISE;"},
 			{Label: "bulk", Detail: "BULK COLLECT … LIMIT (lote de filas)", Body: "DECLARE\n    CURSOR c IS SELECT ${1:*} FROM ${2:tabla};\n    TYPE t_tab IS TABLE OF c%ROWTYPE;\n    v_filas t_tab;\nBEGIN\n    OPEN c;\n    LOOP\n        FETCH c BULK COLLECT INTO v_filas LIMIT ${3:1000};\n        EXIT WHEN v_filas.COUNT = 0;\n        FOR i IN 1 .. v_filas.COUNT LOOP\n            ${4:NULL;}\n        END LOOP;\n    END LOOP;\n    CLOSE c;\nEND;\n/"},
-			{Label: "cur", Detail: "FOR … IN (cursor implícito) LOOP", Body: "FOR ${1:r} IN (SELECT ${2:*} FROM ${3:tabla}) LOOP\n    ${4:NULL;}\nEND LOOP;"},
+			{Label: "tx", Detail: "Transacción con COMMIT/ROLLBACK", Body: "BEGIN\n    ${1:NULL;}\n    COMMIT;\nEXCEPTION\n    WHEN OTHERS THEN\n        ROLLBACK;\n        RAISE;\nEND;\n/"},
+			{Label: "cols", Detail: "Columnas de una tabla (ALL_TAB_COLUMNS)", Body: "SELECT column_name, data_type, data_length, nullable\nFROM all_tab_columns\nWHERE owner = UPPER('${1:esquema}')\n  AND table_name = UPPER('${2:tabla}')\nORDER BY column_id;"},
+			{Label: "sess", Detail: "Sesiones activas (V$SESSION)", Body: "SELECT s.sid, s.serial#, s.username, s.status, s.machine, s.program, s.sql_id\nFROM v$session s\nWHERE s.username IS NOT NULL\n  AND s.status = 'ACTIVE'\nORDER BY s.logon_time DESC;"},
+			{Label: "size", Detail: "Tamaño de un objeto (USER_SEGMENTS)", Body: "SELECT segment_name, segment_type, ROUND(bytes / 1024 / 1024, 2) AS mb\nFROM user_segments\nWHERE segment_name = UPPER('${1:tabla}')\nORDER BY bytes DESC;"},
+			{Label: "fnc", Detail: "CREATE OR REPLACE FUNCTION", Body: "CREATE OR REPLACE FUNCTION ${1:nombre} (\n    ${2:p_param} IN ${3:NUMBER}\n) RETURN ${4:NUMBER} IS\n    v_resultado ${4:NUMBER};\nBEGIN\n    ${5:NULL;}\n    RETURN v_resultado;\nEND ${1:nombre};\n/"},
+			{Label: "pkg", Detail: "CREATE PACKAGE + BODY", Body: "CREATE OR REPLACE PACKAGE ${1:nombre} IS\n    PROCEDURE ${2:metodo} (${3:p_param} IN ${4:NUMBER});\nEND ${1:nombre};\n/\n\nCREATE OR REPLACE PACKAGE BODY ${1:nombre} IS\n    PROCEDURE ${2:metodo} (${3:p_param} IN ${4:NUMBER}) IS\n    BEGIN\n        ${5:NULL;}\n    END ${2:metodo};\nEND ${1:nombre};\n/"},
+			{Label: "datef", Detail: "TO_DATE con formato", Body: "TO_DATE('${1:01/01/2026}', 'DD/MM/YYYY')"},
+						{Label: "cur", Detail: "FOR … IN (cursor implícito) LOOP", Body: "FOR ${1:r} IN (SELECT ${2:*} FROM ${3:tabla}) LOOP\n    ${4:NULL;}\nEND LOOP;"},
 		},
 	})
 }

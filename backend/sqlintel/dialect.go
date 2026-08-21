@@ -182,6 +182,46 @@ var commonSnippets = []SnippetDef{
 	{Label: "ci", Detail: "CREATE INDEX …", Body: "CREATE INDEX ${1:ix_tabla_columna} ON ${2:tabla} (${3:columna});"},
 	{Label: "cv", Detail: "CREATE VIEW …", Body: "CREATE VIEW ${1:nombre} AS\nSELECT ${2:*}\nFROM ${3:tabla}\nWHERE ${4:condicion};"},
 	{Label: "addcol", Detail: "ALTER TABLE … ADD COLUMN …", Body: "ALTER TABLE ${1:tabla} ADD COLUMN ${2:columna} ${3:VARCHAR(100)};"},
+
+	// Condiciones de WHERE. Son cortas de escribir a mano, pero son las que
+	// más se repiten en un día de soporte, y tenerlas acá evita el error de
+	// siempre: el IN sin paréntesis, el BETWEEN al revés, el `= NULL`.
+	{Label: "in", Detail: "WHERE … IN (…)", Body: "WHERE ${1:columna} IN (${2:valor1, valor2})"},
+	{Label: "notin", Detail: "WHERE … NOT IN (…)", Body: "WHERE ${1:columna} NOT IN (${2:valor1, valor2})"},
+	{Label: "bet", Detail: "WHERE … BETWEEN … AND …", Body: "WHERE ${1:columna} BETWEEN ${2:desde} AND ${3:hasta}"},
+	{Label: "like", Detail: "WHERE … LIKE '%…%'", Body: "WHERE ${1:columna} LIKE '%${2:texto}%'"},
+	{Label: "null", Detail: "WHERE … IS NULL", Body: "WHERE ${1:columna} IS NULL"},
+	{Label: "notnull", Detail: "WHERE … IS NOT NULL", Body: "WHERE ${1:columna} IS NOT NULL"},
+
+	// El resto de los JOIN. El INNER y el LEFT ya estaban; estos tres son los
+	// que uno escribe mal justo cuando los necesita.
+	{Label: "rjoin", Detail: "RIGHT JOIN … ON …", Body: "RIGHT JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
+	{Label: "fjoin", Detail: "FULL OUTER JOIN … ON …", Body: "FULL OUTER JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
+	{Label: "cjoin", Detail: "CROSS JOIN (producto cartesiano)", Body: "CROSS JOIN ${1:tabla} ${2:alias}"},
+	{Label: "sjoin", Detail: "Auto-join: la tabla consigo misma (jerarquías)", Body: "SELECT h.${1:nombre} AS hijo, p.${1:nombre} AS padre\nFROM ${2:tabla} h\nLEFT JOIN ${2:tabla} p ON p.${3:id} = h.${4:id_padre};"},
+
+	{Label: "dist", Detail: "SELECT DISTINCT …", Body: "SELECT DISTINCT ${1:columna}\nFROM ${2:tabla}\nORDER BY ${1:columna};"},
+	{Label: "ord", Detail: "ORDER BY … DESC", Body: "ORDER BY ${1:columna} DESC"},
+	{Label: "union", Detail: "UNION ALL entre dos consultas", Body: "SELECT ${1:columnas} FROM ${2:tabla_a}\nUNION ALL\nSELECT ${1:columnas} FROM ${3:tabla_b};"},
+	{Label: "notex", Detail: "WHERE NOT EXISTS (…) — lo que falta en la otra tabla", Body: "WHERE NOT EXISTS (\n    SELECT 1\n    FROM ${1:otra_tabla} o\n    WHERE o.${2:id} = ${3:t}.${2:id}\n)"},
+	{Label: "sub", Detail: "Subconsulta en el FROM (tabla derivada)", Body: "SELECT x.${1:*}\nFROM (\n    SELECT ${2:columnas}\n    FROM ${3:tabla}\n    WHERE ${4:condicion}\n) x;"},
+	{Label: "delx", Detail: "DELETE de lo que existe en otra tabla", Body: "DELETE FROM ${1:tabla} t\nWHERE EXISTS (\n    SELECT 1 FROM ${2:otra} o WHERE o.${3:id} = t.${3:id}\n);"},
+	{Label: "insmulti", Detail: "INSERT de varias filas de una vez", Body: "INSERT INTO ${1:tabla} (${2:columnas})\nVALUES (${3:fila1}),\n       (${4:fila2});"},
+
+	// Diagnóstico: las tres consultas con las que uno empieza a mirar una
+	// tabla que no conoce.
+	{Label: "sumif", Detail: "SUM(CASE WHEN …) — contar por condición", Body: "SUM(CASE WHEN ${1:condicion} THEN 1 ELSE 0 END) AS ${2:total}"},
+	{Label: "nulls", Detail: "Cuántos nulos tiene una columna", Body: "SELECT COUNT(*) AS filas,\n       COUNT(${1:columna}) AS con_valor,\n       COUNT(*) - COUNT(${1:columna}) AS nulos\nFROM ${2:tabla};"},
+	{Label: "minmax", Detail: "Perfil rápido de una columna (min, max, distintos)", Body: "SELECT MIN(${1:columna}) AS minimo,\n       MAX(${1:columna}) AS maximo,\n       COUNT(DISTINCT ${1:columna}) AS distintos,\n       COUNT(*) AS filas\nFROM ${2:tabla};"},
+
+	// DDL de mantenimiento.
+	{Label: "trunc", Detail: "TRUNCATE TABLE … (vaciar sin borrar la tabla)", Body: "TRUNCATE TABLE ${1:tabla};"},
+	{Label: "dt", Detail: "DROP TABLE …", Body: "DROP TABLE ${1:tabla};"},
+	{Label: "dropcol", Detail: "ALTER TABLE … DROP COLUMN …", Body: "ALTER TABLE ${1:tabla} DROP COLUMN ${2:columna};"},
+	{Label: "uix", Detail: "CREATE UNIQUE INDEX …", Body: "CREATE UNIQUE INDEX ${1:ux_tabla_columna} ON ${2:tabla} (${3:columna});"},
+	{Label: "pk", Detail: "ALTER TABLE … ADD CONSTRAINT … PRIMARY KEY", Body: "ALTER TABLE ${1:tabla}\n    ADD CONSTRAINT ${2:pk_tabla} PRIMARY KEY (${3:columna});"},
+	{Label: "fk", Detail: "ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY", Body: "ALTER TABLE ${1:tabla}\n    ADD CONSTRAINT ${2:fk_tabla_otra} FOREIGN KEY (${3:columna})\n    REFERENCES ${4:otra_tabla} (${5:columna});"},
+	{Label: "ren", Detail: "Renombrar una tabla", Body: "ALTER TABLE ${1:tabla} RENAME TO ${2:nombre_nuevo};"},
 }
 
 // standardDialect backs an editor tab with no connection bound: shared

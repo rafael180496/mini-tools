@@ -36,7 +36,13 @@ func init() {
 			{Label: "fn", Detail: "CREATE OR REPLACE FUNCTION (plpgsql)", Body: "CREATE OR REPLACE FUNCTION ${1:nombre}(${2:p_param} ${3:integer})\nRETURNS ${4:integer} AS $$\nBEGIN\n    RETURN ${5:0};\nEND;\n$$ LANGUAGE plpgsql;"},
 			{Label: "updj", Detail: "UPDATE … FROM otra tabla", Body: "UPDATE ${1:destino} d\nSET ${2:columna} = o.${2:columna}\nFROM ${3:origen} o\nWHERE o.${4:id} = d.${4:id};"},
 			{Label: "delj", Detail: "DELETE … USING otra tabla", Body: "DELETE FROM ${1:destino} d\nUSING ${2:origen} o\nWHERE o.${3:id} = d.${3:id};"},
-			{Label: "expl", Detail: "EXPLAIN (ANALYZE, BUFFERS)", Body: "EXPLAIN (ANALYZE, BUFFERS)\n${1:SELECT 1};"},
+			{Label: "tx", Detail: "Transacción explícita", Body: "BEGIN;\n    ${1:UPDATE tabla SET columna = valor WHERE condicion;}\nCOMMIT;"},
+			{Label: "cols", Detail: "Columnas de una tabla (information_schema)", Body: "SELECT column_name, data_type, is_nullable, column_default\nFROM information_schema.columns\nWHERE table_schema = '${1:public}'\n  AND table_name = '${2:tabla}'\nORDER BY ordinal_position;"},
+			{Label: "size", Detail: "Tamaño de las tablas más grandes", Body: "SELECT relname AS tabla, pg_size_pretty(pg_total_relation_size(c.oid)) AS tamano\nFROM pg_class c\nJOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE c.relkind = 'r' AND n.nspname = '${1:public}'\nORDER BY pg_total_relation_size(c.oid) DESC\nLIMIT ${2:20};"},
+			{Label: "act", Detail: "Consultas en curso (pg_stat_activity)", Body: "SELECT pid, usename, state, now() - query_start AS duracion, query\nFROM pg_stat_activity\nWHERE state <> 'idle'\nORDER BY query_start;"},
+			{Label: "gen", Detail: "generate_series (rango de fechas)", Body: "SELECT d::date\nFROM generate_series('${1:2026-01-01}'::date, '${2:2026-12-31}'::date, interval '1 day') AS d;"},
+			{Label: "ilike", Detail: "WHERE … ILIKE '%…%' (sin distinguir mayúsculas)", Body: "WHERE ${1:columna} ILIKE '%${2:texto}%'"},
+						{Label: "expl", Detail: "EXPLAIN (ANALYZE, BUFFERS)", Body: "EXPLAIN (ANALYZE, BUFFERS)\n${1:SELECT 1};"},
 		},
 	})
 }

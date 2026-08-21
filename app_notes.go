@@ -105,6 +105,26 @@ func (a *App) createNote(title, content, frontmatter string) (string, error) {
 	return id, nil
 }
 
+// CreateNoteInFolder crea una nota ya dentro de una carpeta.
+//
+// Existe como un solo verbo en vez de "crear y después mover" desde el
+// frontend: entre las dos llamadas la nota existe en la raíz, y la barra
+// lateral que se refresca en el medio la dibuja ahí y después la ve saltar. Con
+// carpeta vacía es exactamente CreateNote, así que el botón «+» de la raíz y el
+// de una carpeta son el mismo camino.
+func (a *App) CreateNoteInFolder(title, folderID string) (string, error) {
+	id, err := a.createNote(title, "", "")
+	if err != nil {
+		return "", err
+	}
+	if folderID != "" {
+		if err := a.vault.SetNoteFolder(id, folderID); err != nil {
+			return "", err
+		}
+	}
+	return id, nil
+}
+
 // UpdateNote guarda una nota. No toca la privacidad: eso es SetNotePrivacy.
 //
 // **Guardar desde la aplicación marca la nota como tocada por el usuario.** Solo

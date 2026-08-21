@@ -20,6 +20,8 @@ import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import NlPromptBar from './editor/NlPromptBar'
 import NotesTree from './notes/NotesTree'
 import NoteEditorTab from './notes/NoteEditorTab'
+import HttpTree from './http/HttpTree'
+import HttpRequestTab from './http/HttpRequestTab'
 import NotesGraphView from './notes/NotesGraphView'
 import RedisBrowserTab from './redis/RedisBrowserTab'
 import MongoBrowserTab from './mongo/MongoBrowserTab'
@@ -420,6 +422,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
 
     const clearSidebarFilter = useCallback(() => setSidebarFilter(''), [])
 
+    // Token de refresco del árbol de colecciones HTTP: sube cuando algo
+    // cambia desde una pestaña (renombrar, cambiar el método) para que la
+    // barra lateral no quede mostrando el nombre viejo.
+    const [httpToken, setHttpToken] = useState(0)
+    const bumpHttp = useCallback(() => setHttpToken((n) => n + 1), [])
+
     const sidebarModules = useMemo(
         () => [
             {
@@ -449,6 +457,17 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 label: 'Notas',
                 hint: 'tu base de conocimiento cifrada: runbooks y apuntes',
                 matchCount: notesMatches,
+            },
+            {
+                id: 'http' as const,
+                icon: 'api',
+                label: 'HTTP',
+                hint: 'colecciones de peticiones: probar y guardar endpoints',
+                // El contador de coincidencias queda en null hasta que el
+                // árbol sepa buscar por sí mismo (el filtro ya llega y
+                // filtra): mostrar un 0 permanente sobre el ícono diría que
+                // no hay nada cuando lo que pasa es que todavía no se contó.
+                matchCount: null,
             },
         ],
         [connectionsMatches, sshMatches, gitMatches, notesMatches],
@@ -674,6 +693,12 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         if (t.kind === 'note' && t.noteId) {
             return {kind: 'note', id: t.noteId, label: t.title}
         }
+        // Una petición HTTP también. Una rápida no tiene ítem: va con id vacío,
+        // así que todas las pruebas sueltas comparten una conversación — que es
+        // lo correcto, porque no son "sobre" nada guardado.
+        if (t.kind === 'http-request') {
+            return {kind: 'http', id: t.httpItemId ?? '', label: t.title}
+        }
         const conn = t.connId ? connections.find((c) => c.id === t.connId) ?? null : null
         if (!conn) return NO_CONTEXT
         // Una conexión SSH y una de base de datos viven en la misma tabla del
@@ -705,6 +730,61 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // pestaña por nota y no una sola pestaña "Notas": es el modelo del resto de
     // la app —una pestaña por cosa en la que estás trabajando— y permite tener
     // el runbook abierto al lado de la consulta que estás depurando.
+    // Abre una petición HTTP en su pestaña, o trae al frente la que ya está
+    // abierta. Misma regla que las notas y los repositorios: un ítem = una
+    // pestaña, porque dos pestañas del mismo request con estados distintos
+    // sin guardar es una forma garantizada de perder trabajo.
+    const openHttpRequest = useCallback((item: vault.HTTPItem) => {
+        setTabs((prev) => {
+            const existing = prev.find((t) => t.kind === 'http-request' && t.httpItemId === item.id)
+            if (existing) {
+                setActiveTabId(existing.id)
+                return prev
+            }
+            const tab: EditorTab = {
+                id: newTabId(),
+                title: item.name,
+                path: null,
+                content: '',
+                dirty: false,
+                connId: null,
+                language: 'sql',
+                kind: 'http-request',
+                httpItemId: item.id,
+            }
+            setActiveTabId(tab.id)
+            return [...prev, tab]
+        })
+    }, [])
+
+    // Petición rápida: una pestaña HTTP sin ítem detrás, para probar un
+    // endpoint sin crear ni nombrar nada. A diferencia de las demás, acá NO se
+    // reutiliza una pestaña existente: dos pruebas sueltas a la vez es
+    // exactamente el caso de uso (comparar dos endpoints, o el mismo contra dos
+    // entornos), y no hay ítem guardado que dos pestañas puedan pisarse.
+    const openHttpScratch = useCallback(() => {
+        setTabs((prev) => {
+            const tab: EditorTab = {
+                id: newTabId(),
+                title: 'Petición rápida',
+                path: null,
+                content: '',
+                dirty: false,
+                connId: null,
+                language: 'sql',
+                kind: 'http-request',
+            }
+            setActiveTabId(tab.id)
+            return [...prev, tab]
+        })
+    }, [])
+
+    // Una petición rápida que se guardó deja de serlo: la pestaña pasa a
+    // apuntar al ítem nuevo y toma su nombre.
+    const bindHttpTab = useCallback((tabId: string, item: vault.HTTPItem) => {
+        setTabs((prev) => prev.map((t) => (t.id === tabId ? {...t, httpItemId: item.id, title: item.name} : t)))
+    }, [])
+
     const openNote = useCallback((noteId: string, title?: string) => {
         setTabs((prev) => {
             const existing = prev.find((t) => t.kind === 'note' && t.noteId === noteId)
@@ -2570,6 +2650,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     const isHybridTabActive = activeTabData?.kind === 'ssh-hybrid'
     const isGitTabActive = activeTabData?.kind === 'git-repo'
     const isNoteTabActive = activeTabData?.kind === 'note'
+    // Una petición HTTP ocupa todo el cuerpo, igual que Git o una nota: sin
+    // esta bandera en las guardas de abajo, el editor SQL y su barra de
+    // acciones se seguirían dibujando encima.
+    const isHttpTabActive = activeTabData?.kind === 'http-request'
     // Una nota no es una consulta: no tiene conexión, ni esquema, ni botón de
     // ejecutar. La barra de herramientas del editor SQL entera se oculta —
     // dejarla visible decía "Sin conexión" sobre un documento de texto, que es
@@ -2599,6 +2683,17 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 updateAvailable={updateInfo?.available ? updateInfo.latest : null}
                 onOpenRepo={openRepo}
                 bodies={{
+                    http: (
+                        <HttpTree
+                            filter={sidebarFilter}
+                            activeItemId={activeTabData?.httpItemId ?? null}
+                            onOpenRequest={openHttpRequest}
+                            refreshToken={httpToken}
+                            onChanged={bumpHttp}
+                            onOpenNote={(id) => openNote(id)}
+                            onNewScratch={openHttpScratch}
+                        />
+                    ),
                     connections: (
                         <ConnectionTree
                 selectedId={selected?.id ?? null}
@@ -2867,7 +2962,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     {/* Lo mismo vale para una terminal local: no tiene conexión
                         que mostrar, y "Sin conexión" sobre la shell de tu propia
                         máquina es una advertencia sobre un problema inexistente. */}
-                    {!isNoteTabActive && !isLocalTerminalTabActive && (
+                    {!isNoteTabActive && !isLocalTerminalTabActive && !isHttpTabActive && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 text-xs text-on-surface-variant">
                         {isSshTerminalTabActive && activeTabConnection ? (
                             <span
@@ -3096,7 +3191,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
-                    {editorAppearance.toolbar !== 'hidden' && !isBrowserTabActive && !isSshTerminalTabActive && !isLocalTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
+                    {editorAppearance.toolbar !== 'hidden' && !isBrowserTabActive && !isSshTerminalTabActive && !isLocalTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && !isHttpTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
                         <button
                             onClick={() => void saveActiveTab()}
@@ -3224,7 +3319,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     className="relative min-w-0 border-b border-outline-variant"
                     style={{
                         height: isRemoteFileActive ? '100%' : editorHeight,
-                        display: isBrowserTabActive || isSshTerminalTabActive || isLocalTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive || isNoteTabActive ? 'none' : undefined,
+                        display: isBrowserTabActive || isSshTerminalTabActive || isLocalTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive || isNoteTabActive || isHttpTabActive ? 'none' : undefined,
                     }}
                 >
                     {/* Asistente de consultas: flota SOBRE el editor en vez de
@@ -3447,6 +3542,31 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         </div>
                     ))}
 
+                {/* Las peticiones HTTP también quedan montadas y ocultas:
+                    una pestaña guarda el cuerpo a medio escribir, la
+                    respuesta recibida y el historial cargado — desmontarla al
+                    cambiar de pestaña tiraría las tres cosas y obligaría a
+                    volver a mandar la petición para recuperarlas. */}
+                {tabs
+                    .filter((t) => t.kind === 'http-request')
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex w-full min-w-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <HttpRequestTab
+                                itemId={t.httpItemId ?? null}
+                                editorThemeId={editorThemeId}
+                                appTheme={theme}
+                                appearance={editorAppearance}
+                                onChanged={bumpHttp}
+                                onSaved={(item) => bindHttpTab(t.id, item)}
+                                active={activeTabId === t.id}
+                            />
+                        </div>
+                    ))}
+
                 {/* Cada nota abierta queda montada y se oculta con CSS,
                     mismo criterio que las pestañas de Git y los browsers:
                     desmontarla perdería el historial de deshacer del editor y
@@ -3499,7 +3619,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                     hybrid-session tab has nothing to run, so it would sit there
                     permanently empty while stealing height from the terminal
                     and the file drawer, which is exactly the space they need. */}
-                {!isBrowserTabActive && !isSshTerminalTabActive && !isLocalTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && (
+                {!isBrowserTabActive && !isSshTerminalTabActive && !isLocalTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && !isHttpTabActive && (
                     <>
                         {/* Drag handle: resizes the editor pane against the
                             results grid below. Persisted on mouseup, see
