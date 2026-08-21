@@ -17,10 +17,14 @@
 package sftpx
 
 import (
+	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 
@@ -93,7 +97,7 @@ func newLocalFS() fileSystem { return localFS{} }
 func (localFS) ReadDir(dir string) ([]FileEntry, error) {
 	raw, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, explainLocalDenial(dir, err)
 	}
 	out := make([]FileEntry, 0, len(raw))
 	for _, e := range raw {
@@ -319,4 +323,34 @@ func (r *remoteFS) Close() error {
 	sftpErr := r.sftp.Close()
 	r.lease.Close()
 	return sftpErr
+}
+
+// explainLocalDenial traduce el "operation not permitted" de macOS.
+//
+// Escritorio, Documentos, Descargas, los discos externos y las carpetas
+// sincronizadas están protegidos por TCC: el sistema le pregunta al usuario la
+// PRIMERA vez que un programa las toca, y hasta que conteste —o si el usuario
+// dijo que no— cualquier lectura vuelve con EPERM. El error de Go dice
+// literalmente `open /Users/x/Downloads: operation not permitted`, que desde el
+// explorador se lee como un error de la app y no como lo que es: un permiso
+// que falta y que se concede en dos clics.
+//
+// El diálogo del sistema solo aparece si el paquete declara la cadena de uso
+// correspondiente (`NSDownloadsFolderUsageDescription` y compañía en
+// build/darwin/Info.plist). Sin ellas macOS deniega sin preguntar nada, que es
+// exactamente el caso que motivó esto.
+//
+// Segundo caso, distinto y también frecuente: una compilación nueva es, para
+// TCC, **otra aplicación** —el permiso se recuerda por firma, y `wails build`
+// vuelve a autofirmar cada vez—, así que un permiso concedido ayer no vale para
+// el binario de hoy y el sistema pregunta de nuevo.
+func explainLocalDenial(dir string, err error) error {
+	if runtime.GOOS != "darwin" || !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	return fmt.Errorf("macOS no le dio permiso a la aplicación para leer %q.\n\n"+
+		"Si no apareció ningún diálogo, concedelo a mano en Ajustes del Sistema → "+
+		"Privacidad y seguridad → Archivos y carpetas (o Acceso total al disco) y "+
+		"volvé a abrir la app. Una versión recién compilada cuenta como una "+
+		"aplicación distinta para macOS, así que el permiso hay que darlo otra vez.", dir)
 }

@@ -649,6 +649,152 @@ const fixtures: Record<string, unknown> = {
     },
 
     QueryHistory: [],
+
+    // --- Explorador SFTP -------------------------------------------------------
+    //
+    // Un directorio real de un servidor de aplicaciones: carpetas de compilación
+    // y algún archivo suelto, que es lo que hace reconocible la captura. Las dos
+    // sesiones ('local' y la del panel derecho) devuelven listados distintos —
+    // un explorador de doble panel con lo mismo a los dos lados no muestra nada.
+    OpenSftpBrowse: '/export/env/sgc/DCORA19/exec/funcn/lib',
+    SftpHomeDir: (sessionID: string) => (sessionID === 'local' ? '/Users/rafael' : '/export/env/sgc/DCORA19/exec/funcn/lib'),
+    CloseSftpBrowse: null,
+    SSHCwd: '',
+    CheckSftpConflicts: [],
+    ListSftpDir: (sessionID: string) =>
+        sessionID === 'local'
+            ? [
+                  {name: 'Descargas', path: '/Users/rafael/Descargas', size: 0, isDir: true, mode: 'drwxr-xr-x', modTime: 1786741000},
+                  {name: 'Documentos', path: '/Users/rafael/Documentos', size: 0, isDir: true, mode: 'drwxr-xr-x', modTime: 1786700000},
+                  {name: 'Escritorio', path: '/Users/rafael/Escritorio', size: 0, isDir: true, mode: 'drwxr-xr-x', modTime: 1786600000},
+                  {name: 'proyectos', path: '/Users/rafael/proyectos', size: 0, isDir: true, mode: 'drwxr-xr-x', modTime: 1786500000},
+                  {name: 'parche-tarifas.sql', path: '/Users/rafael/parche-tarifas.sql', size: 8452, isDir: false, mode: '-rw-r--r--', modTime: 1786740000},
+                  {name: 'notas-guardia.md', path: '/Users/rafael/notas-guardia.md', size: 2210, isDir: false, mode: '-rw-r--r--', modTime: 1786730000},
+              ]
+            : [
+                  {name: 'bin', path: '/export/env/sgc/DCORA19/exec/funcn/lib/bin', size: 0, isDir: true, mode: 'drwxrwxrwx', modTime: 1786741000},
+                  {name: 'lib', path: '/export/env/sgc/DCORA19/exec/funcn/lib/lib', size: 0, isDir: true, mode: 'drwxrwxrwx', modTime: 1786741000},
+                  {name: 'obj64', path: '/export/env/sgc/DCORA19/exec/funcn/lib/obj64', size: 0, isDir: true, mode: 'drwxrwxrw-', modTime: 1786740000},
+                  {name: 'obj32', path: '/export/env/sgc/DCORA19/exec/funcn/lib/obj32', size: 0, isDir: true, mode: 'drwxrwxrw-', modTime: 1610000000},
+                  {name: 'scripts', path: '/export/env/sgc/DCORA19/exec/funcn/lib/scripts', size: 0, isDir: true, mode: 'drwxrwxrwx', modTime: 1550000000},
+                  {name: 'rutinas.c', path: '/export/env/sgc/DCORA19/exec/funcn/lib/rutinas.c', size: 412880, isDir: false, mode: '-rw-r--r--', modTime: 1786600000},
+                  {name: 'rutinas.h', path: '/export/env/sgc/DCORA19/exec/funcn/lib/rutinas.h', size: 18340, isDir: false, mode: '-rw-r--r--', modTime: 1786600000},
+                  {name: 'ref400.pc', path: '/export/env/sgc/DCORA19/exec/funcn/lib/ref400.pc', size: 268112, isDir: false, mode: '-rw-r--r--', modTime: 1786500000},
+                  {name: 'compilar.sh', path: '/export/env/sgc/DCORA19/exec/funcn/lib/compilar.sh', size: 1904, isDir: false, mode: '-rwxr-xr-x', modTime: 1786400000},
+              ],
+
+    // --- Módulo HTTP (colecciones estilo Postman) -----------------------------
+    //
+    // Una colección con la forma que tiene una de verdad: una carpeta de
+    // autenticación, peticiones con método variado, y una respuesta ya recibida
+    // para que se vea el panel entero y no un editor vacío.
+    HttpListCollections: [
+        {id: 'c1', name: 'Reserve v3', description: 'API de reservas del portal', sortOrder: 0, createdAt: 1786600000, updatedAt: 1786741000},
+        {id: 'c2', name: 'Facturación', description: '', sortOrder: 1, createdAt: 1786500000, updatedAt: 1786700000},
+    ],
+    HttpListItems: (collectionID: string) =>
+        collectionID !== 'c1'
+            ? []
+            : [
+                  {id: 'f1', collectionId: 'c1', kind: 'folder', name: 'Autenticación', sortOrder: 0, createdAt: 0, updatedAt: 0},
+                  {id: 'i1', collectionId: 'c1', parentId: 'f1', kind: 'request', name: 'login', method: 'POST', url: '{{baseUrl}}/auth/login', sortOrder: 0, createdAt: 0, updatedAt: 0},
+                  {id: 'i2', collectionId: 'c1', parentId: 'f1', kind: 'request', name: 'refresh', method: 'POST', url: '{{baseUrl}}/auth/refresh', sortOrder: 1, createdAt: 0, updatedAt: 0},
+                  {id: 'i3', collectionId: 'c1', kind: 'request', name: 'listar reservas', method: 'GET', url: '{{baseUrl}}/reservas', sortOrder: 1, createdAt: 0, updatedAt: 0},
+                  {id: 'i4', collectionId: 'c1', kind: 'request', name: 'crear reserva', method: 'POST', url: '{{baseUrl}}/reservas', sortOrder: 2, createdAt: 0, updatedAt: 0},
+                  {id: 'i5', collectionId: 'c1', kind: 'request', name: 'anular reserva', method: 'DELETE', url: '{{baseUrl}}/reservas/:id', sortOrder: 3, createdAt: 0, updatedAt: 0},
+              ],
+    HttpGetItem: {
+        id: 'i4',
+        collectionId: 'c1',
+        kind: 'request',
+        name: 'crear reserva',
+        method: 'POST',
+        url: '{{baseUrl}}/reservas',
+        headers: JSON.stringify([
+            {key: 'Content-Type', value: 'application/json', enabled: true},
+            {key: 'X-Tenant', value: '{{tenant}}', enabled: true, description: 'Portal desde el que entra la reserva'},
+        ]),
+        params: JSON.stringify([{key: 'notificar', value: 'true', enabled: true, description: 'Manda el correo de confirmación'}]),
+        body: JSON.stringify({
+            mode: 'raw',
+            rawLang: 'json',
+            raw: '{\n  "cliente": 4821,\n  "servicio": "SUM-2",\n  "desde": "2026-09-01",\n  "hasta": "2026-09-04",\n  "personas": 2\n}',
+        }),
+        docs: 'Crea una reserva y devuelve su identificador.\n\nHay que llamar antes a [[login]] para tener sesión.',
+        createdAt: 1786600000,
+        updatedAt: 1786741000,
+    },
+    HttpBuildRequest: {
+        method: 'POST',
+        url: '{{baseUrl}}/reservas',
+        settings: {timeoutMs: 60000, verifyTls: true, followRedirects: true, maxRedirects: 10, httpVersion: 'auto', maxBodyBytes: 8388608},
+    },
+    HttpDefaultSettings: {timeoutMs: 60000, verifyTls: true, followRedirects: true, maxRedirects: 10, httpVersion: 'auto', maxBodyBytes: 8388608},
+    HttpListEnvironments: [
+        {id: 'e1', name: 'desarrollo', sortOrder: 0, createdAt: 0, updatedAt: 0},
+        {id: 'e2', name: 'producción', sortOrder: 1, createdAt: 0, updatedAt: 0},
+    ],
+    HttpActiveEnvironment: 'e1',
+    HttpAuthPreview: {type: 'bearer', executable: true, needsToken: false},
+    HttpResolvePreview: {sentUrl: 'https://api.desarrollo.local/reservas?notificar=true', missing: []},
+    HttpHistory: [
+        {id: 'h1', itemId: 'i4', method: 'POST', url: 'https://api.desarrollo.local/reservas?notificar=true', status: 201, durationMs: 212, sizeBytes: 148, executedAt: 1786741000},
+        {id: 'h2', itemId: 'i4', method: 'POST', url: 'https://api.desarrollo.local/reservas?notificar=true', status: 422, durationMs: 189, sizeBytes: 96, executedAt: 1786740800},
+    ],
+    // La respuesta que deja el panel lleno: sin esto la captura muestra
+    // "todavía no enviaste esta petición", que no es lo que hay que enseñar.
+    HttpSend: {
+        sentUrl: 'https://api.desarrollo.local/reservas?notificar=true',
+        missing: [],
+        computedErrors: [],
+        durationMs: 212,
+        response: {
+            status: 201,
+            statusText: 'Created',
+            durationMs: 212,
+            sizeBytes: 214,
+            lang: 'json',
+            contentType: 'application/json',
+            isBinary: false,
+            truncated: false,
+            redirects: 0,
+            finalUrl: 'https://api.desarrollo.local/reservas?notificar=true',
+            headers: [
+                {key: 'Content-Type', value: 'application/json; charset=utf-8', enabled: true},
+                {key: 'Location', value: '/reservas/90412', enabled: true},
+                {key: 'X-Request-Id', value: '7c1f0a9e-52b1-4a0e', enabled: true},
+            ],
+            body: '{\n  "id": 90412,\n  "estado": "confirmada",\n  "cliente": 4821,\n  "servicio": "SUM-2",\n  "desde": "2026-09-01",\n  "hasta": "2026-09-04",\n  "total": 1840.5,\n  "moneda": "GTQ"\n}',
+        },
+    },
+    HttpCodeLanguages: [
+        {id: 'curl', label: 'cURL'},
+        {id: 'go', label: 'Go'},
+        {id: 'python', label: 'Python'},
+    ],
+
+    // --- Reflog de Git --------------------------------------------------------
+    //
+    // La secuencia que uno viene a mirar cuando algo se perdió: un reset que
+    // dejó un commit sin referencia, y arriba el cambio de rama posterior.
+    GitReflog: [
+        {selector: 'HEAD@{0}', hash: '76d857500000000000000000000000000000000a', short: '76d8575', action: 'checkout', detail: 'moving from main to develop', subject: 'Add macOS and Windows binaries for v1.3.1', author: 'rafael', date: '2026-08-20T16:10:20-06:00'},
+        {selector: 'HEAD@{1}', hash: '76d857500000000000000000000000000000000a', short: '76d8575', action: 'reset', detail: 'moving to HEAD~1', subject: 'Add macOS and Windows binaries for v1.3.1', author: 'rafael', date: '2026-08-20T16:04:11-06:00'},
+        {selector: 'HEAD@{2}', hash: 'ab8d4d600000000000000000000000000000000b', short: 'ab8d4d6', action: 'commit', detail: '', subject: 'feat: variables calculadas para firmar una petición', author: 'rafael', date: '2026-08-20T15:58:02-06:00'},
+        {selector: 'HEAD@{3}', hash: '7334bc100000000000000000000000000000000c', short: '7334bc1', action: 'rebase', detail: '(finish): returning to refs/heads/develop', subject: 'feat: add agent chat functionalities and models', author: 'rafael', date: '2026-08-20T15:31:44-06:00'},
+        {selector: 'HEAD@{4}', hash: '74e152500000000000000000000000000000000d', short: '74e1525', action: 'merge', detail: 'main: Fast-forward', subject: 'feat: confirmación antes de sentencias destructivas', author: 'rafael', date: '2026-08-19T20:47:36-06:00'},
+        {selector: 'HEAD@{5}', hash: '3230ced00000000000000000000000000000000e', short: '3230ced', action: 'commit', detail: '', subject: 'feat: revelar contraseñas guardadas en conexiones', author: 'rafael', date: '2026-08-19T20:46:58-06:00'},
+    ],
+
+    // --- Notas: la tabla de una carpeta --------------------------------------
+    ListNotes: [
+        {id: 'n1', title: 'Runbook · reinicio del portal', isPrivate: false, updatedAt: 1786741000, createdAt: 1786100000, linkCount: 4, folderId: 'f-notes-runbooks'},
+        {id: 'n2', title: 'Diagnóstico · pool lleno el 18/08', isPrivate: false, updatedAt: 1786700000, createdAt: 1786620000, linkCount: 2, folderId: 'f-notes-runbooks'},
+        {id: 'n3', title: 'Credenciales de laboratorio', isPrivate: true, updatedAt: 1786400000, createdAt: 1785900000, linkCount: 0, folderId: 'f-notes-runbooks'},
+        {id: 'n4', title: 'Migración de tarifas M1G/M2G', isPrivate: false, updatedAt: 1786300000, createdAt: 1785700000, linkCount: 6, folderId: 'f-notes-guardia'},
+        {id: 'n5', title: 'Checklist de pase a producción', isPrivate: false, updatedAt: 1786200000, createdAt: 1785600000, linkCount: 3, folderId: 'f-notes-guardia'},
+        {id: 'n6', title: 'Notas sueltas', isPrivate: false, updatedAt: 1786000000, createdAt: 1785000000, linkCount: 0, folderId: ''},
+    ],
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -687,6 +833,11 @@ anyWindow.runtime = {
     LogError: () => {},
     WindowGetSize: () => ({w: 1280, h: 860}),
     ClipboardSetText: () => Promise.resolve(true),
+    // El explorador SFTP registra una zona de drop con el runtime de Wails
+    // (`OnFileDrop`), que solo existe dentro de la app real. Sin estos dos el
+    // panel entero explota al montarse y la captura sale en blanco.
+    OnFileDrop: () => {},
+    OnFileDropOff: () => {},
     // La barra de título propia (components/TitleBar.tsx) le pregunta al
     // runtime en qué sistema corre para decidir si dibuja los botones de
     // ventana: macOS conserva sus semáforos y solo se le reserva el hueco,
@@ -723,11 +874,59 @@ const {default: ResultGrid} = await import('./components/results/ResultGrid')
 const {default: AgentUsagePanel} = await import('./components/agent/AgentUsagePanel')
 const {default: AiAccessPanel} = await import('./components/AiAccessPanel')
 const {default: LocalTerminalTab} = await import('./components/terminal/LocalTerminalTab')
+const {default: HttpTree} = await import('./components/http/HttpTree')
+const {default: HttpRequestTab} = await import('./components/http/HttpRequestTab')
+const {default: GitReflogPanel} = await import('./components/git/GitReflogPanel')
+const {default: FolderNotesDialog} = await import('./components/notes/FolderNotesDialog')
+const {default: SftpTab} = await import('./components/sftp/SftpTab')
 
 // --- Vistas ---------------------------------------------------------------
 
 // La pestaña Git se reusa en dos vistas (`repo` y `agentmode`), así que se
 // declara una vez.
+// Las tres vistas nuevas de esta versión: el módulo de peticiones HTTP, el
+// reflog de Git y la tabla de una carpeta de notas.
+const views_http = (
+    <div className="flex h-full">
+        <div className="w-72 shrink-0 border-r border-outline-variant">
+            <HttpTree filter="" activeItemId="i4" onOpenRequest={() => {}} refreshToken={0} onChanged={() => {}} onNewScratch={() => {}} />
+        </div>
+        <HttpRequestTab
+            itemId="i4"
+            editorThemeId="auto"
+            appTheme="dark"
+            appearance={DEFAULT_EDITOR_APPEARANCE}
+            onChanged={() => {}}
+            active
+        />
+    </div>
+)
+
+// Solo las conexiones SSH: el selector de host del explorador ofrece «Local»
+// más estas, igual que en la app.
+const sshConnections = (fixtures.ListConnections as {dbType: string}[]).filter(
+    (c) => c.dbType === 'ssh',
+) as unknown as Parameters<typeof SftpTab>[0]['connections']
+
+const views_sftp = <SftpTab tabId="sftp-1" initialConnId="s1" connections={sshConnections} />
+
+const views_reflog = (
+    <div className="flex h-full flex-col">
+        <GitReflogPanel repoId="r1" onChanged={() => {}} />
+    </div>
+)
+
+const views_notesfolder = (
+    <FolderNotesDialog
+        folder={{id: 'f-notes-runbooks', name: 'Runbooks', parentId: '', sortOrder: 0, createdAt: 0, scope: 'note'} as never}
+        descendantIds={[]}
+        activeNoteId="n1"
+        onOpenNote={() => {}}
+        onChanged={() => {}}
+        onClose={() => {}}
+    />
+)
+
 const views_repo = (
     <GitRepoTab
         repoId="r1"
@@ -862,6 +1061,10 @@ const views: Record<string, React.ReactNode> = {
     chatdb: views_chatdb,
     // La base de conocimiento: el editor con el Markdown ya formateado, la
     // barra de formato, los enlaces entre notas y el panel lateral.
+    http: views_http,
+    reflog: views_reflog,
+    sftp: views_sftp,
+    notesfolder: views_notesfolder,
     notes: (
         <NoteEditorTab
             noteId="n1"
@@ -1092,6 +1295,20 @@ if (view === 'gridedit') {
             input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))
         }, 250)
     }, 900)
+}
+if (view === 'http') {
+    // Se arma la foto como la armaría una persona: se despliega la colección,
+    // se abre el cuerpo de la petición y se manda. Una captura del módulo con
+    // el árbol plegado y sin respuesta no muestra nada de lo que hace.
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Reserve v3')))
+    setTimeout(() => {
+        const body = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('Body'))
+        body?.click()
+    }, 1400)
+    setTimeout(() => {
+        const enviar = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Enviar')
+        enviar?.click()
+    }, 1800)
 }
 if (view === 'chatmode') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Chat · Claude Code')))

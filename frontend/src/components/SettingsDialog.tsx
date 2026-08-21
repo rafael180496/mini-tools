@@ -2,6 +2,8 @@ import {useEffect, useMemo, useState} from 'react'
 import {AppVersion, DefaultShellID, ListShells} from '../../wailsjs/go/main/App'
 import {localterm, updatecheck} from '../../wailsjs/go/models'
 import Icon from './Icon'
+import {BrowserOpenURL} from '../../wailsjs/runtime'
+import {DOCS_URL} from './sidebar/Sidebar'
 import Select, {type SelectOption} from './Select'
 import Toggle from './Toggle'
 import {EDITOR_THEME_IDS, EDITOR_THEME_LABELS} from '../codemirror/themes'
@@ -679,6 +681,19 @@ export default function SettingsDialog({
                             mini-tools {version ? `v${version}` : '—'}
                         </>
                     )}
+                    {/* La documentación también acá: Configuración es donde
+                        mira quien busca ayuda y no encontró el botón de la
+                        barra lateral. */}
+                    <span aria-hidden className="text-outline-variant">·</span>
+                    <button
+                        onClick={() => BrowserOpenURL(DOCS_URL)}
+                        title="Abrir la documentación en el navegador: qué hace cada módulo, ejemplos de uso y recetas de principio a fin"
+                        className="flex items-center gap-1.5 hover:text-on-surface hover:underline"
+                    >
+                        <Icon name="help" size={14} />
+                        Documentación
+                        <Icon name="open_in_new" size={12} />
+                    </button>
                 </div>
             </div>
         </div>

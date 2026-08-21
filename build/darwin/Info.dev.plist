@@ -19,6 +19,27 @@
         <string>iconfile</string>
         <key>LSMinimumSystemVersion</key>
         <string>10.13.0</string>
+        <!--
+          Permisos de macOS (TCC). Sin estas cadenas el sistema NO muestra el
+          diálogo de "¿permitir el acceso?": deniega en silencio y la app recibe
+          un `operation not permitted` que parece un error propio. Pasó de
+          verdad con el explorador SFTP sobre ~/Downloads.
+
+          El texto se le muestra al usuario tal cual dentro del diálogo, así que
+          dice para QUÉ lo necesita esta app y no una frase genérica.
+        -->
+        <key>NSDownloadsFolderUsageDescription</key>
+        <string>Para poder listar y transferir archivos de tu carpeta Descargas desde el explorador SFTP.</string>
+        <key>NSDesktopFolderUsageDescription</key>
+        <string>Para poder listar y transferir archivos de tu Escritorio desde el explorador SFTP.</string>
+        <key>NSDocumentsFolderUsageDescription</key>
+        <string>Para poder listar y transferir archivos de tu carpeta Documentos desde el explorador SFTP.</string>
+        <key>NSRemovableVolumesUsageDescription</key>
+        <string>Para poder listar y transferir archivos de discos externos y pendrives desde el explorador SFTP.</string>
+        <key>NSNetworkVolumesUsageDescription</key>
+        <string>Para poder listar y transferir archivos de unidades de red montadas desde el explorador SFTP.</string>
+        <key>NSFileProviderDomainUsageDescription</key>
+        <string>Para poder listar y transferir archivos sincronizados por iCloud u otros proveedores desde el explorador SFTP.</string>
         <key>NSHighResolutionCapable</key>
         <string>true</string>
         <key>NSHumanReadableCopyright</key>

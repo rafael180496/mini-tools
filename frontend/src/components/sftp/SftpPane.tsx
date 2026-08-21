@@ -609,8 +609,58 @@ export default function SftpPane({
     })
     const virtualItems = rowVirtualizer.getVirtualItems()
     const totalHeight = rowVirtualizer.getTotalSize()
-    const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
-    const paddingBottom = virtualItems.length > 0 ? totalHeight - virtualItems[virtualItems.length - 1].end : 0
+    // `scrollMargin` hay que descontarlo de las posiciones: la librería lo SUMA
+    // al `start`/`end` de cada ítem (las medidas arrancan en
+    // `paddingStart + scrollMargin`) pero lo RESTA de `getTotalSize()`. Los dos
+    // rellenos se calculan entonces en coordenadas de la lista, no del
+    // contenedor.
+    //
+    // Sin esto el relleno de arriba valía una fila de más y quedaba un hueco
+    // vacío entre «..» y el primer archivo — el `..` ya se dibuja como fila de
+    // verdad, así que el margen lo sumaba una segunda vez. Y el de abajo
+    // quedaba una fila corto, con lo que el scroll terminaba antes de la última
+    // fila.
+    const margin = rowVirtualizer.options.scrollMargin
+    const paddingTop = virtualItems.length > 0 ? virtualItems[0].start - margin : 0
+    const paddingBottom =
+        virtualItems.length > 0 ? totalHeight - (virtualItems[virtualItems.length - 1].end - margin) : 0
+
+    // Ancho del panel, para decidir qué columnas entran.
+    //
+    // Con los anchos por defecto la tabla mide 688px y un panel de un explorador
+    // partido al medio en una ventana de 1280 tiene 640: SIEMPRE aparecía una
+    // barra de scroll horizontal y la última columna quedaba cortada por la
+    // mitad. Se prefiere esconder lo prescindible antes que cortarlo: una
+    // columna que no está se entiende, una a medias parece un error.
+    //
+    // El orden de sacrificio es el de utilidad: «Kind» primero —es la extensión
+    // del archivo, que ya está en el nombre— y después «Permisos», que importa
+    // en un servidor y casi nunca en la máquina propia. Nombre y fecha no se
+    // esconden nunca.
+    const [paneWidth, setPaneWidth] = useState(0)
+    useEffect(() => {
+        const el = scrollRef.current
+        if (!el) return
+        const ro = new ResizeObserver(([entry]) => setPaneWidth(entry.contentRect.width))
+        ro.observe(el)
+        setPaneWidth(el.clientWidth)
+        return () => ro.disconnect()
+    }, [])
+    // La regla es «se esconde lo que no entra», calculada contra los anchos
+    // REALES de las columnas y no contra umbrales inventados: si el usuario
+    // ensancha «Nombre», las opcionales se van solas en vez de volver a
+    // desbordar. 28px es la casilla de selección, que no se redimensiona.
+    //
+    // 0 es "todavía no se midió": en ese primer render se muestran todas, que es
+    // lo que se veía antes, y el observer corrige en el mismo frame.
+    const fixedWidth = 28 + colWidths.name + colWidths.modified + colWidths.size
+    const showKind = paneWidth === 0 || paneWidth >= fixedWidth + colWidths.kind
+    const showPerms =
+        paneWidth === 0 || paneWidth >= fixedWidth + (showKind ? colWidths.kind : 0) + DEFAULT_WIDTHS.perms
+    // Cuántas columnas hay en total, para los colSpan de las filas que ocupan
+    // la tabla entera (rellenos del virtualizador, estado vacío). Escribir el
+    // número a mano en cada una es garantizar que un día no coincida.
+    const colCount = 4 + (showKind ? 1 : 0) + (showPerms ? 1 : 0)
 
     const allVisibleSelected = visible.length > 0 && visible.every((e) => selected.has(e.path))
     // Floor width of the table. 28px is the checkbox column, which is not
@@ -624,7 +674,12 @@ export default function SftpPane({
     // wide pane instead of stopping short of the right edge, and minWidth is
     // what makes it scroll horizontally once the columns no longer fit.
     const totalWidth =
-        28 + colWidths.name + colWidths.modified + colWidths.size + colWidths.kind + DEFAULT_WIDTHS.perms
+        28 +
+        colWidths.name +
+        colWidths.modified +
+        colWidths.size +
+        (showKind ? colWidths.kind : 0) +
+        (showPerms ? DEFAULT_WIDTHS.perms : 0)
 
     function toggleAllVisible() {
         setSelected((prev) => {
@@ -861,8 +916,8 @@ export default function SftpPane({
                             <col style={{width: colWidths.name}} />
                             <col style={{width: colWidths.modified}} />
                             <col style={{width: colWidths.size}} />
-                            <col style={{width: colWidths.kind}} />
-                            <col />
+                            {showKind && <col style={{width: colWidths.kind}} />}
+                            {showPerms && <col />}
                         </colgroup>
                         <thead className="sticky top-0 z-10 bg-surface-container-low text-on-surface-variant">
                             <tr className="border-b border-outline-variant">
@@ -882,21 +937,36 @@ export default function SftpPane({
                                 <ResizableHeader label="Nombre" col="name" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
                                 <ResizableHeader label="Fecha modificación" col="modified" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
                                 <ResizableHeader label="Tamaño" col="size" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-right" />
-                                <ResizableHeader label="Kind" col="kind" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
-                                <ResizableHeader label="Permisos" col="perms" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" last />
+                                {showKind && <ResizableHeader label="Kind" col="kind" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />}
+                                {showPerms && <ResizableHeader label="Permisos" col="perms" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" last />}
                             </tr>
                         </thead>
                         <tbody>
                             {showParent && !q && (
                                 <tr
                                     onDoubleClick={() => onNavigate(parent)}
-                                    className="cursor-pointer select-none hover:bg-surface-variant"
+                                    // Alto explícito, igual que las demás: sin él esta fila medía
+                                    // distinto que el resto y la lista arrancaba desalineada.
+                                    style={{height: ROW_HEIGHT}}
+                                    title={`Subir a ${parent} — doble clic, como para entrar a cualquier carpeta`}
+                                    className="cursor-pointer select-none border-b border-outline-variant/30 hover:bg-surface-variant"
                                 >
                                     <td />
-                                    <td className="flex items-center gap-1.5 px-2 py-1 text-on-surface-variant">
-                                        <Icon name="drive_folder_upload" size={16} /> ..
+                                    {/* El flex va en un <span>, no en el <td>: un `display:flex`
+                                        sobre una celda la saca del layout de la tabla, y con
+                                        `table-layout: fixed` eso desalinea la columna respecto
+                                        del encabezado y del resto de las filas. */}
+                                    <td className="px-2 py-1 text-on-surface-variant">
+                                        <span className="flex items-center gap-1.5">
+                                            <Icon name="drive_folder_upload" size={16} className="shrink-0" />
+                                            ..
+                                        </span>
                                     </td>
-                                    <td colSpan={4} />
+                                    {/* A dónde sube, no solo que sube. En una ruta profunda
+                                        «..» no dice nada; el nombre de la carpeta de arriba sí. */}
+                                    <td colSpan={colCount - 2} className="truncate px-2 py-1 text-on-surface-variant/50">
+                                        {parent}
+                                    </td>
                                 </tr>
                             )}
                             {/* Relleno de arriba: la altura de las filas que
@@ -906,7 +976,7 @@ export default function SftpPane({
                                 romper el ancho de las columnas. */}
                             {paddingTop > 0 && (
                                 <tr aria-hidden>
-                                    <td colSpan={6} style={{height: paddingTop, padding: 0}} />
+                                    <td colSpan={colCount} style={{height: paddingTop, padding: 0}} />
                                 </tr>
                             )}
                             {virtualItems.map((vi) => {
@@ -957,21 +1027,23 @@ export default function SftpPane({
                                     <td className="truncate px-2 py-1 text-right text-on-surface-variant">
                                         {e.isDir ? '—' : formatBytes(e.size)}
                                     </td>
-                                    <td className="truncate px-2 py-1 text-on-surface-variant">{kindOf(e)}</td>
-                                    <td className="truncate px-2 py-1 font-mono text-on-surface-variant" title={e.mode}>
-                                        {e.mode}
-                                    </td>
+                                    {showKind && <td className="truncate px-2 py-1 text-on-surface-variant">{kindOf(e)}</td>}
+                                    {showPerms && (
+                                        <td className="truncate px-2 py-1 font-mono text-on-surface-variant" title={e.mode}>
+                                            {e.mode}
+                                        </td>
+                                    )}
                                 </tr>
                                 )
                             })}
                             {paddingBottom > 0 && (
                                 <tr aria-hidden>
-                                    <td colSpan={6} style={{height: paddingBottom, padding: 0}} />
+                                    <td colSpan={colCount} style={{height: paddingBottom, padding: 0}} />
                                 </tr>
                             )}
                             {visible.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-3 py-6 text-center text-on-surface-variant">
+                                    <td colSpan={colCount} className="px-3 py-6 text-center text-on-surface-variant">
                                         {q ? `Ningún archivo de esta carpeta coincide con "${filter}"` : 'La carpeta está vacía'}
                                     </td>
                                 </tr>

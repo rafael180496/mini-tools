@@ -116,12 +116,33 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
    - Dejar `## [Unreleased]` en el archivo (encabezado vacío, sin
      contenido debajo) para que la próxima tanda de cambios post-release
      tenga dónde acumularse hasta el siguiente empaquetado.
-8. Los artefactos **no se commitean**: el usuario los sube al GitHub
+8. **Actualizar `index.html`, la documentación pública.** Es el paso que hace
+   que la versión nueva se pueda *usar*, no solo descargar: el CHANGELOG dice
+   qué cambió, y la página dice **cómo se usa**. Uno es para quien ya la tiene;
+   la otra, para quien todavía no.
+   - Por cada entrada de la versión que se acaba de volcar en el CHANGELOG,
+     preguntarse: **¿esto cambia lo que el usuario puede hacer?** Si sí, tiene
+     que estar en la página. Si es interno (un refactor, una optimización, un
+     bug que nadie llegó a notar), no va.
+   - **Módulo nuevo** → sección propia, con su captura, qué resuelve y al menos
+     un ejemplo de uso concreto; más su entrada en la barra de navegación.
+   - **Funcionalidad dentro de un módulo que ya existe** → dentro de esa
+     sección, con el ejemplo de cómo se usa. No alcanza con nombrarla: la
+     página existe para que alguien la use sin preguntar.
+   - **Algo que cambia el flujo de trabajo de punta a punta** → una receta más
+     en «Recetas de uso».
+   - Las capturas salen de `./scripts/uishot.sh` (hay que agregar la vista al
+     banco con datos inventados), **nunca de una instalación real**.
+   - Revisar además el bloque **«En desarrollo — todavía sin publicar»** del
+     `README.md`: lo que acaba de salir ya no va ahí.
+   - Ver la regla completa en
+     [conventions.md](../rules/conventions.md#indexhtml--la-vitrina-se-actualiza-con-el-mismo-cambio).
+9. Los artefactos **no se commitean**: el usuario los sube al GitHub
    Release del tag `vX.Y.Z` y después borra las copias de `releases/<os>/`.
    Lo que sí queda versionado de esa carpeta es el `README.md` de cada SO,
    que es donde viven los checksums y las instrucciones. Ver "Dónde viven
    los binarios" abajo.
-9. **Nunca `git add`/`commit`/`push` nada de esto — ni los artefactos, ni
+10. **Nunca `git add`/`commit`/`push` nada de esto — ni los artefactos, ni
    las docs tocadas.** Regla dura y sin excepción (ver "Commits / PRs" en
    [conventions.md](../rules/conventions.md)): el usuario hace todo el
    staging y los commits siempre, a mano. Terminar el proceso con los

@@ -81,6 +81,48 @@
   qué le importa a quien lo lee) — nunca "varias mejoras" ni "fixes
   varios".
 
+## `index.html` — la vitrina, se actualiza con el mismo cambio
+
+`index.html` (raíz del repo, publicado con GitHub Pages) documenta la app entera
+para alguien que llega por primera vez: qué es, cómo se instala, qué hace cada
+módulo, ejemplos de uso reales y las capturas.
+
+- **Regla dura: todo módulo nuevo, y toda funcionalidad que cambie lo que un
+  usuario puede hacer, se agrega a `index.html` en la misma tarea** — igual que
+  la entrada del CHANGELOG. No "después", no "cuando haya tiempo".
+- **Qué NO cuenta como cambio de vitrina**: un arreglo interno, un refactor, una
+  optimización, un bug que nadie llegó a notar. Si el usuario no puede hacer
+  nada nuevo ni distinto, no va.
+- **Dónde va cada cosa**:
+  - Módulo nuevo → sección propia (`<section id="…">`), con su captura, qué
+    resuelve y **al menos un ejemplo de uso concreto**; más su entrada en la
+    barra de navegación de arriba.
+  - Funcionalidad dentro de un módulo que ya existe → dentro de esa sección,
+    y si vale la pena mostrarla, su captura.
+  - Algo que cambia cómo se trabaja de punta a punta → una receta más en
+    **«Recetas de uso»**, que es la parte que más se lee.
+- **Las capturas salen de `./scripts/uishot.sh`**, nunca de una instalación
+  real: hay que agregar la vista al banco (`frontend/src/uishot.tsx`) con datos
+  inventados. Una captura de la app de verdad mete rutas, hosts y nombres de
+  alguien en una página pública.
+- **La página no hace una sola petición externa**: sin CDN, sin fuentes
+  remotas, sin analítica. Es la misma promesa que hace el programa, y romperla
+  en su propia vitrina sería la peor forma de romperla. Los colores salen de
+  `frontend/src/styles/globals.css` — si el tema de la app cambia, se copian de
+  ahí.
+
+- **Al sacar una versión se revisa entera**, no solo lo último que se tocó: es
+  el paso 8 de [releases.md](../specs/releases.md). Por cada entrada que se
+  volcó al CHANGELOG de esa versión hay que preguntarse si cambia lo que el
+  usuario puede hacer; si sí, la página tiene que decir **cómo se usa**, no
+  solo que existe. Y lo que salió publicado deja de estar en el bloque «En
+  desarrollo» del README.
+
+**Por qué es una regla y no una buena costumbre.** El README lo lee quien ya
+decidió mirar el repo; `index.html` lo lee quien todavía no sabe que la
+herramienta existe. Una funcionalidad que no está ahí, para ese lector no
+existe — y es exactamente la que nadie va a usar.
+
 ## Releases
 
 - **Cualquier mención de "empaquetar"/"empaquetá"/"empaquete" u "oficial" en el contexto de compilar es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye bumpear la versión (`bump-version.sh patch` por default, ya no es opcional en este flujo), armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), reflejar esos datos (con link directo al `.dmg`) en el `README.md` raíz, **y volcar `CHANGELOG.md` (mover `[Unreleased]` a `[X.Y.Z] - fecha`, con los features/fixes nuevos de la sesión)**.

@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mini-tools — cliente de bases de datos, HTTP, Git, SSH y agentes de IA en un binario</title>
+<meta name="description" content="Cliente de Oracle, PostgreSQL, SQLite, SQL Server, Redis y MongoDB, cliente HTTP con colecciones, terminal SSH/SFTP, cliente Git y tres CLIs de IA integrados. Un binario de 50 MB, sin Electron, sin cuenta y sin telemetría.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234a8eff'/><path d='M8 21V11h3.2l4.8 6 4.8-6H24v10h-3v-5.4l-3.8 4.7h-2.4L11 15.6V21z' fill='%23001a3d'/></svg>">
+<meta property="og:title" content="mini-tools">
+<meta property="og:description" content="Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de 50 MB.">
+<meta property="og:image" content="docs/screenshots/ui-workspace.png">
+<style>
+/* ==========================================================================
+   Los colores son EXACTAMENTE los de la app (frontend/src/styles/globals.css):
+   un esquema Material Design 3 real, no una paleta inventada para esta página.
+   Si la app cambia de tema, este bloque se actualiza desde ahí — la promesa de
+   una landing es mostrar el producto, y un color distinto ya es otra cosa.
+   ========================================================================== */
+:root{
+  --primary:#0058bc; --on-primary:#fff; --primary-container:#2271e0; --on-primary-container:#fefcff;
+  --secondary:#006c49; --secondary-container:#6cf8bb;
+  --tertiary:#9e3d00; --tertiary-container:#c64f00;
+  --error:#ba1a1a;
+  --surface:#faf8ff; --on-surface:#131b2e;
+  --lowest:#fff; --low:#f2f3ff; --container:#eaedff; --high:#e1e7ff; --highest:#dae2fd;
+  --on-surface-variant:#414755; --outline:#717786; --outline-variant:#c1c6d7;
+  --shadow:0 10px 30px rgb(19 27 46 / .10);
+}
+:root[data-theme="dark"]{
+  --primary:#adc7ff; --on-primary:#002e68; --primary-container:#4a8eff; --on-primary-container:#00285b;
+  --secondary:#4edea3; --secondary-container:#00a572;
+  --tertiary:#ffb695; --tertiary-container:#ef6719;
+  --error:#ffb4ab;
+  --surface:#0b1326; --on-surface:#dae2fd;
+  --lowest:#060e20; --low:#131b2e; --container:#171f33; --high:#222a3d; --highest:#2d3449;
+  --on-surface-variant:#c1c6d7; --outline:#8b90a0; --outline-variant:#414754;
+  --shadow:0 12px 34px rgb(0 0 0 / .45);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+body{
+  margin:0;background:var(--surface);color:var(--on-surface);overflow-x:hidden;
+  /* Sin fuentes externas a propósito: la página de un programa que presume de
+     no depender de internet no puede pedirle una tipografía a un CDN. */
+  font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased;
+}
+code,kbd,pre{font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace}
+a{color:var(--primary)}
+img{max-width:100%;height:auto;display:block}
+.wrap{width:min(1120px,92vw);margin-inline:auto}
+
+/* --- Barra superior --- */
+header{
+  position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);
+  background:color-mix(in srgb,var(--surface) 86%,transparent);
+  border-bottom:1px solid var(--outline-variant);
+}
+.bar{display:flex;align-items:center;gap:14px;padding:10px 0}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.02em;text-decoration:none;color:inherit;font-size:17px}
+.mark{width:26px;height:26px;border-radius:7px;background:var(--primary-container);color:var(--on-primary-container);
+  display:grid;place-items:center;font-weight:800;font-size:13px}
+nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav a{
+  text-decoration:none;color:var(--on-surface-variant);font-size:13.5px;padding:5px 9px;border-radius:8px;
+}
+nav a:hover{background:var(--high);color:var(--on-surface)}
+.themetgl{
+  border:1px solid var(--outline-variant);background:var(--container);color:var(--on-surface-variant);
+  border-radius:8px;padding:5px 10px;font-size:13px;cursor:pointer
+}
+.themetgl:hover{color:var(--on-surface)}
+
+/* --- Portada --- */
+.hero{padding:clamp(34px,6vw,64px) 0 8px;text-align:center}
+.hero .lead{text-wrap:pretty}
+h1{font-size:clamp(26px,5.2vw,50px);line-height:1.12;letter-spacing:-.03em;margin:0 0 14px;text-wrap:balance;max-width:19ch;margin-inline:auto}
+.lead{font-size:clamp(16px,2vw,20px);color:var(--on-surface-variant);max-width:62ch;margin:0 auto 22px}
+.chips{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-bottom:26px}
+.chip{
+  font-size:12.5px;padding:4px 11px;border-radius:999px;border:1px solid var(--outline-variant);
+  color:var(--on-surface-variant);background:var(--low)
+}
+.cta{display:flex;gap:11px;justify-content:center;flex-wrap:wrap;margin-bottom:34px}
+.btn{
+  text-decoration:none;font-weight:600;font-size:15px;padding:11px 22px;border-radius:10px;
+  background:var(--primary);color:var(--on-primary);border:1px solid transparent;display:inline-block
+}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--on-surface);border-color:var(--outline)}
+.btn.ghost:hover{background:var(--high);filter:none}
+figure{margin:0}
+.shot{border:1px solid var(--outline-variant);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);background:var(--lowest)}
+figcaption{font-size:13px;color:var(--on-surface-variant);text-align:center;margin-top:9px}
+
+/* --- Secciones --- */
+section{padding:56px 0;border-top:1px solid var(--outline-variant)}
+section:first-of-type{border-top:0}
+h2{font-size:clamp(23px,3.2vw,33px);letter-spacing:-.02em;margin:0 0 6px;line-height:1.2}
+h3{font-size:19px;margin:32px 0 8px;letter-spacing:-.01em}
+h4{font-size:15px;margin:20px 0 6px;color:var(--on-surface-variant);text-transform:uppercase;letter-spacing:.06em}
+.kicker{color:var(--primary);font-weight:700;font-size:13px;letter-spacing:.09em;text-transform:uppercase;margin:0 0 8px}
+.sub{color:var(--on-surface-variant);max-width:74ch;margin:0 0 22px}
+p{max-width:74ch}
+ul,ol{max-width:74ch}
+li{margin:5px 0}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(258px,1fr))}
+.card{
+  background:var(--container);border:1px solid var(--outline-variant);border-radius:13px;padding:18px 19px
+}
+.card h3{margin:0 0 6px;font-size:16.5px}
+.card p{font-size:14.5px;color:var(--on-surface-variant);margin:0;max-width:none}
+pre{
+  background:var(--lowest);border:1px solid var(--outline-variant);border-radius:11px;
+  padding:15px 17px;overflow-x:auto;font-size:13.5px;line-height:1.6;margin:12px 0
+}
+pre .c{color:var(--on-surface-variant)}
+:not(pre)>code{
+  background:var(--high);border:1px solid var(--outline-variant);border-radius:5px;
+  padding:1px 5px;font-size:.88em
+}
+kbd{
+  background:var(--high);border:1px solid var(--outline);border-bottom-width:2px;border-radius:5px;
+  padding:1px 6px;font-size:.85em
+}
+.note{
+  border-left:3px solid var(--primary);background:var(--low);padding:12px 16px;border-radius:0 10px 10px 0;margin:16px 0
+}
+.note.warn{border-left-color:var(--tertiary)}
+.note p{margin:0;font-size:14.5px}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:38px;margin:13px 0}
+.steps li::before{
+  content:counter(s);position:absolute;left:0;top:1px;width:25px;height:25px;border-radius:50%;
+  background:var(--primary);color:var(--on-primary);display:grid;place-items:center;font-size:13px;font-weight:700
+}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0}
+th,td{border-bottom:1px solid var(--outline-variant);padding:9px 11px;text-align:left;vertical-align:top}
+th{color:var(--on-surface-variant);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.05em}
+details{border:1px solid var(--outline-variant);border-radius:11px;padding:0 16px;margin:11px 0;background:var(--low)}
+details[open]{padding-bottom:8px}
+summary{cursor:pointer;padding:13px 0;font-weight:600}
+footer{padding:44px 0;border-top:1px solid var(--outline-variant);color:var(--on-surface-variant);font-size:14px}
+.two{display:grid;gap:26px;grid-template-columns:1fr 1fr;align-items:start}
+/* Un hijo de grid trae `min-width:auto`: no se encoge por debajo del ancho
+   mínimo de su contenido, así que un <pre> con una línea larga estira la
+   columna y desborda el documento entero. Es la causa clásica, y solo se ve en
+   pantallas angostas. */
+.two>*,.grid>*{min-width:0}
+pre{max-width:100%}
+@media(max-width:860px){.two{grid-template-columns:1fr}nav{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="#top"><span class="mark">mt</span> mini-tools</a>
+    <nav>
+      <a href="#empezar">Empezar</a>
+      <a href="#bases">Bases de datos</a>
+      <a href="#http">HTTP</a>
+      <a href="#notas">Notas</a>
+      <a href="#git">Git</a>
+      <a href="#ssh">SSH</a>
+      <a href="#ia">IA</a>
+      <a href="#recetas">Recetas</a>
+      <a href="#seguridad">Seguridad</a>
+    </nav>
+    <button class="themetgl" id="tgl" title="Cambiar entre tema claro y oscuro">Tema</button>
+  </div>
+</header>
+
+<a id="top"></a>
+<main class="wrap">
+
+<div class="hero">
+  <h1>Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu Git y tus agentes de IA</h1>
+  <p class="lead">En un solo binario de 50&nbsp;MB. Sin Electron, sin JVM, sin cuenta y sin telemetría:
+  tus credenciales cifradas en tu máquina y nada saliendo a ningún lado.</p>
+  <div class="chips">
+    <span class="chip">Oracle</span><span class="chip">PostgreSQL</span><span class="chip">SQLite</span>
+    <span class="chip">SQL Server</span><span class="chip">Redis</span><span class="chip">MongoDB</span>
+    <span class="chip">HTTP</span><span class="chip">SSH · SFTP</span><span class="chip">Git</span>
+    <span class="chip">Claude Code</span><span class="chip">Codex</span><span class="chip">Antigravity</span>
+  </div>
+  <div class="cta">
+    <a class="btn" href="#empezar">Cómo empezar</a>
+    <a class="btn ghost" href="https://github.com/rafael180496/mini-tools/releases">Descargas</a>
+    <a class="btn ghost" href="https://github.com/rafael180496/mini-tools">Código</a>
+  </div>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ui-workspace.png" alt="Ventana de mini-tools: barra lateral con el menú de módulos arriba, árbol de conexiones en carpetas, editor SQL al centro con pestañas rotuladas por tipo y el panel de resultados abajo"></div>
+    <figcaption>Un módulo a la vez en la barra lateral, y el que estás usando se queda con toda la altura.</figcaption>
+  </figure>
+</div>
+
+<section id="porque">
+  <p class="kicker">Por qué existe</p>
+  <h2>Cinco herramientas que ya usabas, sin cinco ventanas</h2>
+  <p class="sub">El trabajo real cruza todo el tiempo: mirás un log en el servidor, corrés una consulta,
+  probás el endpoint que la usa, buscás el commit que lo rompió y lo anotás para el que venga.
+  mini-tools pone eso en una sola ventana, con un solo lugar cifrado donde viven las credenciales.</p>
+  <div class="grid">
+    <div class="card"><h3>Un binario, cero instalación</h3><p>Go + Wails: usa el WebView del sistema. No hay Electron, no hay JVM, no hay Node corriendo por detrás.</p></div>
+    <div class="card"><h3>Tus credenciales, tuyas</h3><p>Cada DSN, contraseña SSH y clave privada se cifra con AES-256-GCM. La clave se deriva de tu clave maestra con Argon2id y no se guarda en ningún lado.</p></div>
+    <div class="card"><h3>Sin telemetría, sin cuenta</h3><p>No hay registro, no hay servidor de la app, no se manda nada. Lo único que sale a internet es lo que vos apuntás: tu base, tu servidor, tu API.</p></div>
+    <div class="card"><h3>Tus agentes, adentro</h3><p>Claude Code, Codex y Antigravity con su terminal completa o un chat nativo, con contexto del módulo en el que estás.</p></div>
+    <div class="card"><h3>Producción se avisa</h3><p>Marcá una conexión como producción y cada sentencia destructiva pide confirmación explícita antes de correr.</p></div>
+    <div class="card"><h3>Todo en español</h3><p>Interfaz, mensajes de error y documentación. Los tooltips explican la consecuencia, no repiten el nombre del botón.</p></div>
+  </div>
+</section>
+
+<section id="empezar">
+  <p class="kicker">Primeros pasos</p>
+  <h2>De cero a la primera consulta</h2>
+  <div class="two">
+    <div>
+      <h4>Instalar</h4>
+      <ol class="steps">
+        <li><strong>Descargá</strong> el paquete de tu sistema desde <a href="https://github.com/rafael180496/mini-tools/releases">Releases</a>: <code>.dmg</code> para macOS, <code>.zip</code> o instalador para Windows.</li>
+        <li><strong>macOS</strong>: arrastrá la app a Aplicaciones. Como no está firmada con cuenta de desarrollador, la primera vez abrila con clic derecho → Abrir, o quitá la cuarentena:
+          <pre><code>xattr -dr com.apple.quarantine /Applications/mini-tools.app</code></pre>
+        </li>
+        <li><strong>Windows</strong>: descomprimí y ejecutá <code>mini-tools.exe</code>. SmartScreen puede avisar por la misma razón: <em>Más información → Ejecutar de todas formas</em>.</li>
+        <li><strong>Elegí tu clave maestra</strong> la primera vez que abre. Es la que cifra todo lo demás, y <strong>no se guarda en ningún lado</strong>: si la perdés, se pierde el vault. Podés pedirle que la recuerde en esa máquina.</li>
+      </ol>
+    </div>
+    <div>
+      <h4>Compilar desde el código</h4>
+      <p>Si preferís compilarlo vos, hace falta Go&nbsp;1.26+, Node&nbsp;20+, pnpm y el CLI de Wails&nbsp;v2:</p>
+      <pre><code>git clone https://github.com/rafael180496/mini-tools
+cd mini-tools
+
+<span class="c"># dependencias del frontend</span>
+cd frontend &amp;&amp; pnpm install &amp;&amp; cd ..
+
+<span class="c"># desarrollo, con recarga en caliente</span>
+wails dev
+
+<span class="c"># binario de producción</span>
+wails build</code></pre>
+      <div class="note"><p><strong>Sin CGO.</strong> Todos los drivers son en Go puro, así que compila y se distribuye como un ejecutable único sin dependencias del sistema.</p></div>
+    </div>
+  </div>
+
+  <div class="note"><p><strong>Esta página está adentro de la app.</strong> El
+  botón <strong>?</strong> del pie de la barra lateral —y el enlace
+  <em>Documentación</em> del pie de Configuración— la abren en tu navegador, así
+  que no hace falta acordarse de la dirección.</p></div>
+
+  <h3>La primera conexión</h3>
+  <ol class="steps">
+    <li>Barra lateral → módulo <strong>Conexiones</strong> → <strong>+</strong>.</li>
+    <li>Elegí el motor, o mejor: <strong>pegá la cadena de conexión</strong> que ya tenés en un <code>.env</code> y el formulario se completa solo, detectando el motor.
+      <pre><code>postgres://usuario:clave@host:5432/basedatos
+jdbc:oracle:thin:@//host:1521/SERVICIO
+host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
+/ruta/a/archivo.sqlite</code></pre>
+    </li>
+    <li><strong>Probar conexión</strong> si querés, pero no es obligatorio: podés guardar una conexión a un servidor que ahora está apagado.</li>
+    <li>Marcala como <strong>producción</strong> si lo es. Desde ese momento cada <code>UPDATE</code>, <code>DELETE</code> o <code>DROP</code> pide confirmación.</li>
+    <li>Doble clic en la conexión y se abre una pestaña de editor vinculada a ella. <kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> ejecuta.</li>
+  </ol>
+</section>
+<section id="bases">
+  <p class="kicker">Módulo</p>
+  <h2>Bases de datos</h2>
+  <p class="sub">Seis motores con el mismo editor, la misma grilla y el mismo historial:
+  Oracle, PostgreSQL, SQLite, SQL Server, Redis y MongoDB.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/schema-tree.png" alt="Árbol de esquema: tablas, procedures, functions, triggers y packages agrupados en categorías plegables, con buscador arriba"></div>
+    <figcaption>El árbol busca también dentro de procedures, functions, triggers y packages — no solo tablas.</figcaption>
+  </figure>
+
+  <h3>Escribir la consulta</h3>
+  <p>El autocompletado entiende <em>dónde</em> está el cursor: propone tablas después de <code>FROM</code>,
+  columnas acotadas a las tablas que la consulta realmente referencia después de <code>SELECT</code> o
+  <code>WHERE</code>, y resuelve alias al escribir un punto.</p>
+  <pre><code>SELECT c.<span class="c">▮</span>            <span class="c">-- columnas de CLIENTES, porque c es su alias</span>
+FROM   SGCPRO.CLIENTES c
+JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN completo desde la clave foránea</span></code></pre>
+  <p>Y trae <strong>46 atajos comunes</strong> (hasta 64 según el motor). Escribí las tres letras y
+  <kbd>Enter</kbd>:</p>
+  <table>
+    <tr><th>Atajo</th><th>Qué inserta</th></tr>
+    <tr><td><code>sel</code></td><td><code>SELECT … FROM … WHERE …</code> con los huecos para tabular entre ellos</td></tr>
+    <tr><td><code>in</code> · <code>bet</code> · <code>like</code></td><td>Las condiciones que uno escribe mal justo cuando las necesita</td></tr>
+    <tr><td><code>ljoin</code> · <code>sjoin</code></td><td><code>LEFT JOIN</code>, y el auto-join de una tabla consigo misma para jerarquías</td></tr>
+    <tr><td><code>nulls</code> · <code>minmax</code></td><td>Perfilar una columna que no conocés: cuántos nulos, mínimo, máximo y distintos</td></tr>
+    <tr><td><code>cols</code> · <code>size</code> · <code>act</code></td><td>Catálogo, tamaño de tablas y consultas en curso — con la sintaxis de <em>tu</em> motor</td></tr>
+    <tr><td><code>tx</code></td><td>Transacción con el manejo de error de cada motor</td></tr>
+  </table>
+
+  <h3>Parámetros que no se concatenan</h3>
+  <p>Escribí <code>:desde</code> y la app pregunta el valor antes de correr. <strong>Nunca entra al texto
+  del SQL</strong>: viaja aparte y se enlaza como argumento del driver.</p>
+  <pre><code>SELECT * FROM FACTURAS
+ WHERE F_EMISION BETWEEN :desde AND :hasta
+   AND ESTADO = :estado</code></pre>
+  <p>Reconoce <code>:nombre</code> en los cuatro motores SQL, <code>$1</code> en PostgreSQL y <code>?</code>
+  en SQLite/SQL&nbsp;Server — y reconoce lo que <em>no</em> es un parámetro: el <code>:=</code> de PL/SQL,
+  los <code>::</code> de un cast, el <code>:NEW</code> de un trigger y todo lo que esté dentro de un
+  literal o un comentario.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/grid-edit.png" alt="Grilla de resultados con una celda editada: abajo la barra de cambios pendientes con la vista previa del UPDATE que se va a ejecutar"></div>
+    <figcaption>Doble clic en una celda y la app escribe el <code>UPDATE</code> con su <code>WHERE</code> por clave primaria.</figcaption>
+  </figure>
+
+  <h3>La grilla que escribe el UPDATE</h3>
+  <p>Los cambios quedan <strong>pendientes</strong> hasta que los mandás con <kbd>⌘↵</kbd>, con la vista
+  previa del SQL exacto y en una transacción donde cada sentencia tiene que afectar exactamente una fila.
+  Solo se habilita cuando la consulta sale de <strong>una</strong> tabla con clave primaria; si no, te dice
+  por qué no puede.</p>
+
+  <div class="note warn"><p><strong>Production Guard.</strong> En una conexión marcada como producción,
+  un <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code> no se ejecuta sin una confirmación
+  que dice cuántas filas va a tocar.</p></div>
+
+  <h3>Además</h3>
+  <ul>
+    <li><strong>EXPLAIN y EXPLAIN ANALYZE</strong> sobre lo seleccionado o sobre la sentencia donde está el cursor, con árbol visual y los escaneos completos resaltados.</li>
+    <li><strong>Consola de ejecución</strong> estilo DataGrip: cada sentencia de un script con su texto y su resultado con hora.</li>
+    <li><strong>Exportar</strong> a CSV, JSON, XLSX, el DDL de un objeto o de un esquema entero, y «copiar como INSERT» desde la grilla.</li>
+    <li><strong>Redis Browser</strong> y <strong>explorador de MongoDB</strong> con edición en línea que preserva el TTL.</li>
+  </ul>
+</section>
+
+<section id="http">
+  <p class="kicker">Módulo</p>
+  <h2>Peticiones HTTP</h2>
+  <p class="sub">Colecciones estilo Postman, guardadas en el mismo vault cifrado que tus conexiones —
+  no en un archivo de configuración ni en la nube de nadie.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ui-http.png" alt="Módulo HTTP: árbol de colecciones con una carpeta de autenticación y peticiones rotuladas por método, la petición POST con su cuerpo JSON, y abajo la respuesta 201 Created con su tiempo y tamaño"></div>
+    <figcaption>Árbol de colecciones, petición y respuesta en la misma pantalla.</figcaption>
+  </figure>
+
+  <h3>Traer lo que ya tenías</h3>
+  <ol class="steps">
+    <li>En la cabecera de <strong>Colecciones</strong>, el ícono de importar toma un <code>.json</code> exportado de Postman (v2.1).</li>
+    <li>Entra completa: peticiones, carpetas, variables, autenticación, descripciones y scripts. Lo que esta versión todavía no ejecuta <strong>se guarda igual</strong>, así que vuelve a salir intacto al exportar.</li>
+    <li>Al terminar te dice qué entró y con qué salvedades — <em>al importar</em>, no cuando la petición falla.</li>
+  </ol>
+  <div class="note"><p><strong>Los secretos no viajan en el export.</strong> Una variable marcada como
+  secreta sale declarada y vacía, y el token de OAuth&nbsp;2.0 directamente no sale. Un archivo de colección
+  termina en un chat y en un repositorio.</p></div>
+
+  <h3>Variables y entornos</h3>
+  <p>Escribí <code>{{marcadores}}</code> en la URL, en los headers, en el cuerpo o dentro de la
+  autenticación. La precedencia es dinámicas → entorno → colección, y una variable puede usar otra:</p>
+  <pre><code>protocol = https
+host     = api.ejemplo.com
+baseUrl  = {{protocol}}://{{host}}      <span class="c">-- se resuelve en cadena</span>
+
+GET {{baseUrl}}/clientes/:id?tenant={{tenant}}</code></pre>
+  <p>Lo que ningún nivel define se avisa antes de mandar, en vez de salir con las llaves adentro.</p>
+
+  <h3>Autenticación, con herencia</h3>
+  <p>Petición → carpeta → colección, igual que Postman. Nativas: <strong>Basic, Bearer, API&nbsp;Key,
+  JWT</strong> (HS256/384/512), <strong>Digest</strong> (RFC&nbsp;7616), <strong>AWS Signature&nbsp;v4</strong>
+  y <strong>OAuth&nbsp;2.0</strong> — incluido el flujo de aplicación nativa (RFC&nbsp;8252): navegador del
+  sistema, captura del redirect en un puerto de loopback y <strong>PKCE&nbsp;S256</strong> siempre.</p>
+
+  <h3>Firmar sin escribir JavaScript</h3>
+  <p>En vez de incorporar un motor de scripts (+19,8&nbsp;MB contra un techo de 80), las firmas se
+  <strong>declaran</strong>: HMAC, SHA, base64, encadenadas entre sí y con marcadores adentro.
+  Lo que sale queda marcado como secreto, así que no aparece en el historial ni en el export.</p>
+  <table>
+    <tr><th>Nombre</th><th>Operación</th><th>Entrada</th><th>Clave</th></tr>
+    <tr><td><code>sello</code></td><td>texto</td><td><code>{{$timestamp}}</code></td><td>—</td></tr>
+    <tr><td><code>firma</code></td><td>HMAC-SHA256 (hex)</td><td><code>{{método}}{{sello}}{{cuerpo}}</code></td><td><code>{{apiSecret}}</code></td></tr>
+  </table>
+  <pre><code>Authorization: HMAC {{apiKey}}:{{firma}}
+X-Timestamp:   {{sello}}</code></pre>
+
+  <h3>Correr toda la colección</h3>
+  <p>«Correr la colección» manda todas sus peticiones <strong>en orden y de a una</strong> — una suite
+  casi siempre es una secuencia: login, después lo que usa la sesión, después lo que usa el id que
+  devolvió la anterior. Con avance en vivo, pausa opcional entre peticiones y resumen de pasa/falla.</p>
+  <div class="note warn"><p><strong>Qué significa «pasó»:</strong> la petición salió y el servidor
+  contestó con un código menor a 400. Los scripts de test <em>se guardan y se exportan</em> pero
+  <strong>no se ejecutan acá</strong> — los corre Postman o newman. Decir «3 tests pasaron» sobre scripts
+  que nadie ejecutó sería una mentira con formato de informe.</p></div>
+
+  <h3>Y además</h3>
+  <ul>
+    <li><strong>Cookies por entorno</strong>: el login de una petición vale para las siguientes, y probar producción y desarrollo a la vez no mezcla las sesiones.</li>
+    <li><strong>Generar código</strong> en cURL, HTTP, Go, JavaScript, Python, Java, C#, PHP, Ruby y PowerShell, con las variables resueltas y los secretos tapados por defecto.</li>
+    <li><strong>Pegar un «Copy as cURL»</strong> del navegador y queda una petición lista para editar.</li>
+    <li><strong>Peticiones rápidas</strong>: probar un endpoint sin crear ni nombrar ninguna colección; si al final servía, «Guardar en…».</li>
+    <li><strong>Documentación publicada como nota</strong> del vault, con enlaces y procedencia. Regenerarla no pisa lo que editaste a mano.</li>
+  </ul>
+</section>
+<section id="notas">
+  <p class="kicker">Módulo</p>
+  <h2>Notas — documentación viva y cifrada</h2>
+  <p class="sub">Los runbooks, los procedimientos y las notas de incidentes viven adentro del vault,
+  cifrados con la misma clave maestra que tus conexiones.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/notes-editor.png" alt="Editor de notas con el Markdown formateado mientras se escribe: títulos grandes, negritas, enlaces entre notas subrayados y etiquetas como pastillas"></div>
+    <figcaption>El Markdown se ve formateado mientras escribís; las marcas aparecen solo en la línea del cursor.</figcaption>
+  </figure>
+
+  <h3>Un runbook que se ejecuta</h3>
+  <p>Un bloque de SQL con la conexión declarada trae su botón <strong>Ejecutar</strong>, contra tu conexión
+  de verdad y con el mismo Production Guard del editor. El resultado no se guarda en la nota: es una
+  consulta, no documentación.</p>
+  <pre><code>## Sesiones colgadas
+
+Si el portal no responde, primero mirar quién está bloqueando:
+
+```sql connection="SGCPRO"
+SELECT s.sid, s.serial#, s.username, s.status, s.machine
+  FROM v$session s
+ WHERE s.status = 'ACTIVE'
+ ORDER BY s.logon_time DESC;
+```
+
+Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llamar]].</code></pre>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/notes-folder.png" alt="Carpeta Runbooks abierta como tabla: notas numeradas con su título, fecha de creación y de última modificación, y un buscador propio"></div>
+    <figcaption>Clic en el nombre de una carpeta y se abre como tabla; la flecha sigue plegando.</figcaption>
+  </figure>
+
+  <h3>Organizadas para encontrarlas</h3>
+  <ul>
+    <li><strong>Carpetas</strong> con su propio «+» de nota, que la crea ya adentro.</li>
+    <li><strong>Vista de tabla</strong> por carpeta: fecha de creación, de última modificación, ordenable y con buscador que filtra solo ahí.</li>
+    <li><strong>Grafo</strong> de todo lo que enlazás, y <strong>backlinks</strong> — los enlaces que entran son los que uno no recuerda haber puesto.</li>
+    <li><strong>Buscador</strong> que encuentra <code>Diagnóstico</code> escribiendo <code>diagnostico</code>, exige todas las palabras en cualquier orden y entiende <code>tag:</code>, <code>enlaza:</code> y <code>privado:</code>.</li>
+    <li><strong>Pegá una captura</strong> con <kbd>⌘V</kbd> y queda incrustada, cifrada igual que el texto.</li>
+  </ul>
+
+  <div class="note"><p><strong>El candado es contra los agentes, no contra vos.</strong> Marcar una nota
+  como privada la esconde de forma absoluta del chat y del servidor MCP —el filtro está en la consulta,
+  no en un <code>if</code>— sin dejar de verla vos ni de aparecer en tu grafo.</p></div>
+</section>
+
+<section id="git">
+  <p class="kicker">Módulo</p>
+  <h2>Git, completo</h2>
+  <p class="sub">Cliente estilo Sublime Merge sobre el <code>git</code> de tu sistema — así que tus
+  credential helpers, tu <code>ssh-agent</code> y tus hooks siguen funcionando igual.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-commit-graph.png" alt="Grafo de commits con carriles de colores, badges de rama y tag, y la marca de HEAD"></div>
+    <figcaption>Grafo de commits, diff unificado o lado a lado, y stage por bloque.</figcaption>
+  </figure>
+
+  <ul>
+    <li><strong>Ramas y tags</strong> con carpetas por prefijo (<code>feature/…</code> se pliega como una), anclado de las que usás siempre y alta desde el propio panel.</li>
+    <li><strong>Rebase</strong> de los dos tipos: interactivo para reordenar y combinar, y de una rama sobre otra desde su menú. Los dos se abortan.</li>
+    <li><strong>Push, pull y fetch con todas sus variantes</strong> (<code>--force-with-lease</code>, <code>--ff-only</code>, <code>--rebase --autostash</code>, <code>--prune</code>…), y si la rama no está publicada, cualquiera te ofrece vincularla sin perder los flags.</li>
+    <li><strong>Submódulos</strong> con el estado que importa: sin inicializar, movido respecto del commit que fija el padre, o en conflicto.</li>
+    <li><strong>Git Flow nativo</strong>, sin instalar nada: escribe las mismas claves que el comando, y averigua si tu rama de producción es <code>main</code> o <code>master</code> en vez de asumirlo.</li>
+    <li><strong>Log de los comandos exactos</strong> que la app ejecutó por debajo, con su salida y cuánto tardaron.</li>
+  </ul>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-reflog.png" alt="Solapa Reflog: los movimientos de HEAD con su selector, el commit, la acción marcada por color, el detalle y la fecha"></div>
+    <figcaption>El reflog: la red debajo de <code>reset --hard</code>, rebase y <code>push --force</code>.</figcaption>
+  </figure>
+
+  <h3>Recuperar un commit perdido</h3>
+  <ol class="steps">
+    <li>Abrí la solapa <strong>Reflog</strong> del panel inferior. Están los últimos movimientos de HEAD, con las acciones que reescriben historia marcadas en rojo.</li>
+    <li>Buscá el commit por su mensaje — el filtro de arriba busca por mensaje, acción o hash.</li>
+    <li><strong>Creá una rama ahí.</strong> Es la acción que se ofrece primero porque no mueve nada, no toca lo que tengas sin commitear, y le da nombre propio al commit perdido.</li>
+    <li>Si de verdad querés volver la rama actual a esa posición, el <code>reset --hard</code> también está — detrás de una confirmación que dice qué se pierde.</li>
+  </ol>
+  <div class="note warn"><p>El reflog es <strong>local y temporal</strong>: no se clona, no se empuja, y
+  git lo poda solo (90 días lo alcanzable, 30 lo que no). Sirve para recuperar lo de ayer, no como
+  historial.</p></div>
+</section>
+
+<section id="ssh">
+  <p class="kicker">Módulo</p>
+  <h2>SSH, SFTP y las terminales de tu máquina</h2>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ssh-terminal.png" alt="Terminal SSH interactiva dentro de una pestaña de la app, con el tema de colores aplicado"></div>
+    <figcaption>Terminal real (PTY), no una emulación: <code>top</code>, <code>vi</code> y los colores funcionan.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>Terminal interactiva real</strong> (xterm.js) por conexión, con PTY y resize automático. Cerrar la pestaña corta la sesión del lado remoto, no la deja colgada.</li>
+    <li><strong>Snippets</strong> guardados y reutilizables en cualquier sesión, con carpetas y buscador: Ejecutar corre cada línea, Pegar las escribe sin confirmar.</li>
+    <li><strong>Terminales locales</strong> (PowerShell, zsh, bash…) en el mismo módulo, con los mismos snippets y su propio historial cifrado.</li>
+    <li><strong>Historial filtrado</strong>: las líneas que parecen traer una contraseña no se guardan.</li>
+  </ul>
+
+  <h3>El explorador de archivos, en dos paneles</h3>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/sftp-dual.png" alt="Explorador SFTP de doble panel: a la izquierda la máquina local en /Users/rafael, a la derecha el servidor app-01 en producción; cada panel con su selector de host, su ruta, su buscador, el contador de elementos y la tabla de archivos con nombre, fecha, tamaño y tipo"></div>
+    <figcaption>Cada panel apunta a donde quieras: local o cualquiera de tus servidores. También servidor ↔ servidor.</figcaption>
+  </figure>
+
+  <p>Se abre desde el árbol SSH y reusa esa conexión — no hay que volver a autenticarse.
+  Cada panel elige su host arriba a la izquierda, así que las combinaciones son las cuatro:
+  <strong>local → servidor</strong>, <strong>servidor → local</strong>,
+  <strong>servidor → otro servidor</strong> (pasando por tu máquina en streaming) y
+  local → local.</p>
+
+  <h4>Moverse</h4>
+  <ul>
+    <li><strong>Doble clic</strong> en una carpeta entra; en un archivo lo abre en una pestaña del editor.</li>
+    <li>La fila <strong>«..»</strong> sube un nivel, y muestra a dónde: en una ruta profunda saber que subís no alcanza, hay que saber adónde.</li>
+    <li>El <strong>buscador</strong> de cada panel filtra lo que ya está listado —no baja a las subcarpetas ni vuelve a preguntarle al servidor—, así que es instantáneo. <kbd>Esc</kbd> lo limpia.</li>
+    <li>Las <strong>columnas se ordenan y se redimensionan</strong>, y las que no entran se esconden solas: primero <em>Kind</em> —que es la extensión, y ya está en el nombre— y después <em>Permisos</em>. Preferimos esconder lo prescindible antes que cortarlo: una columna que no está se entiende, una a medias parece un error.</li>
+  </ul>
+
+  <h4>Transferir</h4>
+  <ol class="steps">
+    <li>Seleccioná con las casillas —o con clic y <kbd>Shift</kbd> para un rango—, o directamente <strong>arrastrá</strong> de un panel al otro.</li>
+    <li>El botón dice a dónde va: <strong>«Enviar a app-01 · producción»</strong>, no un genérico «Enviar».</li>
+    <li>Si algo ya existe del otro lado, se pregunta <strong>antes de empezar</strong> y por cada archivo: reemplazar, omitir o renombrar.</li>
+    <li>La cola muestra <strong>porcentaje, bytes y archivos en vivo</strong>, y cada transferencia se cancela sola sin tocar las demás. Los lotes grandes van en paralelo.</li>
+  </ol>
+
+  <div class="note"><p><strong>Permisos sin recordar el octal.</strong> Clic derecho → Permisos
+  abre un diálogo con casillas de Lectura/Escritura/Ejecución para Propietario, Grupo y Otros — y
+  muestra el <code>chmod</code> equivalente mientras lo tocás.</p></div>
+
+  <div class="note warn"><p><strong>La primera vez en macOS.</strong> Al entrar a Descargas, Escritorio o
+  Documentos desde el panel local, el sistema pide permiso una vez. Si no aparece el diálogo, se concede en
+  <em>Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas</em>. Tené en cuenta que una versión
+  recién instalada cuenta como otra aplicación para macOS: el permiso se pide de nuevo.</p></div>
+</section>
+<section id="ia">
+  <p class="kicker">Transversal</p>
+  <h2>Agentes de IA, en todos los módulos</h2>
+  <p class="sub">Claude Code, Codex CLI y Antigravity CLI, detectados solos en el PATH. Los usás con su
+  terminal completa o con el chat nativo de la app — el mismo chat desde el editor SQL, una terminal SSH,
+  una nota, un repositorio o una petición HTTP.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/chat-db.png" alt="Chat abierto sobre una conexión: la consulta del editor adjunta abajo y la respuesta con bloques SQL, cada uno con su barra de Copiar y Al editor"></div>
+    <figcaption>El chat sabe sobre qué estás trabajando: cambiar de pestaña actualiza el contexto, no reinicia el hilo.</figcaption>
+  </figure>
+
+  <h3>El agente propone; aplicar es un clic tuyo</h3>
+  <p>Ninguna acción de IA ejecuta lo que acaba de escribir. Devuelven texto y vos decidís:</p>
+  <table>
+    <tr><th>Módulo</th><th>Qué le podés pedir</th></tr>
+    <tr><td>Bases de datos</td><td>Escribir una consulta desde lenguaje natural, explicar y corregir el error del motor, analizar un plan de ejecución</td></tr>
+    <tr><td>HTTP</td><td>Explicar la respuesta, diagnosticar el fallo, escribir la petición, redactar su documentación o sus tests</td></tr>
+    <tr><td>Git</td><td>Redactar el mensaje del commit desde el diff preparado y el estilo del repositorio</td></tr>
+    <tr><td>SSH</td><td>Explicar qué está fallando en la salida de la terminal, con el sistema operativo del servidor como contexto</td></tr>
+    <tr><td>Notas</td><td>Consultar tu base de conocimiento, y —con permiso explícito— dejar asentado lo que averiguó</td></tr>
+  </table>
+
+  <h3>El sistema <code>@</code>: vos elegís qué cruza</h3>
+  <p>Escribí <code>@</code> en el chat y referenciá algo concreto. Antes de mandar, cada ficha se despliega
+  y muestra <strong>exactamente</strong> lo que se va a inyectar — una referencia que se expande en silencio
+  es indistinguible de una fuga.</p>
+  <table>
+    <tr><th>Referencia</th><th>Inyecta</th><th>Nunca</th></tr>
+    <tr><td><code>@db:Prod/clientes</code></td><td>Columnas, tipos, clave primaria y foráneas</td><td>Ninguna fila, ningún DSN, ningún usuario</td></tr>
+    <tr><td><code>@file:backend/git/log.go</code></td><td>El archivo del repositorio abierto</td><td>Nada fuera del repositorio</td></tr>
+    <tr><td><code>@git:staged</code></td><td>El diff preparado</td><td>—</td></tr>
+    <tr><td><code>@explain:last</code></td><td>El último plan de ejecución guardado</td><td>Los datos que devolvió la consulta</td></tr>
+    <tr><td><code>@note:"Runbook"</code></td><td>El Markdown de la nota</td><td>El contenido de una nota privada, bajo ninguna circunstancia</td></tr>
+  </table>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/mcp-setup.png" alt="Panel de acceso de la IA: el interruptor del servidor MCP encendido con su socket local, el instructivo de tres pasos y la configuración lista para copiar"></div>
+    <figcaption>Servidor MCP embebido: el agente <em>pide</em>, en vez de que le mandes todo.</figcaption>
+  </figure>
+
+  <h3>Servidor MCP embebido</h3>
+  <p>Encendelo y cualquier CLI compatible puede pedirle a la app el esquema de una tabla, buscar en tus
+  notas o leer las últimas líneas de una terminal — <strong>por un socket local</strong>, no por la red.
+  Cada herramienta tiene su propio interruptor, todo queda en un registro de accesos, y las notas privadas
+  quedan fuera de alcance siempre.</p>
+</section>
+
+<section id="recetas">
+  <p class="kicker">Ejemplos</p>
+  <h2>Recetas de uso</h2>
+  <p class="sub">Cuatro cosas que la gente hace de verdad en un día de soporte, de punta a punta.</p>
+
+  <h3>1. Probar un endpoint que te pasaron por chat, y no perderlo</h3>
+  <ol class="steps">
+    <li>En el navegador donde funciona, <em>Copiar como cURL</em>.</li>
+    <li>En mini-tools: módulo HTTP → menú de una colección → <strong>Pegar un comando cURL…</strong>. Queda una petición con método, URL, headers y cuerpo.</li>
+    <li>Cambiá el host por <code>{{baseUrl}}</code> y definí la variable en el entorno <em>desarrollo</em>. La misma petición sirve contra los dos ambientes.</li>
+    <li>Mandala. Si algo falla, <strong>✦ → Diagnosticar el fallo</strong>: va con la configuración del cliente delante, que es donde se explica la mitad de los errores de transporte.</li>
+    <li><strong>Guardar de ejemplo</strong> suma la respuesta a la documentación de la petición. Después, <strong>Documentación… → Publicar como nota</strong> y queda en tu base de conocimiento, buscable y enlazable.</li>
+  </ol>
+
+  <h3>2. Una consulta que no sabés escribir, contra un esquema que no conocés</h3>
+  <ol class="steps">
+    <li>Abrí el editor sobre la conexión y apretá <kbd>⌘I</kbd> / <kbd>Ctrl+I</kbd>.</li>
+    <li>Pedila en castellano: «las facturas de agosto con más de tres reclamos, con el nombre del cliente».</li>
+    <li>La app le manda <strong>solo el DDL de las tablas relevantes</strong> —columnas, tipos, claves— y nunca una fila.</li>
+    <li>Mirá la explicación al costado, aplicá al editor, y corré con <kbd>⌘↵</kbd>. Si el motor devuelve un error, <strong>Corregir</strong> le manda el error tal cual: un <code>ORA-00942</code> lleva más información adentro que cualquier parafraseo.</li>
+  </ol>
+
+  <h3>3. Documentar un incidente mientras lo resolvés</h3>
+  <ol class="steps">
+    <li>Módulo Notas → carpeta <em>Guardia</em> → el <strong>«+»</strong> de la carpeta: la nota nace adentro.</li>
+    <li>Pegá la captura del tablero con <kbd>⌘V</kbd>: queda cifrada dentro del vault, igual que el texto.</li>
+    <li>Poné la consulta que usaste en un bloque <code>sql connection="…"</code>. La próxima guardia la ejecuta desde la nota.</li>
+    <li>Enlazá con <code>[[…]]</code> el runbook que seguiste. El grafo y los backlinks arman el resto solos.</li>
+  </ol>
+
+  <h3>4. Recuperar el commit que borraste hace diez minutos</h3>
+  <ol class="steps">
+    <li>Pestaña Git → panel inferior → solapa <strong>Reflog</strong>.</li>
+    <li>El <code>reset</code> aparece marcado en rojo; el commit que estaba antes es el de la fila de abajo.</li>
+    <li><strong>Crear una rama acá.</strong> No mueve nada de lo que tenés ahora.</li>
+    <li>Cambiá a esa rama cuando quieras, o traé solo lo que te falta con un cherry-pick.</li>
+  </ol>
+</section>
+
+<section id="atajos">
+  <p class="kicker">Referencia</p>
+  <h2>Atajos</h2>
+  <table>
+    <tr><th>Atajo</th><th>Qué hace</th></tr>
+    <tr><td><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd></td><td>Ejecutar la consulta, o mandar los cambios pendientes de la grilla</td></tr>
+    <tr><td><kbd>⌘I</kbd> / <kbd>Ctrl+I</kbd></td><td>Asistente de consultas: pedir una consulta o corregir la que falló</td></tr>
+    <tr><td><kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd></td><td>Abrir el chat sobre lo que estés mirando</td></tr>
+    <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Guardar la pestaña activa (consulta, nota, archivo, petición)</td></tr>
+    <tr><td><kbd>⌘V</kbd></td><td>Pegar una imagen dentro de una nota o del chat</td></tr>
+    <tr><td><kbd>Ctrl+Espacio</kbd></td><td>Forzar el autocompletado, incluso donde no se abre solo</td></tr>
+    <tr><td><kbd>Tab</kbd></td><td>Aceptar la sugerencia en gris, o saltar al hueco siguiente de un atajo</td></tr>
+  </table>
+</section>
+
+<section id="seguridad">
+  <p class="kicker">Cómo está hecho</p>
+  <h2>Seguridad</h2>
+  <div class="grid">
+    <div class="card"><h3>Cifrado por columna</h3><p>Cada DSN, contraseña SSH, clave privada y passphrase se cifra con AES-256-GCM antes de guardarse. La clave se deriva de tu clave maestra con Argon2id y nunca se persiste.</p></div>
+    <div class="card"><h3>Sin bypass</h3><p>Sin la clave maestra correcta la app no arranca — ni siquiera desde las llamadas internas del frontend.</p></div>
+    <div class="card"><h3>El DSN no sale del backend</h3><p>Nunca llega a la interfaz ni a los logs, tampoco en modo depuración. «Exportar configuración» redacta contraseñas y claves antes de escribir el archivo.</p></div>
+    <div class="card"><h3>Backups atados a la clave</h3><p>Generar y restaurar piden tu clave maestra, verificada contra el propio archivo de backup — así que uno que termine en un USB o en la nube no sirve de nada sin ella.</p></div>
+    <div class="card"><h3>Nada se manda a ningún lado</h3><p>No hay servidor de la app ni telemetría. Lo que sale a internet es lo que vos apuntás.</p></div>
+    <div class="card"><h3>La IA solo ve lo que le mostrás</h3><p>Las referencias <code>@</code> se despliegan antes de mandarse, las notas privadas quedan fuera siempre, y ningún secreto de una petición HTTP llega al modelo.</p></div>
+  </div>
+</section>
+
+<section id="faq">
+  <p class="kicker">Dudas</p>
+  <h2>Preguntas frecuentes</h2>
+  <details><summary>¿Necesito cuenta o licencia?</summary><p>No. Es MIT, no hay registro y no hay servidor de la app.</p></details>
+  <details><summary>¿Funciona sin internet?</summary><p>Sí. Las tipografías y los íconos van empaquetados y no hay CDN. Solo necesita red para llegar a tu base, tu servidor o tu API — y para los CLIs de IA, que hablan con su proveedor.</p></details>
+  <details><summary>¿Qué pasa si pierdo la clave maestra?</summary><p>Se pierde el vault. No hay recuperación: la clave no se guarda en ningún lado, que es lo que hace que un backup robado no sirva.</p></details>
+  <details><summary>¿Los agentes ven mis credenciales?</summary><p>No. El DSN no sale del backend, las notas privadas están fuera de alcance por consulta, y lo que va a un prompt del módulo HTTP lleva los marcadores sin resolver y las cabeceras de credencial tapadas.</p></details>
+  <details><summary>¿Tengo que instalar Claude Code o Codex?</summary><p>Solo si los querés usar. La app los detecta si están, y no pasa nada si no.</p></details>
+  <details><summary>¿Reemplaza a Postman o a DataGrip?</summary><p>Para el trabajo de soporte del día a día, sí: es lo que estas herramientas hacen, en una ventana y sin cuenta. Para lo muy específico de cada una (colecciones compartidas por equipo, refactors de SQL), no pretende serlo.</p></details>
+  <details><summary>¿Y las capturas de esta página?</summary><p>No salen de una instalación real: se generan montando los componentes en un navegador headless con datos inventados (<code>./scripts/uishot.sh</code>). No hay rutas, hosts ni credenciales de nadie — no porque se hayan borrado, sino porque nunca estuvieron ahí.</p></details>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Sin Electron, sin telemetría, sin CDN
+    (esta página tampoco: no hace una sola petición externa).</p>
+    <p><a href="https://github.com/rafael180496/mini-tools">Código</a> ·
+       <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
+       <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a></p>
+  </div>
+</footer>
+
+<script>
+// Tema: respeta lo que elige el sistema y recuerda la decisión manual.
+(function () {
+  var k = 'mini-tools-theme'
+  var saved = localStorage.getItem(k)
+  var dark = saved ? saved === 'dark' : !window.matchMedia('(prefers-color-scheme: light)').matches
+  var apply = function () { document.documentElement.dataset.theme = dark ? 'dark' : 'light' }
+  apply()
+  document.getElementById('tgl').addEventListener('click', function () {
+    dark = !dark
+    localStorage.setItem(k, dark ? 'dark' : 'light')
+    apply()
+  })
+})()
+</script>
+</body>
+</html>

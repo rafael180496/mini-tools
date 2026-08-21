@@ -19,11 +19,17 @@ import Icon from '../Icon'
 
 type SortKey = 'orden' | 'titulo' | 'creada' | 'actualizada'
 
+// Fecha corta y en 24 horas. El `a. m./p. m.` de algunas configuraciones
+// regionales agrega cuatro caracteres que parten la celda en dos líneas, y en
+// una tabla que se lee de un vistazo eso cuesta más de lo que aclara.
 function fecha(unix: number): string {
     if (!unix) return '—'
     const d = new Date(unix * 1000)
-    return d.toLocaleDateString(undefined, {year: 'numeric', month: '2-digit', day: '2-digit'}) + ' ' +
-        d.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'})
+    return (
+        d.toLocaleDateString(undefined, {year: 'numeric', month: '2-digit', day: '2-digit'}) +
+        ' ' +
+        d.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit', hour12: false})
+    )
 }
 
 interface Props {

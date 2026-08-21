@@ -6,6 +6,60 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Agregado
 
+- **Arreglado: el hueco entre «..» y el primer archivo en el explorador SFTP.** Quedaba una fila vacía —a veces dos— entre el «subir un nivel» y el listado.
+
+  Era un doble conteo en la lista virtualizada: la librería **suma** `scrollMargin` al `start` de cada fila (las medidas arrancan en `paddingStart + scrollMargin`) pero lo **resta** de `getTotalSize()`. El relleno de arriba se calculaba con el `start` crudo, así que sumaba otra vez la altura del «..» que ya se dibujaba como fila de verdad. Comprobado leyendo el fuente de `@tanstack/virtual-core`, no de memoria. De paso, el relleno de abajo quedaba una fila corto: el scroll terminaba antes de la última fila.
+
+- **El explorador SFTP esconde las columnas que no entran, en vez de cortarlas.** Con los anchos por defecto la tabla mide 688 px y un panel de un explorador partido al medio en una ventana de 1280 tiene 640: **siempre** había barra horizontal y la última columna salía cortada por la mitad.
+
+  Ahora se van solas, en orden de utilidad: primero *Kind* —que es la extensión del archivo, y ya está en el nombre— y después *Permisos*, que importa en un servidor y casi nunca en la máquina propia. Nombre y fecha no se esconden nunca. La regla se calcula contra los anchos **reales** de las columnas, así que si ensanchás *Nombre* las opcionales se retiran en vez de volver a desbordar; y si hay espacio, vuelven todas.
+
+- **La fila «..» del SFTP dice a dónde sube.** En una ruta profunda saber que subís no alcanza: ahora muestra la carpeta destino al lado, tiene tooltip, y mide lo mismo que el resto de las filas —antes no, y por eso la lista arrancaba desalineada—. También se corrigió un `display:flex` sobre un `<td>`, que saca a la celda del layout de la tabla y desalineaba esa columna respecto del encabezado.
+
+- **El explorador SFTP entró al banco de capturas y a la documentación.** Vista nueva (`sftp`) con dos paneles y datos inventados, y una sección propia en la página con la captura: cómo moverse (doble clic, «..», el buscador de cada panel, columnas ordenables), cómo transferir en cuatro pasos —incluidas las cuatro direcciones posibles y qué pasa si el archivo ya existe del otro lado—, el diálogo de permisos sin tener que acordarse del octal, y el permiso de macOS de la primera vez.
+
+  Para que la vista montara hubo que simular dos funciones más del runtime de Wails (`OnFileDrop`/`OnFileDropOff`): el panel registra una zona de arrastre al montarse y sin ellas explotaba, dejando la captura en blanco.
+
+- **Botón de ayuda en la app, que abre la documentación.** El **?** del pie de la barra lateral —y el enlace *Documentación* del pie de Configuración— abren la página del proyecto en el navegador del sistema.
+
+  Va en el pie de la barra lateral y no en la fila de acciones de arriba por un motivo concreto: esa fila **desaparece** en las pestañas que no son del editor —una nota, una terminal local, una petición HTTP— y la ayuda tiene que estar justamente cuando alguien no sabe dónde está parado. También aparece con la barra colapsada, que es cuando menos pistas hay en pantalla. La dirección vive en **un solo lugar** (`DOCS_URL`), porque repetida en dos archivos es estar desactualizada en uno.
+
+  De paso, el pie con actualización disponible pasó de ser un botón con otro adentro —HTML inválido, y el clic de adentro disparaba también el de afuera— a dos botones hermanos.
+
+- **Regla nueva: al sacar una versión se actualiza `index.html`.** Es el paso 8 del proceso de release, entre volcar el CHANGELOG y subir los artefactos. El CHANGELOG dice *qué cambió*; la página dice *cómo se usa* — uno es para quien ya la tiene, la otra para quien todavía no.
+
+  La regla dice qué mirar entrada por entrada: si cambia lo que el usuario puede hacer, va; si es interno, no. Módulo nuevo → sección propia con captura y ejemplo; funcionalidad de un módulo existente → dentro de esa sección, **con el ejemplo de cómo se usa**, porque nombrarla no alcanza; algo que cambia el flujo de punta a punta → una receta más. Y lo que acaba de publicarse sale del bloque «En desarrollo» del README.
+
+- **El README promociona la documentación**: insignia arriba, enlace destacado bajo la lista de motores, y los **pasos exactos para publicarla** con GitHub Pages — incluido qué mirar si las capturas no cargan (casi siempre `docs/screenshots/` sin subir) y por qué acá no hace falta `.nojekyll`.
+
+- **Arreglado: el explorador local del SFTP no podía entrar a Descargas, Escritorio ni Documentos.** Daba `operation not permitted` y —lo peor— **ya no preguntaba nada**: antes macOS mostraba el diálogo de permiso y ahora denegaba en silencio.
+
+  La causa estaba en el paquete de la app, no en el código: el `Info.plist` era el de plantilla de Wails y **no declaraba ninguna cadena de uso**. macOS solo muestra el diálogo de «¿permitir el acceso?» si la app dice para qué lo quiere; sin esa cadena deniega sin preguntar. Ahora están las seis que corresponden —Descargas, Escritorio, Documentos, discos externos, unidades de red y carpetas sincronizadas—, cada una con un texto que dice para qué la necesita **esta** app, porque es lo que el usuario lee dentro del diálogo. Verificado sobre el `.app` ya compilado, no solo sobre la plantilla.
+
+  Y el error, cuando aparece, dejó de ser un mensaje de Go. Ahora dice que es un permiso de macOS, dónde concederlo a mano (*Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas*) y algo que confunde a cualquiera: **una versión recién compilada cuenta como otra aplicación** para el sistema —el permiso se recuerda por firma y cada compilación se autofirma de nuevo—, así que el permiso que diste ayer no vale para el binario de hoy. Un error que no es de permisos se sigue devolviendo tal cual: inventarle una explicación de permisos a un «no existe» sería peor que el error crudo.
+
+- **Arreglado: «Autocompletado sin esquema» aparecía en pestañas que no son de base de datos.** El aviso salía sobre un explorador SFTP, una terminal SSH o un archivo remoto — avisando de un problema que ahí no existe.
+
+  La causa: la fila de contexto consultaba el estado del índice de esquema para **cualquier** conexión vinculada a la pestaña activa, y una pestaña SFTP está vinculada a una conexión SSH. El backend contestaba «error» porque nunca hubo un índice que construir —una conexión SSH no tiene catálogo—, y la fila lo mostraba como si el autocompletado estuviera roto.
+
+  Ahora el índice **solo se consulta para conexiones SQL**, así que el aviso no puede encenderse donde no corresponde, y los tres controles de esa fila que son del editor SQL —«Cargando esquema…», el aviso y el selector de esquema— se muestran con el mismo criterio que el resto de la fila que ya era del editor. La pestaña SFTP sigue mostrando contra qué servidor está trabajando, que es lo único de esa fila que ahí significa algo.
+
+- **`index.html`: la página del proyecto, para publicar con GitHub Pages.** (Se pidió `index.htm`, pero Pages solo sirve `index.html` como índice de un directorio: con `.htm` la raíz del sitio daría 404.) Un solo archivo que documenta la app entera para alguien que nunca la vio: qué es y por qué, cómo instalarla en macOS y Windows o compilarla, la primera conexión, **una sección por módulo** —bases de datos, HTTP, notas, Git, SSH/SFTP y los agentes de IA— cada una con sus capturas y **ejemplos de uso concretos**, más una tabla de atajos, la sección de seguridad y preguntas frecuentes.
+
+  Y cuatro **recetas de punta a punta**, que es lo que de verdad se lee: probar un endpoint que te pasaron por chat y no perderlo, escribir una consulta contra un esquema que no conocés, documentar un incidente mientras lo resolvés, y recuperar el commit que borraste hace diez minutos.
+
+  **No hace una sola petición externa**: sin CDN, sin fuentes remotas, sin analítica. Sería la peor forma de romper la promesa del programa —que no manda nada a ningún lado— justo en su propia vitrina. Los colores son los mismos tokens Material Design 3 de la app, copiados de `globals.css`, y la página respeta el tema claro/oscuro del sistema con un interruptor que recuerda la decisión.
+
+- **Regla nueva: `index.html` se actualiza con el mismo cambio que agrega un módulo o una funcionalidad**, igual que la entrada del CHANGELOG. Queda escrita en `.claude/rules/conventions.md` con qué va y qué no —un arreglo interno o un refactor no cuentan—, dónde va cada cosa (sección propia, dentro de un módulo existente, o una receta más) y de dónde salen las capturas: del banco `uishot`, nunca de una instalación real.
+
+  **Por qué es regla y no costumbre**: el README lo lee quien ya decidió mirar el repositorio; la página la lee quien todavía no sabe que la herramienta existe. Una funcionalidad que no está ahí, para ese lector no existe — y es justo la que nadie va a usar.
+
+- **README y capturas al día con los módulos nuevos.** El `readme.md` gana una sección propia del **módulo HTTP** —colecciones, import/export de Postman, autenticación con herencia, variables calculadas, runner, cookies por entorno, documentación como nota e IA sobre la petición—, y suma el **reflog** a la sección de Git y la **tabla de carpeta** a la de notas, con su lugar en la lista completa de funcionalidades. El encabezado ahora dice que la app también es un cliente HTTP, que era lo que faltaba para que el título describiera lo que hay.
+
+  Las tres capturas nuevas (`ui-http.png`, `git-reflog.png`, `notes-folder.png`) salen del mismo banco de siempre —`./scripts/uishot.sh`, componentes montados en un navegador headless con datos inventados— así que **no hay una sola instalación real detrás**: ni rutas, ni hosts, ni tokens, ni nombres de nadie. Se agregaron tres vistas al banco (`http`, `reflog`, `notesfolder`) con sus datos de mentira, y la del módulo HTTP se arma sola como lo haría una persona: despliega la colección, abre el cuerpo y manda la petición, porque una foto con el árbol plegado y sin respuesta no muestra nada de lo que hace.
+
+  De paso, en la tabla de carpeta las fechas pasaron a formato de 24 horas: el `a. m./p. m.` de algunas configuraciones regionales partía la celda en dos líneas.
+
 - **Reflog en la pestaña Git: recuperar lo que un reset o un rebase dejaron sin referencia.** Solapa nueva al lado de Sesiones, Comandos y Agentes, con los últimos doscientos movimientos de HEAD: qué hizo git (`commit`, `reset`, `rebase`, `checkout`, `merge`), sobre qué commit, con qué mensaje y cuándo. Las acciones que reescriben historia van marcadas, que es lo que uno busca cuando entra acá preguntándose «qué pasó recién».
 
   Era el hueco que quedaba: el módulo ya sabe hacer `reset --hard`, rebase, cambiar de rama con cambios encima y `push --force` — todas las operaciones que dejan commits huérfanos— y no tenía la red que va debajo. Sin esto, la salida de un reset equivocado era la línea de comandos, justo de lo que la pestaña pretende sacarte.

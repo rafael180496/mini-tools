@@ -6,16 +6,40 @@
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
 ![Binario](https://img.shields.io/badge/binario-50MB-success)
 ![Sin telemetría](https://img.shields.io/badge/telemetr%C3%ADa-ninguna-informational)
+[![Documentación](https://img.shields.io/badge/documentaci%C3%B3n-leer%20online-6750A4)](https://rafael180496.github.io/mini-tools/)
 
-### Tu cliente de base de datos, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de 50 MB.
+### Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de 50 MB.
 
 Sin Electron. Sin JVM. Sin cuenta. Sin telemetría. Tus credenciales cifradas en tu máquina y nada saliendo a ningún lado.
 
-**Oracle · PostgreSQL · SQLite · SQL Server · Redis · MongoDB · SSH · SFTP · Git · Claude Code · Codex · Antigravity**
+**Oracle · PostgreSQL · SQLite · SQL Server · Redis · MongoDB · HTTP · SSH · SFTP · Git · Claude Code · Codex · Antigravity**
+
+📖 **[Documentación completa →](https://rafael180496.github.io/mini-tools/)** — qué hace cada módulo,
+ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nunca la usaste
+(y está a un clic desde la app: el **?** del pie de la barra lateral).
 
 <p align="center">
   <img src="docs/screenshots/ui-workspace.png" width="900" alt="mini-tools: barra lateral con el menú de módulos arriba (bases, SSH, Git, notas) y el árbol de conexiones en carpetas; editor SQL al centro con pestañas rotuladas por tipo y panel de resultados abajo">
 </p>
+
+---
+
+## En desarrollo — todavía sin publicar
+
+Lo que ya está en el código y sale en la próxima versión. La última publicada
+sigue siendo la 2.2.0, que es de lo que habla la sección de abajo.
+
+- **Módulo nuevo: peticiones HTTP con colecciones**, compatible con Postman de
+  ida y de vuelta. [Ver abajo ↓](#peticiones-http--un-cliente-de-api-que-no-se-lleva-tus-secretos)
+- **Reflog en la pestaña Git**: recuperar el commit que un `reset` o un rebase
+  dejaron sin referencia, sin salir a la terminal. [Ver abajo ↓](#git-completo)
+- **Las carpetas de notas se abren como tabla**, con fecha de creación y de
+  última modificación y buscador propio. Y se arreglaron dos cosas viejas: mover
+  una nota a una carpeta **no hacía nada visible**, y la lista se reordenaba sola
+  cada vez que guardabas. [Ver abajo ↓](#notas--tu-documentación-viva-y-cifrada)
+- **El autocompletado de SQL dejó de morirse.** Después de usar un atajo podía
+  quedar mudo hasta cerrar y reabrir la pestaña. Y trae casi el doble de atajos:
+  46 comunes, y hasta 64 según el motor.
 
 ---
 
@@ -168,6 +192,59 @@ Pegá una captura con `⌘V` en cualquier parte del panel, escribí `@` para ref
 
 ---
 
+## Peticiones HTTP — un cliente de API que no se lleva tus secretos
+
+<p align="center">
+  <img src="docs/screenshots/ui-http.png" width="900" alt="Módulo HTTP: a la izquierda el árbol de colecciones con una carpeta de autenticación y las peticiones rotuladas por método; al centro la petición POST con su cuerpo JSON; abajo la respuesta 201 Created con su tiempo, su tamaño y las solapas de cuerpo, headers e historial">
+</p>
+
+Colecciones, carpetas, variables, entornos y herencia de autenticación —
+**guardado en el mismo vault cifrado** que tus conexiones, no en un archivo de
+configuración ni en la nube de nadie.
+
+**Importa y exporta Postman sin perder nada.** Cada petición conserva su JSON
+original, así que las respuestas de ejemplo, el `_postman_id` y cualquier campo
+que Postman agregue mañana sobreviven al viaje de ida y vuelta. Al importar te
+dice qué entró y con qué salvedades —una autenticación que esta versión no firma,
+un archivo cuya ruta no viajaba en el export— **al importar**, no cuando la
+petición falla. Y al exportar, **los secretos no viajan**: una variable marcada
+como secreta sale declarada y vacía, y el token de OAuth 2.0 directamente no
+sale. Un archivo de colección se manda por chat y termina en un repositorio.
+
+**Autenticación de verdad**, con herencia petición → carpeta → colección: Basic,
+Bearer, API Key, JWT (HS256/384/512), Digest, **AWS Signature v4** y OAuth 2.0
+—incluido el flujo de aplicación nativa (RFC 8252): navegador del sistema,
+captura del redirect en un puerto de loopback y **PKCE S256** siempre—. Lo que
+esta versión todavía no firma se guarda y se exporta intacto, y lo dice.
+
+**Firmar sin escribir JavaScript.** En vez de incorporar un motor de scripts
+—+19,8 MB contra un techo de 80— las firmas se declaran: HMAC, SHA, base64 y
+encadenadas entre sí, con `{{marcadores}}` adentro. Lo que sale queda marcado
+como secreto, así que no aparece en el historial ni en el export.
+
+**Correr una colección entera**, en orden y de a una, con avance en vivo y el
+resultado de cada petición. Y un **tarro de cookies por entorno**: el login de una
+petición vale para las siguientes, y probar producción y desarrollo a la vez no
+mezcla las sesiones.
+
+**La documentación de una colección se publica como nota del vault**: se busca
+desde el buscador de notas, se enlaza desde un runbook con `[[…]]` y el agente la
+puede consultar. Regenerarla **no pisa lo que editaste a mano**. Y ninguna
+credencial entra ahí: de la autenticación se documenta su forma, nunca su valor.
+
+**IA sobre la petición**: explicar la respuesta, diagnosticar el fallo —con la
+configuración del cliente delante, que es donde se explica la mitad de los
+errores de transporte—, escribirla desde una descripción, redactar su
+documentación o sus tests. Al modelo **no le llega ningún secreto**: los
+marcadores van sin resolver, las cabeceras de credencial tapadas, y de la
+autenticación solo el tipo.
+
+Y para probar algo de una sola vez, **peticiones rápidas**: se manda sin crear ni
+nombrar ninguna colección, y si al final servía, «Guardar en…» la mete donde
+elijas.
+
+---
+
 ## Notas — tu documentación, viva y cifrada
 
 <p align="center">
@@ -219,6 +296,17 @@ Y un buscador que sirve para buscar: encuentra `Diagnóstico` escribiendo
 entre comillas y filtros (`tag:`, `enlaza:`, `privado:`), y te muestra el
 fragmento donde acertó.
 
+<p align="center">
+  <img src="docs/screenshots/notes-folder.png" width="820" alt="La carpeta Runbooks abierta como tabla: las notas numeradas, su título, la fecha de creación y la de última modificación, con un buscador propio arriba y un botón para crear una nota dentro de la carpeta">
+</p>
+
+**Una carpeta también se abre como tabla.** La barra lateral sirve para navegar;
+para *revisar* una carpeta —cuántas notas hay, cuál se tocó la última vez, cuál
+quedó sin actualizar desde hace un año— hace falta lo contrario: fechas,
+ordenable, con un buscador que filtra solo ahí adentro. Clic en el nombre de la
+carpeta la abre; la flecha sigue plegando, como en cualquier explorador de
+archivos. Y cada carpeta tiene su propio **«+» de nota**, que la crea ya adentro.
+
 ---
 
 ## Git, completo
@@ -232,6 +320,19 @@ Cliente Git estilo Sublime Merge sobre el `git` de tu sistema — así que tus c
 **Ramas y tags** con carpetas por prefijo (`feature/…` se pliega como una), anclado de las que usás siempre, y alta desde el propio panel — incluso dentro de una carpeta, con el prefijo ya puesto. **Rebase** de los dos tipos: el interactivo para reordenar y combinar tus commits, y el de una rama sobre otra desde su menú; los dos se pueden **abortar** y volver a donde estabas. **Push, pull y fetch con todas sus variantes** (`--force-with-lease`, `--ff-only`, `--rebase --autostash`, `--prune`…), y si la rama todavía no está publicada, cualquiera de ellas te ofrece vincularla sin perder los flags que elegiste.
 
 **Submódulos** con el estado que importa: sin inicializar, *movido* respecto del commit que fija el repositorio —la forma más común de que una compilación deje de ser reproducible, y que no aparece en la lista de cambios del padre— o en conflicto; con alta, actualización, sincronización de URLs y baja completa. **Git Flow nativo**, sin instalar nada: escribe las mismas claves que el comando `git flow`, averigua si tu rama de producción es `main` o `master` en vez de asumirlo, y cada tipo de rama arranca desde la base que le corresponde.
+
+<p align="center">
+  <img src="docs/screenshots/git-reflog.png" width="900" alt="Solapa Reflog: los movimientos de HEAD con su selector, el commit, la acción marcada por color, el detalle y la fecha; el reset resaltado en rojo por ser de los que dejan commits sin referencia">
+</p>
+
+**Y el reflog, que es la red debajo de todo eso.** Un `reset --hard`, un rebase o
+un cambio de rama con cambios encima dejan commits sin referencia, y hasta ahora
+la única salida era la terminal. La solapa muestra los últimos movimientos de
+HEAD con lo que hizo git en cada uno, y las acciones que reescriben historia van
+marcadas — que es lo que uno busca cuando entra preguntándose «¿qué pasó recién?».
+La primera acción que ofrece es **crear una rama** en esa posición: no mueve nada
+y le da nombre propio al commit perdido. El `reset --hard` también está, detrás de
+una confirmación que dice qué se pierde.
 
 Además: **editor de archivos** con resaltado para más de treinta lenguajes, acceso directo a `.gitignore` y `.gitattributes`, árbol plegable con los indicadores de cambio de git, vista previa de Markdown en tres modos, y **botones para abrir el proyecto en VS Code o en el explorador de archivos** de tu sistema — que aparecen solo si están instalados de verdad.
 
@@ -315,6 +416,23 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 - **Elegir el proveedor para un análisis puntual** (plan de ejecución, error de terminal) sin cambiar el agente activo de la app.
 - **Contexto del módulo en cada conversación**: la del editor SQL lleva adjunta la consulta que estás escribiendo; la de una terminal, sus últimas líneas.
 
+### Peticiones HTTP
+
+- **Colecciones, carpetas y peticiones** guardadas en el vault cifrado, con árbol propio en la barra lateral y una pestaña por petición.
+- **Import/export de Postman v2.1 con round-trip**: cada ítem conserva su JSON original, así que las respuestas de ejemplo, el `_postman_id` y los campos que esta versión no modela sobreviven al viaje. El import avisa sus salvedades al importar, no al fallar la petición.
+- **Los secretos no salen en el export**: una variable marcada como secreta viaja declarada y vacía, y el token de OAuth 2.0 no viaja.
+- **Variables de entorno y de colección** con `{{marcadores}}`, precedencia dinámicas → entorno → colección, resolución anidada (`baseUrl = {{protocol}}://{{host}}`) y aviso de lo que quedó sin definir. Un entorno se puede fijar a una colección.
+- **Autenticación con herencia** petición → carpeta → colección: No Auth, Basic, Bearer, API Key (header o query), JWT HS256/384/512, Digest (RFC 7616), AWS Signature v4 y OAuth 2.0 —client credentials, refresh token, password y authorization code al estándar de aplicaciones nativas (RFC 8252) con PKCE S256—. Lo que no se firma se preserva intacto y se dice.
+- **Variables calculadas**: HMAC, SHA, base64 y encadenadas entre sí, para firmar una petición sin motor de JavaScript. Lo que sale queda marcado como secreto.
+- **Cuerpos completos**: raw (JSON/XML/HTML/texto con formateo), form-data con archivos, x-www-form-urlencoded, binario y GraphQL. Respuestas grandes se vuelcan a disco y «Guardar…» baja el archivo entero.
+- **Runner de colección**: manda una colección o una carpeta en orden, con avance en vivo, pausa opcional entre peticiones y resumen de pasa/falla. Los scripts de test se guardan y se exportan, pero **no se ejecutan acá** — los corre Postman o newman.
+- **Cookies por entorno**: el login de una petición vale para las siguientes, y probar producción y desarrollo a la vez no mezcla las sesiones. Visibles y borrables por dominio.
+- **Generación de código** en cURL, HTTP, Go, JavaScript, Python, Java, C#, PHP, Ruby y PowerShell, con las variables resueltas y los secretos tapados por defecto.
+- **Pegar un «Copy as cURL»** del navegador y queda una petición lista para editar.
+- **Peticiones rápidas**: probar un endpoint sin guardarlo en ninguna colección, con «Guardar en…» si al final servía.
+- **Documentación publicada como nota del vault**, con procedencia y `[[enlaces]]`; regenerarla no pisa lo que editaste a mano.
+- **IA sobre la petición**: explicar la respuesta, diagnosticar el fallo, escribirla desde una descripción, redactar su documentación o sus tests — sin que ningún secreto llegue al modelo.
+
 ### Notas — base de conocimiento cifrada
 
 - **Tu documentación adentro del vault**: runbooks, procedimientos, notas de incidentes, cifrados columna a columna con la misma clave maestra que las conexiones.
@@ -356,6 +474,7 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 - **El editor se configura como cualquier editor de texto**: tema de colores, fuente, cuerpo, ajuste de línea, números de línea y ancho de la tabulación — con muestra en vivo, y aplicado a la vez al editor SQL y al de archivos del módulo Git. La **barra de acciones** tiene tres modos: normal, compacta (solo íconos) u oculta, que no desactiva nada porque todo tiene atajo de teclado. Todo queda guardado en el vault.
 - **Redis Browser**: pestaña de ventana completa por conexión Redis — filtro por tipo con badges de color, buscador por patrón, stats de header (total de keys / memoria), selección múltiple con exportación a JSON/CSV, y edición inline del valor (string, JSON, hash, list, set, zset — streams de solo lectura) que siempre preserva el TTL existente.
 - **Scanner de objetos de esquema**: procedures, functions y triggers (PostgreSQL, Oracle) y packages (Oracle) además de tablas, agrupados en categorías colapsables por schema. Un click muestra el DDL actual en un visor con syntax highlighting (CodeMirror), botón de copiar y de exportar a `.sql`.
+- **Reflog de Git**: los últimos movimientos de HEAD con la acción de cada uno, para recuperar el commit que un `reset --hard`, un rebase o un cambio de rama dejaron sin referencia — creando una rama ahí (no mueve nada) o con un `reset` detrás de confirmación.
 - **Autocompletado consciente del contexto**: sugiere tablas después de `FROM`/`INSERT INTO`/`UPDATE` y columnas acotadas a las tablas realmente referenciadas después de `SELECT`/`WHERE`/`SET`; resuelve alias y esquema al tipear un punto (`u.` → columnas de `users` si `u` es su alias). Además **propone el alias** de la tabla que acabás de escribir (`FROM clientes ` → `c`, el mismo que usan los JOIN que genera desde las llaves foráneas), **lee la lista del `SELECT`** para que un `ORDER BY` ofrezca los alias que la consulta inventó (`AS total` no existe en ningún catálogo) y las columnas que ya proyecta, y con Ctrl-Espacio **expande el `*`** a la lista de columnas —calificada con el alias de cada tabla cuando hay un JOIN—, que es lo que hace falta justo cuando querés sacar una sola columna.
 - **Procedures y functions con su firma completa**, como en DataGrip: el autocompletado dice qué parámetros pide cada uno, en qué orden, de qué tipo y cuáles son `OUT`, e inserta la llamada con un tab stop por parámetro ya rotulado. Mientras escribís los argumentos, un **tooltip resalta en cuál estás parado** — entiende llamadas anidadas y la notación nombrada `p_total =>` de Oracle. En Oracle se indexan además **los miembros de cada package** (`PKG.PROCEDIMIENTO`), que es donde vive casi todo el código invocable.
 - **Consultas con parámetros**: escribís `:desde` y la app pregunta el valor antes de correr, con el tipo de cada uno (texto, número, booleano o `NULL`) y los valores recordados por pestaña. **Nunca entran al texto del SQL**: viajan aparte y se enlazan como argumentos del driver. Reconoce `:nombre` en los cuatro motores, `$1` en PostgreSQL y `?` en SQLite/SQL Server — y reconoce lo que **no** es un parámetro: el `:=` de PL/SQL, el `::` de los casts, el `:NEW`/`:OLD` de los triggers, y todo lo que esté dentro de un literal, un comentario o un `CREATE PROCEDURE`.
@@ -495,11 +614,49 @@ main.go         bootstrap de Wails, embed de frontend/dist
 
 Detalle completo (stack, estructura fase a fase, contrato de bindings) en [CLAUDE.md](CLAUDE.md) → [.claude/specs/architecture.md](.claude/specs/architecture.md).
 
+## Página del proyecto
+
+**→ [rafael180496.github.io/mini-tools](https://rafael180496.github.io/mini-tools/)**
+
+La documentación para quien llega por primera vez —qué es, cómo se instala, qué
+hace cada módulo, ejemplos de uso y recetas de punta a punta— vive en
+[`index.html`](index.html) y se publica con **GitHub Pages**. Se abre también
+desde la propia app: el botón **?** del pie de la barra lateral, y el enlace
+*Documentación* del pie de Configuración.
+
+### Publicarla
+
+1. **Subí el archivo**: `index.html` va en la raíz del repositorio, junto con
+   `docs/screenshots/` (las imágenes que usa). Commiteá y empujá a `main`.
+2. En GitHub: **Settings → Pages**.
+3. En *Build and deployment*, **Source: Deploy from a branch**.
+4. **Branch: `main`**, **Folder: `/ (root)`** → *Save*.
+5. Esperá el despliegue (1-2 minutos; hay un check verde en la pestaña Actions)
+   y entrá a `https://<usuario>.github.io/<repositorio>/`.
+
+> **Si las capturas no cargan**, es casi siempre lo mismo: `docs/screenshots/`
+> quedó sin subir, o el `.gitignore` se lo comió. Las rutas del HTML son
+> relativas (`docs/screenshots/…`), así que funcionan igual en local que
+> publicado — abrí `index.html` con doble clic para comprobarlo antes de subir.
+>
+> **No hace falta desactivar Jekyll**: el archivo no empieza con guion bajo ni
+> usa nada que Jekyll procese. Si algún día se agrega una carpeta que empiece
+> con `_`, ahí sí hay que crear un archivo vacío llamado `.nojekyll` en la raíz.
+
+Es un solo archivo sin dependencias: **no hace una sola petición externa** — sin
+CDN, sin fuentes remotas y sin analítica—, usa los mismos colores Material
+Design 3 que la app y respeta el tema claro/oscuro del sistema. Las capturas son
+las de `docs/screenshots/`, generadas con `./scripts/uishot.sh`.
+
+> Cada módulo o funcionalidad nueva se agrega ahí **en la misma tarea**, igual
+> que la entrada del CHANGELOG. La regla completa está en
+> [.claude/rules/conventions.md](.claude/rules/conventions.md).
+
 ## Sobre las capturas de este README
 
 Las imágenes de este archivo **no son de una instalación real**: salen de
 `./scripts/uishot.sh`, que monta los componentes en un navegador headless con
-datos inventados. No hay rutas, repositorios, hosts ni credenciales de nadie —
+datos inventados —incluidas las tres nuevas (`http`, `reflog`, `notesfolder`)—. No hay rutas, repositorios, hosts ni credenciales de nadie —
 no porque se hayan borrado después, sino porque nunca estuvieron ahí. Es
 también la razón por la que ninguna está borroneada: no hay nada que tapar.
 

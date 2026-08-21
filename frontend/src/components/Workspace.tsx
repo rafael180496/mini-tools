@@ -675,6 +675,16 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // state with no special-casing needed.
     const activeTabConnection = activeTabData?.connId ? connections.find((c) => c.id === activeTabData.connId) ?? null : null
 
+    // "Esta pestaña corre SQL": una conexión de base de datos relacional, no
+    // SSH, Redis ni MongoDB. Se calcula acá arriba —y no junto al resto de los
+    // flags de la fila de contexto— porque también lo necesitan efectos que
+    // corren mucho antes, como el que consulta el estado del índice de esquema.
+    const isSqlActive =
+        !!activeTabConnection &&
+        activeTabConnection.dbType !== 'redis' &&
+        activeTabConnection.dbType !== 'mongodb' &&
+        activeTabConnection.dbType !== 'ssh'
+
     // Sobre qué está trabajando el chat unificado, derivado de la pestaña
     // activa. Es lo único que ancla una sola conversación a lo que el usuario
     // está mirando: cambiar de pestaña cambia esto, NO la conversación.
@@ -1335,7 +1345,14 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     // roto", que es exactamente el reporte que llegó. Un índice sano no
     // muestra nada — la fila de contexto ya está bastante poblada.
     const [indexError, setIndexError] = useState<string | null>(null)
-    const editorConnId = activeTabConnection?.id ?? null
+    // Solo las conexiones SQL tienen índice de esquema. Antes se preguntaba por
+    // CUALQUIER conexión vinculada a la pestaña activa, y una pestaña SFTP o una
+    // terminal están vinculadas a una conexión SSH: el backend contestaba
+    // "error" —nunca hubo índice que construir— y la fila de contexto mostraba
+    // «Autocompletado sin esquema» sobre un explorador de archivos, avisando de
+    // un problema que no existe. Con null acá el efecto no consulta nada y el
+    // aviso se apaga solo.
+    const editorConnId = isSqlActive ? activeTabConnection?.id ?? null : null
     useEffect(() => {
         let alive = true
         setIndexError(null)
@@ -2631,11 +2648,6 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         if (dbmsOutputLines.length === 0 && activeBottomTab === 'dbms') setActiveBottomTab('results')
     }, [dbmsOutputLines.length, activeBottomTab])
     // Una nota no tiene barra de contexto de conexión: ver isNoteTabActive.
-    const isSqlActive =
-        !!activeTabConnection &&
-        activeTabConnection.dbType !== 'redis' &&
-        activeTabConnection.dbType !== 'mongodb' &&
-        activeTabConnection.dbType !== 'ssh'
     const isRedisActive = activeTabConnection?.dbType === 'redis'
     const isMongoActive = activeTabConnection?.dbType === 'mongodb'
     const isBrowserTabActive = activeTabData?.kind === 'redis-browser' || activeTabData?.kind === 'mongo-browser'
@@ -3003,7 +3015,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             </span>
                         )}
 
-                        {activeTabConnection && editorMetadataLoading && (
+                        {isSqlActive && editorMetadataLoading && (
                             <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title="Leyendo tablas, columnas y rutinas de la conexión para el autocompletado del editor">
                                 <span
                                     aria-hidden
@@ -3013,7 +3025,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             </span>
                         )}
 
-                        {activeTabConnection && !editorMetadataLoading && indexError && (
+                        {isSqlActive && !editorMetadataLoading && indexError && (
                             <span
                                 className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap text-error"
                                 title={`El editor no pudo leer el catálogo de esta conexión, así que el autocompletado solo ofrece palabras clave y funciones — sin tablas ni columnas. Motivo: ${indexError}. Suele ser permisos sobre el diccionario de datos o una conexión que se cayó; reconectar vuelve a intentarlo.`}
@@ -3023,7 +3035,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                             </span>
                         )}
 
-                        {!editorMetadataLoading && editorSchemas.length > 0 && (
+                        {isSqlActive && !editorMetadataLoading && editorSchemas.length > 0 && (
                             <Select
                                 value={editorActiveSchema ?? ''}
                                 options={editorSchemas.map((s) => ({value: s, label: s, icon: <Icon name="schema" size={14} />}))}

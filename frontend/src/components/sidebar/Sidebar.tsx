@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react'
 import type {MouseEvent as ReactMouseEvent, ReactNode} from 'react'
 import logo from '../../assets/logo.png'
 import {AppVersion} from '../../../wailsjs/go/main/App'
+import {BrowserOpenURL} from '../../../wailsjs/runtime'
 import Icon from '../Icon'
 import SidebarMasterMenu, {type SidebarModuleDef, type SidebarModuleId} from './SidebarMasterMenu'
 
@@ -47,6 +48,31 @@ interface SidebarProps {
     onOpenRepo: () => void
 }
 
+// La documentación pública del proyecto. Vive acá y en un solo lugar: es la
+// misma dirección que promociona el README y la que abre el botón de ayuda,
+// y tenerla repetida en dos archivos es tenerla desactualizada en uno.
+export const DOCS_URL = 'https://rafael180496.github.io/mini-tools/'
+
+// Botón de ayuda: abre la documentación en el navegador del sistema.
+//
+// Va en el PIE de la barra lateral y no en la fila de acciones de arriba por un
+// motivo concreto: esa fila desaparece en las pestañas que no son del editor
+// —una nota, una terminal local, una petición HTTP—, y la ayuda tiene que estar
+// justamente cuando alguien no sabe dónde está parado.
+function HelpButton({compact}: {compact?: boolean}) {
+    return (
+        <button
+            onClick={() => BrowserOpenURL(DOCS_URL)}
+            title="Abrir la documentación en el navegador: qué hace cada módulo, ejemplos de uso y recetas de principio a fin"
+            className={`shrink-0 rounded text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface ${
+                compact ? 'p-1' : 'p-0.5'
+            }`}
+        >
+            <Icon name="help" size={compact ? 16 : 14} />
+        </button>
+    )
+}
+
 // Pie de la barra: quién es esta app y qué versión es.
 //
 // La identidad estaba arriba, en un encabezado propio, y se fue a la barra
@@ -68,29 +94,37 @@ function SidebarFooter({updateAvailable, onOpenRepo}: {updateAvailable: string |
     const label = version ? `v${version}` : '—'
 
     if (updateAvailable) {
+        // Dos botones hermanos y no uno adentro del otro: un <button> anidado
+        // no es HTML válido y el clic de adentro dispara también el de afuera.
         return (
-            <button
-                onClick={onOpenRepo}
-                title={`Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para abrir el repositorio en el navegador y descargarla`}
-                className="flex shrink-0 items-center gap-2 border-t border-outline-variant px-3 py-2 text-left transition-colors hover:bg-surface-variant"
-            >
-                <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
-                <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-on-surface-variant">mini-tools</span>
-                <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-primary">
-                    <Icon name="new_releases" size={12} />
-                    v{updateAvailable}
-                </span>
-            </button>
+            <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant px-3 py-2">
+                <button
+                    onClick={onOpenRepo}
+                    title={`Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para abrir el repositorio en el navegador y descargarla`}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left transition-colors hover:opacity-80"
+                >
+                    <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
+                    <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-on-surface-variant">mini-tools</span>
+                    <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-primary">
+                        <Icon name="new_releases" size={12} />
+                        v{updateAvailable}
+                    </span>
+                </button>
+                <HelpButton />
+            </div>
         )
     }
 
     return (
-        <div
-            title={`mini-tools ${label} — la versión instalada en este equipo`}
-            className="flex shrink-0 items-center gap-2 border-t border-outline-variant px-3 py-2"
-        >
+        <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant px-3 py-2">
             <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
-            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-on-surface-variant">mini-tools</span>
+            <span
+                title={`mini-tools ${label} — la versión instalada en este equipo`}
+                className="min-w-0 flex-1 truncate text-[11px] font-medium text-on-surface-variant"
+            >
+                mini-tools
+            </span>
+            <HelpButton />
             <span className="shrink-0 font-mono text-[10px] tabular-nums text-on-surface-variant/50">{label}</span>
         </div>
     )
@@ -156,7 +190,10 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
                 {/* Colapsada no entra ni el nombre ni la versión, pero sí el
                     logo: le da pie a la columna y su tooltip dice las dos
                     cosas, que es lo mismo que se consulta al leerlas. */}
-                <div className="mt-auto pt-2">
+                <div className="mt-auto flex flex-col items-center pt-2">
+                    {/* La ayuda también acá: colapsada es cuando menos pistas
+                        hay en pantalla, que es justo cuando más se busca. */}
+                    <HelpButton compact />
                     <SidebarFooterMark updateAvailable={updateAvailable} onOpenRepo={onOpenRepo} />
                 </div>
             </aside>
