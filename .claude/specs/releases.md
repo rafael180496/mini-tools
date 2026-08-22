@@ -4,6 +4,36 @@ Spec del proceso de empaquetado/publicación local. Complementa
 [commands.md](commands.md) (qué hace cada script) con el flujo completo que
 se espera cuando alguien pide un build oficial, no solo `wails build`.
 
+## Dos caminos: el tag (automático) y el local (a mano)
+
+**Empujar un tag `vX.Y.Z` publica el release solo.**
+[.github/workflows/release.yml](../../.github/workflows/release.yml) compila el
+`.dmg` y el `.exe` **con los mismos scripts que se usan en local**
+(`scripts/package-all.sh` — un empaquetado que en CI se arma distinto es uno que
+un día produce un binario distinto y nadie sabe por qué), verifica lo que salió,
+saca las notas de esa versión del CHANGELOG con
+[`scripts/changelog-section.sh`](../../scripts/changelog-section.sh) y crea el
+GitHub Release con los dos archivos adjuntos.
+
+Tres cosas que el workflow **afirma** en vez de asumir, y que lo hacen fallar
+antes de publicar nada:
+
+1. El tag y el archivo `VERSION` coinciden. Si no, se estaría publicando un
+   binario que por dentro se llama distinto que el release.
+2. El binario del `.dmg` es `arm64` y su `CFBundleShortVersionString` es la
+   versión que se publica.
+3. El `.exe` es `x86-64`.
+
+`workflow_dispatch` corre lo mismo **sin publicar**: deja los artefactos y las
+notas colgados del run. Es la forma de probar un cambio en el workflow sin
+gastar un tag.
+
+**El proceso de abajo sigue vigente y es el que corre Claude** cuando se pide
+"preparar la versión": deja todo listo —versión bumpeada, CHANGELOG volcado,
+READMEs y `index.html` al día, artefactos en `releases/<os>/` para revisarlos— y
+el tag lo empuja el usuario. Lo que cambia con el workflow es el **paso 9**: ya
+no hace falta subir los archivos a mano al GitHub Release.
+
 ## Trigger: mención de "empaquetar"/"oficial"/"preparar la versión"
 
 Cualquier mensaje del usuario que mencione **"empaquetar"/"empaquetá"/"empaquete"**,
@@ -137,11 +167,14 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
      `README.md`: lo que acaba de salir ya no va ahí.
    - Ver la regla completa en
      [conventions.md](../rules/conventions.md#indexhtml--la-vitrina-se-actualiza-con-el-mismo-cambio).
-9. Los artefactos **no se commitean**: el usuario los sube al GitHub
-   Release del tag `vX.Y.Z` y después borra las copias de `releases/<os>/`.
-   Lo que sí queda versionado de esa carpeta es el `README.md` de cada SO,
-   que es donde viven los checksums y las instrucciones. Ver "Dónde viven
-   los binarios" abajo.
+9. Los artefactos **no se commitean**. Con el workflow de release, tampoco hay
+   que subirlos a mano: alcanza con **empujar el tag `vX.Y.Z`** y el release se
+   crea solo, con las notas del CHANGELOG y los dos archivos adjuntos. Las
+   copias de `releases/<os>/` son la zona de preparación local —sirven para
+   revisar y para calcular los checksums que van en los README— y se pueden
+   borrar después. Lo que sí queda versionado de esa carpeta es el `README.md`
+   de cada SO, que es donde viven los checksums y las instrucciones. Ver "Dónde
+   viven los binarios" abajo.
 10. **Nunca `git add`/`commit`/`push` nada de esto — ni los artefactos, ni
    las docs tocadas.** Regla dura y sin excepción (ver "Commits / PRs" en
    [conventions.md](../rules/conventions.md)): el usuario hace todo el

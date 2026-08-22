@@ -4,6 +4,20 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **Publicar una versión es empujar un tag.** Un workflow de GitHub Actions (`.github/workflows/release.yml`) escucha los tags `vX.Y.Z`, compila el `.dmg` y el `.exe`, saca las notas de esa versión del `CHANGELOG.md` y crea el GitHub Release con los dos archivos adjuntos y una tabla de checksums.
+
+  **Compila con los mismos scripts que se usan en local** (`scripts/package-all.sh`) en vez de repetir los pasos dentro del YAML: un empaquetado que en CI se arma distinto que en la máquina de uno es un empaquetado que un día produce un binario distinto y nadie sabe por qué.
+
+  Antes de publicar nada **afirma** tres cosas, y falla si alguna no se cumple: que el tag coincida con el archivo `VERSION` —si no, se estaría publicando un binario que por dentro se llama distinto que el release—, que el binario del `.dmg` sea `arm64` y traiga esa versión, y que el `.exe` sea `x86-64`. La arquitectura se verifica montando el `.dmg` y corriendo `file` adentro: si algún día el runner cambia de chip, el workflow se detiene en vez de mandarle un binario de Intel a alguien con Apple Silicon.
+
+  Corre en un runner de macOS y cross-compila el `.exe` desde ahí —ninguno de los conectores usa CGO, así que no hace falta un runner de Windows—, usa `gh` (que viene preinstalado) en vez de una acción de terceros, y tiene un modo de ensayo (`workflow_dispatch`) que hace todo menos publicar: deja los artefactos y las notas colgados del run, para poder probar el workflow sin gastar un tag.
+
+- **`scripts/changelog-section.sh`**: imprime las notas de una versión del `CHANGELOG.md`. Escribirlas dos veces —una en el changelog y otra en el release— es garantizar que un día no digan lo mismo, así que el changelog es la fuente y el release lo lee. Sirve igual a mano para revisar qué va a salir antes de empujar el tag.
+
+  Detalle de implementación que costó encontrar: la comprobación de «¿la sección está vacía?» se hacía con `${VAR//[[:space:]]/}` de bash, y esa sustitución sobre las decenas de miles de caracteres que mide la sección de una versión grande **tarda minutos**. Con `grep -q` es instantáneo.
+
 ## [2.3.0] - 2026-08-21
 
 ### Agregado

@@ -558,6 +558,37 @@ go test ./...
 
 Detalle de cada script en [scripts/README.md](scripts/README.md).
 
+## Publicar una versión
+
+**Empujar un tag `vX.Y.Z` publica el release solo.** Un workflow de GitHub
+Actions compila el `.dmg` y el `.exe`, saca las notas de esa versión del
+`CHANGELOG.md` y crea el GitHub Release con los dos archivos adjuntos.
+
+```bash
+./scripts/bump-version.sh minor      # o patch/major
+# … volcar el CHANGELOG, actualizar los README y index.html …
+git commit -am "release: v2.3.0"
+git tag v2.3.0 && git push origin main --tags
+```
+
+Antes de publicar nada, el workflow **afirma** tres cosas y falla si alguna no
+se cumple: que el tag coincida con el archivo `VERSION` —si no, se estaría
+publicando un binario que por dentro se llama distinto—, que el binario del
+`.dmg` sea `arm64` y traiga esa versión, y que el `.exe` sea `x86-64`.
+
+Para ensayar el workflow sin gastar un tag: *Actions → Release → Run workflow*,
+con la versión como parámetro. Compila y verifica igual, pero en vez de publicar
+deja los artefactos colgados del run.
+
+> Los binarios **no van firmados** (ni Apple Developer ID ni Authenticode), igual
+> que los del empaquetado local. Las advertencias de Gatekeeper y SmartScreen
+> siguen valiendo.
+>
+> Y el checksum que vale es el que publica el release: lo compila GitHub
+> Actions, y dos compilaciones de Go en máquinas distintas no dan un binario
+> bit a bit idéntico. El de las tablas de más abajo corresponde al build local
+> de la misma versión.
+
 ## Empaquetar una versión nueva
 
 ```bash

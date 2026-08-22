@@ -1,0 +1,183 @@
+# Publica un GitHub Release cuando se empuja un tag `vX.Y.Z`.
+#
+# Qué hace, en orden: comprueba que el tag coincida con VERSION, compila el
+# `.dmg` de macOS y el `.exe` de Windows con los MISMOS scripts que se usan en
+# local, verifica la arquitectura de lo que salió, saca las notas de esa versión
+# del CHANGELOG y crea el release con los dos archivos adjuntos.
+#
+# Por qué reusa `scripts/package-all.sh` en vez de escribir los pasos acá: un
+# empaquetado que en CI se arma distinto que en la máquina de uno es un
+# empaquetado que un día produce un binario distinto y nadie sabe por qué. El
+# script es la fuente; esto solo lo dispara.
+#
+# Lo que NO hace: firmar. Ni Apple Developer ID ni Authenticode — igual que el
+# empaquetado local. Las advertencias de Gatekeeper y SmartScreen siguen
+# valiendo y están escritas en `releases/<so>/README.md`.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  # Permite ensayar el build entero sin publicar nada: se corre a mano desde la
+  # pestaña Actions y sube los artefactos al propio run en vez de crear un
+  # release. Es la forma de probar este archivo sin gastar un tag.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión a compilar en el ensayo (por ejemplo 2.3.0)'
+        required: true
+
+permissions:
+  contents: write   # crear el release y subirle los archivos
+
+jobs:
+  release:
+    # macOS arm64: el `.dmg` que se distribuye es de Apple Silicon, y este
+    # runner es el que produce esa arquitectura. El `.exe` de Windows se
+    # cross-compila desde acá mismo — no necesita CGO, así que no hace falta un
+    # runner de Windows ni un toolchain de mingw.
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: La versión del tag tiene que coincidir con VERSION
+        id: version
+        run: |
+          set -euo pipefail
+          FILE_VERSION="$(cat VERSION)"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            WANT="${{ github.event.inputs.version }}"
+          else
+            WANT="${GITHUB_REF_NAME#v}"
+          fi
+          if [ "$WANT" != "$FILE_VERSION" ]; then
+            echo "::error::El tag pide $WANT y el archivo VERSION dice $FILE_VERSION."
+            echo "::error::Publicar así subiría un binario que por dentro se llama distinto que el release."
+            echo "::error::Corregir: ./scripts/bump-version.sh, commitear, y recién ahí tagear."
+            exit 1
+          fi
+          echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Versión: $FILE_VERSION"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          # La misma major que se usa en la máquina de desarrollo. El lockfile
+          # es `lockfileVersion: 9.0`, que pnpm 10 lee pero puede reescribir:
+          # fijar la versión evita que el CI genere un árbol de dependencias
+          # distinto del que se probó.
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Instalar el CLI de Wails
+        run: |
+          set -euo pipefail
+          # La misma versión que declara go.mod, para que el CLI y la
+          # biblioteca no se separen: una plantilla de `Info.plist` distinta a
+          # la que espera el repo cambiaría el paquete en silencio.
+          WAILS_VERSION="$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
+          echo "Wails $WAILS_VERSION"
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$WAILS_VERSION"
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Empaquetar macOS y Windows
+        run: ./scripts/package-all.sh
+
+      - name: Verificar lo que salió
+        id: artifacts
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          DMG="build/bin/mini-tools-v$V.dmg"
+          EXE="build/bin/mini-tools-v$V-windows-amd64.exe"
+          test -f "$DMG" || { echo "::error::No se generó $DMG"; exit 1; }
+          test -f "$EXE" || { echo "::error::No se generó $EXE"; exit 1; }
+
+          # La arquitectura se AFIRMA, no se asume: si algún día el runner
+          # cambia de chip, esto falla acá en vez de publicar un `.dmg` de Intel
+          # a gente con Apple Silicon (o al revés).
+          hdiutil attach -nobrowse -quiet "$DMG" -mountpoint /tmp/mtdmg
+          ARCH="$(file /tmp/mtdmg/mini-tools.app/Contents/MacOS/mini-tools)"
+          BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /tmp/mtdmg/mini-tools.app/Contents/Info.plist)"
+          hdiutil detach /tmp/mtdmg -quiet
+          echo "$ARCH"
+          case "$ARCH" in
+            *arm64*) ;;
+            *) echo "::error::El binario del .dmg no es arm64: $ARCH"; exit 1 ;;
+          esac
+          if [ "$BUNDLE_VERSION" != "$V" ]; then
+            echo "::error::El .app dice $BUNDLE_VERSION y se está publicando $V"
+            exit 1
+          fi
+          file "$EXE" | grep -q 'x86-64' || { echo "::error::El .exe no es x86-64"; exit 1; }
+
+          {
+            echo "dmg=$DMG"
+            echo "exe=$EXE"
+            echo "dmg_sha=$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
+            echo "exe_sha=$(shasum -a 256 "$EXE" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Armar las notas del release
+        id: notes
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          {
+            ./scripts/changelog-section.sh "$V"
+            echo
+            echo '---'
+            echo
+            echo '### Descargas'
+            echo
+            echo '| Sistema | Archivo | SHA-256 |'
+            echo '|---|---|---|'
+            echo "| macOS (Apple Silicon, 11+) | \`mini-tools-v$V.dmg\` | \`${{ steps.artifacts.outputs.dmg_sha }}\` |"
+            echo "| Windows (x86-64) | \`mini-tools-v$V-windows-amd64.exe\` | \`${{ steps.artifacts.outputs.exe_sha }}\` |"
+            echo
+            echo 'Ninguno de los dos está firmado. En macOS, Gatekeeper avisa "desarrollador no identificado":'
+            echo 'clic derecho → Abrir, o `xattr -dr com.apple.quarantine /Applications/mini-tools.app`.'
+            echo 'En Windows, SmartScreen avisa "Windows protegió su PC": Más información → Ejecutar de todas formas.'
+            echo
+            echo 'Detalle por sistema en [releases/macos](releases/macos/README.md) y [releases/windows](releases/windows/README.md).'
+            echo '📖 [Documentación](https://rafael180496.github.io/mini-tools/)'
+          } > /tmp/release-notes.md
+          echo "Notas: $(wc -l < /tmp/release-notes.md) líneas"
+
+      # Ensayo: no publica: deja los artefactos colgados del run para poder
+      # bajarlos y mirarlos.
+      - name: Subir artefactos al run (solo ensayo)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mini-tools-v${{ steps.version.outputs.version }}
+          path: |
+            ${{ steps.artifacts.outputs.dmg }}
+            ${{ steps.artifacts.outputs.exe }}
+            /tmp/release-notes.md
+
+      - name: Publicar el release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # `gh` viene preinstalado en el runner: no hace falta una acción de
+          # terceros para algo que es un comando.
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file /tmp/release-notes.md \
+            "${{ steps.artifacts.outputs.dmg }}" \
+            "${{ steps.artifacts.outputs.exe }}"

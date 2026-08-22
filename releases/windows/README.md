@@ -27,6 +27,14 @@ Get-FileHash mini-tools-v2.3.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
+
+> **Cuál es el checksum que vale.** Desde que el release se publica solo al
+> empujar el tag, el archivo que baja la gente lo compila **GitHub Actions**, no
+> esta máquina — y dos compilaciones de Go en máquinas distintas no dan un
+> binario bit a bit idéntico. El checksum de la tabla de arriba es el del build **local** de
+> esta versión; el del archivo publicado va en el cuerpo del propio release,
+> que es el que hay que comparar después de descargar.
+
 ## Estado de verificación en Windows real
 
 **2.3.0 NO se probó en una Windows real.** Lo único confirmado es que
