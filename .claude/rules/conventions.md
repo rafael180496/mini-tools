@@ -126,7 +126,7 @@ existe — y es exactamente la que nadie va a usar.
 ## Releases
 
 - **Cualquier mención de "empaquetar"/"empaquetá"/"empaquete" u "oficial" en el contexto de compilar es un trigger fijo, no se interpreta caso a caso:** ejecutar el proceso completo de [.claude/specs/releases.md](../specs/releases.md) — no alcanza con correr `package-macos.sh` y listo. Incluye bumpear la versión (`bump-version.sh patch` por default, ya no es opcional en este flujo), armar/actualizar `releases/<os>/` con el `.dmg`, su checksum SHA-256, un `README.md` con compatibilidad real (arquitectura verificada + nota sobre `LSMinimumSystemVersion` del plist vs. el piso real de macOS), reflejar esos datos (con link directo al `.dmg`) en el `README.md` raíz, **y volcar `CHANGELOG.md` (mover `[Unreleased]` a `[X.Y.Z] - fecha`, con los features/fixes nuevos de la sesión)**.
-- El `.dmg`/artefacto empaquetado **sí se versiona en git** dentro de `releases/<os>/` — no agregarlo a `.gitignore`. Decisión explícita del usuario: el link del README tiene que bajar el binario directo desde GitHub.
+- El `.dmg`/artefacto empaquetado **sí se versiona en git** dentro de `releases/<os>/` — no agregarlo a `.gitignore`. Decisión explícita del usuario: el link del README tiene que bajar el binario directo desde GitHub. Desde el workflow de release **además es obligatorio**: lo que se publica es literalmente ese archivo, así que un tag empujado sin el artefacto de esa versión commiteado falla en CI.
 - **El `git add`/`commit`/`push` de todo esto lo hace el usuario, nunca Claude** — ver la regla dura en "Commits / PRs" arriba, sin excepción para este trigger tampoco. Dejar el `.dmg` + docs actualizadas en el working tree y listo.
 
 ## Migraciones del vault

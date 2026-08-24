@@ -561,33 +561,43 @@ Detalle de cada script en [scripts/README.md](scripts/README.md).
 ## Publicar una versión
 
 **Empujar un tag `vX.Y.Z` publica el release solo.** Un workflow de GitHub
-Actions compila el `.dmg` y el `.exe`, saca las notas de esa versión del
-`CHANGELOG.md` y crea el GitHub Release con los dos archivos adjuntos.
+Actions crea el GitHub Release, le pega las notas de esa versión sacadas del
+`CHANGELOG.md` y le adjunta los dos binarios.
 
 ```bash
 ./scripts/bump-version.sh minor      # o patch/major
-# … volcar el CHANGELOG, actualizar los README y index.html …
-git commit -am "release: v2.3.0"
-git tag v2.3.0 && git push origin main --tags
+./scripts/package-all.sh             # genera el .dmg y el .exe
+cp build/bin/mini-tools-v2.4.0.dmg releases/macos/
+cp build/bin/mini-tools-v2.4.0-windows-amd64.exe releases/windows/
+# … volcar el CHANGELOG, actualizar los README con los checksums e index.html …
+git add -A && git commit -m "release: v2.4.0"
+git tag v2.4.0 && git push origin main --tags
+#  ↑ el release se crea solo
 ```
 
-Antes de publicar nada, el workflow **afirma** tres cosas y falla si alguna no
-se cumple: que el tag coincida con el archivo `VERSION` —si no, se estaría
-publicando un binario que por dentro se llama distinto—, que el binario del
-`.dmg` sea `arm64` y traiga esa versión, y que el `.exe` sea `x86-64`.
+**El workflow no compila nada**: sube los binarios que ya están versionados en
+`releases/`, que son los mismos que probaste. Dos compilaciones de Go en
+máquinas distintas no dan un archivo bit a bit idéntico, así que compilar en CI
+publicaría un binario que nadie corrió y cuyo checksum no coincidiría con el que
+documentan los README.
 
-Para ensayar el workflow sin gastar un tag: *Actions → Release → Run workflow*,
-con la versión como parámetro. Compila y verifica igual, pero en vez de publicar
-deja los artefactos colgados del run.
+Antes de publicar comprueba tres cosas y falla si alguna no da:
 
-> Los binarios **no van firmados** (ni Apple Developer ID ni Authenticode), igual
-> que los del empaquetado local. Las advertencias de Gatekeeper y SmartScreen
-> siguen valiendo.
->
-> Y el checksum que vale es el que publica el release: lo compila GitHub
-> Actions, y dos compilaciones de Go en máquinas distintas no dan un binario
-> bit a bit idéntico. El de las tablas de más abajo corresponde al build local
-> de la misma versión.
+1. **El tag coincide con el archivo `VERSION`** — si no, se estaría publicando un
+   binario que por dentro se llama distinto que el release.
+2. **Los dos artefactos de esa versión están commiteados** y tienen un tamaño
+   creíble (un archivo de pocos KB suele ser un puntero de LFS sin resolver).
+3. **El SHA-256 de cada archivo aparece en su `releases/<so>/README.md`.** Es la
+   comprobación que hace seguro reusar: si alguien regeneró el binario y no
+   actualizó el README —o al revés—, el release saldría documentando un hash que
+   no es el del archivo.
+
+Para ensayar sin gastar un tag: *Actions → Release → Run workflow* con la
+versión como parámetro. Corre todas las comprobaciones y muestra las notas que
+publicaría, sin crear nada.
+
+> Los binarios **no van firmados** (ni Apple Developer ID ni Authenticode). Las
+> advertencias de Gatekeeper y SmartScreen siguen valiendo.
 
 ## Empaquetar una versión nueva
 

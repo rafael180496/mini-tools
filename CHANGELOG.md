@@ -6,13 +6,13 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Agregado
 
-- **Publicar una versión es empujar un tag.** Un workflow de GitHub Actions (`.github/workflows/release.yml`) escucha los tags `vX.Y.Z`, compila el `.dmg` y el `.exe`, saca las notas de esa versión del `CHANGELOG.md` y crea el GitHub Release con los dos archivos adjuntos y una tabla de checksums.
+- **Publicar una versión es empujar un tag.** Un workflow de GitHub Actions (`.github/workflows/release.yml`) escucha los tags `vX.Y.Z`, crea el GitHub Release con las notas de esa versión sacadas del `CHANGELOG.md` y le adjunta el `.dmg` y el `.exe` con una tabla de checksums.
 
-  **Compila con los mismos scripts que se usan en local** (`scripts/package-all.sh`) en vez de repetir los pasos dentro del YAML: un empaquetado que en CI se arma distinto que en la máquina de uno es un empaquetado que un día produce un binario distinto y nadie sabe por qué.
+  **No compila nada: sube los binarios que ya están versionados en `releases/`**, que son los mismos que se probaron. Compilar en CI habría publicado un archivo que nadie corrió —dos compilaciones de Go en máquinas distintas no dan un binario bit a bit idéntico— y cuyo checksum no coincidiría con el que documentan los README. Como no compila, corre en Linux, en segundos y sin toolchain.
 
-  Antes de publicar nada **afirma** tres cosas, y falla si alguna no se cumple: que el tag coincida con el archivo `VERSION` —si no, se estaría publicando un binario que por dentro se llama distinto que el release—, que el binario del `.dmg` sea `arm64` y traiga esa versión, y que el `.exe` sea `x86-64`. La arquitectura se verifica montando el `.dmg` y corriendo `file` adentro: si algún día el runner cambia de chip, el workflow se detiene en vez de mandarle un binario de Intel a alguien con Apple Silicon.
+  Antes de publicar **afirma** tres cosas y falla si alguna no da: que el tag coincida con el archivo `VERSION` —si no, se estaría publicando un binario que por dentro se llama distinto que el release—, que los dos artefactos de esa versión estén en el commit del tag con un tamaño creíble (un archivo de pocos KB suele ser un puntero de LFS sin resolver), y que **el SHA-256 de cada uno aparezca en su `releases/<so>/README.md`**. Esa última es la que hace seguro reusar: si el binario se regeneró y el README quedó viejo —o al revés— el release documentaría un hash que no es el del archivo, y ahí se corta.
 
-  Corre en un runner de macOS y cross-compila el `.exe` desde ahí —ninguno de los conectores usa CGO, así que no hace falta un runner de Windows—, usa `gh` (que viene preinstalado) en vez de una acción de terceros, y tiene un modo de ensayo (`workflow_dispatch`) que hace todo menos publicar: deja los artefactos y las notas colgados del run, para poder probar el workflow sin gastar un tag.
+  Usa `gh`, que viene preinstalado, en vez de una acción de terceros, y tiene un modo de ensayo (`workflow_dispatch`) que corre las comprobaciones y muestra las notas que publicaría sin crear nada.
 
 - **`scripts/changelog-section.sh`**: imprime las notas de una versión del `CHANGELOG.md`. Escribirlas dos veces —una en el changelog y otra en el release— es garantizar que un día no digan lo mismo, así que el changelog es la fuente y el release lo lee. Sirve igual a mano para revisar qué va a salir antes de empujar el tag.
 

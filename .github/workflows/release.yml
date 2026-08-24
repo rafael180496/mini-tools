@@ -1,31 +1,35 @@
 # Publica un GitHub Release cuando se empuja un tag `vX.Y.Z`.
 #
-# Qué hace, en orden: comprueba que el tag coincida con VERSION, compila el
-# `.dmg` de macOS y el `.exe` de Windows con los MISMOS scripts que se usan en
-# local, verifica la arquitectura de lo que salió, saca las notas de esa versión
-# del CHANGELOG y crea el release con los dos archivos adjuntos.
+# **No compila nada.** Sube los artefactos que ya están versionados en
+# `releases/macos/` y `releases/windows/` — los mismos que se generaron y se
+# probaron en la máquina de desarrollo con `./scripts/package-all.sh`.
 #
-# Por qué reusa `scripts/package-all.sh` en vez de escribir los pasos acá: un
-# empaquetado que en CI se arma distinto que en la máquina de uno es un
-# empaquetado que un día produce un binario distinto y nadie sabe por qué. El
-# script es la fuente; esto solo lo dispara.
+# Por qué reusar en vez de recompilar: dos compilaciones de Go en máquinas
+# distintas no dan un binario bit a bit idéntico, así que un release compilado
+# acá sería un archivo que nadie probó y cuyo checksum no coincide con el que
+# documentan los `releases/<so>/README.md`. Reusando, lo que baja la gente es
+# exactamente lo que se verificó, y el checksum documentado sigue siendo el
+# bueno — de hecho este workflow lo comprueba antes de publicar.
 #
-# Lo que NO hace: firmar. Ni Apple Developer ID ni Authenticode — igual que el
-# empaquetado local. Las advertencias de Gatekeeper y SmartScreen siguen
-# valiendo y están escritas en `releases/<so>/README.md`.
+# Consecuencia práctica: corre en Linux en segundos y sin toolchain. Lo que
+# antes hacía a mano el usuario —crear el release, pegar las notas, adjuntar los
+# dos archivos— es ahora empujar el tag.
+#
+# Lo que NO hace: firmar. Ni Apple Developer ID ni Authenticode. Las
+# advertencias de Gatekeeper y SmartScreen siguen valiendo y están escritas en
+# `releases/<so>/README.md`.
 name: Release
 
 on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-  # Permite ensayar el build entero sin publicar nada: se corre a mano desde la
-  # pestaña Actions y sube los artefactos al propio run en vez de crear un
-  # release. Es la forma de probar este archivo sin gastar un tag.
+  # Ensayo: corre todas las comprobaciones y arma las notas SIN publicar. Es la
+  # forma de probar un cambio en este archivo sin gastar un tag.
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versión a compilar en el ensayo (por ejemplo 2.3.0)'
+        description: 'Versión a verificar en el ensayo (por ejemplo 2.3.0)'
         required: true
 
 permissions:
@@ -33,12 +37,8 @@ permissions:
 
 jobs:
   release:
-    # macOS arm64: el `.dmg` que se distribuye es de Apple Silicon, y este
-    # runner es el que produce esa arquitectura. El `.exe` de Windows se
-    # cross-compila desde acá mismo — no necesita CGO, así que no hace falta un
-    # runner de Windows ni un toolchain de mingw.
-    runs-on: macos-15
-    timeout-minutes: 40
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -60,78 +60,66 @@ jobs:
             exit 1
           fi
           echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Versión: $FILE_VERSION"
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - uses: pnpm/action-setup@v4
-        with:
-          # La misma major que se usa en la máquina de desarrollo. El lockfile
-          # es `lockfileVersion: 9.0`, que pnpm 10 lee pero puede reescribir:
-          # fijar la versión evita que el CI genere un árbol de dependencias
-          # distinto del que se probó.
-          version: 11
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: frontend/.nvmrc
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Instalar el CLI de Wails
-        run: |
-          set -euo pipefail
-          # La misma versión que declara go.mod, para que el CLI y la
-          # biblioteca no se separen: una plantilla de `Info.plist` distinta a
-          # la que espera el repo cambiaría el paquete en silencio.
-          WAILS_VERSION="$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)"
-          echo "Wails $WAILS_VERSION"
-          go install "github.com/wailsapp/wails/v2/cmd/wails@$WAILS_VERSION"
-          echo "$HOME/go/bin" >> "$GITHUB_PATH"
-
-      - name: Empaquetar macOS y Windows
-        run: ./scripts/package-all.sh
-
-      - name: Verificar lo que salió
+      - name: Los artefactos de esta versión tienen que estar commiteados
         id: artifacts
         run: |
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
-          DMG="build/bin/mini-tools-v$V.dmg"
-          EXE="build/bin/mini-tools-v$V-windows-amd64.exe"
-          test -f "$DMG" || { echo "::error::No se generó $DMG"; exit 1; }
-          test -f "$EXE" || { echo "::error::No se generó $EXE"; exit 1; }
+          DMG="releases/macos/mini-tools-v$V.dmg"
+          EXE="releases/windows/mini-tools-v$V-windows-amd64.exe"
 
-          # La arquitectura se AFIRMA, no se asume: si algún día el runner
-          # cambia de chip, esto falla acá en vez de publicar un `.dmg` de Intel
-          # a gente con Apple Silicon (o al revés).
-          hdiutil attach -nobrowse -quiet "$DMG" -mountpoint /tmp/mtdmg
-          ARCH="$(file /tmp/mtdmg/mini-tools.app/Contents/MacOS/mini-tools)"
-          BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /tmp/mtdmg/mini-tools.app/Contents/Info.plist)"
-          hdiutil detach /tmp/mtdmg -quiet
-          echo "$ARCH"
-          case "$ARCH" in
-            *arm64*) ;;
-            *) echo "::error::El binario del .dmg no es arm64: $ARCH"; exit 1 ;;
-          esac
-          if [ "$BUNDLE_VERSION" != "$V" ]; then
-            echo "::error::El .app dice $BUNDLE_VERSION y se está publicando $V"
-            exit 1
-          fi
-          file "$EXE" | grep -q 'x86-64' || { echo "::error::El .exe no es x86-64"; exit 1; }
+          for f in "$DMG" "$EXE"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Falta $f en el commit del tag."
+              echo "::error::Este workflow no compila: sube lo que hay en releases/."
+              echo "::error::Correr ./scripts/package-all.sh, copiar el artefacto a releases/<so>/, commitear y volver a tagear."
+              exit 1
+            fi
+          done
+
+          # Un archivo de cero bytes o de unos pocos KB es casi siempre un
+          # puntero de Git LFS sin resolver, o una copia que se cortó. Publicar
+          # eso es peor que no publicar: parece un release válido.
+          for f in "$DMG" "$EXE"; do
+            SIZE="$(stat -c%s "$f")"
+            if [ "$SIZE" -lt 1000000 ]; then
+              echo "::error::$f mide $SIZE bytes — demasiado chico para ser el artefacto real."
+              exit 1
+            fi
+          done
 
           {
             echo "dmg=$DMG"
             echo "exe=$EXE"
-            echo "dmg_sha=$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
-            echo "exe_sha=$(shasum -a 256 "$EXE" | cut -d' ' -f1)"
+            echo "dmg_sha=$(sha256sum "$DMG" | cut -d' ' -f1)"
+            echo "exe_sha=$(sha256sum "$EXE" | cut -d' ' -f1)"
+            echo "dmg_size=$(du -h "$DMG" | cut -f1)"
+            echo "exe_size=$(du -h "$EXE" | cut -f1)"
           } >> "$GITHUB_OUTPUT"
 
+      - name: El checksum tiene que coincidir con el que documenta el README
+        run: |
+          set -euo pipefail
+          # Esta es la comprobación que hace que reusar sea seguro: si alguien
+          # regeneró el binario y se olvidó de actualizar el README —o al revés,
+          # actualizó el README y dejó el artefacto viejo—, el release saldría
+          # con un checksum documentado que no es el del archivo. Acá se corta.
+          check() {
+            local file="$1" doc="$2" sha="$3"
+            if ! grep -qF "$sha" "$doc"; then
+              echo "::error::El SHA-256 de $file no aparece en $doc."
+              echo "::error::  archivo: $sha"
+              echo "::error::  Ese README documenta otro hash: o el binario o la documentación quedaron viejos."
+              echo "::error::  Recalcular con: shasum -a 256 $file"
+              exit 1
+            fi
+            echo "OK  $file"
+          }
+          check "${{ steps.artifacts.outputs.dmg }}" releases/macos/README.md "${{ steps.artifacts.outputs.dmg_sha }}"
+          check "${{ steps.artifacts.outputs.exe }}" releases/windows/README.md "${{ steps.artifacts.outputs.exe_sha }}"
+
       - name: Armar las notas del release
-        id: notes
         run: |
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
@@ -142,31 +130,26 @@ jobs:
             echo
             echo '### Descargas'
             echo
-            echo '| Sistema | Archivo | SHA-256 |'
-            echo '|---|---|---|'
-            echo "| macOS (Apple Silicon, 11+) | \`mini-tools-v$V.dmg\` | \`${{ steps.artifacts.outputs.dmg_sha }}\` |"
-            echo "| Windows (x86-64) | \`mini-tools-v$V-windows-amd64.exe\` | \`${{ steps.artifacts.outputs.exe_sha }}\` |"
+            echo '| Sistema | Archivo | Tamaño | SHA-256 |'
+            echo '|---|---|---|---|'
+            echo "| macOS (Apple Silicon, 11+) | \`mini-tools-v$V.dmg\` | ${{ steps.artifacts.outputs.dmg_size }} | \`${{ steps.artifacts.outputs.dmg_sha }}\` |"
+            echo "| Windows (x86-64) | \`mini-tools-v$V-windows-amd64.exe\` | ${{ steps.artifacts.outputs.exe_size }} | \`${{ steps.artifacts.outputs.exe_sha }}\` |"
             echo
             echo 'Ninguno de los dos está firmado. En macOS, Gatekeeper avisa "desarrollador no identificado":'
             echo 'clic derecho → Abrir, o `xattr -dr com.apple.quarantine /Applications/mini-tools.app`.'
             echo 'En Windows, SmartScreen avisa "Windows protegió su PC": Más información → Ejecutar de todas formas.'
             echo
             echo 'Detalle por sistema en [releases/macos](releases/macos/README.md) y [releases/windows](releases/windows/README.md).'
+            echo
             echo '📖 [Documentación](https://rafael180496.github.io/mini-tools/)'
           } > /tmp/release-notes.md
           echo "Notas: $(wc -l < /tmp/release-notes.md) líneas"
 
-      # Ensayo: no publica: deja los artefactos colgados del run para poder
-      # bajarlos y mirarlos.
-      - name: Subir artefactos al run (solo ensayo)
+      - name: Ensayo — mostrar las notas sin publicar
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: mini-tools-v${{ steps.version.outputs.version }}
-          path: |
-            ${{ steps.artifacts.outputs.dmg }}
-            ${{ steps.artifacts.outputs.exe }}
-            /tmp/release-notes.md
+        run: |
+          echo "### Ensayo: esto es lo que se publicaría" >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/release-notes.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publicar el release
         if: github.event_name == 'push'

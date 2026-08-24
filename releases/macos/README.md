@@ -24,12 +24,12 @@ shasum -a 256 mini-tools-v2.3.0.dmg
 ```
 
 
-> **Cuál es el checksum que vale.** Desde que el release se publica solo al
-> empujar el tag, el archivo que baja la gente lo compila **GitHub Actions**, no
-> esta máquina — y dos compilaciones de Go en máquinas distintas no dan un
-> binario bit a bit idéntico. El checksum de la tabla de arriba es el del build **local** de
-> esta versión; el del archivo publicado va en el cuerpo del propio release,
-> que es el que hay que comparar después de descargar.
+> **El archivo publicado es este.** El workflow de release **no recompila**:
+> sube exactamente el binario versionado en esta carpeta, así que el SHA-256 de
+> la tabla de arriba es el del archivo que se descarga del GitHub Release. Es la
+> razón de reusar en vez de compilar en CI — dos compilaciones de Go en máquinas
+> distintas no dan un binario bit a bit idéntico, y el release terminaría siendo
+> un archivo que nadie probó.
 
 ## Compatibilidad del sistema
 
