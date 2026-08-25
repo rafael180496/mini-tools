@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.3.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.4.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -21,6 +21,46 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 <p align="center">
   <img src="docs/screenshots/ui-workspace.png" width="900" alt="mini-tools: barra lateral con el menú de módulos arriba (bases, SSH, Git, notas) y el árbol de conexiones en carpetas; editor SQL al centro con pestañas rotuladas por tipo y panel de resultados abajo">
 </p>
+
+---
+
+## Novedades — 2.4.0
+
+**La versión de que se pueda leer.** El tamaño de letra de toda la interfaz pasa
+a ser ajustable —hasta el 150 %, íconos incluidos, en todos los módulos—, la
+documentación deja de ser una landing y se vuelve un sitio de ayuda con índice y
+buscador, y se corrigen cuatro cosas que hacían trabajo de más: copiar filas
+como SQL, el historial del agente y el aviso de versión nueva.
+
+- **Tamaño de letra de la interfaz, ajustable.** Configuración → **Apariencia**:
+  cinco pasos del 90 % al 150 % que agrandan texto **e íconos** en toda la app.
+  Se aplica al instante, se recuerda entre sesiones y vale **también en la
+  pantalla de desbloqueo** — quien no puede leer la app tampoco podría leer el
+  formulario que le pide la clave para arreglarlo. El editor de código y las
+  terminales conservan su propio cuerpo, que se ajusta por separado.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#ajustes-apariencia)
+- **Copiar filas como `INSERT`/`UPDATE` ahora genera SQL que corre.** Antes
+  usaba el nombre de la **conexión** como nombre de tabla (`INSERT INTO
+  "Sgctest"`), y las fechas salían como texto ISO que Oracle rechazaba con
+  `ORA-01861`. Ahora la tabla sale del catálogo **calificada con su esquema** y
+  las fechas se convierten al motor de destino: `TO_DATE`/`TO_TIMESTAMP` en
+  Oracle, `TIMESTAMP '…'` en PostgreSQL, `CAST(… AS datetime2)` en SQL Server.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#bases-copiar)
+- **El historial del agente abre la conversación.** Hacer clic en una fila no
+  hacía nada visible: la conversación se retomaba de verdad, pero el panel
+  seguía mostrando lo de antes.
+- **El aviso de versión nueva descarga el archivo de tu sistema** —el `.dmg` o el
+  `.exe`— en vez de dejarte buscando entre releases y adjuntos. Y solo avisa
+  cuando hay algo que efectivamente se puede bajar: antes leía el archivo
+  `VERSION` de la rama, que se bumpea *antes* de publicar.
+- **La documentación es un sitio de ayuda.** Índice jerárquico, un tema por
+  pantalla, «en esta página», buscador con <kbd>/</kbd> y anterior/siguiente —
+  36 temas en 10 grupos, en vez de trece secciones apiladas en un scroll. Con
+  las capturas regeneradas: las que había mostraban la barra lateral de hace
+  tres versiones. [Ver →](https://rafael180496.github.io/mini-tools/)
+- **Publicar es empujar un tag.** Un workflow de GitHub Actions crea el release
+  con las notas del CHANGELOG y adjunta los dos binarios — los mismos que se
+  probaron acá, no una recompilación que nadie corrió.
 
 ---
 
@@ -456,8 +496,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.3.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.3.0/mini-tools-v2.3.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.3.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.3.0/mini-tools-v2.3.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Esta versión no se probó en una Windows real**: lo nuevo de ese lado es el módulo HTTP (aviso del Firewall en el flujo OAuth, diálogos de archivo, temporales en `%TEMP%`), ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.4.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.4.0/mini-tools-v2.4.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.4.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.4.0/mini-tools-v2.4.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Verificado en Windows 10 y 11**, ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -689,11 +729,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.3.0 |
+| Versión | 2.4.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.3.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.3.0/mini-tools-v2.3.0.dmg)** |
-| SHA-256 | `03da48e2839b1b7ae1b7a72a245d48e4fb15dc1e9fd134fa375849a978f36a5b` |
+| Archivo | **[⬇ Descargar mini-tools-v2.4.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.4.0/mini-tools-v2.4.0.dmg)** |
+| SHA-256 | `9a6f8bbedd5b2c33c3f3e06c510ec8490a281f29180b3204217533f9919ab452` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -705,7 +745,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **La 2.3.0 NO se probó en una Windows real** — solo se confirmó que cross-compila limpio desde macOS. Que la 2.1.0 se haya verificado en Windows 10 y 11 no dice nada de esta versión, y por eso se anota. Lo nuevo de este lado es el **módulo HTTP**: el flujo OAuth 2.0 levanta un servidor efímero en `127.0.0.1` (puede disparar el aviso del Firewall la primera vez), los diálogos nativos para elegir un archivo de cuerpo y para guardar una respuesta, y los volcados de respuestas grandes, que en Windows van a `%TEMP%`. Sigue sin verificarse lo que ya venía pendiente: las migraciones del vault —ahora 45 a 49, las del módulo HTTP—, el servidor MCP por named pipe, abrir el proyecto en VS Code/Explorador y pegar imágenes en una nota. Detalle en [releases/windows/README.md](releases/windows/README.md).
+> ✅ **La 2.4.0 se corrió en Windows 10 y en Windows 11 reales.** Eso confirma lo que compilar no confirma: que arranca sin instalar el WebView2 Runtime aparte —si faltara, la ventana quedaría en blanco— y que las migraciones del vault corren sobre el `vault.db` que ya estaba en la máquina, incluida la **50** de esta versión, que agrega el tamaño de letra de la interfaz. Lo que solo se ejercita al usar ese camino sigue sin confirmarse: el flujo OAuth 2.0 del módulo HTTP (aviso del Firewall la primera vez), el servidor MCP por named pipe, lanzar los CLIs agénticos y abrir el proyecto en VS Code/Explorador. Detalle en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -713,10 +753,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.3.0 |
-| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; esta versión sin probar en Windows real |
-| Archivo | **[⬇ Descargar mini-tools-v2.3.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.3.0/mini-tools-v2.3.0-windows-amd64.exe)** |
-| SHA-256 | `a6b5256cf055246b34c1af6e696056a5f7a7383a48263802106e2a9d338f8a12` |
+| Versión | 2.4.0 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **esta versión se corrió en Windows 10 y 11** |
+| Archivo | **[⬇ Descargar mini-tools-v2.4.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.4.0/mini-tools-v2.4.0-windows-amd64.exe)** |
+| SHA-256 | `24f4fc6bb7224ddb9797e9f9bb575fef06b77b30462c7fff65bd29469bbd040d` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

@@ -4,7 +4,13 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-08-25
+
 ### Agregado
+
+- **Empaquetado 2.4.0 para macOS y Windows.** `.dmg` de 21,4 MB (`arm64`, Apple Silicon — macOS 11 o superior, aunque el `Info.plist` que genera Wails siga declarando 10.13) y `.exe` portable de 57,0 MB (`x86-64`), los dos sin firmar y con su checksum en `releases/<so>/README.md`.
+
+  **El `.exe` se corrió en Windows 10 y en Windows 11 reales**, a diferencia de la 2.3.0. Eso confirma lo que cross-compilar no confirma: que arranca sin instalar el WebView2 Runtime aparte —si faltara, la ventana quedaría en blanco— y que la migración 50 corre sobre el `vault.db` que ya estaba en la máquina. Lo que solo se ejercita al usar ese camino sigue sin confirmarse y está listado en `releases/windows/README.md`.
 
 - **Tamaño de letra de la interfaz, ajustable.** Configuración → **Apariencia** → *Tamaño de letra de la interfaz*: cinco pasos del 90 % al 150 %. Agranda el texto **y los íconos** de toda la app —barra lateral, menús, listas, diálogos, etiquetas— en todos los módulos, se aplica en el momento y se recuerda entre sesiones (columna `ui_font_scale`, migración 50 del vault).
 

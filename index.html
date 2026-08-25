@@ -298,7 +298,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><span class="mark">mt</span> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.3.0. Lo que está acá existe en ese binario.">2.3.0 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.4.0. Lo que está acá existe en ese binario.">2.4.0 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -482,6 +482,13 @@ wails dev
 wails build</code></pre></div>
   <div class="note"><span class="lbl">Nota</span><p><strong>Sin CGO.</strong> Todos los drivers son en Go
   puro, así que compila y se distribuye como un ejecutable único sin dependencias del sistema.</p></div>
+
+  <div class="note warn"><span class="lbl">pnpm sale de corepack</span><p><strong>No lo instales con
+  <code>npm install -g pnpm</code>.</strong> Los paquetes globales de npm son por versión de Node, así que
+  el próximo <code>nvm install</code> lo deja atrás y el build muere con
+  <code>exec: "pnpm": executable file not found in $PATH</code> — un error que tira wails, porque es él
+  quien corre <code>pnpm install</code>, y que no dice ni la causa ni el remedio. Los scripts de
+  <code>scripts/</code> lo habilitan solos; a mano es <code>corepack enable pnpm</code>.</p></div>
 
   <h2 id="instalacion--ayuda">Esta ayuda, desde la app</h2>
   <p>El botón <strong>?</strong> del pie de la barra lateral —y el enlace <em>Documentación</em> del pie de
@@ -1411,7 +1418,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.3.0; esta página no hace una sola petición externa.
+  v2.4.0; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a></p>

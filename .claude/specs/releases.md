@@ -80,10 +80,9 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
 3. **Copiar** (nunca mover) cada artefacto generado
    (`build/bin/mini-tools-vX.Y.Z.dmg`, `build/bin/mini-tools-vX.Y.Z-windows-amd64.exe`)
    a su `releases/<os>/` correspondiente. `build/bin/` sigue siendo la
-   salida cruda y efímera de los scripts de build; `releases/<os>/` es la
-   **zona de preparación** desde donde el usuario sube los binarios al
-   GitHub Release del tag. **No se commitean** — ver "Dónde viven los
-   binarios" abajo.
+   salida cruda y efímera de los scripts de build; `releases/<os>/` es de
+   donde los toma el workflow. **Se commitean** junto con el tag — ver el
+   paso 9 y "Dónde viven los binarios" abajo.
 4. Calcular el checksum de cada artefacto:
    `shasum -a 256 releases/<os>/mini-tools-vX.Y.Z*`.
 5. Escribir/actualizar `releases/<os>/README.md` de **cada** SO empaquetado
@@ -199,27 +198,32 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
 
 ## Dónde viven los binarios
 
-**En el GitHub Release del tag, no en el árbol del repositorio.**
+**En el commit del tag Y en el GitHub Release.** Las dos cosas, y no es
+redundancia: el workflow no compila nada, así que lo que publica es literalmente
+el archivo que está en `releases/<os>/` en el commit del tag. Un tag sin los
+artefactos falla en CI antes de publicar nada.
 
-Esto corrige lo que decía antes esta misma sección. La decisión original fue
-versionar los `.dmg`/`.exe` para que "bajar la última versión" fuera un link del
-README sin depender de otro flujo; en la práctica el usuario terminó subiendo
-igual cada artefacto al GitHub Release de su tag —que es el canal que la gente
-espera— y borrando después las copias del repositorio, porque tener las dos
-cosas suma decenas de MB permanentes al historial de git por cada versión y no
-agrega ninguna forma de descarga que el Release no dé.
+Esto corrige lo que decía antes esta misma sección, que era del flujo anterior
+—cuando el usuario subía cada artefacto a mano al Release y después borraba la
+copia del repositorio para no cargar el historial de git—. Ese borrado ahora
+rompe el release de esa versión.
 
 Consecuencias prácticas, y son las que hay que respetar en cada empaquetado:
 
-- `releases/<os>/` es **zona de preparación**: ahí se dejan los artefactos recién
-  generados para subirlos, y se borran cuando ya están en el Release. Lo único
-  permanente de esa carpeta es el `README.md` de cada SO.
+- El `.dmg` y el `.exe` de la versión que se está preparando **se commitean**.
+  Lo permanente de cada carpeta sigue siendo su `README.md`, que es donde viven
+  el checksum y las instrucciones — y el workflow **comprueba que ese checksum
+  sea el del archivo** antes de publicar.
+- **Los artefactos de versiones anteriores sí se pueden borrar**, y conviene:
+  ya están publicados en el Release de su tag, y su commit los conserva. Esa
+  baja va en el mismo commit que el alta de los nuevos.
 - Los links de descarga del `README.md` raíz apuntan al **asset del Release**
-  (`.../releases/download/vX.Y.Z/<archivo>`), nunca a una ruta del árbol: un link
-  a `releases/macos/mini-tools-vX.Y.Z.dmg` da 404 apenas se borra la copia.
+  (`.../releases/download/vX.Y.Z/<archivo>`), nunca a una ruta del árbol: un
+  link a `releases/macos/mini-tools-vX.Y.Z.dmg` da 404 apenas se poda la copia.
 - El `.gitignore` sigue **sin** patrones para `releases/**/*.dmg`/`*.exe`. No es
   un descuido: dejarlos ignorados escondería un artefacto recién generado del
-  `git status`, que es justo donde el usuario lo ve para acordarse de subirlo.
+  `git status`, que es justo donde el usuario lo ve para acordarse de
+  commitearlo.
 
 ## Estado multi-plataforma
 

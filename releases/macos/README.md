@@ -9,17 +9,17 @@ a ningún lado — solo empaqueta el `.dmg` para distribuirlo manualmente
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.3.0 |
-| Archivo | `mini-tools-v2.3.0.dmg` |
+| Versión | 2.4.0 |
+| Archivo | `mini-tools-v2.4.0.dmg` |
 | Tamaño | ~21 MB (21,4 MB) |
-| SHA-256 | `03da48e2839b1b7ae1b7a72a245d48e4fb15dc1e9fd134fa375849a978f36a5b` |
+| SHA-256 | `9a6f8bbedd5b2c33c3f3e06c510ec8490a281f29180b3204217533f9919ab452` |
 | Arquitectura | `arm64` (Apple Silicon) — verificado con `file` sobre el binario dentro del `.dmg` |
 | Generado | `wails build -clean` (modo producción, sin devtools) |
 
 Verificar la integridad del archivo descargado:
 
 ```bash
-shasum -a 256 mini-tools-v2.3.0.dmg
+shasum -a 256 mini-tools-v2.4.0.dmg
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -54,7 +54,7 @@ shasum -a 256 mini-tools-v2.3.0.dmg
 
 ## Instalación
 
-1. Descargar `mini-tools-v2.3.0.dmg` y abrirlo (doble click).
+1. Descargar `mini-tools-v2.4.0.dmg` y abrirlo (doble click).
 2. Arrastrar `mini-tools.app` al symlink de `Applications` que trae el `.dmg`.
 3. Al abrir la app por primera vez, Gatekeeper bloquea la app sin firma.
    Cualquiera de estas tres opciones lo resuelve:
@@ -77,9 +77,14 @@ Intel además del de Apple Silicon hace falta correrlo también en (o desde)
 un Mac `x86_64`, o extender el script con `-platform darwin/universal`
 (cambio no incluido acá).
 
-Este directorio es la **zona de preparación**: acá se deja el `.dmg` recién
-generado para subirlo como asset del [GitHub Release](https://github.com/rafael180496/mini-tools/releases)
-de su tag, y se borra después. El binario **no se commitea** — lo permanente de
-esta carpeta es este `README.md`, que es donde viven el checksum y las
-instrucciones. Por eso el link de descarga del README raíz apunta al asset del
-Release y no a una ruta del repositorio.
+**El `.dmg` de esta carpeta se commitea junto con el tag.** No es opcional: el
+workflow de release no compila nada, sube exactamente este archivo, y
+[comprueba antes de publicar](../../.github/workflows/release.yml) que esté en
+el commit del tag y que su SHA-256 aparezca en este README. Un tag empujado sin
+el artefacto —o con este README desactualizado— falla en CI en vez de publicar
+un binario que no es el que dice ser.
+
+El link de descarga del README raíz apunta igual al **asset del Release**
+(`.../releases/download/vX.Y.Z/<archivo>`) y no a una ruta del árbol: es el
+canal que la gente espera, y sobrevive a que algún día se poden las copias
+viejas del repositorio.
