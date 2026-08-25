@@ -165,7 +165,7 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
                         onClick={() => setMode('pubsub')}
                         disabled={running}
                         title="Escucha canales de Pub/Sub (SUBSCRIBE / PSUBSCRIBE)"
-                        className={`rounded px-2 py-0.5 text-[11px] disabled:opacity-50 ${
+                        className={`rounded px-2 py-0.5 text-ui-11 disabled:opacity-50 ${
                             mode === 'pubsub' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                         }`}
                     >
@@ -175,7 +175,7 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
                         onClick={() => setMode('stream')}
                         disabled={running}
                         title="Consume entradas nuevas de un stream (XREAD)"
-                        className={`rounded px-2 py-0.5 text-[11px] disabled:opacity-50 ${
+                        className={`rounded px-2 py-0.5 text-ui-11 disabled:opacity-50 ${
                             mode === 'stream' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                         }`}
                     >
@@ -273,7 +273,7 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
                 )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 border-b border-outline-variant px-3 py-1 text-[11px] text-on-surface-variant">
+            <div className="flex flex-wrap items-center gap-3 border-b border-outline-variant px-3 py-1 text-ui-11 text-on-surface-variant">
                 <span className={running ? 'flex items-center gap-1 text-primary' : 'flex items-center gap-1'}>
                     <span className={`h-1.5 w-1.5 rounded-full ${running ? (paused ? 'bg-tertiary' : 'animate-pulse bg-primary') : 'bg-outline'}`} />
                     {running ? (paused ? 'en pausa' : 'escuchando') : 'detenido'}

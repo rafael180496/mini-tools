@@ -312,7 +312,7 @@ function CommitRow({
                     {(commit.tags ?? []).map((t) => <RefBadge key={t} label={t} kind="tag" />)}
                     <span className="truncate text-xs text-on-surface">{commit.subject}</span>
                 </div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-on-surface-variant/70">
+                <div className="mt-0.5 flex items-center gap-1.5 text-ui-10 text-on-surface-variant/70">
                     <span className="truncate">{commit.author}</span>
                     <span aria-hidden className="shrink-0 opacity-40">
                         ·
@@ -322,7 +322,7 @@ function CommitRow({
             </div>
             {/* Fixed-width so the hashes form a straight column down the panel
                 instead of jittering with each subject's length. */}
-            <span className="w-16 shrink-0 text-right font-mono text-[10px] tabular-nums text-on-surface-variant/60">{commit.shortHash}</span>
+            <span className="w-16 shrink-0 text-right font-mono text-ui-10 tabular-nums text-on-surface-variant/60">{commit.shortHash}</span>
         </button>
     )
 }
@@ -341,7 +341,7 @@ function RefBadge({label, kind}: {label: string; kind: 'local' | 'remote' | 'tag
             title={kind === 'tag' ? `Tag: ${label}` : kind === 'remote' ? `Rama remota: ${label}` : `Rama local: ${label}`}
             // Capped width: names like "origin/feature/TIGOCHAT-9595" are long
             // enough that two of them would push the subject out of the row.
-            className={`flex max-w-52 shrink-0 items-center gap-0.5 rounded-full py-px pl-1 pr-1.5 text-[9px] font-medium ${styles}`}
+            className={`flex max-w-52 shrink-0 items-center gap-0.5 rounded-full py-px pl-1 pr-1.5 text-ui-9 font-medium ${styles}`}
         >
             <Icon name={kind === 'tag' ? 'sell' : kind === 'remote' ? 'cloud' : 'account_tree'} size={10} className="shrink-0 opacity-80" />
             <span className="truncate">{label}</span>

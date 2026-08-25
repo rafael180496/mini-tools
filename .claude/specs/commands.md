@@ -20,6 +20,7 @@ Equivalentes directos, por si hace falta correrlos sin los wrappers:
 wails dev
 wails build -clean
 
+corepack enable pnpm          # pnpm sale de corepack, nunca de `npm install -g`
 cd frontend && pnpm install   # pnpm SIEMPRE, nunca npm/yarn
 cd frontend && pnpm build
 
@@ -28,14 +29,20 @@ go vet ./...
 go test ./...
 ```
 
+> **Si un build falla con `exec: "pnpm": executable file not found in $PATH`**,
+> el problema no es el proyecto: es que pnpm estaba instalado en otra versión de
+> Node. `corepack enable pnpm` lo resuelve, y los scripts de `scripts/` ya lo
+> hacen solos — ver `scripts/ensure-pnpm.sh`.
+
 Después de agregar o eliminar un archivo de código, correr `codegraph sync` para mantener el índice de `.codegraph/` al día antes de seguir trabajando.
 
 ## Capturas de la interfaz (`scripts/uishot.sh`)
 
 ```bash
-./scripts/uishot.sh files            # árbol de archivos + editor
-./scripts/uishot.sh agents 520 780   # panel de agentes, con ancho y alto
+./scripts/uishot.sh files                      # árbol de archivos + editor
+./scripts/uishot.sh agents 520 780             # panel de agentes, con ancho y alto
 ./scripts/uishot.sh chat
+UISHOT_SCALE=150 ./scripts/uishot.sh settings  # con el tamaño de letra al 150 %
 ```
 
 Imprime la ruta del PNG. Sirve para **revisar disposición, jerarquía y textos**

@@ -259,7 +259,7 @@ export default function SshConnectionTree({
                         {envStyleOf(c) && (
                             <span
                                 title={`Entorno: ${envStyleOf(c)!.label}`}
-                                className={`shrink-0 rounded px-1 py-px text-[9px] leading-tight font-semibold tracking-wide ${envStyleOf(c)!.badge}`}
+                                className={`shrink-0 rounded px-1 py-px text-ui-9 leading-tight font-semibold tracking-wide ${envStyleOf(c)!.badge}`}
                             >
                                 {envStyleOf(c)!.short}
                             </span>
@@ -362,7 +362,7 @@ export default function SshConnectionTree({
                                 pasar el mouse para dejarle el lugar a los
                                 botones de la fila. */}
                             {total > 0 && (
-                                <span className="shrink-0 font-mono text-[10px] tabular-nums text-on-surface-variant/45 group-hover/folder:hidden">
+                                <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/45 group-hover/folder:hidden">
                                     {total}
                                 </span>
                             )}
@@ -501,7 +501,7 @@ export default function SshConnectionTree({
                                     style={{position: 'fixed', top: shellMenuPos.top, left: shellMenuPos.left}}
                                     className="z-50 max-h-72 w-56 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-high py-1 shadow-lg"
                                 >
-                                    <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-on-surface-variant/70">
+                                    <p className="px-3 py-1 text-ui-10 uppercase tracking-wider text-on-surface-variant/70">
                                         Terminal de esta máquina
                                     </p>
                                     <button
@@ -532,7 +532,7 @@ export default function SshConnectionTree({
                                         >
                                             <Icon name="terminal" size={13} className="shrink-0 text-on-surface-variant" />
                                             <span className="min-w-0 flex-1 truncate">{sh.label}</span>
-                                            {!sh.available && <span className="shrink-0 text-[10px] text-on-surface-variant/60">falta</span>}
+                                            {!sh.available && <span className="shrink-0 text-ui-10 text-on-surface-variant/60">falta</span>}
                                         </button>
                                     ))}
                                 </div>

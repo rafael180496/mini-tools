@@ -88,13 +88,13 @@ export default function GitStashPanel({repoId, stashes, busy, onApply, onDrop, o
                                 key={s.ref}
                                 onClick={() => setSelected(s.ref)}
                                 title={`${s.ref} — guardado sobre "${s.branch}" el ${s.date}`}
-                                className={`flex w-full flex-col items-start gap-0.5 border-b border-outline-variant/40 px-2 py-1.5 text-left text-[11px] ${
+                                className={`flex w-full flex-col items-start gap-0.5 border-b border-outline-variant/40 px-2 py-1.5 text-left text-ui-11 ${
                                     selected === s.ref ? 'bg-primary-container/50 text-on-primary-container' : 'text-on-surface hover:bg-surface-variant/50'
                                 }`}
                             >
                                 <span className="flex w-full items-center gap-1">
-                                    <span className="font-mono text-[10px] opacity-70">{s.ref}</span>
-                                    <span className="ml-auto truncate text-[10px] opacity-60">{s.branch}</span>
+                                    <span className="font-mono text-ui-10 opacity-70">{s.ref}</span>
+                                    <span className="ml-auto truncate text-ui-10 opacity-60">{s.branch}</span>
                                 </span>
                                 <span className="w-full truncate">{s.message}</span>
                             </button>
@@ -102,7 +102,7 @@ export default function GitStashPanel({repoId, stashes, busy, onApply, onDrop, o
                     </div>
 
                     <div className="flex min-w-0 flex-1 flex-col">
-                        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-outline-variant px-2 py-1 text-[11px]">
+                        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-outline-variant px-2 py-1 text-ui-11">
                             <button
                                 onClick={() => selected && onApply(selected, false)}
                                 disabled={busy || !selected}
@@ -136,7 +136,7 @@ export default function GitStashPanel({repoId, stashes, busy, onApply, onDrop, o
                                 <p className="text-xs text-on-surface-variant">Este stash no tiene cambios que mostrar.</p>
                             )}
                             {!loading && !error && patch !== '' && (
-                                <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed">
+                                <pre className="whitespace-pre-wrap break-all font-mono text-ui-11 leading-relaxed">
                                     {patch.split('\n').map((line, i) => (
                                         <div
                                             key={i}

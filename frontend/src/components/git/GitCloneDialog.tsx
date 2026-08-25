@@ -94,18 +94,18 @@ export default function GitCloneDialog({onClose, onCloned}: GitCloneDialogProps)
                     </button>
                 </div>
 
-                <p className="mt-2 text-[11px] leading-relaxed text-on-surface-variant">
+                <p className="mt-2 text-ui-11 leading-relaxed text-on-surface-variant">
                     Si guardaste un token para ese servidor (en la configuración de un repo → Tokens), se usa solo para clonar repos privados. Si no, git resuelve las credenciales como siempre.
                 </p>
 
                 {error && (
-                    <div className="mt-3 flex items-start gap-2 rounded bg-error-container/50 p-2 text-[11px] text-on-error-container">
+                    <div className="mt-3 flex items-start gap-2 rounded bg-error-container/50 p-2 text-ui-11 text-on-error-container">
                         <Icon name="error" size={14} className="mt-px shrink-0" />
                         <span className="min-w-0 flex-1 break-words">{error}</span>
                     </div>
                 )}
 
-                <label className="mt-4 block text-[11px] text-on-surface-variant">URL del repositorio</label>
+                <label className="mt-4 block text-ui-11 text-on-surface-variant">URL del repositorio</label>
                 <input
                     autoFocus
                     value={url}
@@ -115,7 +115,7 @@ export default function GitCloneDialog({onClose, onCloned}: GitCloneDialogProps)
                     className="mt-1 w-full rounded border-none bg-surface-container-highest px-2 py-1.5 font-mono text-xs text-on-surface outline-none placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary"
                 />
 
-                <label className="mt-3 block text-[11px] text-on-surface-variant">Nombre de la carpeta</label>
+                <label className="mt-3 block text-ui-11 text-on-surface-variant">Nombre de la carpeta</label>
                 <input
                     value={name}
                     onChange={(e) => {
@@ -127,7 +127,7 @@ export default function GitCloneDialog({onClose, onCloned}: GitCloneDialogProps)
                     className="mt-1 w-full rounded border-none bg-surface-container-highest px-2 py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/50 focus:ring-1 focus:ring-primary"
                 />
 
-                <label className="mt-3 block text-[11px] text-on-surface-variant">Carpeta de destino</label>
+                <label className="mt-3 block text-ui-11 text-on-surface-variant">Carpeta de destino</label>
                 <div className="mt-1 flex gap-2">
                     <input
                         value={dest}
@@ -141,7 +141,7 @@ export default function GitCloneDialog({onClose, onCloned}: GitCloneDialogProps)
                     </button>
                 </div>
                 {dest && name && (
-                    <p className="mt-1.5 truncate font-mono text-[10px] text-on-surface-variant/60" title="Ruta final donde quedará el repositorio">
+                    <p className="mt-1.5 truncate font-mono text-ui-10 text-on-surface-variant/60" title="Ruta final donde quedará el repositorio">
                         → {dest.replace(/[\\/]+$/, '')}/{name.trim()}
                     </p>
                 )}

@@ -50,14 +50,14 @@ export default function KeyValueTable({
     }
 
     if (lockKeys && rows.length === 0) {
-        return <p className="px-3 py-4 text-[11px] leading-relaxed text-on-surface-variant/70">{emptyHint}</p>
+        return <p className="px-3 py-4 text-ui-11 leading-relaxed text-on-surface-variant/70">{emptyHint}</p>
     }
 
     return (
         <div className="min-w-0 overflow-x-auto">
-            <table className="w-full min-w-[420px] table-fixed border-collapse text-[11px]">
+            <table className="w-full min-w-[420px] table-fixed border-collapse text-ui-11">
                 <thead>
-                    <tr className="text-left text-[10px] uppercase tracking-wider text-on-surface-variant/60">
+                    <tr className="text-left text-ui-10 uppercase tracking-wider text-on-surface-variant/60">
                         <th className="w-8 px-2 py-1 font-medium"></th>
                         <th className="w-[34%] px-2 py-1 font-medium">{keyLabel}</th>
                         <th className="px-2 py-1 font-medium">{valueLabel}</th>
@@ -91,7 +91,7 @@ export default function KeyValueTable({
                                         onChange={(e) => update(i, {key: e.target.value, enabled: true})}
                                         placeholder={ghost ? keyLabel : ''}
                                         title={lockKeys ? 'Sale de la URL de arriba: para cambiarlo, editá la URL' : undefined}
-                                        className={`w-full bg-transparent font-mono text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/40 ${
+                                        className={`w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40 ${
                                             lockKeys ? 'cursor-default text-on-surface-variant' : ''
                                         }`}
                                     />
@@ -101,7 +101,7 @@ export default function KeyValueTable({
                                         value={row.value}
                                         onChange={(e) => update(i, {value: e.target.value, enabled: true})}
                                         placeholder={ghost ? valueLabel : ''}
-                                        className="w-full bg-transparent font-mono text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                                        className="w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                     />
                                 </td>
                                 <td className="px-1 py-0.5">

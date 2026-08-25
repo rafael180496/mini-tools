@@ -203,7 +203,7 @@ export default function GitConflictResolver({
             <div className="flex min-h-0 flex-1">
                 <div className="w-56 shrink-0 overflow-y-auto border-r border-outline-variant">
                     {files.length === 0 ? (
-                        <p className="p-3 text-[11px] text-on-surface-variant">
+                        <p className="p-3 text-ui-11 text-on-surface-variant">
                             No quedan archivos con conflictos. Ya podés continuar el {operation}.
                         </p>
                     ) : (
@@ -212,7 +212,7 @@ export default function GitConflictResolver({
                                 key={f}
                                 onClick={() => setPath(f)}
                                 title={f}
-                                className={`flex w-full items-center gap-1.5 border-b border-outline-variant/40 px-2 py-1.5 text-left text-[11px] ${
+                                className={`flex w-full items-center gap-1.5 border-b border-outline-variant/40 px-2 py-1.5 text-left text-ui-11 ${
                                     path === f ? 'bg-error-container/50 text-on-error-container' : 'text-on-surface hover:bg-surface-variant/50'
                                 }`}
                             >
@@ -225,7 +225,7 @@ export default function GitConflictResolver({
 
                 <div className="flex min-w-0 flex-1 flex-col">
                     {path && (
-                        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant px-2 py-1 text-[11px]">
+                        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant px-2 py-1 text-ui-11">
                             <span className="min-w-0 truncate font-mono text-on-surface-variant">{path}</span>
                             <span
                                 className={done === total ? 'text-secondary' : 'text-tertiary'}
@@ -266,10 +266,10 @@ export default function GitConflictResolver({
                         </div>
                     )}
 
-                    {error && <p className="px-2 py-1 text-[11px] text-error">{error}</p>}
+                    {error && <p className="px-2 py-1 text-ui-11 text-error">{error}</p>}
                     {loading && <p className="px-2 py-2 text-xs text-on-surface-variant">Cargando el archivo…</p>}
 
-                    <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
+                    <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-ui-11 leading-relaxed">
                         {blocks.map((block, i) =>
                             block.kind === 'text' ? (
                                 <pre key={i} className="whitespace-pre-wrap break-all text-on-surface-variant/70">
@@ -285,7 +285,7 @@ export default function GitConflictResolver({
                                         block.resolution === 'unresolved' ? 'border-error/50' : 'border-secondary/50'
                                     }`}
                                 >
-                                    <div className="flex flex-wrap items-center gap-1 border-b border-outline-variant/50 bg-surface-container px-1.5 py-1 font-sans text-[10px]">
+                                    <div className="flex flex-wrap items-center gap-1 border-b border-outline-variant/50 bg-surface-container px-1.5 py-1 font-sans text-ui-10">
                                         <span className={block.resolution === 'unresolved' ? 'text-error' : 'text-secondary'}>
                                             {block.resolution === 'unresolved' ? 'Sin resolver' : 'Resuelto'}
                                         </span>
@@ -379,7 +379,7 @@ function Side({
     const bg = tone === 'ours' ? 'bg-primary/5' : tone === 'theirs' ? 'bg-secondary/5' : 'bg-surface-variant/30'
     return (
         <div className={`${bg} ${dimmed ? 'opacity-40' : ''} p-1.5`}>
-            <div className="mb-0.5 font-sans text-[10px] text-on-surface-variant" title={detail}>
+            <div className="mb-0.5 font-sans text-ui-10 text-on-surface-variant" title={detail}>
                 {title}
                 {detail && <span className="ml-1 opacity-60">({detail})</span>}
             </div>

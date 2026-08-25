@@ -13,6 +13,7 @@ import ResultGrid from './results/ResultGrid'
 import ResultTabs from './results/ResultTabs'
 import ExecutionConsole, {ConsoleLogEntry} from './results/ExecutionConsole'
 import ExportMenu from './results/ExportMenu'
+import {useSqlTarget} from './results/useSqlTarget'
 import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
 import MongoResultView, {MongoCommandResult} from './results/MongoResultView'
 import EditorTabs, {EditorTab, TabLanguage} from './editor/EditorTabs'
@@ -248,7 +249,7 @@ function Divider() {
 // botón en vez de fijar uno, que es lo que permite usarlo igual dentro del
 // botón relleno y dentro de los planos.
 function Kbd({children}: {children: ReactNode}) {
-    return <kbd className="font-mono text-[10px] font-normal not-italic tracking-tight opacity-55">{children}</kbd>
+    return <kbd className="font-mono text-ui-10 font-normal not-italic tracking-tight opacity-55">{children}</kbd>
 }
 
 // Clases de la barra de acciones del editor.
@@ -318,9 +319,21 @@ interface WorkspaceProps {
     // instead of checked here because Workspace unmounts on every lock, so
     // "check once" only means once per process if it lives in App.tsx.
     updateInfo: updatecheck.Info | null
+    // Tamaño de letra de la interfaz, en porcentaje. Vive en App.tsx (ver
+    // useUIFontScale) para que valga también en la pantalla de desbloqueo;
+    // acá solo baja hasta el diálogo de Configuración, que es donde se elige.
+    uiFontScale: number
+    onChangeUIFontScale: (pct: number) => void
 }
 
-export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: WorkspaceProps) {
+export default function Workspace({
+    theme,
+    onToggleTheme,
+    onLocked,
+    updateInfo,
+    uiFontScale,
+    onChangeUIFontScale,
+}: WorkspaceProps) {
     // `selected` is ONLY the sidebar's own navigation state — which
     // connection's table/key tree is expanded there. It is deliberately
     // never synced with the active editor tab in either direction (a
@@ -1183,8 +1196,17 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
         }
     }
 
+    // Adónde lleva el aviso de versión nueva.
+    //
+    // **Al archivo, no al repositorio.** Antes abría la portada del repo y
+    // dejaba al usuario buscando entre releases y adjuntos cuál era el suyo;
+    // ahora updatecheck ya resolvió el .dmg o el .exe de ESTE sistema y el
+    // clic lo descarga. Sin archivo —en Linux, que no se empaqueta, o si el
+    // release no trae adjuntos— cae a la página del release, que siempre lleva
+    // a algún lado.
     function openRepo() {
-        if (updateInfo?.releaseUrl) BrowserOpenURL(updateInfo.releaseUrl)
+        const url = updateInfo?.downloadUrl || updateInfo?.releaseUrl
+        if (url) BrowserOpenURL(url)
     }
 
     // Drag-to-resize the editor pane against the results grid below it.
@@ -2631,6 +2653,10 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
     useEffect(refreshLiveConnections, [selected, activeTabConnection, reloadToken])
 
     const activeResult = resultSets[activeResultTab]
+    // Contra qué tabla escriben el INSERT y el UPDATE que genera la grilla.
+    // Se resuelve acá, una vez, y baja a la barra de exporte y a la grilla:
+    // las dos generan la misma sentencia y tienen que nombrar la misma tabla.
+    const sqlTarget = useSqlTarget(activeTabConnection?.id, activeResult?.sourceSql, activeTabConnection?.dbType)
     // La salida de DBMS_OUTPUT de TODO el script, no la del resultset que
     // estés mirando: un script con varios bloques PL/SQL escribe desde todos, y
     // atarla a la pestaña de resultados activa hacía que la salida apareciera y
@@ -2693,6 +2719,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                 width={sidebarWidth}
                 onStartResize={startSidebarResize}
                 updateAvailable={updateInfo?.available ? updateInfo.latest : null}
+                updateDownloadName={updateInfo?.available ? updateInfo.assetName || null : null}
                 onOpenRepo={openRepo}
                 bodies={{
                     http: (
@@ -3300,7 +3327,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     {!compactToolbar && (
                                         <>
                                             Explain Analyze
-                                            <span className="text-[10px] font-semibold uppercase tracking-wide text-tertiary">ejecuta</span>
+                                            <span className="text-ui-10 font-semibold uppercase tracking-wide text-tertiary">ejecuta</span>
                                         </>
                                     )}
                                 </button>
@@ -3702,7 +3729,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 >
                                     <Icon name="wysiwyg" size={14} className="opacity-70" />
                                     DBMS_OUTPUT
-                                    <span className="rounded-full bg-primary/15 px-1.5 font-mono text-[10px] tabular-nums text-primary">
+                                    <span className="rounded-full bg-primary/15 px-1.5 font-mono text-ui-10 tabular-nums text-primary">
                                         {dbmsOutputLines.length}
                                     </span>
                                 </button>
@@ -3733,7 +3760,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                     {explainPlan?.analyzed ? 'Explain Analyze' : 'Explain'}
                                     {explainCriticalCount > 0 && (
                                         <span
-                                            className="rounded-full bg-error/20 px-1 text-[9px] font-semibold text-error"
+                                            className="rounded-full bg-error/20 px-1 text-ui-9 font-semibold text-error"
                                             title={`${explainCriticalCount} problema(s) crítico(s) detectado(s) en el plan`}
                                         >
                                             {explainCriticalCount}
@@ -3775,7 +3802,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 <ExportMenu
                                     columns={activeResult?.columns ?? []}
                                     rows={activeResult?.rows ?? []}
-                                    tableNameHint={activeTabConnection?.name}
+                                    sqlTarget={sqlTarget}
                                 />
                             </div>
 
@@ -3785,7 +3812,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 sortColumn={activeResult?.sortColumn}
                                 sortDirection={activeResult?.sortDirection}
                                 onSort={sortActiveResult}
-                                tableNameHint={activeTabConnection?.name}
+                                sqlTarget={sqlTarget}
                                 // Con la conexión y la consulta que produjo
                                 // estas filas, la grilla puede editar: el
                                 // backend decide si salen de una sola tabla con
@@ -3798,7 +3825,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 entrega la primera página y deja el cursor
                                 abierto si quedan filas (ver paging.go). */}
                             {activeResult && activeResult.rows.length > 0 && (
-                                <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant bg-surface-container-low px-2 py-1 text-[11px] text-on-surface-variant">
+                                <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11 text-on-surface-variant">
                                     <span>
                                         Mostrando <span className="font-mono text-on-surface">{activeResult.rows.length.toLocaleString()}</span>
                                         {activeResult.hasMore ? '+' : ''} filas
@@ -3839,7 +3866,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                                 setPageSize(n)
                                                 void SetQueryPageSize(n).catch(() => {})
                                             }}
-                                            className="rounded border-none bg-surface-container-highest px-1 py-0.5 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                            className="rounded border-none bg-surface-container-highest px-1 py-0.5 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                         >
                                             {[10, 100, 250, 500, 1000, 5000].map((n) => (
                                                 <option key={n} value={n}>
@@ -3916,7 +3943,7 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                                 <button
                                     onClick={() => setNlBar({errorText: activeResult.error})}
                                     title="Le pasa al agente el error, la consulta y el esquema de las tablas que menciona, y propone la versión corregida. No la ejecuta: la aplicás vos."
-                                    className="flex shrink-0 items-center gap-1 rounded bg-error-container px-2 py-0.5 text-[11px] text-on-error-container hover:opacity-90"
+                                    className="flex shrink-0 items-center gap-1 rounded bg-error-container px-2 py-0.5 text-ui-11 text-on-error-container hover:opacity-90"
                                 >
                                     <Icon name="healing" size={12} />
                                     Explicar y corregir
@@ -3952,6 +3979,8 @@ export default function Workspace({theme, onToggleTheme, onLocked, updateInfo}: 
                         onChangeEditorThemeId={changeEditorTheme}
                         editorAppearance={editorAppearance}
                         onChangeEditorAppearance={changeEditorAppearance}
+                        uiFontScale={uiFontScale}
+                        onChangeUIFontScale={onChangeUIFontScale}
                         terminalThemeId={terminalThemeId}
                         onChangeTerminalThemeId={changeTerminalTheme}
                         terminalFontSize={terminalFontSize}

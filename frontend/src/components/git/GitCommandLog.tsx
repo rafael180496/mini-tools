@@ -53,7 +53,7 @@ export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogP
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface-container-lowest">
-            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-1 text-[11px]">
+            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-1 text-ui-11">
                 <Icon name="history" size={14} className="shrink-0 text-on-surface-variant" />
                 <span className="text-on-surface-variant" title="Cuántos comandos git ejecutó la app desde que se abrió">
                     {entries.length} comandos
@@ -80,7 +80,7 @@ export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogP
                 </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto font-mono text-[11px]">
+            <div className="min-h-0 flex-1 overflow-y-auto font-mono text-ui-11">
                 {visible.length === 0 ? (
                     <p className="p-3 text-on-surface-variant">
                         {onlyFailed ? 'Ningún comando falló.' : 'Todavía no se ejecutó ningún comando en esta sesión.'}
@@ -97,8 +97,8 @@ export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogP
                                 <span className="min-w-0 flex-1 truncate text-on-surface" title={`${e.command}\n\nen ${e.dir}`}>
                                     {e.command}
                                 </span>
-                                <span className="shrink-0 text-[10px] text-on-surface-variant/60">{e.durationMs} ms</span>
-                                <span className="shrink-0 text-[10px] text-on-surface-variant/60">
+                                <span className="shrink-0 text-ui-10 text-on-surface-variant/60">{e.durationMs} ms</span>
+                                <span className="shrink-0 text-ui-10 text-on-surface-variant/60">
                                     {new Date(e.atMs).toLocaleTimeString('es')}
                                 </span>
                                 {/* Solo en los que fallaron: preguntar por un
@@ -123,7 +123,7 @@ export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogP
                                 </button>
                             </div>
                             {e.output && (
-                                <pre className="mt-0.5 whitespace-pre-wrap break-all pl-5 text-[10px] text-error/90">{e.output}</pre>
+                                <pre className="mt-0.5 whitespace-pre-wrap break-all pl-5 text-ui-10 text-error/90">{e.output}</pre>
                             )}
                         </div>
                     ))

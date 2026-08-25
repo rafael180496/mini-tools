@@ -106,7 +106,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                 <button
                     onClick={() => setProvider(null)}
                     title="Todas las conversaciones de este repositorio, de cualquier agente"
-                    className={`shrink-0 rounded px-2 py-0.5 text-[11px] ${
+                    className={`shrink-0 rounded px-2 py-0.5 text-ui-11 ${
                         provider === null ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'
                     }`}
                 >
@@ -118,7 +118,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                         key={a.id}
                         onClick={() => setProvider(a.id)}
                         title={`Solo las conversaciones con ${a.label}`}
-                        className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11px] ${
+                        className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-ui-11 ${
                             provider === a.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'
                         }`}
                     >
@@ -138,7 +138,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                         if (e.key === 'Escape') setQuery('')
                     }}
                     placeholder="Buscar en las conversaciones…"
-                    className="min-w-0 flex-1 bg-transparent text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                    className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                 />
                 {/* Empezar una conversación vive acá también: si buscaste y no
                     estaba, lo siguiente que querés es crearla. */}
@@ -146,7 +146,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                     <button
                         onClick={() => onNew(provider ?? tabs[0].id)}
                         title="Empezar una conversación nueva con este agente"
-                        className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="add" size={13} />
                         Nueva
@@ -156,7 +156,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
 
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {shown.length === 0 ? (
-                    <p className="px-3 py-4 text-center text-[11px] text-on-surface-variant">
+                    <p className="px-3 py-4 text-center text-ui-11 text-on-surface-variant">
                         {query.trim()
                             ? `Ninguna conversación coincide con "${query.trim()}".`
                             : 'Todavía no hay conversaciones en este repositorio. Empezá una desde el + de arriba.'}
@@ -166,7 +166,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                         <div
                             key={`${e.agentId}:${e.id}`}
                             onClick={() => onOpen(e)}
-                            className={`group flex cursor-pointer items-center gap-2 border-b border-outline-variant/40 px-2 py-1.5 text-[11px] ${
+                            className={`group flex cursor-pointer items-center gap-2 border-b border-outline-variant/40 px-2 py-1.5 text-ui-11 ${
                                 activeId === e.id ? 'bg-primary/10' : 'hover:bg-surface-variant/60'
                             }`}
                         >

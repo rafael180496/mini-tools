@@ -288,7 +288,7 @@ export default function NotesGraphView({onOpenNote, onClose, activeNoteId}: Prop
 
     return (
         <div className="fixed inset-0 z-20 flex flex-col bg-background">
-            <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant bg-surface-container px-3 py-1.5 text-[11px]">
+            <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant bg-surface-container px-3 py-1.5 text-ui-11">
                 <Icon name="hub" size={15} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">Grafo de conocimiento</span>
                 {data && (

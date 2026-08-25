@@ -15,7 +15,7 @@ Superficie de binding del struct `App` (`app.go`). Regla general: el frontend nu
 | Archivos | `OpenSQLFileDialog()`, `OpenSQLFilePath(path)`, `SaveSQLFile(path, content)`, `SaveSQLFileAs(suggestedName, content)`, `ListRecentFiles()`, `ClearRecentFiles()` | Fase 6 (`OpenSQLFilePath` no estaba en el plan original — hace falta para "click en recent reabre tab directo" sin mostrar diálogo) |
 | Explain | `ExplainQuery(connID, sqlText, analyze bool)`, `ListExplainHistory(connID)` | Fase 8 |
 | Export | `ExportResult(columns, rows, format)`, `ExportTableDDL(connID, schema, table)`, `ExportSchemaDDL(connID, schema)`, `ExportConnectionConfig(connID)` | Fase 7 (`ExportResult` toma `columns`/`rows` en vez de `queryID`/`destPath` — ver nota abajo) |
-| Settings | `GetSettings()`, `SetTheme(themeName)`, `SetOpenTabs(paths)` | Fase 10 (`GetSettings`/`SetTheme` son los únicos métodos que NO llaman `requireUnlocked`; `SetOpenTabs` sí lo requiere — ver nota abajo) |
+| Settings | `GetSettings()`, `SetTheme(themeName)`, `SetUIFontScale(pct)`, `SetOpenTabs(paths)` | Fase 10 (`GetSettings`/`SetTheme`/`SetUIFontScale` son los únicos métodos que NO llaman `requireUnlocked`; `SetOpenTabs` sí lo requiere — ver nota abajo) |
 | CLAUDE.md | `GenerateProjectDocs(projectRootPath, connID, schema)`, `RegenerateProjectDocs(projectRootPath, connID, schema)` | Fase 9, `schema` agregado post-lanzamiento — ver nota abajo |
 | SFTP (transferencia de archivos) | `OpenSftpBrowse(sessionID, connID)`, `ListSftpDir(sessionID, dir)`, `SftpHomeDir(sessionID)`, `MakeSftpDir(sessionID, dir)`, `DeleteSftpPath(sessionID, path)`, `RenameSftpPath(sessionID, old, new)`, `SftpPathPermissions(sessionID, path)`, `ChmodSftpPath(sessionID, path, mode)`, `CloseSftpBrowse(sessionID)`, `StartSftpTransfer(input)`, `CancelSftpTransfer(transferID)` | Post-lanzamiento — ver nota SFTP abajo |
 
@@ -86,7 +86,9 @@ El evento `"columns"` incluye `SQLText` (el texto exacto del statement que lo ge
 
 ## Theming, lazy-load, y seguridad (Fase 10)
 
-**Toggle dark/light** (`backend/vault/settings_repo.go` + `frontend/src/hooks/useTheme.ts`): tabla `settings` de una sola fila (mismo patrón singleton que `vault_meta`), `theme TEXT NOT NULL DEFAULT 'dark'`, sembrada por `INSERT OR IGNORE` en `store.go` al abrir. `App.GetSettings()`/`App.SetTheme(theme)` son los **únicos** métodos de `App` que deliberadamente NO llaman `requireUnlocked()` — el tema no es sensible (no hay DSN ni datos de fila involucrados), y gatearlo detrás de la clave maestra causaría un flash de tema incorrecto en la pantalla de desbloqueo sin ningún beneficio de seguridad real; el gate existe para proteger `encrypted_dsn`/resultados de query, no preferencias cosméticas.
+**Toggle dark/light** (`backend/vault/settings_repo.go` + `frontend/src/hooks/useTheme.ts`): tabla `settings` de una sola fila (mismo patrón singleton que `vault_meta`), `theme TEXT NOT NULL DEFAULT 'dark'`, sembrada por `INSERT OR IGNORE` en `store.go` al abrir. `App.GetSettings()`/`App.SetTheme(theme)`/`App.SetUIFontScale(pct)` son los **únicos** métodos de `App` que deliberadamente NO llaman `requireUnlocked()` — ninguno de los tres es sensible (no hay DSN ni datos de fila involucrados), y gatearlos detrás de la clave maestra causaría un flash de tema incorrecto en la pantalla de desbloqueo sin ningún beneficio de seguridad real; el gate existe para proteger `encrypted_dsn`/resultados de query, no preferencias cosméticas.
+
+`SetUIFontScale` (tamaño de letra de toda la interfaz, en porcentaje; columna `ui_font_scale`, migración 50) se agregó a esa lista por un motivo más fuerte que el del tema: es un ajuste de **accesibilidad**, y si solo valiera con el vault abierto, quien no puede leer la app tampoco podría leer el formulario que le pide la clave para arreglarlo. Se aplica desde `hooks/useUIFontScale.ts`, llamado una sola vez en `App.tsx` igual que `useTheme`.
 
 `useTheme.ts` es la única fuente de verdad del tema — se llama **una vez** en `App.tsx` (nunca en `UnlockScreen.tsx`/`Workspace.tsx` directamente) y se pasa hacia abajo por props (`theme`, `onToggleTheme`), evitando fetches duplicados de `GetSettings` y manteniendo un solo estado consistente entre la pantalla de desbloqueo y el workspace (que de todas formas nunca coexisten). Aplica la clase `dark` en `document.documentElement` (Tailwind v4 `@custom-variant dark (&:where(.dark, .dark *))`, ver `frontend/src/styles/globals.css`) y sincroniza el tema de Monaco vía `monaco.editor.setTheme('vs-dark' | 'vs')` — el tema de Monaco es un singleton global compartido por todas las instancias de editor, no por-instancia, así que `MonacoSQLEditor.tsx` **no** debe pasar `theme:` en las opciones de `editor.create()` (pasar uno ahí llama `setTheme()` internamente y pisaría silenciosamente lo que `useTheme.ts` ya aplicó desde la preferencia guardada).
 
@@ -802,7 +804,7 @@ decodificador base64 y el manejo de resize.
 **Todos pasan por `requireUnlocked`, sin excepción.** Una terminal local no
 lee el vault, pero abre un proceso con todos los permisos del usuario: es la
 superficie más potente que expone la app. La excepción documentada de
-`GetSettings`/`SetTheme` (punto 5 de las reglas técnicas) no aplica acá.
+`GetSettings`/`SetTheme`/`SetUIFontScale` (punto 5 de las reglas técnicas) no aplica acá.
 
 `sessionID` lo genera el frontend, es único por pestaña (dos pestañas del
 mismo repo NO comparten shell) y es a la vez el nombre del evento de Wails:

@@ -116,14 +116,14 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
                                 ) : (
                                     <div className="truncate font-medium text-on-surface">{k.name}</div>
                                 )}
-                                <div className="truncate font-mono text-[10px] text-on-surface-variant" title={k.fingerprint}>
+                                <div className="truncate font-mono text-ui-10 text-on-surface-variant" title={k.fingerprint}>
                                     {k.keyType} · {k.fingerprint}
                                 </div>
                             </div>
                             {k.hasPassphrase && (
                                 <span
                                     title="Esta llave está protegida por passphrase, y la passphrase también quedó guardada cifrada — por eso conecta sin pedirla."
-                                    className="shrink-0 rounded bg-surface-container-highest px-1.5 py-0.5 text-[10px] text-on-surface-variant"
+                                    className="shrink-0 rounded bg-surface-container-highest px-1.5 py-0.5 text-ui-10 text-on-surface-variant"
                                 >
                                     passphrase
                                 </span>
@@ -191,7 +191,7 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
                                 >
                                     Cancelar
                                 </button>
-                                <span className="ml-auto text-[11px] text-on-surface-variant">
+                                <span className="ml-auto text-ui-11 text-on-surface-variant">
                                     Se valida antes de guardarla: una llave truncada se rechaza acá y no en medio de una conexión.
                                 </span>
                             </div>
@@ -209,7 +209,7 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
                             Agregar llave
                         </button>
                     )}
-                    <span className="ml-auto text-[11px] text-on-surface-variant">
+                    <span className="ml-auto text-ui-11 text-on-surface-variant">
                         Cifradas con la clave maestra del vault, igual que las contraseñas de las conexiones.
                     </span>
                 </div>

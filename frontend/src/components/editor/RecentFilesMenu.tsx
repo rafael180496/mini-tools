@@ -85,7 +85,7 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
                                         <Icon name="description" size={14} className="shrink-0 opacity-60" />
                                         <span className="flex min-w-0 flex-col">
                                             <span className="truncate font-mono text-xs text-on-surface">{name}</span>
-                                            {dir && <span className="truncate text-[11px] text-on-surface-variant">{dir}</span>}
+                                            {dir && <span className="truncate text-ui-11 text-on-surface-variant">{dir}</span>}
                                         </span>
                                     </button>
                                 )

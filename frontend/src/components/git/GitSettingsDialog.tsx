@@ -46,7 +46,7 @@ export default function GitSettingsDialog({repoId, repoName, onClose, onChanged}
                 </div>
 
                 {error && (
-                    <div className="mx-5 mt-3 flex items-start gap-2 rounded bg-error-container/50 p-2 text-[11px] text-on-error-container">
+                    <div className="mx-5 mt-3 flex items-start gap-2 rounded bg-error-container/50 p-2 text-ui-11 text-on-error-container">
                         <Icon name="error" size={14} className="mt-px shrink-0" />
                         <span className="min-w-0 flex-1 break-words">{error}</span>
                         <button onClick={() => setError(null)} title="Cerrar este error">
@@ -132,27 +132,27 @@ function IdentityPanel({repoId, onError, onChanged}: {repoId: string; onError: (
                 from. This is the whole point of the panel: an unexpected author
                 email is almost always a global value being inherited invisibly. */}
             <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Se usará en tus commits</p>
+                <p className="text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Se usará en tus commits</p>
                 {identity.effectiveName || identity.effectiveEmail ? (
                     <>
                         <p className="mt-1 font-mono text-xs text-on-surface">
                             {identity.effectiveName || '(sin nombre)'} &lt;{identity.effectiveEmail || '(sin email)'}&gt;
                         </p>
-                        <p className="mt-1 text-[10px] text-on-surface-variant">
+                        <p className="mt-1 text-ui-10 text-on-surface-variant">
                             {identity.usingGlobal
                                 ? 'Heredado de tu configuración global (~/.gitconfig). Este repositorio no tiene una identidad propia.'
                                 : 'Definido localmente en este repositorio, pisa la configuración global.'}
                         </p>
                     </>
                 ) : (
-                    <p className="mt-1 text-[11px] text-error">
+                    <p className="mt-1 text-ui-11 text-error">
                         No hay identidad configurada en ningún nivel. Git va a rechazar el commit hasta que completes al menos el email.
                     </p>
                 )}
             </div>
 
             <div>
-                <p className="mb-1.5 text-[11px] text-on-surface-variant">Editar</p>
+                <p className="mb-1.5 text-ui-11 text-on-surface-variant">Editar</p>
                 <div className="flex gap-1">
                     <ScopeButton
                         active={scope === 'local'}
@@ -172,7 +172,7 @@ function IdentityPanel({repoId, onError, onChanged}: {repoId: string; onError: (
             <Field label="Nombre" value={name} onChange={setName} placeholder="Rafael" title="El nombre que aparece como autor de cada commit" />
             <Field label="Email" value={email} onChange={setEmail} placeholder="rafael@ejemplo.com" title="El email del autor. Tiene que coincidir con uno verificado en tu forge para que los commits te sean atribuidos" />
 
-            <p className="text-[10px] text-on-surface-variant/70">
+            <p className="text-ui-10 text-on-surface-variant/70">
                 Dejar un campo vacío <strong>borra</strong> esa clave en vez de guardarla en blanco
                 {scope === 'local' ? ', así el repositorio vuelve a heredar el valor global.' : '.'}
             </p>
@@ -187,7 +187,7 @@ function IdentityPanel({repoId, onError, onChanged}: {repoId: string; onError: (
                     {saving ? 'Guardando…' : 'Guardar'}
                 </button>
                 {saved && (
-                    <span className="flex items-center gap-1 text-[11px] text-secondary">
+                    <span className="flex items-center gap-1 text-ui-11 text-secondary">
                         <Icon name="check" size={14} /> Guardado
                     </span>
                 )}
@@ -201,7 +201,7 @@ function ScopeButton({active, onClick, label, title}: {active: boolean; onClick:
         <button
             onClick={onClick}
             title={title}
-            className={`flex-1 rounded px-2 py-1.5 text-[11px] ${
+            className={`flex-1 rounded px-2 py-1.5 text-ui-11 ${
                 active ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-highest text-on-surface-variant hover:bg-surface-variant'
             }`}
         >
@@ -261,9 +261,9 @@ function CredentialHelperPanel({repoId, onError}: {repoId: string; onError: (e: 
 
     return (
         <div>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Contraseñas recordadas por git</p>
+            <p className="mb-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Contraseñas recordadas por git</p>
 
-            <div className="mb-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3 text-[10px] leading-relaxed text-on-surface-variant">
+            <div className="mb-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3 text-ui-10 leading-relaxed text-on-surface-variant">
                 Esto <strong>no</strong> es el vault de arriba: es la configuración del propio git (<span className="font-mono">credential.helper</span>), la que usan la terminal, los hooks y esta app cuando no hay token guardado para ese servidor. Solo aplica a remotos HTTPS — con SSH quien decide es el ssh-agent.
             </div>
 
@@ -287,7 +287,7 @@ function CredentialHelperPanel({repoId, onError}: {repoId: string; onError: (e: 
                 disabled={saving}
                 onChange={(e) => void apply(e.target.value)}
                 title="Cómo va a recordar git tu contraseña la próxima vez que un remoto HTTPS te la pida. «Preguntar siempre» borra la configuración y vuelve al comportamiento por defecto."
-                className="w-full rounded bg-surface-container-highest px-2 py-1.5 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                className="w-full rounded bg-surface-container-highest px-2 py-1.5 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
             >
                 <option value="">Preguntar siempre (sin recordar)</option>
                 {cache.available.map((o) => (
@@ -299,17 +299,17 @@ function CredentialHelperPanel({repoId, onError}: {repoId: string; onError: (e: 
             </select>
 
             {current !== '' && !known && (
-                <p className="mt-1.5 text-[10px] text-tertiary">
+                <p className="mt-1.5 text-ui-10 text-tertiary">
                     Configurado a mano como <span className="font-mono">{current}</span>. No lo toco desde acá: elegir una opción de la lista lo reemplaza.
                 </p>
             )}
             {current !== '' && known && cache.global && scope === 'local' && (
-                <p className="mt-1.5 text-[10px] text-tertiary">
+                <p className="mt-1.5 text-ui-10 text-tertiary">
                     El valor actual viene de tu configuración global. Si elegís algo con «Este repositorio» seleccionado, vas a crear un valor propio que la pisa solo acá.
                 </p>
             )}
             {current === '' && (
-                <p className="mt-1.5 text-[10px] text-on-surface-variant/70">
+                <p className="mt-1.5 text-ui-10 text-on-surface-variant/70">
                     Hoy git no recuerda nada: cada operación HTTPS sin token guardado en el vault te va a pedir la contraseña.
                 </p>
             )}
@@ -358,7 +358,7 @@ function TokensPanel({repoId, onError}: {repoId: string; onError: (e: string | n
 
     return (
         <div className="space-y-4">
-            <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-3 text-[10px] leading-relaxed text-on-surface-variant">
+            <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-3 text-ui-10 leading-relaxed text-on-surface-variant">
                 Los tokens se guardan cifrados en el vault y se usan automáticamente en fetch, pull y push contra ese servidor. Nunca viajan por la línea de comandos ni quedan en la URL del remoto, y no se pueden volver a leer desde acá — si perdés uno, generá otro en tu forge y reemplazalo.
                 <br />
                 <br />
@@ -368,13 +368,13 @@ function TokensPanel({repoId, onError}: {repoId: string; onError: (e: string | n
             <CredentialHelperPanel repoId={repoId} onError={onError} />
 
             <div>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Guardados</p>
-                {creds.length === 0 && <p className="text-[11px] text-on-surface-variant/60">Ninguno todavía.</p>}
+                <p className="mb-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Guardados</p>
+                {creds.length === 0 && <p className="text-ui-11 text-on-surface-variant/60">Ninguno todavía.</p>}
                 {creds.map((c) => (
                     <div key={c.id} className="group flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-surface-variant/50">
                         <Icon name="key" size={14} className="shrink-0 text-on-surface-variant/70" />
                         <span className="min-w-0 flex-1 truncate font-mono text-on-surface">{c.host}</span>
-                        <span className="shrink-0 text-[10px] text-on-surface-variant">{c.username}</span>
+                        <span className="shrink-0 text-ui-10 text-on-surface-variant">{c.username}</span>
                         <button
                             onClick={() => setConfirmDelete(c)}
                             title={`Borrar el token guardado para ${c.host}`}
@@ -387,7 +387,7 @@ function TokensPanel({repoId, onError}: {repoId: string; onError: (e: string | n
             </div>
 
             <div className="space-y-3 border-t border-outline-variant pt-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Agregar o reemplazar</p>
+                <p className="text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Agregar o reemplazar</p>
                 <Field
                     label="Servidor"
                     value={host}
@@ -458,7 +458,7 @@ function Field({
 }) {
     return (
         <div>
-            <label className="block text-[11px] text-on-surface-variant" title={title}>
+            <label className="block text-ui-11 text-on-surface-variant" title={title}>
                 {label}
             </label>
             <input

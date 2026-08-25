@@ -190,6 +190,13 @@ type Settings struct {
 	// aparte del anterior a propósito: encender el servidor comparte lectura,
 	// esto además deja escribir. Ver la migración 44.
 	MCPNotesWrite bool `json:"mcpNotesWrite"`
+	// UIFontScale es el tamaño de letra de TODA la interfaz, en porcentaje
+	// (100 = el de siempre). Un multiplicador y no un cuerpo en píxeles: la
+	// app no tiene un tamaño base único —cada componente pide el suyo según su
+	// jerarquía— y multiplicar la conserva. 0 significa "sin elegir", que el
+	// frontend lee como 100. Ver MinUIFontScale/MaxUIFontScale y la migración
+	// 50.
+	UIFontScale int `json:"uiFontScale"`
 }
 
 // GitPanelSession es una pestaña del panel de la pestaña Git: una terminal
@@ -255,10 +262,11 @@ func (s *Store) GetSettings() (Settings, error) {
 	var activeAgent, activeModel, activeEffort, agentDock, notesLastOpen string
 	var agentSize, notesSideWidth int
 	var mcpEnabled, mcpNotesWrite bool
+	var uiFontScale int
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write, ui_font_scale FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite, &uiFontScale,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -325,6 +333,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		NotesSideWidth:          notesSideWidth,
 		MCPEnabled:              mcpEnabled,
 		MCPNotesWrite:           mcpNotesWrite,
+		UIFontScale:             uiFontScale,
 	}, nil
 }
 
@@ -552,6 +561,35 @@ func (s *Store) SetTerminalFontSize(size int) error {
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET terminal_font_size = ? WHERE id = 1`, size); err != nil {
 		return fmt.Errorf("vault: guardando terminal_font_size: %w", err)
+	}
+	return nil
+}
+
+// UIFontScale se acota a un rango donde la interfaz sigue siendo una
+// interfaz: por debajo del 80% el texto de 9px queda en 7 y deja de leerse
+// —que es lo contrario de para qué existe el ajuste—, y por encima del 200%
+// las barras de herramientas empiezan a no entrar en la ventana.
+const (
+	MinUIFontScale = 80
+	MaxUIFontScale = 200
+)
+
+// SetUIFontScale persiste el tamaño de letra de la interfaz, en porcentaje.
+//
+// El 0 se acepta tal cual y NO se acota: es "sin elegir", el valor con el que
+// arranca una instalación, y acotarlo lo convertiría en 80 — encogiendo la
+// interfaz de todo el que nunca tocó el ajuste.
+func (s *Store) SetUIFontScale(pct int) error {
+	if pct != 0 {
+		if pct < MinUIFontScale {
+			pct = MinUIFontScale
+		}
+		if pct > MaxUIFontScale {
+			pct = MaxUIFontScale
+		}
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET ui_font_scale = ? WHERE id = 1`, pct); err != nil {
+		return fmt.Errorf("vault: guardando ui_font_scale: %w", err)
 	}
 	return nil
 }

@@ -409,12 +409,12 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                                 onContextMenu={(e) => itemMenu(it, e)}
                                 title={`Carpeta "${it.name}" — ${count} ${count === 1 ? 'elemento' : 'elementos'}. Botón derecho para agregar, renombrar o borrar.`}
                                 style={{paddingLeft: 8 + depth * 12}}
-                                className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-[11px] text-on-surface-variant hover:bg-surface-variant"
+                                className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
                             >
                                 <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
                                 <Icon name={open ? 'folder_open' : 'folder'} size={13} className="shrink-0 opacity-60" />
                                 <span className="truncate">{it.name}</span>
-                                <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-50">{count}</span>
+                                <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-50">{count}</span>
                             </button>
                             {open && renderItems(collectionId, it.id, depth + 1)}
                         </div>
@@ -428,14 +428,14 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                         onContextMenu={(e) => itemMenu(it, e)}
                         title={it.url ? `${it.method || 'GET'} ${it.url}` : 'Petición sin URL todavía'}
                         style={{paddingLeft: 8 + depth * 12}}
-                        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-[11px] hover:bg-surface-variant ${
+                        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 hover:bg-surface-variant ${
                             active ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant'
                         }`}
                     >
                         {/* El método en monoespaciada y con ancho fijo: es lo
                             que se escanea al buscar en una lista larga, y sin
                             ancho fijo los nombres quedan dentados. */}
-                        <span className={`w-10 shrink-0 font-mono text-[9px] font-semibold ${methodColor(it.method || 'GET')}`}>
+                        <span className={`w-10 shrink-0 font-mono text-ui-9 font-semibold ${methodColor(it.method || 'GET')}`}>
                             {(it.method || 'GET').toUpperCase()}
                         </span>
                         <span className="truncate">{it.name}</span>
@@ -452,7 +452,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex items-center pb-1 pl-2 pr-1 pt-2">
-                <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Colecciones</span>
+                <span className="flex-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Colecciones</span>
                 <button
                     onClick={onNewScratch}
                     title="Probar un endpoint sin guardarlo: se abre una pestaña con una petición que no pertenece a ninguna colección. Si después querés conservarla, «Guardar en…» la mete en la que elijas."
@@ -493,14 +493,14 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
             </div>
 
             {error && (
-                <p className="mx-2 mb-1 rounded bg-error-container px-2 py-1 text-[10px] text-on-error-container" title={error}>
+                <p className="mx-2 mb-1 rounded bg-error-container px-2 py-1 text-ui-10 text-on-error-container" title={error}>
                     {error}
                 </p>
             )}
 
             <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
                 {collections.length === 0 && (
-                    <p className="px-2 py-3 text-[11px] leading-relaxed text-on-surface-variant/70">
+                    <p className="px-2 py-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
                         Todavía no hay colecciones. Creá una con el <span className="font-mono">+</span> de arriba para empezar a guardar peticiones.
                     </p>
                 )}
@@ -512,7 +512,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                                 onClick={() => toggle(c.id)}
                                 onContextMenu={(e) => collectionMenu(c, e)}
                                 title={`Colección "${c.name}". Botón derecho para agregar una petición, renombrarla o borrarla.`}
-                                className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[11px] font-medium text-on-surface hover:bg-surface-variant"
+                                className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-ui-11 font-medium text-on-surface hover:bg-surface-variant"
                             >
                                 <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
                                 <Icon name="folder_special" size={13} className="shrink-0 opacity-70" />
@@ -536,7 +536,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                             <Icon name="check_circle" size={16} className="text-secondary" />
                             {importSummary.requests > 0 || importSummary.folders > 0 ? 'Colección importada' : 'Listo'}
                         </p>
-                        <p className="text-[11px] leading-relaxed text-on-surface-variant">
+                        <p className="text-ui-11 leading-relaxed text-on-surface-variant">
                             {importSummary.requests > 0 || importSummary.folders > 0 ? (
                                 <>
                                     «{importSummary.name}»: {importSummary.requests} {importSummary.requests === 1 ? 'petición' : 'peticiones'}
@@ -548,8 +548,8 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                         </p>
                         {importSummary.warnings.length > 0 && (
                             <div className="mt-2 rounded bg-surface-container-lowest p-2">
-                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-tertiary">Se importó, con salvedades</p>
-                                <ul className="space-y-1 text-[10px] leading-relaxed text-on-surface-variant">
+                                <p className="mb-1 text-ui-10 font-semibold uppercase tracking-wider text-tertiary">Se importó, con salvedades</p>
+                                <ul className="space-y-1 text-ui-10 leading-relaxed text-on-surface-variant">
                                     {importSummary.warnings.map((w, i) => (
                                         <li key={i}>· {w}</li>
                                     ))}
@@ -604,7 +604,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                                 }
                                 disabled={!curlText.trim()}
                                 title={curlText.trim() ? 'Crear la petición a partir del comando' : 'Pegá un comando cURL primero'}
-                                className="rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90 disabled:opacity-40"
+                                className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                             >
                                 Importar
                             </button>
@@ -617,9 +617,9 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                             value={curlText}
                             onChange={(e) => setCurlText(e.target.value)}
                             placeholder={"curl 'https://api/x' \\\n  -H 'Authorization: Bearer ...' \\\n  --data-raw '{\"a\":1}'"}
-                            className="min-h-0 flex-1 resize-none bg-surface-container-lowest p-3 font-mono text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                            className="min-h-0 flex-1 resize-none bg-surface-container-lowest p-3 font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                         />
-                        <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-[10px] leading-relaxed text-on-surface-variant/70">
+                        <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                             Sirve el «Copy as cURL» de las herramientas del navegador. Se leen método, URL, headers, cuerpo, formularios con archivos,
                             usuario y contraseña, y si el comando trae <span className="font-mono">-k</span> se respeta que no verifique el certificado.
                         </p>
@@ -694,7 +694,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                                     })
                                 }
                                 title="Guardar la autenticación de este nivel"
-                                className="rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90"
+                                className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
                                 Guardar
                             </button>
@@ -736,7 +736,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                                     })
                                 }
                                 title="Guardar las variables calculadas de esta colección"
-                                className="rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90"
+                                className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
                                 Guardar
                             </button>
@@ -751,7 +751,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                         <div className="min-h-0 flex-1 overflow-y-auto">
                             <ComputedTable rows={computedRows} onChange={setComputedRows} />
                         </div>
-                        <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-[10px] leading-relaxed text-on-surface-variant/70">
+                        <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                             Se calculan antes de cada envío de <strong>cualquier</strong> petición de esta colección, y sus resultados quedan disponibles como{' '}
                             <span className="font-mono">{'{{nombre}}'}</span>. Es el lugar natural para una firma: se configura una vez y vale para todas.
                         </p>
@@ -778,7 +778,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                                     })
                                 }
                                 title="Guardar las variables de esta colección"
-                                className="rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90"
+                                className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
                                 Guardar
                             </button>
@@ -789,7 +789,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                         <div className="min-h-0 flex-1 overflow-y-auto">
                             <VariablesTable rows={varsRows} onChange={setVarsRows} />
                         </div>
-                        <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-[10px] leading-relaxed text-on-surface-variant/70">
+                        <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                             Son los valores por defecto de la colección. Un entorno activo con el mismo nombre de variable los pisa — es lo que hace que la
                             misma petición sirva contra dev y contra producción.
                         </p>
@@ -801,7 +801,7 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setPrompt(null)}>
                     <div className="w-80 rounded-lg border border-outline-variant bg-surface-container-high p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
                         <p className="mb-2 text-sm font-medium text-on-surface">{prompt.title}</p>
-                        <label className="mb-1 block text-[10px] uppercase tracking-wider text-on-surface-variant/60">{prompt.label}</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">{prompt.label}</label>
                         <input
                             autoFocus
                             value={promptValue}

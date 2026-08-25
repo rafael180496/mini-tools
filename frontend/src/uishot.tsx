@@ -491,7 +491,43 @@ const fixtures: Record<string, unknown> = {
     ],
     ListRecentFiles: [],
     ListSchemas: ['SGCPRO', 'PUBLIC'],
-    GetSchemaMetadata: {tables: [], views: [], routines: []},
+    // Catálogo del esquema, para poder fotografiar el ÁRBOL con contenido.
+    //
+    // Estuvo vacío mientras ninguna vista lo desplegaba, y la captura del árbol
+    // de esquema de la documentación seguía siendo una foto vieja de la app
+    // real —con la barra lateral de antes del menú master—. Con esto la vista
+    // `schematree` la genera como el resto.
+    //
+    // Los nombres son de un sistema de facturación inventado: hace falta que
+    // se parezcan a un catálogo real (nombres largos, prefijos, mezcla de
+    // tablas y PL/SQL) para que la captura muestre cómo se ve de verdad, y que
+    // no sean de nadie.
+    GetSchemaMetadata: {
+        tables: [
+            {schema: 'SGCPRO', name: 'FACTURAS', columns: [], foreignKeys: []},
+            {schema: 'SGCPRO', name: 'FACTURA_DETALLE', columns: [], foreignKeys: []},
+            {schema: 'SGCPRO', name: 'CLIENTES', columns: [], foreignKeys: []},
+            {schema: 'SGCPRO', name: 'CLIENTE_DIRECCION', columns: [], foreignKeys: []},
+            {schema: 'SGCPRO', name: 'LECTURAS', columns: [], foreignKeys: []},
+            {schema: 'SGCPRO', name: 'MEDIDORES', columns: [], foreignKeys: []},
+            {schema: 'SGCPRO', name: 'PAGOS', columns: [], foreignKeys: []},
+            {schema: 'SGCPRO', name: 'TARIFAS', columns: [], foreignKeys: []},
+        ],
+        procedures: [
+            {schema: 'SGCPRO', name: 'PR_FACT_ACTUALIZAR', oid: 1},
+            {schema: 'SGCPRO', name: 'PR_FACT_ANULAR', oid: 2},
+            {schema: 'SGCPRO', name: 'PR_LECTURA_CARGAR', oid: 3},
+        ],
+        functions: [
+            {schema: 'SGCPRO', name: 'F_DUPLICADO_FACTURA', oid: 4},
+            {schema: 'SGCPRO', name: 'F_SALDO_CLIENTE', oid: 5},
+        ],
+        triggers: [
+            {schema: 'SGCPRO', name: 'TRG_FACTURAS_AUDIT', oid: 6},
+            {schema: 'SGCPRO', name: 'TRG_PAGOS_SALDO', oid: 7},
+        ],
+        packages: [{schema: 'SGCPRO', name: 'PKG_FACTURACION', oid: 8}],
+    },
     // --- Notas (base de conocimiento cifrada) -----------------------------
     //
     // El texto es un runbook creíble y sin datos de nadie: lo que hay que
@@ -821,9 +857,61 @@ anyWindow.go = {
 // El envoltorio generado (`wailsjs/runtime/runtime.js`) no llama a `EventsOn`
 // directo sino a `EventsOnMultiple`: simular solo el primero deja el panel en
 // blanco con un TypeError. Se cubren los que ese envoltorio usa de verdad.
+// Salida enlatada de una terminal, por nombre de evento.
+//
+// El widget de terminal (xterm.js) no dibuja nada por su cuenta: escribe lo que
+// le llega por el evento de Wails cuyo nombre ES el id de la sesión (ver
+// SshTerminalTab y LocalTerminalPanel). Con EventsOn devolviendo un no-op, una
+// captura de una terminal salía siempre en negro — que es el motivo por el que
+// la de la documentación seguía siendo una foto vieja de la app real, con la
+// barra lateral de hace tres versiones.
+//
+// Se entrega en el siguiente tick y no en el mismo: el componente se suscribe
+// ANTES de abrir la sesión, pero xterm todavía no midió el contenedor, y
+// escribirle antes de eso deja el texto cortado a la mitad de una columna.
+const TERMINAL_OUTPUT: Record<string, string> = {
+    'ssh-shot': [
+        'Last login: Mon Aug 25 09:12:04 2026 from 192.168.10.24',
+        '',
+        '\u001b[1;32mdeploy@build19\u001b[0m:\u001b[1;34m~\u001b[0m$ systemctl status facturacion-api --no-pager',
+        '\u001b[1;32m●\u001b[0m facturacion-api.service - API de facturación',
+        '     Loaded: loaded (/etc/systemd/system/facturacion-api.service; enabled)',
+        '     Active: \u001b[1;32mactive (running)\u001b[0m since Mon 2026-08-25 08:41:17 -06; 31min ago',
+        '   Main PID: 4812 (facturacion-ap)',
+        '      Tasks: 24 (limit: 9451)',
+        '     Memory: 186.4M',
+        '',
+        '\u001b[1;32mdeploy@build19\u001b[0m:\u001b[1;34m~\u001b[0m$ tail -n 4 /var/log/facturacion/api.log',
+        '2026-08-25T09:10:58 INFO  pool: 12/40 conexiones en uso',
+        '2026-08-25T09:11:12 \u001b[33mWARN\u001b[0m  ORA-12519 reintentando en 2s (intento 1/5)',
+        '2026-08-25T09:11:14 INFO  pool: reconectado',
+        '2026-08-25T09:11:40 INFO  factura 88213 emitida en 412ms',
+        '',
+        '\u001b[1;32mdeploy@build19\u001b[0m:\u001b[1;34m~\u001b[0m$ ',
+    ].join('\r\n'),
+}
+
+// btoa solo acepta latin-1, y el texto de la terminal lleva acentos: se
+// codifica a UTF-8 primero, byte por byte, que es exactamente lo que hace el
+// backend antes de mandarlo.
+function toBase64(text: string): string {
+    let binary = ''
+    for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte)
+    return btoa(binary)
+}
+
 anyWindow.runtime = {
-    EventsOnMultiple: () => () => {},
-    EventsOn: () => () => {},
+    EventsOnMultiple: (name: string, cb: (data: unknown) => void) => {
+        const canned = TERMINAL_OUTPUT[name]
+        if (canned) {
+            // El evento viaja en base64 porque la shell remota puede emitir
+            // bytes que no son UTF-8 (ver sshconn.Event); el mock respeta el
+            // mismo contrato, si no el componente decodifica basura.
+            setTimeout(() => cb({type: 'data', data: toBase64(canned)}), 300)
+        }
+        return () => {}
+    },
+    EventsOn: (name: string, cb: (data: unknown) => void) => anyWindow.runtime.EventsOnMultiple(name, cb),
     EventsOnce: () => () => {},
     EventsOff: () => {},
     EventsOffAll: () => {},
@@ -879,6 +967,7 @@ const {default: HttpRequestTab} = await import('./components/http/HttpRequestTab
 const {default: GitReflogPanel} = await import('./components/git/GitReflogPanel')
 const {default: FolderNotesDialog} = await import('./components/notes/FolderNotesDialog')
 const {default: SftpTab} = await import('./components/sftp/SftpTab')
+const {default: SshTerminalTab} = await import('./components/ssh/SshTerminalTab')
 
 // --- Vistas ---------------------------------------------------------------
 
@@ -988,7 +1077,7 @@ const gridRows: unknown[][] = [
 const views: Record<string, React.ReactNode> = {
     // El módulo de base de datos entero: sidebar de conexiones, editor SQL y
     // resultados. Es el otro producto que vive en esta app.
-    workspace: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    workspace: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     // Mismo montaje: lo que cambia es qué se está mirando. La barra lateral y
     // la tira de pestañas no son componentes sueltos que se puedan montar
     // aparte —viven del estado del workspace— así que se fotografían dentro
@@ -996,14 +1085,18 @@ const views: Record<string, React.ReactNode> = {
     //
     //     ./scripts/uishot.sh sidebar          # conexiones
     //     UISHOT_MODULE=git ./scripts/uishot.sh sidebar
-    sidebar: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
-    tabs: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    sidebar: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    tabs: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     // La búsqueda global escrita, que es lo único que hace aparecer los
     // contadores del menú master — el mecanismo por el que, viendo un módulo
     // solo, uno se entera de que lo que busca está en otro.
-    sidebarsearch: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    // El árbol de esquema con contenido: tablas, procedures, functions,
+    // triggers y packages. Es el workspace entero y no el árbol suelto porque
+    // el árbol depende del módulo activo de la barra, que lo maneja el marco.
+    schematree: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    sidebarsearch: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     // La barra oculta: queda la columna con el menú master.
-    sidebarmin: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    sidebarmin: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     // La ventana entera con su barra de título propia. `?platform=windows`
     // (o linux) dibuja los botones de ventana de la app; el default, darwin,
     // deja el hueco de los semáforos, que en el navegador se ve vacío porque
@@ -1021,17 +1114,30 @@ const views: Record<string, React.ReactNode> = {
                     onLocked={() => {}}
                     updateInfo={
                         new URLSearchParams(location.search).get('update')
-                            ? ({available: true, latest: '2.1.0', current: '2.0.0', releaseUrl: 'https://example.invalid'} as never)
+                            ? ({
+                                  available: true,
+                                  latest: '2.1.0',
+                                  current: '2.0.0',
+                                  releaseUrl: 'https://example.invalid',
+                                  downloadUrl: 'https://example.invalid/mini-tools-v2.1.0.dmg',
+                                  assetName: 'mini-tools-v2.1.0.dmg',
+                              } as never)
                             : null
                     }
+                    uiFontScale={100}
+                    onChangeUIFontScale={() => {}}
                 />
             </div>
         </div>
     ),
+    // El grafo con un commit elegido y su diff a la derecha: es el mismo
+    // componente que `repo`, pero la foto que la documentación necesita del
+    // módulo Git es esta, no la del panel de agentes.
+    commitgraph: views_repo,
     // El menú de una pestaña con su selector de conexión desplegado: es la
     // lista más larga que dibuja el Select de la app, así que es la que dice
     // si las filas se leen o no.
-    tabmenu: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} />,
+    tabmenu: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     // La pestaña Git entera: es la única forma de ver el modo agente, la tira
     // de solapas y los acordeones, que dependen del layout completo.
     repo: views_repo,
@@ -1109,6 +1215,22 @@ const views: Record<string, React.ReactNode> = {
     // La terminal del sistema operativo abierta desde el módulo SSH: la barra
     // con snippets/historial/tema es lo nuevo, el widget de abajo es el mismo
     // que ya usaba el módulo Git.
+    // Terminal SSH con salida real. El id de sesión ES el nombre del evento
+    // por el que llega lo que escribe el servidor: tiene que coincidir con una
+    // clave de TERMINAL_OUTPUT o la captura sale en negro.
+    sshterm: (
+        <div className="h-full">
+            <SshTerminalTab
+                connId="ssh-shot"
+                connName="build19"
+                theme="dark"
+                terminalThemeId="auto"
+                onChangeTerminalTheme={() => {}}
+                terminalFontSize={13}
+                onConnectedChange={() => {}}
+            />
+        </div>
+    ),
     localterm: (
         <div className="h-full">
             <LocalTerminalTab
@@ -1157,6 +1279,8 @@ const views: Record<string, React.ReactNode> = {
             onToggleAutoSave={() => {}}
             autoSaveIntervalSeconds={30}
             onChangeAutoSaveInterval={() => {}}
+            uiFontScale={100}
+            onChangeUIFontScale={() => {}}
             updateInfo={null}
             onOpenRepo={() => {}}
             onClose={() => {}}
@@ -1168,6 +1292,18 @@ const views: Record<string, React.ReactNode> = {
 }
 
 const view = new URLSearchParams(location.search).get('view') ?? 'files'
+
+// `&scale=150` fotografía la interfaz con el tamaño de letra agrandado.
+//
+// Se aplica acá y no por prop porque el ajuste no es de ningún componente: es
+// una variable CSS del documento que escribe useUIFontScale (hooks/), y acá no
+// se monta App sino cada vista suelta. Sirve para comprobar que una pantalla
+// sigue entrando con el cuerpo al 150% antes de que se lo encuentre alguien
+// que lo necesita.
+const scale = Number(new URLSearchParams(location.search).get('scale'))
+if (Number.isFinite(scale) && scale > 0) {
+    document.documentElement.style.setProperty('--ui-font-scale', String(scale / 100))
+}
 
 // El modo agente no es una vista aparte sino un estado de la pestaña Git, y no
 // se puede pasar por prop a propósito (es del usuario, no del que la monta).
@@ -1309,6 +1445,37 @@ if (view === 'http') {
         const enviar = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Enviar')
         enviar?.click()
     }, 1800)
+}
+if (view === 'commitgraph') {
+    // Elegir el commit alcanza: la pestaña selecciona sola su primer archivo y
+    // pide el diff (ver el efecto de GitChangedFiles en GitRepoTab).
+    autoClick(() =>
+        [...document.querySelectorAll<HTMLElement>('button, [role="button"]')].find((b) =>
+            b.textContent?.includes('feat: Add agent chat functionalities'),
+        ),
+    )
+}
+if (view === 'schematree') {
+    // Dos pasos: primero se despliega la conexión (que dispara la lectura del
+    // catálogo), y recién después el esquema que aparece adentro. Encadenados
+    // por título porque el ícono renderiza su ligadura como texto y
+    // textContent no sirve para encontrar el botón.
+    autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.title === 'Expandir'))
+    setTimeout(() => {
+        const schema = [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+            b.textContent?.includes('SGCPRO'),
+        )
+        schema?.click()
+    }, 1600)
+    // Y se pliega "Tablas", que se abre sola: con las ocho tablas desplegadas
+    // las otras cuatro categorías quedan fuera de la foto, y lo que la foto
+    // tiene que mostrar es justamente que el árbol no es solo tablas.
+    setTimeout(() => {
+        const tablas = [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+            b.title === 'Ocultar tablas',
+        )
+        tablas?.click()
+    }, 2100)
 }
 if (view === 'chatmode') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Chat · Claude Code')))

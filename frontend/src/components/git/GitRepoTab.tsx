@@ -2414,12 +2414,12 @@ export default function GitRepoTab({
                     <Icon name="folder_open" size={16} className="opacity-70" />
                     {repoName}
                 </span>
-                <span className="flex items-center gap-1 rounded bg-primary-container px-2 py-0.5 text-[11px] text-on-primary-container" title={upstream ? `Rama actual, siguiendo a ${upstream}` : 'Rama actual — sin upstream configurado'}>
+                <span className="flex items-center gap-1 rounded bg-primary-container px-2 py-0.5 text-ui-11 text-on-primary-container" title={upstream ? `Rama actual, siguiendo a ${upstream}` : 'Rama actual — sin upstream configurado'}>
                     <Icon name="account_tree" size={13} />
                     {status?.detached ? 'HEAD desacoplado' : (current?.name ?? status?.branch ?? '—')}
                 </span>
                 {!!current && (current.ahead > 0 || current.behind > 0) && (
-                    <span className="flex items-center gap-1 text-[11px] text-on-surface-variant" title={`${current.ahead} commits tuyos sin publicar, ${current.behind} commits del remoto sin traer`}>
+                    <span className="flex items-center gap-1 text-ui-11 text-on-surface-variant" title={`${current.ahead} commits tuyos sin publicar, ${current.behind} commits del remoto sin traer`}>
                         {current.ahead > 0 && <span className="flex items-center"><Icon name="arrow_upward" size={12} />{current.ahead}</span>}
                         {current.behind > 0 && <span className="flex items-center"><Icon name="arrow_downward" size={12} />{current.behind}</span>}
                     </span>
@@ -2429,7 +2429,7 @@ export default function GitRepoTab({
                     <button
                         onClick={() => setHidden(new Set())}
                         title={`Volver a mostrar en el grafo: ${[...hidden].join(', ')}`}
-                        className="ml-2 flex items-center gap-1 rounded bg-tertiary-container px-2 py-0.5 text-[11px] text-on-tertiary-container hover:opacity-90"
+                        className="ml-2 flex items-center gap-1 rounded bg-tertiary-container px-2 py-0.5 text-ui-11 text-on-tertiary-container hover:opacity-90"
                     >
                         <Icon name="visibility_off" size={13} />
                         {hidden.size} oculta{hidden.size > 1 ? 's' : ''}
@@ -2459,13 +2459,13 @@ export default function GitRepoTab({
             </div>
 
             {busy && (
-                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-primary-container px-3 py-1.5 text-[11px] font-medium text-on-primary-container">
+                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-primary-container px-3 py-1.5 text-ui-11 font-medium text-on-primary-container">
                     <span aria-hidden className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-on-primary-container" />
                     Ejecutando <span className="font-mono">git {busy}</span>…
                 </div>
             )}
             {inProgress && (
-                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-error-container/50 px-3 py-1.5 text-[11px] text-on-error-container">
+                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-error-container/50 px-3 py-1.5 text-ui-11 text-on-error-container">
                     <Icon name="warning" size={14} className="shrink-0" />
                     <span className="min-w-0 flex-1">
                         Hay un <span className="font-mono">{inProgress}</span> en curso, probablemente con conflictos. Resolvé los archivos en conflicto y commiteá, o abortá para volver al estado anterior.
@@ -2491,7 +2491,7 @@ export default function GitRepoTab({
                     </button>
                 </div>
             )}
-            <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-[11px]">
+            <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-ui-11">
                 {forge?.compareUrl && (
                     <button
                         onClick={() => void GitOpenInBrowser(forge.compareUrl)}
@@ -2668,7 +2668,7 @@ export default function GitRepoTab({
             </div>
 
             {showWorktrees && (
-                <div className="shrink-0 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+                <div className="shrink-0 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
                     {worktrees.length === 0 ? (
                         <p className="text-on-surface-variant">Solo hay un checkout de este repositorio.</p>
                     ) : (
@@ -2702,7 +2702,7 @@ export default function GitRepoTab({
             )}
 
             {showSubmodules && (
-                <div className="shrink-0 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+                <div className="shrink-0 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
                     {/* Acciones de todo el conjunto. "Actualizar" y
                         "Actualizar e inicializar" son dos botones y no uno
                         con checkbox porque son dos decisiones distintas: el
@@ -2710,7 +2710,7 @@ export default function GitRepoTab({
                         bajaron, contra URLs para las que puede que no tengas
                         credenciales. */}
                     <div className="flex flex-wrap items-center gap-1 pb-1">
-                        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">Submódulos</span>
+                        <span className="mr-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Submódulos</span>
                         <button
                             onClick={() =>
                                 setPrompt({
@@ -2925,7 +2925,7 @@ export default function GitRepoTab({
                                 onBlur={() => setSearch(parseGitSearch(searchText))}
                                 placeholder="Buscar commits: autor: mensaje: archivo:…"
                                 title={`Busca en TODO el historial, no solo en lo cargado — el filtro lo aplica git.\n\n${GIT_SEARCH_HELP}`}
-                                className="min-w-0 flex-1 bg-transparent text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                                className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                             />
                             <button
                                 onClick={() => setShowSearchHelp((v) => !v)}
@@ -2949,7 +2949,7 @@ export default function GitRepoTab({
                         </div>
 
                         {showSearchHelp && (
-                            <pre className="mt-1 whitespace-pre-wrap rounded bg-surface-container px-1.5 py-1 text-[10px] leading-relaxed text-on-surface-variant">
+                            <pre className="mt-1 whitespace-pre-wrap rounded bg-surface-container px-1.5 py-1 text-ui-10 leading-relaxed text-on-surface-variant">
                                 {GIT_SEARCH_HELP}
                             </pre>
                         )}
@@ -2958,11 +2958,11 @@ export default function GitRepoTab({
                             silently narrows history is how people conclude a
                             commit disappeared. */}
                         {!isEmptySearch(search) && (
-                            <p className="mt-1 px-0.5 text-[10px] text-tertiary">Filtrado por {describeSearch(search)}</p>
+                            <p className="mt-1 px-0.5 text-ui-10 text-tertiary">Filtrado por {describeSearch(search)}</p>
                         )}
 
                         <label
-                            className="mt-1 flex items-center gap-1 px-0.5 text-[10px] text-on-surface-variant"
+                            className="mt-1 flex items-center gap-1 px-0.5 text-ui-10 text-on-surface-variant"
                             title="Muestra solo la rama actual, los troncos (main/master/develop) y las ramas que ancles. En un repo con cientos de ramas remotas es la diferencia entre un grafo legible y una pared de carriles."
                         >
                             <input type="checkbox" checked={focusMode} onChange={(e) => setFocusMode(e.target.checked)} className="accent-primary" />
@@ -2982,7 +2982,7 @@ export default function GitRepoTab({
                                 onChange={(e) => setBranchFilter(e.target.value)}
                                 placeholder="Filtrar ramas y tags…"
                                 title="Filtra por nombre en las ramas locales, las remotas y los tags a la vez — no hace falta decidir de antemano qué de las tres cosas estás buscando"
-                                className="min-w-0 flex-1 bg-transparent text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                                className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                             />
                             {branchFilter && (
                                 <button onClick={() => setBranchFilter('')} title="Limpiar el filtro" className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface">
@@ -3082,12 +3082,12 @@ export default function GitRepoTab({
                                                         ? `Plegar "${group.key}" — sus ${group.tags.length} tags dejan de ocupar la lista`
                                                         : `Desplegar "${group.key}" — tiene ${group.tags.length} tags`
                                                 }
-                                                className="flex w-full items-center gap-1 rounded py-1 pl-2 pr-2 text-left text-[11px] text-on-surface-variant hover:bg-surface-variant"
+                                                className="flex w-full items-center gap-1 rounded py-1 pl-2 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
                                             >
                                                 <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
                                                 <Icon name="sell" size={13} className="shrink-0 opacity-60" />
                                                 <span className="truncate">{group.key}</span>
-                                                <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-50">{group.tags.length}</span>
+                                                <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-50">{group.tags.length}</span>
                                             </button>
                                             {open &&
                                                 group.tags.map((t) => (
@@ -3103,7 +3103,7 @@ export default function GitRepoTab({
                         )}
 
                         {branchFilter && localBranches.length === 0 && remoteBranches.length === 0 && visibleTags.length === 0 && (
-                            <p className="px-2 py-3 text-[11px] text-on-surface-variant/70">Ninguna rama ni tag coincide con «{branchFilter}».</p>
+                            <p className="px-2 py-3 text-ui-11 text-on-surface-variant/70">Ninguna rama ni tag coincide con «{branchFilter}».</p>
                         )}
                     </div>
                 </div>
@@ -3379,7 +3379,7 @@ export default function GitRepoTab({
                         repetirlos en cada sesión sería repetir un ajuste que
                         no es de la sesión. */}
                     <div
-                        className={`flex shrink-0 items-center gap-1 border-b border-outline-variant px-2 py-0.5 text-[11px] ${
+                        className={`flex shrink-0 items-center gap-1 border-b border-outline-variant px-2 py-0.5 text-ui-11 ${
                             dock === 'bottom' ? 'mt-1.5' : dock === 'right' ? 'ml-1.5' : 'mr-1.5'
                         }`}
                     >
@@ -3429,7 +3429,7 @@ export default function GitRepoTab({
                                 señales se ignora. Cuenta lo que ESTE repo
                                 tiene preparado, no lo que la app soporta. */}
                             {agentBadge > 0 && (
-                                <span className="rounded-full bg-primary/20 px-1 text-[10px] text-primary">{agentBadge}</span>
+                                <span className="rounded-full bg-primary/20 px-1 text-ui-10 text-primary">{agentBadge}</span>
                             )}
                         </button>
 
@@ -3501,7 +3501,7 @@ export default function GitRepoTab({
                             <button
                                 onClick={() => setAgentsView('context')}
                                 title="Qué le ofrece este repositorio a un agente: skills, instrucciones, servidores MCP, consumo y plan"
-                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
                                     agentsView === 'context'
                                         ? 'bg-primary/15 text-primary'
                                         : 'text-on-surface-variant hover:bg-surface-variant'
@@ -3513,7 +3513,7 @@ export default function GitRepoTab({
                             <button
                                 onClick={() => setAgentsView('history')}
                                 title="Todas las conversaciones de este repositorio, por agente — incluidas las que ya tenías fuera de la app"
-                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+                                className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
                                     agentsView === 'history'
                                         ? 'bg-primary/15 text-primary'
                                         : 'text-on-surface-variant hover:bg-surface-variant'
@@ -3531,7 +3531,7 @@ export default function GitRepoTab({
                                 .map((s) => (
                                     <span
                                         key={s.id}
-                                        className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+                                        className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
                                             agentsView === 'chats' && activeChatId === s.id
                                                 ? 'bg-primary/15 text-primary'
                                                 : 'text-on-surface-variant hover:bg-surface-variant'
@@ -3619,7 +3619,7 @@ export default function GitRepoTab({
                         Comandos no habría nada que elegir. */}
                     {panelTab === 'terminal' && (
                         <div
-                            className={`flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-outline-variant px-1 py-0.5 text-[11px] ${
+                            className={`flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-outline-variant px-1 py-0.5 text-ui-11 ${
                                 dock === 'right' ? 'ml-1.5' : dock === 'left' ? 'mr-1.5' : ''
                             }`}
                         >
@@ -3779,7 +3779,7 @@ export default function GitRepoTab({
                                                 <Icon name="chat" size={14} className="mt-0.5 shrink-0 text-primary" />
                                                 <span className="min-w-0">
                                                     <span className="block text-xs text-on-surface">Chatear con {a.label}</span>
-                                                    <span className="block text-[11px] text-on-surface-variant">
+                                                    <span className="block text-ui-11 text-on-surface-variant">
                                                         Pregunta, revisa y propone. Edita solo si lo autorizás.
                                                     </span>
                                                 </span>
@@ -3797,7 +3797,7 @@ export default function GitRepoTab({
                                                 <span className="block truncate text-xs text-on-surface">
                                                     Seguir: {chatHistory[0].title || 'última conversación'}
                                                 </span>
-                                                <span className="block text-[11px] text-on-surface-variant">
+                                                <span className="block text-ui-11 text-on-surface-variant">
                                                     {chatHistory.length} conversación{chatHistory.length === 1 ? '' : 'es'} guardada
                                                     {chatHistory.length === 1 ? '' : 's'} en este repositorio
                                                 </span>
@@ -3813,7 +3813,7 @@ export default function GitRepoTab({
                                         <Icon name="terminal" size={14} className="mt-0.5 shrink-0 text-on-surface-variant" />
                                         <span className="min-w-0">
                                             <span className="block text-xs text-on-surface">Abrir una terminal</span>
-                                            <span className="block text-[11px] text-on-surface-variant">
+                                            <span className="block text-ui-11 text-on-surface-variant">
                                                 Shell en la raíz del repositorio
                                             </span>
                                         </span>
@@ -3831,7 +3831,7 @@ export default function GitRepoTab({
                                         <Icon name="smart_toy" size={14} className="mt-0.5 shrink-0 text-on-surface-variant" />
                                         <span className="min-w-0">
                                             <span className="block text-xs text-on-surface">Ver qué tiene este repositorio</span>
-                                            <span className="block text-[11px] text-on-surface-variant">
+                                            <span className="block text-ui-11 text-on-surface-variant">
                                                 Skills, instrucciones, servidores MCP y consumo
                                             </span>
                                         </span>
@@ -3839,7 +3839,7 @@ export default function GitRepoTab({
                                 </div>
 
                                 {agentList.filter((a) => a.available).length === 0 && (
-                                    <p className="mt-3 text-[11px] text-on-surface-variant">
+                                    <p className="mt-3 text-ui-11 text-on-surface-variant">
                                         No hay ningún asistente de código instalado en este equipo. Se configuran en Configuración →
                                         Agentes de código.
                                     </p>
@@ -3946,7 +3946,7 @@ export default function GitRepoTab({
                             propósito: el CLI tarda en levantar y escribirle
                             antes de tiempo se lo come la shell. */}
                         {pendingPrompt && panelTab === 'terminal' && activeSessionId === pendingPrompt.sessionId && (
-                            <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 border-b border-outline-variant bg-surface-container-high px-2 py-1 text-[11px]">
+                            <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 border-b border-outline-variant bg-surface-container-high px-2 py-1 text-ui-11">
                                 <Icon name="smart_toy" size={13} className="shrink-0 text-primary" />
                                 <span className="min-w-0 flex-1 truncate text-on-surface-variant">
                                     Prompt listo sobre <span className="text-on-surface">{pendingPrompt.about}</span> — insertalo cuando el agente
@@ -4147,7 +4147,7 @@ function stagedPaths(status: git.RepoStatus | null): string[] {
 function Banner({kind, text, onClose}: {kind: 'error' | 'info'; text: string; onClose: () => void}) {
     return (
         <div
-            className={`flex shrink-0 items-start gap-2 border-b border-outline-variant px-3 py-1.5 text-[11px] ${
+            className={`flex shrink-0 items-start gap-2 border-b border-outline-variant px-3 py-1.5 text-ui-11 ${
                 kind === 'error' ? 'bg-error-container/50 text-on-error-container' : 'bg-surface-container text-on-surface-variant'
             }`}
         >
@@ -4191,7 +4191,7 @@ function ViewTab({
             // defecto — sin él `flex-1` no sirve de nada: el botón se niega a
             // bajar del ancho de su propio contenido y los tres desbordan la
             // columna en vez de repartirse lo que hay.
-            className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-[11px] ${
+            className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-ui-11 ${
                 active ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
             }`}
         >
@@ -4200,7 +4200,7 @@ function ViewTab({
             {/* secondary is the commit/success role — a live count of pending
                 changes reads as "there is work here", not as an error. */}
             {badge != null && badge > 0 && (
-                <span className="shrink-0 rounded-full bg-secondary px-1.5 text-[10px] font-medium leading-4 text-on-secondary">{badge}</span>
+                <span className="shrink-0 rounded-full bg-secondary px-1.5 text-ui-10 font-medium leading-4 text-on-secondary">{badge}</span>
             )}
         </button>
     )
@@ -4240,12 +4240,12 @@ function SectionLabel({
                 className="shrink-0 opacity-70"
             />
             {children}
-            {count != null && <span className="font-mono text-[9px] font-normal tabular-nums opacity-70">{count}</span>}
+            {count != null && <span className="font-mono text-ui-9 font-normal tabular-nums opacity-70">{count}</span>}
         </>
     )
     if (!onToggle) {
         return (
-            <p className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">
+            <p className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
                 {label}
             </p>
         )
@@ -4257,7 +4257,7 @@ function SectionLabel({
             <button
                 onClick={onToggle}
                 title={open === false ? 'Desplegar esta sección' : 'Plegar esta sección — el contador sigue a la vista'}
-                className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 text-left text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface-variant"
+                className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 text-left text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface-variant"
             >
                 {label}
             </button>
@@ -4310,12 +4310,12 @@ function BranchFolderRow({
                     : `Desplegar "${node.path}" — tiene ${total} ${total === 1 ? 'rama' : 'ramas'}`
             }
             style={{paddingLeft: 8 + depth * 12}}
-            className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-[11px] text-on-surface-variant hover:bg-surface-variant"
+            className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
         >
             <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
             <Icon name={open ? 'folder_open' : 'folder'} size={13} className="shrink-0 opacity-60" />
             <span className="truncate">{node.label}</span>
-            <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-50">{total}</span>
+            <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-50">{total}</span>
         </button>
     )
 }
@@ -4408,11 +4408,11 @@ function TagRow({
                 .filter(Boolean)
                 .join(' · ')}
             style={{paddingLeft: 8 + depth * 12}}
-            className="flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-[11px] text-on-surface-variant hover:bg-surface-variant"
+            className="flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
         >
             <Icon name="sell" size={13} className="shrink-0 opacity-50" />
             <span className="truncate">{tag.name}</span>
-            {date && <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-45">{date}</span>}
+            {date && <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-45">{date}</span>}
         </button>
     )
 }
@@ -4462,7 +4462,7 @@ function BranchRow({
                     : `Doble click para hacer checkout${branch.isRemote ? ' (crea una rama local que la sigue)' : ''}`
             }. Click derecho para más acciones`}
             style={{paddingLeft: 10 + (depth ?? 0) * 12}}
-            className={`group relative flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-[11px] transition-colors disabled:opacity-40 ${
+            className={`group relative flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 transition-colors disabled:opacity-40 ${
                 // Three states that must stay distinguishable at a glance:
                 // checked out (primary), pointed at by the graph (a secondary
                 // tint + accent bar, quiet enough for a long list), and plain.
@@ -4498,7 +4498,7 @@ function BranchRow({
                 clicking around the sidebar loses track of where HEAD is. */}
             {branch.isCurrent && <Icon name="check" size={12} className="ml-auto shrink-0 opacity-80" />}
             {(branch.ahead > 0 || branch.behind > 0) && (
-                <span className={`shrink-0 font-mono text-[9px] opacity-70 ${branch.isCurrent ? '' : 'ml-auto'}`}>
+                <span className={`shrink-0 font-mono text-ui-9 opacity-70 ${branch.isCurrent ? '' : 'ml-auto'}`}>
                     {branch.ahead > 0 && `↑${branch.ahead}`}
                     {branch.behind > 0 && `↓${branch.behind}`}
                 </span>
@@ -4560,8 +4560,8 @@ function CommitDetail({
         <div className={`flex min-h-0 flex-col ${full ? 'flex-1' : 'max-h-[55%] shrink-0'}`}>
             <div className="shrink-0 space-y-1 border-b border-outline-variant bg-surface-container-lowest px-3 py-2">
                 <p className="text-xs font-medium text-on-surface">{commit.subject}</p>
-                {commit.body && <pre className="whitespace-pre-wrap break-words text-[11px] text-on-surface-variant">{commit.body}</pre>}
-                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 pt-1 text-[10px] text-on-surface-variant">
+                {commit.body && <pre className="whitespace-pre-wrap break-words text-ui-11 text-on-surface-variant">{commit.body}</pre>}
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 pt-1 text-ui-10 text-on-surface-variant">
                     <dt className="text-on-surface-variant/60">Autor</dt>
                     <dd className="truncate">{commit.author} &lt;{commit.email}&gt;</dd>
                     <dt className="text-on-surface-variant/60">Fecha</dt>
@@ -4582,12 +4582,12 @@ function CommitDetail({
                             <dt className="text-on-surface-variant/60">Refs</dt>
                             <dd className="flex flex-wrap gap-1">
                                 {commit.branches?.map((b) => (
-                                    <span key={b} title={`Este commit es alcanzable desde ${b}`} className="rounded-full bg-primary-container/60 px-1.5 text-[9px] text-on-primary-container">
+                                    <span key={b} title={`Este commit es alcanzable desde ${b}`} className="rounded-full bg-primary-container/60 px-1.5 text-ui-9 text-on-primary-container">
                                         {b}
                                     </span>
                                 ))}
                                 {commit.tags?.map((t) => (
-                                    <span key={t} title={`Tag ${t} en este commit`} className="rounded-full bg-tertiary/20 px-1.5 text-[9px] text-tertiary">
+                                    <span key={t} title={`Tag ${t} en este commit`} className="rounded-full bg-tertiary/20 px-1.5 text-ui-9 text-tertiary">
                                         {t}
                                     </span>
                                 ))}
@@ -4602,9 +4602,9 @@ function CommitDetail({
                 </dl>
             </div>
 
-            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-3 py-1 text-[10px] text-on-surface-variant">
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-3 py-1 text-ui-10 text-on-surface-variant">
                 <span className="font-semibold uppercase tracking-wider text-on-surface-variant/70">Archivos</span>
-                <span className="rounded-full bg-surface-variant px-1.5 text-[9px] font-semibold text-on-surface-variant">{files.length}</span>
+                <span className="rounded-full bg-surface-variant px-1.5 text-ui-9 font-semibold text-on-surface-variant">{files.length}</span>
                 <button
                     onClick={() => (expandedCount > 0 ? onCollapseAll() : onExpandAll(files.map((f) => f.path)))}
                     disabled={expandedCount === 0 && !canExpandAll}
@@ -4627,7 +4627,7 @@ function CommitDetail({
                     return (
                         <div key={f.path}>
                             <div
-                                className={`group flex items-center gap-1.5 py-1 pl-1 pr-3 text-[11px] ${
+                                className={`group flex items-center gap-1.5 py-1 pl-1 pr-3 text-ui-11 ${
                                     selectedPath === f.path ? 'bg-primary-container/50' : 'hover:bg-surface-variant/50'
                                 }`}
                             >
@@ -4653,9 +4653,9 @@ function CommitDetail({
                                     {f.origPath ? `${f.origPath} → ${f.path}` : f.path}
                                 </button>
                                 {f.isBinary ? (
-                                    <span className="shrink-0 text-[9px] text-on-surface-variant/60">binario</span>
+                                    <span className="shrink-0 text-ui-9 text-on-surface-variant/60">binario</span>
                                 ) : (
-                                    <span className="shrink-0 font-mono text-[9px]">
+                                    <span className="shrink-0 font-mono text-ui-9">
                                         <span className="text-secondary">+{f.stat.insertions}</span> <span className="text-error">−{f.stat.deletions}</span>
                                     </span>
                                 )}
@@ -4750,7 +4750,7 @@ function ChangesPanel({
                     onClick={onStageAll}
                     disabled={busy || unstaged.length === 0}
                     title={unstaged.length === 0 ? 'No hay cambios sin stagear' : `Agregar los ${unstaged.length} archivos modificados al stage`}
-                    className="flex w-full items-center justify-center gap-1.5 rounded bg-surface-variant px-2 py-1 text-[11px] text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
+                    className="flex w-full items-center justify-center gap-1.5 rounded bg-surface-variant px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
                 >
                     <Icon name="add" size={13} />
                     Stagear todo
@@ -4770,7 +4770,7 @@ function ChangesPanel({
                             onChangeMessage(type ? applyPrefix(commitMessage, buildCommitPrefix(type, scope)) : commitMessage)
                         }}
                         title="Prefijo de Conventional Commits. Cambiarlo reemplaza el que ya tenga el mensaje, no apila uno nuevo."
-                        className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container px-1 py-0.5 text-[11px] text-on-surface"
+                        className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container px-1 py-0.5 text-ui-11 text-on-surface"
                     >
                         <option value="">tipo…</option>
                         {COMMIT_TYPES.map((t) => (
@@ -4786,7 +4786,7 @@ function ChangesPanel({
                                 onChangeMessage(applyPrefix(commitMessage, buildCommitPrefix(type || 'feat', extractTicket(branchName))))
                             }}
                             title={`Usa "${extractTicket(branchName)}" como scope, leído del nombre de la rama (${branchName})`}
-                            className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 font-mono text-[10px] text-on-surface-variant hover:text-on-surface"
+                            className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 font-mono text-ui-10 text-on-surface-variant hover:text-on-surface"
                         >
                             {extractTicket(branchName)}
                         </button>
@@ -4830,7 +4830,7 @@ function ChangesPanel({
                                     acción sirve— va con la palabra al lado, y
                                     se calla apenas hay texto para no taparlo. */}
                                 {(!commitMessage.trim() || drafting) && (
-                                    <span className="text-[10px]">{drafting ? 'Redactando…' : 'Redactar'}</span>
+                                    <span className="text-ui-10">{drafting ? 'Redactando…' : 'Redactar'}</span>
                                 )}
                             </button>
                             {onPickDraftAgent && (
@@ -4855,7 +4855,7 @@ function ChangesPanel({
                         title={`El agente vio el diff preparado de ${draft.files.length} ${draft.files.length === 1 ? 'archivo' : 'archivos'} y los últimos mensajes del repositorio como referencia de estilo.${
                             draft.diffTruncated ? ' El parche era más grande que el tope y se le mandó recortado, con la lista completa de archivos.' : ''
                         } Editar el mensaje a mano hace desaparecer esta línea.`}
-                        className="flex items-center gap-1 px-0.5 text-[10px] text-on-surface-variant/70"
+                        className="flex items-center gap-1 px-0.5 text-ui-10 text-on-surface-variant/70"
                     >
                         <Icon name="auto_awesome" size={11} className="shrink-0 text-primary" />
                         <span className="truncate">
@@ -4919,16 +4919,16 @@ function FileGroup({
 }) {
     return (
         <div>
-            <p className="sticky top-0 z-10 flex items-center gap-1.5 bg-surface-container-low px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
+            <p className="sticky top-0 z-10 flex items-center gap-1.5 bg-surface-container-low px-3 py-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70">
                 {staged && <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary" />}
                 {title}
                 {files.length > 0 && (
-                    <span className="rounded-full bg-surface-variant px-1.5 py-px text-[9px] font-semibold normal-case tracking-normal text-on-surface-variant">
+                    <span className="rounded-full bg-surface-variant px-1.5 py-px text-ui-9 font-semibold normal-case tracking-normal text-on-surface-variant">
                         {files.length}
                     </span>
                 )}
             </p>
-            {files.length === 0 && <p className="px-3 py-1.5 text-[11px] text-on-surface-variant/50">{empty}</p>}
+            {files.length === 0 && <p className="px-3 py-1.5 text-ui-11 text-on-surface-variant/50">{empty}</p>}
             {files.map((f) => {
                 // Nombre y carpeta separados: en un repositorio real la ruta
                 // entera no entra en la columna, y truncar a la izquierda deja
@@ -4940,7 +4940,7 @@ function FileGroup({
                 return (
                     <div key={f.path}>
                     <div
-                        className={`group flex items-center gap-1.5 py-1 pl-1 pr-3 text-[11px] ${
+                        className={`group flex items-center gap-1.5 py-1 pl-1 pr-3 text-ui-11 ${
                             selectedPath === f.path ? 'bg-primary-container/50' : 'hover:bg-surface-variant/50'
                         }`}
                     >
@@ -4960,7 +4960,7 @@ function FileGroup({
                             className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left"
                         >
                             <span className="shrink-0 truncate text-on-surface">{name}</span>
-                            {!!dir && <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-on-surface-variant/60">{dir}</span>}
+                            {!!dir && <span className="min-w-0 flex-1 truncate font-mono text-ui-10 text-on-surface-variant/60">{dir}</span>}
                         </button>
                         {secondaryAction && (
                             <button

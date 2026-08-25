@@ -2,7 +2,7 @@ import {useEffect, useState, useRef, type MouseEvent} from 'react'
 import {ColumnDef, flexRender, getCoreRowModel, useReactTable} from '@tanstack/react-table'
 import {useVirtualizer} from '@tanstack/react-virtual'
 import Icon from '../Icon'
-import {generateCSV, generateInsertStatements, generateUpdateStatements} from '../../lib/sqlGenerate'
+import {generateCSV, generateInsertStatements, generateUpdateStatements, type SqlTarget} from '../../lib/sqlGenerate'
 import CellEditor from './CellEditor'
 import {useRowEditing} from './useRowEditing'
 
@@ -12,12 +12,11 @@ interface ResultGridProps {
     sortColumn?: string | null
     sortDirection?: 'asc' | 'desc' | null
     onSort?: (column: string) => void
-    // Best-effort name for the generated INSERT/UPDATE statements — same
-    // limitation as ExportMenu's "copiar como INSERT": there's no reliable
-    // way to know which table a SELECT's rows came from without parsing
-    // the query, so this is just whatever the caller has handy (the active
-    // connection's name), not necessarily the real table.
-    tableNameHint?: string
+    // Contra qué tabla y con qué motor se generan el INSERT y el UPDATE.
+    // Sale de useSqlTarget, que se lo pregunta al catálogo del backend: viene
+    // calificado con el esquema y con el tipo de cada columna, así que las
+    // fechas salen convertidas (TO_DATE en Oracle) y no como texto.
+    sqlTarget?: SqlTarget
     // Conexión y consulta que produjeron estas filas. Con las dos, la grilla
     // puede ofrecer EDITAR: el backend decide si el resultado sale de una sola
     // tabla con clave primaria y genera el UPDATE. Sin ellas la grilla es de
@@ -40,7 +39,7 @@ export default function ResultGrid({
     sortColumn,
     sortDirection,
     onSort,
-    tableNameHint,
+    sqlTarget,
     connId,
     sqlText,
 }: ResultGridProps) {
@@ -272,7 +271,7 @@ export default function ResultGrid({
                 guardar: es el recordatorio de que lo que se ve en la grilla
                 todavía no está en la base. */}
             {editing.pendingCount > 0 && (
-                <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant bg-primary/10 px-2 py-1 text-[11px]">
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant bg-primary/10 px-2 py-1 text-ui-11">
                     <Icon name="edit" size={13} className="shrink-0 text-primary" />
                     <span className="text-on-surface">
                         {editing.pendingCount} {editing.pendingCount === 1 ? 'cambio sin guardar' : 'cambios sin guardar'}
@@ -316,7 +315,7 @@ export default function ResultGrid({
                 se esconde la función en silencio: es lo que explica por qué en
                 la consulta de al lado sí anda. */}
             {editing.reason && editing.pendingCount === 0 && (
-                <div className="flex shrink-0 items-center gap-1.5 border-t border-outline-variant bg-surface-container-low px-2 py-1 text-[10px] text-on-surface-variant">
+                <div className="flex shrink-0 items-center gap-1.5 border-t border-outline-variant bg-surface-container-low px-2 py-1 text-ui-10 text-on-surface-variant">
                     <Icon name="lock" size={11} className="shrink-0" />
                     Solo lectura: {editing.reason}
                 </div>
@@ -330,10 +329,10 @@ export default function ResultGrid({
                             Esto es lo que se va a ejecutar
                         </p>
                         <div className="min-h-0 flex-1 overflow-auto p-3">
-                            <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-on-surface">
+                            <pre className="whitespace-pre-wrap font-mono text-ui-11 leading-5 text-on-surface">
                                 {previewSql.join('\n')}
                             </pre>
-                            <p className="mt-2 text-[10px] leading-4 text-on-surface-variant">
+                            <p className="mt-2 text-ui-10 leading-4 text-on-surface-variant">
                                 Los valores se muestran escritos adentro de la sentencia para poder leerla. Al ejecutar
                                 viajan como <strong>parámetros</strong>, aparte del texto — que es lo que hace que un
                                 valor con comillas no pueda cambiar el sentido del UPDATE.
@@ -389,7 +388,7 @@ export default function ResultGrid({
                     </button>
                     <button
                         onClick={() =>
-                            void copy(generateInsertStatements(tableNameHint ?? 'tabla', columns, selectedRows), 'INSERT copiado')
+                            void copy(generateInsertStatements(sqlTarget ?? {table: 'tabla'}, columns, selectedRows), 'INSERT copiado')
                         }
                         title="Copia la(s) fila(s) seleccionadas como sentencias INSERT listas para pegar en el editor"
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
@@ -399,7 +398,7 @@ export default function ResultGrid({
                     </button>
                     <button
                         onClick={() =>
-                            void copy(generateUpdateStatements(tableNameHint ?? 'tabla', columns, selectedRows), 'UPDATE copiado')
+                            void copy(generateUpdateStatements(sqlTarget ?? {table: 'tabla'}, columns, selectedRows), 'UPDATE copiado')
                         }
                         title="Copia la(s) fila(s) seleccionadas como sentencias UPDATE (con WHERE por todas las columnas — revisalas antes de ejecutar) listas para editar y pegar en el editor"
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"

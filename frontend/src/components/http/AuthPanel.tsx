@@ -77,13 +77,13 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
     }
 
     return (
-        <div className="px-3 py-2 text-[11px]">
-            <label className="mb-1 block text-[10px] uppercase tracking-wider text-on-surface-variant/60">Tipo</label>
+        <div className="px-3 py-2 text-ui-11">
+            <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Tipo</label>
             <select
                 value={type}
                 onChange={(e) => set({type: e.target.value})}
                 title="Cómo se autentica esta petición. «Heredar» usa lo que definan la carpeta o la colección, que es lo que permite cambiar un token en un solo lugar."
-                className="w-full rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                className="w-full rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
             >
                 {TYPES.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -94,14 +94,14 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
             </select>
 
             {meta && !meta.executable && (
-                <p className="mt-2 rounded bg-surface-container-lowest px-2 py-1.5 text-[10px] leading-relaxed text-tertiary">
+                <p className="mt-2 rounded bg-surface-container-lowest px-2 py-1.5 text-ui-10 leading-relaxed text-tertiary">
                     Esta autenticación se <strong>guarda y se exporta intacta</strong>, pero esta versión todavía no la firma: la petición va a salir sin
                     autenticar. Se muestra igual para que una colección importada que la use no pierda su configuración.
                 </p>
             )}
 
             {type === 'inherit' && (
-                <p className="mt-2 text-[10px] leading-relaxed text-on-surface-variant/70">
+                <p className="mt-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                     {inheritsFrom
                         ? `Usa la autenticación de ${inheritsFrom}. Si ese nivel también hereda, se sigue subiendo hasta la colección.`
                         : 'Usa la autenticación de la carpeta o, si no tiene, la de la colección.'}
@@ -113,7 +113,7 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                     <Field label="Usuario" value={auth.username ?? ''} onChange={(v) => set({username: v})} />
                     <Field label="Contraseña" value={auth.password ?? ''} onChange={(v) => set({password: v})} secret />
                     {type === 'digest' && (
-                        <p className="text-[10px] leading-relaxed text-on-surface-variant/70">
+                        <p className="text-ui-10 leading-relaxed text-on-surface-variant/70">
                             Digest necesita un ida y vuelta: la primera petición sale sin firmar, el servidor responde 401 con su desafío, y recién ahí se
                             calcula la respuesta. Vas a ver una sola petición acá, pero por el cable van dos.
                         </p>
@@ -124,7 +124,7 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
             {type === 'bearer' && (
                 <div className="mt-2">
                     <Field label="Token" value={auth.token ?? ''} onChange={(v) => set({token: v})} secret mono />
-                    <p className="mt-1 text-[10px] leading-relaxed text-on-surface-variant/70">
+                    <p className="mt-1 text-ui-10 leading-relaxed text-on-surface-variant/70">
                         Podés poner <span className="font-mono">{'{{token}}'}</span> y guardar el valor real como variable secreta del entorno: así queda
                         cifrado, enmascarado y fuera del export.
                     </p>
@@ -136,12 +136,12 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                     <Field label="Nombre" value={auth.key ?? ''} onChange={(v) => set({key: v})} mono />
                     <Field label="Valor" value={auth.value ?? ''} onChange={(v) => set({value: v})} secret mono />
                     <div>
-                        <label className="mb-1 block text-[10px] uppercase tracking-wider text-on-surface-variant/60">Enviar en</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Enviar en</label>
                         <select
                             value={auth.in || 'header'}
                             onChange={(e) => set({in: e.target.value})}
                             title="Header es lo habitual; query pone la clave en la URL, donde queda registrada en los logs del servidor y del proxy."
-                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                         >
                             <option value="header">Header</option>
                             <option value="query">Query param</option>
@@ -153,12 +153,12 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
             {type === 'jwt' && (
                 <div className="mt-2 space-y-2">
                     <div>
-                        <label className="mb-1 block text-[10px] uppercase tracking-wider text-on-surface-variant/60">Algoritmo</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Algoritmo</label>
                         <select
                             value={auth.algorithm || 'HS256'}
                             onChange={(e) => set({algorithm: e.target.value})}
                             title="Solo HMAC: RS* y ES* piden manejar claves privadas en PEM, que es otra conversación."
-                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                         >
                             {['HS256', 'HS384', 'HS512'].map((x) => (
                                 <option key={x}>{x}</option>
@@ -166,7 +166,7 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                         </select>
                     </div>
                     <Field label="Secreto" value={auth.secret ?? ''} onChange={(v) => set({secret: v})} secret mono />
-                    <label className="flex items-center gap-1.5 text-[11px] text-on-surface-variant">
+                    <label className="flex items-center gap-1.5 text-ui-11 text-on-surface-variant">
                         <input
                             type="checkbox"
                             checked={!!auth.secretBase64}
@@ -177,13 +177,13 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                         El secreto está en base64
                     </label>
                     <div>
-                        <label className="mb-1 block text-[10px] uppercase tracking-wider text-on-surface-variant/60">Payload (JSON)</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Payload (JSON)</label>
                         <textarea
                             value={auth.payload ?? ''}
                             onChange={(e) => set({payload: e.target.value})}
                             rows={4}
                             placeholder='{ "sub": "1234", "role": "admin" }'
-                            className="w-full rounded bg-surface-container-highest px-2 py-1 font-mono text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                            className="w-full rounded bg-surface-container-highest px-2 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                         />
                     </div>
                 </div>
@@ -209,12 +209,12 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
             {type === 'oauth2' && (
                 <div className="mt-2 space-y-2">
                     <div>
-                        <label className="mb-1 block text-[10px] uppercase tracking-wider text-on-surface-variant/60">Flujo</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Flujo</label>
                         <select
                             value={auth.grantType || 'client_credentials'}
                             onChange={(e) => set({grantType: e.target.value})}
                             title="«Authorization code» abre el navegador para que autorices vos; los otros tres se resuelven sin salir de la app."
-                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                         >
                             <option value="client_credentials">Client Credentials</option>
                             <option value="authorization_code">Authorization Code (abre el navegador)</option>
@@ -248,13 +248,13 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                                     ? 'Abre tu navegador para que autorices. La respuesta vuelve a un puerto local (127.0.0.1) y el intercambio usa PKCE, como manda el estándar para aplicaciones de escritorio.'
                                     : 'Pide un token al servidor sin salir de la aplicación.'
                             }
-                            className="rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90 disabled:opacity-40"
+                            className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                         >
                             {busy ? 'Pidiendo…' : 'Obtener token'}
                         </button>
                         {auth.accessToken && (
                             <span
-                                className="inline-flex items-center gap-1 text-[10px] text-secondary"
+                                className="inline-flex items-center gap-1 text-ui-10 text-secondary"
                                 title={auth.expiresAt ? `Vence ${new Date(auth.expiresAt * 1000).toLocaleString()}` : 'Sin vencimiento informado'}
                             >
                                 <Icon name="check" size={12} /> token guardado
@@ -262,7 +262,7 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                         )}
                     </div>
                     {auth.grantType === 'authorization_code' && (
-                        <p className="text-[10px] leading-relaxed text-on-surface-variant/70">
+                        <p className="text-ui-10 leading-relaxed text-on-surface-variant/70">
                             La redirección se recibe en <span className="font-mono">http://127.0.0.1:&lt;puerto&gt;/callback</span>. Si tu servidor exige
                             registrar la URL de antes, fijala en el campo de arriba del proveedor con ese formato.
                         </p>
@@ -271,9 +271,9 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
             )}
 
             {error && (
-                <p className="mt-2 rounded bg-error-container px-2 py-1 text-[10px] leading-relaxed text-on-error-container">{error}</p>
+                <p className="mt-2 rounded bg-error-container px-2 py-1 text-ui-10 leading-relaxed text-on-error-container">{error}</p>
             )}
-            {notice && <p className="mt-2 text-[10px] text-secondary">{notice}</p>}
+            {notice && <p className="mt-2 text-ui-10 text-secondary">{notice}</p>}
         </div>
     )
 }
@@ -301,7 +301,7 @@ function Field({
     const [reveal, setReveal] = useState(false)
     return (
         <div>
-            <label className="mb-1 block text-[10px] uppercase tracking-wider text-on-surface-variant/60">{label}</label>
+            <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">{label}</label>
             <div className="flex items-center gap-1">
                 <input
                     type={secret && !reveal ? 'password' : 'text'}
@@ -309,7 +309,7 @@ function Field({
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={placeholder}
                     title={hint}
-                    className={`min-w-0 flex-1 rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary ${
+                    className={`min-w-0 flex-1 rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary ${
                         mono ? 'font-mono' : ''
                     }`}
                 />
@@ -323,7 +323,7 @@ function Field({
                     </button>
                 )}
             </div>
-            {hint && <p className="mt-0.5 text-[10px] leading-relaxed text-on-surface-variant/60">{hint}</p>}
+            {hint && <p className="mt-0.5 text-ui-10 leading-relaxed text-on-surface-variant/60">{hint}</p>}
         </div>
     )
 }

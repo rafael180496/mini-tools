@@ -107,7 +107,7 @@ export default function FolderNotesDialog({folder, descendantIds, activeNoteId, 
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                     <Icon name="folder_open" size={16} className="text-on-surface-variant" />
                     <p className="min-w-0 flex-1 truncate text-sm font-medium text-on-surface">{folder.name}</p>
-                    <span className="shrink-0 text-[11px] text-on-surface-variant">
+                    <span className="shrink-0 text-ui-11 text-on-surface-variant">
                         {rows.length} {rows.length === 1 ? 'nota' : 'notas'}
                         {descendantIds.length > 0 && ' (con subcarpetas)'}
                     </span>
@@ -122,7 +122,7 @@ export default function FolderNotesDialog({folder, descendantIds, activeNoteId, 
                                 .catch((e) => setError(String(e)))
                         }
                         title={`Crea una nota dentro de «${folder.name}». Si hay algo escrito en el buscador de acá arriba, lo usa como título.`}
-                        className="shrink-0 rounded bg-primary px-2 py-0.5 text-[11px] text-on-primary hover:opacity-90"
+                        className="shrink-0 rounded bg-primary px-2 py-0.5 text-ui-11 text-on-primary hover:opacity-90"
                     >
                         Nueva nota
                     </button>
@@ -139,7 +139,7 @@ export default function FolderNotesDialog({folder, descendantIds, activeNoteId, 
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Filtrar por título dentro de esta carpeta"
                         title="Busca solo entre las notas de esta carpeta y por título. El buscador de la barra lateral, en cambio, busca en el cuerpo de todas."
-                        className="min-w-0 flex-1 bg-transparent text-[12px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                        className="min-w-0 flex-1 bg-transparent text-ui-12 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                     />
                     {query && (
                         <button onClick={() => setQuery('')} title="Limpiar" className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant">
@@ -148,15 +148,15 @@ export default function FolderNotesDialog({folder, descendantIds, activeNoteId, 
                     )}
                 </div>
 
-                {error && <p className="shrink-0 bg-error-container px-3 py-1 text-[11px] text-on-error-container">{error}</p>}
+                {error && <p className="shrink-0 bg-error-container px-3 py-1 text-ui-11 text-on-error-container">{error}</p>}
 
                 <div className="min-h-0 flex-1 overflow-y-auto">
                     {rows.length === 0 ? (
-                        <p className="px-3 py-4 text-[11px] leading-relaxed text-on-surface-variant">
+                        <p className="px-3 py-4 text-ui-11 leading-relaxed text-on-surface-variant">
                             {query ? 'Ninguna nota de esta carpeta coincide.' : 'La carpeta está vacía. «Nueva nota» crea una acá adentro.'}
                         </p>
                     ) : (
-                        <table className="w-full border-collapse text-[11px]">
+                        <table className="w-full border-collapse text-ui-11">
                             <thead className="text-on-surface-variant">
                                 <tr>
                                     <th className="sticky top-0 z-10 w-10 bg-surface-container-low px-2 py-1.5 text-right font-medium">#</th>

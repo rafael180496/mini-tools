@@ -71,7 +71,7 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface-container-low">
-            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-2 py-1 text-[11px]">
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-2 py-1 text-ui-11">
                 <Icon name="monitoring" size={13} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">Consumo{usage ? ` · ${usage.days} días` : ''}</span>
                 <button
@@ -83,7 +83,7 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                 </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-1.5 text-[11px]">
+            <div className="min-h-0 flex-1 overflow-y-auto p-1.5 text-ui-11">
                 {error && <p className="rounded bg-error-container/40 px-2 py-1 text-error">{error}</p>}
 
                 {session && session.total > 0 && (
@@ -119,14 +119,14 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                                     (plan.known ? (
                                         <span
                                             title={plan.detail || undefined}
-                                            className="shrink-0 rounded-full bg-secondary/15 px-1.5 text-[10px] text-secondary"
+                                            className="shrink-0 rounded-full bg-secondary/15 px-1.5 text-ui-10 text-secondary"
                                         >
                                             {plan.label}
                                         </span>
                                     ) : (
                                         <span
                                             title={plan.note}
-                                            className="shrink-0 rounded-full bg-surface-variant px-1.5 text-[10px] text-on-surface-variant"
+                                            className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant"
                                         >
                                             {plan.detail || 'plan desconocido'}
                                         </span>
@@ -213,7 +213,7 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                     )
                 })}
 
-                <p className="px-1 text-[10px] leading-4 text-on-surface-variant/70">
+                <p className="px-1 text-ui-10 leading-4 text-on-surface-variant/70">
                     Las <strong>barras de límite</strong> son el porcentaje que calculó el servidor de cada proveedor y
                     que su CLI dejó cacheado en esta máquina: se leen tal cual, con la hora en que se midieron — no son
                     en vivo. Los porcentajes de <strong>consumo</strong> (modelo, caché) son proporciones de lo gastado,

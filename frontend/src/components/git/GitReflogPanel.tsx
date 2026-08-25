@@ -81,9 +81,9 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     placeholder="Filtrar por mensaje, acción o hash"
-                    className="min-w-0 flex-1 bg-transparent text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                    className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                 />
-                <span className="shrink-0 text-[10px] text-on-surface-variant">{rows.length}</span>
+                <span className="shrink-0 text-ui-10 text-on-surface-variant">{rows.length}</span>
                 <button
                     onClick={() => void load()}
                     title="Volver a leer el reflog"
@@ -93,31 +93,31 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
                 </button>
             </div>
 
-            {error && <p className="shrink-0 bg-error-container px-2 py-1 text-[11px] text-on-error-container">{error}</p>}
+            {error && <p className="shrink-0 bg-error-container px-2 py-1 text-ui-11 text-on-error-container">{error}</p>}
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-                {loading && rows.length === 0 && <p className="px-2 py-3 text-[11px] text-on-surface-variant">Leyendo…</p>}
+                {loading && rows.length === 0 && <p className="px-2 py-3 text-ui-11 text-on-surface-variant">Leyendo…</p>}
                 {!loading && rows.length === 0 && (
-                    <p className="px-2 py-3 text-[11px] leading-relaxed text-on-surface-variant">
+                    <p className="px-2 py-3 text-ui-11 leading-relaxed text-on-surface-variant">
                         {entries.length === 0
                             ? 'Este repositorio todavía no tiene movimientos de HEAD.'
                             : 'Ningún movimiento coincide con el filtro.'}
                     </p>
                 )}
                 {rows.map((e) => (
-                    <div key={e.selector} className="group flex items-start gap-2 border-b border-outline-variant/40 px-2 py-1 text-[11px] hover:bg-surface-variant/50">
-                        <span className="mt-px w-16 shrink-0 font-mono text-[10px] text-on-surface-variant/60">{e.selector}</span>
+                    <div key={e.selector} className="group flex items-start gap-2 border-b border-outline-variant/40 px-2 py-1 text-ui-11 hover:bg-surface-variant/50">
+                        <span className="mt-px w-16 shrink-0 font-mono text-ui-10 text-on-surface-variant/60">{e.selector}</span>
                         <button
                             onClick={() => onOpenCommit?.(e.hash)}
                             title={`Ver el commit ${e.short}`}
-                            className="mt-px w-16 shrink-0 text-left font-mono text-[10px] text-primary hover:underline"
+                            className="mt-px w-16 shrink-0 text-left font-mono text-ui-10 text-primary hover:underline"
                         >
                             {e.short}
                         </button>
                         <span className="min-w-0 flex-1">
                             <span className="flex items-center gap-1.5">
                                 <span
-                                    className={`shrink-0 rounded px-1 text-[10px] ${
+                                    className={`shrink-0 rounded px-1 text-ui-10 ${
                                         DESTRUCTIVAS.has(e.action) ? 'bg-error-container text-on-error-container' : 'bg-surface-variant text-on-surface-variant'
                                     }`}
                                     title={DESTRUCTIVAS.has(e.action) ? 'Esta acción reescribió historia: es de las que dejan commits sin referencia' : undefined}
@@ -129,12 +129,12 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
                                 </span>
                             </span>
                             {e.detail && (
-                                <span className="block truncate text-[10px] text-on-surface-variant/70" title={e.detail}>
+                                <span className="block truncate text-ui-10 text-on-surface-variant/70" title={e.detail}>
                                     {e.detail}
                                 </span>
                             )}
                         </span>
-                        <span className="mt-px shrink-0 font-mono text-[10px] tabular-nums text-on-surface-variant/60">{fecha(e.date)}</span>
+                        <span className="mt-px shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/60">{fecha(e.date)}</span>
                         <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
                             <button
                                 onClick={() => setBranchFrom(e)}
@@ -155,7 +155,7 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
                 ))}
             </div>
 
-            <p className="shrink-0 border-t border-outline-variant px-2 py-1.5 text-[10px] leading-relaxed text-on-surface-variant/70">
+            <p className="shrink-0 border-t border-outline-variant px-2 py-1.5 text-ui-10 leading-relaxed text-on-surface-variant/70">
                 El reflog es <span className="font-medium">local y temporal</span>: no se clona, no se empuja, y git lo poda solo (90 días lo alcanzable, 30
                 lo que no). Sirve para recuperar lo de ayer, no como historial.
             </p>

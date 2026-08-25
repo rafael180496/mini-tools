@@ -384,7 +384,7 @@ export default function SftpTab({
     return (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {followTerminalConnId && (
-                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1 text-[11px]">
+                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1 text-ui-11">
                     <button
                         onClick={() => setFollow((v) => !v)}
                         title={
@@ -478,7 +478,7 @@ export default function SftpTab({
             {/* Transfer queue */}
             {queue.length > 0 && (
                 <div className="max-h-48 shrink-0 overflow-auto border-t border-outline-variant bg-surface-container-low">
-                    <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-[11px] font-medium text-on-surface-variant">
+                    <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-ui-11 font-medium text-on-surface-variant">
                         <Icon name="swap_vert" size={14} />
                         Transferencias {activeCount > 0 && <span className="text-secondary">({activeCount} activas)</span>}
                         <button
@@ -517,7 +517,7 @@ export default function SftpTab({
                                     <span className="min-w-0 truncate text-on-surface" title={it.label}>
                                         {it.label}
                                     </span>
-                                    <span className="ml-auto shrink-0 text-[11px] text-on-surface-variant">
+                                    <span className="ml-auto shrink-0 text-ui-11 text-on-surface-variant">
                                         {it.totalFiles > 0 && `${it.filesDone}/${it.totalFiles} archivos · `}
                                         {formatBytes(it.bytesDone)}
                                         {it.bytesTotal > 0 && ` / ${formatBytes(it.bytesTotal)}`}
@@ -544,7 +544,7 @@ export default function SftpTab({
                                         style={{width: `${it.status === 'done' ? 100 : it.percent}%`}}
                                     />
                                 </div>
-                                {it.error && <p className="mt-0.5 whitespace-pre-wrap wrap-break-word text-[11px] text-error">{it.error}</p>}
+                                {it.error && <p className="mt-0.5 whitespace-pre-wrap wrap-break-word text-ui-11 text-error">{it.error}</p>}
                             </div>
                             {it.status === 'running' && (
                                 <button

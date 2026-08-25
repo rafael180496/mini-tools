@@ -102,7 +102,7 @@ export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged,
                     className="w-20 rounded border border-outline-variant bg-surface-container-low px-1.5 py-0.5 font-mono text-xs text-on-surface"
                 />
                 {draft.trim() !== '' && (
-                    <span className="font-mono text-[10px] text-on-surface-variant/70" title="Cómo se interpreta lo que escribiste">
+                    <span className="font-mono text-ui-10 text-on-surface-variant/70" title="Cómo se interpreta lo que escribiste">
                         {parsed === null ? 'no se entiende' : `= ${formatDuration(parsed)}`}
                     </span>
                 )}
@@ -110,7 +110,7 @@ export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged,
                     onClick={() => void applyTTL()}
                     disabled={parsed === null || saving}
                     title={parsed === null ? 'Escribí una duración válida (3600, 30m, 2h, 7d)' : `Aplica un vencimiento de ${formatDuration(parsed)} contado desde ahora`}
-                    className="rounded bg-primary px-1.5 py-0.5 text-[11px] text-on-primary disabled:opacity-40"
+                    className="rounded bg-primary px-1.5 py-0.5 text-ui-11 text-on-primary disabled:opacity-40"
                 >
                     Aplicar
                 </button>
@@ -120,7 +120,7 @@ export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged,
                         setDraft('')
                     }}
                     title="Cancela sin cambiar el vencimiento"
-                    className="rounded px-1 py-0.5 text-[11px] text-on-surface-variant hover:text-on-surface"
+                    className="rounded px-1 py-0.5 text-ui-11 text-on-surface-variant hover:text-on-surface"
                 >
                     Cancelar
                 </button>
@@ -131,7 +131,7 @@ export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged,
     return (
         <div className="flex items-center gap-1">
             <span
-                className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] ${TONE_CLASS[display.tone]}`}
+                className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-ui-11 ${TONE_CLASS[display.tone]}`}
                 title={display.hint}
             >
                 <Icon name={display.tone === 'none' ? 'all_inclusive' : 'timer'} size={12} />

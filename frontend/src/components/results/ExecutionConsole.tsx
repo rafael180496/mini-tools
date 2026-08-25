@@ -120,7 +120,7 @@ export default function ExecutionConsole({entries, running, onClear}: ExecutionC
                 <div className="flex flex-col divide-y divide-outline-variant">
                     {entries.map((entry, i) => (
                         <div key={`${entry.index}-${entry.timestamp}-${i}`} className="p-2">
-                            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
+                            <div className="mb-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70">
                                 Statement {entry.index + 1}/{entry.total}
                             </div>
                             <pre className="overflow-x-auto font-mono text-xs text-on-surface">{entry.sqlText}</pre>

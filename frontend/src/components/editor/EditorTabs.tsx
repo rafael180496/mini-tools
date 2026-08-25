@@ -223,7 +223,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
             {...attributes}
             {...listeners}
             onClick={() => onSelect(tab.id)}
-            className={`flex max-w-52 cursor-pointer items-center gap-1.5 rounded-t-xs px-3 py-1 font-mono text-[11px] ${
+            className={`flex max-w-52 cursor-pointer items-center gap-1.5 rounded-t-xs px-3 py-1 font-mono text-ui-11 ${
                 isActive ? 'bg-surface text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
             }`}
             title={`${tab.path ?? 'Pestaña sin guardar'} — arrastrar para reordenar`}
@@ -308,7 +308,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                 openSshTerminal in Workspace.tsx), so they're excluded here
                                 the same way this dropdown has no case for binding to
                                 something with no queryable surface. */}
-                            <div className="flex flex-col gap-1 text-[11px] text-on-surface-variant">
+                            <div className="flex flex-col gap-1 text-ui-11 text-on-surface-variant">
                                 Conexión
                                 <Select
                                     value={tab.connId ?? ''}
@@ -338,7 +338,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                     className="w-full"
                                 />
                             </div>
-                            <div className="mt-2 flex flex-col gap-1 text-[11px] text-on-surface-variant">
+                            <div className="mt-2 flex flex-col gap-1 text-ui-11 text-on-surface-variant">
                                 Lenguaje
                                 <Select
                                     value={tab.language}

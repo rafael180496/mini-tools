@@ -127,13 +127,13 @@ export default function SshHistoryPanel({scope, scopeLabel, load, clear, keepsNo
                 </div>
             </div>
 
-            {error && <p className="shrink-0 border-b border-outline-variant bg-error-container/40 px-2 py-1.5 text-[11px] text-on-error-container">{error}</p>}
+            {error && <p className="shrink-0 border-b border-outline-variant bg-error-container/40 px-2 py-1.5 text-ui-11 text-on-error-container">{error}</p>}
 
             <div className="min-h-0 flex-1 overflow-y-auto p-1">
                 {loading ? (
-                    <p className="p-3 text-center text-[11px] text-on-surface-variant/70">Cargando…</p>
+                    <p className="p-3 text-center text-ui-11 text-on-surface-variant/70">Cargando…</p>
                 ) : visible.length === 0 ? (
-                    <p className="p-3 text-[11px] leading-relaxed text-on-surface-variant/70">
+                    <p className="p-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
                         {q
                             ? `Ningún comando coincide con «${filter}».`
                             : enabled
@@ -150,7 +150,7 @@ export default function SshHistoryPanel({scope, scopeLabel, load, clear, keepsNo
                                 onClick={() => onPaste(e.command)}
                                 onDoubleClick={() => onRun(e.command)}
                                 title={`${new Date(e.ranAt * 1000).toLocaleString()}\n\nClick: escribirlo en la terminal sin ejecutar, para poder editarlo. Doble click: ejecutarlo tal cual.`}
-                                className="min-w-0 flex-1 text-left font-mono text-[11px] leading-snug text-on-surface"
+                                className="min-w-0 flex-1 text-left font-mono text-ui-11 leading-snug text-on-surface"
                             >
                                 <span className="line-clamp-3 break-all">{e.command}</span>
                             </button>
@@ -175,13 +175,13 @@ export default function SshHistoryPanel({scope, scopeLabel, load, clear, keepsNo
 
             <div className="shrink-0 border-t border-outline-variant p-2">
                 <label
-                    className="flex cursor-pointer items-center gap-1.5 text-[11px] text-on-surface-variant"
+                    className="flex cursor-pointer items-center gap-1.5 text-ui-11 text-on-surface-variant"
                     title="Mientras esté prendido, cada comando que ejecutes en una terminal SSH se guarda cifrado en el vault. Apagarlo corta el registro de inmediato y NO borra lo ya guardado — para eso está el botón de abajo."
                 >
                     <input type="checkbox" checked={enabled} onChange={toggleEnabled} className="accent-primary" />
                     Registrar los comandos que ejecuto
                 </label>
-                <p className="mt-1 text-[10px] leading-relaxed text-on-surface-variant/60">
+                <p className="mt-1 text-ui-10 leading-relaxed text-on-surface-variant/60">
                     Se guarda cifrado con la clave maestra. Las líneas que parecen traer una contraseña o un token{' '}
                     <span title="Reconoce formas como -pCLAVE, --password=…, sshpass, TOKEN=…, curl -u, export API_KEY=… y claves privadas pegadas. Es un filtro, no una garantía.">
                         (ver cuáles)
@@ -196,7 +196,7 @@ export default function SshHistoryPanel({scope, scopeLabel, load, clear, keepsNo
                             ? 'No hay nada que borrar en esta conexión'
                             : `Borra los ${entries.length} comandos guardados de "${scopeLabel}". ${keepsNote}`
                     }
-                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-outline-variant py-1.5 text-[11px] text-error hover:bg-error-container/40 disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-outline-variant py-1.5 text-ui-11 text-error hover:bg-error-container/40 disabled:opacity-40 disabled:hover:bg-transparent"
                 >
                     <Icon name="delete_sweep" size={14} />
                     Limpiar el historial de esta conexión

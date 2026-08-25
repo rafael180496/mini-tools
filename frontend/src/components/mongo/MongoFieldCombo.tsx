@@ -112,14 +112,14 @@ export default function MongoFieldCombo({value, onChange, fields, placeholder, t
                                     <span className="min-w-0 flex-1 truncate font-mono text-xs text-on-surface">{f.path}</span>
                                     {(f.types ?? []).length > 0 && (
                                         <span
-                                            className={`shrink-0 rounded px-1 font-mono text-[10px] ${
+                                            className={`shrink-0 rounded px-1 font-mono text-ui-10 ${
                                                 (f.types ?? []).length > 1 ? 'bg-tertiary/15 text-tertiary' : 'bg-surface-variant text-on-surface-variant'
                                             }`}
                                         >
                                             {(f.types ?? []).join(' | ')}
                                         </span>
                                     )}
-                                    <span className="w-9 shrink-0 text-right font-mono text-[10px] text-on-surface-variant/70">
+                                    <span className="w-9 shrink-0 text-right font-mono text-ui-10 text-on-surface-variant/70">
                                         {Math.round((f.frequency ?? 0) * 100)}%
                                     </span>
                                 </button>

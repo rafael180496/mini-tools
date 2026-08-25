@@ -1,19 +1,21 @@
 import {useRef, useState} from 'react'
 import {createPortal} from 'react-dom'
 import {ExportResult} from '../../../wailsjs/go/main/App'
-import {generateInsertStatements} from '../../lib/sqlGenerate'
+import {generateInsertStatements, type SqlTarget} from '../../lib/sqlGenerate'
 import Icon from '../Icon'
 
 interface ExportMenuProps {
     columns: string[]
     rows: unknown[][]
-    tableNameHint?: string
+    // Contra qué tabla y con qué motor se escribe el INSERT — ver useSqlTarget:
+    // sale del catálogo del backend, no del nombre de la conexión.
+    sqlTarget?: SqlTarget
 }
 
 // Spec: "export de grid: CSV, JSON, copiar como INSERT" (+ Excel, per the
 // performance/tooling section). Each format shows a native save dialog
 // except "copiar como INSERT", which goes straight to the clipboard.
-export default function ExportMenu({columns, rows, tableNameHint}: ExportMenuProps) {
+export default function ExportMenu({columns, rows, sqlTarget}: ExportMenuProps) {
     const [open, setOpen] = useState(false)
     const [menuPos, setMenuPos] = useState({top: 0, left: 0})
     const [status, setStatus] = useState('')
@@ -31,7 +33,7 @@ export default function ExportMenu({columns, rows, tableNameHint}: ExportMenuPro
 
     async function copyAsInsert() {
         setOpen(false)
-        const sql = generateInsertStatements(tableNameHint ?? 'tabla', columns, rows)
+        const sql = generateInsertStatements(sqlTarget ?? {table: 'tabla'}, columns, rows)
         await navigator.clipboard.writeText(sql)
         setStatus(`${rows.length} INSERT(s) copiados al portapapeles`)
     }

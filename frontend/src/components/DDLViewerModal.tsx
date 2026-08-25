@@ -144,7 +144,7 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
                     <h2 className="min-w-0 flex-1 truncate text-sm font-semibold" title={schema ? `${schema}.${name}` : name}>
                         {schema ? `${schema}.${name}` : name}
                     </h2>
-                    <span className="shrink-0 rounded bg-surface-container-highest px-2 py-0.5 text-[11px] uppercase text-on-surface-variant">
+                    <span className="shrink-0 rounded bg-surface-container-highest px-2 py-0.5 text-ui-11 uppercase text-on-surface-variant">
                         {OBJECT_TYPE_LABELS[objectType]}
                     </span>
                     <button

@@ -81,47 +81,93 @@
   qué le importa a quien lo lee) — nunca "varias mejoras" ni "fixes
   varios".
 
-## `index.html` — la vitrina, se actualiza con el mismo cambio
+## `index.html` — la AYUDA, se actualiza con el mismo cambio
 
-`index.html` (raíz del repo, publicado con GitHub Pages) documenta la app entera
-para alguien que llega por primera vez: qué es, cómo se instala, qué hace cada
-módulo, ejemplos de uso reales y las capturas.
+`index.html` (raíz del repo, publicado con GitHub Pages) es la **documentación
+de la app entera**, con forma de sitio de ayuda: índice jerárquico a la
+izquierda, **un tema por pantalla**, «en esta página» a la derecha, buscador y
+anterior/siguiente. No es una landing con secciones apiladas: nadie recorre una
+documentación de arriba abajo, entra buscando una cosa.
 
-- **Regla dura: todo módulo nuevo, y toda funcionalidad que cambie lo que un
-  usuario puede hacer, se agrega a `index.html` en la misma tarea** — igual que
-  la entrada del CHANGELOG. No "después", no "cuando haya tiempo".
-- **Qué NO cuenta como cambio de vitrina**: un arreglo interno, un refactor, una
-  optimización, un bug que nadie llegó a notar. Si el usuario no puede hacer
-  nada nuevo ni distinto, no va.
-- **Dónde va cada cosa**:
-  - Módulo nuevo → sección propia (`<section id="…">`), con su captura, qué
-    resuelve y **al menos un ejemplo de uso concreto**; más su entrada en la
-    barra de navegación de arriba.
-  - Funcionalidad dentro de un módulo que ya existe → dentro de esa sección,
-    y si vale la pena mostrarla, su captura.
-  - Algo que cambia cómo se trabaja de punta a punta → una receta más en
-    **«Recetas de uso»**, que es la parte que más se lee.
+### Regla dura
+
+**Todo módulo nuevo, y toda funcionalidad que cambie lo que un usuario puede
+hacer, se documenta en `index.html` en la misma tarea** — igual que la entrada
+del CHANGELOG. No "después", no "cuando haya tiempo".
+
+**Qué NO cuenta**: un arreglo interno, un refactor, una optimización, un bug que
+nadie llegó a notar. Si el usuario no puede hacer nada nuevo ni distinto, no va.
+
+### Dónde va cada cosa
+
+| Cambio | Dónde |
+| --- | --- |
+| Módulo nuevo | **Grupo nuevo** en el índice (`<button class="grp">` + su `<ul>`) con un tema por asunto, cada uno con su captura y **al menos un ejemplo de uso concreto** |
+| Funcionalidad que es un asunto en sí mismo | **Tema nuevo** (`<article class="topic">`) dentro del grupo que le corresponde, más su `<li><a href="#id">` en el índice |
+| Detalle de algo que ya está documentado | **`<h2>` nuevo** dentro del tema existente — así entra solo en «En esta página» y en el buscador |
+| Algo que cambia el flujo de punta a punta | Un tema más en el grupo **Recetas**, que es la parte que más se lee |
+| Atajo de teclado nuevo | La tabla del tema `#atajos` |
+
+### Cómo se escribe un tema
+
+```html
+<article class="topic" id="modulo-asunto" data-title="Título corto del tema">
+  <h1>Título del tema</h1>
+  <p class="lead">Una frase que diga qué resuelve.</p>
+
+  <h2 id="modulo-asunto--seccion">Sección</h2>
+  ...
+</article>
+```
+
+- **`data-title`** es lo que aparece en las migas, en anterior/siguiente y en el
+  buscador. Sin él se cae al texto del enlace del índice.
+- **El `id` de cada `<h2>` es `<id-del-tema>--<ancla>`.** El router resuelve el
+  tema cortando por el `--`, así que un `<h2>` con otro prefijo rompe el enlace
+  profundo.
+- **Todo `<pre>` va envuelto en `<div class="codewrap">`**, que es lo que le
+  agrega el botón de copiar.
+- Llamadas: `.note` (dato), `.note tip` (consejo), `.note warn` (advertencia),
+  cada una con su `<span class="lbl">`. Procedimientos con `<ol class="steps">`,
+  tablas dentro de `<div class="tablewrap">`.
+
+### Lo que NO hay que mantener a mano
+
+El orden de los temas, las migas, el anterior/siguiente, «En esta página» y el
+índice del buscador **se derivan del propio índice y del DOM** al cargar la
+página. Alcanza con agregar el `<article>` y su `<li>` en el índice: no hay una
+segunda lista que actualizar. Es a propósito — dos listas que hay que mantener
+en sincronía terminan divergiendo, y acá el síntoma sería un «siguiente» que
+lleva a otro lado.
+
+### Capturas y peticiones externas
+
 - **Las capturas salen de `./scripts/uishot.sh`**, nunca de una instalación
   real: hay que agregar la vista al banco (`frontend/src/uishot.tsx`) con datos
   inventados. Una captura de la app de verdad mete rutas, hosts y nombres de
-  alguien en una página pública.
+  alguien en una página pública. `UISHOT_SCALE=150` sirve para comprobar que la
+  pantalla sigue entrando con el tamaño de letra agrandado.
 - **La página no hace una sola petición externa**: sin CDN, sin fuentes
   remotas, sin analítica. Es la misma promesa que hace el programa, y romperla
-  en su propia vitrina sería la peor forma de romperla. Los colores salen de
-  `frontend/src/styles/globals.css` — si el tema de la app cambia, se copian de
-  ahí.
+  en su propia documentación sería la peor forma de romperla. Los colores salen
+  de `frontend/src/styles/globals.css` — si el tema de la app cambia, se copian
+  de ahí.
 
-- **Al sacar una versión se revisa entera**, no solo lo último que se tocó: es
-  el paso 8 de [releases.md](../specs/releases.md). Por cada entrada que se
-  volcó al CHANGELOG de esa versión hay que preguntarse si cambia lo que el
-  usuario puede hacer; si sí, la página tiene que decir **cómo se usa**, no
-  solo que existe. Y lo que salió publicado deja de estar en el bloque «En
-  desarrollo» del README.
+### Al sacar una versión
+
+Se revisa entera, no solo lo último que se tocó: es el paso 8 de
+[releases.md](../specs/releases.md). Por cada entrada que se volcó al CHANGELOG
+de esa versión hay que preguntarse si cambia lo que el usuario puede hacer; si
+sí, la ayuda tiene que decir **cómo se usa**, no solo que existe. Se actualiza
+también la insignia de versión de la barra (`<span class="ver">`) y la línea del
+pie. Y lo que salió publicado deja de estar en el bloque «En desarrollo» del
+README.
 
 **Por qué es una regla y no una buena costumbre.** El README lo lee quien ya
-decidió mirar el repo; `index.html` lo lee quien todavía no sabe que la
-herramienta existe. Una funcionalidad que no está ahí, para ese lector no
-existe — y es exactamente la que nadie va a usar.
+decidió mirar el repo; `index.html` lo lee quien ya tiene la app y no sabe cómo
+se hace algo — y quien todavía no sabe que la herramienta existe. Una
+funcionalidad que no está ahí, para esos lectores no existe, y es exactamente la
+que nadie va a usar.
 
 ## Releases
 

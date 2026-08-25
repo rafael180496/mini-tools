@@ -559,7 +559,7 @@ export default function NoteEditorTab({
             {/* Barra de la nota */}
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
                 <Icon name="description" size={14} className="shrink-0 text-on-surface-variant" />
-                <span className="min-w-0 flex-1 truncate text-[11px] text-on-surface-variant" title={title}>
+                <span className="min-w-0 flex-1 truncate text-ui-11 text-on-surface-variant" title={title}>
                     {title || 'Sin título'}
                 </span>
 
@@ -572,7 +572,7 @@ export default function NoteEditorTab({
                             ? 'PRIVADA: ningún agente puede leer esta nota, ni por el chat ni por el servidor MCP. Sigue apareciendo en tu grafo y en tus búsquedas. Hacé clic para volver a compartirla.'
                             : 'VISIBLE PARA LA IA (el estado por defecto): los agentes pueden leer el contenido de esta nota si la referenciás o la buscan. Hacé clic para esconderla.'
                     }
-                    className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
+                    className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-ui-11 ${
                         note?.isPrivate
                             ? 'border-outline-variant text-on-surface-variant hover:bg-surface-variant'
                             : 'border-tertiary/50 bg-tertiary/10 text-tertiary'
@@ -632,12 +632,12 @@ export default function NoteEditorTab({
             </div>
 
             {note?.corrupt && (
-                <p className="shrink-0 bg-error-container/40 px-2 py-1 text-[11px] text-error">
+                <p className="shrink-0 bg-error-container/40 px-2 py-1 text-ui-11 text-error">
                     El checksum de esta nota no coincide con su contenido: puede haberse dañado. Se muestra igual para que
                     puedas rescatar lo que quede — al guardarla, el checksum se recalcula.
                 </p>
             )}
-            {error && note && <p className="shrink-0 px-2 py-1 text-[11px] text-error">{error}</p>}
+            {error && note && <p className="shrink-0 px-2 py-1 text-ui-11 text-error">{error}</p>}
 
             {!preview && (
                 <NoteToolbar
@@ -663,7 +663,7 @@ export default function NoteEditorTab({
                 sola porque hay cambios sin guardar: se ofrecen las dos salidas
                 y ninguna se toma por el usuario. */}
             {externalChange && (
-                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-tertiary/10 px-3 py-1.5 text-[11px] text-on-surface">
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-tertiary/10 px-3 py-1.5 text-ui-11 text-on-surface">
                     <Icon name="smart_toy" size={14} className="shrink-0 text-tertiary" />
                     <span className="min-w-0 flex-1">
                         Un agente reescribió esta nota mientras la editabas. Tus cambios sin guardar siguen acá.
@@ -758,7 +758,7 @@ export default function NoteEditorTab({
                                     .map((tag) => (
                                         <span
                                             key={tag}
-                                            className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] text-primary"
+                                            className="rounded-full bg-primary/12 px-2 py-0.5 text-ui-11 text-primary"
                                         >
                                             #{tag.replace(/^#/, '')}
                                         </span>
@@ -780,7 +780,7 @@ export default function NoteEditorTab({
                     />
                     {preview && (
                         <div className="w-full">
-                        <div style={{textAlign: align}} className="max-w-[52rem] pb-24 pl-10 pr-8 pt-4 text-[15px] leading-7 text-on-surface [&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:text-3xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:my-1 [&_p]:my-3 [&_pre]:my-3 [&_ul]:my-3">
+                        <div style={{textAlign: align}} className="max-w-[52rem] pb-24 pl-10 pr-8 pt-4 text-ui-15 leading-7 text-on-surface [&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:text-3xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:my-1 [&_p]:my-3 [&_pre]:my-3 [&_ul]:my-3">
                             <MarkdownPreview
                                 source={content}
                                 // Cada renglón escrito es un renglón leído. En
@@ -819,7 +819,7 @@ export default function NoteEditorTab({
                 {/* Panel de enlaces. Los backlinks son la mitad más útil del
                     grafo: los salientes ya se ven escribiendo, los entrantes son
                     los que uno no recuerda haber puesto. */}
-                <div className="flex w-56 shrink-0 flex-col gap-2 overflow-y-auto border-l border-outline-variant bg-surface-container-low p-2 text-[11px]">
+                <div className="flex w-56 shrink-0 flex-col gap-2 overflow-y-auto border-l border-outline-variant bg-surface-container-low p-2 text-ui-11">
                     <LinkGroup
                         title="Enlaces salientes"
                         hint="Notas que ESTA menciona con [[…]]"
@@ -859,7 +859,7 @@ export default function NoteEditorTab({
             {/* Barra de estado: los dos números que dicen si la nota está
                 conectada al resto y cuánto tiene escrito. Van abajo y en
                 chico, como en cualquier editor de documentos. */}
-            <div className="flex shrink-0 items-center gap-3 border-t border-outline-variant px-3 py-0.5 text-[10px] text-on-surface-variant">
+            <div className="flex shrink-0 items-center gap-3 border-t border-outline-variant px-3 py-0.5 text-ui-10 text-on-surface-variant">
                 <span
                     title="Cuántas notas apuntan a esta con [[…]]. Cero significa que está aislada del resto de tu base de conocimiento."
                     className="flex items-center gap-1"

@@ -116,7 +116,7 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                 </div>
 
                 {error && (
-                    <p className="shrink-0 bg-error-container px-3 py-1 text-[11px] text-on-error-container" title={error}>
+                    <p className="shrink-0 bg-error-container px-3 py-1 text-ui-11 text-on-error-container" title={error}>
                         {error}
                     </p>
                 )}
@@ -126,7 +126,7 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                     <div className="flex w-56 shrink-0 flex-col border-r border-outline-variant">
                         <div className="min-h-0 flex-1 overflow-y-auto p-1">
                             {envs.length === 0 && (
-                                <p className="px-2 py-3 text-[11px] leading-relaxed text-on-surface-variant/70">
+                                <p className="px-2 py-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
                                     Sin entornos todavía. Un entorno guarda los valores que cambian entre dev, pruebas y producción.
                                 </p>
                             )}
@@ -135,7 +135,7 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                                     key={e.id}
                                     onClick={() => select(e)}
                                     title={e.pinnedCollectionId ? 'Anclado a una colección: se elige solo al abrir sus peticiones' : e.name}
-                                    className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] ${
+                                    className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-ui-11 ${
                                         e.id === selectedId ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant'
                                     }`}
                                 >
@@ -147,7 +147,7 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                         <button
                             onClick={() => void create()}
                             title="Crear un entorno nuevo"
-                            className="flex shrink-0 items-center gap-1 border-t border-outline-variant px-2 py-1.5 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                            className="flex shrink-0 items-center gap-1 border-t border-outline-variant px-2 py-1.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name="add" size={13} /> Nuevo entorno
                         </button>
@@ -164,7 +164,7 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                                         setDirty(true)
                                     }}
                                     title="Nombre del entorno, el que se ve en el selector"
-                                    className="min-w-0 flex-1 rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                    className="min-w-0 flex-1 rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                 />
                                 <select
                                     value={pinned}
@@ -173,7 +173,7 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                                         setDirty(true)
                                     }}
                                     title="Anclar este entorno a una colección: al abrir una petición de esa colección se usa este entorno automáticamente, sin importar cuál esté seleccionado. Solo un entorno puede estar anclado a cada colección."
-                                    className="shrink-0 rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                    className="shrink-0 rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                 >
                                     <option value="">Sin anclar</option>
                                     {collections.map((c) => (
@@ -186,7 +186,7 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                                     onClick={() => void save()}
                                     disabled={!dirty}
                                     title={dirty ? 'Guardar los cambios del entorno' : 'No hay cambios sin guardar'}
-                                    className="shrink-0 rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90 disabled:opacity-40"
+                                    className="shrink-0 rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                                 >
                                     Guardar
                                 </button>
@@ -209,13 +209,13 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                                 />
                             </div>
 
-                            <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-[10px] leading-relaxed text-on-surface-variant/70">
+                            <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                                 Estas variables pisan a las de la colección: la colección define el valor por defecto y el entorno lo cambia según dónde estés
                                 probando. Se usan escribiendo <span className="font-mono">{'{{nombre}}'}</span> en la URL, en los headers o en el cuerpo.
                             </p>
                         </div>
                     ) : (
-                        <div className="flex flex-1 items-center justify-center text-[11px] text-on-surface-variant/60">
+                        <div className="flex flex-1 items-center justify-center text-ui-11 text-on-surface-variant/60">
                             Elegí un entorno de la izquierda, o creá uno.
                         </div>
                     )}

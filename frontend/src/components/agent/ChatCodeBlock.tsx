@@ -33,7 +33,7 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel}: Props
 
     return (
         <div className="my-1 overflow-hidden rounded border border-outline-variant bg-surface-container-highest">
-            <div className="flex items-center gap-1.5 border-b border-outline-variant bg-surface-container px-1.5 py-0.5 text-[10px]">
+            <div className="flex items-center gap-1.5 border-b border-outline-variant bg-surface-container px-1.5 py-0.5 text-ui-10">
                 {/* El lenguaje es lo primero: dice de un vistazo si eso es SQL
                     que se puede correr o un pedazo de configuración. */}
                 <span className="font-medium uppercase tracking-wider text-on-surface-variant">
@@ -78,7 +78,7 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel}: Props
                 información, y partir una línea larga en dos desalinea todo lo
                 que venía debajo. Por eso el bloque se desplaza en horizontal en
                 vez de cortar. */}
-            <pre className="overflow-x-auto px-2 py-1.5 font-mono text-[11px] leading-5 text-on-surface">
+            <pre className="overflow-x-auto px-2 py-1.5 font-mono text-ui-11 leading-5 text-on-surface">
                 {code}
             </pre>
         </div>

@@ -5,12 +5,18 @@ import Workspace from './components/Workspace'
 import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackupFirstRun, TryAutoUnlock, CheckForUpdate} from '../wailsjs/go/main/App'
 import {updatecheck} from '../wailsjs/go/models'
 import {useTheme} from './hooks/useTheme'
+import {useUIFontScale} from './hooks/useUIFontScale'
 
 function App() {
     const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
     const [unlocked, setUnlocked] = useState(false)
     const [updateInfo, setUpdateInfo] = useState<updatecheck.Info | null>(null)
     const {theme, toggleTheme} = useTheme()
+    // Acá arriba y no en Workspace, por el mismo motivo que el tema: Workspace
+    // se desmonta al bloquear el vault, y el tamaño de letra tiene que valer
+    // también en la pantalla de desbloqueo — quien no lee la app tampoco lee
+    // el formulario que le pide la clave para poder agrandarla.
+    const {uiFontScale, changeUIFontScale} = useUIFontScale()
 
     useEffect(() => {
         // isInitialized is only set once TryAutoUnlock (the "Recordar
@@ -79,7 +85,16 @@ function App() {
         )
     }
 
-    return frame(<Workspace theme={theme} onToggleTheme={toggleTheme} onLocked={() => setUnlocked(false)} updateInfo={updateInfo} />)
+    return frame(
+        <Workspace
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onLocked={() => setUnlocked(false)}
+            updateInfo={updateInfo}
+            uiFontScale={uiFontScale}
+            onChangeUIFontScale={changeUIFontScale}
+        />,
+    )
 }
 
 export default App

@@ -144,7 +144,7 @@ export default function RedisLuaPanel({connId, onClose}: RedisLuaPanelProps) {
 
                 {result && (
                     <div className="mt-3">
-                        <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wide text-on-surface-variant">
+                        <div className="mb-1 flex items-center gap-2 text-ui-11 uppercase tracking-wide text-on-surface-variant">
                             Resultado
                             {!!result.durationMs && (
                                 <span

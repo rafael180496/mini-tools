@@ -219,7 +219,7 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
                 )}
             </div>
 
-            <p className="px-2 py-0.5 text-[10px] text-on-surface-variant/60">
+            <p className="px-2 py-0.5 text-ui-10 text-on-surface-variant/60">
                 Ctrl+Espacio autocompleta campos y valores · doble-click un campo de un documento para filtrar por él
             </p>
 
@@ -238,7 +238,7 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
                         {docs.map((d, i) => (
                             <div key={i} className="rounded border border-outline-variant bg-surface p-2">
                                 <div className="mb-1 flex items-center gap-2">
-                                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-on-surface-variant" title={docIdLabel(d)}>
+                                    <span className="min-w-0 flex-1 truncate font-mono text-ui-11 text-on-surface-variant" title={docIdLabel(d)}>
                                         {docIdLabel(d)}
                                     </span>
                                     {editing === i ? (

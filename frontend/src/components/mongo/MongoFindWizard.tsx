@@ -112,7 +112,7 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                             <button
                                 onClick={() => setMode('find')}
                                 title="find(): buscar documentos con un filtro, proyección, orden y paginado"
-                                className={`rounded px-2.5 py-0.5 text-[11px] ${
+                                className={`rounded px-2.5 py-0.5 text-ui-11 ${
                                     mode === 'find' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                                 }`}
                             >
@@ -121,7 +121,7 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                             <button
                                 onClick={() => setMode('aggregate')}
                                 title="aggregate(): pipeline de etapas para agrupar, unir con otra colección ($lookup) o reformar documentos — lo que find() no puede hacer"
-                                className={`rounded px-2.5 py-0.5 text-[11px] ${
+                                className={`rounded px-2.5 py-0.5 text-ui-11 ${
                                     mode === 'aggregate' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                                 }`}
                             >
@@ -267,14 +267,14 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
 
                 <div className="border-t border-outline-variant p-3">
                     <div className="mb-1.5 flex items-center justify-between">
-                        <span className="text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">
+                        <span className="text-ui-11 font-medium uppercase tracking-wide text-on-surface-variant">
                             {rawOverride === null ? 'Vista previa' : 'Edición manual'}
                         </span>
                         {rawOverride === null ? (
                             <button
                                 onClick={() => setRawOverride(generated)}
                                 title="Editá la consulta a mano. Al hacerlo, los controles de arriba dejan de sobrescribirla — nada de perder lo que escribiste porque tocaste un campo."
-                                className="flex items-center gap-1 text-[11px] text-primary hover:underline"
+                                className="flex items-center gap-1 text-ui-11 text-primary hover:underline"
                             >
                                 <Icon name="edit" size={13} /> Editar a mano
                             </button>
@@ -282,7 +282,7 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                             <button
                                 onClick={() => setRawOverride(null)}
                                 title="Vuelve a generar la consulta desde los controles. Descarta lo que hayas editado a mano."
-                                className="flex items-center gap-1 text-[11px] text-on-surface-variant hover:text-on-surface"
+                                className="flex items-center gap-1 text-ui-11 text-on-surface-variant hover:text-on-surface"
                             >
                                 <Icon name="undo" size={13} /> Volver al modo visual
                             </button>

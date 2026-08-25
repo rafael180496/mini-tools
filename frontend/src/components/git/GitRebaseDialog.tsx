@@ -99,7 +99,7 @@ export default function GitRebaseDialog({repoId, base, baseLabel, onClose, onDon
                     </button>
                 </div>
 
-                <div className="border-b border-outline-variant bg-error-container/30 px-4 py-2 text-[11px] text-on-surface">
+                <div className="border-b border-outline-variant bg-error-container/30 px-4 py-2 text-ui-11 text-on-surface">
                     <p>
                         Esto <strong>reescribe la historia</strong> desde <span className="font-mono">{baseLabel}</span> en adelante: cada commit
                         recibe un hash nuevo. Si la rama ya está publicada, después vas a necesitar un push forzado.
@@ -119,11 +119,11 @@ export default function GitRebaseDialog({repoId, base, baseLabel, onClose, onDon
                     {actions.map((a, i) => (
                         <div
                             key={a.hash}
-                            className={`mb-1 flex items-center gap-1.5 rounded border px-1.5 py-1 text-[11px] ${
+                            className={`mb-1 flex items-center gap-1.5 rounded border px-1.5 py-1 text-ui-11 ${
                                 a.command === 'drop' ? 'border-error/40 bg-error/5 opacity-60' : 'border-outline-variant bg-surface-container-low/40'
                             }`}
                         >
-                            <span className="w-5 shrink-0 text-center font-mono text-[10px] text-on-surface-variant/60">{i + 1}</span>
+                            <span className="w-5 shrink-0 text-center font-mono text-ui-10 text-on-surface-variant/60">{i + 1}</span>
                             <button
                                 onClick={() => move(i, -1)}
                                 disabled={i === 0}
@@ -154,7 +154,7 @@ export default function GitRebaseDialog({repoId, base, baseLabel, onClose, onDon
                                 ))}
                             </select>
 
-                            <span className="shrink-0 font-mono text-[10px] text-on-surface-variant/70">{a.hash.slice(0, 7)}</span>
+                            <span className="shrink-0 font-mono text-ui-10 text-on-surface-variant/70">{a.hash.slice(0, 7)}</span>
                             <span className={`min-w-0 flex-1 truncate ${a.command === 'drop' ? 'line-through' : ''}`} title={a.subject}>
                                 {a.subject}
                             </span>

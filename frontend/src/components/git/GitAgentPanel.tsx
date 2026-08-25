@@ -112,13 +112,13 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             {/* Agente por defecto. Vacío = preguntar cada vez, que es el
                 default correcto: elegir por el usuario un asistente que
                 consume su cuota no es algo que nadie haya pedido. */}
-            <label className="mb-2 flex items-center gap-2 px-1.5 text-[11px] text-on-surface-variant">
+            <label className="mb-2 flex items-center gap-2 px-1.5 text-ui-11 text-on-surface-variant">
                 Agente por defecto
                 <select
                     value={defaultAgent}
                     onChange={(e) => onSetDefaultAgent(e.target.value)}
                     title="Con qué asistente se abren las sesiones desde este repositorio cuando usás Preguntar. Sin elegir, se pregunta cada vez."
-                    className="rounded border border-outline-variant bg-surface px-1 py-0.5 text-[11px] text-on-surface outline-none focus:border-primary"
+                    className="rounded border border-outline-variant bg-surface px-1 py-0.5 text-ui-11 text-on-surface outline-none focus:border-primary"
                 >
                     <option value="">Preguntar cada vez</option>
                     {installed
@@ -152,7 +152,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
                             className={i.present ? 'shrink-0 text-primary' : 'shrink-0 text-on-surface-variant/60'}
                         />
                         <span className={i.present ? 'text-on-surface' : 'text-on-surface-variant/70'}>{i.file}</span>
-                        <span className="ml-auto shrink-0 text-[10px] text-on-surface-variant">
+                        <span className="ml-auto shrink-0 text-ui-10 text-on-surface-variant">
                             {i.agents.map(agentLabel).join(' · ')}
                             {!i.present && ' — falta'}
                         </span>
@@ -161,7 +161,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             </Section>
 
             {missing.length > 0 && (
-                <p className="mb-2 px-1.5 text-[11px] text-on-surface-variant">
+                <p className="mb-2 px-1.5 text-ui-11 text-on-surface-variant">
                     {missing.length === ctx.instructions.length
                         ? 'Este repositorio no tiene ningún archivo de instrucciones: cualquier agente que abras acá arranca sin contexto del proyecto.'
                         : `Falta${missing.length > 1 ? 'n' : ''} ${missing.map((i) => i.file).join(', ')} — ${missing
@@ -228,7 +228,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             {mcp && <McpSection cfg={mcp} agentLabel={agentLabel} onChanged={reload} />}
 
             {nothing && (
-                <p className="px-1.5 py-2 text-[11px] text-on-surface-variant">
+                <p className="px-1.5 py-2 text-ui-11 text-on-surface-variant">
                     No hay skills, subagentes ni comandos definidos — ni en este repositorio ni en tu carpeta personal.
                 </p>
             )}
@@ -289,21 +289,21 @@ function UsageSection({
                             return plan.known ? (
                                 <span
                                     title={plan.detail || undefined}
-                                    className="shrink-0 rounded-full bg-secondary/15 px-1.5 text-[10px] text-secondary"
+                                    className="shrink-0 rounded-full bg-secondary/15 px-1.5 text-ui-10 text-secondary"
                                 >
                                     {plan.label}
                                 </span>
                             ) : (
                                 <span
                                     title={plan.note}
-                                    className="shrink-0 rounded-full bg-surface-variant px-1.5 text-[10px] text-on-surface-variant"
+                                    className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant"
                                 >
                                     {plan.detail || 'plan desconocido'}
                                 </span>
                             )
                         })()}
                         {a.available && (
-                            <span className="ml-auto shrink-0 text-[11px] text-on-surface-variant" title={`${a.all.total.toLocaleString('es')} tokens en ${a.all.messages.toLocaleString('es')} respuestas`}>
+                            <span className="ml-auto shrink-0 text-ui-11 text-on-surface-variant" title={`${a.all.total.toLocaleString('es')} tokens en ${a.all.messages.toLocaleString('es')} respuestas`}>
                                 {compact(a.all.total)} tokens
                             </span>
                         )}
@@ -321,7 +321,7 @@ function UsageSection({
 
                     {!a.available ? (
                         <>
-                            <p className="mt-0.5 text-[11px] text-on-surface-variant" title={a.source}>
+                            <p className="mt-0.5 text-ui-11 text-on-surface-variant" title={a.source}>
                                 {a.note}
                             </p>
                             {/* Un agente puede no dejar tokens en el disco y sí
@@ -330,7 +330,7 @@ function UsageSection({
                                 se usó todo el día, o no decir nada teniendo el
                                 dato. */}
                             {a.activity && (
-                                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-on-surface-variant">
+                                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-ui-11 text-on-surface-variant">
                                     <span title="Conversaciones registradas por el CLI en esta máquina">
                                         Conversaciones: <span className="text-on-surface">{a.activity.conversations}</span>
                                     </span>
@@ -349,7 +349,7 @@ function UsageSection({
                         </>
                     ) : (
                         <>
-                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-on-surface-variant">
+                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-ui-11 text-on-surface-variant">
                                 <span title={`${a.repo.total.toLocaleString('es')} tokens en ${a.repo.messages.toLocaleString('es')} respuestas sobre este repositorio`}>
                                     Este repo: <span className="text-on-surface">{compact(a.repo.total)}</span>
                                     {a.all.total > 0 && ` (${Math.round((a.repo.total / a.all.total) * 100)}%)`}
@@ -367,18 +367,18 @@ function UsageSection({
 
                             {a.byModel.map((m) => (
                                 <div key={m.key} className="mt-0.5 flex items-center gap-1.5" title={`${m.total.toLocaleString('es')} tokens en ${m.messages.toLocaleString('es')} respuestas`}>
-                                    <span className="w-32 shrink-0 truncate text-[11px] text-on-surface-variant">{m.key}</span>
+                                    <span className="w-32 shrink-0 truncate text-ui-11 text-on-surface-variant">{m.key}</span>
                                     <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-variant">
                                         <span className="block h-full rounded-full bg-primary" style={{width: `${m.percent}%`}} />
                                     </span>
-                                    <span className="w-10 shrink-0 text-right text-[11px] text-on-surface-variant">{m.percent}%</span>
+                                    <span className="w-10 shrink-0 text-right text-ui-11 text-on-surface-variant">{m.percent}%</span>
                                 </div>
                             ))}
                         </>
                     )}
                 </div>
             ))}
-            <p className="px-1.5 text-[10px] leading-4 text-on-surface-variant/70">
+            <p className="px-1.5 text-ui-10 leading-4 text-on-surface-variant/70">
                 Las barras de límite son el porcentaje que calculó el servidor de cada proveedor y que su CLI dejó
                 cacheado en esta máquina: se leen tal cual, con la hora en que se midieron — no son en vivo. Los
                 porcentajes de consumo (por modelo, caché, este repo) son proporciones de lo gastado, no de un tope.
@@ -425,7 +425,7 @@ function McpSection({
     if (cfg.servers.length === 0 && broken.length === 0) {
         return (
             <Section title="Servidores MCP" count={0}>
-                <p className="px-1.5 text-[11px] text-on-surface-variant">
+                <p className="px-1.5 text-ui-11 text-on-surface-variant">
                     Ningún agente tiene servidores MCP configurados para este repositorio. Se miraron{' '}
                     {cfg.files.length} ubicaciones ({cfg.files.filter((f) => f.present).length} existen).
                 </p>
@@ -435,7 +435,7 @@ function McpSection({
 
     return (
         <Section title="Servidores MCP" count={cfg.servers.length}>
-            {error && <p className="px-1.5 py-0.5 text-[11px] text-error">{error}</p>}
+            {error && <p className="px-1.5 py-0.5 text-ui-11 text-error">{error}</p>}
 
             {/* Agregar. Solo aparece si hay al menos un archivo escribible: en
                 una máquina donde no lo hay, un botón que siempre falla es peor
@@ -446,13 +446,13 @@ function McpSection({
                         <button
                             onClick={() => setAddingTo([...writableFiles][0])}
                             title="Agrega un servidor MCP a uno de los archivos de configuración que la app puede escribir"
-                            className="flex items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-[11px] text-on-surface-variant hover:text-on-surface"
+                            className="flex items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:text-on-surface"
                         >
                             <Icon name="add" size={12} />
                             Agregar servidor
                         </button>
                     ) : (
-                        <div className="flex flex-col gap-1 rounded border border-outline-variant bg-surface-container p-1.5 text-[11px]">
+                        <div className="flex flex-col gap-1 rounded border border-outline-variant bg-surface-container p-1.5 text-ui-11">
                             <select
                                 value={addingTo}
                                 onChange={(e) => setAddingTo(e.target.value)}
@@ -534,7 +534,7 @@ function McpSection({
                 </div>
             )}
             {broken.map((f) => (
-                <p key={f.path} className="px-1.5 py-0.5 text-[11px] text-error" title={f.path}>
+                <p key={f.path} className="px-1.5 py-0.5 text-ui-11 text-error" title={f.path}>
                     {f.path}: {f.error}
                 </p>
             ))}
@@ -558,9 +558,9 @@ function McpSection({
                     <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
                             <span className="truncate font-medium text-on-surface">{s.name}</span>
-                            <span className="shrink-0 text-[10px] text-on-surface-variant">{agentLabel(s.agent)}</span>
+                            <span className="shrink-0 text-ui-10 text-on-surface-variant">{agentLabel(s.agent)}</span>
                             {s.scope === 'user' && (
-                                <span className="shrink-0 rounded-full bg-surface-variant px-1.5 text-[10px] text-on-surface-variant">
+                                <span className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant">
                                     personal
                                 </span>
                             )}
@@ -568,17 +568,17 @@ function McpSection({
                                 fuera de la máquina; que se note sin abrir el
                                 tooltip es justamente el punto. */}
                             {s.transport !== 'stdio' && (
-                                <span className="shrink-0 rounded-full bg-tertiary-container px-1.5 text-[10px] text-on-tertiary-container">
+                                <span className="shrink-0 rounded-full bg-tertiary-container px-1.5 text-ui-10 text-on-tertiary-container">
                                     remoto
                                 </span>
                             )}
                         </span>
-                        <span className="block truncate text-[11px] text-on-surface-variant">
+                        <span className="block truncate text-ui-11 text-on-surface-variant">
                             {s.transport === 'stdio' ? `${s.command} ${s.args.join(' ')}`.trim() : s.url}
                         </span>
                         {s.envKeys.length > 0 && (
                             <span
-                                className="block truncate text-[10px] text-on-surface-variant/70"
+                                className="block truncate text-ui-10 text-on-surface-variant/70"
                                 title="Nombres de las variables de entorno que este servidor recibe. Sus valores no salen del backend."
                             >
                                 env: {s.envKeys.join(', ')}
@@ -644,7 +644,7 @@ function Section({
             <button
                 onClick={() => setOpen((v) => !v)}
                 title={open ? 'Plegar esta sección' : `Desplegar — tiene ${count}`}
-                className="mb-0.5 flex w-full items-center gap-1 rounded px-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant hover:bg-surface-container-high"
+                className="mb-0.5 flex w-full items-center gap-1 rounded px-1.5 text-left text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant hover:bg-surface-container-high"
             >
                 <Icon name={open ? 'expand_more' : 'chevron_right'} size={12} className="shrink-0 opacity-70" />
                 {title}
@@ -678,10 +678,10 @@ function EntryRow({
                 <span className="flex items-center gap-1.5">
                     <span className="truncate font-medium text-on-surface">{entry.name}</span>
                     {!isRepo && (
-                        <span className="shrink-0 rounded-full bg-surface-variant px-1.5 text-[10px] text-on-surface-variant">personal</span>
+                        <span className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant">personal</span>
                     )}
                 </span>
-                {entry.description && <span className="block truncate text-[11px] text-on-surface-variant">{entry.description}</span>}
+                {entry.description && <span className="block truncate text-ui-11 text-on-surface-variant">{entry.description}</span>}
             </span>
         </>
     )

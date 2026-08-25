@@ -748,7 +748,7 @@ export default function AgentChat({
                 if (attachFromClipboard(e.dataTransfer)) e.preventDefault()
             }}
         >
-            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-[11px]">
+            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-ui-11">
                 {/* El nombre del agente NO se repite acá: ya está en el
                     selector del encabezado del panel, una línea más arriba.
                     Repetirlo gastaba la línea más visible del chat en un dato
@@ -784,7 +784,7 @@ export default function AgentChat({
                     <button
                         onClick={() => onValidateWithAnother(agentId)}
                         title="Abre un chat con OTRO agente para que revise los cambios sin commitear. Corre en paralelo: este chat sigue como está."
-                        className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="fact_check" size={12} />
                         Validar con otro
@@ -819,7 +819,7 @@ export default function AgentChat({
             </div>
 
             {search !== null && (
-                <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+                <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
                     <Icon name="search" size={13} className="shrink-0 text-on-surface-variant" />
                     <input
                         autoFocus
@@ -849,7 +849,7 @@ export default function AgentChat({
 
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-xs">
                 {turns.length === 0 && (
-                    <div className="flex flex-col items-center gap-2 p-4 text-center text-[11px] text-on-surface-variant">
+                    <div className="flex flex-col items-center gap-2 p-4 text-center text-ui-11 text-on-surface-variant">
                         <p>
                             {context.kind !== 'none' && context.label ? (
                                 <>
@@ -877,7 +877,7 @@ export default function AgentChat({
                                         inputRef.current?.focus()
                                     }}
                                     title="Escribe esto en la caja de mensaje. Podés editarlo antes de mandarlo."
-                                    className="rounded-full border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                    className="rounded-full border border-outline-variant px-2 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                 >
                                     {st}
                                 </button>
@@ -892,7 +892,7 @@ export default function AgentChat({
 
                 {visibleTurns.map(({t, i}) => (
                     <div key={i} className={`group mb-2 ${t.role === 'user' ? 'text-on-surface' : ''}`}>
-                        <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wider text-on-surface-variant">
+                        <div className="mb-0.5 flex items-center gap-1 text-ui-10 uppercase tracking-wider text-on-surface-variant">
                             <Icon name={t.role === 'user' ? 'person' : 'smart_toy'} size={11} />
                             {t.role === 'user' ? 'Vos' : agentLabel}
 
@@ -949,7 +949,7 @@ export default function AgentChat({
                             secuencia y no el argumento entero. */}
                         {t.tools.map((tool, j) => (
                             <details key={j} className="mb-1 rounded border border-outline-variant bg-surface-container px-1.5 py-0.5">
-                                <summary className="flex cursor-pointer items-center gap-1.5 text-[11px]">
+                                <summary className="flex cursor-pointer items-center gap-1.5 text-ui-11">
                                     <Icon name="build" size={11} className="shrink-0 text-on-surface-variant" />
                                     <span className="shrink-0 font-medium text-on-surface">{tool.name}</span>
                                     {tool.summary && (
@@ -958,12 +958,12 @@ export default function AgentChat({
                                         </span>
                                     )}
                                     {tool.detail && (
-                                        <span className="shrink-0 rounded bg-surface-variant px-1 text-[10px] text-on-surface-variant">
+                                        <span className="shrink-0 rounded bg-surface-variant px-1 text-ui-10 text-on-surface-variant">
                                             {tool.detail}
                                         </span>
                                     )}
                                 </summary>
-                                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words text-[10px] text-on-surface-variant">
+                                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words text-ui-10 text-on-surface-variant">
                                     {tool.input}
                                 </pre>
                             </details>
@@ -1014,11 +1014,11 @@ export default function AgentChat({
                             </div>
                         )}
 
-                        {t.error && <p className="mt-0.5 rounded bg-error-container/40 px-2 py-1 text-[11px] text-error">{t.error}</p>}
+                        {t.error && <p className="mt-0.5 rounded bg-error-container/40 px-2 py-1 text-ui-11 text-error">{t.error}</p>}
 
                         {t.usage && (
                             <p
-                                className="mt-0.5 text-[10px] text-on-surface-variant"
+                                className="mt-0.5 text-ui-10 text-on-surface-variant"
                                 title="Tokens de este turno, informados por el propio CLI"
                             >
                                 {t.usage.total.toLocaleString('es')} tokens · {t.usage.output.toLocaleString('es')} de salida
@@ -1043,7 +1043,7 @@ export default function AgentChat({
                     "tarda" de "se colgó", que es la duda que hace cancelar y
                     volver a empezar sin necesidad. */}
                 {busy && (
-                    <div className="flex items-center gap-2 px-1 py-1.5 text-[11px] text-on-surface-variant">
+                    <div className="flex items-center gap-2 px-1 py-1.5 text-ui-11 text-on-surface-variant">
                         <span className="flex shrink-0 items-end gap-0.5" aria-hidden>
                             {[0, 1, 2].map((i) => (
                                 <span
@@ -1073,7 +1073,7 @@ export default function AgentChat({
 
             {working?.text.trim() && (
                 <details className="shrink-0 border-t border-outline-variant px-1.5 pt-1">
-                    <summary className="flex cursor-pointer items-center gap-1.5 text-[10px]">
+                    <summary className="flex cursor-pointer items-center gap-1.5 text-ui-10">
                         <Icon
                             name={attachWorking ? 'attach_file' : 'block'}
                             size={11}
@@ -1098,7 +1098,7 @@ export default function AgentChat({
                             {attachWorking ? 'adjunto' : 'sin adjuntar'}
                         </button>
                     </summary>
-                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-[10px] text-on-surface-variant">
+                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-ui-10 text-on-surface-variant">
                         {working.text}
                     </pre>
                 </details>
@@ -1113,7 +1113,7 @@ export default function AgentChat({
                     {resolvedRefs.map((r) => (
                         <details
                             key={r.raw}
-                            className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                            className={`rounded border px-1.5 py-0.5 text-ui-10 ${
                                 r.err
                                     ? 'border-error/40 bg-error-container/20'
                                     : 'border-outline-variant bg-surface-container'
@@ -1136,7 +1136,7 @@ export default function AgentChat({
                                 )}
                             </summary>
                             {!r.err && (
-                                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[10px] text-on-surface-variant">
+                                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-ui-10 text-on-surface-variant">
                                     {r.body}
                                 </pre>
                             )}
@@ -1153,7 +1153,7 @@ export default function AgentChat({
                     {queue.map((q, i) => (
                         <div
                             key={i}
-                            className="flex items-start gap-1.5 rounded border border-outline-variant bg-surface-container px-1.5 py-1 text-[10px] text-on-surface-variant"
+                            className="flex items-start gap-1.5 rounded border border-outline-variant bg-surface-container px-1.5 py-1 text-ui-10 text-on-surface-variant"
                         >
                             <Icon name="schedule_send" size={11} className="mt-0.5 shrink-0 text-primary" />
                             <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{q}</span>
@@ -1167,7 +1167,7 @@ export default function AgentChat({
                         </div>
                     ))}
                     {queueHeld && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-tertiary">
+                        <div className="flex items-center gap-1.5 text-ui-10 text-tertiary">
                             <Icon name="warning" size={11} className="shrink-0" />
                             <span className="min-w-0 flex-1">
                                 La cola quedó esperando: el turno anterior falló o lo cortaste.
@@ -1190,7 +1190,7 @@ export default function AgentChat({
                         <span
                             key={path}
                             title={`${path} — se le pasa al agente por su ruta; el archivo vive en los datos de la app, no en el repositorio`}
-                            className="flex items-center gap-1 rounded border border-outline-variant bg-surface-container px-1.5 py-0.5 text-[10px] text-on-surface-variant"
+                            className="flex items-center gap-1 rounded border border-outline-variant bg-surface-container px-1.5 py-0.5 text-ui-10 text-on-surface-variant"
                         >
                             <Icon name="image" size={11} className="shrink-0 text-primary" />
                             {path.split('/').pop()}
@@ -1209,7 +1209,7 @@ export default function AgentChat({
             {/* Controles del turno. Van pegados a la caja de texto y no en un
                 menú escondido porque cambian lo que el agente TIENE PERMITIDO
                 hacer: es lo último que hay que mirar antes de mandar. */}
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-outline-variant px-1.5 pt-1 text-[11px]">
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-outline-variant px-1.5 pt-1 text-ui-11">
                 <select
                     value={mode}
                     onChange={(e) => {
@@ -1356,7 +1356,7 @@ export default function AgentChat({
                 con eso. Va arriba de la caja de texto porque es lo que hay que
                 mirar antes de seguir pidiéndole cosas. */}
             {touched !== null && (
-                <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant bg-surface-container-high px-2 py-1 text-[11px]">
+                <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant bg-surface-container-high px-2 py-1 text-ui-11">
                     <Icon name="edit_note" size={13} className="shrink-0 text-primary" />
                     <span className="min-w-0 flex-1 truncate text-on-surface-variant">
                         El agente dejó <span className="text-on-surface">{touched}</span> archivo{touched === 1 ? '' : 's'} modificado

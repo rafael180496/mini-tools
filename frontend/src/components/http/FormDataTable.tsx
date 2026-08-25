@@ -45,9 +45,9 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
 
     return (
         <div className="min-w-0 overflow-x-auto">
-            <table className="w-full min-w-[520px] table-fixed border-collapse text-[11px]">
+            <table className="w-full min-w-[520px] table-fixed border-collapse text-ui-11">
                 <thead>
-                    <tr className="text-left text-[10px] uppercase tracking-wider text-on-surface-variant/60">
+                    <tr className="text-left text-ui-10 uppercase tracking-wider text-on-surface-variant/60">
                         <th className="w-8 px-2 py-1 font-medium"></th>
                         <th className="w-[28%] px-2 py-1 font-medium">Key</th>
                         <th className="w-20 px-2 py-1 font-medium">Tipo</th>
@@ -77,7 +77,7 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                         value={row.key}
                                         onChange={(e) => update(i, {key: e.target.value, enabled: true})}
                                         placeholder={ghost ? 'campo' : ''}
-                                        className="w-full bg-transparent font-mono text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                                        className="w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                     />
                                 </td>
                                 <td className="px-2 py-0.5">
@@ -86,7 +86,7 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                             value={row.type}
                                             onChange={(e) => update(i, {type: e.target.value, value: ''})}
                                             title="Texto manda el valor tal cual; Archivo sube el contenido del archivo elegido."
-                                            className="w-full rounded bg-transparent text-[11px] text-on-surface-variant outline-none focus:ring-1 focus:ring-primary"
+                                            className="w-full rounded bg-transparent text-ui-11 text-on-surface-variant outline-none focus:ring-1 focus:ring-primary"
                                         >
                                             <option value="text">Texto</option>
                                             <option value="file">Archivo</option>
@@ -98,7 +98,7 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                         <button
                                             onClick={() => void pick(i)}
                                             title={row.value || 'Elegir un archivo del disco. Se guarda la ruta, no el contenido: el archivo se lee recién al enviar.'}
-                                            className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left font-mono text-[11px] text-on-surface hover:bg-surface-variant"
+                                            className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left font-mono text-ui-11 text-on-surface hover:bg-surface-variant"
                                         >
                                             <Icon name="attach_file" size={12} className="shrink-0 opacity-60" />
                                             <span className="truncate">{row.value ? baseName(row.value) : 'Elegir archivo…'}</span>
@@ -108,7 +108,7 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                             value={row.value}
                                             onChange={(e) => update(i, {value: e.target.value, enabled: true})}
                                             placeholder={ghost ? 'valor' : ''}
-                                            className="w-full bg-transparent font-mono text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                                            className="w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                         />
                                     )}
                                 </td>

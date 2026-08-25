@@ -78,7 +78,7 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
                       ? 'Vuelve a preguntarle al CLI cuánto queda de cada límite. No consume cuota.'
                       : 'Le pregunta al CLI del agente cuánto queda de cada límite (lo mismo que /usage dentro de su sesión). Tarda unos segundos y no consume cuota.'
             }
-            className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-[10px] text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+            className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-10 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
         >
             {querying ? (
                 <span aria-hidden className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent border-primary" />
@@ -94,11 +94,11 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
     if (!limits.known || limits.windows.length === 0) {
         return (
             <div className="mt-1">
-                <p className="flex items-start gap-1 text-[10px] leading-4 text-on-surface-variant/70" title={limits.source}>
+                <p className="flex items-start gap-1 text-ui-10 leading-4 text-on-surface-variant/70" title={limits.source}>
                     <Icon name="help" size={11} className="mt-px shrink-0" />
                     <span>{limits.note || 'Este agente no publica su límite en el disco.'}</span>
                 </p>
-                {queryError && <p className="mt-0.5 text-[10px] leading-4 text-error">{queryError}</p>}
+                {queryError && <p className="mt-0.5 text-ui-10 leading-4 text-error">{queryError}</p>}
                 {askButton && <div className="mt-1">{askButton}</div>}
             </div>
         )
@@ -114,7 +114,7 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
                         w.active ? '. Es la ventana que manda ahora mismo: la primera que corta el trabajo si se llena.' : ''
                     }${w.detail ? `\n\n${w.detail}` : ''}`}
                 >
-                    <span className={`w-44 shrink-0 truncate text-[11px] ${w.active ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+                    <span className={`w-44 shrink-0 truncate text-ui-11 ${w.active ? 'text-on-surface' : 'text-on-surface-variant'}`}>
                         {w.active && <span aria-hidden className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-secondary align-middle" />}
                         {w.label}
                     </span>
@@ -124,14 +124,14 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
                     {/* Redondear a cero un consumo real diría que no se usó
                         nada. Debajo del 1% se muestra "<1%" y el valor exacto
                         queda en el tooltip de la fila. */}
-                    <span className="w-10 shrink-0 text-right text-[11px] text-on-surface">
+                    <span className="w-10 shrink-0 text-right text-ui-11 text-on-surface">
                         {w.percent > 0 && w.percent < 1 ? '<1%' : `${Math.round(w.percent)}%`}
                     </span>
                 </div>
             ))}
 
             <div className="mt-0.5 flex items-center gap-2">
-            <p className="min-w-0 truncate text-[10px] text-on-surface-variant/70" title={`De dónde salió este dato: ${limits.source}`}>
+            <p className="min-w-0 truncate text-ui-10 text-on-surface-variant/70" title={`De dónde salió este dato: ${limits.source}`}>
                 {measuredLabel(limits.measuredAt)}
                 {limits.plan && ` · plan ${limits.plan}`}
                 {limits.windows.some((w) => w.resetsAt) && ` · ${resetLabel(limits.windows.find((w) => w.active && w.resetsAt)?.resetsAt ?? limits.windows.find((w) => w.resetsAt)!.resetsAt)}`}
@@ -143,8 +143,8 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
                 y GPT": sin esta línea, esa fila se lee como consumo de otra
                 cuenta —la de Claude Code o la de Codex— en vez de como el plan
                 de Antigravity repartido entre los modelos que sirve. */}
-            {limits.note && <p className="mt-0.5 text-[10px] leading-4 text-on-surface-variant/70">{limits.note}</p>}
-            {queryError && <p className="mt-0.5 text-[10px] leading-4 text-error">{queryError}</p>}
+            {limits.note && <p className="mt-0.5 text-ui-10 leading-4 text-on-surface-variant/70">{limits.note}</p>}
+            {queryError && <p className="mt-0.5 text-ui-10 leading-4 text-error">{queryError}</p>}
         </div>
     )
 }

@@ -72,7 +72,7 @@ export default function LocalTerminalTab({
         // franja angosta pegada a la izquierda.
         <div className="flex h-full min-h-0 w-full min-w-0 flex-1">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
                 {/* El nombre del intérprete NO se repite acá: la barra del
                     propio widget, justo debajo, ya lo muestra con su indicador
                     de "viva". Esta fila es solo lo que agrega el módulo SSH

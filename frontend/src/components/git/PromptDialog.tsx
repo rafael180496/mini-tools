@@ -50,9 +50,9 @@ export default function PromptDialog({
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
             <div className="w-96 rounded-xl border border-outline-variant bg-surface-container-high p-6 shadow-lg">
                 <h2 className="text-sm font-medium text-on-surface">{title}</h2>
-                {description && <p className="mt-2 text-[11px] leading-relaxed text-on-surface-variant">{description}</p>}
+                {description && <p className="mt-2 text-ui-11 leading-relaxed text-on-surface-variant">{description}</p>}
 
-                <label className="mt-3 block text-[11px] text-on-surface-variant">{label}</label>
+                <label className="mt-3 block text-ui-11 text-on-surface-variant">{label}</label>
                 <input
                     value={value}
                     autoFocus
@@ -70,7 +70,7 @@ export default function PromptDialog({
 
                 {secondLabel && (
                     <>
-                        <label className="mt-3 block text-[11px] text-on-surface-variant">{secondLabel}</label>
+                        <label className="mt-3 block text-ui-11 text-on-surface-variant">{secondLabel}</label>
                         <textarea
                             value={second}
                             rows={3}

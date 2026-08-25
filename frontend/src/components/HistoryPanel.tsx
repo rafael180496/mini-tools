@@ -97,13 +97,13 @@ export default function HistoryPanel({entries, loading, error, onRefresh, onClea
                                         className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-left hover:bg-surface-variant"
                                     >
                                         <Icon name={style.icon} size={14} className={`shrink-0 ${style.className}`} filled />
-                                        <span className="w-36 shrink-0 whitespace-nowrap text-[11px] text-on-surface-variant">
+                                        <span className="w-36 shrink-0 whitespace-nowrap text-ui-11 text-on-surface-variant">
                                             {formatTimestamp(e.executedAt)}
                                         </span>
                                         <span className="min-w-0 flex-1 truncate font-mono text-xs text-on-surface">
                                             {e.sqlText.replace(/\s+/g, ' ')}
                                         </span>
-                                        <span className="shrink-0 whitespace-nowrap text-[11px] text-on-surface-variant">
+                                        <span className="shrink-0 whitespace-nowrap text-ui-11 text-on-surface-variant">
                                             {e.status === 'done' ? `${e.rowsAffected} filas · ${e.durationMs}ms` : e.status}
                                         </span>
                                     </button>

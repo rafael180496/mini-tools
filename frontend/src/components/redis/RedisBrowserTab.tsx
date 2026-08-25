@@ -163,7 +163,7 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                         </button>
                     </div>
                 )}
-                {statusMessage && <p className="border-b border-outline-variant px-2 py-1 text-[11px] text-on-surface-variant">{statusMessage}</p>}
+                {statusMessage && <p className="border-b border-outline-variant px-2 py-1 text-ui-11 text-on-surface-variant">{statusMessage}</p>}
                 <div className="flex items-center gap-1 border-b border-outline-variant px-2 py-1">
                     <button
                         onClick={() => {

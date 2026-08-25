@@ -44,9 +44,9 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
 
     return (
         <div className="min-w-0 overflow-x-auto">
-            <table className="w-full min-w-[460px] table-fixed border-collapse text-[11px]">
+            <table className="w-full min-w-[460px] table-fixed border-collapse text-ui-11">
                 <thead>
-                    <tr className="text-left text-[10px] uppercase tracking-wider text-on-surface-variant/60">
+                    <tr className="text-left text-ui-10 uppercase tracking-wider text-on-surface-variant/60">
                         <th className="w-8 px-2 py-1 font-medium"></th>
                         <th className="w-[30%] px-2 py-1 font-medium">Variable</th>
                         <th className="px-2 py-1 font-medium">Valor</th>
@@ -79,7 +79,7 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
                                         onChange={(e) => update(i, {key: e.target.value, enabled: true})}
                                         placeholder={ghost ? 'HOST' : ''}
                                         title="Nombre a usar entre llaves dobles en la petición"
-                                        className="w-full bg-transparent font-mono text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                                        className="w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                     />
                                 </td>
                                 <td className="px-2 py-0.5">
@@ -90,7 +90,7 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
                                             onChange={(e) => update(i, {value: e.target.value, enabled: true})}
                                             placeholder={ghost ? 'http://localhost:3000' : ''}
                                             title={hidden ? 'Oculto por ser secreto. Usá el ojo para verlo.' : undefined}
-                                            className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                                            className="min-w-0 flex-1 bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                         />
                                         {row.secret && !ghost && (
                                             <button

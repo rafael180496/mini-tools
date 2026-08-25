@@ -45,6 +45,10 @@ interface SidebarProps {
     // avisa: es el lugar donde ya está escrita la versión que se está
     // usando, así que es donde la comparación tiene sentido.
     updateAvailable: string | null
+    // Nombre del archivo que se va a descargar al hacer clic en el aviso
+    // ("mini-tools-v2.4.0.dmg"). null cuando no se pudo determinar y el clic
+    // lleva a la página del release en vez de al archivo.
+    updateDownloadName: string | null
     onOpenRepo: () => void
 }
 
@@ -80,7 +84,15 @@ function HelpButton({compact}: {compact?: boolean}) {
 // clásico —y el mejor para la versión, que es un dato que se consulta una
 // vez cada tanto y nunca se busca arriba de todo—, además de darle un final
 // a una columna que si no termina en el vacío.
-function SidebarFooter({updateAvailable, onOpenRepo}: {updateAvailable: string | null; onOpenRepo: () => void}) {
+function SidebarFooter({
+    updateAvailable,
+    updateDownloadName,
+    onOpenRepo,
+}: {
+    updateAvailable: string | null
+    updateDownloadName: string | null
+    onOpenRepo: () => void
+}) {
     const [version, setVersion] = useState('')
 
     useEffect(() => {
@@ -100,12 +112,16 @@ function SidebarFooter({updateAvailable, onOpenRepo}: {updateAvailable: string |
             <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant px-3 py-2">
                 <button
                     onClick={onOpenRepo}
-                    title={`Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para abrir el repositorio en el navegador y descargarla`}
+                    title={
+                        updateDownloadName
+                            ? `Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para descargar ${updateDownloadName}`
+                            : `Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para abrir su página de descarga`
+                    }
                     className="flex min-w-0 flex-1 items-center gap-2 text-left transition-colors hover:opacity-80"
                 >
                     <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
-                    <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-on-surface-variant">mini-tools</span>
-                    <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-primary">
+                    <span className="min-w-0 flex-1 truncate text-ui-11 font-medium text-on-surface-variant">mini-tools</span>
+                    <span className="flex shrink-0 items-center gap-1 font-mono text-ui-10 text-primary">
                         <Icon name="new_releases" size={12} />
                         v{updateAvailable}
                     </span>
@@ -120,19 +136,27 @@ function SidebarFooter({updateAvailable, onOpenRepo}: {updateAvailable: string |
             <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
             <span
                 title={`mini-tools ${label} — la versión instalada en este equipo`}
-                className="min-w-0 flex-1 truncate text-[11px] font-medium text-on-surface-variant"
+                className="min-w-0 flex-1 truncate text-ui-11 font-medium text-on-surface-variant"
             >
                 mini-tools
             </span>
             <HelpButton />
-            <span className="shrink-0 font-mono text-[10px] tabular-nums text-on-surface-variant/50">{label}</span>
+            <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/50">{label}</span>
         </div>
     )
 }
 
 // La versión colapsada del pie: solo el logo, con todo lo demás en el
 // tooltip. Mismo dato, mismo comportamiento al haber actualización.
-function SidebarFooterMark({updateAvailable, onOpenRepo}: {updateAvailable: string | null; onOpenRepo: () => void}) {
+function SidebarFooterMark({
+    updateAvailable,
+    updateDownloadName,
+    onOpenRepo,
+}: {
+    updateAvailable: string | null
+    updateDownloadName: string | null
+    onOpenRepo: () => void
+}) {
     const [version, setVersion] = useState('')
 
     useEffect(() => {
@@ -146,7 +170,9 @@ function SidebarFooterMark({updateAvailable, onOpenRepo}: {updateAvailable: stri
             onClick={updateAvailable ? onOpenRepo : undefined}
             title={
                 updateAvailable
-                    ? `mini-tools v${version || '—'} — hay una v${updateAvailable} disponible, clic para abrir el repositorio`
+                    ? updateDownloadName
+                        ? `mini-tools v${version || '—'} — hay una v${updateAvailable} disponible, clic para descargar ${updateDownloadName}`
+                        : `mini-tools v${version || '—'} — hay una v${updateAvailable} disponible, clic para abrir su página de descarga`
                     : `mini-tools ${version ? `v${version}` : '—'} — la versión instalada en este equipo`
             }
             className={`relative flex h-9 w-full items-center justify-center border-t border-outline-variant ${
@@ -159,7 +185,7 @@ function SidebarFooterMark({updateAvailable, onOpenRepo}: {updateAvailable: stri
     )
 }
 
-export default function Sidebar({modules, activeModule, onSelectModule, collapsed, onToggleCollapsed, filter, onFilterChange, bodies, width, onStartResize, updateAvailable, onOpenRepo}: SidebarProps) {
+export default function Sidebar({modules, activeModule, onSelectModule, collapsed, onToggleCollapsed, filter, onFilterChange, bodies, width, onStartResize, updateAvailable, updateDownloadName, onOpenRepo}: SidebarProps) {
     const active = modules.find((m) => m.id === activeModule) ?? modules[0]
 
     if (collapsed) {
@@ -194,7 +220,7 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
                     {/* La ayuda también acá: colapsada es cuando menos pistas
                         hay en pantalla, que es justo cuando más se busca. */}
                     <HelpButton compact />
-                    <SidebarFooterMark updateAvailable={updateAvailable} onOpenRepo={onOpenRepo} />
+                    <SidebarFooterMark updateAvailable={updateAvailable} updateDownloadName={updateDownloadName} onOpenRepo={onOpenRepo} />
                 </div>
             </aside>
         )
@@ -263,7 +289,7 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
                 </div>
             ))}
 
-            <SidebarFooter updateAvailable={updateAvailable} onOpenRepo={onOpenRepo} />
+            <SidebarFooter updateAvailable={updateAvailable} updateDownloadName={updateDownloadName} onOpenRepo={onOpenRepo} />
 
             {/* Tirador de ancho. Va superpuesto sobre el borde derecho y no
                 como una columna más del flex: una columna propia correría el

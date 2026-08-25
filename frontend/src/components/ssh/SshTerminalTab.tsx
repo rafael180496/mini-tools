@@ -389,7 +389,7 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
         <div className="flex h-full min-h-0 w-full">
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 {envStyle && (
-                    <div className={`flex shrink-0 items-center gap-2 border-b px-3 py-1 text-[11px] font-medium ${envStyle.banner}`}>
+                    <div className={`flex shrink-0 items-center gap-2 border-b px-3 py-1 text-ui-11 font-medium ${envStyle.banner}`}>
                         <span className={`h-2 w-2 shrink-0 rounded-full ${envStyle.dot}`} />
                         {envStyle.label}
                         {envStyle.id === 'prod' && (

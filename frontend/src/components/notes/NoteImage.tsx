@@ -29,7 +29,7 @@ export default function NoteImage({assetId, alt}: {assetId: string; alt: string}
 
     if (failed) {
         return (
-            <span className="inline-block rounded border border-dashed border-error/60 px-2 py-1 text-[11px] text-error">
+            <span className="inline-block rounded border border-dashed border-error/60 px-2 py-1 text-ui-11 text-error">
                 {alt || 'imagen'} — no se pudo cargar
             </span>
         )
@@ -38,7 +38,7 @@ export default function NoteImage({assetId, alt}: {assetId: string; alt: string}
         // Marco del mismo aire que la imagen, no un hueco: que el texto no
         // salte cuando termina de descifrarse.
         return (
-            <span className="inline-block rounded border border-dashed border-outline-variant px-8 py-6 text-[11px] text-on-surface-variant">
+            <span className="inline-block rounded border border-dashed border-outline-variant px-8 py-6 text-ui-11 text-on-surface-variant">
                 {alt || 'imagen'}
             </span>
         )

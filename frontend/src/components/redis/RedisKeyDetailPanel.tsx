@@ -482,7 +482,7 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                                         </button>
                                     </div>
                                     {formatError(value?.stringVal ?? '', format) && (
-                                        <p className="text-[11px] text-tertiary">{formatError(value?.stringVal ?? '', format)}</p>
+                                        <p className="text-ui-11 text-tertiary">{formatError(value?.stringVal ?? '', format)}</p>
                                     )}
                                     <pre className="flex-1 whitespace-pre-wrap break-all">{formatValue(value?.stringVal ?? '', format)}</pre>
                                 </div>
@@ -719,7 +719,7 @@ function AddRow({
                 onClick={onAdd}
                 disabled={disabled}
                 title={title}
-                className="shrink-0 rounded bg-primary px-2 py-0.5 text-[11px] text-on-primary disabled:opacity-40"
+                className="shrink-0 rounded bg-primary px-2 py-0.5 text-ui-11 text-on-primary disabled:opacity-40"
             >
                 Agregar
             </button>

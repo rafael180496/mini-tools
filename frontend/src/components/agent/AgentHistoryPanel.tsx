@@ -129,7 +129,7 @@ export default function AgentHistoryPanel({
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder={`Buscar entre ${chats.length} conversaciones…`}
                         title="Busca por el título de la conversación o por el nombre de la conexión, repositorio o nota desde donde se abrió"
-                        className="min-w-0 flex-1 bg-transparent py-0.5 text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/60"
+                        className="min-w-0 flex-1 bg-transparent py-0.5 text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/60"
                     />
                     {query && (
                         <button
@@ -145,7 +145,7 @@ export default function AgentHistoryPanel({
                     <button
                         onClick={() => setOnlyKind(null)}
                         title={`Estás viendo solo las conversaciones de ${GROUPS.find((g) => g.kind === onlyKind)?.label.toLowerCase() ?? 'este módulo'}. Hacé clic para ver todas.`}
-                        className="flex shrink-0 items-center gap-1 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary"
+                        className="flex shrink-0 items-center gap-1 rounded bg-primary/15 px-1.5 py-0.5 text-ui-10 text-primary"
                     >
                         <Icon name={CONTEXT_ICONS[onlyKind]} size={11} />
                         Solo este módulo
@@ -163,7 +163,7 @@ export default function AgentHistoryPanel({
                             ? 'Agrupado por módulo (de dónde salió cada conversación). Hacé clic para agrupar por agente.'
                             : 'Agrupado por agente. Hacé clic para agrupar por módulo.'
                     }
-                    className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-[10px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-10 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name={groupBy === 'module' ? 'category' : 'smart_toy'} size={11} />
                     {groupBy === 'module' ? 'Módulo' : 'Agente'}
@@ -179,7 +179,7 @@ export default function AgentHistoryPanel({
 
             <div className="min-h-0 flex-1 overflow-y-auto pb-1">
                 {total === 0 && (
-                    <p className="px-3 py-2 text-[11px] text-on-surface-variant">
+                    <p className="px-3 py-2 text-ui-11 text-on-surface-variant">
                         {chats.length === 0
                             ? 'Todavía no hay conversaciones. Una entra al historial con su primer mensaje.'
                             : `Ninguna coincide con «${query}».`}
@@ -200,12 +200,12 @@ export default function AgentHistoryPanel({
                                     })
                                 }
                                 title={`${g.items.length} ${g.items.length === 1 ? 'conversación' : 'conversaciones'} · ${g.label}`}
-                                className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-[10px] font-medium uppercase tracking-wider text-on-surface-variant hover:bg-surface-variant"
+                                className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-ui-10 font-medium uppercase tracking-wider text-on-surface-variant hover:bg-surface-variant"
                             >
                                 <Icon name={isCollapsed ? 'chevron_right' : 'expand_more'} size={12} className="shrink-0" />
                                 <Icon name={g.icon} size={12} className="shrink-0" />
                                 {g.label}
-                                <span className="ml-auto rounded-full bg-surface-variant px-1.5 text-[10px] normal-case tracking-normal">
+                                <span className="ml-auto rounded-full bg-surface-variant px-1.5 text-ui-10 normal-case tracking-normal">
                                     {g.items.length}
                                 </span>
                             </button>
@@ -223,7 +223,7 @@ export default function AgentHistoryPanel({
                                         // principal —abrir— es obvia.
                                         <div
                                             key={c.id}
-                                            className="group flex items-center gap-1.5 py-1 pl-7 pr-2 text-[11px] hover:bg-surface-container-high"
+                                            className="group flex items-center gap-1.5 py-1 pl-7 pr-2 text-ui-11 hover:bg-surface-container-high"
                                         >
                                             <button
                                                 onClick={() => onOpen(c)}

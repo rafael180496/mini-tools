@@ -597,7 +597,7 @@ export default function GitFileEditor({
                             >
                                 <Icon name="description" size={12} className="shrink-0 text-on-surface-variant" />
                                 <span className="shrink-0">{path.split('/').pop()}</span>
-                                <span className="min-w-0 flex-1 truncate text-[10px] text-on-surface-variant/70">{path}</span>
+                                <span className="min-w-0 flex-1 truncate text-ui-10 text-on-surface-variant/70">{path}</span>
                                 {dirtyPaths.has(path) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
                             </button>
                         ))}
@@ -656,7 +656,7 @@ export default function GitFileEditor({
                                     {node.dir && fileStatus.dirs.has(node.path) && (
                                         <span
                                             title={`${fileStatus.dirs.get(node.path)} archivo(s) con cambios acá adentro`}
-                                            className="shrink-0 rounded-full bg-tertiary/20 px-1 font-mono text-[10px] text-tertiary"
+                                            className="shrink-0 rounded-full bg-tertiary/20 px-1 font-mono text-ui-10 text-tertiary"
                                         >
                                             {fileStatus.dirs.get(node.path)}
                                         </span>
@@ -668,7 +668,7 @@ export default function GitFileEditor({
                                     {!node.dir && fileStatus.byPath.get(node.path) && (
                                         <span
                                             title={statusTitle(fileStatus.byPath.get(node.path))}
-                                            className={`shrink-0 font-mono text-[10px] ${statusColor(fileStatus.byPath.get(node.path))}`}
+                                            className={`shrink-0 font-mono text-ui-10 ${statusColor(fileStatus.byPath.get(node.path))}`}
                                         >
                                             {fileStatus.byPath.get(node.path)}
                                         </span>
@@ -680,12 +680,12 @@ export default function GitFileEditor({
                             ))}
 
                         {searchResults && searchResults.total > searchResults.rows.length && (
-                            <p className="p-2 text-center text-[11px] text-on-surface-variant">
+                            <p className="p-2 text-center text-ui-11 text-on-surface-variant">
                                 {searchResults.total - searchResults.rows.length} archivos más. Refiná el filtro para verlos.
                             </p>
                         )}
                         {tree?.truncated && (
-                            <p className="p-2 text-center text-[11px] text-on-surface-variant">
+                            <p className="p-2 text-center text-ui-11 text-on-surface-variant">
                                 El repositorio supera el tope del listado; puede faltar algún archivo.
                             </p>
                         )}
@@ -723,7 +723,7 @@ export default function GitFileEditor({
                     )}
 
                     {active && (
-                        <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-[11px] text-on-surface-variant">
+                        <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-ui-11 text-on-surface-variant">
                             <span className="min-w-0 flex-1 truncate" title={active.path}>
                                 {active.path}
                             </span>
@@ -731,7 +731,7 @@ export default function GitFileEditor({
                                 value={active.language}
                                 onChange={(e) => setLanguage(active.path, e.target.value as LanguageId)}
                                 title={`Resaltado de sintaxis. Se eligió ${languageLabel(active.language)} por el nombre del archivo; cambialo si este archivo es otra cosa.`}
-                                className="shrink-0 rounded border border-outline-variant bg-surface px-1 py-0.5 text-[11px] text-on-surface outline-none focus:border-primary"
+                                className="shrink-0 rounded border border-outline-variant bg-surface px-1 py-0.5 text-ui-11 text-on-surface outline-none focus:border-primary"
                             >
                                 {LANGUAGE_OPTIONS.map((o) => (
                                     <option key={o.id} value={o.id}>
@@ -782,7 +782,7 @@ export default function GitFileEditor({
                                         onAskAgent(`Mirá ${about} en este repositorio y `, about)
                                     }}
                                     title="Le pasa este archivo (o las líneas seleccionadas) a una sesión de agente y deja el prompt escrito para que lo completes. No lo envía solo: enviar es un gesto tuyo, igual que en el historial de la terminal."
-                                    className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-[11px] text-on-surface hover:bg-surface-container-high"
+                                    className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-11 text-on-surface hover:bg-surface-container-high"
                                 >
                                     <Icon name="smart_toy" size={12} />
                                     Preguntar
@@ -792,7 +792,7 @@ export default function GitFileEditor({
                                 onClick={() => void save(active.path, false)}
                                 disabled={saving || !dirtyPaths.has(active.path) || active.binary || active.tooLarge}
                                 title="Guarda el archivo en el disco (Cmd/Ctrl+S). Si cambió abajo mientras lo editabas, se avisa antes de pisarlo."
-                                className="shrink-0 rounded bg-primary px-2 py-0.5 text-[11px] text-on-primary disabled:opacity-40"
+                                className="shrink-0 rounded bg-primary px-2 py-0.5 text-ui-11 text-on-primary disabled:opacity-40"
                             >
                                 Guardar
                             </button>

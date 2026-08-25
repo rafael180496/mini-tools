@@ -92,13 +92,13 @@ export default function NoteToolbar({view, align, onAlign, onPickImage, onToggle
     return (
         <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-outline-variant bg-surface-container px-2 py-1">
             <button onClick={() => prefixLines(view, '# ')} title="Título de sección (# en Markdown)" className={btn}>
-                <span className="px-0.5 text-[13px] font-bold">H1</span>
+                <span className="px-0.5 text-ui-13 font-bold">H1</span>
             </button>
             <button onClick={() => prefixLines(view, '## ')} title="Subtítulo (## en Markdown)" className={btn}>
-                <span className="px-0.5 text-[12px] font-bold">H2</span>
+                <span className="px-0.5 text-ui-12 font-bold">H2</span>
             </button>
             <button onClick={() => prefixLines(view, '### ')} title="Sub-subtítulo (### en Markdown)" className={btn}>
-                <span className="px-0.5 text-[11px] font-bold">H3</span>
+                <span className="px-0.5 text-ui-11 font-bold">H3</span>
             </button>
 
             <span className="mx-1 h-4 w-px bg-outline-variant" />
@@ -195,7 +195,7 @@ export default function NoteToolbar({view, align, onAlign, onPickImage, onToggle
             </button>
 
             <span
-                className="ml-auto text-[10px] text-on-surface-variant/70"
+                className="ml-auto text-ui-10 text-on-surface-variant/70"
                 title="La nota se guarda como Markdown puro: exportada, se abre en Obsidian o en cualquier editor de texto sin perder nada."
             >
                 Markdown

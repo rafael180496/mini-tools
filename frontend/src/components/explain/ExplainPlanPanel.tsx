@@ -124,7 +124,7 @@ function PlanNodeView({node, depth, analyzed}: PlanNodeViewProps) {
                 )}
                 {misestimated && (
                     <span
-                        className="rounded bg-tertiary/15 px-1 font-sans text-[10px] font-medium text-tertiary"
+                        className="rounded bg-tertiary/15 px-1 font-sans text-ui-10 font-medium text-tertiary"
                         title={
                             node.rowsRatio! >= 1
                                 ? `El planner esperaba muchas menos filas de las que este nodo devolvió (${misestimateLabel(node.rowsRatio!)}). Con estadísticas desactualizadas elige mal la estrategia de join.`
@@ -155,14 +155,14 @@ function PlanNodeView({node, depth, analyzed}: PlanNodeViewProps) {
                 )}
 
                 {node.isFullScan && style && (
-                    <span className={`flex items-center gap-1 rounded px-1.5 font-sans text-[10px] font-medium ${style.badge}`}>
+                    <span className={`flex items-center gap-1 rounded px-1.5 font-sans text-ui-10 font-medium ${style.badge}`}>
                         <Icon name={style.icon} size={11} filled />
                         Full scan
                     </span>
                 )}
                 {node.isBottleneck && (
                     <span
-                        className="flex items-center gap-1 rounded bg-tertiary/15 px-1.5 font-sans text-[10px] font-medium text-tertiary"
+                        className="flex items-center gap-1 rounded bg-tertiary/15 px-1.5 font-sans text-ui-10 font-medium text-tertiary"
                         title="Nodo con más peso propio del plan — por acá empezar a optimizar"
                     >
                         <Icon name="speed" size={11} filled />
@@ -191,7 +191,7 @@ function PlanNodeView({node, depth, analyzed}: PlanNodeViewProps) {
 function Metric({label, value, hint, accent}: {label: string; value: string; hint: string; accent?: boolean}) {
     return (
         <div className="flex flex-col leading-tight" title={hint}>
-            <span className="text-[10px] uppercase tracking-wide text-on-surface-variant/70">{label}</span>
+            <span className="text-ui-10 uppercase tracking-wide text-on-surface-variant/70">{label}</span>
             <span className={`font-mono text-xs ${accent ? 'font-semibold text-tertiary' : 'text-on-surface'}`}>{value}</span>
         </div>
     )
@@ -216,14 +216,14 @@ function InsightRow({insight}: {insight: explain.Insight}) {
                 <p className="text-xs text-on-surface-variant">{insight.detail}</p>
                 {insight.sql && (
                     <div className="mt-1 flex items-start gap-2">
-                        <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre rounded bg-surface-container-highest px-2 py-1 font-mono text-[11px] text-on-surface">
+                        <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre rounded bg-surface-container-highest px-2 py-1 font-mono text-ui-11 text-on-surface">
                             {insight.sql}
                         </code>
                         <button
                             type="button"
                             onClick={() => void copy()}
                             title="Copia la sentencia al portapapeles. No se ejecuta: crear un índice ocupa disco y hace más lentas las escrituras, así que la decisión (y el orden de las columnas) queda en tus manos."
-                            className="mt-0.5 flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-[11px] text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
+                            className="mt-0.5 flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
                         >
                             <Icon name={copied ? 'check' : 'content_copy'} size={12} />
                             {copied ? 'Copiado' : 'Copiar'}
@@ -353,7 +353,7 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                         )}
                         {plan.rolledBack && (
                             <span
-                                className="flex items-center gap-1 rounded bg-tertiary/15 px-1.5 py-0.5 text-[10px] font-medium text-tertiary"
+                                className="flex items-center gap-1 rounded bg-tertiary/15 px-1.5 py-0.5 text-ui-10 font-medium text-tertiary"
                                 title="La consulta modifica datos, así que se ejecutó dentro de una transacción que se revirtió al terminar. Los tiempos son reales; los cambios no se aplicaron."
                             >
                                 <Icon name="undo" size={11} />
@@ -362,7 +362,7 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                         )}
                         {!analyzed && plan.engine === 'postgres' && (
                             <span
-                                className="text-[10px] text-on-surface-variant/70"
+                                className="text-ui-10 text-on-surface-variant/70"
                                 title="Este plan son previsiones del planner. Explain Analyze ejecuta la consulta y muestra filas y tiempos reales."
                             >
                                 solo estimaciones
@@ -380,14 +380,14 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                                     type="button"
                                     onClick={() => setView(t.id)}
                                     title={t.hint}
-                                    className={`flex items-center gap-1 rounded px-2 py-0.5 text-[11px] ${
+                                    className={`flex items-center gap-1 rounded px-2 py-0.5 text-ui-11 ${
                                         view === t.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                                     }`}
                                 >
                                     {t.label}
                                     {!!t.badge && (
                                         <span
-                                            className={`rounded-full px-1 text-[9px] font-semibold ${
+                                            className={`rounded-full px-1 text-ui-9 font-semibold ${
                                                 criticalCount > 0 ? 'bg-error/20 text-error' : 'bg-surface-variant text-on-surface-variant'
                                             }`}
                                         >
@@ -463,13 +463,13 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                                 </div>
 
                                 {aiError && (
-                                    <p className="rounded bg-error-container/40 px-2 py-1 text-[11px] text-error">{aiError}</p>
+                                    <p className="rounded bg-error-container/40 px-2 py-1 text-ui-11 text-error">{aiError}</p>
                                 )}
 
                                 {aiAnswer && (
                                     <div className="rounded-lg border border-outline-variant bg-surface-container p-2 text-xs text-on-surface">
                                         <MarkdownPreview source={aiAnswer} />
-                                        <p className="mt-2 border-t border-outline-variant pt-1 text-[10px] text-on-surface-variant">
+                                        <p className="mt-2 border-t border-outline-variant pt-1 text-ui-10 text-on-surface-variant">
                                             Es una sugerencia. Un índice cuesta disco, enlentece las escrituras y su orden de
                                             columnas depende de las otras consultas que corren contra esa tabla — crearlo lo
                                             decidís vos.
@@ -482,7 +482,7 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                 )}
 
                 {!loading && !error && view === 'raw' && (
-                    <pre className="whitespace-pre-wrap p-2 font-mono text-[11px] text-on-surface-variant">{plan?.rawText}</pre>
+                    <pre className="whitespace-pre-wrap p-2 font-mono text-ui-11 text-on-surface-variant">{plan?.rawText}</pre>
                 )}
 
                 {!loading && !error && !plan?.root && view === 'tree' && <p className="p-2 text-xs text-on-surface-variant">Sin plan.</p>}

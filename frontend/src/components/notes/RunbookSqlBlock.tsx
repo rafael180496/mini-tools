@@ -147,7 +147,7 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
 
     return (
         <div className="my-1.5 overflow-hidden rounded border border-outline-variant">
-            <div className="flex items-center gap-2 bg-surface-container px-2 py-1 text-[10px]">
+            <div className="flex items-center gap-2 bg-surface-container px-2 py-1 text-ui-10">
                 <Icon name="database" size={12} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">{connectionName}</span>
                 <span className="text-on-surface-variant">bloque ejecutable</span>
@@ -175,17 +175,17 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
                 )}
             </div>
 
-            <pre className="overflow-x-auto bg-surface-container-highest px-2 py-1 font-mono text-[11px] text-on-surface">
+            <pre className="overflow-x-auto bg-surface-container-highest px-2 py-1 font-mono text-ui-11 text-on-surface">
                 {sql}
             </pre>
 
-            {error && <p className="bg-error-container/40 px-2 py-1 text-[11px] text-error">{error}</p>}
+            {error && <p className="bg-error-container/40 px-2 py-1 text-ui-11 text-error">{error}</p>}
 
             {(columns.length > 0 || summary) && (
                 <div className="border-t border-outline-variant bg-surface">
                     {columns.length > 0 && (
                         <div className="max-h-56 overflow-auto">
-                            <table className="w-full text-left text-[11px]">
+                            <table className="w-full text-left text-ui-11">
                                 <thead className="sticky top-0 bg-surface-container">
                                     <tr>
                                         {columns.map((c) => (
@@ -214,7 +214,7 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
                         </div>
                     )}
                     <p
-                        className="px-2 py-0.5 text-[10px] text-on-surface-variant"
+                        className="px-2 py-0.5 text-ui-10 text-on-surface-variant"
                         title="El resultado no se guarda dentro de la nota: se muestra acá y se va al cerrar. Una nota con las filas de la última corrida pegadas adentro es documentación que envejece sola."
                     >
                         {summary}

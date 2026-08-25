@@ -1526,6 +1526,10 @@ export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
 }
 
+export function SetUIFontScale(arg1) {
+  return window['go']['main']['App']['SetUIFontScale'](arg1);
+}
+
 export function SftpHomeDir(arg1) {
   return window['go']['main']['App']['SftpHomeDir'](arg1);
 }

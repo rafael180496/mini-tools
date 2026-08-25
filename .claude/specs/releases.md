@@ -165,19 +165,23 @@ ninguna frase exacta, cualquier mención de esas palabras clave alcanza:
      preguntarse: **¿esto cambia lo que el usuario puede hacer?** Si sí, tiene
      que estar en la página. Si es interno (un refactor, una optimización, un
      bug que nadie llegó a notar), no va.
-   - **Módulo nuevo** → sección propia, con su captura, qué resuelve y al menos
-     un ejemplo de uso concreto; más su entrada en la barra de navegación.
-   - **Funcionalidad dentro de un módulo que ya existe** → dentro de esa
-     sección, con el ejemplo de cómo se usa. No alcanza con nombrarla: la
-     página existe para que alguien la use sin preguntar.
-   - **Algo que cambia el flujo de trabajo de punta a punta** → una receta más
-     en «Recetas de uso».
+   - **Módulo nuevo** → **grupo nuevo** en el índice, con un tema por asunto,
+     su captura y al menos un ejemplo de uso concreto.
+   - **Funcionalidad que es un asunto en sí mismo** → **tema nuevo**
+     (`<article class="topic">`) en el grupo que le corresponde, más su entrada
+     en el índice. Un detalle de algo ya documentado → un `<h2>` dentro del tema
+     que ya existe. No alcanza con nombrarla: la ayuda existe para que alguien
+     la use sin preguntar.
+   - **Algo que cambia el flujo de trabajo de punta a punta** → un tema más en
+     el grupo «Recetas».
+   - Actualizar la **insignia de versión** de la barra (`<span class="ver">`) y
+     la línea del pie, que nombran la versión que documenta la página.
    - Las capturas salen de `./scripts/uishot.sh` (hay que agregar la vista al
      banco con datos inventados), **nunca de una instalación real**.
    - Revisar además el bloque **«En desarrollo — todavía sin publicar»** del
      `README.md`: lo que acaba de salir ya no va ahí.
-   - Ver la regla completa en
-     [conventions.md](../rules/conventions.md#indexhtml--la-vitrina-se-actualiza-con-el-mismo-cambio).
+   - Ver la regla completa —incluida la anatomía de un tema— en
+     [conventions.md](../rules/conventions.md#indexhtml--la-ayuda-se-actualiza-con-el-mismo-cambio).
 9. **Los artefactos de `releases/<os>/` se commitean junto con el resto**: son
    exactamente lo que va a publicar el workflow, así que un tag sin ellos falla.
    Publicar es entonces **empujar el tag `vX.Y.Z`** — el release se crea solo,

@@ -100,7 +100,7 @@ export default function TerminalThemeMenu({value, appTheme, onChange}: TerminalT
                                             ? 'Sigue el modo claro/oscuro de la app: la terminal se aclara y se oscurece con el resto de la ventana'
                                             : `Usar la paleta ${TERMINAL_THEME_LABELS[id]} en todas las terminales`
                                     }
-                                    className={`flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] ${
+                                    className={`flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-ui-11 ${
                                         value === id
                                             ? 'bg-primary-container text-on-primary-container'
                                             : 'text-on-surface-variant hover:bg-surface-variant'

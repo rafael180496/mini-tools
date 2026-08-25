@@ -1007,6 +1007,24 @@ func (a *App) SetEditorAppearance(appearance vault.EditorAppearance) error {
 	return a.vault.SetEditorAppearance(appearance)
 }
 
+// SetUIFontScale persiste el tamaño de letra de TODA la interfaz, en
+// porcentaje (100 = el de siempre, 0 = sin elegir).
+//
+// Aparte de SetEditorAppearance a propósito: aquello es el cuerpo del EDITOR,
+// que se elige para leer código y responde a otra cosa. Esto es la interfaz —
+// listas, menús, diálogos, etiquetas—, y quien necesita agrandarla no
+// necesariamente quiere tocar el editor.
+//
+// **Sin requireUnlocked, igual que SetTheme.** La pantalla de desbloqueo es
+// interfaz: si el ajuste solo valiera con el vault abierto, quien no puede
+// leer la app tampoco podría leer el formulario que le pide la clave para
+// arreglarlo. Es una preferencia visual sin nada sensible adentro, y la tabla
+// `settings` es legible y escribible con el vault cerrado por diseño (ver el
+// comentario de la tabla en backend/vault/store.go).
+func (a *App) SetUIFontScale(pct int) error {
+	return a.vault.SetUIFontScale(pct)
+}
+
 // SetSidebarWidth persists the sidebar's dragged width. Called once on
 // mouseup, not per pointer move — the vault write has no reason to keep up
 // with the pointer, only to record where it stopped.

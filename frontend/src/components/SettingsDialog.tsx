@@ -7,6 +7,7 @@ import {DOCS_URL} from './sidebar/Sidebar'
 import Select, {type SelectOption} from './Select'
 import Toggle from './Toggle'
 import {EDITOR_THEME_IDS, EDITOR_THEME_LABELS} from '../codemirror/themes'
+import {UI_FONT_SCALES} from '../hooks/useUIFontScale'
 import {TERMINAL_THEME_IDS, TERMINAL_THEME_LABELS, type TerminalThemeId} from '../xterm/terminalThemes'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../xterm/terminalFont'
 import AgentSettings from './AgentSettings'
@@ -55,6 +56,11 @@ interface SettingsDialogProps {
     onToggleAutoSave: (checked: boolean) => void
     autoSaveIntervalSeconds: number
     onChangeAutoSaveInterval: (seconds: number) => void
+    // Tamaño de letra de TODA la interfaz, en porcentaje. Distinto del cuerpo
+    // del editor de acá abajo: aquello es para leer código, esto es para leer
+    // la app.
+    uiFontScale: number
+    onChangeUIFontScale: (pct: number) => void
     updateInfo: updatecheck.Info | null
     onOpenRepo: () => void
     onClose: () => void
@@ -68,7 +74,11 @@ interface SettingsDialogProps {
 type SettingsSectionId = 'general' | 'vault' | 'terminal' | 'ai'
 
 const SECTIONS: {id: SettingsSectionId; icon: string; label: string; hint: string}[] = [
-    {id: 'general', icon: 'edit_note', label: 'Editor', hint: 'cómo se ve y se comporta el texto: tema, tipografía, barra de acciones'},
+    // "Apariencia" y no "Editor": desde que acá vive el tamaño de letra de
+    // TODA la interfaz, la sección dejó de ser solo del editor de código. El
+    // ajuste con más alcance no puede estar escondido detrás de una etiqueta
+    // que sugiere que no aplica salvo que estés escribiendo SQL.
+    {id: 'general', icon: 'format_size', label: 'Apariencia', hint: 'cómo se ve la app: tamaño de letra de la interfaz, y tema y tipografía del editor'},
     {id: 'vault', icon: 'lock', label: 'Vault', hint: 'la clave maestra y las copias de tus conexiones cifradas'},
     {id: 'terminal', icon: 'terminal', label: 'Terminal', hint: 'qué shell abre, con qué tipografía y con qué colores'},
     {id: 'ai', icon: 'smart_toy', label: 'IA', hint: 'qué pueden pedirle los agentes a esta app, y con qué CLI hablás'},
@@ -77,6 +87,7 @@ const SECTIONS: {id: SettingsSectionId; icon: string; label: string; hint: strin
 const THEME_OPTIONS = EDITOR_THEME_IDS.map((id) => ({value: id, label: EDITOR_THEME_LABELS[id]}))
 const EDITOR_FONT_OPTIONS = EDITOR_FONTS.map((f) => ({value: f.id, label: f.label, hint: f.hint}))
 const EDITOR_FONT_SIZE_OPTIONS = EDITOR_FONT_SIZES.map((n) => ({value: String(n), label: `${n} px`}))
+const UI_FONT_SCALE_OPTIONS = UI_FONT_SCALES.map((s) => ({value: String(s.value), label: `${s.label} · ${s.value}%`, hint: s.hint}))
 const EDITOR_TAB_SIZE_OPTIONS = EDITOR_TAB_SIZES.map((n) => ({value: String(n), label: `${n} espacios`}))
 const EDITOR_TOOLBAR_OPTIONS = EDITOR_TOOLBAR_MODES.map((m) => ({value: m.id, label: m.label, hint: m.hint}))
 const TERMINAL_THEME_OPTIONS = TERMINAL_THEME_IDS.map((id) => ({value: id, label: TERMINAL_THEME_LABELS[id]}))
@@ -120,6 +131,8 @@ export default function SettingsDialog({
     onToggleAutoSave,
     autoSaveIntervalSeconds,
     onChangeAutoSaveInterval,
+    uiFontScale,
+    onChangeUIFontScale,
     updateInfo,
     onOpenRepo,
     onClose,
@@ -267,6 +280,49 @@ export default function SettingsDialog({
                                                             className="w-52"
                                                         />
                                                     </div>
+                                {/* Tamaño de letra de la interfaz.
+
+                                    Va ANTES del cuerpo del editor y no al lado:
+                                    es el ajuste de mayor alcance de esta
+                                    pantalla —vale para los menús, las listas,
+                                    los diálogos y los íconos de todos los
+                                    módulos— y quien viene a Configuración
+                                    porque no llega a leer la app tiene que
+                                    encontrarlo antes que una preferencia del
+                                    editor SQL. */}
+                                <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
+                                    <div className="flex items-center gap-3">
+                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                            <Icon name="format_size" size={18} />
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <span className="block text-sm font-medium text-on-surface">Tamaño de letra de la interfaz</span>
+                                            <span className="block truncate text-xs text-on-surface-variant">
+                                                Texto e íconos de toda la app, en todos los módulos.
+                                            </span>
+                                        </div>
+                                        <Select
+                                            value={String(uiFontScale)}
+                                            options={UI_FONT_SCALE_OPTIONS}
+                                            onChange={(v) => onChangeUIFontScale(Number(v))}
+                                            ariaLabel="Tamaño de letra de la interfaz"
+                                            title="Agranda o achica el texto y los íconos de la app entera: barra lateral, menús, listas, diálogos y etiquetas. No cambia el editor de código ni las terminales, que tienen su propio cuerpo acá abajo y en Terminal."
+                                            className="w-52"
+                                        />
+                                    </div>
+
+                                    {/* El cambio se ve en el momento y en toda
+                                        la ventana, así que no hace falta una
+                                        muestra aparte como la de la tipografía:
+                                        la muestra es el diálogo mismo. Lo que sí
+                                        hace falta es decir qué NO cambia, que es
+                                        de donde salen las sorpresas. */}
+                                    <p className="text-xs text-on-surface-variant">
+                                        Se aplica al instante y se recuerda entre sesiones — también en la pantalla de desbloqueo. El
+                                        editor de código y las terminales conservan su propio cuerpo, que se ajusta por separado.
+                                    </p>
+                                </div>
+
                                 {/* Apariencia del texto. Vale para el editor SQL
                                     y para el editor de archivos del módulo Git —
                                     los dos son editores de código y no hay razón
@@ -336,7 +392,7 @@ export default function SettingsDialog({
                                     <div className="flex items-center justify-between gap-3 border-t border-outline-variant pt-3 pl-12">
                                         <span className="min-w-0 text-xs text-on-surface-variant">
                                             Ajustar líneas largas
-                                            <span className="block text-[11px] opacity-70">En vez de desplazarse en horizontal.</span>
+                                            <span className="block text-ui-11 opacity-70">En vez de desplazarse en horizontal.</span>
                                         </span>
                                         <Toggle
                                             checked={editorAppearance.lineWrap}
@@ -349,7 +405,7 @@ export default function SettingsDialog({
                                     <div className="flex items-center justify-between gap-3 border-t border-outline-variant pt-3 pl-12">
                                         <span className="min-w-0 text-xs text-on-surface-variant">
                                             Números de línea
-                                            <span className="block text-[11px] opacity-70">La columna de la izquierda.</span>
+                                            <span className="block text-ui-11 opacity-70">La columna de la izquierda.</span>
                                         </span>
                                         <Toggle
                                             checked={editorAppearance.lineNumbers}
@@ -362,7 +418,7 @@ export default function SettingsDialog({
                                     <div className="flex items-center justify-between gap-3 border-t border-outline-variant pt-3 pl-12">
                                         <span className="min-w-0 text-xs text-on-surface-variant">
                                             Tabulación
-                                            <span className="block text-[11px] opacity-70">Cuánto ocupa un Tab.</span>
+                                            <span className="block text-ui-11 opacity-70">Cuánto ocupa un Tab.</span>
                                         </span>
                                         <Select
                                             value={String(editorAppearance.tabSize)}
@@ -668,12 +724,16 @@ export default function SettingsDialog({
                     {updateInfo?.available ? (
                         <button
                             onClick={onOpenRepo}
-                            title={`Hay una versión nueva disponible (v${updateInfo.latest}, la tuya es v${version || '—'}) — clic para abrir el repositorio en el navegador y descargarla`}
+                            title={
+                                updateInfo.assetName
+                                    ? `Hay una versión nueva disponible (v${updateInfo.latest}, la tuya es v${version || '—'}) — clic para descargar ${updateInfo.assetName}`
+                                    : `Hay una versión nueva disponible (v${updateInfo.latest}, la tuya es v${version || '—'}) — clic para abrir su página de descarga`
+                            }
                             className="flex items-center gap-1.5 text-primary hover:underline"
                         >
                             <Icon name="new_releases" size={14} />
                             mini-tools v{version} · Nueva versión v{updateInfo.latest} disponible
-                            <Icon name="open_in_new" size={12} />
+                            <Icon name={updateInfo.downloadUrl ? 'download' : 'open_in_new'} size={12} />
                         </button>
                     ) : (
                         <>

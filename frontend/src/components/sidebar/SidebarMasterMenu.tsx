@@ -87,7 +87,7 @@ export default function SidebarMasterMenu({modules, active, onSelect, orientatio
                             coincidencias se dice apagándolo, no poniéndole un
                             cero encima. */}
                         {hasMatches && (
-                            <span className="absolute -top-0.5 right-1 min-w-3 rounded-full bg-primary px-1 text-center font-mono text-[9px] font-bold leading-tight text-on-primary">
+                            <span className="absolute -top-0.5 right-1 min-w-3 rounded-full bg-primary px-1 text-center font-mono text-ui-9 font-bold leading-tight text-on-primary">
                                 {m.matchCount! > 99 ? '99+' : m.matchCount}
                             </span>
                         )}

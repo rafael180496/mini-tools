@@ -53,7 +53,7 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
                     <div key={i} className="rounded border border-outline-variant bg-surface-container-low/40 p-2">
                         <div className="mb-1 flex items-center gap-2">
                             <span
-                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-variant font-mono text-[10px] text-on-surface-variant"
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-variant font-mono text-ui-10 text-on-surface-variant"
                                 title="Posición en el pipeline: cada etapa recibe la salida de la anterior"
                             >
                                 {i + 1}
@@ -103,9 +103,9 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
                             title={def.hint}
                             className="w-full resize-y rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-xs text-on-surface"
                         />
-                        <p className="mt-0.5 text-[11px] text-on-surface-variant/70">{def.hint}</p>
+                        <p className="mt-0.5 text-ui-11 text-on-surface-variant/70">{def.hint}</p>
                         {errors[i] && (
-                            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-tertiary">
+                            <p className="mt-0.5 flex items-center gap-1 text-ui-11 text-tertiary">
                                 <Icon name="warning" size={12} />
                                 {errors[i]}
                             </p>
@@ -121,7 +121,7 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
                         key={s.op}
                         onClick={() => addStage(s.op)}
                         title={s.hint}
-                        className="rounded border border-outline-variant px-1.5 py-0.5 font-mono text-[11px] text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
+                        className="rounded border border-outline-variant px-1.5 py-0.5 font-mono text-ui-11 text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
                     >
                         {s.op}
                     </button>

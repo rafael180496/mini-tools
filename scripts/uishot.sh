@@ -11,10 +11,17 @@
 #   ./scripts/uishot.sh agents 900 1200  # panel de agentes, con tamaño
 #   ./scripts/uishot.sh chat
 #   UISHOT_MODULE=git ./scripts/uishot.sh sidebar   # barra lateral, módulo Git
+#   UISHOT_SCALE=150 ./scripts/uishot.sh settings   # con la letra al 150 %
 #
 # UISHOT_MODULE elige qué módulo abre el menú master de la barra lateral
-# (connections | ssh | git | notes). Solo lo miran las vistas que montan el
-# workspace entero; el resto lo ignora.
+# (connections | ssh | git | notes | http). Solo lo miran las vistas que montan
+# el workspace entero; el resto lo ignora.
+#
+# UISHOT_SCALE es el tamaño de letra de la interfaz en porcentaje (ver
+# --ui-font-scale en globals.css). Sirve para comprobar que una pantalla sigue
+# entrando con el cuerpo agrandado ANTES de que se lo encuentre alguien que lo
+# necesita — que es la única forma de verlo sin abrir la app y cambiar el
+# ajuste a mano.
 set -euo pipefail
 
 VIEW="${1:-files}"
@@ -25,10 +32,14 @@ MODULE="${UISHOT_MODULE:-}"
 # Sistema operativo simulado para la barra de título propia de la ventana
 # (darwin | windows | linux). Solo lo mira la vista `window`.
 PLATFORM="${UISHOT_PLATFORM:-}"
+SCALE="${UISHOT_SCALE:-}"
 PORT="${UISHOT_PORT:-5199}"
 
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 [ -x "$CHROME" ] || { echo "No se encontró Google Chrome en $CHROME"; exit 1; }
+
+# Esta captura la dibuja vite, que se invoca con pnpm.
+source "$(dirname "$0")/ensure-pnpm.sh"
 
 cd "$(dirname "$0")/../frontend"
 
@@ -49,7 +60,7 @@ done
     --window-size="$W,$H" \
     --virtual-time-budget=4000 \
     --screenshot="$OUT" \
-    "http://localhost:$PORT/uishot.html?view=$VIEW&module=$MODULE&platform=$PLATFORM" >/dev/null 2>&1
+    "http://localhost:$PORT/uishot.html?view=$VIEW&module=$MODULE&platform=$PLATFORM&scale=$SCALE" >/dev/null 2>&1
 
 [ -s "$OUT" ] || { echo "La captura salió vacía. Log de vite:"; tail -5 /tmp/uishot-vite.log; exit 1; }
 echo "$OUT"

@@ -281,7 +281,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                         <Icon name="delete" size={13} />
                     </button>
                 </div>
-                <pre className="mt-1 truncate font-mono text-[11px] text-on-surface-variant">
+                <pre className="mt-1 truncate font-mono text-ui-11 text-on-surface-variant">
                     {s.script.split('\n')[0]}
                     {s.script.includes('\n') ? ' …' : ''}
                 </pre>
@@ -289,7 +289,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                     <button
                         onClick={() => runSnippet(write, s.script)}
                         title="Ejecuta cada línea de este snippet en la terminal, como si las tipearas y presionaras Enter"
-                        className="flex items-center gap-1 rounded bg-secondary-container px-2 py-1 text-[11px] font-medium text-on-secondary-container hover:opacity-90"
+                        className="flex items-center gap-1 rounded bg-secondary-container px-2 py-1 text-ui-11 font-medium text-on-secondary-container hover:opacity-90"
                     >
                         <Icon name="play_arrow" size={12} filled />
                         Ejecutar
@@ -297,7 +297,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                     <button
                         onClick={() => pasteSnippet(write, s.script)}
                         title="Escribe este snippet en la terminal sin ejecutarlo — la última línea queda sin confirmar para que la revises antes de Enter"
-                        className="flex items-center gap-1 rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="flex items-center gap-1 rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="content_paste" size={12} />
                         Pegar
@@ -432,7 +432,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
             </div>
             {creatingFolderParentId === '' && <div className="px-2 pt-1.5">{renderNewFolderInput()}</div>}
 
-            {error && <p className="px-2 pt-1 text-[11px] text-error">{error}</p>}
+            {error && <p className="px-2 pt-1 text-ui-11 text-error">{error}</p>}
 
             {editingId && (
                 <div className="flex flex-col gap-1.5 border-b border-outline-variant p-2">

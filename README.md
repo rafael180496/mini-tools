@@ -329,7 +329,7 @@ archivos. Y cada carpeta tiene su propio **«+» de nota**, que la crea ya adent
 ## Git, completo
 
 <p align="center">
-  <img src="docs/screenshots/git-commit-graph.png" width="900" alt="Grafo de commits con carriles de colores, badges de rama y tag, y marca de HEAD">
+  <img src="docs/screenshots/git-commit-graph.png" width="900" alt="Pestaña Git: grafo de commits con carriles de colores y badges de rama y tag, un commit seleccionado, y a la derecha su detalle con autor, hash y la lista de archivos con el diff del primero desplegado">
 </p>
 
 Cliente Git estilo Sublime Merge sobre el `git` de tu sistema — así que tus credential helpers, tu `ssh-agent` y tus hooks siguen funcionando igual. Grafo de commits, diff unificado o lado a lado, stage por bloque, stashes, worktrees, resolutor de conflictos de tres vías, y un **log de los comandos exactos** que la app ejecutó por debajo, con su salida.
@@ -394,6 +394,61 @@ depende del tipo: selector de fecha y hora para un timestamp, desplegable para
 un booleano, campo numérico para un número — con `NULL` como botón aparte,
 porque «sin dato» y «texto vacío» no son lo mismo y la base guarda esa
 diferencia.
+
+### Copiar filas como SQL que se puede correr
+
+Seleccionás filas y salen como `INSERT` o como `UPDATE`, listas para pegar en
+otro entorno — con la **tabla y el esquema reales**, que la app saca del
+catálogo leyendo de dónde salió la consulta en vez de usar el nombre de la
+conexión, y con las **fechas convertidas para el motor de destino**:
+
+```sql
+INSERT INTO "SGCPRO"."FACTURAS" ("ID", "FECHA_EMISION", "TOTAL")
+VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00);
+```
+
+En Oracle sale `TO_DATE`, o `TO_TIMESTAMP` cuando la columna tiene fracción de
+segundo —que `TO_DATE` truncaría sin avisar—; en PostgreSQL `TIMESTAMP '…'`; en
+SQL Server `CAST(… AS datetime2)`. Antes la fecha viajaba como texto ISO y
+Oracle la rechazaba con `ORA-01861` salvo que el `NLS_DATE_FORMAT` de quien la
+corriera coincidiera de casualidad.
+
+Cuando la consulta no sale de una sola tabla —un `JOIN`, una vista— el nombre
+queda como `tabla`: que se vea que hay que completarlo es mejor que un nombre
+plausible que no existe.
+
+---
+
+## Que se lea, y que se lea como vos querés
+
+Configuración → **Apariencia**. Tres cuerpos distintos, porque son tres cosas
+distintas de leer.
+
+- **Tamaño de letra de la interfaz** — del 90 % al 150 % en cinco pasos, y
+  agranda *todo*: barra lateral, menús, listas, diálogos, etiquetas e íconos, en
+  todos los módulos. Se aplica en el momento, se recuerda entre sesiones y vale
+  también en la **pantalla de desbloqueo**: quien no puede leer la app tampoco
+  podría leer el formulario que le pide la clave para arreglarlo. Escala la
+  *letra*, no los espaciados — no es un zoom de ventana, así que la disposición
+  se mantiene y las barras se acomodan en dos filas en vez de desbordar.
+- **El editor de código** tiene su propia fuente y su propio cuerpo, más ajuste
+  de línea, numeración y ancho de tabulación: se elige para leer código, no
+  interfaz.
+- **Las terminales** —la local y las de SSH— comparten el suyo entre todas,
+  junto al tema de colores.
+
+Y el **tema claro/oscuro** de la app, con el del editor y el de la terminal
+siguiéndolo por defecto o fijados a mano.
+
+### Cuando hay versión nueva
+
+La app le pregunta **una vez por sesión** a GitHub si hay un release más nuevo
+que el binario que estás corriendo. Si lo hay, aparece un aviso discreto en el
+pie de la barra lateral y el clic **descarga directamente el archivo de tu
+sistema** — el `.dmg` en macOS, el `.exe` en Windows—, sin tener que buscar cuál
+era entre los adjuntos del release. Si la consulta falla (sin red, sin permiso,
+lo que sea) no hay aviso y la app arranca igual de rápido: nunca es un error ni
+demora nada.
 
 ---
 
@@ -499,20 +554,22 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 - **Ejecución con streaming**: resultados en vivo statement por statement, cancelación en caliente, soporte de scripts multi-statement y bloques PL/SQL de Oracle (con `DBMS_OUTPUT` capturado). Múltiples resultados (uno por statement) en pestañas que se cierran individualmente o todas juntas.
 - **Consola de ejecución** (estilo DataGrip/SQL Developer): pestaña propia junto a Resultados/Historial que registra cada statement de un script con su texto completo y una línea de resultado con hora (`N filas obtenidas en Xms`, `completado en Xms`, o el `ERROR` completo sin recortar) — se activa sola en cualquier script de más de un statement.
 - **Historial de ejecuciones** por conexión: SQL exacto, estado, duración y error completo de cada statement corrido — filtrable, borrable entero o fila por fila.
-- **Grid de resultados** virtualizado para miles de filas sin lag, columnas redimensionables/ordenables (el sort reemite la query con `ORDER BY`, no ordena en cliente). Seleccionar una fila habilita copiarla como texto, `INSERT` o `UPDATE` listos para pegar en el editor.
+- **Grid de resultados** virtualizado para miles de filas sin lag, columnas redimensionables/ordenables (el sort reemite la query con `ORDER BY`, no ordena en cliente). Seleccionar filas habilita copiarlas como CSV, `INSERT` o `UPDATE` listos para pegar — con la tabla y el esquema reales sacados del catálogo, y las fechas convertidas al motor de destino (`TO_DATE`/`TO_TIMESTAMP` en Oracle, `TIMESTAMP '…'` en PostgreSQL, `CAST(… AS datetime2)` en SQL Server).
 - **Grid editable**: doble clic en una celda y la app escribe el `UPDATE` con su `WHERE` por clave primaria. Los cambios quedan pendientes hasta que los mandás (`⌘↵`), con vista previa del SQL exacto, en una transacción donde cada sentencia tiene que afectar exactamente una fila. Solo se habilita cuando la consulta sale de una sola tabla con clave primaria; si no, dice por qué.
 - **Explain y Explain Analyze sobre lo seleccionado**, o sobre la sentencia donde está el cursor — no sobre el archivo entero.
-- **Barra lateral con menú de módulos**: los cuatro módulos —bases de datos, SSH, Git y notas— se eligen desde una fila de íconos arriba y se ve **uno a la vez**, así que el que estás usando se queda con toda la altura en vez de la franja que le dejaban los otros tres apilados. La **búsqueda sigue siendo una sola para los cuatro**: los íconos muestran cuántas coincidencias tiene cada módulo, que es lo que evita tener que decidir de antemano en cuál buscar algo que recordás nada más que por el nombre. La barra se **arrastra para cambiarle el ancho** y se oculta entera dejando una columna de íconos; ancho, módulo abierto y alto del editor quedan **guardados entre sesiones**.
+- **Barra lateral con menú de módulos**: los cinco módulos —bases de datos, SSH, Git, notas y HTTP— se eligen desde una fila de íconos arriba y se ve **uno a la vez**, así que el que estás usando se queda con toda la altura en vez de la franja que le dejaban los otros apilados. La **búsqueda sigue siendo una sola para todos**: los íconos muestran cuántas coincidencias tiene cada módulo, que es lo que evita tener que decidir de antemano en cuál buscar algo que recordás nada más que por el nombre. La barra se **arrastra para cambiarle el ancho** y se oculta entera dejando una columna de íconos; ancho, módulo abierto y alto del editor quedan **guardados entre sesiones**.
 <p align="center">
-  <img src="docs/screenshots/sidebar-modules.png" width="900" alt="Barra lateral con el menú de módulos arriba: el ícono de bases activo, y sobre cada ícono el contador de coincidencias de la búsqueda escrita abajo — 1 en bases, 1 en SSH, ninguna en Git, 6 en notas; el árbol filtrado muestra la carpeta Producción abierta con la única conexión que coincide">
+  <img src="docs/screenshots/sidebar-modules.png" width="900" alt="Barra lateral con el menú de módulos arriba: el ícono de bases activo, y sobre cada ícono el contador de coincidencias de la búsqueda escrita abajo — 1 en bases, 1 en SSH, ninguna en Git, 6 en notas, y el módulo HTTP al final; el árbol filtrado muestra la carpeta Producción abierta con la única conexión que coincide">
 </p>
 
 - **Árbol de conexiones** con buscador que cubre tablas y también procedures/functions/triggers/packages, categoría de tablas colapsable y siempre ordenada alfabéticamente (probado con un schema real de 342 tablas), y export de DDL (objeto puntual o esquema completo) desde el propio árbol.
 - **Configuración centralizada**: backup del vault y "recordar clave maestra" viven en un modal de Configuración propio, abierto desde el ícono de engranaje — no sueltos en la barra de herramientas.
 - **EXPLAIN PLAN visual**: árbol de plan de ejecución para los 3 motores, con detección de full table scan resaltada.
 - **Linter SQL básico**: marca `SELECT *` como sugerencia visual (no bloquea) y `UPDATE`/`DELETE` sin `WHERE` con confirmación antes de ejecutar.
-- **Export**: CSV, JSON, XLSX, DDL de tabla/schema completo, y config de conexión (sin password) — más "copiar como INSERT" desde el grid.
+- **Export**: CSV, JSON, XLSX, DDL de tabla/schema completo, y config de conexión (sin password) — más copiar filas como CSV, `INSERT` o `UPDATE` desde el grid.
 - **Tooltips contextuales** en cada control, pensados para alguien que abre la app por primera vez. Toda confirmación (borrar historial, backup del vault) usa un modal propio con el tema de la app, nunca un diálogo nativo del navegador.
+- **Tamaño de letra de la interfaz ajustable** (Configuración → Apariencia, del 90 % al 150 %): escala el texto y los íconos de todos los módulos, se recuerda entre sesiones y vale también en la pantalla de desbloqueo. El editor y las terminales conservan su propio cuerpo, que se ajusta aparte.
+- **Aviso de versión nueva** en el pie de la barra: una consulta por sesión al último release de GitHub, y el clic descarga el archivo de tu sistema. Falla en silencio si no hay red.
 - Interfaz Material Design 3, dark/light con toggle persistido, tipografías e íconos empaquetados con la app (sin depender de internet para renderizar).
 
 </details>
@@ -520,7 +577,13 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 ## Requisitos
 
 - [Go](https://go.dev/dl/) 1.26 o superior
-- [pnpm](https://pnpm.io/) — nunca `npm` ni `yarn`
+- [pnpm](https://pnpm.io/) — nunca `npm` ni `yarn`. **No lo instales con `npm install -g`**: los paquetes globales de npm son por versión de Node, así que el próximo `nvm install` lo deja atrás y el build muere con `exec: "pnpm": executable file not found in $PATH` desde adentro de wails. Sale de corepack, que viene con Node, y la versión la fija el campo `packageManager` de `frontend/package.json`:
+
+  ```bash
+  corepack enable pnpm
+  ```
+
+  Los scripts de `scripts/` lo habilitan solos si falta (ver `scripts/ensure-pnpm.sh`).
 - Node.js (solo para compilar el frontend; no hay runtime Node en producción)
 - [Wails CLI v2](https://wails.io/) (el script de instalación de abajo lo instala si falta)
 
@@ -676,11 +739,17 @@ Detalle completo (stack, estructura fase a fase, contrato de bindings) en [CLAUD
 
 **→ [rafael180496.github.io/mini-tools](https://rafael180496.github.io/mini-tools/)**
 
-La documentación para quien llega por primera vez —qué es, cómo se instala, qué
-hace cada módulo, ejemplos de uso y recetas de punta a punta— vive en
-[`index.html`](index.html) y se publica con **GitHub Pages**. Se abre también
-desde la propia app: el botón **?** del pie de la barra lateral, y el enlace
-*Documentación* del pie de Configuración.
+La documentación completa —qué es, cómo se instala, cómo se usa cada módulo y
+recetas de punta a punta— vive en [`index.html`](index.html) y se publica con
+**GitHub Pages**. Se abre también desde la propia app: el botón **?** del pie de
+la barra lateral, y el enlace *Documentación* del pie de Configuración.
+
+Tiene forma de **sitio de ayuda**, no de landing: índice jerárquico a la
+izquierda, **un tema por pantalla**, «en esta página» a la derecha, buscador
+(<kbd>/</kbd>) y navegación anterior/siguiente. Es un solo archivo: el orden de
+los temas, las migas, el anterior/siguiente y el índice del buscador se derivan
+del propio índice al cargar, así que agregar un tema es agregar su `<article>` y
+su entrada en el índice — no hay una segunda lista que mantener.
 
 ### Publicarla
 
@@ -706,8 +775,9 @@ CDN, sin fuentes remotas y sin analítica—, usa los mismos colores Material
 Design 3 que la app y respeta el tema claro/oscuro del sistema. Las capturas son
 las de `docs/screenshots/`, generadas con `./scripts/uishot.sh`.
 
-> Cada módulo o funcionalidad nueva se agrega ahí **en la misma tarea**, igual
-> que la entrada del CHANGELOG. La regla completa está en
+> Cada módulo o funcionalidad nueva se documenta ahí **en la misma tarea**, igual
+> que la entrada del CHANGELOG. La regla completa —dónde va cada cosa y cómo se
+> escribe un tema— está en
 > [.claude/rules/conventions.md](.claude/rules/conventions.md).
 
 ## Sobre las capturas de este README

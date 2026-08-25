@@ -84,7 +84,7 @@ export default function MongoConditionRow({condition, fields, onChange, onRemove
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-1">
                 {condition.op === '$regex' && (
                     <label
-                        className="flex items-center gap-1 text-[11px] text-on-surface-variant"
+                        className="flex items-center gap-1 text-ui-11 text-on-surface-variant"
                         title="Agrega $options: 'i' para que la búsqueda no distinga mayúsculas de minúsculas"
                     >
                         <input
@@ -101,13 +101,13 @@ export default function MongoConditionRow({condition, fields, onChange, onRemove
                     this guards against is invisible, so the inference has to
                     stop being invisible too. */}
                 {valueType === 'auto' && condition.value.trim() !== '' && (def.valueKind === 'text' || def.valueKind === 'list') && (
-                    <span className="text-[11px] text-on-surface-variant/70">
+                    <span className="text-ui-11 text-on-surface-variant/70">
                         auto → {inferBsonType(condition.value)}
                     </span>
                 )}
 
                 {warning && (
-                    <span className="flex items-center gap-1 text-[11px] text-tertiary">
+                    <span className="flex items-center gap-1 text-ui-11 text-tertiary">
                         <Icon name="warning" size={12} />
                         {warning}
                     </span>

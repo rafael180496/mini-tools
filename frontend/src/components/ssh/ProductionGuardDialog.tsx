@@ -60,7 +60,7 @@ export default function ProductionGuardDialog({commands, onConfirm, onCancel}: P
                         </div>
                     ))}
                     {commands.length > 1 && (
-                        <p className="text-[11px] text-on-surface-variant">
+                        <p className="text-ui-11 text-on-surface-variant">
                             Son {commands.length} comandos: al confirmar se ejecutan todos, uno detrás de otro.
                         </p>
                     )}
@@ -82,7 +82,7 @@ export default function ProductionGuardDialog({commands, onConfirm, onCancel}: P
                     >
                         Ejecutar igual
                     </button>
-                    <span className="ml-auto text-[11px] text-on-surface-variant">Esc cancela</span>
+                    <span className="ml-auto text-ui-11 text-on-surface-variant">Esc cancela</span>
                 </div>
             </div>
         </div>

@@ -111,7 +111,7 @@ export default function AgentRefPicker({query, paths, context, onPick, onFirstCh
                     onClick={() => !s.disabled && onPick(s.insert, !!s.partial)}
                     disabled={s.disabled}
                     title={s.hint}
-                    className="flex w-full items-center gap-2 px-2 py-1 text-left text-[11px] hover:bg-surface-container-high disabled:opacity-50 disabled:hover:bg-transparent"
+                    className="flex w-full items-center gap-2 px-2 py-1 text-left text-ui-11 hover:bg-surface-container-high disabled:opacity-50 disabled:hover:bg-transparent"
                 >
                     <Icon name={s.icon} size={12} className="shrink-0 text-on-surface-variant" />
                     <span className="shrink-0 font-medium text-on-surface">{s.label}</span>

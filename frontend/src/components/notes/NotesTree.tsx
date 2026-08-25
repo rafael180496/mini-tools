@@ -293,7 +293,7 @@ export default function NotesTree({
                 <button
                     onClick={() => setShowHelp((v) => !v)}
                     title={showHelp ? 'Ocultar la ayuda de búsqueda' : 'Qué más se puede escribir en el buscador para filtrar notas: etiquetas, frases exactas, enlaces entre notas'}
-                    className={`flex items-center gap-1 rounded px-1 text-[10px] ${showHelp ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
+                    className={`flex items-center gap-1 rounded px-1 text-ui-10 ${showHelp ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
                 >
                     <Icon name="help" size={12} />
                     Sintaxis de búsqueda
@@ -301,7 +301,7 @@ export default function NotesTree({
             </div>
             <div className="px-2">
                 {showHelp && (
-                    <div className="rounded border border-outline-variant bg-surface-container-low p-1.5 text-[10px] leading-4 text-on-surface-variant">
+                    <div className="rounded border border-outline-variant bg-surface-container-low p-1.5 text-ui-10 leading-4 text-on-surface-variant">
                         <p>
                             <span className="font-mono text-on-surface">oracle tablespace</span> — las dos palabras,
                             en cualquier orden
@@ -325,11 +325,11 @@ export default function NotesTree({
                 )}
             </div>
 
-            {error && <p className="px-2 pb-1 text-[10px] text-error">{error}</p>}
+            {error && <p className="px-2 pb-1 text-ui-10 text-error">{error}</p>}
 
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {hits.length === 0 && !loading && (
-                    <p className="px-2 py-2 text-[11px] text-on-surface-variant">
+                    <p className="px-2 py-2 text-ui-11 text-on-surface-variant">
                         {searching ? (
                             <>
                                 Sin resultados para <span className="text-on-surface">{query}</span>. El botón{' '}
@@ -476,7 +476,7 @@ function FolderRow({
                 del nombre, que es lo único que hay que leer. El contador
                 aparece al pasar por encima. */}
             <div
-                className="group mx-1 flex items-center gap-1 rounded py-[3px] pr-1 text-[12px] hover:bg-surface-variant"
+                className="group mx-1 flex items-center gap-1 rounded py-[3px] pr-1 text-ui-12 hover:bg-surface-variant"
                 style={{paddingLeft: `${depth * 12 + 4}px`}}
             >
                 <button
@@ -497,7 +497,7 @@ function FolderRow({
                     className="flex min-w-0 flex-1 items-center gap-1 text-left"
                 >
                     <span className="min-w-0 truncate text-on-surface">{node.folder.name}</span>
-                    <span className="shrink-0 text-[10px] text-on-surface-variant/50 group-hover:hidden">{total}</span>
+                    <span className="shrink-0 text-ui-10 text-on-surface-variant/50 group-hover:hidden">{total}</span>
                 </button>
 
                 <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
@@ -631,7 +631,7 @@ function NoteRow({
                         <Icon name="lock" size={11} className="shrink-0 text-on-surface-variant/60" />
                     )}
                     <span
-                        className={`min-w-0 truncate text-[12px] ${
+                        className={`min-w-0 truncate text-ui-12 ${
                             active ? 'text-on-surface' : 'text-on-surface/90'
                         } ${hit.matchedTitle ? 'font-medium' : ''}`}
                     >
@@ -654,7 +654,7 @@ function NoteRow({
                 era. El resaltado viene marcado con «…» desde el backend y se
                 parte acá — nunca se inyecta HTML. */}
             {hit.snippet && (
-                <span className="line-clamp-2 pb-1 text-[10px] leading-4 text-on-surface-variant">
+                <span className="line-clamp-2 pb-1 text-ui-10 leading-4 text-on-surface-variant">
                     {hit.snippet.split(/«|»/).map((part, i) =>
                         i % 2 === 1 ? (
                             <mark key={i} className="rounded bg-primary/25 text-on-surface">

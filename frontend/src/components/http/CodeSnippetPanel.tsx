@@ -59,7 +59,7 @@ export default function CodeSnippetPanel({itemId, request, onClose}: CodeSnippet
                         value={lang}
                         onChange={(e) => setLang(e.target.value)}
                         title="Lenguaje del snippet"
-                        className="rounded bg-surface-container-highest px-2 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                        className="rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                     >
                         {languages.map((l) => (
                             <option key={l.id} value={l.id}>
@@ -69,7 +69,7 @@ export default function CodeSnippetPanel({itemId, request, onClose}: CodeSnippet
                     </select>
 
                     <label
-                        className="flex items-center gap-1 text-[11px] text-on-surface-variant"
+                        className="flex items-center gap-1 text-ui-11 text-on-surface-variant"
                         title="Por defecto los valores que vienen de variables secretas salen tapados: un snippet suele terminar pegado en un ticket o un chat. Encendelo solo si el destino es de confianza."
                     >
                         <input type="checkbox" checked={withSecrets} onChange={(e) => setWithSecrets(e.target.checked)} className="accent-primary" />
@@ -83,7 +83,7 @@ export default function CodeSnippetPanel({itemId, request, onClose}: CodeSnippet
                             window.setTimeout(() => setCopied(false), 1500)
                         }}
                         title="Copiar el snippet al portapapeles"
-                        className="ml-auto rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90"
+                        className="ml-auto rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                     >
                         {copied ? 'Copiado' : 'Copiar'}
                     </button>
@@ -93,13 +93,13 @@ export default function CodeSnippetPanel({itemId, request, onClose}: CodeSnippet
                 </div>
 
                 {withSecrets && (
-                    <p className="shrink-0 bg-error-container px-3 py-1 text-[10px] text-on-error-container">
+                    <p className="shrink-0 bg-error-container px-3 py-1 text-ui-10 text-on-error-container">
                         Este snippet incluye credenciales reales. No lo pegues en un ticket, un chat ni un repositorio.
                     </p>
                 )}
-                {error && <p className="shrink-0 bg-error-container px-3 py-1 text-[10px] text-on-error-container">{error}</p>}
+                {error && <p className="shrink-0 bg-error-container px-3 py-1 text-ui-10 text-on-error-container">{error}</p>}
 
-                <pre className="min-h-0 flex-1 overflow-auto bg-surface-container-lowest p-3 font-mono text-[11px] leading-relaxed text-on-surface">
+                <pre className="min-h-0 flex-1 overflow-auto bg-surface-container-lowest p-3 font-mono text-ui-11 leading-relaxed text-on-surface">
                     {code}
                 </pre>
             </div>

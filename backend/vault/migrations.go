@@ -1162,6 +1162,26 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 50,
+		desc:    "tamaño de letra de la interfaz",
+		apply: func(tx *sql.Tx) error {
+			// Accesibilidad: la interfaz estaba escrita con cuerpos de 9 a 15
+			// píxeles fijos, y quien no lee cómodo ahí no tenía nada que
+			// tocar.
+			//
+			// Se guarda un PORCENTAJE y no un cuerpo en píxeles porque la app
+			// no tiene un tamaño base único del que derivar: cada componente
+			// pide el suyo según su jerarquía. El porcentaje multiplica y
+			// conserva esa jerarquía; un cuerpo único la aplanaría.
+			//
+			// 0 —el default de la columna— significa "sin elegir" y no "cero
+			// por ciento": el frontend lo lee como 100. Así una instalación ya
+			// existente no cambia de aspecto al actualizar.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN ui_font_scale INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

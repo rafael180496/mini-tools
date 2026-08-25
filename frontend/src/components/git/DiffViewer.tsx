@@ -298,7 +298,7 @@ export default function DiffViewer({
     return (
         <div className="flex h-full min-h-0 flex-col">
             {canApply && mode === 'unified' && (
-                <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-[11px]">
+                <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
                     <span className="text-on-surface-variant">
                         {parsed.hunks.length} {parsed.hunks.length === 1 ? 'bloque' : 'bloques'}
                     </span>
@@ -329,7 +329,7 @@ export default function DiffViewer({
                     {parsed.hunks.map((hunk, i) => {
                         const {added, removed} = hunkSummary(hunk)
                         return (
-                            <div key={i} className="flex items-center gap-2 px-2 py-0.5 text-[11px] hover:bg-surface-variant/40">
+                            <div key={i} className="flex items-center gap-2 px-2 py-0.5 text-ui-11 hover:bg-surface-variant/40">
                                 <button
                                     onClick={() => {
                                         // Scroll the editor to this hunk so the
@@ -346,7 +346,7 @@ export default function DiffViewer({
                                 >
                                     {hunk.header}
                                 </button>
-                                <span className="shrink-0 font-mono text-[10px]">
+                                <span className="shrink-0 font-mono text-ui-10">
                                     <span className="text-secondary">+{added}</span> <span className="text-error">−{removed}</span>
                                 </span>
                                 <button
@@ -425,7 +425,7 @@ export default function DiffViewer({
 
                 <div className="mx-1 h-4 w-px bg-outline-variant" />
 
-                <span className="text-[10px] text-on-surface-variant/70" title="Cuántas líneas sin cambios se muestran alrededor de cada cambio (git -U)">Contexto</span>
+                <span className="text-ui-10 text-on-surface-variant/70" title="Cuántas líneas sin cambios se muestran alrededor de cada cambio (git -U)">Contexto</span>
                 <button
                     onClick={() => onChangePrefs(Math.max(1, context - 3), ignoreWs, wrap)}
                     disabled={context <= 1}
@@ -434,7 +434,7 @@ export default function DiffViewer({
                 >
                     <Icon name="remove" size={14} />
                 </button>
-                <span className="w-4 text-center font-mono text-[11px] text-on-surface">{context}</span>
+                <span className="w-4 text-center font-mono text-ui-11 text-on-surface">{context}</span>
                 <button
                     onClick={() => onChangePrefs(Math.min(200, context + 3), ignoreWs, wrap)}
                     disabled={context >= 200}
@@ -459,7 +459,7 @@ export default function DiffViewer({
                                         ? `${b.author} · ${b.shortHash} · ${b.date}\n${b.summary}`
                                         : 'Sin commit: la línea todavía no está en el historial'
                                 }
-                                className="h-[18px] truncate px-1.5 text-[10px] leading-[18px] text-on-surface-variant/60"
+                                className="h-[18px] truncate px-1.5 text-ui-10 leading-[18px] text-on-surface-variant/60"
                             >
                                 {b ? (
                                     <>
@@ -499,7 +499,7 @@ function ModeTab({active, onClick, icon, label, title}: {active: boolean; onClic
         <button
             onClick={onClick}
             title={title}
-            className={`flex items-center gap-1 rounded px-2 py-0.5 text-[11px] ${
+            className={`flex items-center gap-1 rounded px-2 py-0.5 text-ui-11 ${
                 active ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
             }`}
         >
@@ -522,7 +522,7 @@ function SplitView({rows, wrap}: {rows: SplitRow[]; wrap: boolean}) {
         return <Placeholder icon="check_circle" text="Sin cambios de texto para mostrar." />
     }
     return (
-        <div className="min-h-0 flex-1 overflow-auto bg-surface-container-lowest font-mono text-[11px] leading-[1.5]">
+        <div className="min-h-0 flex-1 overflow-auto bg-surface-container-lowest font-mono text-ui-11 leading-[1.5]">
             <table className="w-full border-collapse">
                 <tbody>
                     {rows.map((r, i) => (

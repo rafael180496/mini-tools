@@ -45,7 +45,7 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
 
     return (
         <div className="px-2 pb-2">
-            <p className="py-2 text-[10px] leading-relaxed text-on-surface-variant/70">
+            <p className="py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                 Cada fila calcula una variable antes de enviar, y las de abajo pueden usar las de arriba. Sirven para firmar: en la entrada podés usar{' '}
                 <span className="font-mono">{'{{$timestamp}}'}</span>, <span className="font-mono">{'{{$randomUUID}}'}</span> y cualquier variable del entorno.
                 El resultado se usa como <span className="font-mono">{'{{nombre}}'}</span> en la URL, los headers o el cuerpo.
@@ -75,13 +75,13 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
                                 onChange={(e) => update(i, {name: e.target.value, enabled: true})}
                                 placeholder={ghost ? 'nombre de la variable' : ''}
                                 title="Cómo se llama el resultado. Se usa entre llaves dobles en el resto de la petición."
-                                className="w-40 shrink-0 rounded bg-surface-container-highest px-1.5 py-1 font-mono text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                className="w-40 shrink-0 rounded bg-surface-container-highest px-1.5 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                             />
                             <select
                                 value={row.op}
                                 onChange={(e) => update(i, {op: e.target.value, enabled: true})}
                                 title="Qué se le hace a la entrada"
-                                className="shrink-0 rounded bg-surface-container-highest px-1.5 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                className="shrink-0 rounded bg-surface-container-highest px-1.5 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                             >
                                 {OPS.map((o) => (
                                     <option key={o.id} value={o.id}>
@@ -94,7 +94,7 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
                                     value={row.encoding || 'hex'}
                                     onChange={(e) => update(i, {encoding: e.target.value})}
                                     title="Cómo se representan los bytes del resultado. La mayoría de las APIs esperan hexadecimal."
-                                    className="shrink-0 rounded bg-surface-container-highest px-1.5 py-1 text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                    className="shrink-0 rounded bg-surface-container-highest px-1.5 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                 >
                                     <option value="hex">hex</option>
                                     <option value="base64">base64</option>
@@ -118,7 +118,7 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
                                 onChange={(e) => update(i, {input: e.target.value, enabled: true})}
                                 placeholder="{{$timestamp}}/dev/blocks"
                                 title="Lo que se va a procesar. Admite variables entre llaves dobles, incluidas las de otras filas de esta misma tabla."
-                                className="w-full rounded bg-surface-container-highest px-1.5 py-1 font-mono text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                className="w-full rounded bg-surface-container-highest px-1.5 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                             />
                             {op.needsKey && (
                                 <input
@@ -126,12 +126,12 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
                                     onChange={(e) => update(i, {key: e.target.value, enabled: true})}
                                     placeholder="{{secreto}}"
                                     title="Clave del HMAC. Ponela como variable secreta del entorno en vez de escribirla acá: así queda cifrada y fuera del export."
-                                    className="w-full rounded bg-surface-container-highest px-1.5 py-1 font-mono text-[11px] text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                                    className="w-full rounded bg-surface-container-highest px-1.5 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                 />
                             )}
                         </div>
 
-                        {failed && <p className="mt-1 text-[10px] text-error">{failed}</p>}
+                        {failed && <p className="mt-1 text-ui-10 text-error">{failed}</p>}
                     </div>
                 )
             })}

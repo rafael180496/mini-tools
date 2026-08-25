@@ -89,7 +89,7 @@ export default function SshHybridTab({
 
     return (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-2 py-1 text-[11px]">
+            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-2 py-1 text-ui-11">
                 <Icon name="dns" size={13} className="shrink-0 text-primary" />
                 <span className="font-mono text-on-surface">{connName}</span>
                 <span

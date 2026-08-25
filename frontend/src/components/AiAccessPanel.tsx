@@ -104,7 +104,7 @@ export default function AiAccessPanel() {
 
     return (
         <section className="flex flex-col gap-2">
-            <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+            <h3 className="px-1 text-ui-11 font-semibold uppercase tracking-wider text-on-surface-variant">
                 Acceso de la IA
             </h3>
 
@@ -117,7 +117,7 @@ export default function AiAccessPanel() {
                     />
                     <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-on-surface">Servidor MCP</p>
-                        <p className="mt-0.5 text-[11px] leading-4 text-on-surface-variant">
+                        <p className="mt-0.5 text-ui-11 leading-4 text-on-surface-variant">
                             Deja que Claude Code, Codex o Antigravity le <strong>pidan</strong> datos a mini-tools desde
                             su propia conversación: buscar en tus notas, leer el esquema de una tabla, mirar las últimas
                             líneas de una terminal.{' '}
@@ -137,17 +137,17 @@ export default function AiAccessPanel() {
                     />
                 </div>
 
-                {error && <p className="rounded bg-error-container/40 px-2 py-1 text-[11px] text-error">{error}</p>}
+                {error && <p className="rounded bg-error-container/40 px-2 py-1 text-ui-11 text-error">{error}</p>}
 
                 {status?.enabled && (
                     <>
                         <p
-                            className="rounded bg-surface-container-high px-2 py-1 font-mono text-[10px] text-on-surface-variant"
+                            className="rounded bg-surface-container-high px-2 py-1 font-mono text-ui-10 text-on-surface-variant"
                             title="El canal es un socket local del sistema de archivos, con permisos solo para tu usuario. Nunca se abre un puerto de red."
                         >
                             {status.socketPath}
                         </p>
-                        <p className="text-[11px] text-on-surface-variant">
+                        <p className="text-ui-11 text-on-surface-variant">
                             {status.tools} herramientas expuestas. Ninguna devuelve filas de tus bases, ni DSN, ni
                             contraseñas, ni el contenido de una nota que hayas marcado como privada.
                         </p>
@@ -164,15 +164,15 @@ export default function AiAccessPanel() {
                                 className={`mt-0.5 shrink-0 ${status.notesWrite ? 'text-primary' : 'text-on-surface-variant'}`}
                             />
                             <div className="min-w-0 flex-1">
-                                <p className="text-[11px] font-medium text-on-surface">
+                                <p className="text-ui-11 font-medium text-on-surface">
                                     Dejar que el agente escriba en tu base de conocimiento
                                 </p>
-                                <p className="mt-0.5 text-[11px] leading-4 text-on-surface-variant">
+                                <p className="mt-0.5 text-ui-11 leading-4 text-on-surface-variant">
                                     Le agrega herramientas para <strong>crear notas nuevas</strong> —dejar asentado un
                                     procedimiento, un diagnóstico, una decisión— y para <strong>corregir las suyas</strong>.
                                     Cada nota que crea queda marcada como suya.
                                 </p>
-                                <p className="mt-1 text-[11px] leading-4 text-on-surface-variant">
+                                <p className="mt-1 text-ui-11 leading-4 text-on-surface-variant">
                                     <strong>Nunca toca lo que escribiste vos.</strong> Solo puede reescribir notas que
                                     creó él y que nadie editó después: apenas guardás una de sus notas, pasa a ser tuya y
                                     él deja de poder cambiarla. Una nota marcada como privada le queda fuera de alcance,
@@ -187,7 +187,7 @@ export default function AiAccessPanel() {
                                     esta aplicación. Callarlo dejaría a alguien
                                     peleando con un agente que "no ve" la
                                     herramienta que acaba de habilitar. */}
-                                <p className="mt-1 text-[10px] leading-4 text-on-surface-variant/70">
+                                <p className="mt-1 text-ui-10 leading-4 text-on-surface-variant/70">
                                     <strong>Vale sobre la sesión que ya esté abierta</strong>, sin reiniciar el CLI:
                                     quitarlo rechaza la llamada aunque el agente todavía crea que puede, y darlo le
                                     avisa —después de su próxima acción— que vuelva a pedir la lista de herramientas. Si
@@ -215,7 +215,7 @@ export default function AiAccessPanel() {
                     <button
                         onClick={() => setHowTo((v) => !v)}
                         title="Los pasos exactos para que Claude Code, Codex o Antigravity vean este servidor"
-                        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px] text-on-surface hover:bg-surface-variant"
+                        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-ui-11 text-on-surface hover:bg-surface-variant"
                     >
                         <Icon name={howTo ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0" />
                         <Icon name="help" size={13} className="shrink-0 text-primary" />
@@ -224,7 +224,7 @@ export default function AiAccessPanel() {
                     </button>
 
                     {howTo && (
-                        <div className="flex flex-col gap-2 border-t border-outline-variant p-2 text-[11px]">
+                        <div className="flex flex-col gap-2 border-t border-outline-variant p-2 text-ui-11">
                             <ol className="ml-4 list-decimal space-y-1 text-on-surface-variant">
                                 <li>
                                     Encendé el servidor con el interruptor de arriba.{' '}
@@ -256,14 +256,14 @@ export default function AiAccessPanel() {
                                             {copied === s2.agent ? 'Copiado' : 'Copiar'}
                                         </button>
                                     </p>
-                                    <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-surface-container-highest px-2 py-1 font-mono text-[10px] text-on-surface">
+                                    <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-surface-container-highest px-2 py-1 font-mono text-ui-10 text-on-surface">
                                         {s2.code}
                                     </pre>
-                                    <p className="mt-1 text-[10px] text-on-surface-variant/70">{s2.note}</p>
+                                    <p className="mt-1 text-ui-10 text-on-surface-variant/70">{s2.note}</p>
                                 </div>
                             ))}
 
-                            <p className="text-[10px] leading-4 text-on-surface-variant/70">
+                            <p className="text-ui-10 leading-4 text-on-surface-variant/70">
                                 <strong>Se copia y no se escribe solo</strong>, a propósito: el archivo de Claude Code es
                                 su archivo de <em>estado</em> —con el historial de todos tus proyectos adentro— y
                                 reescribirlo entero para agregar una línea es un riesgo desproporcionado.
@@ -273,11 +273,11 @@ export default function AiAccessPanel() {
                 </div>
 
                 <div className="rounded border border-outline-variant bg-surface-container-low p-2">
-                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-on-surface-variant">
+                    <p className="mb-1 text-ui-10 font-medium uppercase tracking-wider text-on-surface-variant">
                         Últimos accesos
                     </p>
                     {!status?.audit?.length ? (
-                        <p className="text-[11px] text-on-surface-variant">
+                        <p className="text-ui-11 text-on-surface-variant">
                             {status?.enabled
                                 ? 'Todavía ningún agente pidió nada.'
                                 : 'El servidor está apagado, así que no hay accesos posibles.'}
@@ -285,7 +285,7 @@ export default function AiAccessPanel() {
                     ) : (
                         <ul className="flex max-h-40 flex-col gap-0.5 overflow-y-auto">
                             {status.audit.map((e, i) => (
-                                <li key={i} className="flex items-center gap-1.5 text-[11px]">
+                                <li key={i} className="flex items-center gap-1.5 text-ui-11">
                                     <Icon
                                         name={e.denied ? 'block' : 'check'}
                                         size={11}
@@ -310,7 +310,7 @@ export default function AiAccessPanel() {
                             ))}
                         </ul>
                     )}
-                    <p className="mt-1 text-[10px] leading-4 text-on-surface-variant/70">
+                    <p className="mt-1 text-ui-10 leading-4 text-on-surface-variant/70">
                         Se registra <strong>qué se pidió, no lo que se leyó</strong>: guardar el contenido sería una
                         segunda copia de lo mismo que se quiere proteger. Vive en memoria y se va al cerrar la app.
                     </p>

@@ -25,6 +25,7 @@ cd "$ROOT_DIR"
 
 export PATH="$PATH:$(go env GOPATH)/bin"
 command -v wails >/dev/null || { echo "Wails CLI no encontrado. Corre scripts/install.sh primero."; exit 1; }
+source "$ROOT_DIR/scripts/ensure-pnpm.sh"
 
 VERSION="$(cat VERSION 2>/dev/null || true)"
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then

@@ -158,14 +158,14 @@ export default function Select({
                                         // buscando. Ahora el nombre manda y la
                                         // pista lo acompaña a la derecha, tenue,
                                         // alineada en su propia columna.
-                                        className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[13px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                        className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-ui-13 disabled:cursor-not-allowed disabled:opacity-50 ${
                                             selected ? 'bg-primary/12 text-primary' : 'hover:bg-surface-variant'
                                         }`}
                                     >
                                         {o.icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center">{o.icon}</span>}
                                         <span className="min-w-0 flex-1 truncate">{o.label}</span>
                                         {o.hint && (
-                                            <span className={`shrink-0 truncate text-[11px] ${selected ? 'text-primary/70' : 'text-on-surface-variant/60'}`}>
+                                            <span className={`shrink-0 truncate text-ui-11 ${selected ? 'text-primary/70' : 'text-on-surface-variant/60'}`}>
                                                 {o.hint}
                                             </span>
                                         )}

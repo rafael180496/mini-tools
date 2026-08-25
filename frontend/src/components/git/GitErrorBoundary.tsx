@@ -52,7 +52,7 @@ export default class GitErrorBoundary extends Component<Props, State> {
                 <p className="max-w-lg text-center text-xs text-on-surface-variant">
                     Esto es un bug de la app, no de tu repositorio ({this.props.label}). El resto de mini-tools sigue funcionando: podés cerrar esta pestaña y seguir trabajando.
                 </p>
-                <pre className="max-h-64 w-full max-w-2xl overflow-auto whitespace-pre-wrap break-words rounded-lg border border-outline-variant bg-surface-container-lowest p-3 font-mono text-[10px] text-on-surface-variant">
+                <pre className="max-h-64 w-full max-w-2xl overflow-auto whitespace-pre-wrap break-words rounded-lg border border-outline-variant bg-surface-container-lowest p-3 font-mono text-ui-10 text-on-surface-variant">
                     {this.state.error.message}
                     {this.state.stack}
                 </pre>

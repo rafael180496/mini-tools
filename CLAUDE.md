@@ -9,7 +9,7 @@ Este archivo es solo un índice; el contenido real vive en archivos dedicados, c
 | Archivo | Qué tiene |
 | --- | --- |
 | [docs/SPEC.md](docs/SPEC.md) | Spec funcional completo (intención original del proyecto) |
-| [index.html](index.html) | **Vitrina pública** (GitHub Pages): qué es la app, instalación, cada módulo con ejemplos de uso y capturas. Se actualiza con el mismo cambio que agrega un módulo o una funcionalidad — ver la regla en `conventions.md` |
+| [index.html](index.html) | **Sitio de ayuda público** (GitHub Pages): índice jerárquico, un tema por pantalla, buscador y anterior/siguiente. Documenta cómo se usa cada módulo. Se actualiza con el mismo cambio que agrega un módulo o una funcionalidad — ver la regla en `conventions.md` |
 | [.claude/specs/architecture.md](.claude/specs/architecture.md) | Stack y estructura de carpetas **actuales** (mantenido fase a fase, con notas de desviación vs. el plan original) |
 | [.claude/specs/commands.md](.claude/specs/commands.md) | Comandos de dev/build/test, wrappers de `scripts/` |
 | [.claude/specs/releases.md](.claude/specs/releases.md) | Proceso de empaquetado/publicación (`releases/<os>/`) — trigger "compila la versión oficial" |
@@ -21,7 +21,7 @@ Este archivo es solo un índice; el contenido real vive en archivos dedicados, c
 | [.claude/specs/sistema-agentico-unificado.md](.claude/specs/sistema-agentico-unificado.md) | **Fases 1-7 implementadas y verificadas** (queda el empaquetado de la 2.0.0, que es un trigger del usuario). Plan 1.4.0 → 2.0.0: chat integral único para todos los módulos, sistema `@` de contexto, IA en bases de datos y SSH/SFTP, módulo nuevo Vault Notes (grafo + bloques, cifrado), servidor MCP nativo embebido y AI Access Firewall |
 | [.claude/specs/http-client.md](.claude/specs/http-client.md) | **Implementado (las nueve fases).** Plan en fases del módulo de peticiones HTTP: colecciones estilo Postman en el vault, import/export Postman v2.1 con round-trip, variables de entorno/colección, auth estándar con herencia, cuerpos con archivos, snippets de código, docs sobre Vault Notes e IA |
 | [.claude/rules/technical.md](.claude/rules/technical.md) | Restricciones técnicas duras y no negociables (cgo, `database/sql`, cifrado, tamaño de binario, migraciones, etc.) |
-| [.claude/rules/conventions.md](.claude/rules/conventions.md) | Convenciones de Go/frontend, testing, commits, CodeGraph, y la regla de mantener `index.html` (la vitrina de GitHub Pages) al día con cada módulo nuevo |
+| [.claude/rules/conventions.md](.claude/rules/conventions.md) | Convenciones de Go/frontend, testing, commits, CodeGraph, y la regla de mantener `index.html` (el sitio de ayuda de GitHub Pages) al día con cada módulo o funcionalidad nueva — incluye cómo se escribe un tema |
 | [.claude/skills/mini-tools-patterns/SKILL.md](.claude/skills/mini-tools-patterns/SKILL.md) | Patrones de conectores/queries/theming — consultar antes de tocar un motor de BD, el executor, o el sistema de temas |
 
 Antes de un cambio no trivial: leer `architecture.md` para el estado actual, `go-react-contract.md` si toca `app.go`, `vault-migrations.md` si toca el schema de `vault.db`, `design-system.md` si toca cualquier estilo/color/ícono/fuente del frontend, y el `SKILL.md` si toca conectores/executor/explain/theming — tienen las desviaciones reales vs. lo planeado y los bugs ya encontrados, para no repetirlos.

@@ -83,7 +83,7 @@ export default function RedisPrefixTree({connId, onSelectPrefix, activePattern}:
 
             {report && (
                 <>
-                    <p className="text-[10px] text-on-surface-variant/70">
+                    <p className="text-ui-10 text-on-surface-variant/70">
                         Muestra de {report.sampled.toLocaleString('es')}
                         {report.totalKeys > 0 && ` de ${report.totalKeys.toLocaleString('es')}`} claves
                         {report.truncated && ' — se cortó en el límite de muestreo, los conteos son estimaciones'}
@@ -159,11 +159,11 @@ function PrefixRow({
                 </button>
 
                 {showBytes && !!node.bytes && (
-                    <span className="shrink-0 font-mono text-[10px] text-on-surface-variant/70" title="Memoria estimada de las claves muestreadas bajo este prefijo">
+                    <span className="shrink-0 font-mono text-ui-10 text-on-surface-variant/70" title="Memoria estimada de las claves muestreadas bajo este prefijo">
                         {formatBytes(node.bytes)}
                     </span>
                 )}
-                <span className="w-12 shrink-0 text-right font-mono text-[10px] text-on-surface-variant" title="Claves muestreadas bajo este prefijo">
+                <span className="w-12 shrink-0 text-right font-mono text-ui-10 text-on-surface-variant" title="Claves muestreadas bajo este prefijo">
                     {node.keys.toLocaleString('es')}
                 </span>
             </div>

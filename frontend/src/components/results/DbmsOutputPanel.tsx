@@ -36,7 +36,7 @@ export default function DbmsOutputPanel({lines}: DbmsOutputPanelProps) {
     return (
         <div className="flex min-h-0 flex-1 flex-col bg-surface">
             <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-2 py-1">
-                <span className="shrink-0 font-mono text-[11px] tabular-nums text-on-surface-variant">
+                <span className="shrink-0 font-mono text-ui-11 tabular-nums text-on-surface-variant">
                     {q ? `${visible.length} de ${lines.length} líneas` : `${lines.length} ${lines.length === 1 ? 'línea' : 'líneas'}`}
                 </span>
 
@@ -49,7 +49,7 @@ export default function DbmsOutputPanel({lines}: DbmsOutputPanelProps) {
                         onChange={(e) => setFilter(e.target.value)}
                         placeholder="Filtrar líneas…"
                         title="Deja solo las líneas que contienen ese texto — para encontrar el ERROR en un log de trescientas líneas sin leerlo entero"
-                        className="w-40 min-w-0 bg-transparent text-[11px] text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                        className="w-40 min-w-0 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                     />
                     {filter && (
                         <button onClick={() => setFilter('')} title="Quitar el filtro y volver a ver todo el log" className="shrink-0 text-on-surface-variant/60 hover:text-on-surface">
@@ -72,7 +72,7 @@ export default function DbmsOutputPanel({lines}: DbmsOutputPanelProps) {
                 <button
                     onClick={copyAll}
                     title={q ? 'Copiar solo las líneas que muestra el filtro' : 'Copiar toda la salida al portapapeles'}
-                    className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name={copied ? 'check' : 'content_copy'} size={14} />
                     {copied ? 'Copiado' : 'Copiar'}

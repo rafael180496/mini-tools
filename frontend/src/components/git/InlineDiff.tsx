@@ -67,18 +67,18 @@ export default function InlineDiff({state, onOpenFull}: Props) {
 
     if (state.loading) {
         return (
-            <p className="flex items-center gap-1.5 bg-surface-container-lowest px-3 py-1.5 text-[11px] text-on-surface-variant">
+            <p className="flex items-center gap-1.5 bg-surface-container-lowest px-3 py-1.5 text-ui-11 text-on-surface-variant">
                 <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary" />
                 Leyendo el diff…
             </p>
         )
     }
     if (state.error) {
-        return <p className="bg-surface-container-lowest px-3 py-1.5 text-[11px] text-error">{state.error}</p>
+        return <p className="bg-surface-container-lowest px-3 py-1.5 text-ui-11 text-error">{state.error}</p>
     }
     if (state.isBinary) {
         return (
-            <p className="flex items-center gap-1.5 bg-surface-container-lowest px-3 py-1.5 text-[11px] text-on-surface-variant">
+            <p className="flex items-center gap-1.5 bg-surface-container-lowest px-3 py-1.5 text-ui-11 text-on-surface-variant">
                 <Icon name="data_object" size={12} className="shrink-0" />
                 Archivo binario: git no produce un diff de texto para esto.
             </p>
@@ -86,7 +86,7 @@ export default function InlineDiff({state, onOpenFull}: Props) {
     }
     if (rows.length === 0) {
         return (
-            <p className="bg-surface-container-lowest px-3 py-1.5 text-[11px] text-on-surface-variant">
+            <p className="bg-surface-container-lowest px-3 py-1.5 text-ui-11 text-on-surface-variant">
                 Sin cambios de contenido — puede ser solo un cambio de permisos o un renombrado.
             </p>
         )
@@ -132,7 +132,7 @@ export default function InlineDiff({state, onOpenFull}: Props) {
                 <button
                     onClick={onOpenFull}
                     title="Abre el archivo en el panel de diff, donde se ve completo y se puede stagear por bloques o por líneas"
-                    className="flex w-full items-center justify-center gap-1.5 border-t border-outline-variant px-2 py-1 text-[11px] text-primary hover:bg-primary-container/40"
+                    className="flex w-full items-center justify-center gap-1.5 border-t border-outline-variant px-2 py-1 text-ui-11 text-primary hover:bg-primary-container/40"
                 >
                     <Icon name="unfold_more" size={12} />
                     {hidden} líneas más — ver el archivo completo

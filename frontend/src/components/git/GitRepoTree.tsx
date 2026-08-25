@@ -589,7 +589,7 @@ export default function GitRepoTree({
                 {isExpanded && (
                     <div className="pb-1" style={{paddingLeft: `${depth * 14}px`}}>
                         {!detail && (
-                            <p className="flex items-center gap-1.5 py-1 pl-8 text-[10px] text-primary">
+                            <p className="flex items-center gap-1.5 py-1 pl-8 text-ui-10 text-primary">
                                 <span aria-hidden className="h-2.5 w-2.5 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-primary" />
                                 Cargando…
                             </p>
@@ -635,7 +635,7 @@ export default function GitRepoTree({
                     ) : (
                         <button onClick={() => toggleFolder(folder.id)} className="flex min-w-0 flex-1 items-center text-left" title={`Carpeta "${folder.name}"`}>
                             <span className="truncate">{folder.name}</span>
-                            <span className="ml-1.5 shrink-0 text-[10px] text-on-surface-variant/50">{folderRepos.length || ''}</span>
+                            <span className="ml-1.5 shrink-0 text-ui-10 text-on-surface-variant/50">{folderRepos.length || ''}</span>
                         </button>
                     )}
                     <div className="flex shrink-0 items-center opacity-0 group-hover:opacity-100">
@@ -704,7 +704,7 @@ export default function GitRepoTree({
                 {/* git missing is a first-class state, not a per-operation
                     failure — see backend/git's package doc on the exec tradeoff. */}
                 {probe && !probe.available && (
-                    <div className="mx-3 mb-2 rounded border border-outline-variant bg-error-container/40 p-2 text-[11px] text-on-error-container">
+                    <div className="mx-3 mb-2 rounded border border-outline-variant bg-error-container/40 p-2 text-ui-11 text-on-error-container">
                         <p className="font-medium">git no está instalado</p>
                         <p className="mt-0.5 opacity-80">
                             El módulo Git usa el git del sistema. Instalalo (en macOS: <span className="font-mono">xcode-select --install</span>) y reabrí la app.
@@ -713,7 +713,7 @@ export default function GitRepoTree({
                 )}
 
                 {error && (
-                    <div className="mx-3 mt-2 flex items-start gap-1 rounded bg-error-container/40 p-1.5 text-[10px] text-on-error-container">
+                    <div className="mx-3 mt-2 flex items-start gap-1 rounded bg-error-container/40 p-1.5 text-ui-10 text-on-error-container">
                         <span className="min-w-0 flex-1 break-words">{error}</span>
                         <button onClick={() => setError(null)} title="Cerrar este error" className="shrink-0">
                             <Icon name="close" size={12} />
@@ -729,7 +729,7 @@ export default function GitRepoTree({
                         standalone Git client offers on its start screen. */}
                     {!hasAnything && !q && probe?.available && (
                         <div className="space-y-1.5 px-3 py-2">
-                            <p className="pb-1 text-[11px] text-on-surface-variant/70">Todavía no agregaste ningún repositorio.</p>
+                            <p className="pb-1 text-ui-11 text-on-surface-variant/70">Todavía no agregaste ningún repositorio.</p>
                             <EmptyAction icon="folder_open" label="Abrir repositorio" desc="Uno que ya existe en tu disco" onClick={() => void openRepo()} />
                             <EmptyAction icon="create_new_folder" label="Nuevo repositorio" desc="git init en una carpeta" onClick={() => void newRepo()} />
                             <EmptyAction icon="cloud_download" label="Clonar…" desc="Desde una URL" onClick={() => setShowClone(true)} />
@@ -1073,7 +1073,7 @@ function EmptyAction({icon, label, desc, onClick}: {icon: string; label: string;
             <Icon name={icon} size={18} className="shrink-0 text-primary" />
             <span className="min-w-0">
                 <span className="block truncate text-xs text-on-surface">{label}</span>
-                <span className="block truncate text-[10px] text-on-surface-variant/70">{desc}</span>
+                <span className="block truncate text-ui-10 text-on-surface-variant/70">{desc}</span>
             </span>
         </button>
     )
@@ -1086,7 +1086,7 @@ function TreeSection({label, icon, count, open, onToggle, children, action}: {la
                 <button
                     onClick={onToggle}
                     title={open ? `Colapsar ${label.toLowerCase()}` : `Ver ${label.toLowerCase()} (${count})`}
-                    className="flex min-w-0 flex-1 items-center gap-1 py-0.5 pl-6 pr-2 text-left text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70"
+                    className="flex min-w-0 flex-1 items-center gap-1 py-0.5 pl-6 pr-2 text-left text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70"
                 >
                     <Icon name={open ? 'expand_more' : 'chevron_right'} size={12} className="shrink-0" />
                     <Icon name={icon} size={12} className="shrink-0" />
@@ -1134,7 +1134,7 @@ function TreeLeaf({
             onDoubleClick={onDoubleClick}
             title={title}
             style={{paddingLeft: (indent ? 64 : 48) + (depth ?? 0) * 12}}
-            className={`truncate py-0.5 pr-2 text-[11px] hover:bg-surface-variant/40 ${
+            className={`truncate py-0.5 pr-2 text-ui-11 hover:bg-surface-variant/40 ${
                 bold ? 'font-semibold text-primary' : 'text-on-surface-variant'
             } ${onDoubleClick ? 'cursor-pointer' : ''}`}
         >
@@ -1169,12 +1169,12 @@ function TreeBranchFolder({
                     : `Desplegar "${node.path}" — tiene ${total} ${total === 1 ? 'rama' : 'ramas'}`
             }
             style={{paddingLeft: (indent ? 64 : 48) + depth * 12}}
-            className="flex cursor-pointer items-center gap-1 py-0.5 pr-2 text-[11px] text-on-surface-variant hover:bg-surface-variant/40"
+            className="flex cursor-pointer items-center gap-1 py-0.5 pr-2 text-ui-11 text-on-surface-variant hover:bg-surface-variant/40"
         >
             <Icon name={open ? 'expand_more' : 'chevron_right'} size={12} className="shrink-0 opacity-60" />
             <Icon name={open ? 'folder_open' : 'folder'} size={12} className="shrink-0 opacity-60" />
             <span className="truncate">{node.label}</span>
-            <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums opacity-50">{total}</span>
+            <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-50">{total}</span>
         </div>
     )
 }

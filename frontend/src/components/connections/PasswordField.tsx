@@ -69,7 +69,7 @@ export default function PasswordField({value, onChange, editingId, label = 'Pass
                         type="button"
                         onClick={() => setAsking(true)}
                         title="Trae del vault la contraseña que ya está guardada y la deja en el campo, lista para copiar o editar. Pide tu clave maestra: verla en pantalla es una decisión aparte de tener la app abierta."
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-primary hover:bg-surface-variant"
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-primary hover:bg-surface-variant"
                     >
                         <Icon name="key" size={13} />
                         Ver la actual
@@ -113,7 +113,7 @@ export default function PasswordField({value, onChange, editingId, label = 'Pass
                 </button>
             </div>
 
-            {notice && <span className="text-[11px] text-error">{notice}</span>}
+            {notice && <span className="text-ui-11 text-error">{notice}</span>}
 
             {asking && (
                 <PasswordConfirmDialog

@@ -785,6 +785,8 @@ export function SetTerminalFontSize(arg1:number):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
 
+export function SetUIFontScale(arg1:number):Promise<void>;
+
 export function SftpHomeDir(arg1:string):Promise<string>;
 
 export function SftpPathPermissions(arg1:string,arg2:string):Promise<sftpx.PermInfo>;

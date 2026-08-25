@@ -437,7 +437,7 @@ export default function ConnectionTree({
                             {envStyleOf(c) && (
                                 <span
                                     title={`Entorno: ${envStyleOf(c)!.label}`}
-                                    className={`shrink-0 rounded px-1 py-px text-[9px] leading-tight font-semibold tracking-wide ${envStyleOf(c)!.badge}`}
+                                    className={`shrink-0 rounded px-1 py-px text-ui-9 leading-tight font-semibold tracking-wide ${envStyleOf(c)!.badge}`}
                                 >
                                     {envStyleOf(c)!.short}
                                 </span>
@@ -751,7 +751,7 @@ export default function ConnectionTree({
                                 en 256px de ancho, y mientras estás apuntando a
                                 la carpeta lo que querés es actuar sobre ella. */}
                             {total > 0 && (
-                                <span className="shrink-0 font-mono text-[10px] tabular-nums text-on-surface-variant/45 group-hover/folder:hidden">
+                                <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/45 group-hover/folder:hidden">
                                     {total}
                                 </span>
                             )}

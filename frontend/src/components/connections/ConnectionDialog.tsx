@@ -492,7 +492,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                         className="w-full"
                     />
                     {environment !== '' && (
-                        <span className="mt-1 flex items-center gap-1.5 text-[11px] text-on-surface-variant">
+                        <span className="mt-1 flex items-center gap-1.5 text-ui-11 text-on-surface-variant">
                             <span className={`h-2 w-2 shrink-0 rounded-full ${ENVIRONMENTS[environment as EnvironmentId].dot}`} />
                             {ENVIRONMENTS[environment as EnvironmentId].description}
                         </span>
@@ -1138,7 +1138,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                     </button>
                                 </div>
                                 {params.keyId && (
-                                    <span className="mt-1 block truncate font-mono text-[10px] text-on-surface-variant">
+                                    <span className="mt-1 block truncate font-mono text-ui-10 text-on-surface-variant">
                                         {sshKeys.find((k) => k.id === params.keyId)?.fingerprint ?? ''}
                                     </span>
                                 )}
@@ -1273,7 +1273,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                     )
                                 })}
                         </div>
-                        <span className="text-[11px] text-on-surface-variant">
+                        <span className="text-ui-11 text-on-surface-variant">
                             Por default queda marcado solo el esquema propio de la conexión — tildá los que además te interesan
                             o desmarcá todo para no escanear ninguno. Se puede cambiar después desde el ícono "esq" en la lista
                             de conexiones.

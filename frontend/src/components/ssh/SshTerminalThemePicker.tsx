@@ -24,7 +24,7 @@ function ThemePreview({id, appTheme}: {id: TerminalThemeId; appTheme: Theme}) {
     const t = resolveTerminalTheme(id, appTheme)
     return (
         <div
-            className="overflow-hidden rounded border border-outline-variant px-1.5 py-1 font-mono text-[10px] leading-tight"
+            className="overflow-hidden rounded border border-outline-variant px-1.5 py-1 font-mono text-ui-10 leading-tight"
             style={{backgroundColor: t.background, color: t.foreground}}
         >
             <div className="truncate">

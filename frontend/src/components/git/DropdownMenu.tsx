@@ -117,7 +117,7 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
                         ) : 'header' in item ? (
                             <div
                                 key={`head-${i}`}
-                                className="px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant/70"
+                                className="px-2 pb-0.5 pt-2 text-ui-10 font-semibold uppercase tracking-wide text-on-surface-variant/70"
                             >
                                 {item.header}
                             </div>
@@ -153,7 +153,7 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
                                 {item.icon && <Icon name={item.icon} size={15} className="shrink-0 opacity-70" />}
                                 <span className="shrink-0 font-mono">{item.label}</span>
                                 {item.hint && (
-                                    <span className="ml-auto truncate text-[10px] text-on-surface-variant/70">{item.hint}</span>
+                                    <span className="ml-auto truncate text-ui-10 text-on-surface-variant/70">{item.hint}</span>
                                 )}
                             </button>
                         ),

@@ -59,7 +59,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                                     .catch((e) => setError(String(e)))
                             }
                             title="Vaciar el tarro entero de este entorno: equivale a cerrar sesión en todos los dominios."
-                            className="rounded border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface-variant hover:bg-surface-variant"
+                            className="rounded border border-outline-variant px-2 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant"
                         >
                             Borrar todas
                         </button>
@@ -69,11 +69,11 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                     </button>
                 </div>
 
-                {error && <p className="shrink-0 bg-error-container px-3 py-1 text-[11px] text-on-error-container">{error}</p>}
+                {error && <p className="shrink-0 bg-error-container px-3 py-1 text-ui-11 text-on-error-container">{error}</p>}
 
                 <div className="min-h-0 flex-1 overflow-y-auto">
                     {cookies.length === 0 && (
-                        <p className="px-3 py-4 text-[11px] leading-relaxed text-on-surface-variant">
+                        <p className="px-3 py-4 text-ui-11 leading-relaxed text-on-surface-variant">
                             Todavía no hay cookies en este entorno. Aparecen solas cuando un servidor manda una: el login de una petición vale para las
                             siguientes sin copiar nada a mano.
                         </p>
@@ -81,7 +81,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                     {domains.map((domain) => (
                         <div key={domain}>
                             <div className="flex items-center gap-2 bg-surface-container-lowest px-3 py-1">
-                                <span className="flex-1 truncate font-mono text-[11px] text-on-surface">{domain}</span>
+                                <span className="flex-1 truncate font-mono text-ui-11 text-on-surface">{domain}</span>
                                 <button
                                     onClick={() =>
                                         void HttpClearCookies(collectionId, domain)
@@ -100,7 +100,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                                     const key = `${c.domain}|${c.name}`
                                     const shown = revealed.has(key)
                                     return (
-                                        <div key={key} className="flex items-center gap-2 border-b border-outline-variant/40 px-3 py-1 text-[11px]">
+                                        <div key={key} className="flex items-center gap-2 border-b border-outline-variant/40 px-3 py-1 text-ui-11">
                                             <span className="w-40 shrink-0 truncate font-mono text-on-surface" title={c.name}>
                                                 {c.name}
                                             </span>
@@ -128,7 +128,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                     ))}
                 </div>
 
-                <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-[10px] leading-relaxed text-on-surface-variant/70">
+                <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                     Hay un tarro por entorno: probar producción y desarrollo a la vez no mezcla las sesiones. Viven en memoria — al cerrar la aplicación
                     se pierden, y volver a hacer login es una petición más de la colección.
                 </p>

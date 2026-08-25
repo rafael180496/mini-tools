@@ -87,7 +87,7 @@ export default function MongoFilterWizard({fields, sampling, onApply, onClose}: 
                 </div>
 
                 <div className="border-t border-outline-variant p-3">
-                    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">Filtro generado</span>
+                    <span className="mb-1.5 block text-ui-11 font-medium uppercase tracking-wide text-on-surface-variant">Filtro generado</span>
                     <pre className="max-h-28 overflow-auto whitespace-pre-wrap rounded border border-outline-variant bg-surface-container-low p-2 font-mono text-xs text-on-surface">
                         {filter}
                     </pre>

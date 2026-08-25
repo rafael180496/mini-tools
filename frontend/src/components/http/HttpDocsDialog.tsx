@@ -100,7 +100,7 @@ export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNo
                         onClick={() => void publish()}
                         disabled={publishing || loading}
                         title="Escribir esta documentación como una nota del vault, para poder buscarla, enlazarla desde otras notas y consultarla desde el agente."
-                        className="rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90 disabled:opacity-40"
+                        className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                     >
                         {publishing ? 'Publicando…' : collection.docsNoteId || result?.noteId ? 'Regenerar la nota' : 'Publicar como nota'}
                     </button>
@@ -110,14 +110,14 @@ export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNo
                 </div>
 
                 {error && (
-                    <p className="shrink-0 bg-error-container px-3 py-1 text-[11px] text-on-error-container" title={error}>
+                    <p className="shrink-0 bg-error-container px-3 py-1 text-ui-11 text-on-error-container" title={error}>
                         {error}
                     </p>
                 )}
 
                 {result && (
                     <div
-                        className={`flex shrink-0 items-center gap-2 px-3 py-1.5 text-[11px] ${
+                        className={`flex shrink-0 items-center gap-2 px-3 py-1.5 text-ui-11 ${
                             result.status === 'skipped' ? 'bg-tertiary-container text-on-tertiary-container' : 'bg-secondary-container text-on-secondary-container'
                         }`}
                     >
@@ -152,7 +152,7 @@ export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNo
 
                 <div className="flex min-h-0 flex-1">
                     <div className="flex w-72 shrink-0 flex-col border-r border-outline-variant">
-                        <p className="shrink-0 px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">
+                        <p className="shrink-0 px-3 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
                             Descripción de la colección
                         </p>
                         <textarea
@@ -161,19 +161,19 @@ export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNo
                             onBlur={() => void saveDescription()}
                             placeholder={'Qué es esta API, contra qué entorno se usa, a quién preguntarle.\n\nEs Markdown, y acepta [[enlaces]] a otras notas.'}
                             spellCheck={false}
-                            className="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-[11px] leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                            className="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-ui-11 leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/40"
                         />
-                        <p className="shrink-0 border-t border-outline-variant p-3 text-[10px] leading-relaxed text-on-surface-variant/70">
+                        <p className="shrink-0 border-t border-outline-variant p-3 text-ui-10 leading-relaxed text-on-surface-variant/70">
                             La documentación de cada petición se escribe en su pestaña <span className="font-medium">Docs</span>. Ninguna credencial sale
                             acá: de la autenticación se documenta su forma —el tipo, el usuario, la URL del token—, nunca su valor.
                         </p>
                     </div>
 
                     <div className="flex min-w-0 flex-1 flex-col">
-                        <p className="shrink-0 px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/60">
+                        <p className="shrink-0 px-3 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
                             Lo que se publica
                         </p>
-                        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-relaxed text-on-surface">
+                        <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-ui-11 leading-relaxed text-on-surface">
                             {loading ? 'Generando…' : markdown}
                         </pre>
                     </div>

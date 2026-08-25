@@ -125,7 +125,7 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
                 }
             }}
         >
-            <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-[11px]">
+            <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-ui-11">
                 <Icon name={mode === 'fix' ? 'healing' : 'auto_awesome'} size={14} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">
                     {mode === 'fix' ? 'Explicar y corregir' : `Escribir ${noun}`}
@@ -177,14 +177,14 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
             )}
 
             {busy && (
-                <p className="flex items-center gap-2 px-3 pb-2 text-[11px] text-on-surface-variant">
+                <p className="flex items-center gap-2 px-3 pb-2 text-ui-11 text-on-surface-variant">
                     <span aria-hidden className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent border-primary" />
                     {mode === 'fix' ? 'Leyendo el error y el esquema…' : 'Escribiendo la consulta…'}
                 </p>
             )}
 
             {error && (
-                <p className="mx-2 mb-2 rounded bg-error-container/40 px-2 py-1 text-[11px] text-error">{error}</p>
+                <p className="mx-2 mb-2 rounded bg-error-container/40 px-2 py-1 text-ui-11 text-error">{error}</p>
             )}
 
             {result && (
@@ -197,7 +197,7 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
 
                     {result.code && (
                         <div className="mx-2 mb-2 overflow-hidden rounded border border-outline-variant">
-                            <div className="flex items-center gap-2 bg-surface-container px-2 py-1 text-[10px] text-on-surface-variant">
+                            <div className="flex items-center gap-2 bg-surface-container px-2 py-1 text-ui-10 text-on-surface-variant">
                                 <Icon name="difference" size={11} className="shrink-0" />
                                 {currentSql.trim() ? (
                                     <span>
@@ -224,7 +224,7 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
                                     {result.tables.length === 1 ? ctxNoun.singular : ctxNoun.plural}
                                 </span>
                             </div>
-                            <pre className="max-h-56 overflow-auto bg-surface p-2 font-mono text-[11px] leading-5">
+                            <pre className="max-h-56 overflow-auto bg-surface p-2 font-mono text-ui-11 leading-5">
                                 {diff.map((l, i) => (
                                     <div
                                         key={i}
@@ -248,7 +248,7 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
 
                     <div className="flex items-center gap-2 border-t border-outline-variant px-2 py-1.5">
                         <span
-                            className="min-w-0 flex-1 truncate text-[10px] text-on-surface-variant"
+                            className="min-w-0 flex-1 truncate text-ui-10 text-on-surface-variant"
                             title="Aplicar solo reemplaza el texto del editor. Ejecutar la consulta sigue siendo el botón de siempre, con la confirmación de producción donde corresponda."
                         >
                             Aplicar reemplaza el editor. <strong>No ejecuta nada.</strong>

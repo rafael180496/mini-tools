@@ -89,7 +89,7 @@ export default function CellEditor({kind, initial, nullable, onCommit, onCancel}
                 <button
                     onClick={() => onCommit(null)}
                     title="Deja la celda sin dato (NULL). Es distinto de dejarla vacía: la base guarda esa diferencia."
-                    className="shrink-0 rounded px-1 text-[10px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    className="shrink-0 rounded px-1 text-ui-10 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     NULL
                 </button>

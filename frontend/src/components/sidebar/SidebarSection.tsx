@@ -29,8 +29,8 @@ export default function SidebarSection({title, count, actions, children}: Sideba
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-2 px-3 pb-1 pt-2">
-                <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">{title}</span>
-                {count && <span className="shrink-0 font-mono text-[10px] tabular-nums text-on-surface-variant/50">{count}</span>}
+                <span className="truncate text-ui-11 font-semibold uppercase tracking-wider text-on-surface-variant">{title}</span>
+                {count && <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/50">{count}</span>}
                 <div className="flex flex-1 items-center justify-end gap-0.5">{actions}</div>
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">{children}</div>

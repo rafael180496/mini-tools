@@ -105,7 +105,7 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                             value={delayMs}
                             onChange={(e) => setDelayMs(Number(e.target.value))}
                             title="Pausa entre una petición y la siguiente. Treinta peticiones seguidas sin respirar es exactamente lo que un cortafuegos de aplicación corta."
-                            className="rounded border border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-[11px] text-on-surface outline-none"
+                            className="rounded border border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-ui-11 text-on-surface outline-none"
                         >
                             {DELAYS.map((d) => (
                                 <option key={d.ms} value={d.ms}>
@@ -119,7 +119,7 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                         <button
                             onClick={() => HttpCancelRun(runIdRef.current)}
                             title="Cortar la corrida. La petición que está en vuelo se deja terminar: ya salió, y cancelarla acá no la deshace del lado del servidor."
-                            className="rounded border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface-variant hover:bg-surface-variant"
+                            className="rounded border border-outline-variant px-2 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant"
                         >
                             Cortar
                         </button>
@@ -127,7 +127,7 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                         <button
                             onClick={() => void start()}
                             title="Volver a correr"
-                            className="rounded bg-primary px-3 py-0.5 text-[11px] text-on-primary hover:opacity-90"
+                            className="rounded bg-primary px-3 py-0.5 text-ui-11 text-on-primary hover:opacity-90"
                         >
                             Correr de nuevo
                         </button>
@@ -149,9 +149,9 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                     </button>
                 </div>
 
-                {error && <p className="shrink-0 bg-error-container px-3 py-1 text-[11px] text-on-error-container">{error}</p>}
+                {error && <p className="shrink-0 bg-error-container px-3 py-1 text-ui-11 text-on-error-container">{error}</p>}
 
-                <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant px-3 py-1.5 text-[11px]">
+                <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant px-3 py-1.5 text-ui-11">
                     <span className="text-secondary">{passed} pasaron</span>
                     <span className={failed > 0 ? 'text-error' : 'text-on-surface-variant/50'}>{failed} fallaron</span>
                     {(summary?.skipped ?? 0) > 0 && <span className="text-tertiary">{summary?.skipped} salteadas</span>}
@@ -175,27 +175,27 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
 
                 <div className="min-h-0 flex-1 overflow-y-auto">
                     {rows.length === 0 && (
-                        <p className="px-3 py-4 text-[11px] text-on-surface-variant">{running ? 'Corriendo…' : 'No hay resultados.'}</p>
+                        <p className="px-3 py-4 text-ui-11 text-on-surface-variant">{running ? 'Corriendo…' : 'No hay resultados.'}</p>
                     )}
                     {rows.map((r, i) => (
-                        <div key={`${r.itemId}-${i}`} className="flex items-start gap-2 border-b border-outline-variant/40 px-3 py-1.5 text-[11px]">
+                        <div key={`${r.itemId}-${i}`} className="flex items-start gap-2 border-b border-outline-variant/40 px-3 py-1.5 text-ui-11">
                             <Icon
                                 name={r.skipped ? 'remove' : r.passed ? 'check_circle' : 'cancel'}
                                 size={14}
                                 className={`mt-0.5 shrink-0 ${r.skipped ? 'text-on-surface-variant/40' : r.passed ? 'text-secondary' : 'text-error'}`}
                             />
-                            <span className={`mt-0.5 w-14 shrink-0 font-mono text-[10px] ${methodColor(r.method)}`}>{r.method}</span>
+                            <span className={`mt-0.5 w-14 shrink-0 font-mono text-ui-10 ${methodColor(r.method)}`}>{r.method}</span>
                             <span className="min-w-0 flex-1">
                                 <span className="block truncate text-on-surface" title={r.url}>
                                     {r.folder ? <span className="text-on-surface-variant/60">{r.folder} / </span> : null}
                                     {r.name}
                                 </span>
-                                <span className="block truncate font-mono text-[10px] text-on-surface-variant/60" title={r.url}>
+                                <span className="block truncate font-mono text-ui-10 text-on-surface-variant/60" title={r.url}>
                                     {r.url}
                                 </span>
-                                {r.error && <span className="block text-[10px] leading-relaxed text-error">{r.error}</span>}
+                                {r.error && <span className="block text-ui-10 leading-relaxed text-error">{r.error}</span>}
                                 {r.missing && r.missing.length > 0 && (
-                                    <span className="block text-[10px] leading-relaxed text-tertiary">
+                                    <span className="block text-ui-10 leading-relaxed text-tertiary">
                                         Sin definir: {r.missing.map((m) => `{{${m}}}`).join(', ')}
                                     </span>
                                 )}
@@ -206,7 +206,7 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                     ))}
                 </div>
 
-                <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-[10px] leading-relaxed text-on-surface-variant/70">
+                <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                     «Pasó» significa que la petición salió y el servidor contestó con un código menor a 400. Los scripts de test **no se ejecutan acá**:
                     esta aplicación no corre JavaScript — se guardan, viajan en el export y los corre Postman o newman.
                 </p>

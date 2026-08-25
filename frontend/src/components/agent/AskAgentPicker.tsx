@@ -40,7 +40,7 @@ export default function AskAgentPicker({value, onChange, disabled}: Props) {
             disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
             title="Con qué proveedor se hace ESTE análisis. No cambia el agente activo de la aplicación: sirve para pedirle la misma pregunta a otro modelo y comparar."
-            className="rounded-md border border-outline-variant bg-surface px-1.5 py-1 text-[11px] text-on-surface-variant hover:text-on-surface disabled:opacity-50"
+            className="rounded-md border border-outline-variant bg-surface px-1.5 py-1 text-ui-11 text-on-surface-variant hover:text-on-surface disabled:opacity-50"
         >
             <option value="">
                 {agents.find((a) => a.active)?.label

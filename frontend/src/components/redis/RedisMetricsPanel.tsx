@@ -75,7 +75,7 @@ export default function RedisMetricsPanel({connId, onClose}: RedisMetricsPanelPr
                     </span>
                 )}
                 {!!info?.nodes && info.nodes > 1 && (
-                    <span className="rounded bg-surface-variant px-1.5 py-0.5 text-[10px] text-on-surface-variant" title="Los contadores están sumados sobre los masters del cluster">
+                    <span className="rounded bg-surface-variant px-1.5 py-0.5 text-ui-10 text-on-surface-variant" title="Los contadores están sumados sobre los masters del cluster">
                         {info.nodes} nodos
                     </span>
                 )}
@@ -230,12 +230,12 @@ function Card({
 }) {
     return (
         <div className="rounded-lg border border-outline-variant bg-surface-container-low p-2.5" title={hint}>
-            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-on-surface-variant">
+            <div className="flex items-center gap-1.5 text-ui-11 uppercase tracking-wide text-on-surface-variant">
                 <Icon name={icon} size={13} />
                 {label}
             </div>
             <div className={`mt-0.5 font-mono text-lg ${TONE_TEXT[tone] ?? 'text-on-surface'}`}>{value}</div>
-            <div className="text-[11px] text-on-surface-variant/80">{detail}</div>
+            <div className="text-ui-11 text-on-surface-variant/80">{detail}</div>
             {bar !== null && bar !== undefined && (
                 <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-variant">
                     <div className={`h-full rounded-full ${TONE_BAR[tone]}`} style={{width: `${Math.min(100, Math.max(0, bar))}%`}} />

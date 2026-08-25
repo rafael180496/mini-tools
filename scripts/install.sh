@@ -7,7 +7,9 @@ cd "$ROOT_DIR"
 
 echo "==> Verificando toolchain base"
 command -v go >/dev/null || { echo "Go no está instalado: https://go.dev/dl/"; exit 1; }
-command -v pnpm >/dev/null || { echo "pnpm no está instalado (nunca npm/yarn). Instalar con: npm install -g pnpm"; exit 1; }
+# pnpm sale de corepack y no de `npm install -g`: ver el porqué en
+# scripts/ensure-pnpm.sh.
+source "$ROOT_DIR/scripts/ensure-pnpm.sh"
 
 GOBIN="$(go env GOPATH)/bin"
 export PATH="$PATH:$GOBIN"

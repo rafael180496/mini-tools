@@ -361,7 +361,7 @@ export default function LocalTerminalPanel({
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface-container-lowest">
-            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-2 py-1 text-[11px]">
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-2 py-1 text-ui-11">
                 <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${alive ? 'bg-secondary' : 'bg-outline'}`}
                     title={alive ? 'La sesión está corriendo' : 'No hay ningún proceso corriendo en esta sesión'}

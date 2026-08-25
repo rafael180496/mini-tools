@@ -6,6 +6,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Agregado
 
+- **Tamaño de letra de la interfaz, ajustable.** Configuración → **Apariencia** → *Tamaño de letra de la interfaz*: cinco pasos del 90 % al 150 %. Agranda el texto **y los íconos** de toda la app —barra lateral, menús, listas, diálogos, etiquetas— en todos los módulos, se aplica en el momento y se recuerda entre sesiones (columna `ui_font_scale`, migración 50 del vault).
+
+  **Vale también en la pantalla de desbloqueo**, y eso no es un detalle: el binding se dejó sin `requireUnlocked` a propósito, como `SetTheme`. Si el ajuste solo funcionara con el vault abierto, quien no puede leer la app tampoco podría leer el formulario que le pide la clave para arreglarlo.
+
+  Escala la **letra**, no los espaciados. Un `html { font-size }` habría escalado también paddings y altos de fila —Tailwind los expresa en `rem`—, que es un zoom de ventana y no lo que se pidió. El mecanismo es **una sola variable CSS**, `--ui-font-scale`, que multiplica los tokens de tamaño de Tailwind (así los 528 usos de `text-xs`/`text-sm` escalan sin tocarlos), las utilidades nuevas `text-ui-9…15` —que reemplazaron los 631 `text-[Npx]` fijos, repartidos en 100 archivos— y el cuerpo de `Icon`, que cubre sus ~680 usos desde un solo lugar. Ningún componente se enteró de que existe un ajuste.
+
+  Los íconos entran a propósito, y eran la queja original: son una fuente, y dejarlos fijos mientras el texto crece los deja diminutos y descalzados al lado de la palabra que acompañan. Lo que **no** escala, también a propósito: el editor de código y las terminales, que ya tienen su propio cuerpo en Configuración y se eligen para otra cosa. La sección pasó a llamarse **Apariencia** en vez de *Editor*: el ajuste de mayor alcance de esa pantalla no podía estar detrás de una etiqueta que sugiere que no aplica salvo que estés escribiendo SQL.
+
 - **Publicar una versión es empujar un tag.** Un workflow de GitHub Actions (`.github/workflows/release.yml`) escucha los tags `vX.Y.Z`, crea el GitHub Release con las notas de esa versión sacadas del `CHANGELOG.md` y le adjunta el `.dmg` y el `.exe` con una tabla de checksums.
 
   **No compila nada: sube los binarios que ya están versionados en `releases/`**, que son los mismos que se probaron. Compilar en CI habría publicado un archivo que nadie corrió —dos compilaciones de Go en máquinas distintas no dan un binario bit a bit idéntico— y cuyo checksum no coincidiría con el que documentan los README. Como no compila, corre en Linux, en segundos y sin toolchain.
@@ -17,6 +25,92 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 - **`scripts/changelog-section.sh`**: imprime las notas de una versión del `CHANGELOG.md`. Escribirlas dos veces —una en el changelog y otra en el release— es garantizar que un día no digan lo mismo, así que el changelog es la fuente y el release lo lee. Sirve igual a mano para revisar qué va a salir antes de empujar el tag.
 
   Detalle de implementación que costó encontrar: la comprobación de «¿la sección está vacía?» se hacía con `${VAR//[[:space:]]/}` de bash, y esa sustitución sobre las decenas de miles de caracteres que mide la sección de una versión grande **tarda minutos**. Con `grep -q` es instantáneo.
+
+### Corregido
+
+- **El build moría con `exec: "pnpm": executable file not found in $PATH`.** El
+  error lo tiraba el CLI de wails —es él quien corre `pnpm install` y
+  `pnpm build`, ver `wails.json`— y no decía ni cuál era la causa ni cómo
+  arreglarlo.
+
+  La causa: los paquetes globales de npm son **por versión de Node**, así que
+  actualizar Node con nvm (24.18 → 24.19) dejó atrás el pnpm instalado en la
+  anterior.
+
+  Ahora pnpm sale de **corepack** —que viene incluido con Node— y no de
+  `npm install -g pnpm`, que reintroduce el mismo problema en el siguiente
+  cambio de versión. La versión concreta la fija el campo `packageManager` de
+  `frontend/package.json` (pnpm 11.9.0, la que generó el lockfile actual), así
+  que todas las máquinas usan la misma y el lockfile no se reescribe solo.
+
+  `scripts/ensure-pnpm.sh` lo habilita solo si falta, y lo sourcean los cinco
+  scripts que terminan invocándolo (`build`, `start-dev`, `install`,
+  `package-windows`, `uishot`). Además exporta
+  `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`: sin eso, la primera vez corepack frena el
+  build para preguntar si puede descargar pnpm, esperando una tecla que en un
+  script no interactivo nadie va a apretar.
+
+- **El historial del agente no abría la conversación.** Al hacer clic en una fila del historial no pasaba nada visible: la conversación se retomaba de verdad —se creaba la sesión y hasta se llamaba a `ResumeAgentChat`—, pero el panel seguía mostrando lo de antes.
+
+  El anfitrión del chat guarda una sesión por contexto de trabajo y dibuja la del contexto **activo**. Al abrir del historial guardaba la sesión bajo la clave del contexto de la conversación —correcto: una conversación pertenece al recurso donde nació— pero nunca movía el contexto activo hacia allá, así que la sesión quedaba en un casillero que nadie estaba mirando. Ahora se fija el contexto de la conversación antes de crearla, con lo que la clave con la que se guarda y la clave con la que se dibuja son la misma.
+
+  El lector de transcripts del backend estaba sano: se comprobó contra archivos reales de `~/.claude/projects` y devolvía los turnos correctamente.
+
+- **«Copiar como INSERT/UPDATE» usaba el nombre de la conexión como nombre de tabla.** Salía `INSERT INTO "Sgctest" (…)`, que no es una tabla de ninguna base: había que corregir a mano la tabla y el esquema de cada sentencia antes de poder correrla — justo el trabajo que la función existía para ahorrar.
+
+  Ahora la tabla sale del catálogo, **calificada con su esquema** (`"SGCPRO"."FACTURAS"`) y con la caja exacta que tiene ahí, que en Oracle es la diferencia entre que la sentencia corra o no. La resuelve el mismo backend que ya decide si la grilla se puede editar: parsea el `SELECT` y busca la tabla. Se usa aunque el resultado **no** sea editable —una tabla sin clave primaria no se edita desde la grilla, pero insertarle filas es válido y su nombre es igual de real—; cuando la consulta no sale de una sola tabla el nombre queda como `tabla`, a propósito, porque que se vea que hay que completarlo es mejor que un nombre plausible que no existe.
+
+- **Las fechas salían como texto y ningún motor las aceptaba.** Una columna de fecha se copiaba tal como viaja del backend, `'2026-08-25T09:11:40Z'`, y Oracle la rechazaba con `ORA-01861` salvo que el `NLS_DATE_FORMAT` de quien la corriera coincidiera de casualidad — que es exactamente lo que una sentencia generada no puede dar por sentado.
+
+  Ahora se escribe la conversión que pide cada motor, usando el **tipo real de la columna** y no la pinta del valor (un `VARCHAR` que guarda `"2026-08-25"` se lee igual que una fecha, y convertirlo cambiaría el dato): `TO_DATE` en Oracle —o `TO_TIMESTAMP` si hay fracción de segundo, que `TO_DATE` truncaría sin avisar—, `TIMESTAMP '…'` en PostgreSQL, `CAST(… AS datetime2)` en SQL Server, y el literal de siempre en SQLite, que no tiene tipo fecha. La zona se descarta y se escribe la hora de pared que muestra la grilla, para que copiar una fila y volver a insertarla no cambie el dato.
+
+- **El aviso de versión nueva llevaba a la portada del repositorio.** Dejaba al usuario buscando entre releases y adjuntos cuál era el suyo. Ahora el clic **descarga directamente el archivo de su sistema** —el `.dmg` en macOS, el `.exe` en Windows—, y el tooltip dice cuál antes de empezar.
+
+  De paso, la comprobación dejó de leer el archivo `VERSION` de la rama por defecto y pasó a preguntarle al **último release publicado**. Es más correcto además de más útil: `VERSION` se bumpea y se commitea *antes* de tagear, así que leerlo anunciaba versiones cuyo release todavía no existía. Si la API no contesta —sin releases, o con el límite de peticiones anónimas agotado— cae al archivo `VERSION` y manda a la lista de releases: se sigue avisando, sin link directo. Como siempre, cualquier fallo degrada a «no hay novedad» y nunca a un error.
+
+### Documentación
+
+- **Las capturas mostraban la barra lateral de hace tres versiones.** Se regeneraron las **21** que usan `index.html` y el `README.md`. Las tres peores eran fotos de la app real, no del banco de capturas: la del árbol de esquema y la de la terminal SSH tenían la barra anterior al menú de módulos, y la del grafo de commits estaba mal recortada y con el botón de la herramienta de captura adentro.
+
+  Para poder generarlas hicieron falta tres cosas en el banco (`uishot`): un catálogo de esquema de mentira —tablas, procedures, functions, triggers y packages—, una **salida enlatada de terminal** (el widget no dibuja nada por su cuenta: escribe lo que le llega por el evento de Wails, y con el evento simulado como no-op toda captura de terminal salía en negro), y tres vistas nuevas (`schematree`, `sshterm`, `commitgraph`). Ninguna sale de una instalación real: no hay rutas, hosts ni credenciales de nadie.
+
+  El banco también acepta ahora `&scale=150`, para comprobar que una pantalla sigue entrando con el cuerpo agrandado antes de que se lo encuentre alguien que lo necesita.
+
+- **`index.html` dejó de ser una landing y pasó a ser un sitio de ayuda.** Índice
+  jerárquico a la izquierda con diez grupos y **treinta y seis temas**, un tema
+  por pantalla, migas, «en esta página» a la derecha con resalte según lo que se
+  está leyendo, buscador con <kbd>/</kbd> y navegación anterior/siguiente. Sigue
+  siendo **un solo archivo sin una sola petición externa**.
+
+  El cambio de forma es el punto: una landing se lee de arriba abajo una vez, y
+  una documentación se abre para buscar una cosa. Antes eran trece secciones
+  apiladas en un scroll de 47&nbsp;KB donde encontrar «cómo se copia una fila
+  como INSERT» era desplazarse hasta darle.
+
+  **Lo que no hay que mantener a mano**: el orden de los temas, las migas, el
+  anterior/siguiente, «en esta página» y el índice del buscador se derivan del
+  propio índice y del DOM al cargar. Agregar un tema es agregar su `<article>` y
+  su `<li>`; no hay una segunda lista que actualizar, que es exactamente el lugar
+  donde una documentación empieza a mentir. El buscador es insensible a tildes y
+  exige todas las palabras en cualquier orden —el mismo criterio que el de notas
+  de la app—, y encuentra tanto temas como encabezados dentro de un tema.
+
+  De paso, el contenido se reorganizó en unidades que se puedan buscar («Editar
+  filas desde la grilla», «Copiar y exportar resultados», «Parámetros»…) en vez
+  de secciones por módulo, y creció donde estaba flaco: la ventana y sus cinco
+  módulos, Redis y MongoDB, los planes de ejecución, los backups y dónde vive el
+  vault.
+
+- **Regla nueva: la ayuda se actualiza con el mismo cambio que agrega algo.** La
+  que existía hablaba de una vitrina con secciones, que ya no es lo que hay.
+  Ahora dice dónde va cada cosa según qué es —módulo nuevo, funcionalidad que es
+  un asunto en sí mismo, detalle de algo ya documentado, receta, atajo—, la
+  anatomía de un tema (`data-title`, los `id` de los `<h2>` con el prefijo del
+  tema, `.codewrap` para el botón de copiar, las tres clases de llamada) y qué
+  NO hay que mantener a mano. Queda en `.claude/rules/conventions.md`, con el
+  paso 8 del proceso de release y el índice de `CLAUDE.md` apuntando ahí.
+
+- **La documentación cuenta lo que la app hace hoy.** Sección nueva de **Apariencia y ajustes** en la página y en el README (tamaño de letra, los cuerpos separados del editor y las terminales, y cómo funciona el aviso de versión nueva); explicación de **copiar filas como SQL** con la tabla calificada y las fechas convertidas, con el ejemplo de cada motor; y el conteo de módulos de la barra lateral corregido —eran cuatro cuando se escribió, son cinco desde que existe HTTP.
 
 ## [2.3.0] - 2026-08-21
 

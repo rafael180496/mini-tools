@@ -3661,6 +3661,8 @@ export namespace updatecheck {
 	    current: string;
 	    latest: string;
 	    releaseUrl: string;
+	    downloadUrl: string;
+	    assetName: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Info(source);
@@ -3672,6 +3674,8 @@ export namespace updatecheck {
 	        this.current = source["current"];
 	        this.latest = source["latest"];
 	        this.releaseUrl = source["releaseUrl"];
+	        this.downloadUrl = source["downloadUrl"];
+	        this.assetName = source["assetName"];
 	    }
 	}
 
@@ -4348,6 +4352,7 @@ export namespace vault {
 	    notesSideWidth: number;
 	    mcpEnabled: boolean;
 	    mcpNotesWrite: boolean;
+	    uiFontScale: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -4393,6 +4398,7 @@ export namespace vault {
 	        this.notesSideWidth = source["notesSideWidth"];
 	        this.mcpEnabled = source["mcpEnabled"];
 	        this.mcpNotesWrite = source["mcpNotesWrite"];
+	        this.uiFontScale = source["uiFontScale"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

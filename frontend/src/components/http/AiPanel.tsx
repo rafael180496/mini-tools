@@ -149,7 +149,7 @@ export default function AiPanel({
         <div className="flex w-[26rem] shrink-0 flex-col border-l border-outline-variant bg-surface-container-low">
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                 <Icon name={meta.icon} size={16} className="text-primary" />
-                <p className="flex-1 truncate text-[11px] font-medium text-on-surface" title={meta.hint}>
+                <p className="flex-1 truncate text-ui-11 font-medium text-on-surface" title={meta.hint}>
                     {meta.label.replace('…', '')}
                 </p>
                 {answer && !running && (
@@ -177,12 +177,12 @@ export default function AiPanel({
                         }}
                         placeholder={'Qué tiene que hacer la petición, o pegá un cURL y decí qué cambiarle.\n\nCtrl+Enter para pedirla.'}
                         rows={4}
-                        className="w-full resize-none rounded border border-outline-variant bg-surface-container-lowest p-2 text-[11px] leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                        className="w-full resize-none rounded border border-outline-variant bg-surface-container-lowest p-2 text-ui-11 leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/40"
                     />
                     <button
                         onClick={() => void run()}
                         disabled={running || !prompt.trim()}
-                        className="mt-2 w-full rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90 disabled:opacity-40"
+                        className="mt-2 w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                     >
                         {running ? 'Pensando…' : 'Escribir la petición'}
                     </button>
@@ -190,10 +190,10 @@ export default function AiPanel({
             )}
 
             {error && (
-                <p className="shrink-0 bg-error-container px-3 py-1.5 text-[11px] leading-relaxed text-on-error-container">{error}</p>
+                <p className="shrink-0 bg-error-container px-3 py-1.5 text-ui-11 leading-relaxed text-on-error-container">{error}</p>
             )}
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[11px] leading-relaxed text-on-surface">
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-ui-11 leading-relaxed text-on-surface">
                 {running && !answer && (
                     <p className="flex items-center gap-2 text-on-surface-variant">
                         <Icon name="hourglass_empty" size={14} className="animate-pulse" />
@@ -213,12 +213,12 @@ export default function AiPanel({
                                     onClose()
                                 }}
                                 title="Reemplazar método, URL, cabeceras y cuerpo con lo que propuso el agente. Podés deshacerlo sin guardar."
-                                className="w-full rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90"
+                                className="w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
                                 Aplicar al editor
                             </button>
                         ) : (
-                            <p className="text-[10px] leading-relaxed text-on-surface-variant">
+                            <p className="text-ui-10 leading-relaxed text-on-surface-variant">
                                 El comando que devolvió no se pudo interpretar como una petición, así que no hay nada que aplicar automáticamente.
                                 Copialo del bloque de arriba.
                             </p>
@@ -230,7 +230,7 @@ export default function AiPanel({
                                 onClose()
                             }}
                             title="Poner este texto en la pestaña Docs de la petición. Se guarda con Ctrl+S como cualquier otro cambio."
-                            className="w-full rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90"
+                            className="w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                         >
                             Poner en Docs
                         </button>
@@ -243,11 +243,11 @@ export default function AiPanel({
                                     onClose()
                                 }}
                                 title="Poner este script en el campo de tests. Se guarda y se exporta con la colección."
-                                className="w-full rounded bg-primary px-3 py-1 text-[11px] text-on-primary hover:opacity-90"
+                                className="w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
                                 Poner en el script de tests
                             </button>
-                            <p className="mt-2 text-[10px] leading-relaxed text-on-surface-variant">
+                            <p className="mt-2 text-ui-10 leading-relaxed text-on-surface-variant">
                                 Esta aplicación no ejecuta scripts: el test se guarda y viaja en el export, y quien lo corre es Postman o newman.
                             </p>
                         </>

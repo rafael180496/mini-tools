@@ -71,7 +71,7 @@ export default function AgentSettings() {
 
     return (
         <section className="flex flex-col gap-2">
-            <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">Agentes de código</h3>
+            <h3 className="px-1 text-ui-11 font-semibold uppercase tracking-wider text-on-surface-variant">Agentes de código</h3>
 
             <p className="px-1 text-xs text-on-surface-variant">
                 Se abren como una sesión más del panel de una pestaña Git, sobre el repositorio abierto.{' '}
@@ -109,7 +109,7 @@ export default function AgentSettings() {
                                     {a.hasKey && (
                                         <span
                                             title={`Hay una API key guardada, cifrada bajo tu clave maestra. Se le pasa a ${a.label} por la variable ${a.keyEnv} al abrir una sesión, nunca en la línea de comandos.`}
-                                            className="flex items-center gap-1 rounded-full bg-secondary/15 px-1.5 text-[10px] text-secondary"
+                                            className="flex items-center gap-1 rounded-full bg-secondary/15 px-1.5 text-ui-10 text-secondary"
                                         >
                                             <Icon name="key" size={11} />
                                             key guardada

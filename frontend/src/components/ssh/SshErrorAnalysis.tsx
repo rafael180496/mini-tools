@@ -59,7 +59,7 @@ export default function SshErrorAnalysis({connId, connName, selection, onClose, 
 
     return (
         <div className="flex max-h-[60%] shrink-0 flex-col border-t border-outline-variant bg-surface-container-low">
-            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-[11px]">
+            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-ui-11">
                 <Icon name="troubleshoot" size={13} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">Análisis del error</span>
                 <span className="truncate text-on-surface-variant">· {connName}</span>
@@ -115,17 +115,17 @@ export default function SshErrorAnalysis({connId, connName, selection, onClose, 
 
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-xs">
                 {busy && (
-                    <p className="flex items-center gap-2 text-[11px] text-on-surface-variant">
+                    <p className="flex items-center gap-2 text-ui-11 text-on-surface-variant">
                         <span aria-hidden className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent border-primary" />
                         Leyendo la salida y el sistema del servidor…
                     </p>
                 )}
 
-                {error && <p className="rounded bg-error-container/40 px-2 py-1 text-[11px] text-error">{error}</p>}
+                {error && <p className="rounded bg-error-container/40 px-2 py-1 text-ui-11 text-error">{error}</p>}
 
                 {result && !result.osInfo && !busy && (
                     <p
-                        className="mb-1.5 rounded border border-outline-variant bg-surface-container px-2 py-1 text-[10px] text-on-surface-variant"
+                        className="mb-1.5 rounded border border-outline-variant bg-surface-container px-2 py-1 text-ui-10 text-on-surface-variant"
                         title="El sistema se deduce de lo que la terminal ya imprimió (el banner de login, un uname que hayas corrido). No se ejecuta nada por tu cuenta: escribir en tu sesión interactiva aparecería en tu pantalla y podría caer dentro de un editor abierto."
                     >
                         No se pudo determinar el sistema operativo del servidor, así que la respuesta puede no ser
@@ -135,7 +135,7 @@ export default function SshErrorAnalysis({connId, connName, selection, onClose, 
                 )}
 
                 {showSent && result && (
-                    <pre className="mb-1.5 max-h-40 overflow-auto rounded border border-outline-variant bg-surface-container px-2 py-1 font-mono text-[10px] text-on-surface-variant">
+                    <pre className="mb-1.5 max-h-40 overflow-auto rounded border border-outline-variant bg-surface-container px-2 py-1 font-mono text-ui-10 text-on-surface-variant">
                         {result.osInfo && `# sistema detectado\n${result.osInfo}\n\n# salida\n`}
                         {result.lines.join('\n')}
                     </pre>
@@ -145,13 +145,13 @@ export default function SshErrorAnalysis({connId, connName, selection, onClose, 
 
                 {commands.length > 0 && (
                     <div className="mt-2 flex flex-col gap-1 border-t border-outline-variant pt-1.5">
-                        <p className="text-[10px] text-on-surface-variant">
+                        <p className="text-ui-10 text-on-surface-variant">
                             Comandos propuestos — <strong>ninguno se ejecuta solo</strong>: insertarlo lo deja escrito en
                             la terminal y el Enter lo ponés vos.
                         </p>
                         {commands.map((c, i) => (
                             <div key={i} className="flex items-center gap-1.5">
-                                <code className="min-w-0 flex-1 truncate rounded bg-surface-container-highest px-1.5 py-0.5 font-mono text-[11px] text-on-surface">
+                                <code className="min-w-0 flex-1 truncate rounded bg-surface-container-highest px-1.5 py-0.5 font-mono text-ui-11 text-on-surface">
                                     {c}
                                 </code>
                                 <button
@@ -164,7 +164,7 @@ export default function SshErrorAnalysis({connId, connName, selection, onClose, 
                                 <button
                                     onClick={() => onInsertCommand(c)}
                                     title="Escribe el comando en la terminal SIN ejecutarlo — podés leerlo y editarlo antes de apretar Enter"
-                                    className="shrink-0 rounded bg-primary px-2 py-0.5 text-[11px] text-on-primary"
+                                    className="shrink-0 rounded bg-primary px-2 py-0.5 text-ui-11 text-on-primary"
                                 >
                                     Insertar
                                 </button>

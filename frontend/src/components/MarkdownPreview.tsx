@@ -115,7 +115,7 @@ function inline(
                     <span
                         key={key}
                         title={src}
-                        className="inline-block rounded border border-dashed border-outline-variant px-2 py-1 text-[11px] text-on-surface-variant"
+                        className="inline-block rounded border border-dashed border-outline-variant px-2 py-1 text-ui-11 text-on-surface-variant"
                     >
                         {alt || 'imagen'}
                     </span>
@@ -129,7 +129,7 @@ function inline(
             )
         } else if (token.startsWith('`')) {
             out.push(
-                <code key={key} className="rounded bg-surface-container-highest px-1 font-mono text-[11px]">
+                <code key={key} className="rounded bg-surface-container-highest px-1 font-mono text-ui-11">
                     {token.slice(1, -1)}
                 </code>,
             )
@@ -341,7 +341,7 @@ export default function MarkdownPreview({
                 <pre
                     key={`fm-${blocks.length}`}
                     title="Frontmatter: de estos campos depende que el CLI cargue este archivo"
-                    className="my-1 overflow-x-auto rounded border border-outline-variant bg-surface-container px-2 py-1 font-mono text-[10px] text-on-surface-variant"
+                    className="my-1 overflow-x-auto rounded border border-outline-variant bg-surface-container px-2 py-1 font-mono text-ui-10 text-on-surface-variant"
                 >
                     {buf.join('\n')}
                 </pre>,
@@ -366,7 +366,7 @@ export default function MarkdownPreview({
                     <pre
                         key={`code-${blocks.length}`}
                         title={lang || undefined}
-                        className="my-1 overflow-x-auto rounded bg-surface-container-highest px-2 py-1 font-mono text-[11px] text-on-surface"
+                        className="my-1 overflow-x-auto rounded bg-surface-container-highest px-2 py-1 font-mono text-ui-11 text-on-surface"
                     >
                         {code}
                     </pre>
@@ -393,7 +393,7 @@ export default function MarkdownPreview({
                     key={`callout-${blocks.length}`}
                     className={`my-1.5 rounded-r border-l-4 px-2 py-1.5 ${style.border} ${style.bg}`}
                 >
-                    <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-medium ${style.text}`}>
+                    <p className={`mb-0.5 flex items-center gap-1 text-ui-11 font-medium ${style.text}`}>
                         <Icon name={style.icon} size={13} filled />
                         {callout[1].toUpperCase() === kind && CALLOUT_STYLES[kind] ? style.label : callout[1]}
                     </p>

@@ -710,7 +710,7 @@ export default function SftpPane({
                     <Icon name="arrow_drop_down" size={16} />
                 </button>
                 {canAct && (
-                    <span className="min-w-0 flex-1 truncate text-[11px] text-on-surface-variant" title={currentDir}>
+                    <span className="min-w-0 flex-1 truncate text-ui-11 text-on-surface-variant" title={currentDir}>
                         {currentDir}
                     </span>
                 )}
@@ -839,7 +839,7 @@ export default function SftpPane({
                         onClick={() => onTransfer(selectedItems())}
                         disabled={selected.size === 0}
                         title={`Transferir la selección a ${otherLabel}`}
-                        className="flex items-center gap-1 rounded bg-secondary/15 px-2 py-1 text-[11px] font-medium text-secondary hover:bg-secondary/25 disabled:opacity-40"
+                        className="flex items-center gap-1 rounded bg-secondary/15 px-2 py-1 text-ui-11 font-medium text-secondary hover:bg-secondary/25 disabled:opacity-40"
                     >
                         <Icon name="send" size={14} /> Enviar a {otherLabel}
                     </button>
@@ -847,7 +847,7 @@ export default function SftpPane({
                         onClick={() => setConfirmDelete(selectedItems())}
                         disabled={selected.size === 0}
                         title="Eliminar la selección"
-                        className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-on-surface-variant hover:bg-error-container/40 hover:text-error disabled:opacity-40"
+                        className="flex items-center gap-1 rounded px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-error-container/40 hover:text-error disabled:opacity-40"
                     >
                         <Icon name="delete" size={14} /> Eliminar
                     </button>
@@ -861,7 +861,7 @@ export default function SftpPane({
                             }}
                             placeholder="Buscar en esta carpeta"
                             title="Filtra por nombre lo que ya está listado en esta carpeta. No baja a las subcarpetas ni vuelve a consultar el servidor. Esc limpia."
-                            className="w-36 rounded border border-outline bg-surface py-0.5 pr-5 pl-6 text-[11px] text-on-surface placeholder:text-on-surface-variant/60 focus:w-48 focus:outline-none"
+                            className="w-36 rounded border border-outline bg-surface py-0.5 pr-5 pl-6 text-ui-11 text-on-surface placeholder:text-on-surface-variant/60 focus:w-48 focus:outline-none"
                         />
                         {filter && (
                             <button
@@ -873,7 +873,7 @@ export default function SftpPane({
                             </button>
                         )}
                     </div>
-                    <span className="shrink-0 text-[11px] text-on-surface-variant">
+                    <span className="shrink-0 text-ui-11 text-on-surface-variant">
                         {selected.size > 0
                             ? `${selected.size} seleccionado(s)`
                             : q

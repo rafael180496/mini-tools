@@ -28,7 +28,7 @@ import AgentChat from './AgentChat'
 import AgentUsagePanel from './AgentUsagePanel'
 import AgentHistoryPanel from './AgentHistoryPanel'
 import PromptDialog from '../git/PromptDialog'
-import {CONTEXT_ICONS, contextKey, repoIdOf, type WorkContext} from './workContext'
+import {CONTEXT_ICONS, contextKey, repoIdOf, type WorkContext, type WorkContextKind} from './workContext'
 
 // Anfitrión del chat de nivel APLICACIÓN: una conversación que acompaña al
 // usuario por los módulos donde el agente CONSULTA (bases de datos, SSH,
@@ -378,7 +378,7 @@ export default function AgentChatHost({
 
     const panel = (
         <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
-            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container px-2 py-1 text-[11px]">
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container px-2 py-1 text-ui-11">
                 <Icon name="forum" size={13} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">Agente</span>
 
@@ -498,8 +498,27 @@ export default function AgentChatHost({
                         if (!agent) return
                         // Se retoma EN SU contexto, no en el que estés mirando:
                         // una conversación pertenece al recurso donde nació.
-                        const chatKey = c.module ? `${c.module}:${c.contextId}` : 'none'
-                        startSession(agent, chatKey, c)
+                        //
+                        // **Y hay que FIJAR ese contexto, no solo guardar la
+                        // sesión bajo su clave.** El cuerpo del panel dibuja
+                        // `sessions[contextKey(effective)]`: guardarla bajo la
+                        // clave de la conversación sin mover `effective` la
+                        // deja en un casillero que nadie está mirando, y el
+                        // clic no hace nada visible. Era el motivo por el que
+                        // el historial "no cargaba" — la conversación se
+                        // retomaba de verdad (hasta se llamaba a
+                        // ResumeAgentChat), simplemente no se mostraba.
+                        const kind = (c.module || 'none') as WorkContextKind
+                        const chatContext: WorkContext = {
+                            kind,
+                            // 'none' no tiene recurso: contextKey lo ignora, y
+                            // arrastrar un id acá haría que dos conversaciones
+                            // viejas parecieran de contextos distintos.
+                            id: kind === 'none' ? '' : c.contextId,
+                            label: resourceNames[c.contextId] ?? '',
+                        }
+                        setPinned(chatContext)
+                        startSession(agent, contextKey(chatContext), c)
                         setTab('chat')
                     }}
                     onRename={(c) => setRenaming(c)}
@@ -541,7 +560,7 @@ export default function AgentChatHost({
                 ) : (
                     // Estado vacío honesto: dice CUÁL falta y dónde se
                     // configura, en vez de una caja de texto que no contesta.
-                    <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-[11px] text-on-surface-variant">
+                    <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-ui-11 text-on-surface-variant">
                         <Icon name="smart_toy" size={28} className="opacity-40" />
                         {available.length === 0 ? (
                             <>

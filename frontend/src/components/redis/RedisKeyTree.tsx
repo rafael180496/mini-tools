@@ -178,7 +178,7 @@ export default function RedisKeyTree({
 
     return (
         <div className="pb-1 pl-2 pr-2">
-            <div className="mb-1 flex items-center gap-2 px-1 text-[11px] text-on-surface-variant">
+            <div className="mb-1 flex items-center gap-2 px-1 text-ui-11 text-on-surface-variant">
                 {statsLoading ? (
                     <span>Cargando stats…</span>
                 ) : stats ? (
@@ -265,19 +265,19 @@ export default function RedisKeyTree({
                             onSelectMany?.(ids, !allSelected)
                         }}
                         title="Selecciona (o deselecciona) todas las claves visibles en la lista — solo las cargadas y que pasan el filtro rápido, nunca el keyspace entero"
-                        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="shrink-0 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         Todas
                     </button>
                 )}
-                <label className="flex shrink-0 items-center gap-1 text-[11px] text-on-surface-variant" title="Carga la página siguiente sola al llegar al final de la lista. Desactivalo si preferís controlar cada lote a mano.">
+                <label className="flex shrink-0 items-center gap-1 text-ui-11 text-on-surface-variant" title="Carga la página siguiente sola al llegar al final de la lista. Desactivalo si preferís controlar cada lote a mano.">
                     <input type="checkbox" checked={autoLoad} onChange={(e) => setAutoLoad(e.target.checked)} className="accent-primary" />
                     auto
                 </label>
             </div>
 
             {quick && (
-                <p className="px-1 pb-1 text-[10px] text-on-surface-variant/70">
+                <p className="px-1 pb-1 text-ui-10 text-on-surface-variant/70">
                     {visible.length} de {keys.length} cargadas coinciden — el filtro rápido no consulta Redis
                 </p>
             )}
@@ -313,7 +313,7 @@ export default function RedisKeyTree({
                         )}
                         <Icon name="key" size={14} className="shrink-0 opacity-60" />
                         <span className="flex-1 truncate">{quick ? highlightMatch(k.key, quick) : k.key}</span>
-                        <span className={`shrink-0 flex items-center gap-1 rounded px-1 py-0.5 text-[10px] uppercase ${style.badgeClass}`}>
+                        <span className={`shrink-0 flex items-center gap-1 rounded px-1 py-0.5 text-ui-10 uppercase ${style.badgeClass}`}>
                             <Icon name={style.icon} size={10} />
                             {style.label}
                         </span>

@@ -116,7 +116,7 @@ export default function CodePane({
         <div className="relative h-full w-full">
             <div ref={containerRef} className="h-full w-full" />
             {placeholder && value === '' && (
-                <p className="pointer-events-none absolute left-10 top-1.5 text-[11px] text-on-surface-variant/40">{placeholder}</p>
+                <p className="pointer-events-none absolute left-10 top-1.5 text-ui-11 text-on-surface-variant/40">{placeholder}</p>
             )}
         </div>
     )

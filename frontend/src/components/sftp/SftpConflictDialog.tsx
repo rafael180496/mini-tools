@@ -32,14 +32,14 @@ export default function SftpConflictDialog({conflicts, destLabel, onChoose, onCa
                     <h2 className="text-sm font-medium text-on-surface">
                         {conflicts.length === 1 ? 'Ya existe 1 archivo en el destino' : `Ya existen ${conflicts.length} archivos en el destino`}
                     </h2>
-                    <span className="ml-auto truncate text-[11px] text-on-surface-variant" title={destLabel}>
+                    <span className="ml-auto truncate text-ui-11 text-on-surface-variant" title={destLabel}>
                         {destLabel}
                     </span>
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-auto">
                     <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-surface-container-low text-[11px] text-on-surface-variant">
+                        <thead className="sticky top-0 bg-surface-container-low text-ui-11 text-on-surface-variant">
                             <tr>
                                 <th className="px-3 py-1.5 text-left font-medium">Nombre</th>
                                 <th className="px-3 py-1.5 text-right font-medium">Origen</th>
