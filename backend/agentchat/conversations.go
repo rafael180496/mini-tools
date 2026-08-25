@@ -22,10 +22,16 @@
 //   - **Codex**: la tabla `threads` de `~/.codex/state_*.sqlite`, que guarda
 //     `cwd`, `title` y `first_user_message` por hilo. Filtra por el
 //     repositorio y descarta los archivados.
-//   - **Antigravity**: sus pasos son blobs protobuf en SQLite y no se pueden
-//     leer honestamente (ver history.go), así que devuelve vacío. Devolver una
-//     lista de ids sin título sería peor que no ofrecer nada: no habría cómo
-//     reconocer cuál es cuál.
+//   - **Antigravity**: devuelve vacío, pero ya NO porque no se pueda leer —
+//     history.go lee sus mensajes del transcript JSONL que deja en
+//     `brain/<id>/.system_generated/logs/`—. Lo que falta es el filtro: esta
+//     función lista lo de UN repositorio, y no hay dónde leer a qué repositorio
+//     pertenece cada conversación suya. Su `conversation_summaries.db` tiene la
+//     columna `workspace_uris`, pero se comprobó que las versiones actuales del
+//     CLI la dejan vacía y ni siquiera dan de alta ahí las conversaciones
+//     nuevas; y la carpeta de `brain/` no guarda ninguna marca del directorio
+//     de trabajo. Listarlas todas mezclaría las de cualquier proyecto en el
+//     historial de este, que es peor que no ofrecerlas.
 package agentchat
 
 import (

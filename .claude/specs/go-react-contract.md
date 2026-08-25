@@ -849,7 +849,7 @@ sigue montado (oculto por CSS) cuando se cierra.
 | `AgentChatSupported(agentID)` | Si hay adaptador **verificado** (`backend/agentchat`). La UI ofrece el chat solo donde funciona; duplicar la lista en el frontend se desincronizaría |
 | `AgentPlans()` | Plan de cada agente (`backend/agentplan`). Del JWT de Codex se extrae **solo** el claim del plan; el token nunca cruza |
 | `AgentModelCatalog(agentID)` | Modelos y esfuerzos que informa cada CLI (`backend/agentmodels`), no una lista escrita a mano |
-| `AgentChatHistory(agentID, conversationID)` | Mensajes de una conversación anterior, leídos del transcript del CLI. Vacío NO es error: Antigravity guarda blobs binarios |
+| `AgentChatHistory(agentID, conversationID)` | Mensajes de una conversación anterior, leídos del transcript del CLI (Claude Code, Codex y Antigravity). Vacío NO es error: una conversación borrada desde el propio CLI abre en blanco y sigue encadenando |
 | `SaveChatAttachment(name, dataBase64)` | Guarda una imagen pegada/subida FUERA del repositorio y devuelve su ruta |
 | `AgentChatModes(agentID)` | Modos de permisos que soporta ESE agente, de menos a más permisivo. No son los mismos para todos (`auto` es solo de Claude Code) |
 | `SendAgentChat(sessionID, repoID, agentID, prompt, mode, effort, model)` | Vuelve enseguida; la respuesta llega como `agentchat.Event` en el evento de Wails llamado `sessionID`. **Suscribirse ANTES**, misma carrera que la terminal y las queries. `agentchat.Event` NO está en `wailsjs/go/models` —viaja por evento, no por retorno— así que el frontend lo espeja a mano en `AgentChat.tsx`, igual que `LocalTermEvent` |

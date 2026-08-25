@@ -532,9 +532,9 @@ export default function AgentChat({
     //
     // Solo al montar y solo si el chat todavía está vacío: si el usuario ya
     // escribió algo, pisarle la pantalla con el historial sería peor que
-    // dejarlo. Un historial vacío NO es un error — Antigravity guarda sus
-    // pasos en un formato que no se puede leer, y ahí el chat abre en blanco y
-    // la conversación sigue encadenando igual.
+    // dejarlo. Un historial vacío NO es un error — una conversación borrada
+    // desde el propio CLI abre en blanco y sigue encadenando igual, porque eso
+    // lo hace el id y no esto.
     useEffect(() => {
         if (!resumeConversationId) return
         let cancelled = false

@@ -346,13 +346,25 @@ export default function AgentChatHost({
     // guarda contra el doble registro es el ref, no el valor del estado, que
     // todavía no se actualizó cuando llega el segundo evento.
     const creatingChatRef = useRef('')
+    // El alta en curso. El id de conversación del CLI llega apenas contesta, y
+    // guardarlo es un UPDATE sobre la fila que este INSERT está creando: sin
+    // encadenarlo, un UPDATE que gana la carrera no afecta ninguna fila y la
+    // conversación queda para siempre sin con qué retomarse.
+    const chatCreatedRef = useRef<Promise<unknown>>(Promise.resolve())
     const onFirstSend = useCallback(
         (text: string) => {
             const s = sessionRef.current
             if (!s || s.chatId || creatingChatRef.current === s.id) return
             creatingChatRef.current = s.id
             const title = text.trim().split('\n')[0].slice(0, 80)
-            void CreateAgentChat(s.id, repoIdOf(effective), s.agentId, title, effective.kind, effective.id).catch(() => {})
+            chatCreatedRef.current = CreateAgentChat(
+                s.id,
+                repoIdOf(effective),
+                s.agentId,
+                title,
+                effective.kind,
+                effective.id,
+            ).catch(() => {})
             setSessions((prev) =>
                 prev[key]?.id === s.id ? {...prev, [key]: {...prev[key], chatId: s.id}} : prev,
             )
@@ -553,8 +565,21 @@ export default function AgentChatHost({
                             // conversación llega apenas el CLI contesta, que
                             // puede ser antes de que el render con el chatId
                             // recién creado haya ocurrido.
-                            const chatId = sessionRef.current?.chatId
-                            if (chatId) void TouchAgentChat(chatId, conversationId).catch(() => {})
+                            //
+                            // El id de la fila del historial ES el de la
+                            // sesión, así que no hace falta esperar ese render:
+                            // alcanza con que la fila exista. Lo que sí se
+                            // espera es el INSERT, que puede seguir en vuelo.
+                            // La versión anterior descartaba el id cuando
+                            // `chatId` todavía estaba vacío, y esa conversación
+                            // quedaba en el historial sin con qué retomarse —
+                            // abrirla empezaba una nueva, en blanco.
+                            const s = sessionRef.current
+                            if (!s) return
+                            if (!s.chatId && creatingChatRef.current !== s.id) return
+                            void chatCreatedRef.current
+                                .then(() => TouchAgentChat(s.id, conversationId))
+                                .catch(() => {})
                         }}
                     />
                 ) : (

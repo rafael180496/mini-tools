@@ -524,13 +524,18 @@ no. Lo que se encontró y por qué quedó así:
   heurísticas sobre el texto, que es justo lo que envejece mal.
 - **Antigravity**: `~/.gemini/antigravity-cli/conversations/<id>.db`, un SQLite
   cuya tabla `steps` guarda **blobs binarios** (protobuf, coherente con el
-  `jetski_state.pbtxt` del mismo directorio). Sin el esquema, no se puede leer
-  honestamente. **No factible.**
+  `jetski_state.pbtxt` del mismo directorio). Sin el esquema, esa tabla no se
+  puede leer honestamente — **pero no hace falta**: uno de esos pasos referencia
+  una ruta del propio CLI,
+  `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl`,
+  y ahí está lo mismo en claro (un objeto por paso con `source`, `type` y
+  `content`). **Factible por esa vía**, y sin heurísticas: el mensaje del
+  usuario viene delimitado por `<USER_REQUEST>`, y los pasos `SYSTEM`
+  —checkpoints, avisos del servidor— se distinguen por su campo `source`. Se
+  implementó así en `backend/agentchat/history.go`.
 
-O sea: la feature saldría completa para uno, frágil para otro e imposible para
-el tercero. Eso no la descarta —mostrar el historial de dos de tres ya sirve—
-pero hay que decidirlo sabiendo que va a quedar disparejo, no descubrirlo a
-mitad de camino.
+O sea: la feature sale completa para dos y frágil solo para Codex, donde separar
+los mensajes inyectados sigue siendo heurística.
 
 ### Aprobación por acción en Codex y Antigravity
 

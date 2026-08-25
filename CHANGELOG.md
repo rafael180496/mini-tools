@@ -4,6 +4,18 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Corregido
+
+- **Retomar una conversación de Antigravity abría el panel en blanco.** La conversación seguía viva —el CLI encadenaba bien por su id— pero no se dibujaba nada de lo hablado, así que retomar «la que tuve ayer sobre esta base» se sentía exactamente igual que empezar de cero, y la conclusión razonable era que la app había perdido el chat.
+
+  El motivo era conocido y estaba escrito: la tabla `steps` de `~/.gemini/antigravity-cli/conversations/<id>.db` guarda cada paso como **protobuf sin esquema publicado**, y adivinarle los campos a un binario no es una forma honesta de reconstruir una conversación. Lo que faltaba era mirar al lado: uno de esos mismos pasos referencia una ruta del propio CLI, `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl`, y ahí está lo mismo **en claro**, un objeto JSON por paso. Se lee de ahí.
+
+  Y sale sin heurísticas, a diferencia de Codex: lo que escribió la persona viene delimitado por `<USER_REQUEST>` —el CLI le agrega detrás bloques suyos, la hora local y el cambio de modelo, que quedan afuera—, la respuesta del agente es el paso `PLANNER_RESPONSE`, las herramientas se muestran con el archivo sobre el que actuaron, y los pasos `SYSTEM` —checkpoints, resúmenes de contexto truncado, avisos de reinicio del servidor— se descartan por su propio campo `source`, que es un límite estructural y no una corazonada sobre el texto. Se prefiere el `transcript_full.jsonl` sobre el `transcript.jsonl` porque el segundo acorta los mensajes largos, que es justo lo que uno vuelve a buscar al retomar un chat.
+
+  Lo que **no** cambia: Antigravity sigue sin aparecer en la lista de «conversaciones que ya tenía el CLI» de la pestaña Git. Ahí el motivo es otro y sigue en pie — esa lista es por repositorio, y no hay dónde leer a qué repositorio pertenece cada conversación suya (la columna `workspace_uris` de su base de resúmenes viene vacía en las versiones actuales, y su carpeta de `brain/` no guarda marca del directorio de trabajo). Listarlas todas mezclaría las de cualquier proyecto.
+
+- **Una conversación podía quedar en el historial sin con qué retomarse.** El id que devuelve el CLI se guarda con un `UPDATE` sobre la fila del historial, y esa fila se crea con el primer mensaje: si el `UPDATE` le ganaba la carrera al `INSERT` que todavía estaba en vuelo, no afectaba ninguna fila y el id se perdía **para siempre**. La conversación quedaba listada, se podía abrir, y abrirla empezaba una nueva en blanco. El guardado ahora espera a que la fila exista, y ya no se descarta el id cuando el alta no terminó.
+
 ## [2.4.0] - 2026-08-25
 
 ### Agregado

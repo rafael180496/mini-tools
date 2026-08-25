@@ -79,9 +79,72 @@ func TestHistoryMissingIsNotAnError(t *testing.T) {
 	if err != nil || len(turns) != 0 {
 		t.Errorf("debería devolver vacío sin error: %+v (%v)", turns, err)
 	}
-	// Antigravity guarda blobs binarios: no se puede leer y no se inventa.
+	// Antigravity tampoco: sin su carpeta en `brain/` no hay transcript.
 	turns, err = History("antigravity", "cualquiera")
 	if err != nil || len(turns) != 0 {
-		t.Errorf("Antigravity no tiene lector y debe devolver vacío: %+v (%v)", turns, err)
+		t.Errorf("una conversación de Antigravity que no está debe devolver vacío: %+v (%v)", turns, err)
+	}
+	// Y un agente sin lector sigue siendo vacío sin error, no un fallo.
+	turns, err = History("inventado", "cualquiera")
+	if err != nil || len(turns) != 0 {
+		t.Errorf("un agente sin lector debe devolver vacío: %+v (%v)", turns, err)
+	}
+}
+
+// El transcript de Antigravity envuelve el mensaje del usuario y le agrega
+// bloques propios detrás; los pasos de SYSTEM son checkpoints y avisos del
+// servidor que la conversación nunca tuvo. Este test fija las dos cosas: el
+// recorte del envoltorio y qué se descarta.
+//
+// Las líneas son la forma real de
+// `brain/<id>/.system_generated/logs/transcript_full.jsonl`.
+func TestAntigravityHistoryLeeElTranscript(t *testing.T) {
+	home := t.TempDir()
+	const id = "a43da416-948e-444a-be0b-6db656233ed8"
+	dir := filepath.Join(home, ".gemini", "antigravity-cli", "brain", id, ".system_generated", "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := `{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"<USER_REQUEST>\ncorregí este insert\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-08-24T20:43:11-06:00.\n</ADDITIONAL_METADATA>"}
+{"step_index":1,"source":"SYSTEM","type":"CHECKPOINT","content":"{{ CHECKPOINT 0 }} resumen del contexto truncado"}
+{"step_index":2,"source":"MODEL","type":"VIEW_FILE","content":"Created At: 2026-08-16T04:00:18Z\nFile Path: ` + "`file:///tmp/consulta.sql`" + `\nTotal Lines: 55\n1: select 1"}
+{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","content":"Sobra la palabra values."}
+{"step_index":4,"source":"SYSTEM","type":"SYSTEM_MESSAGE","content":"[Notice] All your subagents have been stopped."}
+esto no es json
+`
+	if err := os.WriteFile(filepath.Join(dir, "transcript_full.jsonl"), []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	turns, err := antigravityHistory(home, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 2 {
+		t.Fatalf("se esperaban 2 turnos (el del usuario y el del agente), hubo %d: %+v", len(turns), turns)
+	}
+	if turns[0].Role != "user" || turns[0].Text != "corregí este insert" {
+		t.Errorf("el envoltorio y los bloques del CLI deberían quedar afuera: %+v", turns[0])
+	}
+	// La herramienta y el texto son UN turno: el transcript los parte y
+	// dibujarlos separados mostraría una conversación que no pasó.
+	if turns[1].Role != "agent" || turns[1].Text != "Sobra la palabra values." || len(turns[1].Tools) != 1 {
+		t.Errorf("el turno del agente debería venir unido: %+v", turns[1])
+	}
+	if got := turns[1].Tools[0]; got.Name != "view_file" || got.Summary != "/tmp/consulta.sql" {
+		t.Errorf("la herramienta debería decir sobre qué actuó: %+v", got)
+	}
+}
+
+// El id de conversación termina en un filepath.Join. Uno con separadores
+// sacaría la lectura de la carpeta de conversaciones.
+func TestAntigravityHistoryRechazaIdConRuta(t *testing.T) {
+	home := t.TempDir()
+	for _, id := range []string{"../../../etc", "a/b", `a\b`, ".."} {
+		turns, err := antigravityHistory(home, id)
+		if err != nil || len(turns) != 0 {
+			t.Errorf("un id con ruta adentro no debería leer nada: %q → %+v (%v)", id, turns, err)
+		}
 	}
 }
