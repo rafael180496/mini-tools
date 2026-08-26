@@ -1,6 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {
-    GitAddRemote,
     GitAddRepo,
     GitInitRepo,
     GitPickFolder,
@@ -23,8 +22,6 @@ import {
     GitRemotes,
     GitRemoveRemote,
     GitRemoveRepo,
-    GitRenameRemote,
-    GitSetRemoteURL,
     GitStashes,
     GitTags,
 } from '../../../wailsjs/go/main/App'
@@ -37,6 +34,7 @@ import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
 import ContextMenu from './ContextMenu'
 import PromptDialog from './PromptDialog'
 import GitCloneDialog from './GitCloneDialog'
+import GitSettingsDialog from './GitSettingsDialog'
 import type {DropdownItem} from './DropdownMenu'
 import {buildBranchTree, countBranches, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
 
@@ -134,6 +132,16 @@ export default function GitRepoTree({
     const [menu, setMenu] = useState<{x: number; y: number; items: (DropdownItem | 'separator')[]} | null>(null)
     const [confirmRemove, setConfirmRemove] = useState<vault.GitRepo | null>(null)
     const [confirmRemoveRemote, setConfirmRemoveRemote] = useState<{repoId: string; name: string} | null>(null)
+    // Repositorio cuya configuración de git está abierta, y con qué pestaña
+    // abre. Guarda el repo entero porque el diálogo muestra su nombre en el
+    // título — abrirlo desde varios lugares y no saber sobre cuál se está
+    // trabajando es el tipo de ambigüedad que termina en un set-url en el
+    // repositorio equivocado.
+    //
+    // Hasta ahora la identidad y los tokens solo se podían tocar desde la
+    // pestaña abierta del repositorio: para arreglar el email con el que se
+    // firman los commits había que abrirlo primero.
+    const [settingsFor, setSettingsFor] = useState<{repo: vault.GitRepo; tab: 'identity' | 'remotes'} | null>(null)
     const [prompt, setPrompt] = useState<PromptSpec | null>(null)
     const [confirmTag, setConfirmTag] = useState<{repoId: string; name: string; remote: boolean} | null>(null)
     // After creating a tag from the sidebar, offer to push it — "crear tags y
@@ -329,7 +337,8 @@ export default function GitRepoTree({
 
     // Remote right-click menu — the actions from the reference client, plus a
     // fetch shortcut since it is the one people reach for most.
-    function remoteMenuItems(repoId: string, remote: git.Remote): (DropdownItem | 'separator')[] {
+    function remoteMenuItems(repo: vault.GitRepo, remote: git.Remote): (DropdownItem | 'separator')[] {
+        const repoId = repo.id
         return [
             {
                 label: `Fetch from ${remote.name}`,
@@ -345,63 +354,21 @@ export default function GitRepoTree({
             },
             'separator',
             {
-                label: 'Renombrar remoto',
+                label: 'Editar remoto…',
                 icon: 'edit',
-                onSelect: () =>
-                    setPrompt({
-                        title: `Renombrar "${remote.name}"`,
-                        label: 'Nuevo nombre',
-                        initial: remote.name,
-                        onSubmit: async (v: string) => {
-                            try {
-                                await GitRenameRemote(repoId, remote.name, v)
-                                await loadDetail(repoId)
-                            } catch (e) {
-                                setError(String(e))
-                            }
-                        },
-                    }),
-            },
-            {
-                label: 'Cambiar URL',
-                icon: 'link',
-                onSelect: async () => {
-                    // Prefill with the REAL URL (token included), not the
-                    // redacted one shown in the list: prefilling "REDACTED"
-                    // meant that saving without retyping would write the
-                    // literal `https://REDACTED@…` and break auth. The user
-                    // explicitly wants to see/keep the embedded token here.
-                    // Falls back to the redacted form only if the raw fetch
-                    // fails, in which case they must retype.
-                    let initial = remote.fetchUrl
-                    try {
-                        const real = await GitRemoteURLForCopy(repoId, remote.name)
-                        if (real) initial = real
-                    } catch {
-                        // keep the redacted fallback
-                    }
-                    setPrompt({
-                        title: `URL de "${remote.name}"`,
-                        label: 'Nueva URL',
-                        initial,
-                        onSubmit: async (v: string) => {
-                            try {
-                                await GitSetRemoteURL(repoId, remote.name, v)
-                                await loadDetail(repoId)
-                            } catch (e) {
-                                setError(String(e))
-                            }
-                        },
-                    })
-                },
+                hint: 'Nombre, URL de fetch y URL de push',
+                // Reemplaza a los viejos "Renombrar remoto" y "Cambiar URL",
+                // que eran dos prompts de una línea: servían para PEGAR una
+                // URL nueva, no para ver la que estaba puesta — que es lo que
+                // hace falta cuando el remoto dejó de andar porque el token
+                // embebido venció.
+                onSelect: () => setSettingsFor({repo, tab: 'remotes'}),
             },
             {
                 label: 'Copiar URL',
                 icon: 'content_copy',
                 onSelect: async () => {
                     try {
-                        // Fetched unredacted only for this clipboard write —
-                        // GitRemotes (what the UI renders) stays redacted.
                         const url = await GitRemoteURLForCopy(repoId, remote.name)
                         await navigator.clipboard.writeText(url)
                     } catch (e) {
@@ -577,6 +544,13 @@ export default function GitRepoTree({
                     {flatFoldersForMenu.length > 0 && (
                         <MoveToFolderMenu connId={repo.id} flatFolders={flatFoldersForMenu} onMove={onMoveRepoToFolder} />
                     )}
+                    <button
+                        onClick={() => setSettingsFor({repo, tab: 'identity'})}
+                        title="Configuración de git de este repositorio: identidad (nombre y email, local o global), remotos y tokens de acceso"
+                        className="shrink-0 rounded p-0.5 text-on-surface-variant opacity-0 hover:bg-surface-variant group-hover:opacity-100"
+                    >
+                        <Icon name="settings" size={13} />
+                    </button>
                     <button
                         onClick={() => setConfirmRemove(repo)}
                         title="Quitar este repositorio de la lista — no borra nada de tu disco"
@@ -806,25 +780,9 @@ export default function GitRepoTree({
                                                     open={openSections.has(`${repo.id}:remotes`)}
                                                     onToggle={() => toggleSection(`${repo.id}:remotes`)}
                                                     action={{
-                                                        icon: 'add',
-                                                        title: 'Agregar un remoto nuevo a este repositorio',
-                                                        onClick: () =>
-                                                            setPrompt({
-                                                                title: 'Agregar remoto',
-                                                                label: 'Nombre',
-                                                                initial: 'origin',
-                                                                secondLabel: 'URL',
-                                                                secondPlaceholder: 'https://github.com/usuario/repo.git',
-                                                                confirmLabel: 'Agregar',
-                                                                onSubmit: async (name, url) => {
-                                                                    try {
-                                                                        await GitAddRemote(repo.id, name, url)
-                                                                        await loadDetail(repo.id)
-                                                                    } catch (e) {
-                                                                        setError(String(e))
-                                                                    }
-                                                                },
-                                                            }),
+                                                        icon: 'settings',
+                                                        title: 'Administrar los remotos de este repositorio: agregar uno, ver y cambiar su URL (token incluido), renombrarlo o quitarlo',
+                                                        onClick: () => setSettingsFor({repo, tab: 'remotes'}),
                                                     }}
                                                 >
                                                     {detail.remotes.map((r) => {
@@ -835,10 +793,10 @@ export default function GitRepoTree({
                                                             <div key={r.name}>
                                                                 <TreeLeaf
                                                                     label={`${r.name} (${remoteBranches.length})`}
-                                                                    title={`${r.fetchUrl} — click derecho para fetch, renombrar, cambiar o copiar la URL`}
+                                                                    title={`${r.fetchUrl} — click derecho para fetch, editar la URL, copiarla o quitar el remoto`}
                                                                     onContextMenu={(e) => {
                                                                         e.preventDefault()
-                                                                        setMenu({x: e.clientX, y: e.clientY, items: remoteMenuItems(repo.id, r)})
+                                                                        setMenu({x: e.clientX, y: e.clientY, items: remoteMenuItems(repo, r)})
                                                                     }}
                                                                 />
                                                                 <SidebarBranchTree
@@ -948,6 +906,19 @@ export default function GitRepoTree({
                         }
                     }}
                     onClose={() => setConfirmRemove(null)}
+                />
+            )}
+
+            {settingsFor && (
+                <GitSettingsDialog
+                    repoId={settingsFor.repo.id}
+                    repoName={settingsFor.repo.name}
+                    initialTab={settingsFor.tab}
+                    onClose={() => setSettingsFor(null)}
+                    onChanged={() => {
+                        void loadDetail(settingsFor.repo.id)
+                        onChanged()
+                    }}
                 />
             )}
 

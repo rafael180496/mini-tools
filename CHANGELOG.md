@@ -4,6 +4,20 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **Editor de remotos en el módulo Git, con la URL a la vista.** La configuración de un repositorio (ícono de engranaje) tiene una pestaña **Remotos** nueva: lista cada remoto con su URL, y un formulario que deja cambiarle el nombre, la **URL de fetch** y la **URL de push** sin salir a la terminal. Se abre desde los dos lados donde se miran los remotos — el botón de la sección «Remotos» del árbol lateral (y el click derecho sobre `origin`, ahora **Editar remoto…**) y la cabecera de la sección «Remotas» del panel de ramas, que además ganó click derecho sobre el remoto con *Fetch*, *Editar* y *Copiar URL*.
+
+  **La URL se muestra tal cual está, con el token a la vista.** Antes lo único que había era un prompt de una línea que servía para *pegar* una URL nueva, no para ver la que estaba puesta. Y un remoto configurado como `https://<token>@github.com/u/r.git` se mostraba tapado (`https://REDACTED@…`), lo que además rompía el guardado: prellenar el formulario con esa versión escribía el literal «REDACTED» en `.git/config` la primera vez que se cambiaba el nombre y se guardaba.
+
+  Taparlo se quitó a propósito, en toda la interfaz. Ese token ya está en texto plano en `.git/config` y `git remote -v` lo imprime, así que la máscara no protegía nada que no revelara abrir el archivo — lo que hacía era esconder, en la única pantalla que muestra remotos, el dato sobre el que hay que actuar: que el token está ahí, y cuál es. Un remoto que dejó de andar porque su token venció se veía igual que uno sano.
+
+  Cuando la URL lleva un token embebido, el editor lo dice y ofrece **moverlo al vault** — que es la salida real, no taparlo en pantalla: se guarda cifrado para ese servidor y la URL queda limpia. La app se lo sigue pasando a git igual (por askpass, sin línea de comandos ni remoto que lo exhiba). Se distingue un token de un usuario suelto por el formato (`ghp_`, `github_pat_`, `glpat-`, o largo de token): `https://rafael@github.com/…` no dispara nada, porque ahí no hay ningún secreto que mudar. Y si preferís dejarlo en la URL, se respeta — se guarda tal cual se escribe.
+
+  La **URL de push** vacía borra el override en vez de escribir un duplicado: dejar las dos en la configuración hace que cambiar la de fetch siga pusheando al servidor viejo, que es justo el desajuste que el editor viene a mostrar.
+
+- **La configuración de git de un repositorio se abre desde la barra lateral.** Cada repositorio del árbol tiene su engranaje, con las tres pestañas: identidad (nombre y email, local o global), remotos y tokens de acceso. Hasta ahora solo salía desde la pestaña abierta del repositorio: para corregir el email con el que se firman los commits había que abrirlo primero.
+
 ### Corregido
 
 - **Retomar una conversación de Antigravity abría el panel en blanco.** La conversación seguía viva —el CLI encadenaba bien por su id— pero no se dibujaba nada de lo hablado, así que retomar «la que tuve ayer sobre esta base» se sentía exactamente igual que empezar de cero, y la conclusión razonable era que la app había perdido el chat.

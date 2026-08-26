@@ -682,6 +682,10 @@ export function GitRemoteURLForCopy(arg1, arg2) {
   return window['go']['main']['App']['GitRemoteURLForCopy'](arg1, arg2);
 }
 
+export function GitRemoteURLsForEdit(arg1, arg2) {
+  return window['go']['main']['App']['GitRemoteURLsForEdit'](arg1, arg2);
+}
+
 export function GitRemotes(arg1) {
   return window['go']['main']['App']['GitRemotes'](arg1);
 }
@@ -768,6 +772,10 @@ export function GitSetPinnedBranches(arg1, arg2) {
 
 export function GitSetRemoteURL(arg1, arg2, arg3) {
   return window['go']['main']['App']['GitSetRemoteURL'](arg1, arg2, arg3);
+}
+
+export function GitSetRemoteURLs(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GitSetRemoteURLs'](arg1, arg2, arg3, arg4);
 }
 
 export function GitSetUpstream(arg1, arg2, arg3) {

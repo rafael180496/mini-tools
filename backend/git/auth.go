@@ -2,7 +2,6 @@ package git
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 )
@@ -125,39 +124,6 @@ func tokenEnv(cfg AuthConfig) ([]string, error) {
 		envAskpassUsername + "=" + username,
 		envAskpassSecret + "=" + cfg.Token,
 	}, nil
-}
-
-// redactURL strips embedded credentials from a remote URL before it crosses
-// the Go↔React binding.
-//
-// This is not hypothetical hygiene: a remote configured as
-// https://<token>@github.com/user/repo.git stores the PAT in plain text in
-// .git/config, and `git remote -v` prints it. Returning that verbatim would
-// put a live credential in the frontend, in React state, and in any rendered
-// tooltip — violating .claude/rules/technical.md point 9 ("el frontend nunca
-// ve un DSN ni un password").
-//
-// The placeholder is alphanumeric because url.String() percent-encodes
-// anything else, turning "***" into an unreadable "%2A%2A%2A". The userinfo is
-// replaced rather than dropped so the UI can still show that
-// the URL carries an embedded credential, which is itself worth surfacing.
-func redactURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.User == nil {
-		// SCP-style SSH remotes (git@github.com:user/repo.git) do not parse
-		// as URLs and carry no secret — the part before "@" is a username.
-		return raw
-	}
-	if _, hasPassword := u.User.Password(); hasPassword {
-		u.User = url.UserPassword(u.User.Username(), "REDACTED")
-	} else {
-		// A single userinfo component on an http(s) remote is the token
-		// itself; on ssh it is just the login name.
-		if u.Scheme == "http" || u.Scheme == "https" {
-			u.User = url.User("REDACTED")
-		}
-	}
-	return u.String()
 }
 
 // shellQuote wraps a value for GIT_SSH_COMMAND, which git splits with

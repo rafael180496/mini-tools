@@ -316,7 +316,41 @@ const fixtures: Record<string, unknown> = {
         {name: 'v0.4.0', hash: '83d5c41', message: '', date: '2026-07-22'},
         {name: 'v0.3.0', hash: '65da206', message: '', date: '2026-07-20'},
     ],
-    GitRemotes: [{name: 'origin', fetchUrl: 'git@github.com:rafael180496/mini-tools.git', pushUrl: ''}],
+    // La URL llega tal cual está configurada, con el token adentro: es lo que
+    // muestra la app. El token es inventado y no sirve para autenticarse.
+    GitRemotes: [
+        {
+            name: 'origin',
+            fetchUrl: 'https://ghp_EjEmPl0N0Us4bl3T0k3nDeMuestra@github.com/rafael180496/mini-tools.git',
+            pushUrl: 'https://ghp_EjEmPl0N0Us4bl3T0k3nDeMuestra@github.com/rafael180496/mini-tools.git',
+        },
+    ],
+    // Lo mismo, pero con la URL de push vacía: así se ve un remoto sin
+    // override, que es el caso normal.
+    GitRemoteURLsForEdit: {
+        name: 'origin',
+        fetchUrl: 'https://ghp_EjEmPl0N0Us4bl3T0k3nDeMuestra@github.com/rafael180496/mini-tools.git',
+        pushUrl: '',
+    },
+    GitIdentity: {
+        localName: '',
+        localEmail: '',
+        globalName: 'rafael',
+        globalEmail: 'rafael@ejemplo.dev',
+        effectiveName: 'rafael',
+        effectiveEmail: 'rafael@ejemplo.dev',
+        usingGlobal: true,
+    },
+    GitCredentialHelper: {
+        helper: 'osxkeychain',
+        global: true,
+        available: [
+            {value: 'osxkeychain', label: 'Llavero de macOS', secure: true},
+            {value: 'cache --timeout=3600', label: 'Recordar 1 hora (en memoria)', secure: true},
+            {value: 'store', label: 'Archivo en texto plano (~/.git-credentials)', secure: false},
+        ],
+    },
+    GitListCredentials: [{id: 'gc1', host: 'github.com', username: 'rafael180496', createdAt: 1786400000}],
     GitStashes: [],
     GitLog: [
         {hash: '76d8575000000000000000000000000000000000', shortHash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-15', body: '', parents: ['7334bc1000000000000000000000000000000000'], branches: ['develop', 'main', 'origin/develop', 'origin/main', 'origin/HEAD'], tags: ['v1.3.1'], isHead: true, stats: {added: 0, removed: 0, files: 0}},
@@ -965,6 +999,7 @@ const {default: LocalTerminalTab} = await import('./components/terminal/LocalTer
 const {default: HttpTree} = await import('./components/http/HttpTree')
 const {default: HttpRequestTab} = await import('./components/http/HttpRequestTab')
 const {default: GitReflogPanel} = await import('./components/git/GitReflogPanel')
+const {default: GitSettingsDialog} = await import('./components/git/GitSettingsDialog')
 const {default: FolderNotesDialog} = await import('./components/notes/FolderNotesDialog')
 const {default: SftpTab} = await import('./components/sftp/SftpTab')
 const {default: SshTerminalTab} = await import('./components/ssh/SshTerminalTab')
@@ -1289,6 +1324,15 @@ const views: Record<string, React.ReactNode> = {
     // Mismo componente: lo que cambia es que el harness le manda un mensaje,
     // que es la única forma de que exista un turno en curso que fotografiar.
     thinking: views_chat,
+    // La configuración de git de un repositorio, abierta en la pestaña de
+    // remotos. `&edit=1` le pega el clic al lápiz para fotografiar el
+    // formulario con la URL real —token incluido— y el aviso que ofrece
+    // mudarlo al vault, que es lo que la ayuda explica.
+    gitconfig: (
+        <div className="h-full w-full bg-surface">
+            <GitSettingsDialog repoId="r1" repoName="mini-tools" initialTab="remotes" onClose={() => {}} onChanged={() => {}} />
+        </div>
+    ),
 }
 
 const view = new URLSearchParams(location.search).get('view') ?? 'files'
@@ -1319,6 +1363,9 @@ const autoClick = (find: () => HTMLElement | undefined) => {
     setTimeout(click, 900)
 }
 
+if (view === 'gitconfig' && new URLSearchParams(location.search).get('edit')) {
+    autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.title.startsWith('Ver y cambiar la URL')))
+}
 if (view === 'agentmode') {
     // Por title y no por texto: el Icon renderiza su ligadura como texto, así
     // que textContent es "smart_toyAgente" y nunca matchea "Agente".

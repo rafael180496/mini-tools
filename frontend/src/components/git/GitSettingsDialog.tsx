@@ -11,22 +11,33 @@ import {
 import type {git, vault} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
+import GitRemotesPanel from './GitRemotesPanel'
 
 interface GitSettingsDialogProps {
     repoId: string
     repoName: string
+    // Pestaña con la que abre. Quien la abre desde la lista de remotos ya sabe
+    // qué venía a hacer; hacerle cruzar la de identidad primero sería pedirle
+    // que repita lo que ya dijo con el click.
+    initialTab?: Tab
     onClose: () => void
     // Called after a save that could change what a commit will be stamped with,
     // so the tab can refresh.
     onChanged: () => void
 }
 
-type Tab = 'identity' | 'tokens'
+type Tab = 'identity' | 'remotes' | 'tokens'
 
 // Git configuration for one repository: the author identity commits get
-// stamped with, and the stored access tokens used for network operations.
-export default function GitSettingsDialog({repoId, repoName, onClose, onChanged}: GitSettingsDialogProps) {
-    const [tab, setTab] = useState<Tab>('identity')
+// stamped with, the remotes it talks to, and the stored access tokens used for
+// network operations.
+//
+// Los remotos viven acá y no solo en el menú contextual del árbol porque es la
+// misma pregunta que las otras dos pestañas —con qué identidad y con qué
+// credencial hablo con este servidor— y porque un menú contextual hay que
+// saber que existe: nadie hace click derecho para averiguar si se puede.
+export default function GitSettingsDialog({repoId, repoName, initialTab, onClose, onChanged}: GitSettingsDialogProps) {
+    const [tab, setTab] = useState<Tab>(initialTab ?? 'identity')
     const [error, setError] = useState<string | null>(null)
 
     return (
@@ -42,6 +53,7 @@ export default function GitSettingsDialog({repoId, repoName, onClose, onChanged}
 
                 <div className="flex shrink-0 gap-0.5 border-b border-outline-variant px-3 py-2">
                     <TabButton active={tab === 'identity'} onClick={() => setTab('identity')} icon="person" label="Identidad" title="Configurar el nombre y el email con el que se firman tus commits" />
+                    <TabButton active={tab === 'remotes'} onClick={() => setTab('remotes')} icon="cloud" label="Remotos" title="Ver y cambiar a qué servidor apuntan fetch, pull y push de este repositorio" />
                     <TabButton active={tab === 'tokens'} onClick={() => setTab('tokens')} icon="key" label="Tokens" title="Guardar tokens de acceso (PAT) por servidor, para push y pull por HTTPS" />
                 </div>
 
@@ -56,11 +68,9 @@ export default function GitSettingsDialog({repoId, repoName, onClose, onChanged}
                 )}
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-5">
-                    {tab === 'identity' ? (
-                        <IdentityPanel repoId={repoId} onError={setError} onChanged={onChanged} />
-                    ) : (
-                        <TokensPanel repoId={repoId} onError={setError} />
-                    )}
+                    {tab === 'identity' && <IdentityPanel repoId={repoId} onError={setError} onChanged={onChanged} />}
+                    {tab === 'remotes' && <GitRemotesPanel repoId={repoId} onError={setError} onChanged={onChanged} />}
+                    {tab === 'tokens' && <TokensPanel repoId={repoId} onError={setError} />}
                 </div>
             </div>
         </div>

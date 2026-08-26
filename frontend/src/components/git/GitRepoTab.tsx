@@ -32,6 +32,7 @@ import {
     GitDiff,
     GitDiscard,
     GitFetch,
+    GitRemoteURLForCopy,
     GitForgeInfo,
     GitOpenInBrowser,
     GitRemoveWorktree,
@@ -559,6 +560,14 @@ export default function GitRepoTab({
     // banner. Without it a user who hits a conflict has no way out of the app.
     const [inProgress, setInProgress] = useState('')
     const [showSettings, setShowSettings] = useState(false)
+    // Pestaña con la que abre la configuración. La lista de ramas remotas la
+    // abre directo en "Remotos": la pregunta "¿a dónde apunta esto?" se hace
+    // justamente ahí, mirando que origin/algo no se actualiza.
+    const [settingsTab, setSettingsTab] = useState<'identity' | 'remotes'>('identity')
+    const openSettings = useCallback((tab: 'identity' | 'remotes') => {
+        setSettingsTab(tab)
+        setShowSettings(true)
+    }, [])
     // Branch names hidden from the graph via the commit menu. When non-empty
     // the log walks every OTHER ref instead of --all, so hiding a busy release
     // branch declutters the graph without deleting anything.
@@ -2150,6 +2159,47 @@ export default function GitRepoTab({
         [promptCreateBranch],
     )
 
+    // Click derecho sobre una carpeta del árbol de remotas. El primer nivel es
+    // el remoto en sí (origin, upstream…), así que ahí el menú habla del
+    // remoto —fetch, editar su URL, copiarla— y no de un prefijo de nombres;
+    // más adentro son carpetas comunes y solo se ofrece copiar el prefijo.
+    const openRemoteFolderMenu = useCallback(
+        (folderPath: string, e: React.MouseEvent) => {
+            e.preventDefault()
+            e.stopPropagation()
+            const isRemote = !folderPath.includes('/')
+            setMenu({
+                x: e.clientX,
+                y: e.clientY,
+                items: isRemote
+                    ? [
+                          {
+                              label: `Fetch de ${folderPath}`,
+                              icon: 'cloud_download',
+                              hint: 'Trae los cambios de este remoto',
+                              onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({remote: folderPath}), new git.AuthConfig({}))),
+                          },
+                          'separator',
+                          {
+                              label: 'Editar remoto…',
+                              icon: 'edit',
+                              hint: 'Nombre, URL de fetch y URL de push',
+                              onSelect: () => openSettings('remotes'),
+                          },
+                          {
+                              label: 'Copiar URL',
+                              icon: 'content_copy',
+                              onSelect: () => void GitRemoteURLForCopy(repoId, folderPath).then(copy).catch((err) => setError(String(err))),
+                          },
+                      ]
+                    : [{label: `Copiar "${folderPath}/"`, icon: 'content_copy', onSelect: () => copy(`${folderPath}/`)}],
+            })
+        },
+        // Igual que openFolderMenu: `copy` se define nueva en cada render y
+        // ponerla en las dependencias anularía el useCallback sin ganar nada.
+        [repoId, run, openSettings],
+    )
+
     // Git Flow, nativo: solo escribe la configuración y crea ramas.
     //
     // El menú cambia de forma según el estado porque son dos preguntas
@@ -2449,7 +2499,7 @@ export default function GitRepoTab({
                         <Icon name="refresh" size={16} />
                     </button>
                     <button
-                        onClick={() => setShowSettings(true)}
+                        onClick={() => openSettings('identity')}
                         title="Configurar el nombre y email con el que se firman tus commits, y los tokens de acceso para push y pull"
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
@@ -3030,6 +3080,11 @@ export default function GitRepoTab({
                             count={remoteBranches.length}
                             open={!collapsedSections.has('remote')}
                             onToggle={() => toggleSection('remote')}
+                            action={{
+                                icon: 'settings',
+                                title: 'Administrar los remotos: agregar uno, ver y cambiar su URL (con el token, si lo tiene embebido), renombrarlo o quitarlo',
+                                onSelect: () => openSettings('remotes'),
+                            }}
                         >
                             Remotas
                         </SectionLabel>
@@ -3043,6 +3098,7 @@ export default function GitRepoTab({
                                 expanded={expandedFolders}
                                 expandAll={filtering}
                                 onToggleFolder={toggleFolder}
+                                onFolderMenu={openRemoteFolderMenu}
                                 renderBranch={(b, folderPath) => (
                                     <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
                                 )}
@@ -4059,7 +4115,16 @@ export default function GitRepoTab({
             </div>
 
             {showSettings && (
-                <GitSettingsDialog repoId={repoId} repoName={repoName} onClose={() => setShowSettings(false)} onChanged={() => void reload()} />
+                <GitSettingsDialog
+                    repoId={repoId}
+                    repoName={repoName}
+                    initialTab={settingsTab}
+                    onClose={() => setShowSettings(false)}
+                    onChanged={() => {
+                        void reload()
+                        onChanged()
+                    }}
+                />
             )}
             {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} width={280} />}
             {prompt && <PromptDialog {...prompt} onClose={() => setPrompt(null)} />}
@@ -4230,7 +4295,10 @@ function SectionLabel({
     // publicar ramas y tags, pero crear uno obligaba a ir al grafo y buscar
     // un commit. Se ve siempre (atenuada, no escondida detrás de un hover):
     // una acción que no se descubre es la que motivó agregarla.
-    action?: {title: string; onSelect: () => void}
+    // El ícono es parte de la acción: en "Ramas" y "Tags" es un alta ("add"),
+    // en "Remotas" es administrar lo que ya existe — un "+" ahí prometería
+    // otra cosa.
+    action?: {title: string; onSelect: () => void; icon?: string}
 }) {
     const label = (
         <>
@@ -4267,7 +4335,7 @@ function SectionLabel({
                     title={action.title}
                     className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
                 >
-                    <Icon name="add" size={14} />
+                    <Icon name={action.icon ?? 'add'} size={14} />
                 </button>
             )}
         </div>

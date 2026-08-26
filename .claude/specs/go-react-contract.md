@@ -172,17 +172,36 @@ webview, y la UI muestra un spinner eterno en vez de un error accionable.
 `LC_ALL=C` fija el idioma de los mensajes de error de git para que el parseo no
 dependa del locale. `GIT_PAGER=cat` evita que git espere a un pager sin tty.
 
-**Redacción de credenciales (regla técnica 9).** `GetRemotes` pasa cada URL por
-`redactURL` antes de cruzar el binding: un remote configurado como
-`https://<token>@github.com/...` guarda el PAT en texto plano en `.git/config` y
-`git remote -v` lo imprime. Devolverlo crudo pondría una credencial viva en el
-estado de React y en cualquier tooltip renderizado. **Esto se encontró en vivo
-en el propio repo de mini-tools durante la implementación** — no es higiene
-hipotética. El placeholder es alfanumérico (`REDACTED`) porque `url.String()`
-percent-encodea cualquier otra cosa (`***` → `%2A%2A%2A`).
-`GitRemoteURLForCopy` es la única excepción deliberada: copiar una URL es un
-pedido explícito del valor real, y devolver la forma redactada entregaría
-silenciosamente un string roto. Nunca alimenta la UI.
+**Las URLs de remoto viajan sin tapar (excepción de la regla técnica 9).**
+`GetRemotes` devuelve cada URL tal cual está en `.git/config`, token embebido
+incluido (`https://<token>@github.com/…`). Durante la implementación esto se
+hizo al revés —una función `redactURL` reemplazaba el userinfo por `REDACTED`,
+y el caso se encontró en vivo en el propio repo de mini-tools— y **el usuario
+decidió después, viéndolo en uso, que se muestre**. El motivo por el que la
+máscara no valía la pena: el token ya está en texto plano en `.git/config` y
+`git remote -v` lo imprime, así que no protegía nada que no revelara abrir el
+archivo; lo que hacía era esconder, en la única pantalla que muestra remotos, el
+dato sobre el que hay que actuar. Un remoto roto porque su token venció se veía
+igual que uno sano. Lo que sí ofrece la app es **mudar ese token al vault** desde
+el editor de remotos: se guarda cifrado por host y la URL queda limpia, sin
+perder el acceso (el PAT llega a git por askpass). La consecuencia aceptada está
+escrita en la regla 9: una URL de remoto en la UI puede llevar una credencial
+viva.
+
+`GitRemoteURLsForEdit` existe al lado de `GitRemotes` por **una** diferencia:
+devuelve `pushUrl` vacío cuando el remoto no tiene override, mientras que
+`remote -v` siempre imprime una línea de push igual a la de fetch. El editor
+guarda lo que muestra, así que con el duplicado a la vista escribiría un
+override que nadie pidió — y un override viejo es lo que hace que cambiar la URL
+de fetch parezca funcionar mientras el push sigue yendo al servidor anterior.
+Devuelve un `git.Remote` en vez de un tipo nuevo a propósito: la clase ya la
+emite el generador por `GitRemotes`, así que agregar el binding no toca
+`models.ts` (ver el incidente más abajo). Lee de `config --list` y no de
+`remote get-url` porque `remote.<name>.pushurl` casi nunca existe, y preguntar
+con `--get` por una clave ausente sale con 1 y pinta una línea roja en el log de
+comandos cada vez que se abre el editor. `GitSetRemoteURLs` cierra el círculo:
+una URL de push vacía (o igual a la de fetch) **borra** el override en lugar de
+duplicarlo.
 
 **Inyección de flags.** No hay shell (los argumentos van directo a `exec`), así
 que un nombre de rama con metacaracteres es inerte. El vector que queda es un

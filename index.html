@@ -354,6 +354,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>Git</button>
   <ul>
     <li><a href="#git-repositorio">El repositorio: grafo y diff</a></li>
+    <li><a href="#git-config">Identidad, remotos y tokens</a></li>
     <li><a href="#git-reflog">Recuperar con el reflog</a></li>
   </ul>
 
@@ -1057,6 +1058,67 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <h2 id="git-repositorio--log">El log de comandos</h2>
   <p>Cada acción deja registrado el <strong>comando exacto</strong> que la app ejecutó por debajo, con su
   salida y cuánto tardó. Sirve para aprender qué hace el botón, y para pegar el comando en un ticket.</p>
+</article>
+
+<article class="topic" id="git-config" data-title="Identidad, remotos y tokens">
+  <h1>Identidad, remotos y tokens</h1>
+  <p class="lead">Con qué nombre firmás, contra qué servidor hablás y con qué credencial — las tres
+  cosas en la misma ventana.</p>
+
+  <p>Se abre con el <strong>engranaje</strong>: el de la fila del repositorio en la barra lateral, o el de
+  la barra de la pestaña abierta. Tiene tres solapas: <strong>Identidad</strong>, <strong>Remotos</strong> y
+  <strong>Tokens</strong>.</p>
+
+  <h2 id="git-config--identidad">Identidad: local o global</h2>
+  <p>Arriba de todo dice <strong>con qué nombre y email se va a firmar el próximo commit</strong>, y de
+  dónde sale ese valor. Es el dato que casi nunca se ve y explica el 90&nbsp;% de los «¿por qué este commit
+  aparece con mi mail viejo?»: un repositorio sin identidad propia hereda la global, en silencio.</p>
+  <ul>
+    <li><strong>Solo este repositorio</strong> escribe en <code>.git/config</code> y pisa lo global.</li>
+    <li><strong>Global (todos)</strong> escribe en <code>~/.gitconfig</code> y alcanza a cada repositorio de la máquina que no tenga el suyo.</li>
+    <li>Vaciar un campo <strong>borra la clave</strong> en vez de guardarla en blanco: así el repositorio vuelve a heredar, que es lo que uno quiere decir al limpiar el casillero.</li>
+  </ul>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-remotes.png" alt="Configuración de Git en la solapa Remotos: origin con su URL completa, y debajo el formulario de edición con nombre, URL de fetch mostrando el token embebido, URL de push vacía y un aviso que ofrece mover el token al vault"></div>
+    <figcaption>La URL se muestra tal cual está configurada, con el token adentro si lo tiene.</figcaption>
+  </figure>
+
+  <h2 id="git-config--remotos">Remotos: cambiar la URL de origin</h2>
+  <p>La solapa <strong>Remotos</strong> lista cada remoto y deja cambiarle el <strong>nombre</strong>, la
+  <strong>URL de fetch</strong> y la <strong>URL de push</strong>. Equivale a
+  <code>git remote set-url</code>: no toca nada en el servidor y no vuelve a bajar el repositorio, solo
+  cambia el destino.</p>
+  <ol class="steps">
+    <li>Abrí la configuración del repositorio y andá a <strong>Remotos</strong>. Atajo: el engranaje de la sección «Remotos» del árbol, o el de la sección «Remotas» del panel de ramas, la abren ya en esa solapa. También está en el click derecho sobre <code>origin</code>, como <strong>Editar remoto…</strong></li>
+    <li>Tocá el <strong>lápiz</strong> del remoto. El formulario se abre con lo que hay configurado, sin recortar.</li>
+    <li>Pegá la URL nueva y <strong>Guardar</strong>. Si cambiaste también el nombre, se renombra el remoto y las ramas de seguimiento que colgaban de él.</li>
+  </ol>
+  <div class="note"><span class="lbl">Dato</span><p>La <strong>URL de push</strong> vacía significa
+  «pushea a la misma de arriba», que es lo normal. Solo se completa cuando se lee de un lado y se escribe
+  en otro (un espejo, un fork). Vaciarla borra el desvío: dejar los dos valores puestos es lo que hace que
+  cambiar la URL de fetch parezca funcionar mientras el push sigue yendo al servidor viejo.</p></div>
+
+  <h2 id="git-config--token-en-la-url">Cuando la URL trae el token adentro</h2>
+  <p>Un remoto configurado como <code>https://&lt;token&gt;@github.com/usuario/repo.git</code> funciona,
+  pero guarda el token <strong>en texto plano</strong> en <code>.git/config</code>: lo ve cualquiera que
+  abra la carpeta o corra <code>git remote -v</code>.</p>
+  <p><strong>La app te lo muestra, no lo tapa.</strong> Ocultarlo en pantalla no lo saca de ningún lado
+  —sigue en el archivo, y ahí lo lee cualquiera— y a cambio esconde lo único que hay que saber: que está,
+  y cuál es. Un remoto que dejó de andar porque el token venció se vería igual que uno sano.</p>
+  <ul>
+    <li><strong>Mover el token al vault</strong> es la salida de verdad: lo guarda cifrado para ese servidor y deja la URL limpia. La app se lo sigue pasando a git igual, sin línea de comandos ni remoto que lo exhiba.</li>
+    <li>Si querés <strong>dejarlo en la URL</strong>, se respeta: lo que escribas es lo que se guarda.</li>
+    <li>Un usuario suelto (<code>https://rafael@github.com/…</code>) no dispara el aviso: ahí no hay ningún secreto que mudar.</li>
+  </ul>
+
+  <h2 id="git-config--tokens">Tokens y contraseñas recordadas</h2>
+  <p>La solapa <strong>Tokens</strong> guarda un <strong>PAT por servidor</strong>, cifrado en el vault, y
+  lo usa sola en fetch, pull y push contra ese host. No se puede volver a leer desde la app: si perdés uno,
+  generá otro en tu forge y reemplazalo.</p>
+  <p>Abajo está el <strong>credential helper de git</strong>, que es otra cosa: es la configuración del
+  propio git (llavero del sistema, «recordar una hora», archivo en texto plano) y es la que usan la
+  terminal y los hooks — o sea, el mismo repositorio cuando lo usás fuera de la app.</p>
 </article>
 
 <article class="topic" id="git-reflog" data-title="Recuperar con el reflog">

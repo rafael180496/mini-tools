@@ -370,6 +370,45 @@ func (r *Runner) SetRemoteURL(repoPath, name, url string) error {
 	return err
 }
 
+// SetRemoteURLs writes both URLs of a remote in one go, which is what the
+// remote editor saves.
+//
+// The push URL is an OVERRIDE, not a second required field: git pushes to the
+// fetch URL unless remote.<name>.pushurl exists. So an empty push URL — or one
+// equal to the fetch URL — removes the key instead of writing a duplicate;
+// leaving both in config means a later edit of the fetch URL silently keeps
+// pushing to the old server, which is the exact failure this editor exists to
+// make visible.
+func (r *Runner) SetRemoteURLs(repoPath, name, fetchURL, pushURL string) error {
+	root, err := r.resolveRepo(repoPath)
+	if err != nil {
+		return err
+	}
+	if err := r.SetRemoteURL(root, name, fetchURL); err != nil {
+		return err
+	}
+
+	push := strings.TrimSpace(pushURL)
+	if push != "" && push != strings.TrimSpace(fetchURL) {
+		if strings.HasPrefix(push, "-") {
+			return fmt.Errorf("URL de push inválida: %q", push)
+		}
+		_, err = r.runLocal(root, "remote", "set-url", "--push", name, push)
+		return err
+	}
+	// Only unset when there is something to unset: `--unset-all` on an absent
+	// key exits 5, and a remote WITHOUT a push override is the normal case —
+	// every save would leave a red line in "Comandos ejecutados" for a
+	// non-event.
+	if r.localConfig(root)["remote."+name+".pushurl"] == "" {
+		return nil
+	}
+	if _, err := r.runLocal(root, "config", "--local", "--unset-all", "remote."+name+".pushurl"); err != nil {
+		return fmt.Errorf("no se pudo quitar la URL de push de %q: %w", name, err)
+	}
+	return nil
+}
+
 // RemoveRemote implements "Delete origin".
 func (r *Runner) RemoveRemote(repoPath, name string) error {
 	root, err := r.resolveRepo(repoPath)

@@ -391,8 +391,10 @@ func (a *App) GitTags(repoID string) ([]git.Tag, error) {
 	return a.gitRunner.GetTags(path)
 }
 
-// GitRemotes returns configured remotes. URLs come back with any embedded
-// credential redacted — see git.redactURL.
+// GitRemotes returns configured remotes, with their URLs tal cual están
+// configuradas — token embebido incluido, si lo tienen. Decisión explícita del
+// usuario; el porqué está en git.Runner.GetRemotes y la excepción documentada
+// en .claude/rules/technical.md punto 9.
 func (a *App) GitRemotes(repoID string) ([]git.Remote, error) {
 	path, err := a.gitRepo(repoID)
 	if err != nil {
@@ -775,14 +777,38 @@ func (a *App) GitRemoveRemote(repoID, name string) error {
 	return a.gitRunner.RemoveRemote(path, name)
 }
 
-// GitRemoteURLForCopy returns a remote's fetch URL unredacted, for the
-// sidebar's "Copy Remote URL" action.
+// GitRemoteURLsForEdit returns a remote's fetch and push URLs to prefill the
+// remote editor.
 //
-// This is the one deliberate exception to redaction: copying a URL is an
-// explicit user request for the real value, and returning the redacted form
-// would silently hand them a broken string. It is never used to populate the
-// UI — GitRemotes stays redacted — so the raw value only ever exists for the
-// duration of the clipboard write.
+// Distinto de GitRemotes en una sola cosa, y por eso existe: PushURL vuelve
+// VACÍO cuando el remoto no tiene override de push, mientras que `remote -v`
+// siempre imprime una línea de push igual a la de fetch. El editor guarda lo
+// que muestra, así que con el duplicado a la vista terminaría escribiendo un
+// override que nadie pidió — y un override viejo es exactamente lo que hace
+// que cambiar la URL de fetch parezca funcionar mientras el push sigue yendo
+// al servidor anterior.
+func (a *App) GitRemoteURLsForEdit(repoID, name string) (git.Remote, error) {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return git.Remote{}, err
+	}
+	return a.gitRunner.RemoteURLsRaw(path, name)
+}
+
+// GitSetRemoteURLs writes both URLs of a remote. An empty pushURL removes the
+// push override rather than blanking it — see git.Runner.SetRemoteURLs.
+func (a *App) GitSetRemoteURLs(repoID, name, fetchURL, pushURL string) error {
+	path, err := a.gitRepo(repoID)
+	if err != nil {
+		return err
+	}
+	return a.gitRunner.SetRemoteURLs(path, name, fetchURL, pushURL)
+}
+
+// GitRemoteURLForCopy returns a remote's fetch URL for the sidebar's "Copy
+// Remote URL" action. Le pregunta a git por una sola URL en vez de parsear la
+// tabla entera de `remote -v`, que es lo que quiere una escritura al
+// portapapeles.
 func (a *App) GitRemoteURLForCopy(repoID, name string) (string, error) {
 	path, err := a.gitRepo(repoID)
 	if err != nil {

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -148,6 +149,23 @@ func (r *Runner) GetTags(repoPath string) ([]Tag, error) {
 
 // GetRemotes returns configured remotes with their fetch and push URLs
 // resolved separately, so the UI never shows a URL that push would not use.
+//
+// The URLs come back VERBATIM, including an embedded credential when the
+// remote carries one (https://<token>@github.com/…). That is a deliberate
+// decision of the user's, and the opposite of what this function did before:
+// it used to replace the userinfo with "REDACTED".
+//
+// Hiding it was worse in practice. The token is already sitting in plain text
+// in .git/config and `git remote -v` prints it, so the mask protected nothing
+// that reading the file would not reveal; what it did was hide, from the only
+// screen that shows remotes, the one fact worth acting on — that the token is
+// there, and which one it is. A remote that stopped working because its token
+// expired looked identical to one that works.
+//
+// The consequence is real and accepted: a remote URL rendered anywhere in the
+// UI can contain a live credential (React state, tooltips, screenshots the
+// user takes). See .claude/rules/technical.md point 9 for the documented
+// exception.
 func (r *Runner) GetRemotes(repoPath string) ([]Remote, error) {
 	root, err := r.resolveRepo(repoPath)
 	if err != nil {
@@ -172,13 +190,11 @@ func (r *Runner) GetRemotes(repoPath string) ([]Remote, error) {
 			byName[name] = rem
 			order = append(order, name)
 		}
-		// Redacted before it can reach the frontend — a remote URL may carry
-		// an embedded PAT, see redactURL.
 		switch kind {
 		case "(fetch)":
-			rem.FetchURL = redactURL(url)
+			rem.FetchURL = url
 		case "(push)":
-			rem.PushURL = redactURL(url)
+			rem.PushURL = url
 		}
 	}
 
@@ -189,15 +205,12 @@ func (r *Runner) GetRemotes(repoPath string) ([]Remote, error) {
 	return remotes, nil
 }
 
-// RemoteURLRaw returns a remote's fetch URL without redaction, for the
-// sidebar's "Copy Remote URL" action.
+// RemoteURLRaw returns a remote's fetch URL, for the sidebar's "Copy Remote
+// URL" action.
 //
-// Separate from GetRemotes on purpose. GetRemotes feeds the UI and must never
-// carry a credential (see redactURL); this one exists because copying a URL is
-// an explicit request for the real value, and handing back a redacted string
-// would silently give the user something that does not work. Keeping them
-// apart means the raw value is only produced when someone asked for it, never
-// as a side effect of rendering a list.
+// Kept separate from GetRemotes even though neither redacts any more: this one
+// asks git for exactly one URL instead of parsing the whole `remote -v` table,
+// which is what a clipboard write wants.
 func (r *Runner) RemoteURLRaw(repoPath, name string) (string, error) {
 	root, err := r.resolveRepo(repoPath)
 	if err != nil {
@@ -265,4 +278,43 @@ func (r *Runner) GetCurrentBranch(repoPath string) (name string, detached bool, 
 		return "", true, nil
 	}
 	return strings.TrimSpace(out), false, nil
+}
+
+// RemoteURLsRaw returns a remote's configured URLs for the remote editor.
+//
+// It exists next to GetRemotes because of ONE difference that matters when
+// saving: `remote -v` always prints a push line, equal to the fetch URL when
+// there is no override, while this reads the raw keys and leaves PushURL empty
+// in that case. The editor needs that distinction — an override written back
+// because the form showed a duplicate is how a repository ends up pushing to
+// the old server after its fetch URL changed.
+//
+// Read from `config --list` rather than `remote get-url`: the fetch URL and
+// the push override are two different keys, and a missing pushurl — the normal
+// case — makes `--get` exit 1, which would paint a red line in the command log
+// every time the editor opens. PushURL is deliberately empty when no override
+// exists; that is what "push goes wherever fetch goes" looks like, and the
+// editor renders it as an empty optional field rather than a duplicate.
+//
+// A remote configured with several URLs (git allows it) collapses to the last
+// one here. The editor is not a multi-URL editor and never claimed to be; such
+// a remote is left to `git remote set-url --add` on a terminal.
+func (r *Runner) RemoteURLsRaw(repoPath, name string) (Remote, error) {
+	root, err := r.resolveRepo(repoPath)
+	if err != nil {
+		return Remote{}, err
+	}
+	if err := checkRefArg("remoto", name); err != nil {
+		return Remote{}, err
+	}
+	conf := r.localConfig(root)
+	fetch := strings.TrimSpace(conf["remote."+name+".url"])
+	if fetch == "" {
+		return Remote{}, fmt.Errorf("el remoto %q no existe en este repositorio", name)
+	}
+	return Remote{
+		Name:     name,
+		FetchURL: fetch,
+		PushURL:  strings.TrimSpace(conf["remote."+name+".pushurl"]),
+	}, nil
 }

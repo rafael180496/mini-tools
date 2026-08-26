@@ -363,6 +363,8 @@ export function GitRefreshProbe():Promise<git.Availability>;
 
 export function GitRemoteURLForCopy(arg1:string,arg2:string):Promise<string>;
 
+export function GitRemoteURLsForEdit(arg1:string,arg2:string):Promise<git.Remote>;
+
 export function GitRemotes(arg1:string):Promise<Array<git.Remote>>;
 
 export function GitRemoveMCPServer(arg1:string,arg2:string):Promise<void>;
@@ -406,6 +408,8 @@ export function GitSetPaneWidths(arg1:number,arg2:number):Promise<void>;
 export function GitSetPinnedBranches(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function GitSetRemoteURL(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function GitSetRemoteURLs(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function GitSetUpstream(arg1:string,arg2:string,arg3:string):Promise<void>;
 
