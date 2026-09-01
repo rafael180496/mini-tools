@@ -1196,11 +1196,12 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <li>La fila <strong>«..»</strong> sube un nivel, y muestra a dónde: en una ruta profunda saber que subís no alcanza, hay que saber adónde.</li>
     <li>El <strong>buscador</strong> de cada panel filtra lo que ya está listado —no baja a las subcarpetas ni vuelve a preguntarle al servidor—, así que es instantáneo. <kbd>Esc</kbd> lo limpia.</li>
     <li>Las <strong>columnas se ordenan y se redimensionan</strong>, y las que no entran se esconden solas: primero <em>Kind</em> —que es la extensión, y ya está en el nombre— y después <em>Permisos</em>. Preferimos esconder lo prescindible antes que cortarlo: una columna que no está se entiende, una a medias parece un error.</li>
+    <li><strong>Seleccionar varios</strong>, como en cualquier explorador: clic simple marca una fila, <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+clic agrega o quita sin perder el resto, <kbd>Shift</kbd>+clic marca el rango desde la última fila tocada, y la <strong>casilla</strong> de cada fila alterna sin sostener ninguna tecla (con <kbd>Shift</kbd> también hace rango). La del encabezado marca todo lo que muestra el filtro y avisa cuándo hay <em>algunos</em> marcados. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>A</kbd> selecciona lo visible, <kbd>Esc</kbd> limpia, y el contador «N seleccionados» también limpia al clickearlo.</li>
   </ul>
 
   <h2 id="ssh-sftp--transferir">Transferir</h2>
   <ol class="steps">
-    <li>Seleccioná con las casillas —o con clic y <kbd>Shift</kbd> para un rango—, o directamente <strong>arrastrá</strong> de un panel al otro.</li>
+    <li>Seleccioná con las casillas, con clic y <kbd>Shift</kbd>/<kbd>Ctrl</kbd> (ver arriba), o directamente <strong>arrastrá</strong> de un panel al otro — arrastrar una fila que ya está seleccionada se lleva la selección entera.</li>
     <li>El botón dice a dónde va: <strong>«Enviar a app-01 · producción»</strong>, no un genérico «Enviar».</li>
     <li>Si algo ya existe del otro lado, se pregunta <strong>antes de empezar</strong> y por cada archivo: reemplazar, omitir o renombrar.</li>
     <li>La cola muestra <strong>porcentaje, bytes y archivos en vivo</strong>, y cada transferencia se cancela sola sin tocar las demás. Los lotes grandes van en paralelo.</li>

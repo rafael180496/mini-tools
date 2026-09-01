@@ -6,6 +6,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Agregado
 
+- **La selección de los paneles SFTP se ve.** La casilla dejó de ser el `<input type="checkbox">` nativo —que se dibuja distinto en cada sistema y en una fila de 26px queda del tamaño de un punto— y pasó a ser la misma de la app, con la celda entera como zona de click. La del encabezado ahora distingue **«todos» de «algunos»**: con 7 de 58 marcados se veía exactamente igual que sin nada seleccionado. Cada fila marcada lleva una barra de acento a la izquierda, porque el tinte de fondo desaparece bajo el mouse y sobre una lista larga cuesta seguir dónde empieza y termina lo elegido.
+
+  El contador **«N seleccionados» ahora limpia la selección** al clickearlo. Deshacerla obligaba a desmarcar fila por fila, o a adivinar que un clic simple sobre la última servía. Se le suman <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>A</kbd> —que marca lo que se está viendo: con un filtro puesto, «todo» es lo que el filtro muestra— y <kbd>Esc</kbd> para limpiar. Y la casilla también entiende <kbd>Shift</kbd>: marcar de la fila 3 a la 40 es el mismo gesto ahí que sobre el nombre.
+
 - **Editor de remotos en el módulo Git, con la URL a la vista.** La configuración de un repositorio (ícono de engranaje) tiene una pestaña **Remotos** nueva: lista cada remoto con su URL, y un formulario que deja cambiarle el nombre, la **URL de fetch** y la **URL de push** sin salir a la terminal. Se abre desde los dos lados donde se miran los remotos — el botón de la sección «Remotos» del árbol lateral (y el click derecho sobre `origin`, ahora **Editar remoto…**) y la cabecera de la sección «Remotas» del panel de ramas, que además ganó click derecho sobre el remoto con *Fetch*, *Editar* y *Copiar URL*.
 
   **La URL se muestra tal cual está, con el token a la vista.** Antes lo único que había era un prompt de una línea que servía para *pegar* una URL nueva, no para ver la que estaba puesta. Y un remoto configurado como `https://<token>@github.com/u/r.git` se mostraba tapado (`https://REDACTED@…`), lo que además rompía el guardado: prellenar el formulario con esa versión escribía el literal «REDACTED» en `.git/config` la primera vez que se cambiaba el nombre y se guardaba.
@@ -19,6 +23,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 - **La configuración de git de un repositorio se abre desde la barra lateral.** Cada repositorio del árbol tiene su engranaje, con las tres pestañas: identidad (nombre y email, local o global), remotos y tokens de acceso. Hasta ahora solo salía desde la pestaña abierta del repositorio: para corregir el email con el que se firman los commits había que abrirlo primero.
 
 ### Corregido
+
+- **En los paneles SFTP, Ctrl+click no agregaba a la selección: abría el menú contextual.** En macOS WebKit convierte Ctrl+click en un `contextmenu` y **no dispara ningún `click`**, y toda la lógica de selección estaba colgada del `click`. Así que el gesto no solo no sumaba la fila: abría el menú y, de paso, dejaba marcada únicamente la fila apuntada, borrando lo que ya había seleccionado. La selección ahora se decide en `mousedown`, que llega en los dos sistemas, y el menú contextual se calla cuando el Ctrl ya se atendió como selección — un click, una respuesta.
+
+  **Shift+click perdía el rango al cambiar de carpeta.** La fila de referencia sobrevivía a la navegación, así que el primer Shift+click en la carpeta nueva medía contra algo que ya no estaba en la lista y terminaba marcando una fila sola. Ahora se olvida al navegar, y sin referencia el Shift se comporta como un clic simple en vez de no hacer nada.
+
+  **Arrastrar una selección de varios archivos se llevaba uno solo** cuando el arrastre empezaba sobre una fila ya marcada: apretar el mouse ahí reducía la selección a esa fila antes de que el arrastre empezara. Ahora esa decisión se toma al soltar, así que apretar sobre lo ya seleccionado y arrastrar mueve todo.
 
 - **Retomar una conversación de Antigravity abría el panel en blanco.** La conversación seguía viva —el CLI encadenaba bien por su id— pero no se dibujaba nada de lo hablado, así que retomar «la que tuve ayer sobre esta base» se sentía exactamente igual que empezar de cero, y la conclusión razonable era que la app había perdido el chat.
 

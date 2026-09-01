@@ -83,6 +83,57 @@ const ROW_HEIGHT = 26
 // límite mientras alguien pasea por un servidor entero.
 const MAX_CACHED_DIRS = 40
 
+// macOS convierte Ctrl+click en un `contextmenu` y NO dispara `click`. Saberlo
+// es lo que evita responder dos cosas al mismo gesto (ver `rowMouseDown`).
+const isMac =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+
+// Casilla de selección propia, no el `<input type="checkbox">` nativo.
+//
+// El nativo se dibuja distinto en cada sistema, no sabe mostrar «algunos de los
+// visibles» —que es justo el estado del encabezado con 7 de 58 marcados— y en
+// una fila de 26px queda del tamaño de un punto. Este es el mismo check que ya
+// usa el selector de esquemas, más el estado indeterminado.
+function SelectCheck({
+    checked,
+    indeterminate,
+    title,
+    onToggle,
+}: {
+    checked: boolean
+    indeterminate?: boolean
+    title: string
+    onToggle: (ev: React.MouseEvent) => void
+}) {
+    const on = checked || !!indeterminate
+    return (
+        <button
+            type="button"
+            role="checkbox"
+            aria-checked={indeterminate ? 'mixed' : checked}
+            title={title}
+            // El click no puede llegar a la fila: su handler reemplazaría la
+            // selección que la casilla acaba de ampliar. Lo mismo el mousedown,
+            // que es donde la fila decide (ver `rowMouseDown`).
+            onMouseDown={(ev) => ev.stopPropagation()}
+            onDoubleClick={(ev) => ev.stopPropagation()}
+            onClick={(ev) => {
+                ev.stopPropagation()
+                onToggle(ev)
+            }}
+            className="flex h-4.5 w-full cursor-pointer items-center justify-center rounded align-middle"
+        >
+            <span
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                    on ? 'border-primary bg-primary text-on-primary' : 'border-outline'
+                }`}
+            >
+                {indeterminate ? <Icon name="remove" size={12} /> : checked ? <Icon name="check" size={12} /> : null}
+            </span>
+        </button>
+    )
+}
+
 function ResizableHeader({
     label,
     col,
@@ -331,6 +382,9 @@ export default function SftpPane({
     // The row a Shift+click measures its range from. Refs, not state: it is read
     // inside the click handler and a re-render in between would be pointless.
     const anchorRef = useRef<string | null>(null)
+    // Fila cuyo click simple todavía no decidió si colapsa la selección — ver
+    // `rowMouseDown`. También un ref: nada de lo que se dibuja depende de él.
+    const pendingCollapse = useRef<string | null>(null)
 
     function resizeColumn(col: SortCol, deltaX: number, commit: boolean) {
         // NaN is the double-click "restore this column" signal.
@@ -389,6 +443,11 @@ export default function SftpPane({
     }
 
     useEffect(() => {
+        // El ancla del Shift apunta a una fila de la carpeta anterior; sobrevivir
+        // a la navegación la volvía un rango contra algo que ya no está en la
+        // lista, o sea un Shift+click que no hacía nada.
+        anchorRef.current = null
+        pendingCollapse.current = null
         if (host.kind === 'none') {
             setEntries([])
             setSelected(new Set())
@@ -462,32 +521,81 @@ export default function SftpPane({
     //   - the checkbox    → toggles without disturbing anything else, which is
     //                       what makes selecting several things possible without
     //                       having to hold a modifier at all
-    function clickRow(path: string, ev: React.MouseEvent) {
+    //
+    // Todo esto se decide en `mousedown`, NO en `click`, y no es un detalle de
+    // implementación: en macOS **Ctrl+click no dispara `click`** — WebKit lo
+    // convierte en `contextmenu`. Con la lógica colgada de `click`, Ctrl+click
+    // no agregaba nada a la selección; abría el menú contextual, que además
+    // dejaba marcada únicamente la fila apuntada. Eso es, exactamente, "el
+    // Control no funciona". `mousedown` llega en los dos sistemas.
+    //
+    // De paso, decidir al apretar (y no al soltar) es lo que hace que la
+    // selección se sienta inmediata al arrastrar.
+
+    // Marca el rango entre el ancla y `path`. Devuelve false si no hay ancla
+    // válida en la lista visible, para que quien llama caiga al click normal.
+    function selectRangeTo(path: string, additive: boolean): boolean {
+        const anchor = anchorRef.current
+        if (!anchor) return false
+        const order = visible.map((v) => v.path)
+        const from = order.indexOf(anchor)
+        const to = order.indexOf(path)
+        if (from < 0 || to < 0) return false
+        const [lo, hi] = from <= to ? [from, to] : [to, from]
+        const range = order.slice(lo, hi + 1)
+        // Shift EXTENDS an existing selection when combined with Ctrl, and
+        // replaces it otherwise — same as Finder and Explorer.
+        setSelected((prev) => (additive ? new Set([...prev, ...range]) : new Set(range)))
+        return true
+    }
+
+    function rowMouseDown(path: string, ev: React.MouseEvent) {
+        // El botón derecho no toca la selección acá: de eso se ocupa
+        // `onContextMenu`, que solo la reemplaza si se apuntó afuera.
+        if (ev.button !== 0) return
+        pendingCollapse.current = null
+        // El teclado de la lista (Ctrl/Cmd+A, Esc) necesita el foco, y con
+        // `preventDefault` abajo el navegador ya no se lo va a dar solo.
+        scrollRef.current?.focus()
+
         const additive = ev.metaKey || ev.ctrlKey
         const ranged = ev.shiftKey
+        // Con modificadores, el navegador querría extender una selección de
+        // texto o empezar un arrastre. Ninguna de las dos es lo que se pidió.
+        if (ranged || additive) ev.preventDefault()
 
-        if (ranged && anchorRef.current) {
-            const order = visible.map((v) => v.path)
-            const from = order.indexOf(anchorRef.current)
-            const to = order.indexOf(path)
-            if (from >= 0 && to >= 0) {
-                const [lo, hi] = from <= to ? [from, to] : [to, from]
-                const range = order.slice(lo, hi + 1)
-                // Shift EXTENDS an existing selection when combined with Ctrl,
-                // and replaces it otherwise — same as Finder and Explorer.
-                setSelected((prev) => (additive ? new Set([...prev, ...range]) : new Set(range)))
-                return
-            }
-        }
+        if (ranged && selectRangeTo(path, additive)) return
 
         anchorRef.current = path
         if (additive) {
             toggleOne(path)
             return
         }
+        // Sin modificadores, sobre una fila que YA está seleccionada, no se
+        // colapsa nada todavía: arrastrar cinco archivos empieza apretando el
+        // mouse sobre uno de ellos, y reducir la selección en ese instante
+        // haría que el arrastre se llevara uno solo. Se decide al soltar.
+        if (selected.has(path)) {
+            pendingCollapse.current = path
+            return
+        }
+        setSelected(new Set([path]))
+    }
+
+    function rowClick(path: string) {
+        if (pendingCollapse.current !== path) return
+        pendingCollapse.current = null
         // A plain click on the only selected row clears it, so there is a way
         // back to "nothing selected" without reaching for a modifier.
         setSelected((prev) => (prev.size === 1 && prev.has(path) ? new Set() : new Set([path])))
+    }
+
+    // La casilla también entiende Shift: marcar de la fila 3 a la 40 tiene que
+    // ser el mismo gesto ahí que sobre el nombre. Siempre suma al rango — una
+    // casilla que borrara el resto de la selección sería una casilla rara.
+    function checkClick(path: string, ev: React.MouseEvent) {
+        if (ev.shiftKey && selectRangeTo(path, true)) return
+        toggleOne(path)
     }
 
     function toggleOne(path: string) {
@@ -519,6 +627,9 @@ export default function SftpPane({
     // arrastre cuando queda vacío, así que el drop no llegaba nunca. Antes
     // este handler ni siquiera recibía el evento.
     function startDrag(ev: React.DragEvent, e: sftpx.FileEntry) {
+        // Si el gesto terminó siendo un arrastre, el click que iba a reducir la
+        // selección a esta fila ya no corresponde: se están llevando todas.
+        pendingCollapse.current = null
         const items = itemsForEntry(e)
         dragRef.current = items
         if (ev.dataTransfer) {
@@ -663,6 +774,9 @@ export default function SftpPane({
     const colCount = 4 + (showKind ? 1 : 0) + (showPerms ? 1 : 0)
 
     const allVisibleSelected = visible.length > 0 && visible.every((e) => selected.has(e.path))
+    // "Algunos": lo que la casilla nativa del encabezado no sabía decir. Con 7
+    // de 58 marcados se veía vacía, igual que sin nada seleccionado.
+    const someVisibleSelected = !allVisibleSelected && visible.some((e) => selected.has(e.path))
     // Floor width of the table. 28px is the checkbox column, which is not
     // resizable; the permissions column has no fixed width at all (it absorbs
     // whatever is left over, which is also why it has no resize handle), so it
@@ -873,13 +987,24 @@ export default function SftpPane({
                             </button>
                         )}
                     </div>
-                    <span className="shrink-0 text-ui-11 text-on-surface-variant">
-                        {selected.size > 0
-                            ? `${selected.size} seleccionado(s)`
-                            : q
-                              ? `${visible.length} de ${entries.length}`
-                              : `${entries.length} elementos`}
-                    </span>
+                    {/* El contador de la selección es además la forma de
+                        deshacerla: tenerla que deshacer fila por fila (o
+                        adivinar que un click simple en la última sirve) era la
+                        única salida que había. */}
+                    {selected.size > 0 ? (
+                        <button
+                            onClick={() => setSelected(new Set())}
+                            title="Limpiar la selección (Esc)"
+                            className="flex shrink-0 items-center gap-1 rounded-full bg-primary/15 py-0.5 pr-1 pl-2 text-ui-11 font-medium text-primary hover:bg-primary/25"
+                        >
+                            {selected.size} seleccionado{selected.size === 1 ? '' : 's'}
+                            <Icon name="close" size={12} />
+                        </button>
+                    ) : (
+                        <span className="shrink-0 text-ui-11 text-on-surface-variant">
+                            {q ? `${visible.length} de ${entries.length}` : `${entries.length} elementos`}
+                        </span>
+                    )}
                 </div>
             )}
 
@@ -900,7 +1025,24 @@ export default function SftpPane({
                 onDragLeave={() => setDragOver(false)}
                 onDrop={onDrop}
                 ref={scrollRef}
-                className={`min-h-0 flex-1 overflow-auto ${dragOver ? 'bg-primary/10 ring-2 ring-inset ring-primary' : ''}`}
+                // Foco propio (fuera del orden de tabulación: se lo da el click
+                // en una fila) para poder atender los dos atajos que cualquiera
+                // prueba antes de buscar un botón.
+                tabIndex={-1}
+                onKeyDown={(ev) => {
+                    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'a') {
+                        ev.preventDefault()
+                        // Marca lo que se está viendo, no la carpeta entera: con
+                        // un filtro puesto, "todo" es lo que el filtro muestra.
+                        setSelected(new Set(visible.map((e) => e.path)))
+                        return
+                    }
+                    if (ev.key === 'Escape' && selected.size > 0) {
+                        ev.preventDefault()
+                        setSelected(new Set())
+                    }
+                }}
+                className={`min-h-0 flex-1 overflow-auto outline-none ${dragOver ? 'bg-primary/10 ring-2 ring-inset ring-primary' : ''}`}
             >
                 {host.kind === 'none' ? (
                     <div className="flex h-full flex-col items-center justify-center gap-2 text-on-surface-variant">
@@ -921,17 +1063,18 @@ export default function SftpPane({
                         </colgroup>
                         <thead className="sticky top-0 z-10 bg-surface-container-low text-on-surface-variant">
                             <tr className="border-b border-outline-variant">
-                                <th className="px-2 py-1.5">
-                                    <input
-                                        type="checkbox"
+                                {/* Toda la celda es zona de click, no solo los
+                                    16px del recuadro. */}
+                                <th className="cursor-pointer px-2 py-1.5" onClick={() => toggleAllVisible()}>
+                                    <SelectCheck
                                         checked={allVisibleSelected}
-                                        onChange={toggleAllVisible}
+                                        indeterminate={someVisibleSelected}
                                         title={
                                             q
                                                 ? 'Seleccionar o deseleccionar todo lo que muestra el filtro'
                                                 : 'Seleccionar o deseleccionar todo'
                                         }
-                                        className="h-3.5 w-3.5 cursor-pointer accent-primary align-middle"
+                                        onToggle={() => toggleAllVisible()}
                                     />
                                 </th>
                                 <ResizableHeader label="Nombre" col="name" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
@@ -987,10 +1130,16 @@ export default function SftpPane({
                                     draggable
                                     style={{height: ROW_HEIGHT}}
                                     onDragStart={(ev) => startDrag(ev, e)}
-                                    onClick={(ev) => clickRow(e.path, ev)}
+                                    onMouseDown={(ev) => rowMouseDown(e.path, ev)}
+                                    onClick={() => rowClick(e.path)}
                                     onDoubleClick={() => (e.isDir ? onNavigate(e.path) : onOpenFile?.(e.path))}
                                     onContextMenu={(ev) => {
                                         ev.preventDefault()
+                                        // En macOS un Ctrl+click llega acá, no como click. Ese
+                                        // gesto ya se atendió en `mousedown` como "agregar a la
+                                        // selección": abrir además el menú sería contestar dos
+                                        // cosas distintas a un solo click.
+                                        if (isMac && ev.ctrlKey && !ev.metaKey) return
                                         // Right-clicking outside the selection targets that row alone,
                                         // so the menu never acts on something you cannot see.
                                         if (!selected.has(e.path)) setSelected(new Set([e.path]))
@@ -1000,15 +1149,29 @@ export default function SftpPane({
                                         selected.has(e.path) ? 'bg-primary/15' : 'hover:bg-surface-variant'
                                     }`}
                                 >
-                                    <td className="px-2 py-1">
-                                        <input
-                                            type="checkbox"
+                                    {/* La celda entera marca y desmarca, y es
+                                        además donde se dibuja la barra de acento
+                                        de la fila seleccionada: el tinte de fondo
+                                        solo es visible mientras el mouse no está
+                                        encima, y sobre una lista larga cuesta
+                                        seguir dónde empieza y termina lo marcado. */}
+                                    <td
+                                        className="cursor-pointer px-2 py-1"
+                                        style={
+                                            selected.has(e.path)
+                                                ? {boxShadow: 'inset 2px 0 0 0 var(--color-primary)'}
+                                                : undefined
+                                        }
+                                        onMouseDown={(ev) => ev.stopPropagation()}
+                                        onClick={(ev) => {
+                                            ev.stopPropagation()
+                                            checkClick(e.path, ev)
+                                        }}
+                                    >
+                                        <SelectCheck
                                             checked={selected.has(e.path)}
-                                            onChange={() => toggleOne(e.path)}
-                                            // The row handler would otherwise run too and replace the
-                                            // selection the checkbox just added to.
-                                            onClick={(ev) => ev.stopPropagation()}
-                                            className="h-3.5 w-3.5 cursor-pointer accent-primary align-middle"
+                                            title="Marcar o desmarcar esta fila (Shift para marcar el rango)"
+                                            onToggle={(ev) => checkClick(e.path, ev)}
                                         />
                                     </td>
                                     <td className="px-2 py-1 text-on-surface">
