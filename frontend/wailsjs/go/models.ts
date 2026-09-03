@@ -4037,32 +4037,6 @@ export namespace vault {
 	        this.updatedAt = source["updatedAt"];
 	    }
 	}
-	export class HistoryEntry {
-	    id: string;
-	    connectionId: string;
-	    sqlText: string;
-	    status: string;
-	    rowsAffected: number;
-	    durationMs: number;
-	    errorMessage?: string;
-	    executedAt: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new HistoryEntry(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.connectionId = source["connectionId"];
-	        this.sqlText = source["sqlText"];
-	        this.status = source["status"];
-	        this.rowsAffected = source["rowsAffected"];
-	        this.durationMs = source["durationMs"];
-	        this.errorMessage = source["errorMessage"];
-	        this.executedAt = source["executedAt"];
-	    }
-	}
 	export class Note {
 	    id: string;
 	    title: string;

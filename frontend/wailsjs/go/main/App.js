@@ -206,10 +206,6 @@ export function ClearLocalHistory(arg1) {
   return window['go']['main']['App']['ClearLocalHistory'](arg1);
 }
 
-export function ClearQueryHistory(arg1) {
-  return window['go']['main']['App']['ClearQueryHistory'](arg1);
-}
-
 export function ClearRecentFiles() {
   return window['go']['main']['App']['ClearRecentFiles']();
 }
@@ -288,10 +284,6 @@ export function DeleteMongoDocument(arg1, arg2, arg3, arg4) {
 
 export function DeleteNote(arg1) {
   return window['go']['main']['App']['DeleteNote'](arg1);
-}
-
-export function DeleteQueryHistoryEntry(arg1) {
-  return window['go']['main']['App']['DeleteQueryHistoryEntry'](arg1);
 }
 
 export function DeleteRedisHashField(arg1, arg2, arg3) {
@@ -1060,10 +1052,6 @@ export function ListMongoDocuments(arg1, arg2, arg3, arg4, arg5, arg6) {
 
 export function ListNotes() {
   return window['go']['main']['App']['ListNotes']();
-}
-
-export function ListQueryHistory(arg1, arg2) {
-  return window['go']['main']['App']['ListQueryHistory'](arg1, arg2);
 }
 
 export function ListRecentFiles() {

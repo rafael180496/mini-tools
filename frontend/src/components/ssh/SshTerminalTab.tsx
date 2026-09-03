@@ -34,6 +34,17 @@ import {
 } from '../../lib/sshSessionContext'
 import {inspect, splitCommandLines, type Risk} from '../../lib/productionGuard'
 import {environmentStyle} from '../../lib/environments'
+import {AgentChatButton} from '../agent/AgentChatHost'
+
+// Botones de la fila de la terminal: solo ícono, con el nombre y el porqué en
+// el tooltip. Mismo trato —y mismo tamaño de área clickeable— que la barra del
+// editor SQL, para que las dos filas de la app se lean igual.
+//
+// Llevaban su rótulo al lado («Historial», «Analizar error», «Snippets»,
+// «Tema»): cuatro palabras sobre la esquina de una terminal, que es la
+// pantalla donde el contenido importa más y el cromo tiene que desaparecer.
+const TERM_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface'
+const TERM_ICON_ON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-container text-on-primary-container transition-colors'
 
 interface SshTerminalTabProps {
     connId: string
@@ -121,6 +132,11 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
     // captured there would stay at its mount-time ''), the state is what
     // renders the banner.
     const [environment, setEnvironment] = useState('')
+    // Si la sesión está viva, para dibujarlo en el pie de la terminal. Se
+    // informaba hacia arriba (onConnectedChange) pero no se guardaba acá, así
+    // que la propia terminal no podía decir si seguía conectada — lo decía la
+    // barra de la pestaña, que es otra pantalla.
+    const [connected, setConnected] = useState(false)
     const envRef = useRef('')
     // A command held back by the production guard, waiting for confirmation.
     const [held, setHeld] = useState<{data: string; commands: {command: string; risks: Risk[]}[]} | null>(null)
@@ -227,12 +243,14 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                 setGhostText('')
                 setGhostPos(null)
                 onConnectedChange(false)
+                setConnected(false)
             } else if (event.type === 'error') {
                 setTerminalLive(connId, false)
                 term.write(`\r\n\x1b[31m[error] ${event.error ?? 'desconocido'}\x1b[0m\r\n`)
                 setGhostText('')
                 setGhostPos(null)
                 onConnectedChange(false)
+                setConnected(false)
             }
         })
 
@@ -321,6 +339,7 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
         OpenSSHTerminal(connId, term.cols, term.rows)
             .then(() => {
                 onConnectedChange(true)
+                setConnected(true)
                 setTerminalLive(connId, true)
                 // A shell starts in its own home, so this is the one moment
                 // where that can be asserted rather than guessed. Without it a
@@ -334,6 +353,7 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
             .catch((err) => {
                 term.write(`\r\n\x1b[31m[error] ${String(err)}\x1b[0m\r\n`)
                 onConnectedChange(false)
+                setConnected(false)
                 setTerminalLive(connId, false)
             })
 
@@ -351,6 +371,7 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
             termRef.current = null
             fitRef.current = null
             onConnectedChange(false)
+            setConnected(false)
             setTerminalLive(connId, false)
         }
         // Deliberately connId-only — this effect must run exactly once per
@@ -388,17 +409,11 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
     return (
         <div className="flex h-full min-h-0 w-full">
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                {envStyle && (
-                    <div className={`flex shrink-0 items-center gap-2 border-b px-3 py-1 text-ui-11 font-medium ${envStyle.banner}`}>
-                        <span className={`h-2 w-2 shrink-0 rounded-full ${envStyle.dot}`} />
-                        {envStyle.label}
-                        {envStyle.id === 'prod' && (
-                            <span className="font-normal opacity-80">
-                                — los comandos destructivos piden confirmación antes de ejecutarse
-                            </span>
-                        )}
-                    </div>
-                )}
+                {/* Una sola fila de herramientas, todo ícono y con la
+                    explicación en el tooltip. Lo que ES la sesión —a qué
+                    servidor, si sigue viva, en qué entorno— vive en el PIE,
+                    abajo a la izquierda: son datos que se consultan, no
+                    botones que se aprietan. */}
                 <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 py-1">
                     <div className="flex-1" />
                     <button
@@ -409,60 +424,55 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                                 setShowThemePicker(false)
                             }
                         }}
-                        title="Historial: los comandos que ejecutaste en este servidor, buscables y reutilizables. Se guarda cifrado y se puede limpiar o apagar desde el panel."
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                            showHistory ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
-                        }`}
+                        title="Historial: los comandos que ejecutaste en este servidor, buscables y reutilizables. Se guarda cifrado y se puede limpiar o apagar desde el panel"
+                        className={showHistory ? TERM_ICON_ON : TERM_ICON}
                     >
-                        <Icon name="history" size={14} />
-                        Historial
+                        <Icon name="history" size={16} />
                     </button>
-                    {/* Analizar con el agente. El texto cambia según haya o no
-                        una selección: analizar lo marcado y analizar el último
-                        error son dos cosas distintas, y conviene que se note
-                        antes de apretar. */}
+                    {/* Analizar con el agente. El tooltip cambia según haya o
+                        no una selección: analizar lo marcado y analizar el
+                        último error son dos cosas distintas, y conviene que se
+                        note antes de apretar. */}
                     <button
                         onClick={() =>
                             setAnalysis({selection: termRef.current?.getSelection() ?? ''})
                         }
                         title={
                             hasSelection
-                                ? 'Le manda al agente exactamente lo que tenés seleccionado, junto con el sistema operativo del servidor, y explica qué falló. No ejecuta nada.'
-                                : 'Le manda al agente las últimas líneas de esta terminal, junto con el sistema operativo del servidor, y explica qué falló. No ejecuta nada.'
+                                ? 'Analizar la SELECCIÓN: le manda al agente exactamente lo que tenés marcado, junto con el sistema operativo del servidor, y explica qué falló. No ejecuta nada'
+                                : 'Analizar el error: le manda al agente las últimas líneas de esta terminal, junto con el sistema operativo del servidor, y explica qué falló. No ejecuta nada'
                         }
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                            analysis ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
-                        }`}
+                        className={analysis ? TERM_ICON_ON : TERM_ICON}
                     >
-                        <Icon name="troubleshoot" size={14} />
-                        {hasSelection ? 'Analizar selección' : 'Analizar error'}
+                        <Icon name="troubleshoot" size={16} />
                     </button>
                     <button
                         onClick={() => {
                             setShowSnippets((v) => !v)
                             if (!showSnippets) setShowThemePicker(false)
                         }}
-                        title="Snippets: comandos/scripts guardados que podés ejecutar o pegar en esta terminal"
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                            showSnippets ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
-                        }`}
+                        title="Snippets: comandos y scripts guardados que podés ejecutar o pegar en esta terminal"
+                        className={showSnippets ? TERM_ICON_ON : TERM_ICON}
                     >
-                        <Icon name="data_object" size={14} />
-                        Snippets
+                        <Icon name="data_object" size={16} />
                     </button>
                     <button
                         onClick={() => {
                             setShowThemePicker((v) => !v)
                             if (!showThemePicker) setShowSnippets(false)
                         }}
-                        title="Elegir el esquema de colores de esta terminal — aplica a todas las sesiones SSH abiertas"
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                            showThemePicker ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
-                        }`}
+                        title="Tema: el esquema de colores de esta terminal — se aplica a todas las sesiones SSH abiertas"
+                        className={showThemePicker ? TERM_ICON_ON : TERM_ICON}
                     >
-                        <Icon name="palette" size={14} />
-                        Tema
+                        <Icon name="palette" size={16} />
                     </button>
+                    {/* El chat, acá y no en la barra de la pestaña: en una
+                        terminal el agente es una herramienta más de la
+                        terminal, y «Analizar error» —que le habla al mismo
+                        agente— está justo al lado. Tenerlo arriba a la derecha
+                        obligaba a cruzar la ventana entera para pasar de
+                        «analizame esto» a «preguntale otra cosa». */}
+                    <AgentChatButton compact />
                 </div>
                 <div ref={wrapperRef} className="relative min-h-0 flex-1 overflow-hidden bg-surface p-1">
                     <div ref={containerRef} className="h-full w-full" />
@@ -484,6 +494,63 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                             }}
                         >
                             {ghostText}
+                        </span>
+                    )}
+                </div>
+
+                {/* PIE de la terminal, abajo a la izquierda: a qué servidor
+                    está atada esta pestaña, si la sesión sigue viva y con qué
+                    entorno está marcada la conexión.
+
+                    Estaba arriba, en la barra de la pestaña, que para una
+                    terminal quedaba con eso y nada más: un renglón de ventana
+                    entero para tres palabras, y encima en la punta opuesta a
+                    donde está el prompt. Acá cae justo donde termina la salida
+                    del comando, que es donde ya está mirando quien pregunta
+                    «¿esto seguía conectado?».
+
+                    El nombre del entorno vuelve a estar escrito —no solo el
+                    color— porque en el pie hay lugar de sobra y un color sin
+                    leyenda obliga a acordarse de qué significaba el ámbar. */}
+                <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant bg-surface-container-low px-2 py-0.5 text-ui-10">
+                    <span
+                        className="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
+                        title={
+                            connected
+                                ? `Sesión SSH abierta contra "${connName}" — lo que escribas acá corre en ese servidor`
+                                : `Sin sesión activa contra "${connName}": se cerró o todavía no se conectó, no hay nada escuchando lo que escribas`
+                        }
+                    >
+                        <span
+                            aria-hidden
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? 'bg-secondary' : 'bg-error'}`}
+                        />
+                        <span className="truncate font-medium text-on-surface">{connName}</span>
+                        <span className="text-on-surface-variant">{connected ? 'conectado' : 'desconectado'}</span>
+                    </span>
+
+                    {envStyle && (
+                        <span
+                            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap"
+                            title={
+                                envStyle.id === 'prod'
+                                    ? `${envStyle.label} — en este servidor los comandos destructivos piden confirmación antes de ejecutarse`
+                                    : `${envStyle.label} — así está marcada esta conexión`
+                            }
+                        >
+                            <span aria-hidden className="h-3 w-px bg-outline-variant" />
+                            {/* Producción lleva un halo además del punto: es el
+                                único entorno donde equivocarse cuesta caro, y
+                                un punto ámbar y uno rojo del mismo tamaño se
+                                distinguen mal de reojo, que es como se mira un
+                                pie de pantalla. */}
+                            <span
+                                aria-hidden
+                                className={`h-1.5 w-1.5 shrink-0 rounded-full ${envStyle.dot} ${
+                                    envStyle.id === 'prod' ? 'ring-4 ring-red-500/25 dark:ring-red-400/25' : ''
+                                }`}
+                            />
+                            <span className="text-on-surface-variant">{envStyle.label}</span>
                         </span>
                     )}
                 </div>

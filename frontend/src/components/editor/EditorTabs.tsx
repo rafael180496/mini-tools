@@ -8,6 +8,7 @@ import DbTypeIcon, {dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
 import Select from '../Select'
 import RecentFilesMenu from './RecentFilesMenu'
+import {MIDDLE_CLICK_HINT} from '../../lib/middleClickClose'
 
 export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 
@@ -223,10 +224,30 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
             {...attributes}
             {...listeners}
             onClick={() => onSelect(tab.id)}
+            // Clic central = cerrar, como en VS Code. Acá no se puede usar
+            // `closeOnMiddleClick` con spread: el `onPointerDown` de dnd-kit
+            // viene en `listeners` y sobrescribirlo mataría el arrastre para
+            // reordenar, así que se encadena a mano.
+            onAuxClick={(e) => {
+                if (e.button !== 1) return
+                e.preventDefault()
+                e.stopPropagation()
+                onClose(tab.id)
+            }}
+            onPointerDown={(e) => {
+                if (e.button === 1) {
+                    // Evita el desplazamiento automático del navegador, que
+                    // dejaría la barra de pestañas moviéndose sola después de
+                    // cerrar.
+                    e.preventDefault()
+                    return
+                }
+                listeners?.onPointerDown?.(e)
+            }}
             className={`flex max-w-52 cursor-pointer items-center gap-1.5 rounded-t-xs px-3 py-1 font-mono text-ui-11 ${
                 isActive ? 'bg-surface text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
             }`}
-            title={`${tab.path ?? 'Pestaña sin guardar'} — arrastrar para reordenar`}
+            title={`${tab.path ?? 'Pestaña sin guardar'} — arrastrar para reordenar${MIDDLE_CLICK_HINT}`}
         >
             {/* El tipo, delante del nombre. Para una pestaña vinculada a
                 una conexión el logo real del motor va antes del rótulo: el

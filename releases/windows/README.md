@@ -11,17 +11,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.4.0 |
-| Archivo | `mini-tools-v2.4.0-windows-amd64.exe` |
-| Tamaño | ~57 MB (57,0 MB) |
-| SHA-256 | `24f4fc6bb7224ddb9797e9f9bb575fef06b77b30462c7fff65bd29469bbd040d` |
+| Versión | 2.5.0 |
+| Archivo | `mini-tools-v2.5.0-windows-amd64.exe` |
+| Tamaño | ~57 MB (57,1 MB) |
+| SHA-256 | `511474dea7f29b95efcb13db9ff2348414b344070f0f4a9dc3393b5c8342e0c0` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.4.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.5.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -35,28 +35,26 @@ Get-FileHash mini-tools-v2.4.0-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-**2.4.0 se corrió en una Windows 10 y en una Windows 11 reales.** Es la
-diferencia entre "compila limpio" y "anda": el `.exe` se cross-compila desde
-macOS, y ni WebView2, ni el DPI, ni los diálogos nativos se confirman
-compilando.
+> ⚠️ **La 2.5.0 NO se corrió en una Windows real.** Solo se confirmó que
+> **cross-compila limpio** desde macOS `arm64`, que es una afirmación mucho más
+> chica: el `.exe` se genera sin errores y con la arquitectura correcta, y nada
+> más. Ni WebView2, ni el DPI, ni los diálogos nativos se comprueban compilando.
 
-Lo que queda confirmado por haberla corrido:
+La 2.4.0 sí se corrió en Windows 10 y en Windows 11, y arrancó bien — pero eso
+es de esa versión y no se hereda. Esta trae cambios que **tocan justamente el
+arranque**: la migración **51** del vault (vacía `query_history`) corre en el
+primer `Open()` después de actualizar, y una migración que falla deja la app sin
+abrir.
 
-- **Arranca sin instalar el WebView2 Runtime aparte.** Si el runtime faltara o
-  no cargara, la ventana quedaría en blanco: que la interfaz se dibuje ES la
-  comprobación.
-- **Las migraciones del vault corren sobre el `vault.db` que ya estaba en la
-  máquina**, incluida la **50** de esta versión (`ui_font_scale`). Una migración
-  que falla deja la app sin abrir, así que que abra es lo que las cubre.
-- **La interfaz se usa**: ventana, barra lateral y pestañas, con el chrome
-  frameless que dibuja la propia app en vez del marco nativo.
+Lo que queda sin confirmar, y hay que mirar acá primero si algo falla:
 
-Lo que **no** queda confirmado por el solo hecho de que arranque, porque solo se
-ejercita al usar ese camino — mirar acá primero si algo falla:
-
-- **El flujo OAuth 2.0** del módulo HTTP levanta un servidor efímero en
-  `127.0.0.1` para capturar el redirect; la primera vez puede disparar el aviso
-  del **Firewall** de Windows.
+- **Que arranque sin instalar el WebView2 Runtime aparte.** Si el runtime
+  faltara o no cargara, la ventana quedaría en blanco.
+- **La migración 51 sobre un `vault.db` real** que ya tenga historial guardado
+  (es la única migración destructiva del proyecto; ver el CHANGELOG de 2.5.0).
+- **El flujo OAuth 2.0** del módulo HTTP, que levanta un servidor efímero en
+  `127.0.0.1` para capturar el redirect y puede disparar el aviso del
+  **Firewall** de Windows la primera vez.
 - **El servidor MCP**, que en Windows usa un **named pipe** en vez de un socket
   Unix.
 - **Lanzar los CLIs agénticos** (`claude`, `codex`, `agy`) como procesos hijos:
@@ -70,10 +68,9 @@ ejercita al usar ese camino — mirar acá primero si algo falla:
   existe en Windows y Menlo no; la app cae en silencio a la monoespaciada
   genérica cuando la elegida falta.
 
-**Esta sección se reescribe en cada release.** Que 2.4.0 se haya verificado no
-dice nada de la que venga: si una versión sale sin que nadie la corra en
-Windows, corresponde volver a poner la advertencia explícita de "no verificado",
-no dejarla implícita ni arrastrar esta confirmación.
+**Esta sección se reescribe en cada release.** Si alguien corre esta versión en
+una Windows real, reemplazar la advertencia de arriba por qué se confirmó y en
+qué versiones de Windows — nunca extrapolar de un release anterior.
 
 
 ## Compatibilidad del sistema
@@ -103,7 +100,7 @@ no dejarla implícita ni arrastrar esta confirmación.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.4.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.5.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

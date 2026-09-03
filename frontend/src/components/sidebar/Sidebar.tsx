@@ -5,6 +5,7 @@ import {AppVersion} from '../../../wailsjs/go/main/App'
 import {BrowserOpenURL} from '../../../wailsjs/runtime'
 import Icon from '../Icon'
 import SidebarMasterMenu, {type SidebarModuleDef, type SidebarModuleId} from './SidebarMasterMenu'
+import type {Theme} from '../../hooks/useTheme'
 
 // La barra lateral entera: identidad, menú master, búsqueda y el árbol del
 // módulo abierto.
@@ -50,6 +51,19 @@ interface SidebarProps {
     // lleva a la página del release en vez de al archivo.
     updateDownloadName: string | null
     onOpenRepo: () => void
+    // Tema y configuración: dos ajustes de la APLICACIÓN, no de la pestaña.
+    //
+    // Vivían en la barra de contexto del editor SQL, arriba a la derecha, y de
+    // ahí se mudaron acá. El motivo es el mismo por el que la ayuda ya estaba
+    // en este pie: esa barra **desaparece** en una nota, una terminal, una
+    // petición HTTP o un repositorio, así que dos ajustes que valen para toda
+    // la app dejaban de existir según qué pestaña tuvieras abierta — y para
+    // cambiar el tema había que abrir una consulta primero. El pie de la barra
+    // lateral está siempre, en todos los módulos, y ya es donde vive lo que es
+    // de la app entera y no de lo que estás mirando: la versión y la ayuda.
+    theme: Theme
+    onToggleTheme: () => void
+    onOpenSettings: () => void
 }
 
 // La documentación pública del proyecto. Vive acá y en un solo lugar: es la
@@ -57,23 +71,87 @@ interface SidebarProps {
 // y tenerla repetida en dos archivos es tenerla desactualizada en uno.
 export const DOCS_URL = 'https://rafael180496.github.io/mini-tools/'
 
-// Botón de ayuda: abre la documentación en el navegador del sistema.
+// Los tres botones del pie —tema, configuración y ayuda— comparten forma,
+// tamaño de área clickeable y respuesta al hover desde acá.
+//
+// Antes cada uno tenía la suya: la ayuda era un `p-0.5` de 14px en el pie y la
+// configuración un `p-1` de 18px en otra barra, así que juntarlos tal cual
+// habría dado tres botones de tres tamaños distintos en una fila de 20px de
+// alto. Un ícono suelto de 14px además es un blanco difícil: el área mínima
+// cómoda es de 28px, y eso es lo que da `p-1.5` alrededor de un ícono de 16.
+function FooterIconButton({
+    icon,
+    title,
+    onClick,
+    filled,
+    badge,
+}: {
+    icon: string
+    title: string
+    onClick: () => void
+    filled?: boolean
+    // Punto de aviso en la esquina, para lo que no puede esperar a que alguien
+    // lea el tooltip.
+    badge?: boolean
+}) {
+    return (
+        <button
+            onClick={onClick}
+            title={title}
+            className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
+        >
+            <Icon name={icon} size={16} filled={filled} />
+            {badge && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
+        </button>
+    )
+}
+
+// La documentación pública, en el navegador del sistema.
 //
 // Va en el PIE de la barra lateral y no en la fila de acciones de arriba por un
 // motivo concreto: esa fila desaparece en las pestañas que no son del editor
 // —una nota, una terminal local, una petición HTTP—, y la ayuda tiene que estar
-// justamente cuando alguien no sabe dónde está parado.
-function HelpButton({compact}: {compact?: boolean}) {
+// justamente cuando alguien no sabe dónde está parado. Es el mismo motivo por
+// el que ahora la acompañan el tema y la configuración.
+function HelpButton() {
     return (
-        <button
+        <FooterIconButton
+            icon="help"
             onClick={() => BrowserOpenURL(DOCS_URL)}
             title="Abrir la documentación en el navegador: qué hace cada módulo, ejemplos de uso y recetas de principio a fin"
-            className={`shrink-0 rounded text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface ${
-                compact ? 'p-1' : 'p-0.5'
-            }`}
-        >
-            <Icon name="help" size={compact ? 16 : 14} />
-        </button>
+        />
+    )
+}
+
+// Tema claro/oscuro. El ícono muestra a DÓNDE lleva el clic, no dónde estás:
+// en oscuro se ve el sol, que es lo que vas a obtener.
+function ThemeButton({theme, onToggle}: {theme: Theme; onToggle: () => void}) {
+    return (
+        <FooterIconButton
+            icon={theme === 'dark' ? 'light_mode' : 'dark_mode'}
+            onClick={onToggle}
+            title={
+                theme === 'dark'
+                    ? 'Cambiar al tema claro — se guarda y arranca así la próxima vez'
+                    : 'Cambiar al tema oscuro — se guarda y arranca así la próxima vez'
+            }
+        />
+    )
+}
+
+// Configuración de la app: apariencia, vault, terminal y agentes.
+function SettingsButton({onOpen, updateAvailable}: {onOpen: () => void; updateAvailable: string | null}) {
+    return (
+        <FooterIconButton
+            icon="settings"
+            onClick={onOpen}
+            badge={Boolean(updateAvailable)}
+            title={
+                updateAvailable
+                    ? `Configuración: apariencia, vault, terminal y agentes — y el link para bajar la v${updateAvailable}, que ya está disponible`
+                    : 'Configuración: tamaño de letra y tema del editor, backup del vault, terminal y agentes de IA'
+            }
+        />
     )
 }
 
@@ -88,10 +166,16 @@ function SidebarFooter({
     updateAvailable,
     updateDownloadName,
     onOpenRepo,
+    theme,
+    onToggleTheme,
+    onOpenSettings,
 }: {
     updateAvailable: string | null
     updateDownloadName: string | null
     onOpenRepo: () => void
+    theme: Theme
+    onToggleTheme: () => void
+    onOpenSettings: () => void
 }) {
     const [version, setVersion] = useState('')
 
@@ -105,11 +189,21 @@ function SidebarFooter({
 
     const label = version ? `v${version}` : '—'
 
+    // La fila de ajustes de la app. Es la misma en los dos estados del pie
+    // (con y sin actualización disponible), así que se arma una vez.
+    const actions = (
+        <div className="flex shrink-0 items-center gap-0.5">
+            <ThemeButton theme={theme} onToggle={onToggleTheme} />
+            <HelpButton />
+            <SettingsButton onOpen={onOpenSettings} updateAvailable={updateAvailable} />
+        </div>
+    )
+
     if (updateAvailable) {
         // Dos botones hermanos y no uno adentro del otro: un <button> anidado
         // no es HTML válido y el clic de adentro dispara también el de afuera.
         return (
-            <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant px-3 py-2">
+            <div className="flex shrink-0 items-center gap-1 border-t border-outline-variant px-2 py-1.5">
                 <button
                     onClick={onOpenRepo}
                     title={
@@ -117,31 +211,37 @@ function SidebarFooter({
                             ? `Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para descargar ${updateDownloadName}`
                             : `Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para abrir su página de descarga`
                     }
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left transition-colors hover:opacity-80"
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-surface-variant"
                 >
                     <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
-                    <span className="min-w-0 flex-1 truncate text-ui-11 font-medium text-on-surface-variant">mini-tools</span>
-                    <span className="flex shrink-0 items-center gap-1 font-mono text-ui-10 text-primary">
-                        <Icon name="new_releases" size={12} />
+                    <span className="flex min-w-0 shrink items-center gap-1 truncate font-mono text-ui-10 text-primary">
+                        <Icon name="new_releases" size={12} className="shrink-0" />
                         v{updateAvailable}
                     </span>
                 </button>
-                <HelpButton />
+                {actions}
             </div>
         )
     }
 
     return (
-        <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant px-3 py-2">
-            <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
+        <div className="flex shrink-0 items-center gap-1 border-t border-outline-variant px-2 py-1.5">
+            {/* Identidad y versión, en un solo bloque con un solo tooltip: son
+                el mismo dato leído junto ("qué programa es esto y cuál tengo
+                instalado"), y separarlos en dos tooltips obligaba a apuntar dos
+                veces para responder una pregunta. El nombre se achica antes que
+                la versión al angostar la barra — el nombre está también en la
+                barra de título de la ventana, la versión no está en ningún
+                otro lado. */}
             <span
                 title={`mini-tools ${label} — la versión instalada en este equipo`}
-                className="min-w-0 flex-1 truncate text-ui-11 font-medium text-on-surface-variant"
+                className="flex min-w-0 flex-1 items-center gap-1.5 px-1"
             >
-                mini-tools
+                <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
+                <span className="min-w-0 shrink truncate text-ui-11 font-medium text-on-surface-variant">mini-tools</span>
+                <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/50">{label}</span>
             </span>
-            <HelpButton />
-            <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/50">{label}</span>
+            {actions}
         </div>
     )
 }
@@ -185,7 +285,7 @@ function SidebarFooterMark({
     )
 }
 
-export default function Sidebar({modules, activeModule, onSelectModule, collapsed, onToggleCollapsed, filter, onFilterChange, bodies, width, onStartResize, updateAvailable, updateDownloadName, onOpenRepo}: SidebarProps) {
+export default function Sidebar({modules, activeModule, onSelectModule, collapsed, onToggleCollapsed, filter, onFilterChange, bodies, width, onStartResize, updateAvailable, updateDownloadName, onOpenRepo, theme, onToggleTheme, onOpenSettings}: SidebarProps) {
     const active = modules.find((m) => m.id === activeModule) ?? modules[0]
 
     if (collapsed) {
@@ -216,10 +316,15 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
                 {/* Colapsada no entra ni el nombre ni la versión, pero sí el
                     logo: le da pie a la columna y su tooltip dice las dos
                     cosas, que es lo mismo que se consulta al leerlas. */}
-                <div className="mt-auto flex flex-col items-center pt-2">
-                    {/* La ayuda también acá: colapsada es cuando menos pistas
-                        hay en pantalla, que es justo cuando más se busca. */}
-                    <HelpButton compact />
+                <div className="mt-auto flex flex-col items-center gap-0.5 pt-2">
+                    {/* Los tres ajustes de la app también acá, apilados:
+                        colapsada es cuando menos pistas hay en pantalla, que es
+                        justo cuando más se buscan. Y son los únicos accesos que
+                        quedan — la barra de contexto del editor ya no los
+                        tiene. */}
+                    <ThemeButton theme={theme} onToggle={onToggleTheme} />
+                    <HelpButton />
+                    <SettingsButton onOpen={onOpenSettings} updateAvailable={updateAvailable} />
                     <SidebarFooterMark updateAvailable={updateAvailable} updateDownloadName={updateDownloadName} onOpenRepo={onOpenRepo} />
                 </div>
             </aside>
@@ -289,7 +394,14 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
                 </div>
             ))}
 
-            <SidebarFooter updateAvailable={updateAvailable} updateDownloadName={updateDownloadName} onOpenRepo={onOpenRepo} />
+            <SidebarFooter
+                updateAvailable={updateAvailable}
+                updateDownloadName={updateDownloadName}
+                onOpenRepo={onOpenRepo}
+                theme={theme}
+                onToggleTheme={onToggleTheme}
+                onOpenSettings={onOpenSettings}
+            />
 
             {/* Tirador de ancho. Va superpuesto sobre el borde derecho y no
                 como una columna más del flex: una columna propia correría el

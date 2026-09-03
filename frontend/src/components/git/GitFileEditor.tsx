@@ -14,6 +14,7 @@ import {LANGUAGE_OPTIONS, languageForPath, languageIfLoaded, languageLabel, load
 import {frontmatterLint, needsFrontmatter} from '../../codemirror/frontmatterLint'
 import MarkdownPreview from '../MarkdownPreview'
 import {ancestorsOf, buildFileTree, flatten} from '../../lib/fileTree'
+import {closeOnMiddleClick, MIDDLE_CLICK_HINT} from '../../lib/middleClickClose'
 import type {Theme} from '../../hooks/useTheme'
 
 // Editor de archivos del árbol de trabajo, dentro de la pestaña Git.
@@ -701,11 +702,18 @@ export default function GitFileEditor({
                                 return (
                                     <span
                                         key={f.path}
+                                        // Clic central de la rueda para cerrar
+                                        // el archivo, como en VS Code.
+                                        {...closeOnMiddleClick(() => closeFile(f.path))}
                                         className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs ${
                                             f.path === activePath ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high'
                                         }`}
                                     >
-                                        <button onClick={() => setActivePath(f.path)} title={f.path} className="max-w-40 truncate">
+                                        <button
+                                            onClick={() => setActivePath(f.path)}
+                                            title={`${f.path}${MIDDLE_CLICK_HINT}`}
+                                            className="max-w-40 truncate"
+                                        >
                                             {f.path.split('/').pop()}
                                             {dirty && ' •'}
                                         </button>

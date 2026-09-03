@@ -1,4 +1,5 @@
 import Icon from '../Icon'
+import {closeOnMiddleClick, MIDDLE_CLICK_HINT} from '../../lib/middleClickClose'
 
 interface ResultTabsProps {
     count: number
@@ -21,6 +22,9 @@ export default function ResultTabs({count, active, onSelect, onClose, onCloseAll
                 {Array.from({length: count}).map((_, i) => (
                     <div
                         key={i}
+                        // Clic central de la rueda para cerrar, igual que en las
+                        // pestañas del editor.
+                        {...closeOnMiddleClick(() => onClose(i))}
                         className={`group flex shrink-0 items-center gap-1 rounded-t-xs pl-3 pr-1 py-1 text-xs ${
                             i === active
                                 ? 'bg-surface text-on-surface'
@@ -29,7 +33,7 @@ export default function ResultTabs({count, active, onSelect, onClose, onCloseAll
                     >
                         <button
                             onClick={() => onSelect(i)}
-                            title={`Ver el resultado del statement ${i + 1} de ${count} — cada statement de un bloque tiene su propia pestaña de resultados`}
+                            title={`Ver el resultado del statement ${i + 1} de ${count} — cada statement de un bloque tiene su propia pestaña de resultados${MIDDLE_CLICK_HINT}`}
                             className="flex items-center gap-1.5"
                         >
                             Resultado {i + 1}

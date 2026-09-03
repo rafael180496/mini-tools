@@ -4,7 +4,19 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-09-03
+
 ### Agregado
+
+- **Clic central de la rueda para cerrar una pestaña.** El mismo gesto de VS Code y de cualquier navegador: apuntar la pestaña y apretar la rueda. Vale en las tres barras de pestañas que se cierran a mano — las del workspace (consultas, terminales, notas, repositorios…), las de «Resultado N» del panel inferior y las de los archivos abiertos en el editor del módulo Git. La ✕ sigue donde estaba: esto es un atajo, no un reemplazo.
+
+  El botón central se cancela en `pointerdown` a propósito: sin eso el navegador entra en modo desplazamiento automático y la barra de pestañas queda moviéndose sola después de cerrar. Y en las pestañas del workspace, que se arrastran para reordenar, el manejador se encadena con el de dnd-kit en vez de pisarlo — sobrescribirlo hubiera cerrado la pestaña y roto el reordenamiento en el mismo cambio.
+
+- **La consola de ejecución se lee con colores.** El SQL que se ejecutó ya no se echa como un bloque plano de un solo color: se resalta como en el editor —palabras clave, tipos, literales, comentarios y parámetros bind, cada uno con su color del tema— con un tokenizador propio y liviano (`lib/sqlHighlight.ts`), no montando un CodeMirror por statement para pintar texto muerto.
+
+  **Los errores dejan de ser una línea más.** El fallo de un statement va en un bloque con borde y fondo rojos, con el código del motor (`ORA-01843`, `PLS-00201`, …) destacado dentro del mensaje: es lo que se copia y se busca. Cada entrada lleva además una barra de color a la izquierda según cómo terminó, así que el statement que falló se encuentra desplazándose en vez de leyendo, y la cabecera cuenta cuántos hay con error.
+
+  De paso, el contador dejó de decir «60/12 statements» —el número de la derecha era el total del último script, así que se leía como un progreso que nunca terminaba— y ahora dice cuántos statements lleva la consola de esta sesión.
 
 - **La selección de los paneles SFTP se ve.** La casilla dejó de ser el `<input type="checkbox">` nativo —que se dibuja distinto en cada sistema y en una fila de 26px queda del tamaño de un punto— y pasó a ser la misma de la app, con la celda entera como zona de click. La del encabezado ahora distingue **«todos» de «algunos»**: con 7 de 58 marcados se veía exactamente igual que sin nada seleccionado. Cada fila marcada lleva una barra de acento a la izquierda, porque el tinte de fondo desaparece bajo el mouse y sobre una lista larga cuesta seguir dónde empieza y termina lo elegido.
 
@@ -22,7 +34,57 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 - **La configuración de git de un repositorio se abre desde la barra lateral.** Cada repositorio del árbol tiene su engranaje, con las tres pestañas: identidad (nombre y email, local o global), remotos y tokens de acceso. Hasta ahora solo salía desde la pestaña abierta del repositorio: para corregir el email con el que se firman los commits había que abrirlo primero.
 
+### Mejorado
+
+- **Un cURL pegado en el panel de IA ahora se importa, no se le pregunta al agente.** «✦ → Escribir la petición…» aceptaba un cURL pegado y se lo mandaba al modelo para que lo tradujera: tardaba segundos en vez de nada, gastaba cuota, **no funcionaba sin un CLI agéntico instalado** y podía devolver el comando «mejorado» —una cabecera menos, un parámetro renombrado—. Un `curl` copiado del navegador con «Copy as cURL» hay que reproducirlo **exacto** o deja de reproducir el problema que se está mirando.
+
+  Ahora el panel **detecta el comando** y ofrece **«Importar tal cual»**, que lo traduce con el mismo lector que ya usaba «Pegar un comando cURL…» de la barra lateral (`httpclient.ParseCurl`), local e instantáneo. Al lado queda **«Pedirle un cambio»** para lo que sí es trabajo del agente: «este mismo cURL pero contra staging y sin el header de traza». `Ctrl+Enter` hace lo que dice el botón principal en cada caso, y el cuadro pasa a monoespaciada en cuanto lo pegado es un comando — un cURL con seis cabeceras en tipografía de interfaz no se puede revisar antes de importarlo.
+
+- **Los desplegables del módulo HTTP dejaron de ser los del sistema operativo.** El selector de método, el de entorno, el del formato del cuerpo, el de versión de HTTP y el de colección al guardar eran `<select>` nativos: abrían el menú gris del sistema, que ignora el tema, la tipografía y el tamaño de letra de la app, y encima no podían pintar cada método de su color. Ahora usan el mismo desplegable temado que el resto de la aplicación, con **GET, POST, DELETE… cada uno en su color** también dentro de la lista — el mismo código de color que ya tienen en el árbol y en el historial.
+
+  Para eso el desplegable aprendió una cosa: una opción puede llevar su propio color de texto (`tone`). Va en el rótulo y no en el botón, así que le gana al color heredado sin depender del orden en que Tailwind emitió las reglas.
+
+- **La terminal SSH perdió dos barras y ganó un pie.** Arriba tenía tres renglones apilados: la barra de la pestaña (que ahí solo decía el nombre del servidor), la banda teñida del entorno —franja de ancho completo, con punto, etiqueta y, en producción, una frase de quince palabras— y la fila de herramientas. Tres renglones de ventana para dos datos que no cambian mientras la sesión está abierta.
+
+  Ahora **el servidor, si sigue conectado y con qué entorno está marcado viven en el pie, abajo a la izquierda** — donde termina la salida del comando, que es donde ya está mirando quien pregunta «¿esto seguía conectado?», y no en la punta opuesta de la ventana. La barra de la pestaña directamente **no se dibuja** en una terminal SSH ni en una híbrida. El nombre del entorno sigue escrito, con su color al lado: en el pie hay lugar de sobra, y un color sin leyenda obliga a acordarse de qué significaba el ámbar.
+
+  El estado de conexión que muestra el pie es el de **esta** sesión, no el del registro global de terminales vivas que usaba la barra: es la propia terminal la que sabe si su sesión se cerró. Producción lleva **un halo** además del punto —es el único entorno donde equivocarse cuesta caro, y un punto ámbar y uno rojo del mismo tamaño se distinguen mal justo cuando se los mira sin prestar atención—; el guard de comandos destructivos no cambió.
+
+  Historial, Analizar, Snippets y Tema perdieron sus rótulos y quedaron como íconos con tooltip, del mismo tamaño y con la misma respuesta que los de la barra del editor. Y **el botón del chat se mudó a esa fila**, después de Tema: en una terminal el agente es una herramienta más de la terminal, y «Analizar error» —que le habla al mismo agente— está justo al lado; tenerlo arriba a la derecha obligaba a cruzar la ventana entera.
+
+- **El editor pasó de dos barras a una sola, de íconos.** Arriba había una fila de contexto (conexión, esquema, auto-commit, `DBMS_OUTPUT`, el botón del agente) y debajo otra de acciones (Guardar, Ejecutar, Bloque, Cancelar, Explain, Explain Analyze, Refrescar): 60 px de barras sobre el editor para decir cosas que entran holgadas en una fila. Ahora es **una sola**: a la izquierda lo que se aprieta, a la derecha contra qué corre la pestaña —esquema y conexión— y el chat al final.
+
+  **Solo íconos, con la explicación en el tooltip.** El rótulo al lado de cada glifo repetía lo que el tooltip ya dice completo, y con nueve botones convertía la barra en un renglón de texto que hay que leer entero para encontrar el que se busca. La única que conserva su nombre es **Ejecutar**, la acción que se aprieta veinte veces por sesión y la única rellena de la barra; en **Configuración → Apariencia → Barra de acciones → Compacta** tampoco ella lo lleva.
+
+  Lo que **no** se pierde al sacar los rótulos: el atajo de teclado, que ahora está en el tooltip de cada botón, y la advertencia de Explain Analyze, que pasó a ser el color del ícono —el único tertiary de la barra— más un tooltip que abre con «EJECUTA la consulta de verdad» en vez de terminar con ello. Una palabra suelta al lado de un glifo, sin la etiqueta que la explicaba, dejaba de decir qué es lo que ejecuta.
+
+  **Auto-commit y `DBMS_OUTPUT` son ahora dos interruptores de un clic**, teñidos cuando están activos, en lugar de dos switches con su rótulo al lado. La transacción abierta conserva rótulo y fondo teñido: es el único estado con consecuencias pendientes —hay cambios sin confirmar— y tiene que interrumpir la lectura, no integrarse a ella. Commit y Rollback siguen apareciendo solo en ese estado, ya como íconos.
+
+  La conexión muestra además el **logo del motor**: con ocho pestañas abiertas es lo que dice de un vistazo si esta corre contra Oracle o contra la réplica de Postgres. La barra sigue existiendo cuando no hay nada que ejecutar —un explorador de Redis, una terminal SSH, SFTP— con el cluster de acciones apagado, porque ahí el dato que importa es a qué servidor está atada la pestaña; y ya no aparece en un repositorio Git, donde decía «Sin conexión» sobre algo que nunca tuvo una — el mismo motivo por el que ya no aparecía en una nota.
+
+  El pie del panel de resultados no se movió: sigue diciendo cómo terminó lo último que se ejecutó, pegado a la grilla que describe.
+
+- **El tema y la configuración se mudaron al pie de la barra lateral.** Estaban arriba a la derecha, en la barra de contexto del editor SQL — la fila que dice a qué conexión y a qué esquema apunta la pestaña. Esa fila **desaparece** en una nota, una terminal, una petición HTTP o un repositorio, así que dos ajustes de toda la aplicación dejaban de existir según qué pestaña tuvieras abierta: para cambiar el tema había que abrir una consulta primero. El pie de la barra lateral se ve en todos los módulos y ya era donde vivían la versión y la ayuda, que son de la misma clase de cosa.
+
+  Los tres botones —tema, ayuda y configuración— **ahora comparten forma y tamaño**: antes la ayuda era un ícono de 14 px con 2 px de aire y el engranaje uno de 18 px en otra barra, así que juntarlos tal cual daba tres botones distintos en la misma fila. Todos tienen un área clickeable de 28 px, que es el mínimo cómodo para un ícono suelto. Con la barra oculta quedan apilados en la columna de íconos, arriba del logo — colapsada es cuando menos pistas hay en pantalla, que es justo cuando más se buscan.
+
+  Los tooltips dicen qué pasa y qué queda: el del tema nombra **a dónde** lleva el clic (y que se recuerda para el próximo arranque), y el de configuración enumera lo que hay adentro en vez de repetir la palabra «configuración». Cuando hay una versión nueva, el engranaje lo avisa con un punto y lo dice en su tooltip, porque el link de descarga está adentro del modal.
+
+  El pie además dejó de repetir información: el nombre y la versión comparten un solo tooltip —son el mismo dato leído junto— y al angostar la barra se achica el nombre, que también está en la barra de título de la ventana, antes que la versión, que no está en ningún otro lado.
+
+- **El aviso del backup del vault se cuenta donde se pidió el backup.** La ruta del archivo aparecía en la barra de contexto del módulo de bases de datos —un renglón truncado al lado del selector de esquema y del Auto-commit—, que no tiene nada que ver con el vault y que ni siquiera está a la vista si estabas en otro módulo. Ahora el resultado se muestra **dentro de Configuración → Vault**, debajo del botón que lo lanzó, con la ruta **entera y seleccionable**: es el dato por el que se hace un backup, y truncado no sirve para ir a buscar el archivo.
+
+  Como el backup sale de Configuración, pasa por un modal de clave y termina en un diálogo del sistema operativo, al terminar **se vuelve a abrir Configuración** en vez de dejarte parado en la pantalla que estabas mirando antes de todo eso. Y si cerrás el diálogo del sistema sin elegir dónde guardar, ahora lo dice — antes el aviso simplemente no aparecía y no había forma de distinguirlo de un backup hecho. El aviso se limpia al pedir otro backup y al cerrar Configuración, para que un «guardado en …» de la semana pasada no se lea como recién hecho.
+
 ### Corregido
+
+- **Cambiar de módulo reiniciaba el chat del agente, y con él cortaba lo que estuviera respondiendo.** Estando en una conexión de base de datos, pasar a una terminal SSH (o a cualquier otro módulo) y volver mostraba el chat en blanco: se perdían los turnos, lo que se estaba escribiendo y el trabajo en curso. Si el agente estaba respondiendo, la respuesta no volvía nunca — se leía como que la ejecución se había cancelado.
+
+  Que cada módulo tenga su propia conversación es deliberado y no cambia. Lo que estaba mal era la implementación: el anfitrión montaba **solo** el chat del contexto activo, así que cambiar de pestaña desmontaba el componente y con él la suscripción al stream del CLI. El turno seguía corriendo por detrás sin nadie que recibiera su salida. Ahora todas las conversaciones vivas quedan montadas y se esconde con CSS la que no corresponde al módulo activo — el mismo criterio que ya se aplicaba a las solapas de consumo e historial, extendido a lo que faltaba.
+
+  Vale también para **cerrar el panel** y para **entrar a un repositorio** (donde el chat de la barra se cierra solo, porque ahí el agente lo tiene el módulo Git): las dos cosas ahora esconden el panel en vez de desmontarlo. El tooltip del botón de cerrar ya prometía que «la conversación queda como está»; recién ahora es cierto.
+
+  Dos detalles que trae vivir con varias conversaciones a la vez: la petición de aprobación la sigue atendiendo **solo la visible** —llega por un evento global sin id de sesión, así que si la escucharan todas aparecerían tres diálogos para un mismo permiso— y el id de conversación que devuelve el CLI se retiene contra la fila de **su** sesión, no contra «la vigente»: un turno que contesta mientras mirás otro módulo escribía ese id en el chat equivocado.
 
 - **En los paneles SFTP, Ctrl+click no agregaba a la selección: abría el menú contextual.** En macOS WebKit convierte Ctrl+click en un `contextmenu` y **no dispara ningún `click`**, y toda la lógica de selección estaba colgada del `click`. Así que el gesto no solo no sumaba la fila: abría el menú y, de paso, dejaba marcada únicamente la fila apuntada, borrando lo que ya había seleccionado. La selección ahora se decide en `mousedown`, que llega en los dos sistemas, y el menú contextual se calla cuando el Ctrl ya se atendió como selección — un click, una respuesta.
 
@@ -39,6 +101,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
   Lo que **no** cambia: Antigravity sigue sin aparecer en la lista de «conversaciones que ya tenía el CLI» de la pestaña Git. Ahí el motivo es otro y sigue en pie — esa lista es por repositorio, y no hay dónde leer a qué repositorio pertenece cada conversación suya (la columna `workspace_uris` de su base de resúmenes viene vacía en las versiones actuales, y su carpeta de `brain/` no guarda marca del directorio de trabajo). Listarlas todas mezclaría las de cualquier proyecto.
 
 - **Una conversación podía quedar en el historial sin con qué retomarse.** El id que devuelve el CLI se guarda con un `UPDATE` sobre la fila del historial, y esa fila se crea con el primer mensaje: si el `UPDATE` le ganaba la carrera al `INSERT` que todavía estaba en vuelo, no afectaba ninguna fila y el id se perdía **para siempre**. La conversación quedaba listada, se podía abrir, y abrirla empezaba una nueva en blanco. El guardado ahora espera a que la fila exista, y ya no se descarta el id cuando el alta no terminó.
+
+### Quitado
+
+- **El historial de consultas.** La solapa «Historial» del panel inferior no está más, y con ella se fue el registro en disco de cada statement ejecutado. La consola de ejecución hace ese trabajo mejor: es un log corrido de la sesión con el texto completo de cada statement, su duración, su salida de `DBMS_OUTPUT` y el error entero — el historial mostraba lo mismo con menos contexto y en otra pantalla.
+
+  Ya no se escribe nada en `query_history`: los tres executores (SQL, Redis y Mongo) reciben el sink de historial en `nil`, que ya trataban como «no registrar». Se fueron también los bindings `ListQueryHistory` / `ClearQueryHistory` / `DeleteQueryHistoryEntry` y el repositorio del vault que los servía.
+
+  **Y lo que ya estaba grabado se borra al actualizar** (migración 51 del vault). Datos que ninguna pantalla muestra y ningún botón limpia no pueden quedarse en disco: eran el texto completo, sin cifrar, de cada consulta que se ejecutó alguna vez. Es la **única migración destructiva** del proyecto y va anotada como excepción explícita a la regla de migraciones aditivas, con su porqué, en `.claude/rules/technical.md`.
+
+  **La tabla sí queda**, vacía. El `CREATE TABLE` de `store.go` es la definición congelada de la versión 1 del vault: borrarla haría que una instalación nueva y una que actualiza terminaran con esquemas distintos, que es justo lo que el sistema de migraciones existe para evitar. El archivo tampoco se achica —`VACUUM` no puede correr dentro de una transacción y toda migración corre en una—, pero el espacio se reutiliza.
 
 ## [2.4.0] - 2026-08-25
 

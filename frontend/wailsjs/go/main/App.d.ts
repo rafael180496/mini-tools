@@ -125,8 +125,6 @@ export function ClearAllSshHistory():Promise<number>;
 
 export function ClearLocalHistory(arg1:string):Promise<number>;
 
-export function ClearQueryHistory(arg1:string):Promise<void>;
-
 export function ClearRecentFiles():Promise<void>;
 
 export function ClearSshHistory(arg1:string):Promise<number>;
@@ -166,8 +164,6 @@ export function DeleteFolder(arg1:string):Promise<void>;
 export function DeleteMongoDocument(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function DeleteNote(arg1:string):Promise<void>;
-
-export function DeleteQueryHistoryEntry(arg1:string):Promise<void>;
 
 export function DeleteRedisHashField(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -552,8 +548,6 @@ export function ListMongoDatabases(arg1:string):Promise<Array<db.MongoDatabaseIn
 export function ListMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number):Promise<Array<string>>;
 
 export function ListNotes():Promise<Array<vault.NoteSummary>>;
-
-export function ListQueryHistory(arg1:string,arg2:number):Promise<Array<vault.HistoryEntry>>;
 
 export function ListRecentFiles():Promise<Array<vault.RecentFile>>;
 

@@ -298,7 +298,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><span class="mark">mt</span> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.4.0. Lo que está acá existe en ese binario.">2.4.0 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.5.0. Lo que está acá existe en ese binario.">2.5.0 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -516,9 +516,11 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
   </ol>
 
   <h2 id="primera-conexion--produccion">Marcar producción</h2>
-  <p>El marcado de entorno no es decorativo: pinta la conexión en el árbol y en la barra de contexto de la
-  pestaña, y enciende el <strong>Production Guard</strong> — un <code>UPDATE</code> o <code>DELETE</code>
-  sin <code>WHERE</code> no se ejecuta sin una confirmación que dice cuántas filas va a tocar.</p>
+  <p>El marcado de entorno no es decorativo: pinta la conexión en el árbol, en la barra del editor y en el
+  <strong>pie de su terminal SSH</strong>, con su nombre y su color —rojo con halo en producción—, y enciende
+  el <strong>Production Guard</strong>: un <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code>
+  no se ejecuta sin una confirmación que dice cuántas filas va a tocar, y en la terminal de un servidor
+  marcado como producción los comandos destructivos también piden confirmación.</p>
 
   <h2 id="primera-conexion--organizar">Organizar con carpetas</h2>
   <p>Las conexiones se agrupan en carpetas (Producción, Pruebas, un cliente, un proyecto). Las carpetas son
@@ -554,8 +556,9 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
 
   <h2 id="la-ventana--pestanas">Pestañas y paneles</h2>
   <ul>
-    <li>Las <strong>pestañas</strong> están rotuladas por tipo (SQL, REDIS, HTTP, nota, terminal, repositorio) y cada una de SQL se vincula a una conexión desde su propio selector — nunca como efecto colateral de navegar la barra lateral.</li>
-    <li>El <strong>panel inferior</strong> tiene Resultados, Consola e Historial; se arrastra para cambiarle el alto.</li>
+    <li>Las <strong>pestañas</strong> están rotuladas por tipo (SQL, REDIS, HTTP, nota, terminal, repositorio) y cada una de SQL se vincula a una conexión desde su propio selector — nunca como efecto colateral de navegar la barra lateral. Se arrastran para reordenarlas y se cierran con la ✕ o con el <strong>clic central de la rueda</strong>, como en VS Code.</li>
+    <li>El <strong>panel inferior</strong> tiene Resultados y Consola (más DBMS_OUTPUT y el plan de ejecución cuando hay algo que mostrar); se arrastra para cambiarle el alto.</li>
+    <li>La <strong>barra del editor</strong> es una sola fila de íconos: a la izquierda lo que se aprieta (guardar, ejecutar, explicar, refrescar), a la derecha contra qué corre la pestaña (esquema y conexión) y el chat. Lo que hace cada botón —y su atajo— está en su tooltip.</li>
     <li>La <strong>barra lateral</strong> se arrastra para cambiarle el ancho y se oculta entera dejando una columna de íconos. Ancho, módulo abierto y alto del editor quedan guardados entre sesiones.</li>
   </ul>
 </article>
@@ -625,14 +628,34 @@ JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN
     <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> corre <strong>lo seleccionado</strong>, o la sentencia donde está el cursor si no hay selección.</li>
     <li><strong>Bloque</strong> (<kbd>Ctrl+Shift+↵</kbd>) corre un bloque PL/SQL completo, con <code>DBMS_OUTPUT</code> capturado.</li>
     <li>Los resultados llegan <strong>en vivo</strong>, statement por statement, y se pueden <strong>cancelar en caliente</strong>. Un script de varias sentencias abre un resultado por cada una, en pestañas que se cierran de a una o todas juntas.</li>
-    <li><strong>Auto-commit</strong> es un checkbox, y Commit/Rollback están siempre visibles (deshabilitados cuando no aplican): nunca hay ambigüedad sobre si un cambio quedó confirmado.</li>
+    <li><strong>Auto-commit</strong> es el ícono del rayo de la barra, encendido cuando está activo: un clic pasa a transacción manual, y ahí aparecen <strong>Commit</strong> y <strong>Rollback</strong> junto al aviso «Transacción abierta». Nunca hay ambigüedad sobre si un cambio quedó confirmado — y no hay botones apagados esperando el 1 % de las veces en que sirven.</li>
   </ul>
 
+  <div class="note tip"><span class="lbl">Dónde está cada cosa</span><p>Una sola barra sobre el editor.
+  A la izquierda lo que se aprieta —guardar, ejecutar, bloque, cancelar, Explain, Explain Analyze,
+  refrescar— más los interruptores de auto-commit y <code>DBMS_OUTPUT</code>; a la derecha el esquema, la
+  conexión y el chat. Son íconos: el nombre, el atajo y el porqué de cada uno están en su tooltip, y el
+  único que conserva su rótulo es <strong>Ejecutar</strong>. En
+  <strong>Configuración → Apariencia → Barra de acciones</strong> se elige si Ejecutar lleva su nombre
+  («Normal»), si no lo lleva nadie («Compacta») o si la barra directamente no se muestra («Oculta»; los
+  atajos siguen funcionando). El resultado de la última ejecución vive al pie del panel de resultados,
+  pegado a la grilla que describe.</p></div>
+
   <h2 id="bases-consultas--consola">La consola de ejecución</h2>
-  <p>Pestaña propia junto a Resultados e Historial, estilo DataGrip: registra cada sentencia del script con
+  <p>Pestaña propia junto a Resultados, estilo DataGrip: registra cada sentencia del script con
   su texto completo y una línea de resultado con hora — <em>N filas obtenidas en Xms</em>,
   <em>completado en Xms</em>, o el error completo sin recortar. Se activa sola en cualquier script de más
-  de una sentencia.</p>
+  de una sentencia, y es un <strong>log corrido de la sesión</strong>: sigue estando lo que corriste hace
+  media hora, hasta que aprietes «Limpiar consola».</p>
+  <p>El SQL se muestra <strong>con los mismos colores del editor</strong> (palabras clave, tipos, literales,
+  comentarios y parámetros bind), y lo que falló se ve sin leer: barra roja al costado de la entrada, el
+  mensaje en un bloque propio con el código del motor —<code>ORA-01843</code>, <code>PLS-00201</code>—
+  destacado, y la cuenta de cuántos hay con error en la cabecera.</p>
+
+  <div class="note"><span class="lbl">Es el único registro</span><p>La consola reemplazó al historial de
+  consultas que había hasta la 2.4.0 en una solapa aparte: decía lo mismo con menos contexto y en otra
+  pantalla. La app ya no guarda en disco las sentencias que ejecutás, y al actualizar <strong>borra las
+  que había guardado antes</strong> — la consola vive en memoria y arranca vacía en cada sesión.</p></div>
 
   <div class="note warn"><span class="lbl">Production Guard</span><p>En una conexión marcada como
   producción, un <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code> no se ejecuta sin una
@@ -750,11 +773,6 @@ VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00
   consulta.</strong> El botón lo dice explícitamente, porque en una sentencia de escritura la diferencia
   entre EXPLAIN y EXPLAIN ANALYZE es que uno la corre.</p></div>
 
-  <h2 id="bases-planes--historial">Historial de ejecuciones</h2>
-  <p>Por conexión, con el SQL exacto, el estado, la duración, las filas que devolvió y el error completo de
-  cada sentencia. Filtrable, y se borra entero o fila por fila. Sirve para volver a la consulta que
-  corriste ayer sin acordarte de cómo la escribiste.</p>
-
   <h2 id="bases-planes--linter">Linter</h2>
   <p>Marca <code>SELECT *</code> como sugerencia visual —no bloquea nada— y pide confirmación antes de un
   <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code>.</p>
@@ -809,6 +827,13 @@ VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00
   <h2 id="http-colecciones--curl">Pegar un «Copy as cURL»</h2>
   <p>Menú de una colección → <strong>Pegar un comando cURL…</strong> y queda una petición lista para editar,
   con método, URL, headers y cuerpo. Es la forma más rápida de traer algo que ya funciona en el navegador.</p>
+  <p>Con una petición ya abierta hay un segundo camino, el de la petición rápida:
+  <strong>✦ → Escribir la petición…</strong>, pegar ahí el comando y <strong>Importar tal cual</strong>. Se
+  traduce con el mismo lector, <strong>sin pasar por el agente</strong>: instantáneo, sin gastar cuota y sin
+  que nadie «mejore» el comando — un <code>curl</code> copiado del navegador hay que reproducirlo exacto o
+  deja de reproducir el problema que estás mirando. El botón de al lado, <strong>Pedirle un cambio</strong>,
+  es para cuando además querés modificarlo: «este mismo cURL pero contra staging y sin el header de
+  traza».</p>
 
   <h2 id="http-colecciones--codigo">Generar código</h2>
   <p>Cualquier petición se convierte en cURL, HTTP crudo, Go, JavaScript, Python, Java, C#, PHP, Ruby o
@@ -1154,6 +1179,15 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <figcaption>Una pestaña por conexión, con historial, análisis de errores, snippets y tema de colores.</figcaption>
   </figure>
 
+  <h2 id="ssh-terminal--barra">Arriba las herramientas, abajo el estado</h2>
+  <p>Arriba a la derecha, cuatro íconos y el chat: <strong>historial</strong>, <strong>analizar</strong>,
+  <strong>snippets</strong> y <strong>tema</strong>. Lo que hace cada uno está en su tooltip — sobre una
+  terminal, que es la pantalla donde el contenido manda, el cromo tiene que desaparecer.</p>
+  <p>Abajo a la izquierda, el <strong>pie</strong>: a qué servidor está atada la pestaña, si la sesión sigue
+  viva y con qué <strong>entorno</strong> está marcada la conexión (con su color; rojo con halo si es
+  producción). Va ahí y no arriba porque es donde termina la salida del comando, que es donde ya estás
+  mirando cuando te preguntás si eso seguía conectado.</p>
+
   <h2 id="ssh-terminal--sesiones">Sesiones</h2>
   <ul>
     <li><strong>Terminal interactiva real</strong> (xterm.js) por conexión, con PTY y resize automático.</li>
@@ -1172,8 +1206,10 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   archivo de credenciales con otro nombre.</p>
 
   <h2 id="ssh-terminal--errores">Analizar un error</h2>
-  <p>El botón <strong>Analizar error</strong> le manda al agente la salida de la terminal con el sistema
-  operativo del servidor como contexto. Devuelve texto: no ejecuta nada.</p>
+  <p>El botón de la lupa (<strong>Analizar</strong>) le manda al agente la salida de la terminal con el
+  sistema operativo del servidor como contexto — o exactamente lo que tengas seleccionado, si hay una
+  selección. Devuelve texto: no ejecuta nada. El botón del <strong>chat</strong> está al lado, en la misma
+  fila: pasar de «analizame esto» a «preguntale otra cosa» no debería cruzar la ventana entera.</p>
 </article>
 
 <article class="topic" id="ssh-sftp" data-title="Explorador SFTP">
@@ -1234,6 +1270,9 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p><kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd> lo abre sobre lo que estés mirando. Hay
   <strong>una conversación por contexto de trabajo</strong>: el hilo de una conexión sobrevive a irte a otra
   pestaña y volver, y no se mezcla con el de un repositorio.</p>
+  <p><strong>Irte no lo corta.</strong> Si el agente está respondiendo y te vas a una terminal SSH, a un
+  repositorio o cerrás el panel, ese turno sigue corriendo y la respuesta te espera entera al volver — con
+  lo que hubieras dejado escrito en la caja de mensaje.</p>
 
   <h2 id="ia-chat--proponer">El agente propone; aplicar es un clic tuyo</h2>
   <p>Ninguna acción de IA ejecuta lo que acaba de escribir. Devuelven texto y vos decidís:</p>
@@ -1347,6 +1386,16 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <h2 id="ajustes-apariencia--tema">Tema claro y oscuro</h2>
   <p>El de la app se cambia con un botón. El del editor y el de la terminal lo siguen por defecto
   («Automático»), o se fijan a mano a un tema concreto.</p>
+
+  <h2 id="ajustes-apariencia--donde">Dónde están estos botones</h2>
+  <p>En el <strong>pie de la barra lateral</strong>, al lado de la versión: <strong>tema</strong>,
+  <strong>ayuda</strong> y <strong>configuración</strong>. Con la barra oculta quedan apilados en la columna
+  de íconos, arriba del logo.</p>
+  <div class="note"><span class="lbl">Por qué ahí</span><p>Antes vivían arriba a la derecha, en la barra de
+  contexto del editor SQL — que desaparece en una nota, una terminal, una petición HTTP o un repositorio.
+  Dos ajustes que valen para toda la app no pueden depender de qué pestaña tengas abierta: para cambiar el
+  tema había que abrir una consulta primero. El pie de la barra está siempre, en todos los módulos, y ya era
+  donde vivían la versión y la ayuda.</p></div>
 </article>
 
 <article class="topic" id="ajustes-actualizaciones" data-title="Actualizaciones">
@@ -1378,7 +1427,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p class="lead">De un <code>curl</code> pegado a una petición guardada, documentada y buscable.</p>
   <ol class="steps">
     <li>En el navegador donde funciona, <em>Copiar como cURL</em>.</li>
-    <li>En mini-tools: módulo HTTP → menú de una colección → <strong>Pegar un comando cURL…</strong>. Queda una petición con método, URL, headers y cuerpo.</li>
+    <li>En mini-tools: módulo HTTP → menú de una colección → <strong>Pegar un comando cURL…</strong>. Queda una petición con método, URL, headers y cuerpo. (Si ya tenés una pestaña abierta: <strong>✦ → Escribir la petición…</strong>, pegar y <strong>Importar tal cual</strong>.)</li>
     <li>Cambiá el host por <code>{{baseUrl}}</code> y definí la variable en el entorno <em>desarrollo</em>. La misma petición sirve contra los dos ambientes.</li>
     <li>Mandala. Si algo falla, <strong>✦ → Diagnosticar el fallo</strong>: va con la configuración del cliente delante, que es donde se explica la mitad de los errores de transporte.</li>
     <li><strong>Guardar de ejemplo</strong> suma la respuesta a la documentación de la petición. Después, <strong>Documentación… → Publicar como nota</strong> y queda en tu base de conocimiento, buscable y enlazable.</li>
@@ -1434,6 +1483,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td><kbd>Tab</kbd></td><td>Aceptar la sugerencia en gris, o saltar al hueco siguiente de un atajo</td></tr>
     <tr><td><kbd>F5</kbd></td><td>Refrescar el catálogo de la conexión activa</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>Cerrar el panel, el menú o el buscador que esté abierto</td></tr>
+    <tr><td>Clic central de la rueda</td><td>Cerrar la pestaña que estés apuntando: las del workspace, las de «Resultado N» y las de los archivos abiertos en el editor de Git</td></tr>
   </table></div>
   <div class="note tip"><span class="lbl">En esta página</span><p><kbd>/</kbd> pone el cursor en el buscador
   de arriba, y las flechas más <kbd>Enter</kbd> abren el resultado.</p></div>
@@ -1457,6 +1507,9 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p>Manual (con nombre y fecha) o <strong>automático</strong> cada N horas a la carpeta que elijas, donde el
   scheduler reemplaza siempre el mismo archivo. Los dos piden la clave maestra, y restaurar la verifica
   contra el propio archivo antes de tocar nada.</p>
+  <p>Los dos se manejan desde <strong>Configuración → Vault</strong>, y ahí mismo aparece cómo terminó el
+  último backup manual, con la <strong>ruta completa</strong> del archivo escrito — o el aviso de que
+  cerraste el diálogo del sistema sin elegir dónde guardarlo.</p>
 
   <h2 id="seguridad--donde">Dónde vive el vault</h2>
   <p>En la carpeta de datos de la aplicación de tu sistema operativo, no adentro del binario. Por eso
@@ -1481,7 +1534,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.4.0; esta página no hace una sola petición externa.
+  v2.5.0; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a></p>

@@ -52,8 +52,8 @@ export const EDITOR_TAB_SIZES = [2, 4, 8]
 // quien ya los sabe y quiere la pantalla entera para el texto.
 export type EditorToolbarMode = 'normal' | 'compact' | 'hidden'
 export const EDITOR_TOOLBAR_MODES: {id: EditorToolbarMode; label: string; hint: string}[] = [
-    {id: 'normal', label: 'Normal', hint: 'íconos y etiquetas'},
-    {id: 'compact', label: 'Compacta', hint: 'solo íconos'},
+    {id: 'normal', label: 'Normal', hint: 'Ejecutar con su nombre, el resto solo íconos'},
+    {id: 'compact', label: 'Compacta', hint: 'todo solo íconos'},
     {id: 'hidden', label: 'Oculta', hint: 'los atajos siguen funcionando'},
 ]
 

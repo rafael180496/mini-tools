@@ -45,6 +45,14 @@ interface SettingsDialogProps {
     localShellId: string
     onChangeLocalShellId: (id: string) => void
     onBackupVault: () => void
+    // Cómo terminó el último backup, para contarlo ACÁ.
+    //
+    // Antes la ruta del archivo se anunciaba en la barra de contexto del
+    // toolbar de bases de datos: un renglón truncado, al lado del selector de
+    // esquema y del Auto-commit, en una pantalla que no tiene nada que ver con
+    // el vault y que ni siquiera está a la vista si estabas en otro módulo. El
+    // resultado de una acción se cuenta donde se pidió la acción.
+    backupResult: {ok: boolean; text: string} | null
     onRestoreVault: () => void
     autoBackupEnabled: boolean
     onToggleAutoBackup: (checked: boolean) => void
@@ -120,6 +128,7 @@ export default function SettingsDialog({
     localShellId,
     onChangeLocalShellId,
     onBackupVault,
+    backupResult,
     onRestoreVault,
     autoBackupEnabled,
     onToggleAutoBackup,
@@ -447,7 +456,7 @@ export default function SettingsDialog({
                                         options={EDITOR_TOOLBAR_OPTIONS}
                                         onChange={(v) => onChangeEditorAppearance({...editorAppearance, toolbar: v as EditorAppearance['toolbar']})}
                                         ariaLabel="Barra de acciones del editor"
-                                        title="Normal muestra íconos y etiquetas; Compacta deja solo los íconos; Oculta la saca del todo y deja los atajos de teclado"
+                                        title="La barra es de íconos con tooltip. Normal deja el nombre solo en Ejecutar, la acción principal; Compacta se lo saca también; Oculta quita la barra entera — los atajos de teclado siguen funcionando igual"
                                         className="w-52"
                                     />
                                 </div>
@@ -533,6 +542,28 @@ export default function SettingsDialog({
                                                         </span>
                                                         <Icon name="chevron_right" size={20} className="shrink-0 text-on-surface-variant" />
                                                     </button>
+
+                                                    {backupResult && (
+                                                        <p
+                                                            className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+                                                                backupResult.ok
+                                                                    ? 'border-secondary/40 bg-secondary/10 text-secondary'
+                                                                    : 'border-outline-variant bg-surface-container-highest text-on-surface-variant'
+                                                            }`}
+                                                        >
+                                                            <Icon
+                                                                name={backupResult.ok ? 'check_circle' : 'info'}
+                                                                size={14}
+                                                                filled={backupResult.ok}
+                                                                className="mt-0.5 shrink-0"
+                                                            />
+                                                            {/* La ruta va ENTERA y se puede seleccionar: es
+                                                                el dato por el que se hace un backup, y
+                                                                truncada no sirve para ir a buscar el
+                                                                archivo. */}
+                                                            <span className="min-w-0 wrap-break-word select-text">{backupResult.text}</span>
+                                                        </p>
+                                                    )}
 
                                                     <button
                                                         onClick={onRestoreVault}

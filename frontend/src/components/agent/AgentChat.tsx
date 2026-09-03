@@ -218,6 +218,16 @@ interface AgentChatProps {
     // "preguntale sobre ESTA consulta". Va como ficha desplegable y se puede
     // sacar: adjuntar algo sin que se vea es lo mismo que mandarlo a escondidas.
     working?: {label: string; text: string; language?: string} | null
+    // Si este chat es el que se está VIENDO. El anfitrión mantiene montada una
+    // conversación por módulo —cambiar de pestaña no puede cortar un turno en
+    // curso— y esconde con CSS las que no corresponden al módulo activo, así
+    // que hay varias instancias vivas a la vez.
+    //
+    // Lo único que no puede duplicarse entre ellas es la petición de
+    // aprobación: llega por un evento GLOBAL, sin id de sesión, así que si la
+    // atendieran todas aparecerían tres diálogos para un solo permiso. La
+    // atiende la visible, que es la que el usuario puede contestar.
+    active?: boolean
 }
 
 // formatTokens abrevia los totales. Una sesión larga llega a millones, y
@@ -253,6 +263,7 @@ export default function AgentChat({
     onInsertText,
     insertLabel,
     onSessionUsage,
+    active = true,
 }: AgentChatProps) {
     const [turns, setTurns] = useState<Turn[]>([])
     // Qué mensaje se acaba de copiar, para confirmarlo en el botón. Sin la
@@ -561,13 +572,15 @@ export default function AgentChat({
     // Las peticiones de aprobación llegan por un evento GLOBAL y no por el de
     // la sesión: el hook corre en otro proceso y no sabe de qué chat salió.
     // Con una sola sesión pidiendo permiso a la vez —el agente está bloqueado
-    // esperando— alcanza con que las atienda el chat visible.
+    // esperando— alcanza con que las atienda el chat visible, que además es el
+    // único que puede contestar (ver `active`).
     useEffect(() => {
+        if (!active) return
         const off = EventsOn('agent-approval', (req: ApprovalRequest) => setApproval(req))
         return () => {
             off()
         }
-    }, [])
+    }, [active])
 
     // Autoscroll al final mientras llega la respuesta.
     useEffect(() => {

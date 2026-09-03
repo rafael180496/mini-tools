@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
    ```
 2. **Reglas duras** (ver también `.claude/rules/technical.md`):
    - Solo aditivo: `CREATE TABLE IF NOT EXISTS` nueva, o `ALTER TABLE x ADD COLUMN y ... DEFAULT ...`. Nunca `DELETE`/`DROP TABLE`/mutar filas existentes.
+     - **Excepción, una sola y decidida por el usuario: la versión 51**, que vacía `query_history` al retirarse el historial de consultas. Es una retirada de datos muertos —ningún camino de la app vuelve a escribir ahí, y no había ya pantalla para verlos ni para borrarlos—, no una reescritura de datos vivos; la tabla se conserva porque el `CREATE TABLE` de `store.go` sigue siendo la definición de la versión 1. Una migración destructiva nueva necesita su propia decisión explícita.
+     - Un `DELETE` así **no achica el archivo**: `VACUUM` no puede correr dentro de una transacción y cada migración corre en una. El espacio se reutiliza, que es distinto de devolverlo al sistema de archivos.
    - Nunca tocar `vault_meta.verifier` ni `vault_meta.verifier_nonce`. No hay guard técnico para esto (parsear el SQL de una migración violaría la regla de "sin librería de parsing SQL" — ver `technical.md` punto 7) — se cuida por convención y code review.
    - `modernc.org/sqlite` trae una versión moderna de SQLite (soporta `ADD COLUMN` sin problema). Si algún día hiciera falta `DROP`/`RENAME COLUMN`, usar el patrón de copiar a tabla nueva y renombrar en vez de confiar en soporte parcial de `ALTER TABLE`.
 3. Verificar con el patrón de script efímero (abajo) **antes** de commitear.
@@ -70,8 +72,16 @@ rm -rf tmp_migrationverify
 > hacía engañosa la sección: leerla daba a entender que agregar una migración
 > era todavía territorio inexplorado.
 
-- **Versión actual: 32.** El slice de `migrations.go` es la lista completa y
+- **Versión actual: 51.** El slice de `migrations.go` es la lista completa y
   autoritativa; cada entrada explica en su comentario por qué existe.
+- **Versión 51** (única destructiva): `DELETE FROM query_history` al retirarse
+  el historial de consultas. Verificada con el patrón de script efímero de
+  arriba, extendido como pedía esta misma sección: instalación en frío →
+  insertar filas de historial y retroceder `schema_migrations` a 50 → reabrir →
+  comprobar que las filas se fueron, que **la tabla sigue existiendo**, que
+  `Unlock` con la clave original sigue funcionando (`vault_meta` intacto), que
+  el resto de los settings quedó igual y que reabrir de nuevo no la vuelve a
+  aplicar.
 - **Versión 2** (primera migración real del framework):
   `ALTER TABLE connections ADD COLUMN metadata_schemas TEXT` — restringe qué
   esquemas escanea `GetSchemaMetadata` en Postgres (ver

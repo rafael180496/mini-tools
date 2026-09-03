@@ -24,6 +24,7 @@ import type {LanguageId} from '../../codemirror/languageRegistry'
 import type {EditorAppearance} from '../../codemirror/editorAppearance'
 import type {Theme} from '../../hooks/useTheme'
 import Icon from '../Icon'
+import Select from '../Select'
 import CodePane from './CodePane'
 import KeyValueTable from './KeyValueTable'
 import FormDataTable from './FormDataTable'
@@ -474,18 +475,21 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Barra de método + URL + enviar */}
             <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-2 py-1.5">
-                <select
+                {/* El selector temado de la app y no un <select> nativo: el
+                    nativo abre el menú del sistema operativo, que ignora el
+                    tema, la tipografía y el tamaño de letra elegidos —una caja
+                    blanca en una app oscura— y encima no puede pintar cada
+                    método de su color, que es justamente cómo se leen acá, en
+                    el árbol y en el historial. */}
+                <Select
                     value={method}
-                    onChange={(e) => touch(setMethod)(e.target.value)}
-                    title="Método HTTP. GET solo lee; POST, PUT y PATCH modifican; DELETE borra — por eso cada uno tiene su color en el árbol."
-                    className={`shrink-0 rounded bg-surface-container px-1.5 py-1 font-mono text-ui-11 font-semibold outline-none focus:ring-1 focus:ring-primary ${methodColor(method)}`}
-                >
-                    {HTTP_METHODS.map((m) => (
-                        <option key={m} value={m}>
-                            {m}
-                        </option>
-                    ))}
-                </select>
+                    options={HTTP_METHODS.map((m) => ({value: m, label: m, tone: `${methodColor(m)} font-semibold`}))}
+                    onChange={(v) => touch(setMethod)(v)}
+                    size="sm"
+                    ariaLabel="Método HTTP"
+                    title="Método HTTP. GET solo lee; POST, PUT y PATCH modifican; DELETE borra — por eso cada uno tiene su color acá, en el árbol y en el historial."
+                    className="w-28 shrink-0 font-mono"
+                />
 
                 <input
                     value={url}
@@ -525,23 +529,23 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
                     </button>
                 )}
 
-                <select
+                <Select
                     value={activeEnv}
-                    onChange={(e) => {
-                        const id = e.target.value
+                    options={[
+                        // "Sin entorno" no es un entorno más: es no usar
+                        // ninguno, y por eso va separado de la lista real.
+                        {value: '', label: 'Sin entorno', separatorAfter: envs.length > 0},
+                        ...envs.map((e) => ({value: e.id, label: e.name, icon: <Icon name="lan" size={14} />})),
+                    ]}
+                    onChange={(id) => {
                         setActiveEnv(id)
                         void HttpSetActiveEnvironment(id).catch(() => {})
                     }}
+                    size="sm"
+                    ariaLabel="Entorno activo"
                     title="Entorno activo: define los valores de las {{llaves}} y pisa a las variables de la colección. Si un entorno está anclado a esta colección, gana él sin importar lo que diga este selector."
-                    className="shrink-0 rounded bg-surface-container px-1.5 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                >
-                    <option value="">Sin entorno</option>
-                    {envs.map((e) => (
-                        <option key={e.id} value={e.id}>
-                            {e.name}
-                        </option>
-                    ))}
-                </select>
+                    className="w-36 shrink-0"
+                />
 
                 <div className="relative shrink-0">
                     <button
@@ -640,17 +644,15 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
                         ) : (
                             <>
                                 <label className="mb-1 block text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Colección</label>
-                                <select
+                                <Select
                                     value={saveTo.collectionId}
-                                    onChange={(e) => setSaveTo({...saveTo, collectionId: e.target.value})}
-                                    className="mb-3 w-full rounded border border-outline-variant bg-surface-container-lowest px-2 py-1 text-ui-11 text-on-surface outline-none"
-                                >
-                                    {saveTo.collections.map((c) => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    options={saveTo.collections.map((c) => ({value: c.id, label: c.name, icon: <Icon name="folder" size={14} />}))}
+                                    onChange={(v) => setSaveTo({...saveTo, collectionId: v})}
+                                    size="sm"
+                                    ariaLabel="Colección donde guardar"
+                                    title="En qué colección se guarda la petición. Las variables y la autenticación de esa colección pasan a aplicarle."
+                                    className="mb-3 w-full"
+                                />
                                 <label className="mb-1 block text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Nombre</label>
                                 <input
                                     autoFocus
@@ -814,18 +816,16 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
                                     una que todavía no está. */}
                                 {body.mode === 'raw' && (
                                     <>
-                                        <select
+                                        <Select
                                             value={body.rawLang ?? 'json'}
-                                            onChange={(e) => touch(setBody)(new httpclient.Body({...body, rawLang: e.target.value}))}
+                                            options={RAW_LANGS.map((l) => ({value: l.id, label: l.label}))}
+                                            onChange={(v) => touch(setBody)(new httpclient.Body({...body, rawLang: v}))}
+                                            size="sm"
+                                            variant="ghost"
+                                            ariaLabel="Formato del cuerpo"
                                             title="Formato del cuerpo. Elige el resaltado y define el Content-Type que se manda si no escribiste uno a mano en Headers."
-                                            className="rounded bg-surface-container px-1.5 py-0.5 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                                        >
-                                            {RAW_LANGS.map((l) => (
-                                                <option key={l.id} value={l.id}>
-                                                    {l.label}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            className="w-24"
+                                        />
                                         <button
                                             onClick={() => void formatBody()}
                                             disabled={!canFormat || !body.raw}
@@ -1043,16 +1043,19 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
                                         «Auto» negocia con el servidor y es lo correcto salvo que estés depurando algo que se comporta distinto según la versión.
                                     </p>
                                 </div>
-                                <select
+                                <Select
                                     value={settings.httpVersion}
-                                    onChange={(e) => touch(setSettings)(new httpclient.Settings({...settings, httpVersion: e.target.value}))}
-                                    title="Versión del protocolo a usar"
-                                    className="shrink-0 rounded bg-surface-container px-1.5 py-0.5 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                                >
-                                    <option value="auto">Auto</option>
-                                    <option value="1.1">HTTP/1.1</option>
-                                    <option value="2">HTTP/2</option>
-                                </select>
+                                    options={[
+                                        {value: 'auto', label: 'Auto'},
+                                        {value: '1.1', label: 'HTTP/1.1'},
+                                        {value: '2', label: 'HTTP/2'},
+                                    ]}
+                                    onChange={(v) => touch(setSettings)(new httpclient.Settings({...settings, httpVersion: v}))}
+                                    size="sm"
+                                    ariaLabel="Versión de HTTP"
+                                    title="Versión del protocolo a usar. «Auto» negocia con el servidor y es lo correcto salvo que estés depurando algo que se comporta distinto según la versión."
+                                    className="w-32 shrink-0"
+                                />
                             </div>
                             <div className="flex items-center gap-3 py-2">
                                 <div className="min-w-0 flex-1">

@@ -5,6 +5,7 @@ import {
     AgentDraftHTTPTests,
     AgentExplainHTTP,
     AgentGenerateHTTP,
+    HttpImportCurl,
 } from '../../../wailsjs/go/main/App'
 import {httpclient, main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
@@ -46,7 +47,10 @@ export const AI_ACTIONS: {id: AiAction; label: string; icon: string; hint: strin
         id: 'generate',
         label: 'Escribir la petición…',
         icon: 'auto_fix_high',
-        hint: 'Desde una descripción o un cURL pegado',
+        // Se nombra el cURL primero: es de lejos el caso más frecuente —se
+        // copia del navegador con «Copy as cURL»— y ahí ni siquiera hace falta
+        // el agente (ver el importador del panel).
+        hint: 'Pegá un cURL y se importa, o describila',
         needsResponse: false,
     },
     {
@@ -100,6 +104,23 @@ export default function AiPanel({
     const [answer, setAnswer] = useState('')
     const [generated, setGenerated] = useState<main.HTTPGenerated | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const [importing, setImporting] = useState(false)
+
+    // Lo pegado ES un comando cURL, y entonces no hay nada que inventar: se
+    // traduce con el mismo parser que usa la importación de la barra lateral
+    // (httpclient.ParseCurl), sin agente de por medio.
+    //
+    // Mandarlo al modelo era el camino largo para un problema resuelto: tarda
+    // segundos en vez de nada, depende de que haya un CLI agéntico instalado
+    // —quien no tiene ninguno no podía pegar un cURL en toda la app—, gasta
+    // cuota, y puede devolver el comando "mejorado": una cabecera menos, un
+    // parámetro renombrado. Un `curl` copiado del navegador con «Copy as cURL»
+    // hay que reproducirlo EXACTO o deja de reproducir el problema que se está
+    // mirando.
+    //
+    // El agente sigue estando para lo que sí es suyo: escribir la petición
+    // desde una descripción, o partir de un cURL y cambiarle algo.
+    const looksLikeCurl = /^\s*curl\b/i.test(prompt)
 
     const run = useCallback(async () => {
         setRunning(true)
@@ -135,6 +156,27 @@ export default function AiPanel({
             setRunning(false)
         }
     }, [action, itemId, request, response, errorText, currentDocs, prompt])
+
+    const importCurl = useCallback(async () => {
+        setImporting(true)
+        setError(null)
+        try {
+            const req = await HttpImportCurl(prompt)
+            if (req) {
+                onApplyRequest(req as httpclient.Request)
+                onClose()
+            }
+        } catch (e) {
+            // El error del parser dice qué parte no entendió. Se muestra tal
+            // cual y el panel queda abierto con el texto puesto: casi siempre
+            // se arregla borrando una opción que no viaja (`--compressed`) o
+            // pegando de nuevo sin el salto de línea de la consola. Y si no,
+            // el botón del agente sigue ahí.
+            setError(String(e))
+        } finally {
+            setImporting(false)
+        }
+    }, [prompt, onApplyRequest, onClose])
 
     // Las cuatro acciones que no piden nada más arrancan solas: un botón
     // «Ejecutar» que solo repite lo que el usuario ya eligió en el menú es un
@@ -173,19 +215,62 @@ export default function AiPanel({
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && prompt.trim()) void run()
+                            // Con un cURL pegado, Ctrl+Enter importa en vez de
+                            // preguntar: es lo que hace el botón principal, y
+                            // el atajo tiene que hacer lo mismo que el botón
+                            // que está mirando el usuario.
+                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && prompt.trim()) {
+                                if (looksLikeCurl) void importCurl()
+                                else void run()
+                            }
                         }}
-                        placeholder={'Qué tiene que hacer la petición, o pegá un cURL y decí qué cambiarle.\n\nCtrl+Enter para pedirla.'}
-                        rows={4}
-                        className="w-full resize-none rounded border border-outline-variant bg-surface-container-lowest p-2 text-ui-11 leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/40"
+                        placeholder={'Pegá un cURL —se importa tal cual, sin agente— o describí qué tiene que hacer la petición.\n\nCtrl+Enter.'}
+                        rows={6}
+                        // Monoespaciada en cuanto lo pegado es un comando: un
+                        // cURL con seis cabeceras en tipografía de interfaz no
+                        // se puede revisar antes de importarlo.
+                        className={`w-full resize-none rounded border border-outline-variant bg-surface-container-lowest p-2 text-ui-11 leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/40 ${
+                            looksLikeCurl ? 'font-mono' : ''
+                        }`}
                     />
-                    <button
-                        onClick={() => void run()}
-                        disabled={running || !prompt.trim()}
-                        className="mt-2 w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
-                    >
-                        {running ? 'Pensando…' : 'Escribir la petición'}
-                    </button>
+
+                    {looksLikeCurl ? (
+                        <>
+                            <div className="mt-2 flex gap-1.5">
+                                <button
+                                    onClick={() => void importCurl()}
+                                    disabled={importing}
+                                    title="Traduce el comando exactamente como está —método, URL, cabeceras, cuerpo— y lo pone en el editor. No pasa por el agente: es instantáneo, no gasta cuota y no cambia nada de lo que pegaste."
+                                    className="flex flex-1 items-center justify-center gap-1.5 rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
+                                >
+                                    <Icon name="content_paste" size={14} />
+                                    {importing ? 'Importando…' : 'Importar tal cual'}
+                                </button>
+                                <button
+                                    onClick={() => void run()}
+                                    disabled={running}
+                                    title="Mandarle el comando al agente en vez de importarlo. Sirve cuando además querés que le cambie algo: «este cURL pero contra staging y sin el header de traza»."
+                                    className="flex shrink-0 items-center gap-1.5 rounded border border-outline-variant px-3 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
+                                >
+                                    <Icon name="auto_fix_high" size={14} />
+                                    {running ? 'Pensando…' : 'Pedirle un cambio'}
+                                </button>
+                            </div>
+                            <p className="mt-1.5 text-ui-10 leading-relaxed text-on-surface-variant/70">
+                                Detecté un comando cURL. Importarlo lo reproduce <strong>exacto</strong> y no usa el agente; pedile un cambio
+                                solo si querés que además lo modifique.
+                            </p>
+                        </>
+                    ) : (
+                        <button
+                            onClick={() => void run()}
+                            disabled={running || !prompt.trim()}
+                            title="Le describís qué tiene que hacer la petición y el agente la escribe. Devuelve texto: aplicarla al editor es un clic tuyo."
+                            className="mt-2 w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
+                        >
+                            {running ? 'Pensando…' : 'Escribir la petición'}
+                        </button>
+                    )}
                 </div>
             )}
 

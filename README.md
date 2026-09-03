@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.4.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.5.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -21,6 +21,51 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 <p align="center">
   <img src="docs/screenshots/ui-workspace.png" width="900" alt="mini-tools: barra lateral con el menú de módulos arriba (bases, SSH, Git, notas) y el árbol de conexiones en carpetas; editor SQL al centro con pestañas rotuladas por tipo y panel de resultados abajo">
 </p>
+
+---
+
+## Novedades — 2.5.0
+
+**La versión que se saca el cromo de encima.** El editor pasa de dos barras a
+una sola de íconos, la terminal SSH pierde otras dos y gana un pie, el historial
+de consultas se retira porque la consola ya hacía ese trabajo mejor, y el chat
+del agente deja de reiniciarse al cambiar de módulo — que era el bug que se
+llevaba una respuesta a medio escribir.
+
+- **El chat del agente ya no se reinicia al cambiar de módulo.** Pasar de una
+  conexión a una terminal SSH y volver mostraba el chat en blanco: se perdían
+  los turnos, lo que estabas escribiendo y, si el agente estaba respondiendo, la
+  respuesta no volvía nunca. Cada módulo sigue teniendo su propia conversación;
+  lo que cambió es que ahora **siguen vivas** en segundo plano.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#ia-chat)
+- **Una sola barra en el editor, de íconos.** Guardar, Ejecutar, Explain y
+  compañía comparten fila con la conexión, el esquema, el auto-commit y el
+  `DBMS_OUTPUT`: el nombre y el atajo de cada botón viven en su tooltip, y el
+  único que conserva su rótulo es **Ejecutar**. La terminal SSH hizo lo mismo, y
+  a qué servidor está atada —y si sigue conectada— pasó a su pie.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#la-ventana)
+- **La consola de ejecución se lee con colores.** El SQL ejecutado se resalta
+  como en el editor y los errores van en un bloque propio con el código del
+  motor (`ORA-01843`) destacado, más una barra de color por statement para
+  encontrar el que falló desplazándose en vez de leyendo.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#bases-consultas)
+- **Se retiró el historial de consultas**, y con él el registro en disco de cada
+  sentencia ejecutada. La consola dice lo mismo con más contexto; lo que quedaba
+  grabado se borra al actualizar (migración 51 del vault).
+- **Un cURL pegado en el panel de IA se importa, no se le pregunta al agente.**
+  Instantáneo, sin gastar cuota, sin necesitar un CLI agéntico instalado y sin
+  que nadie «mejore» el comando — al lado queda el botón para pedirle un cambio,
+  que es lo que sí es trabajo del agente.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#http-colecciones)
+- **Clic central de la rueda para cerrar una pestaña**, como en VS Code: las del
+  workspace, las de «Resultado N» y las de los archivos abiertos en el editor de
+  Git.
+- **Tema y Configuración se mudaron al pie de la barra lateral**, junto a la
+  ayuda y la versión: la barra donde vivían desaparece en una nota o una
+  terminal, así que para cambiar el tema había que abrir una consulta primero.
+- **Editor de remotos de Git** con la URL a la vista, y la selección de los
+  paneles SFTP arreglada de punta a punta (Ctrl+click, Shift+click y arrastrar
+  una selección de varios).
 
 ---
 
@@ -496,8 +541,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.4.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.4.0/mini-tools-v2.4.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.4.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.4.0/mini-tools-v2.4.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **Verificado en Windows 10 y 11**, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.5.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.5.0/mini-tools-v2.5.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.5.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.5.0/mini-tools-v2.5.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). ⚠️ **Esta versión no se corrió en una Windows real**, ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -590,10 +635,9 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 - **Autocompletado consciente del contexto**: sugiere tablas después de `FROM`/`INSERT INTO`/`UPDATE` y columnas acotadas a las tablas realmente referenciadas después de `SELECT`/`WHERE`/`SET`; resuelve alias y esquema al tipear un punto (`u.` → columnas de `users` si `u` es su alias). Además **propone el alias** de la tabla que acabás de escribir (`FROM clientes ` → `c`, el mismo que usan los JOIN que genera desde las llaves foráneas), **lee la lista del `SELECT`** para que un `ORDER BY` ofrezca los alias que la consulta inventó (`AS total` no existe en ningún catálogo) y las columnas que ya proyecta, y con Ctrl-Espacio **expande el `*`** a la lista de columnas —calificada con el alias de cada tabla cuando hay un JOIN—, que es lo que hace falta justo cuando querés sacar una sola columna.
 - **Procedures y functions con su firma completa**, como en DataGrip: el autocompletado dice qué parámetros pide cada uno, en qué orden, de qué tipo y cuáles son `OUT`, e inserta la llamada con un tab stop por parámetro ya rotulado. Mientras escribís los argumentos, un **tooltip resalta en cuál estás parado** — entiende llamadas anidadas y la notación nombrada `p_total =>` de Oracle. En Oracle se indexan además **los miembros de cada package** (`PKG.PROCEDIMIENTO`), que es donde vive casi todo el código invocable.
 - **Consultas con parámetros**: escribís `:desde` y la app pregunta el valor antes de correr, con el tipo de cada uno (texto, número, booleano o `NULL`) y los valores recordados por pestaña. **Nunca entran al texto del SQL**: viajan aparte y se enlazan como argumentos del driver. Reconoce `:nombre` en los cuatro motores, `$1` en PostgreSQL y `?` en SQLite/SQL Server — y reconoce lo que **no** es un parámetro: el `:=` de PL/SQL, el `::` de los casts, el `:NEW`/`:OLD` de los triggers, y todo lo que esté dentro de un literal, un comentario o un `CREATE PROCEDURE`.
-- **Transacciones explícitas**: auto-commit es un checkbox, Commit/Rollback siempre visibles (deshabilitados cuando no aplican) — nunca hay ambigüedad sobre si un cambio quedó confirmado.
+- **Transacciones explícitas**: auto-commit es un interruptor de un clic en la barra del editor —teñido cuando está activo— y pasar a manual hace aparecer el aviso «Transacción abierta» con Commit y Rollback al lado. Nunca hay ambigüedad sobre si un cambio quedó confirmado, y no hay botones apagados esperando el 1 % de las veces en que sirven.
 - **Ejecución con streaming**: resultados en vivo statement por statement, cancelación en caliente, soporte de scripts multi-statement y bloques PL/SQL de Oracle (con `DBMS_OUTPUT` capturado). Múltiples resultados (uno por statement) en pestañas que se cierran individualmente o todas juntas.
-- **Consola de ejecución** (estilo DataGrip/SQL Developer): pestaña propia junto a Resultados/Historial que registra cada statement de un script con su texto completo y una línea de resultado con hora (`N filas obtenidas en Xms`, `completado en Xms`, o el `ERROR` completo sin recortar) — se activa sola en cualquier script de más de un statement.
-- **Historial de ejecuciones** por conexión: SQL exacto, estado, duración y error completo de cada statement corrido — filtrable, borrable entero o fila por fila.
+- **Consola de ejecución** (estilo DataGrip/SQL Developer): pestaña propia junto a Resultados que registra cada statement de un script con su texto completo y una línea de resultado con hora (`N filas obtenidas en Xms`, `completado en Xms`, o el `ERROR` completo sin recortar) — se activa sola en cualquier script de más de un statement. El SQL se muestra **resaltado con los colores del editor** y lo que falló se ve sin leer: barra roja al costado, el mensaje en un bloque propio con el código del motor (`ORA-01843`) destacado, y la cuenta de errores en la cabecera. Es un log corrido de la sesión, y es el **único** registro de lo ejecutado: la app no guarda tus consultas en disco, y al actualizar borra el historial que hubiera guardado antes.
 - **Grid de resultados** virtualizado para miles de filas sin lag, columnas redimensionables/ordenables (el sort reemite la query con `ORDER BY`, no ordena en cliente). Seleccionar filas habilita copiarlas como CSV, `INSERT` o `UPDATE` listos para pegar — con la tabla y el esquema reales sacados del catálogo, y las fechas convertidas al motor de destino (`TO_DATE`/`TO_TIMESTAMP` en Oracle, `TIMESTAMP '…'` en PostgreSQL, `CAST(… AS datetime2)` en SQL Server).
 - **Grid editable**: doble clic en una celda y la app escribe el `UPDATE` con su `WHERE` por clave primaria. Los cambios quedan pendientes hasta que los mandás (`⌘↵`), con vista previa del SQL exacto, en una transacción donde cada sentencia tiene que afectar exactamente una fila. Solo se habilita cuando la consulta sale de una sola tabla con clave primaria; si no, dice por qué.
 - **Explain y Explain Analyze sobre lo seleccionado**, o sobre la sentencia donde está el cursor — no sobre el archivo entero.
@@ -603,7 +647,7 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 </p>
 
 - **Árbol de conexiones** con buscador que cubre tablas y también procedures/functions/triggers/packages, categoría de tablas colapsable y siempre ordenada alfabéticamente (probado con un schema real de 342 tablas), y export de DDL (objeto puntual o esquema completo) desde el propio árbol.
-- **Configuración centralizada**: backup del vault y "recordar clave maestra" viven en un modal de Configuración propio, abierto desde el ícono de engranaje — no sueltos en la barra de herramientas.
+- **Configuración centralizada**: backup del vault y "recordar clave maestra" viven en un modal de Configuración propio, abierto desde el engranaje del **pie de la barra lateral** —junto al tema, la ayuda y la versión— y no sueltos en la barra de herramientas. Ahí están los controles que valen para toda la app: el pie se ve en todos los módulos, mientras que la barra del editor no se muestra en una nota, una terminal o un repositorio.
 - **EXPLAIN PLAN visual**: árbol de plan de ejecución para los 3 motores, con detección de full table scan resaltada.
 - **Linter SQL básico**: marca `SELECT *` como sugerencia visual (no bloquea) y `UPDATE`/`DELETE` sin `WHERE` con confirmación antes de ejecutar.
 - **Export**: CSV, JSON, XLSX, DDL de tabla/schema completo, y config de conexión (sin password) — más copiar filas como CSV, `INSERT` o `UPDATE` desde el grid.
@@ -670,11 +714,11 @@ Actions crea el GitHub Release, le pega las notas de esa versión sacadas del
 ```bash
 ./scripts/bump-version.sh minor      # o patch/major
 ./scripts/package-all.sh             # genera el .dmg y el .exe
-cp build/bin/mini-tools-v2.4.0.dmg releases/macos/
-cp build/bin/mini-tools-v2.4.0-windows-amd64.exe releases/windows/
+cp build/bin/mini-tools-v2.5.0.dmg releases/macos/
+cp build/bin/mini-tools-v2.5.0-windows-amd64.exe releases/windows/
 # … volcar el CHANGELOG, actualizar los README con los checksums e index.html …
-git add -A && git commit -m "release: v2.4.0"
-git tag v2.4.0 && git push origin main --tags
+git add -A && git commit -m "release: v2.5.0"
+git tag v2.5.0 && git push origin main --tags
 #  ↑ el release se crea solo
 ```
 
@@ -729,11 +773,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.4.0 |
+| Versión | 2.5.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.4.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.4.0/mini-tools-v2.4.0.dmg)** |
-| SHA-256 | `9a6f8bbedd5b2c33c3f3e06c510ec8490a281f29180b3204217533f9919ab452` |
+| Archivo | **[⬇ Descargar mini-tools-v2.5.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.5.0/mini-tools-v2.5.0.dmg)** |
+| SHA-256 | `0a1788c7f70a36448f42cc9a7afcde72be91d030180ef57ea182cdb671cf35a1` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -745,7 +789,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ✅ **La 2.4.0 se corrió en Windows 10 y en Windows 11 reales.** Eso confirma lo que compilar no confirma: que arranca sin instalar el WebView2 Runtime aparte —si faltara, la ventana quedaría en blanco— y que las migraciones del vault corren sobre el `vault.db` que ya estaba en la máquina, incluida la **50** de esta versión, que agrega el tamaño de letra de la interfaz. Lo que solo se ejercita al usar ese camino sigue sin confirmarse: el flujo OAuth 2.0 del módulo HTTP (aviso del Firewall la primera vez), el servidor MCP por named pipe, lanzar los CLIs agénticos y abrir el proyecto en VS Code/Explorador. Detalle en [releases/windows/README.md](releases/windows/README.md).
+> ⚠️ **La 2.5.0 no se corrió en una Windows real** — solo se confirmó que cross-compila limpio desde macOS, que es una afirmación mucho más chica. La 2.4.0 sí se probó en Windows 10 y 11, pero eso no se hereda, y esta versión trae la migración **51** del vault, que corre en el primer arranque después de actualizar. Queda sin confirmar: que arranque sin instalar el WebView2 Runtime aparte, esa migración sobre un `vault.db` real, el flujo OAuth 2.0 del módulo HTTP (aviso del Firewall la primera vez), el servidor MCP por named pipe, lanzar los CLIs agénticos y abrir el proyecto en VS Code/Explorador. Detalle en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -753,10 +797,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.4.0 |
-| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **esta versión se corrió en Windows 10 y 11** |
-| Archivo | **[⬇ Descargar mini-tools-v2.4.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.4.0/mini-tools-v2.4.0-windows-amd64.exe)** |
-| SHA-256 | `24f4fc6bb7224ddb9797e9f9bb575fef06b77b30462c7fff65bd29469bbd040d` |
+| Versión | 2.5.0 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; ⚠️ **esta versión no se corrió en una Windows real** |
+| Archivo | **[⬇ Descargar mini-tools-v2.5.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.5.0/mini-tools-v2.5.0-windows-amd64.exe)** |
+| SHA-256 | `511474dea7f29b95efcb13db9ff2348414b344070f0f4a9dc3393b5c8342e0c0` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

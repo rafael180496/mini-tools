@@ -14,6 +14,16 @@ export interface SelectOption {
     // not Material Symbols — a name-based API could not express those.
     icon?: ReactNode
     disabled?: boolean
+    // Clases de color para el TEXTO de esta opción, en el disparador y en la
+    // fila del menú. Existe para los casos donde el color ES parte del dato y
+    // no decoración: los métodos HTTP, que se leen por color en el árbol, en
+    // el historial y en la barra de la petición.
+    //
+    // Va en el <span> del rótulo y no en el botón: una clase propia del
+    // elemento le gana al color heredado del padre sin depender del orden en
+    // que Tailwind emitió las reglas, que es lo que pasaría si se mezclara con
+    // el `text-on-surface` del disparador.
+    tone?: string
     // Dibuja una línea debajo de esta opción. Sirve para separar una opción
     // que no es par de las demás —"Sin conexión" no es una conexión más, es
     // desvincular— de la lista real, sin inventar un modelo de grupos que
@@ -113,7 +123,9 @@ export default function Select({
                 className={`flex items-center gap-2 rounded-md text-on-surface transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses} ${sizeClasses} ${className ?? ''}`}
             >
                 {current?.icon}
-                <span className={`min-w-0 flex-1 truncate text-left ${current ? '' : 'text-on-surface-variant'}`}>{label}</span>
+                <span className={`min-w-0 flex-1 truncate text-left ${current ? (current.tone ?? '') : 'text-on-surface-variant'}`}>
+                    {label}
+                </span>
                 <Icon name="expand_more" size={18} className={`shrink-0 text-on-surface-variant transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
             {open &&
@@ -163,7 +175,7 @@ export default function Select({
                                         }`}
                                     >
                                         {o.icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center">{o.icon}</span>}
-                                        <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                                        <span className={`min-w-0 flex-1 truncate ${o.tone ?? ''}`}>{o.label}</span>
                                         {o.hint && (
                                             <span className={`shrink-0 truncate text-ui-11 ${selected ? 'text-primary/70' : 'text-on-surface-variant/60'}`}>
                                                 {o.hint}

@@ -12,6 +12,15 @@ import (
 // and .claude/rules/technical.md:
 //   - Additive only: CREATE TABLE IF NOT EXISTS, or ALTER TABLE ... ADD COLUMN
 //     ... DEFAULT .... Never DELETE/DROP/rewrite existing rows.
+//
+//     Excepción, decidida por el usuario y acotada a ella: la versión 51 borra
+//     las filas de `query_history` porque la funcionalidad que las escribía se
+//     retiró, y datos que ya nada lee —el texto de cada consulta que se
+//     ejecutó alguna vez— no pueden quedar en disco sin ninguna pantalla que
+//     los muestre ni los limpie. Es una **retirada de datos muertos**, no una
+//     reescritura de datos vivos: no hay ningún camino de la app que vuelva a
+//     escribir ahí. Cualquier otra migración destructiva necesita la misma
+//     decisión explícita; no alcanza con citar a esta.
 //   - Never touch vault_meta.verifier or vault_meta.verifier_nonce.
 //   - apply must be idempotent-safe within its own transaction — it only
 //     ever runs once per version per database (guarded by applyMigrations),
@@ -1179,6 +1188,52 @@ var migrations = []migration{
 			// por ciento": el frontend lo lee como 100. Así una instalación ya
 			// existente no cambia de aspecto al actualizar.
 			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN ui_font_scale INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
+	{
+		version: 51,
+		desc:    "vacía query_history: el historial de consultas se retiró y nada vuelve a escribir ahí",
+		apply: func(tx *sql.Tx) error {
+			// La solapa «Historial» del panel de consultas se retiró en favor
+			// de la consola de ejecución, y con ella el registro: los tres
+			// executores reciben el HistorySink en nil. Lo que quedaba grabado
+			// de sesiones anteriores —el texto completo de cada consulta que
+			// se ejecutó alguna vez, sin cifrar— se volvía inalcanzable: sin
+			// pantalla que lo muestre y sin botón que lo borre. Dejarlo ahí
+			// sería guardar para siempre datos que nadie pidió guardar.
+			//
+			// **Es la única migración destructiva del proyecto**, y por eso el
+			// comentario largo: ver la excepción documentada arriba.
+			//
+			// La TABLA se conserva. El CREATE TABLE de store.go es la
+			// definición congelada de la versión 1, así que una instalación
+			// nueva la sigue creando; borrarla acá haría que una instalación
+			// nueva y una que actualiza terminaran con esquemas distintos, que
+			// es justo lo que este sistema existe para evitar.
+			//
+			// Se comprueba que exista antes de borrar: un vault.db restaurado
+			// desde un backup viejo, o abierto por una herramienta externa,
+			// no tiene por qué coincidir con lo que este código supone, y una
+			// migración que falla deja la app sin arrancar.
+			var n int
+			if err := tx.QueryRow(
+				`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'query_history'`,
+			).Scan(&n); err != nil {
+				return err
+			}
+			if n == 0 {
+				return nil
+			}
+			// DELETE sin WHERE es la forma de truncar en SQLite (no existe
+			// TRUNCATE), y el motor lo resuelve con su optimización de borrado
+			// completo en vez de fila por fila.
+			//
+			// No hay VACUUM: no puede correr dentro de una transacción, y toda
+			// migración corre en una. El archivo no se achica hasta el próximo
+			// VACUUM, pero las filas dejan de ser legibles y el espacio se
+			// reutiliza — que es lo que se vino a arreglar.
+			_, err := tx.Exec(`DELETE FROM query_history`)
 			return err
 		},
 	},

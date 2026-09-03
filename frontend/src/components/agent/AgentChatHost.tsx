@@ -158,6 +158,11 @@ interface Session {
     agentId: string
     agentLabel: string
     chatId: string
+    // El contexto con el que nació la conversación, guardado EN la sesión y no
+    // leído del módulo activo: todas las sesiones vivas están montadas a la
+    // vez (ver el cuerpo del panel), así que la que está escondida tiene que
+    // seguir hablando de su recurso y no del que se esté mirando.
+    context: WorkContext
     resumeConversationId?: string
     initialSettings?: {model: string; effort: string; mode: string}
 }
@@ -203,16 +208,9 @@ export default function AgentChatHost({
     // explícito. Se prefiere al del módulo activo hasta que el usuario cambie
     // de pestaña, que es cuando el suyo vuelve a mandar.
     const [pinned, setPinned] = useState<WorkContext | null>(null)
-    // La sesión vigente para los manejadores que se registran una sola vez o
-    // que corren fuera del ciclo de render: el id de conversación puede llegar
-    // antes de que React vuelva a renderizar, y una copia vieja lo escribiría
-    // en el chat equivocado (o en ninguno).
-    const sessionRef = useRef<Session | null>(null)
-
     const effective = pinned ?? context
     const key = contextKey(effective)
     const session = sessions[key] ?? null
-    sessionRef.current = session
 
     useEffect(() => {
         ListAgents()
@@ -240,14 +238,15 @@ export default function AgentChatHost({
     )
 
     const startSession = useCallback(
-        (agent: agentsModel.Agent, forKey: string, resume?: vault.AgentChat) => {
+        (agent: agentsModel.Agent, forContext: WorkContext, resume?: vault.AgentChat) => {
             const id = resume?.id ?? `agent-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
             setSessions((prev) => ({
                 ...prev,
-                [forKey]: {
+                [contextKey(forContext)]: {
                     id,
                     agentId: agent.id,
                     agentLabel: agent.label,
+                    context: forContext,
                     // Retomar una conversación reusa SU entrada del historial;
                     // una nueva todavía no tiene, y se crea con el primer
                     // mensaje.
@@ -288,8 +287,8 @@ export default function AgentChatHost({
     // lista, que es la pregunta que corresponde hacer.
     useEffect(() => {
         if (!open || session || !activeAgent) return
-        startSession(activeAgent, key)
-    }, [open, session, activeAgent, startSession, key])
+        startSession(activeAgent, effective)
+    }, [open, session, activeAgent, startSession, effective])
 
     const api = useMemo<AgentChatApi>(
         () => ({
@@ -345,32 +344,43 @@ export default function AgentChatHost({
     // que meter el INSERT adentro dejaría dos filas por conversación. La
     // guarda contra el doble registro es el ref, no el valor del estado, que
     // todavía no se actualizó cuando llega el segundo evento.
-    const creatingChatRef = useRef('')
-    // El alta en curso. El id de conversación del CLI llega apenas contesta, y
-    // guardarlo es un UPDATE sobre la fila que este INSERT está creando: sin
-    // encadenarlo, un UPDATE que gana la carrera no afecta ninguna fila y la
+    //
+    // El alta va indexada POR SESIÓN y no en una variable suelta: con varias
+    // conversaciones montadas a la vez, un solo `creatingChatRef` se pisaría
+    // entre ellas y la segunda quedaría sin fila. Además guarda el INSERT en
+    // curso, porque el id de conversación del CLI llega apenas contesta y
+    // guardarlo es un UPDATE sobre la fila que ese INSERT está creando: sin
+    // encadenarlos, un UPDATE que gana la carrera no afecta ninguna fila y la
     // conversación queda para siempre sin con qué retomarse.
-    const chatCreatedRef = useRef<Promise<unknown>>(Promise.resolve())
+    const chatCreationsRef = useRef<Map<string, Promise<unknown>>>(new Map())
     const onFirstSend = useCallback(
-        (text: string) => {
-            const s = sessionRef.current
-            if (!s || s.chatId || creatingChatRef.current === s.id) return
-            creatingChatRef.current = s.id
+        (s: Session, forKey: string, text: string) => {
+            if (s.chatId || chatCreationsRef.current.has(s.id)) return
             const title = text.trim().split('\n')[0].slice(0, 80)
-            chatCreatedRef.current = CreateAgentChat(
+            chatCreationsRef.current.set(
                 s.id,
-                repoIdOf(effective),
-                s.agentId,
-                title,
-                effective.kind,
-                effective.id,
-            ).catch(() => {})
+                CreateAgentChat(s.id, repoIdOf(s.context), s.agentId, title, s.context.kind, s.context.id).catch(
+                    () => {},
+                ),
+            )
             setSessions((prev) =>
-                prev[key]?.id === s.id ? {...prev, [key]: {...prev[key], chatId: s.id}} : prev,
+                prev[forKey]?.id === s.id ? {...prev, [forKey]: {...prev[forKey], chatId: s.id}} : prev,
             )
         },
-        [effective, key],
+        [],
     )
+
+    // El id de conversación que devolvió el CLI, retenido contra la fila de
+    // ESA sesión. Antes se resolvía contra "la sesión vigente", que con una
+    // sola conversación montada era la misma; con varias vivas, un turno que
+    // contesta mientras el usuario mira otro módulo escribiría el id en el
+    // chat equivocado.
+    const onConversation = useCallback((s: Session, conversationId: string) => {
+        if (!s.chatId && !chatCreationsRef.current.has(s.id)) return
+        void (chatCreationsRef.current.get(s.id) ?? Promise.resolve())
+            .then(() => TouchAgentChat(s.id, conversationId))
+            .catch(() => {})
+    }, [])
 
     const chooseAgent = useCallback(
         (agentId: string) => {
@@ -383,9 +393,9 @@ export default function AgentChatHost({
             // Cambiar de agente abre una conversación nueva EN ESTE contexto:
             // la continuidad la guarda cada CLI en su propio almacenamiento,
             // así que no hay forma honesta de seguir con otro lo que venía uno.
-            startSession(agent, key)
+            startSession(agent, effective)
         },
-        [available, startSession, key],
+        [available, startSession, effective],
     )
 
     const panel = (
@@ -530,7 +540,7 @@ export default function AgentChatHost({
                             label: resourceNames[c.contextId] ?? '',
                         }
                         setPinned(chatContext)
-                        startSession(agent, contextKey(chatContext), c)
+                        startSession(agent, chatContext, c)
                         setTab('chat')
                     }}
                     onRename={(c) => setRenaming(c)}
@@ -545,44 +555,49 @@ export default function AgentChatHost({
 
             {/* `hidden` y no un desmontaje: ver el comentario de `tab`. */}
             <div className={`min-h-0 flex-1 ${tab === 'chat' ? '' : 'hidden'}`}>
-                {session ? (
-                    <AgentChat
-                        key={session.id}
-                        sessionId={session.id}
-                        context={effective}
-                        agentId={session.agentId}
-                        agentLabel={session.agentLabel}
-                        seed={seed}
-                        resumeConversationId={session.resumeConversationId}
-                        initialSettings={session.initialSettings}
-                        working={working}
-                        onInsertText={onInsertText ?? undefined}
-                        onSessionUsage={setSessionUsage}
-                        insertLabel={insertLabel}
-                        onSend={onFirstSend}
-                        onConversation={(conversationId) => {
-                            // Por el ref y no por `session`: el id de
-                            // conversación llega apenas el CLI contesta, que
-                            // puede ser antes de que el render con el chatId
-                            // recién creado haya ocurrido.
-                            //
-                            // El id de la fila del historial ES el de la
-                            // sesión, así que no hace falta esperar ese render:
-                            // alcanza con que la fila exista. Lo que sí se
-                            // espera es el INSERT, que puede seguir en vuelo.
-                            // La versión anterior descartaba el id cuando
-                            // `chatId` todavía estaba vacío, y esa conversación
-                            // quedaba en el historial sin con qué retomarse —
-                            // abrirla empezaba una nueva, en blanco.
-                            const s = sessionRef.current
-                            if (!s) return
-                            if (!s.chatId && creatingChatRef.current !== s.id) return
-                            void chatCreatedRef.current
-                                .then(() => TouchAgentChat(s.id, conversationId))
-                                .catch(() => {})
-                        }}
-                    />
-                ) : (
+                {/* **TODAS las conversaciones vivas quedan montadas; se
+                    esconde con CSS la que no corresponde al módulo activo.**
+                    Antes se montaba solo la del contexto actual, así que
+                    cambiar de una pestaña de base de datos a una terminal SSH
+                    desmontaba el chat: se perdían los turnos, lo que se estaba
+                    escribiendo y —lo peor— la suscripción al stream del CLI,
+                    de modo que un turno en curso seguía corriendo por detrás
+                    sin nadie que recibiera su respuesta. Volver a la pestaña
+                    mostraba un chat en blanco, que se lee como que se canceló.
+
+                    Es el mismo criterio que ya se aplicaba a las solapas de
+                    consumo e historial, extendido a lo que faltaba: un chat no
+                    se desmonta por dejar de mirarlo. */}
+                {Object.entries(sessions).map(([sessionKey, s]) => {
+                    const visible = sessionKey === key
+                    return (
+                        <div key={s.id} className={`h-full min-h-0 ${visible ? '' : 'hidden'}`}>
+                            <AgentChat
+                                sessionId={s.id}
+                                // El contexto de la sesión, no el del módulo
+                                // activo: la conversación es del recurso donde
+                                // nació.
+                                context={s.context}
+                                active={visible}
+                                agentId={s.agentId}
+                                agentLabel={s.agentLabel}
+                                // Lo que se está mirando y el texto con el que
+                                // se abrió el chat son del módulo activo: a una
+                                // conversación escondida no le corresponden.
+                                seed={visible ? seed : null}
+                                working={visible ? working : null}
+                                resumeConversationId={s.resumeConversationId}
+                                initialSettings={s.initialSettings}
+                                onInsertText={visible ? (onInsertText ?? undefined) : undefined}
+                                onSessionUsage={visible ? setSessionUsage : undefined}
+                                insertLabel={insertLabel}
+                                onSend={(text) => onFirstSend(s, sessionKey, text)}
+                                onConversation={(conversationId) => onConversation(s, conversationId)}
+                            />
+                        </div>
+                    )
+                })}
+                {!session && (
                     // Estado vacío honesto: dice CUÁL falta y dónde se
                     // configura, en vez de una caja de texto que no contesta.
                     <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-ui-11 text-on-surface-variant">
@@ -608,8 +623,15 @@ export default function AgentChatHost({
     // El panel arrastrable comparte el ancho con el contenido; el flotante se
     // superpone. Son dos disposiciones y no dos componentes: adentro es
     // exactamente el mismo chat, con la misma conversación.
-    const docked = open && dock !== 'float'
-    const floating = open && dock === 'float'
+    //
+    // **Cerrar el panel lo esconde, no lo desmonta.** El panel contiene los
+    // chats, y desmontarlo era perder los turnos y cortar la suscripción al
+    // stream del CLI de cualquier turno en curso — el mismo problema que
+    // cambiar de módulo, por la otra puerta. Pasa también al entrar a un
+    // repositorio, donde el anfitrión se cierra solo porque ahí el agente lo
+    // tiene el módulo Git. El tooltip del botón de cerrar ya prometía que
+    // "la conversación queda como está"; ahora es cierto.
+    const docked = dock !== 'float'
 
     const onResize = (e: React.MouseEvent) => {
         e.preventDefault()
@@ -650,10 +672,10 @@ export default function AgentChatHost({
             <div className={`flex min-h-0 min-w-0 flex-1 ${dock === 'bottom' ? 'flex-col' : 'flex-row'}`}>
                 {docked && dock === 'left' && (
                     <>
-                        <div className="min-h-0 shrink-0" style={{width: size}}>
+                        <div className="min-h-0 shrink-0" style={{width: size}} hidden={!open}>
                             {panel}
                         </div>
-                        {handle}
+                        {open && handle}
                     </>
                 )}
 
@@ -661,16 +683,16 @@ export default function AgentChatHost({
 
                 {docked && dock === 'bottom' && (
                     <>
-                        {handle}
-                        <div className="min-h-0 shrink-0" style={{height: size}}>
+                        {open && handle}
+                        <div className="min-h-0 shrink-0" style={{height: size}} hidden={!open}>
                             {panel}
                         </div>
                     </>
                 )}
                 {docked && dock === 'right' && (
                     <>
-                        {handle}
-                        <div className="min-h-0 shrink-0" style={{width: size}}>
+                        {open && handle}
+                        <div className="min-h-0 shrink-0" style={{width: size}} hidden={!open}>
                             {panel}
                         </div>
                     </>
@@ -695,8 +717,9 @@ export default function AgentChatHost({
                 />
             )}
 
-            {floating && (
+            {dock === 'float' && (
                 <div
+                    hidden={!open}
                     className="fixed bottom-4 right-4 z-20 flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-lg"
                     style={{width: size, height: '70vh'}}
                 >
@@ -713,7 +736,7 @@ export default function AgentChatHost({
 // Los botones CONTEXTUALES —"analizá este error", "explicá este plan"— llegan
 // con las fases que los necesitan (2 y 5), y todos terminan llamando al mismo
 // useAgentChat().open({prompt}).
-export function AgentChatButton({context}: {context?: WorkContext}) {
+export function AgentChatButton({context, compact}: {context?: WorkContext; compact?: boolean}) {
     const chat = useAgentChat()
     // En la pestaña Git no se dibuja: ese módulo ya tiene el agente adentro,
     // con su solapa "Agentes" y su propio objetivo. Un segundo botón arriba
@@ -726,17 +749,23 @@ export function AgentChatButton({context}: {context?: WorkContext}) {
                 chat.hasAgent
                     ? `Abre el chat con ${chat.activeAgentLabel || 'el agente'} (${
                           navigator.platform.includes('Mac') ? '⌘L' : 'Ctrl+L'
-                      }). Es la misma conversación en todos los módulos: cambiar de pestaña no la reinicia.`
+                      }). Hay una conversación por conexión, servidor o nota: cambiar de módulo cambia de hilo, sin reiniciar ni cortar el que dejás atrás, aunque esté respondiendo.`
                     : 'No hay ningún CLI agéntico instalado. mini-tools usa Claude Code, Codex o Antigravity — instalá uno para habilitar el chat.'
             }
-            className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
+            className={`flex shrink-0 items-center gap-1 rounded text-xs ${
+                // `compact` es el pie de la pestaña (la barra de estado), donde
+                // todo es ícono con tooltip: la palabra «Agente» al lado
+                // duplicaba lo que ya dice el ícono y lo que explica el
+                // tooltip, en la barra más angosta de la ventana.
+                compact ? 'h-6 w-6 justify-center' : 'px-2 py-1'
+            } ${
                 chat.isOpen
                     ? 'bg-primary/20 text-primary'
                     : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
             }`}
         >
-            <Icon name="forum" size={14} />
-            Agente
+            <Icon name="forum" size={compact ? 15 : 14} />
+            {!compact && 'Agente'}
         </button>
     )
 }

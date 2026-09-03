@@ -503,6 +503,11 @@ const fixtures: Record<string, unknown> = {
     // nunca las mismas carpetas (backend/vault/folders_repo.go).
     // Snippets: la misma lista para las terminales SSH y para las locales — es
     // global, lo único atado a la pestaña es a qué sesión se le mandan.
+    // Con qué entorno está marcada la conexión de la terminal. La fila de la
+    // terminal lo dibuja como un punto de color (ver SshTerminalTab): sin este
+    // mock la promesa falla y la captura sale sin la marca, que es justo lo que
+    // hay que poder revisar.
+    ConnectionEnvironment: 'staging',
     ListSshSnippets: [
         {id: 's1', name: 'Ver logs del día', script: 'tail -f /var/log/app/$(date +%F).log', folderId: '', sortOrder: 0},
         {id: 's2', name: 'Espacio en disco', script: 'df -h | sort -k5 -r | head', folderId: '', sortOrder: 1},
@@ -717,8 +722,6 @@ const fixtures: Record<string, unknown> = {
             {tool: 'ssh_get_recent_logs', resource: 'sgc-app-01', denied: false, at: 1786740980},
         ],
     },
-
-    QueryHistory: [],
 
     // --- Explorador SFTP -------------------------------------------------------
     //
@@ -993,6 +996,7 @@ const {default: SettingsDialog} = await import('./components/SettingsDialog')
 const {DEFAULT_EDITOR_APPEARANCE} = await import('./codemirror/editorAppearance')
 const {default: TitleBar} = await import('./components/TitleBar')
 const {default: ResultGrid} = await import('./components/results/ResultGrid')
+const {default: ExecutionConsole} = await import('./components/results/ExecutionConsole')
 const {default: AgentUsagePanel} = await import('./components/agent/AgentUsagePanel')
 const {default: AiAccessPanel} = await import('./components/AiAccessPanel')
 const {default: LocalTerminalTab} = await import('./components/terminal/LocalTerminalTab')
@@ -1109,7 +1113,40 @@ const gridRows: unknown[][] = [
     [2, 'rafael', 'rafael@prueba.com', null, 1, '2026-08-15 00:00:00.000000'],
 ]
 
+// Un script con lo que se ve todos los días en la consola: un DDL que salió
+// bien, un bloque PL/SQL con su DBMS_OUTPUT y una sentencia que falló. Los tres
+// casos que el resaltado tiene que distinguir de un vistazo.
+const CONSOLE_ENTRIES = [
+    {
+        index: 0, total: 3,
+        sqlText: "CREATE OR REPLACE PROCEDURE SGCPRO.PR_REFACT_NUM_FACT_NOTA (\n    p_cod_proceso IN  VARCHAR2,\n    p_num_fact    OUT VARCHAR2,\n    p_retorno     OUT NUMBER\n) AS\n    -- Numeración de la autorización vigente\n    v_seq NUMBER := 0;\nBEGIN\n    SELECT SEQ INTO v_seq FROM CARGVAR WHERE COD_PROCESO = p_cod_proceso;\n    p_retorno := 0;\nEND PR_REFACT_NUM_FACT_NOTA;",
+        status: 'done' as const, hasColumns: false, rowsAffected: 0, durationMs: 421, error: '',
+        dbmsOutput: [], note: '', timestamp: 1788696564000,
+    },
+    {
+        index: 1, total: 3,
+        sqlText: "BEGIN\n    SGCPRO.PR_REFACT_NUM_FACT_NOTA('FACB0003', :p_num_fact, :p_retorno);\nEND;",
+        status: 'done' as const, hasColumns: false, rowsAffected: 0, durationMs: 167, error: '',
+        dbmsOutput: ['NUM_FACT nota: AVISO - se estan agotando los numeros de la autorizacion 4200 (van 981 de 1000)'],
+        note: '', timestamp: 1788696564000,
+    },
+    {
+        index: 2, total: 3,
+        sqlText: "SELECT NIS_RAD, F_EMISION\n  FROM SGCPRO.FUECICLO\n WHERE F_EMISION = '2026-08-27'",
+        status: 'error' as const, hasColumns: false, rowsAffected: 0, durationMs: 38,
+        error: 'ORA-01843: el mes no es valido\nORA-06512: en linea 1',
+        dbmsOutput: [], note: '', timestamp: 1788696565000,
+    },
+]
+
 const views: Record<string, React.ReactNode> = {
+    // La consola de ejecución con sus tres desenlaces: SQL resaltado, salida de
+    // DBMS_OUTPUT y un error con su código del motor destacado.
+    console: (
+        <div className="flex h-full w-full flex-col bg-surface">
+            <ExecutionConsole entries={CONSOLE_ENTRIES} running={false} onClear={() => {}} />
+        </div>
+    ),
     // El módulo de base de datos entero: sidebar de conexiones, editor SQL y
     // resultados. Es el otro producto que vive en esta app.
     workspace: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
@@ -1303,6 +1340,10 @@ const views: Record<string, React.ReactNode> = {
             localShellId=""
             onChangeLocalShellId={() => {}}
             onBackupVault={() => {}}
+            // El aviso del último backup vive acá, no en el toolbar de
+            // bases: se fotografía con un resultado puesto para que se
+            // vea dónde aparece la ruta.
+            backupResult={{ok: true, text: 'Backup guardado en /Users/ana/Documents/mini-tools-2026-09-03.mtbackup'}}
             onRestoreVault={() => {}}
             autoBackupEnabled
             onToggleAutoBackup={() => {}}

@@ -214,29 +214,29 @@ func (a *App) startup(ctx context.Context) {
 		a.autoBackup.Reconfigure(settings.AutoBackupEnabled, settings.AutoBackupIntervalHours, settings.AutoBackupPath)
 	}
 
-	// Shared by both executors — query.EmitFunc/HistorySink and
-	// redisquery.EmitFunc/HistorySink are distinct named types with
-	// identical underlying signatures, so the same closures satisfy both
-	// constructors without duplication (same Wails event name = queryID,
-	// same query_history table for both SQL statements and Redis
-	// commands).
+	// Shared by both executors — query.EmitFunc y redisquery.EmitFunc son
+	// tipos con nombre distinto pero de firma idéntica, así que el mismo
+	// closure satisface los dos constructores sin duplicación (el nombre del
+	// evento de Wails es el queryID en ambos casos).
 	emit := func(event string, data interface{}) {
 		runtime.EventsEmit(ctx, event, data)
 	}
-	history := func(connID, sqlText, status string, rowsAffected, durationMs int64, errMsg string) {
-		// Best-effort: a failure to persist history shouldn't affect the
-		// query result the user already saw.
-		_ = a.vault.RecordQueryHistory(connID, sqlText, status, rowsAffected, durationMs, errMsg)
-	}
-	a.executor = query.NewExecutor(ctx, a.pools, emit, history)
+	// El HistorySink va en nil a propósito: ya no se guarda un historial de
+	// consultas. La consola de ejecución es el log corrido de lo que se
+	// ejecutó —texto completo, duración y error de cada statement— así que
+	// persistir lo mismo en `query_history` era contar dos veces la misma
+	// información, y además dejaba el SQL de toda la sesión escrito en disco
+	// sin que nadie lo mirara. Los tres executores tratan el sink nil como
+	// "no registrar" (ver recordHistory en cada uno).
+	a.executor = query.NewExecutor(ctx, a.pools, emit, nil)
 	// Restaura el tamaño de página elegido por el usuario (migración 22); si el
 	// vault todavía no se puede leer, queda el default del executor.
 	if settings, err := a.vault.GetSettings(); err == nil {
 		a.executor.SetPageSize(settings.QueryPageSize)
 	}
-	a.redisExecutor = redisquery.NewExecutor(ctx, a.redisPools, emit, history)
+	a.redisExecutor = redisquery.NewExecutor(ctx, a.redisPools, emit, nil)
 	a.redisStreams = redisquery.NewStreamManager(ctx, a.redisPools, emit)
-	a.mongoExecutor = mongoquery.NewExecutor(ctx, a.mongoPools, emit, history)
+	a.mongoExecutor = mongoquery.NewExecutor(ctx, a.mongoPools, emit, nil)
 	a.sshSessions = sshconn.NewSessionManager(emit, a.sshPool)
 	a.sftpTransfers = sftpx.NewTransferManager(emit, a.sshPool)
 	// Mismo `emit` que el resto: localterm.EmitFunc es un tipo con nombre
@@ -2417,31 +2417,6 @@ func (a *App) RollbackTransaction(connID string) error {
 // selecting a connection) without assuming its own local state is current.
 func (a *App) HasOpenTransaction(connID string) bool {
 	return a.executor.HasOpenTransaction(connID)
-}
-
-// ListQueryHistory returns the most recent statements run against connID,
-// newest first.
-func (a *App) ListQueryHistory(connID string, limit int) ([]vault.HistoryEntry, error) {
-	if err := a.requireUnlocked(); err != nil {
-		return nil, err
-	}
-	return a.vault.ListQueryHistory(connID, limit)
-}
-
-// ClearQueryHistory deletes connID's recorded execution history.
-func (a *App) ClearQueryHistory(connID string) error {
-	if err := a.requireUnlocked(); err != nil {
-		return err
-	}
-	return a.vault.ClearQueryHistory(connID)
-}
-
-// DeleteQueryHistoryEntry deletes a single history entry by id.
-func (a *App) DeleteQueryHistoryEntry(id string) error {
-	if err := a.requireUnlocked(); err != nil {
-		return err
-	}
-	return a.vault.DeleteQueryHistoryEntry(id)
 }
 
 // BackupVault prompts for a destination and writes a full vault backup

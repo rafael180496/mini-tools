@@ -74,6 +74,12 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 			created_at    INTEGER
 		);
 
+		-- query_history ya no se escribe ni se lee: el historial de consultas
+		-- se retiró en favor de la consola de ejecución, que muestra lo mismo
+		-- con más contexto. La tabla queda igual porque este bloque es la
+		-- definición CONGELADA de la versión 1 del vault y las migraciones son
+		-- aditivas (ver .claude/rules/conventions.md): borrarla haría que una
+		-- instalación nueva y una que actualiza dejaran de coincidir.
 		CREATE TABLE IF NOT EXISTS query_history (
 			id            TEXT PRIMARY KEY,
 			connection_id TEXT NOT NULL,

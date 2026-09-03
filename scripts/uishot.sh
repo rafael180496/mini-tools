@@ -11,6 +11,7 @@
 #   ./scripts/uishot.sh agents 900 1200  # panel de agentes, con tamaño
 #   ./scripts/uishot.sh chat
 #   UISHOT_MODULE=git ./scripts/uishot.sh sidebar   # barra lateral, módulo Git
+#   UISHOT_SECTION=Vault ./scripts/uishot.sh settings  # Configuración, sección Vault
 #   UISHOT_SCALE=150 ./scripts/uishot.sh settings   # con la letra al 150 %
 #
 # UISHOT_MODULE elige qué módulo abre el menú master de la barra lateral
@@ -33,6 +34,10 @@ MODULE="${UISHOT_MODULE:-}"
 # (darwin | windows | linux). Solo lo mira la vista `window`.
 PLATFORM="${UISHOT_PLATFORM:-}"
 SCALE="${UISHOT_SCALE:-}"
+# Sección del modal de Configuración que abre la vista `settings`
+# (Apariencia | Vault | Terminal | IA). uishot.tsx ya la leía de la URL, pero
+# no había forma de pasarla desde acá.
+SECTION="${UISHOT_SECTION:-}"
 PORT="${UISHOT_PORT:-5199}"
 
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -60,7 +65,7 @@ done
     --window-size="$W,$H" \
     --virtual-time-budget=4000 \
     --screenshot="$OUT" \
-    "http://localhost:$PORT/uishot.html?view=$VIEW&module=$MODULE&platform=$PLATFORM&scale=$SCALE" >/dev/null 2>&1
+    "http://localhost:$PORT/uishot.html?view=$VIEW&module=$MODULE&platform=$PLATFORM&scale=$SCALE&section=$SECTION" >/dev/null 2>&1
 
 [ -s "$OUT" ] || { echo "La captura salió vacía. Log de vite:"; tail -5 /tmp/uishot-vite.log; exit 1; }
 echo "$OUT"

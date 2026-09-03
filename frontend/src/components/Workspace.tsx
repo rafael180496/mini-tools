@@ -4,9 +4,9 @@ import DbmsOutputPanel from './results/DbmsOutputPanel'
 import SshConnectionTree from './sidebar/SshConnectionTree'
 import ConfirmDialog from './ConfirmDialog'
 import DDLViewerModal, {type DDLObjectType} from './DDLViewerModal'
+import DbTypeIcon, {dbTypeLabel} from './DbTypeIcon'
 import Icon from './Icon'
 import Select from './Select'
-import Toggle from './Toggle'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import RestoreVaultDialog from './RestoreVaultDialog'
 import ResultGrid from './results/ResultGrid'
@@ -46,12 +46,10 @@ import {
     CancelMongoQuery,
     CancelQuery,
     CancelRedisCommand,
-    ClearQueryHistory,
     CommitTransaction,
     CreateFolder,
     DeleteConnection,
     DeleteFolder,
-    DeleteQueryHistoryEntry,
     DetectQueryParams,
     DisconnectConnection,
     ExecuteMongoQuery,
@@ -78,7 +76,6 @@ import {
     HasOpenTransaction,
     ListConnections,
     ListFolders,
-    ListQueryHistory,
     GitMoveRepoToFolder,
     MoveConnectionToFolder,
     OpenSQLFileDialog,
@@ -128,7 +125,6 @@ import type {Theme} from '../hooks/useTheme'
 const ConnectionDialog = lazy(() => import('./connections/ConnectionDialog'))
 const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
-const HistoryPanel = lazy(() => import('./HistoryPanel'))
 const SettingsDialog = lazy(() => import('./SettingsDialog'))
 const QueryParamsDialog = lazy(() => import('./editor/QueryParamsDialog'))
 
@@ -240,18 +236,6 @@ function Divider() {
     return <div className="mx-0.5 h-4 w-px shrink-0 bg-outline-variant" />
 }
 
-// Kbd es el atajo de teclado que acompaña a la etiqueta de un botón.
-//
-// Iba como texto normal con opacidad, del mismo cuerpo que la etiqueta, así
-// que "Bloque Ctrl+Shift+Enter" se leía como un nombre de cuatro palabras en
-// vez de como una acción y su atajo. Acá va en monoespaciada y más chico —la
-// forma en que se escribe una tecla en cualquier lado— y hereda el color del
-// botón en vez de fijar uno, que es lo que permite usarlo igual dentro del
-// botón relleno y dentro de los planos.
-function Kbd({children}: {children: ReactNode}) {
-    return <kbd className="font-mono text-ui-10 font-normal not-italic tracking-tight opacity-55">{children}</kbd>
-}
-
 // Clases de la barra de acciones del editor.
 //
 // La barra tenía DOS botones rellenos en verde (Ejecutar y Bloque) más uno
@@ -268,6 +252,20 @@ function Kbd({children}: {children: ReactNode}) {
 // palabra que importa ("ejecuta"), sin caja ni borde alrededor.
 const TOOLBAR_BTN = 'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40'
 const TOOLBAR_GHOST = `${TOOLBAR_BTN} text-on-surface-variant hover:bg-surface-variant hover:text-on-surface`
+
+// Botón de la barra de herramientas SIN rótulo: un cuadrado con el ícono
+// centrado, y toda la explicación —incluido el atajo de teclado— en el
+// tooltip.
+//
+// Es la forma por defecto de la barra. Con nueve controles, el rótulo al lado
+// de cada glifo convertía la fila en un renglón de texto que hay que leer
+// entero para encontrar el botón que se busca, y repetía lo que el tooltip ya
+// dice completo. El área de 28px es la misma que la de un botón con texto, así
+// que sacar la palabra no achica el blanco al que hay que apuntar.
+const TOOLBAR_ICON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40'
+// Mismo botón, pero para un INTERRUPTOR encendido (auto-commit, DBMS_OUTPUT):
+// teñido de primary, que es el único estado que hay que poder leer de reojo.
+const TOOLBAR_ICON_ON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary transition-colors hover:bg-primary/25 disabled:opacity-40'
 
 // LIMIT/FETCH syntax differs per engine — spec: "doble click tabla en árbol
 // → SELECT * LIMIT 100 auto". Schema-qualified when the table came from a
@@ -616,7 +614,9 @@ export default function Workspace({
     const [mongoDatabasesByConn, setMongoDatabasesByConn] = useState<Record<string, string[]>>({})
     const [pendingMongoBrowser, setPendingMongoBrowser] = useState<{connId: string; database: string; collection: string; token: number} | null>(null)
     const pendingMongoBrowserTokenRef = useRef(0)
-    const [backupMessage, setBackupMessage] = useState('')
+    // Cómo terminó el último backup del vault. Se muestra DENTRO de
+    // Configuración, que es de donde se pide — ver backupVault.
+    const [backupResult, setBackupResult] = useState<{ok: boolean; text: string} | null>(null)
     const [showBackupPasswordDialog, setShowBackupPasswordDialog] = useState(false)
     const [showRestoreDialog, setShowRestoreDialog] = useState(false)
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
@@ -635,21 +635,22 @@ export default function Workspace({
     // having to switch to the plan first.
     const explainCriticalCount = (explainPlan?.insights ?? []).filter((i) => i.severity === 'critical').length
 
-    // "Resultados"/"Consola"/"Historial" are tabs sharing one bottom panel —
-    // tab-style like EditorTabs above, not docked panels stacked on top of
-    // each other. Starts on "results" (what you want right after running a
-    // single statement); a multi-statement run auto-switches to "console"
-    // instead (see runText) so the per-statement log is what you land on,
-    // matching the DataGrip-style console this mirrors. Switching to
-    // "history" is what triggers its first load.
+    // "Resultados"/"Consola" are tabs sharing one bottom panel — tab-style
+    // like EditorTabs above, not docked panels stacked on top of each other.
+    // Starts on "results" (what you want right after running a single
+    // statement); a multi-statement run auto-switches to "console" instead
+    // (see runText) so the per-statement log is what you land on, matching
+    // the DataGrip-style console this mirrors.
+    //
+    // Ya NO hay solapa "Historial". La consola es un log corrido de todo lo
+    // ejecutado en la sesión —con el texto completo de cada statement, su
+    // duración y su error— así que el historial era la misma información
+    // contada dos veces, y la segunda con menos contexto.
     // "explain" only exists while there is a plan to show: it is opened by
     // the Explain buttons and closed with its own X, like a result tab —
     // rather than a fourth panel docked under everything else, which is
     // what it used to be.
-    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'console' | 'dbms' | 'history' | 'explain'>('results')
-    const [historyEntries, setHistoryEntries] = useState<vault.HistoryEntry[]>([])
-    const [historyLoading, setHistoryLoading] = useState(false)
-    const [historyError, setHistoryError] = useState('')
+    const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'console' | 'dbms' | 'explain'>('results')
 
     const queryIdRef = useRef<string | null>(null)
     // Unsubscribe fn of the run currently streaming, so starting a new run can
@@ -1296,8 +1297,22 @@ export default function Workspace({
     // collects it; the actual file-save dialog only opens after that
     // succeeds (inside BackupVault itself).
     async function backupVault(password: string) {
+        // Un error (clave equivocada, permiso denegado) NO se atrapa acá a
+        // propósito: PasswordConfirmDialog lo muestra adentro suyo y se queda
+        // abierto para reintentar. Atraparlo lo cerraría como si hubiera
+        // salido bien.
         const dest = await BackupVault(password)
-        setBackupMessage(dest ? `Backup guardado en ${dest}` : '')
+        setBackupResult(
+            dest
+                ? {ok: true, text: `Backup guardado en ${dest}`}
+                : {ok: false, text: 'No se guardó ningún backup: se cerró el diálogo sin elegir dónde.'},
+        )
+        // Vuelve a Configuración, que es de donde salió el pedido y donde se
+        // cuenta cómo terminó. El backup se pide desde ahí, se confirma en un
+        // modal aparte y termina en un diálogo del sistema operativo: sin esto,
+        // el usuario queda parado en la pantalla que estaba mirando antes de
+        // todo eso, sin nada que le diga si el archivo se escribió.
+        setShowSettingsDialog(true)
     }
 
     // Fetch (and cache) schema metadata for the sidebar's expanded
@@ -1436,14 +1451,6 @@ export default function Workspace({
         editorMetadata && editorActiveSchema
             ? new db.SchemaMetadata({tables: editorMetadata.tables.filter((t) => t.schema === editorActiveSchema)})
             : editorMetadata
-
-    // Keep the history tab showing the active tab connection's own history
-    // instead of the previous one's, if it's the active bottom tab — only
-    // fetches when it's actually the one showing.
-    useEffect(() => {
-        if (activeBottomTab === 'history') loadHistory()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTabConnection?.id])
 
     // Re-sync the auto-commit UI with the backend's actual state — the
     // reserved connection lives in the Go executor, not in this component,
@@ -1656,10 +1663,6 @@ export default function Workspace({
                     // desuscribirse acá dejaba el botón "Cargar más" colgado en
                     // "Cargando…" porque nadie recibía las filas.
                     if (!event.hasMore) unsubscribe()
-                    // History is recorded backend-side before this terminal
-                    // event is emitted (see executor.go), so the row for
-                    // what just ran is guaranteed to already exist here.
-                    if (activeBottomTab === 'history') loadHistory()
                 }
             })
 
@@ -1746,7 +1749,6 @@ export default function Workspace({
                     setRunning(false)
                     setRunProgress(null)
                     unsubscribe()
-                    if (activeBottomTab === 'history') loadHistory()
                 }
             })
 
@@ -1810,7 +1812,6 @@ export default function Workspace({
                     setRunning(false)
                     setRunProgress(null)
                     unsubscribe()
-                    if (activeBottomTab === 'history') loadHistory()
                 }
             })
 
@@ -1982,18 +1983,7 @@ export default function Workspace({
         }
     }
 
-    function loadHistory() {
-        if (!activeTabConnection) return
-        setHistoryLoading(true)
-        setHistoryError('')
-        ListQueryHistory(activeTabConnection.id, 200)
-            .then(setHistoryEntries)
-            .catch((err) => setHistoryError(String(err)))
-            .finally(() => setHistoryLoading(false))
-    }
-
-    function selectBottomTab(tab: 'results' | 'console' | 'dbms' | 'history' | 'explain') {
-        if (tab === 'history' && activeBottomTab !== 'history') loadHistory()
+    function selectBottomTab(tab: 'results' | 'console' | 'dbms' | 'explain') {
         setActiveBottomTab(tab)
     }
 
@@ -2005,25 +1995,6 @@ export default function Workspace({
         setExplainPlan(null)
         setExplainError('')
         setActiveBottomTab('results')
-    }
-
-    async function clearHistory() {
-        if (!activeTabConnection) return
-        try {
-            await ClearQueryHistory(activeTabConnection.id)
-            setHistoryEntries([])
-        } catch (err) {
-            setHistoryError(String(err))
-        }
-    }
-
-    async function deleteHistoryEntry(id: string) {
-        try {
-            await DeleteQueryHistoryEntry(id)
-            setHistoryEntries((prev) => prev.filter((e) => e.id !== id))
-        } catch (err) {
-            setHistoryError(String(err))
-        }
     }
 
     function cancelQuery() {
@@ -2706,6 +2677,26 @@ export default function Workspace({
     // no estuviera a un hover de distancia.
     const compactToolbar = editorAppearance.toolbar === 'compact'
 
+    // El ÁREA DE CONSULTA: el editor SQL con su barra de acciones y su panel
+    // de resultados abajo. Todo lo demás —un explorador de claves, una
+    // terminal, un repositorio, una nota, una petición HTTP— ocupa la pestaña
+    // entera y no tiene nada que ejecutar.
+    //
+    // Estaba escrito tres veces como la misma cadena de nueve negaciones. Una
+    // sola constante evita que las tres se desincronicen al agregar una clase
+    // de pestaña, que es exactamente el bug que deja media interfaz de una
+    // pestaña nueva mostrándose donde no corresponde.
+    const isQueryArea =
+        !isBrowserTabActive &&
+        !isSshTerminalTabActive &&
+        !isLocalTerminalTabActive &&
+        !isSftpTabActive &&
+        !isGitTabActive &&
+        !isRemoteFileActive &&
+        !isHybridTabActive &&
+        !isNoteTabActive &&
+        !isHttpTabActive
+
     return (
         <div className="flex h-full w-full overflow-hidden bg-background font-sans text-on-background">
             <Sidebar
@@ -2721,6 +2712,9 @@ export default function Workspace({
                 updateAvailable={updateInfo?.available ? updateInfo.latest : null}
                 updateDownloadName={updateInfo?.available ? updateInfo.assetName || null : null}
                 onOpenRepo={openRepo}
+                theme={theme}
+                onToggleTheme={onToggleTheme}
+                onOpenSettings={() => setShowSettingsDialog(true)}
                 bodies={{
                     http: (
                         <HttpTree
@@ -3001,211 +2995,22 @@ export default function Workspace({
                     {/* Lo mismo vale para una terminal local: no tiene conexión
                         que mostrar, y "Sin conexión" sobre la shell de tu propia
                         máquina es una advertencia sobre un problema inexistente. */}
-                    {!isNoteTabActive && !isLocalTerminalTabActive && !isHttpTabActive && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 text-xs text-on-surface-variant">
-                        {isSshTerminalTabActive && activeTabConnection ? (
-                            <span
-                                className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"
-                                title={
-                                    liveSshConnIds.has(activeTabConnection.id)
-                                        ? `Terminal SSH con sesión abierta contra "${activeTabConnection.name}" — lo que escribas acá corre en ese servidor remoto`
-                                        : `Terminal SSH de "${activeTabConnection.name}" sin sesión activa: se cerró o todavía no se conectó, no hay nada escuchando lo que escribas`
-                                }
-                            >
-                                <span
-                                    aria-hidden
-                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                                        liveSshConnIds.has(activeTabConnection.id) ? 'bg-secondary' : 'bg-error'
-                                    }`}
-                                />
-                                <span className="truncate text-on-surface">{activeTabConnection.name}</span>
-                                <span className="truncate">
-                                    {liveSshConnIds.has(activeTabConnection.id) ? 'conectado' : 'desconectado'}
-                                </span>
-                            </span>
-                        ) : (
-                            <span
-                                className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap"
-                                title={
-                                    activeTabConnection
-                                        ? `Esta pestaña ejecuta contra la conexión "${activeTabConnection.name}". Para cambiarla, usá el selector de conexión que está a la izquierda del título de la pestaña.`
-                                        : 'Esta pestaña no está vinculada a ninguna conexión, así que todavía no puede ejecutar nada. Vinculala con el ícono que está a la izquierda del título de la pestaña.'
-                                }
-                            >
-                                <span
-                                    aria-hidden
-                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`}
-                                />
-                                <span className={`truncate ${activeTabConnection ? 'text-on-surface' : ''}`}>
-                                    {activeTabConnection ? activeTabConnection.name : 'Sin conexión'}
-                                </span>
-                            </span>
-                        )}
+                    {/* La FILA DE CONTEXTO que estaba acá —conexión, esquema,
+                        auto-commit, DBMS_OUTPUT y el botón del agente— se mudó
+                        al PIE de la pestaña (buscar «BARRA DE ESTADO» al final
+                        de este archivo). Dos motivos:
 
-                        {isSqlActive && editorMetadataLoading && (
-                            <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title="Leyendo tablas, columnas y rutinas de la conexión para el autocompletado del editor">
-                                <span
-                                    aria-hidden
-                                    className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
-                                />
-                                Cargando esquema…
-                            </span>
-                        )}
-
-                        {isSqlActive && !editorMetadataLoading && indexError && (
-                            <span
-                                className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap text-error"
-                                title={`El editor no pudo leer el catálogo de esta conexión, así que el autocompletado solo ofrece palabras clave y funciones — sin tablas ni columnas. Motivo: ${indexError}. Suele ser permisos sobre el diccionario de datos o una conexión que se cayó; reconectar vuelve a intentarlo.`}
-                            >
-                                <Icon name="warning" size={14} />
-                                Autocompletado sin esquema
-                            </span>
-                        )}
-
-                        {isSqlActive && !editorMetadataLoading && editorSchemas.length > 0 && (
-                            <Select
-                                value={editorActiveSchema ?? ''}
-                                options={editorSchemas.map((s) => ({value: s, label: s, icon: <Icon name="schema" size={14} />}))}
-                                onChange={(v) =>
-                                    activeTabConnection && setActiveSchemaByConn((prev) => ({...prev, [activeTabConnection.id]: v}))
-                                }
-                                size="sm"
-                                variant="ghost"
-                                ariaLabel="Schema activo"
-                                title="Schema activo de esta conexión: acota el autocompletado del editor y es el que se asume cuando escribís una tabla sin prefijo"
-                                className="max-w-44"
-                            />
-                        )}
-
-                        {isMongoActive && activeTabConnection && (
-                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                                <Select
-                                    value={mongoDbByConn[activeTabConnection.id] ?? ''}
-                                    options={(mongoDatabasesByConn[activeTabConnection.id] ?? []).map((d) => ({
-                                        value: d,
-                                        label: d,
-                                        icon: <Icon name="database" size={14} />,
-                                    }))}
-                                    onChange={(v) => selectMongoDatabase(activeTabConnection.id, v)}
-                                    placeholder="elegí una base"
-                                    size="sm"
-                                    variant="ghost"
-                                    ariaLabel="Base de datos activa de MongoDB"
-                                    title="Base de datos a la que apunta `db` en el editor mongosh — cambiarla acá reapunta todos los comandos de esta pestaña"
-                                    className="max-w-44"
-                                />
-                                <button
-                                    onClick={() => setShowMongoWizard(true)}
-                                    disabled={!mongoDbByConn[activeTabConnection.id]}
-                                    title={
-                                        mongoDbByConn[activeTabConnection.id]
-                                            ? 'Asistente de consulta: armá un find() visualmente (colección, condiciones, orden, límite) — se abre en una pestaña de editor y se ejecuta'
-                                            : 'Asistente de consulta: elegí primero una base de datos, el asistente necesita saber sobre qué colecciones armar el find()'
-                                    }
-                                    className="rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-variant disabled:opacity-40"
-                                >
-                                    <Icon name="auto_awesome" size={16} />
-                                </button>
-                            </span>
-                        )}
-
-                        {isSqlActive &&
-                            (txOpen ? (
-                                <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-tertiary-container py-0.5 pl-2.5 pr-1 text-on-tertiary-container">
-                                    <Icon name="warning" size={14} />
-                                    <span className="font-medium">Transacción abierta</span>
-                                    <button
-                                        onClick={() => void commitTransaction()}
-                                        disabled={txBusy}
-                                        title="Confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción actual, y vuelve a auto-commit"
-                                        className="flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-40"
-                                    >
-                                        <Icon name="check_circle" size={14} />
-                                        Commit
-                                    </button>
-                                    <button
-                                        onClick={() => void rollbackTransaction()}
-                                        disabled={txBusy}
-                                        title="Descarta todos los cambios pendientes de la transacción actual, vuelve al estado previo a abrirla y reactiva el auto-commit"
-                                        className="flex items-center gap-1 rounded-full bg-error-container px-2 py-0.5 font-medium text-on-error-container hover:opacity-90 disabled:opacity-40"
-                                    >
-                                        <Icon name="undo" size={14} />
-                                        Rollback
-                                    </button>
-                                </span>
-                            ) : (
-                                <span
-                                    className="inline-flex items-center gap-1.5 whitespace-nowrap"
-                                    title="Auto-commit activo: cada statement se aplica solo apenas termina. Desactivalo para abrir una transacción — a partir de ahí los cambios quedan pendientes hasta que hagas Commit o Rollback"
-                                >
-                                    <Toggle
-                                        checked
-                                        disabled={txBusy}
-                                        onChange={() => void beginTransaction()}
-                                        size="sm"
-                                        ariaLabel="Auto-commit"
-                                    />
-                                    Auto-commit
-                                </span>
-                            ))}
-
-                        {isSqlActive && activeTabConnection?.dbType === 'oracle' && (
-                            <span
-                                className="inline-flex items-center gap-1.5 whitespace-nowrap"
-                                title="Captura el log de DBMS_OUTPUT.PUT_LINE de cada bloque PL/SQL que se ejecute — desactivalo en un script grande con muchos bloques si no necesitás ver la salida, ahorra los round-trips de ENABLE/GET_LINE por bloque"
-                            >
-                                <Toggle
-                                    checked={dbmsOutputEnabled}
-                                    onChange={setDbmsOutputEnabled}
-                                    size="sm"
-                                    ariaLabel="DBMS_OUTPUT"
-                                />
-                                DBMS_OUTPUT
-                            </span>
-                        )}
-
-                        {(statusMessage || backupMessage) && (
-                            <span className="min-w-0 flex-1 truncate" title={statusMessage || backupMessage}>
-                                {statusMessage || backupMessage}
-                            </span>
-                        )}
-
-                        <div className="flex-1" />
-
-                        {/* Punto de entrada GENÉRICO al chat: sirve desde
-                            cualquier módulo justamente porque no sabe de
-                            ninguno. Los botones contextuales ("analizá este
-                            error", "explicá este plan") llegan con las fases
-                            que los necesitan y llaman al mismo host. */}
-                        <AgentChatButton />
-
-                        <button
-                            onClick={() => setShowSettingsDialog(true)}
-                            title={
-                                updateInfo?.available
-                                    ? `Configuración — hay una versión nueva disponible (v${updateInfo.latest}), abrí Configuración para ver el link al repositorio`
-                                    : 'Configuración: backup del vault, backup automático y si recordar la clave maestra en este equipo'
-                            }
-                            className="relative rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-variant"
-                        >
-                            <Icon name="settings" size={18} />
-                            {updateInfo?.available && (
-                                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-                            )}
-                        </button>
-                        <button
-                            onClick={onToggleTheme}
-                            title={
-                                theme === 'dark'
-                                    ? 'Cambiar al tema claro (se guarda y se aplica también en el próximo arranque)'
-                                    : 'Cambiar al tema oscuro (se guarda y se aplica también en el próximo arranque)'
-                            }
-                            className="rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-variant"
-                        >
-                            <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} size={18} />
-                        </button>
-                    </div>
-                    )}
+                        - Es estado, no acción. Arriba competía por atención con
+                          los botones que sí se aprietan seguido (Ejecutar,
+                          Bloque), y empujaba el editor 30px hacia abajo con
+                          información que se consulta de reojo. El pie es donde
+                          un cliente de base de datos de escritorio pone
+                          exactamente esto.
+                        - Dejaba el editor con dos barras arriba y ninguna
+                          abajo, y el pie del panel de resultados ya existía
+                          para decir cómo terminó lo último que corrió. Ahora
+                          las dos cosas viven en la misma barra: contra qué
+                          corre esta pestaña, y qué pasó la última vez. */}
 
                     {/* Actions row: save, then the primary run cluster
                         (visually heavier — bg-secondary-container/
@@ -3230,124 +3035,323 @@ export default function Workspace({
                         context row above stays visible either way —
                         connection status and Settings/theme are still
                         meaningful regardless of which tab kind is active. */}
-                    {editorAppearance.toolbar !== 'hidden' && !isBrowserTabActive && !isSshTerminalTabActive && !isLocalTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && !isHttpTabActive && (
-                    <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-2">
-                        <button
-                            onClick={() => void saveActiveTab()}
-                            title="Guarda el contenido de la pestaña activa en disco (atajo: Ctrl+S). Si es una pestaña nueva, te pide dónde guardarla"
-                            className={TOOLBAR_GHOST}
-                        >
-                            <Icon name="save" size={16} />
-                            {!compactToolbar && (
-                                <>
-                                    Guardar
-                                    <Kbd>Ctrl+S</Kbd>
-                                </>
-                            )}
-                        </button>
+                    {/* UNA SOLA BARRA. A la izquierda lo que se aprieta
+                        —guardar, ejecutar, explicar, refrescar—; a la derecha
+                        contra qué corre esta pestaña —esquema y conexión— y el
+                        chat. Antes eran dos filas apiladas: una de acciones y
+                        otra de contexto, 60px de barras sobre el editor para
+                        decir cosas que caben holgadas en una.
 
-                        <Divider />
+                        **Solo íconos, con la explicación en el tooltip.** El
+                        rótulo al lado de cada glifo repetía lo que el tooltip
+                        ya dice completo, y con nueve botones convertía la barra
+                        en un renglón de texto que hay que leer entero para
+                        encontrar el que se busca. La única que conserva su
+                        nombre es Ejecutar, la acción que se aprieta veinte
+                        veces por sesión y la única rellena de la barra. En modo
+                        «Compacta» (Configuración → Apariencia) tampoco ella lo
+                        lleva.
 
-                        {/* La única acción rellena de la barra. Es la que se
-                            aprieta veinte veces por sesión; el resto son
-                            utilidades que se usan de a ratos. */}
-                        <button
-                            onClick={runSelectionOrLine}
-                            disabled={!activeTabConnection || running}
-                            title="Ejecuta el texto seleccionado, o si no hay selección, la línea donde está el cursor (atajo: Ctrl+Enter)"
-                            className={`${TOOLBAR_BTN} bg-secondary-container font-semibold text-on-secondary-container hover:opacity-90`}
-                        >
-                            <Icon name="play_arrow" size={16} filled />
-                            {!compactToolbar && (
-                                <>
-                                    Ejecutar
-                                    <Kbd>Ctrl+Enter</Kbd>
-                                </>
-                            )}
-                        </button>
-                        <button
-                            onClick={runFullScript}
-                            disabled={!activeTabConnection || running}
-                            title="Ejecuta todos los statements del editor en orden, uno por uno (atajo: Ctrl+Shift+Enter)"
-                            className={TOOLBAR_GHOST}
-                        >
-                            <Icon name="playlist_play" size={16} />
-                            {!compactToolbar && (
-                                <>
-                                    Bloque
-                                    <Kbd>Ctrl+Shift+Enter</Kbd>
-                                </>
-                            )}
-                        </button>
-                        {/* Rojo solo mientras hay algo que cancelar. Un botón
-                            de alarma permanentemente encendido y permanentemente
-                            deshabilitado enseña a ignorar el color justo antes
-                            de que haga falta. */}
-                        <button
-                            onClick={cancelQuery}
-                            disabled={!running}
-                            title={running ? 'Interrumpe la consulta que está corriendo ahora mismo' : 'Deshabilitado: no hay ninguna consulta corriendo para interrumpir'}
-                            className={running ? `${TOOLBAR_BTN} bg-error-container text-on-error-container hover:opacity-90` : TOOLBAR_GHOST}
-                        >
-                            <Icon name="stop" size={16} filled />
-                            {!compactToolbar && 'Cancelar'}
-                        </button>
+                        Lo que NO se pierde al sacar los rótulos: el atajo de
+                        teclado, que ahora lo dice el tooltip de cada botón, y
+                        la advertencia de Explain Analyze, que pasó a ser el
+                        color del ícono (el único tertiary de la barra) porque
+                        una palabra suelta al lado de un glifo dejaba de decir
+                        qué es lo que ejecuta.
+
+                        La barra sigue existiendo aunque no haya nada que
+                        ejecutar —un explorador de Redis, SFTP, un archivo
+                        remoto— con el cluster de acciones apagado: ahí el dato
+                        que importa es a qué servidor está atada la pestaña.
+
+                        **Se va entera** en una nota, una terminal local, una
+                        petición HTTP y un repositorio, que no tienen ni
+                        conexión ni esquema ("Sin conexión" sobre un documento
+                        de texto es una advertencia sobre un problema que no
+                        existe) — y también en una terminal SSH o una híbrida.
+                        Ahí, con las acciones apagadas y el chat mudado a la
+                        fila de la propia terminal, quedaba un renglón de
+                        ventana entero para escribir el nombre del servidor, en
+                        la punta opuesta a donde está el prompt. Ese dato —el
+                        servidor, si sigue conectado y con qué entorno está
+                        marcado— pasó al PIE de la terminal (ver
+                        components/ssh/SshTerminalTab.tsx), que es donde termina
+                        la salida del comando y donde ya está mirando quien se
+                        lo pregunta. */}
+                    {!isNoteTabActive && !isLocalTerminalTabActive && !isHttpTabActive && !isGitTabActive && !isSshTerminalTabActive && !isHybridTabActive && (
+                    <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-1.5">
+                        {editorAppearance.toolbar !== 'hidden' && isQueryArea && (
+                            <>
+                                <button
+                                    onClick={() => void saveActiveTab()}
+                                    title="Guardar la pestaña en disco (Ctrl+S). Si es una pestaña nueva, te pide dónde guardarla"
+                                    className={TOOLBAR_ICON}
+                                >
+                                    <Icon name="save" size={16} />
+                                </button>
+
+                                <Divider />
+
+                                {/* La única acción rellena de la barra, y la
+                                    única con nombre. Es la que se aprieta
+                                    veinte veces por sesión; el resto son
+                                    utilidades que se usan de a ratos. */}
+                                <button
+                                    onClick={runSelectionOrLine}
+                                    disabled={!activeTabConnection || running}
+                                    title="Ejecutar lo seleccionado, o la sentencia donde está el cursor si no hay selección (Ctrl+Enter)"
+                                    className={`${TOOLBAR_BTN} bg-secondary-container font-semibold text-on-secondary-container hover:opacity-90`}
+                                >
+                                    <Icon name="play_arrow" size={16} filled />
+                                    {!compactToolbar && 'Ejecutar'}
+                                </button>
+                                <button
+                                    onClick={runFullScript}
+                                    disabled={!activeTabConnection || running}
+                                    title="Ejecutar TODOS los statements del editor en orden, uno por uno (Ctrl+Shift+Enter)"
+                                    className={TOOLBAR_ICON}
+                                >
+                                    <Icon name="playlist_play" size={16} />
+                                </button>
+                                {/* Rojo solo mientras hay algo que cancelar. Un
+                                    botón de alarma permanentemente encendido y
+                                    permanentemente deshabilitado enseña a
+                                    ignorar el color justo antes de que haga
+                                    falta. */}
+                                <button
+                                    onClick={cancelQuery}
+                                    disabled={!running}
+                                    title={running ? 'Interrumpir la consulta que está corriendo ahora mismo' : 'Cancelar: deshabilitado, no hay ninguna consulta corriendo'}
+                                    className={running ? `${TOOLBAR_BTN} bg-error-container text-on-error-container hover:opacity-90` : TOOLBAR_ICON}
+                                >
+                                    <Icon name="stop" size={16} filled />
+                                </button>
+
+                                {isSqlActive && (
+                                    <>
+                                        <Divider />
+
+                                        <button
+                                            onClick={() => void runExplain(false)}
+                                            disabled={!activeTabConnection}
+                                            title="Explain: muestra el plan de ejecución SIN correr nada. Explica lo que tengas seleccionado; sin selección, la sentencia donde está el cursor — no el archivo entero"
+                                            className={TOOLBAR_ICON}
+                                        >
+                                            <Icon name="query_stats" size={16} />
+                                        </button>
+                                        {/* La diferencia con Explain es que
+                                            este SÍ corre la consulta, y eso hay
+                                            que decirlo. Lo dice el color del
+                                            ícono —el único tertiary de la
+                                            barra— más el tooltip, que abre con
+                                            la advertencia en vez de terminar
+                                            con ella. */}
+                                        <button
+                                            onClick={() => void runExplain(true)}
+                                            disabled={!activeTabConnection}
+                                            title="Explain Analyze — EJECUTA la consulta de verdad contra la base y muestra el plan con filas y tiempos reales. Corre lo seleccionado; sin selección, la sentencia donde está el cursor. Si modifica datos se pide confirmación y la ejecución va en una transacción que se revierte"
+                                            className={`${TOOLBAR_ICON} hover:bg-tertiary/10`}
+                                        >
+                                            <Icon name="analytics" size={16} className="text-tertiary" />
+                                        </button>
+
+                                        <Divider />
+
+                                        <button
+                                            onClick={refreshMetadata}
+                                            disabled={!activeTabConnection}
+                                            title="Refrescar el catálogo: vuelve a leer tablas y columnas de la base (F5) — usalo si acabás de crear o alterar una tabla"
+                                            className={TOOLBAR_ICON}
+                                        >
+                                            <Icon name="refresh" size={16} />
+                                        </button>
+                                    </>
+                                )}
+                            </>
+                        )}
+
+                        {/* Interruptores de la sesión. Van con las acciones
+                            —son un clic, no un dato— pero después del divisor:
+                            no se aprietan en el mismo gesto que Ejecutar. */}
                         {isSqlActive && (
                             <>
                                 <Divider />
+                                {/* Transacción abierta: el único estado de la
+                                    barra que conserva rótulo y fondo teñido. Es
+                                    el que tiene consecuencias pendientes —hay
+                                    cambios sin confirmar— y tiene que
+                                    interrumpir la lectura, no integrarse a
+                                    ella. Commit y Rollback se montan solo en
+                                    ese estado: un botón deshabilitado el 99 %
+                                    del tiempo es ruido, y su ausencia ya dice
+                                    que no hay nada que confirmar. */}
+                                {txOpen ? (
+                                    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-tertiary-container py-0.5 pl-2 pr-1 text-xs text-on-tertiary-container">
+                                        <Icon name="warning" size={13} />
+                                        <span className="font-medium">Transacción abierta</span>
+                                        <button
+                                            onClick={() => void commitTransaction()}
+                                            disabled={txBusy}
+                                            title="Commit: confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción, y vuelve a auto-commit"
+                                            className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container hover:opacity-90 disabled:opacity-40"
+                                        >
+                                            <Icon name="check_circle" size={13} />
+                                        </button>
+                                        <button
+                                            onClick={() => void rollbackTransaction()}
+                                            disabled={txBusy}
+                                            title="Rollback: descarta todos los cambios pendientes de la transacción, vuelve al estado previo a abrirla y reactiva el auto-commit"
+                                            className="flex h-5 w-5 items-center justify-center rounded-full bg-error-container text-on-error-container hover:opacity-90 disabled:opacity-40"
+                                        >
+                                            <Icon name="undo" size={13} />
+                                        </button>
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => void beginTransaction()}
+                                        disabled={txBusy}
+                                        title="Auto-commit activo: cada statement se aplica solo apenas termina. Clic para pasar a transacción manual — a partir de ahí los cambios quedan pendientes hasta que hagas Commit o Rollback"
+                                        className={TOOLBAR_ICON_ON}
+                                    >
+                                        <Icon name="bolt" size={16} filled />
+                                    </button>
+                                )}
+                            </>
+                        )}
 
-                                <button
-                                    onClick={() => void runExplain(false)}
-                                    disabled={!activeTabConnection}
-                                    title="Muestra el plan de ejecución (EXPLAIN) sin correr nada. Explica lo que tengas SELECCIONADO; sin selección, la sentencia donde está el cursor — no el archivo entero."
-                                    className={TOOLBAR_GHOST}
-                                >
-                                    <Icon name="query_stats" size={16} />
-                                    {!compactToolbar && 'Explain'}
-                                </button>
-                                {/* La diferencia con Explain es que este SÍ corre
-                                    la consulta, y eso hay que decirlo. Antes se
-                                    decía con borde, fondo y una pastilla naranja
-                                    —tres señales para un solo dato, en un botón
-                                    que además no es peligroso hasta que se
-                                    aprieta—. Ahora lo dice una palabra: la única
-                                    en tertiary de toda la barra, que es
-                                    exactamente lo que la hace visible. */}
-                                <button
-                                    onClick={() => void runExplain(true)}
-                                    disabled={!activeTabConnection}
-                                    title="Ejecuta el query de verdad contra la base y muestra el plan con filas y tiempos REALES (EXPLAIN ANALYZE). Corre lo que tengas SELECCIONADO; sin selección, la sentencia donde está el cursor. A diferencia de Explain, sí ejecuta: si modifica datos se te pide confirmación y la ejecución se envuelve en una transacción que se revierte."
-                                    className={`${TOOLBAR_GHOST} hover:bg-tertiary/10`}
-                                >
-                                    {/* En compacta la advertencia se muda al
-                                        ícono: la palabra suelta al lado de un
-                                        glifo, sin la etiqueta que la explica,
-                                        deja de decir qué es lo que ejecuta. */}
-                                    <Icon name="analytics" size={16} className={compactToolbar ? 'text-tertiary' : undefined} />
-                                    {!compactToolbar && (
-                                        <>
-                                            Explain Analyze
-                                            <span className="text-ui-10 font-semibold uppercase tracking-wide text-tertiary">ejecuta</span>
-                                        </>
-                                    )}
-                                </button>
+                        {isSqlActive && activeTabConnection?.dbType === 'oracle' && (
+                            <button
+                                onClick={() => setDbmsOutputEnabled(!dbmsOutputEnabled)}
+                                title={
+                                    dbmsOutputEnabled
+                                        ? 'DBMS_OUTPUT activado: se captura el log de DBMS_OUTPUT.PUT_LINE de cada bloque PL/SQL y aparece en su propia solapa. Clic para desactivarlo — en un script con muchos bloques ahorra los round-trips de ENABLE/GET_LINE'
+                                        : 'DBMS_OUTPUT desactivado: los PUT_LINE de tus bloques PL/SQL no se leen ni se muestran. Clic para capturarlos'
+                                }
+                                className={dbmsOutputEnabled ? TOOLBAR_ICON_ON : TOOLBAR_ICON}
+                            >
+                                <Icon name="wysiwyg" size={16} />
+                            </button>
+                        )}
 
+                        {/* Cargando el catálogo: solo el ícono girando. Es un
+                            estado que dura segundos y no vale un rótulo que
+                            corra de lugar a todo lo que tiene al lado. */}
+                        {isSqlActive && editorMetadataLoading && (
+                            <span
+                                className="flex h-7 w-7 shrink-0 items-center justify-center"
+                                title="Leyendo tablas, columnas y rutinas de la conexión para el autocompletado del editor"
+                            >
+                                <span
+                                    aria-hidden
+                                    className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-t-transparent border-primary"
+                                />
+                            </span>
+                        )}
+                        {isSqlActive && !editorMetadataLoading && indexError && (
+                            <span
+                                className="flex h-7 w-7 shrink-0 items-center justify-center text-error"
+                                title={`El editor no pudo leer el catálogo de esta conexión, así que el autocompletado solo ofrece palabras clave y funciones — sin tablas ni columnas. Motivo: ${indexError}. Suele ser permisos sobre el diccionario de datos o una conexión que se cayó; reconectar vuelve a intentarlo.`}
+                            >
+                                <Icon name="warning" size={16} />
+                            </span>
+                        )}
+
+                        <div className="flex-1" />
+
+                        {/* De acá a la derecha, CONTRA QUÉ corre la pestaña.
+                            Conserva texto porque son valores, no estados: el
+                            esquema y el nombre de la conexión son el dato. */}
+                        {isSqlActive && !editorMetadataLoading && editorSchemas.length > 0 && (
+                            <Select
+                                value={editorActiveSchema ?? ''}
+                                options={editorSchemas.map((sch) => ({value: sch, label: sch, icon: <Icon name="schema" size={14} />}))}
+                                onChange={(v) =>
+                                    activeTabConnection && setActiveSchemaByConn((prev) => ({...prev, [activeTabConnection.id]: v}))
+                                }
+                                size="sm"
+                                variant="ghost"
+                                ariaLabel="Schema activo"
+                                title="Schema activo de esta conexión: acota el autocompletado del editor y es el que se asume cuando escribís una tabla sin prefijo"
+                                className="max-w-44"
+                            />
+                        )}
+
+                        {isMongoActive && activeTabConnection && (
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                <Select
+                                    value={mongoDbByConn[activeTabConnection.id] ?? ''}
+                                    options={(mongoDatabasesByConn[activeTabConnection.id] ?? []).map((dbName) => ({
+                                        value: dbName,
+                                        label: dbName,
+                                        icon: <Icon name="database" size={14} />,
+                                    }))}
+                                    onChange={(v) => selectMongoDatabase(activeTabConnection.id, v)}
+                                    placeholder="elegí una base"
+                                    size="sm"
+                                    variant="ghost"
+                                    ariaLabel="Base de datos activa de MongoDB"
+                                    title="Base de datos a la que apunta `db` en el editor mongosh — cambiarla acá reapunta todos los comandos de esta pestaña"
+                                    className="max-w-44"
+                                />
+                                <button
+                                    onClick={() => setShowMongoWizard(true)}
+                                    disabled={!mongoDbByConn[activeTabConnection.id]}
+                                    title={
+                                        mongoDbByConn[activeTabConnection.id]
+                                            ? 'Asistente de consulta: armá un find() visualmente (colección, condiciones, orden, límite) — se abre en una pestaña de editor y se ejecuta'
+                                            : 'Asistente de consulta: elegí primero una base de datos, el asistente necesita saber sobre qué colecciones armar el find()'
+                                    }
+                                    className={TOOLBAR_ICON}
+                                >
+                                    <Icon name="auto_awesome" size={16} />
+                                </button>
+                            </span>
+                        )}
+
+                        {/* El estado de una terminal SSH ya no se dibuja
+                            acá: esta barra no existe en esa pestaña, y su
+                            propio pie lo dice mejor —con la sesión real
+                            delante, no con el registro global de terminales
+                            vivas. */}
+                        <span
+                            className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap px-1 text-xs text-on-surface-variant"
+                            title={
+                                activeTabConnection
+                                    ? `Esta pestaña ejecuta contra la conexión "${activeTabConnection.name}" (${dbTypeLabel(activeTabConnection.dbType)}). Para cambiarla, usá el selector que está a la izquierda del título de la pestaña.`
+                                    : 'Esta pestaña no está vinculada a ninguna conexión, así que todavía no puede ejecutar nada. Vinculala con el ícono que está a la izquierda del título de la pestaña.'
+                            }
+                        >
+                            <span
+                                aria-hidden
+                                className={`h-1.5 w-1.5 shrink-0 rounded-full ${activeTabConnection ? 'bg-secondary' : 'bg-outline'}`}
+                            />
+                            {/* El logo del motor y no un ícono genérico de
+                                base: con ocho pestañas abiertas es lo que dice
+                                de un vistazo si esta corre contra Oracle o
+                                contra la réplica de Postgres. */}
+                            {activeTabConnection && <DbTypeIcon dbType={activeTabConnection.dbType} size={13} />}
+                            <span className={`truncate ${activeTabConnection ? 'text-on-surface' : ''}`}>
+                                {activeTabConnection ? activeTabConnection.name : 'Sin conexión'}
+                            </span>
+                        </span>
+
+                        {/* Punto de entrada GENÉRICO al chat: sirve desde
+                            cualquier módulo justamente porque no sabe de
+                            ninguno. Solo ícono, como el resto de la barra: la
+                            palabra «Agente» la dice el tooltip.
+
+                            **En una terminal SSH no se dibuja acá**: esa
+                            pestaña tiene su propia fila —Historial, Analizar
+                            error, Snippets, Tema— y el chat vive ahí, al lado
+                            de «Analizar error», que le habla al mismo agente.
+                            Dos botones idénticos en la misma pantalla, uno en
+                            cada punta, son dos preguntas sobre cuál hace qué.
+                            Vale también para la pestaña híbrida, que monta esa
+                            misma terminal adentro. */}
+                        {!isSshTerminalTabActive && !isHybridTabActive && (
+                            <>
                                 <Divider />
-
-                                <button
-                                    onClick={refreshMetadata}
-                                    disabled={!activeTabConnection}
-                                    title="Vuelve a leer las tablas y columnas de la base de datos (atajo: F5) — usalo si acabás de crear/alterar una tabla"
-                                    className={TOOLBAR_GHOST}
-                                >
-                                    <Icon name="refresh" size={16} />
-                                    {!compactToolbar && (
-                                        <>
-                                            Refrescar
-                                            <Kbd>F5</Kbd>
-                                        </>
-                                    )}
-                                </button>
+                                <AgentChatButton compact />
                             </>
                         )}
                     </div>
@@ -3658,7 +3662,7 @@ export default function Workspace({
                     hybrid-session tab has nothing to run, so it would sit there
                     permanently empty while stealing height from the terminal
                     and the file drawer, which is exactly the space they need. */}
-                {!isBrowserTabActive && !isSshTerminalTabActive && !isLocalTerminalTabActive && !isSftpTabActive && !isGitTabActive && !isRemoteFileActive && !isHybridTabActive && !isNoteTabActive && !isHttpTabActive && (
+                {isQueryArea && (
                     <>
                         {/* Drag handle: resizes the editor pane against the
                             results grid below. Persisted on mouseup, see
@@ -3734,18 +3738,6 @@ export default function Workspace({
                                     </span>
                                 </button>
                             )}
-                            <button
-                                onClick={() => selectBottomTab('history')}
-                                title="Historial de ejecuciones de la conexión vinculada a esta pestaña — SQL/comando exacto enviado, estado y mensaje de error completo por cada uno"
-                                className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
-                                    activeBottomTab === 'history'
-                                        ? 'bg-surface text-on-surface'
-                                        : 'text-on-surface-variant hover:text-on-surface'
-                                }`}
-                            >
-                                <Icon name="history" size={14} className="opacity-70" />
-                                Historial
-                            </button>
                             {showExplain && (
                                 <button
                                     onClick={() => selectBottomTab('explain')}
@@ -3895,19 +3887,12 @@ export default function Workspace({
                             connName={activeTabConnection?.name}
                         />
                     </Suspense>
-                ) : (
-                    <Suspense fallback={null}>
-                        <HistoryPanel
-                            entries={historyEntries}
-                            loading={historyLoading}
-                            error={historyError}
-                            onRefresh={loadHistory}
-                            onClear={() => void clearHistory()}
-                            onDeleteEntry={(id) => void deleteHistoryEntry(id)}
-                        />
-                    </Suspense>
-                )}
+                ) : null}
 
+                {/* Pie del PANEL DE RESULTADOS: cómo terminó lo último que se
+                    ejecutó. Vive pegado a la grilla que describe —no en la
+                    barra de herramientas de arriba— porque es la respuesta a
+                    lo que se está mirando ahí abajo. */}
                 <div className="flex min-w-0 items-center gap-4 border-t border-outline-variant bg-surface-container-low px-3 py-1 text-xs text-on-surface-variant">
                     {running && (
                         <span className="flex shrink-0 items-center gap-2">
@@ -3951,6 +3936,11 @@ export default function Workspace({
                             )}
                         </>
                     )}
+                    {statusMessage && (
+                        <span className="min-w-0 flex-1 truncate" title={statusMessage}>
+                            {statusMessage}
+                        </span>
+                    )}
                 </div>
                     </>
                 )}
@@ -3987,7 +3977,14 @@ export default function Workspace({
                         onChangeTerminalFontSize={changeTerminalFontSize}
                         localShellId={localShellId}
                         onChangeLocalShellId={changeLocalShell}
+                        backupResult={backupResult}
                         onBackupVault={() => {
+                            // El resultado anterior se limpia al pedir uno
+                            // nuevo: dejar el «guardado en …» de hace un rato
+                            // mientras corre otro backup es peor que no mostrar
+                            // nada, porque no se distingue de la respuesta a
+                            // este pedido.
+                            setBackupResult(null)
                             setShowSettingsDialog(false)
                             setShowBackupPasswordDialog(true)
                         }}
@@ -4007,7 +4004,14 @@ export default function Workspace({
                         onChangeAutoSaveInterval={changeAutoSaveInterval}
                         updateInfo={updateInfo}
                         onOpenRepo={openRepo}
-                        onClose={() => setShowSettingsDialog(false)}
+                        onClose={() => {
+                            setShowSettingsDialog(false)
+                            // Cerrar Configuración da el aviso por leído: al
+                            // volver a abrirla, un «guardado en …» de la semana
+                            // pasada se leería como que el backup se acaba de
+                            // hacer.
+                            setBackupResult(null)
+                        }}
                     />
                 </Suspense>
             )}
