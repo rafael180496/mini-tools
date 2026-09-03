@@ -628,6 +628,7 @@ JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN
     <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> corre <strong>lo seleccionado</strong>, o la sentencia donde está el cursor si no hay selección.</li>
     <li><strong>Bloque</strong> (<kbd>Ctrl+Shift+↵</kbd>) corre un bloque PL/SQL completo, con <code>DBMS_OUTPUT</code> capturado.</li>
     <li>Los resultados llegan <strong>en vivo</strong>, statement por statement, y se pueden <strong>cancelar en caliente</strong>. Un script de varias sentencias abre un resultado por cada una, en pestañas que se cierran de a una o todas juntas.</li>
+    <li><strong>Ejecutar no bloquea nada.</strong> Mientras una consulta larga corre podés ejecutar otra: en otra pestaña, contra otra conexión, o <strong>en la misma pestaña</strong> — la corrida nueva agrega sus «Resultado N» detrás de los anteriores en vez de pisarlos. Resultados, consola y cancelación son de la pestaña que los pidió, y la que está trabajando muestra un anillo girando en su solapa, así que se ve desde cualquier otra.</li>
     <li><strong>Auto-commit</strong> es el ícono del rayo de la barra, encendido cuando está activo: un clic pasa a transacción manual, y ahí aparecen <strong>Commit</strong> y <strong>Rollback</strong> junto al aviso «Transacción abierta». Nunca hay ambigüedad sobre si un cambio quedó confirmado — y no hay botones apagados esperando el 1 % de las veces en que sirven.</li>
   </ul>
 
@@ -660,6 +661,22 @@ JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN
   <div class="note warn"><span class="lbl">Production Guard</span><p>En una conexión marcada como
   producción, un <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code> no se ejecuta sin una
   confirmación que dice cuántas filas va a tocar.</p></div>
+
+  <div class="note"><span class="lbl">Lo único que espera</span><p>Con una <strong>transacción abierta</strong>
+  (auto-commit apagado) las corridas de esa conexión se hacen de a una. No es una limitación de la interfaz:
+  con auto-commit apagado el motor reserva <em>una sola</em> conexión para esa base, así que dos corridas no
+  irían en paralelo — irían intercaladas en la misma sesión y dentro de la misma transacción, donde un Commit
+  desde cualquier lado confirma el trabajo del otro. La barra de estado lo dice y sugiere la salida: esperar,
+  o hacer Commit/Rollback.</p></div>
+
+  <div class="note warn"><span class="lbl">Paginación y conexión compartida</span><p>El motor guarda
+  <strong>un cursor pausado por conexión</strong>. Si un resultado quedó con «Cargar más» y ejecutás otra
+  consulta <em>en esa misma conexión</em>, ese cursor se cierra: el resultado pasa a decir «paginación
+  cerrada» en vez de ofrecer un botón que ya no funciona. Para seguir leyendo, volvé a ejecutar la consulta —
+  o usá otra conexión para lo que ibas a correr mientras tanto.</p></div>
+
+  <p>Cerrar una pestaña que está ejecutando <strong>cancela</strong> su consulta y se lleva su consola y sus
+  resultados: es la única acción que los deja sin ningún lado donde mostrarse.</p>
 </article>
 
 <article class="topic" id="bases-parametros" data-title="Parámetros">

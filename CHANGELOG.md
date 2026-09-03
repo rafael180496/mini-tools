@@ -4,6 +4,22 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **Ejecutar ya no bloquea el resto de la app.** Mientras una consulta corría —diez minutos contra producción, un `init.sql` entero— no se podía ejecutar nada más: ni en otra conexión, ni en otra base, ni en la misma pestaña. Había que esperar. Ahora se ejecuta donde sea, cuando sea: en otra pestaña, en otra conexión, o **en la misma pestaña otra vez sin esperar la anterior**.
+
+  El backend nunca fue el límite: cada corrida ya viajaba con su `queryId` propio, con su cancelación registrada por ese id y su pool por conexión. Quien serializaba era la interfaz — tenía **un solo** juego de estado (un `running`, un `resultSets`, una consola), así que una segunda consulta habría pisado los resultados de la primera y por eso directamente no se dejaba arrancar. Ese estado pasó a ser **por pestaña**, y dentro de cada pestaña, **por corrida**: resultados, consola, `DBMS_OUTPUT`, progreso y cancelación son de quien los pidió, y los eventos caen donde se pidieron aunque estés mirando otra cosa.
+
+  **Dos corridas en la misma pestaña no se pisan**: la segunda numera sus resultados detrás de los de la primera, así que conviven en la tira de «Resultado N» —que ya existía para los scripts de varias sentencias— y la vista salta a la primera pestaña de la corrida nueva, que es lo que acabás de pedir. Cuando hay más de una, la barra de estado lo dice («2 corridas») y **Cancelar** corta todas las de esa pestaña, sin tocar las de las demás.
+
+  **La consola es de cada pestaña** y se va con ella: cerrar la pestaña borra su consola, sus resultados y su estado de ejecución. **Y cancela lo que estuviera corriendo ahí** — es la única acción que deja una consulta sin ningún lado donde mostrarse, y abandonarla seguiría ocupando una conexión del pool y, en Oracle, un proceso del servidor para nada.
+
+  **La pestaña que está trabajando lo dice**: mientras corre, su solapa muestra un anillo girando junto al nombre. Sin eso, irse a otra pestaña dejaba la ejecución invisible — no había forma de saber que seguía viva ni cuándo terminó, que es justamente lo que hace usable poder irse.
+
+- **Se avisa cuándo otra consulta te cerró la paginación.** El motor guarda **un solo cursor pausado por conexión** (`backend/query/paging.go`): arrancar cualquier consulta en una conexión cierra el cursor que esa conexión tuviera pausado. Antes no se notaba, porque no se podía ejecutar nada mientras algo corría; ahora sí, y el síntoma sería un «Cargar más» que falla o —peor— un resultado que parece completo cuando le faltan millones de filas. El resultado afectado dice **«paginación cerrada — otra consulta usó esta conexión»**, y su tooltip explica que hay que volver a ejecutar para seguir leyendo.
+
+- **Con una transacción abierta se sigue esperando, y es lo correcto.** Con auto-commit apagado el executor **reserva una única conexión** para esa conexión de base (`Executor.BeginTransaction` / `txConn`) y todo lo que se le mande pasa por ahí. Dos corridas no serían dos ejecuciones en paralelo: serían dos secuencias de sentencias intercalándose en la **misma sesión** y dentro de la **misma transacción**, donde un Commit desde cualquier lado confirma el trabajo del otro — y encima apoyado en que el driver tolere dos sentencias simultáneas sobre una sola sesión, que no es algo que convenga suponer. La barra de estado lo dice y sugiere la salida (esperar, o Commit/Rollback). Para poder preguntarlo por una conexión que no es la que estás mirando, el estado de transacción pasó a estar indexado por conexión.
+
 ## [2.5.0] - 2026-09-03
 
 ### Agregado

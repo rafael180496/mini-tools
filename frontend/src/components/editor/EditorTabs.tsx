@@ -167,6 +167,8 @@ interface EditorTabsProps {
     // (where they used to sit, duplicated-looking above every tab).
     onOpenFile: () => void
     onOpenRecentFile: (path: string) => void
+    // Ids de las pestañas que están ejecutando algo. Ver `isRunning` arriba.
+    runningIds: Set<string>
 }
 
 interface SortableTabProps {
@@ -177,13 +179,17 @@ interface SortableTabProps {
     onClose: (id: string) => void
     onChangeTabConnection: (tabId: string, connId: string | null) => void
     onChangeTabLanguage: (tabId: string, language: TabLanguage) => void
+    // Esta pestaña tiene algo ejecutándose AHORA. Desde que dos pestañas pueden
+    // correr a la vez, es lo único que dice que la que dejaste atrás sigue
+    // trabajando —y cuándo terminó—, que es lo que hace usable irse.
+    isRunning: boolean
 }
 
 // Un solo tab, arrastrable dentro del SortableContext de abajo. distance:5
 // en el sensor (ver EditorTabs) evita que un simple click (sin
 // desplazamiento) se interprete como intento de drag — así el botón de
 // cerrar y el click de selección siguen funcionando igual que antes.
-function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTabConnection, onChangeTabLanguage}: SortableTabProps) {
+function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTabConnection, onChangeTabLanguage, isRunning}: SortableTabProps) {
     const {attributes, listeners, setNodeRef, transform, transition, isDragging} = useSortable({id: tab.id})
     const [menuOpen, setMenuOpen] = useState(false)
     const [menuPos, setMenuPos] = useState({top: 0, left: 0})
@@ -281,6 +287,13 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     {boundConnection && <DbTypeIcon dbType={boundConnection.dbType} size={12} />}
                     <span className={`font-semibold tracking-wide ${badge.className}`}>{badge.text}</span>
                 </span>
+            )}
+            {isRunning && (
+                <span
+                    aria-hidden
+                    title="Esta pestaña está ejecutando algo ahora mismo"
+                    className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-secondary"
+                />
             )}
             <span className="min-w-0 shrink truncate">
                 {tab.title}
@@ -403,6 +416,7 @@ export default function EditorTabs({
     onChangeTabLanguage,
     onOpenFile,
     onOpenRecentFile,
+    runningIds,
 }: EditorTabsProps) {
     const sensors = useSensors(useSensor(PointerSensor, {activationConstraint: {distance: 5}}))
 
@@ -435,6 +449,7 @@ export default function EditorTabs({
                                 onClose={onClose}
                                 onChangeTabConnection={onChangeTabConnection}
                                 onChangeTabLanguage={onChangeTabLanguage}
+                                isRunning={runningIds.has(t.id)}
                             />
                         ))}
                     </SortableContext>

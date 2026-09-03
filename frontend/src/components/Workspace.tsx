@@ -188,15 +188,69 @@ interface ResultSet {
     // backend/query/paging.go). loadingMore: hay un FetchMore en vuelo.
     hasMore: boolean
     loadingMore: boolean
+    // La corrida que produjo este resultado. Con varias corriendo en la MISMA
+    // pestaña, "Cargar más" tiene que pedirle la página siguiente al cursor de
+    // ESTA, no al de la última que arrancó.
+    queryId: string
+    // El cursor de esta paginación lo cerró otra consulta sobre la misma
+    // conexión. No es un error: es la regla de "un cursor pausado por
+    // conexión" de backend/query/paging.go, y hay que decirlo donde se nota
+    // —el botón "Cargar más" desaparece— en vez de dejar un botón que falla.
+    pagingClosedBy: string
 }
 
-// Ceiling for the running console history — see the setConsoleLog cap.
+// Ceiling for the running console history — see the console log cap.
 const MAX_CONSOLE_ENTRIES = 500
 
-function emptyResultSet(): ResultSet {
+// Todo lo que produce UNA pestaña al ejecutar. Vive en un mapa por id de
+// pestaña (`execByTab`) para que dos consultas puedan correr a la vez sin
+// pisarse — ver el comentario largo de esa declaración.
+// Una corrida viva: su queryId y por dónde va.
+interface LiveRun {
+    queryId: string
+    // Statement progress — "N/M" for a multi-statement script, null before
+    // the first event of the run arrives.
+    progress: {current: number; total: number} | null
+}
+
+interface TabExec {
+    // Las corridas VIVAS de esta pestaña, en orden de arranque. Es una lista y
+    // no un booleano porque una misma pestaña puede tener más de una: mandar
+    // un script largo y, sin esperarlo, mandar otro. Los resultados no se
+    // pisan —cada corrida agrega sus pestañas de resultado detrás de las que
+    // ya había— así que no hay motivo para prohibirlo.
+    liveRuns: LiveRun[]
+    resultSets: ResultSet[]
+    activeResultTab: number
+    // One entry per statement of this tab's runs (see ConsoleLogEntry),
+    // rendered by ExecutionConsole under the "Consola" bottom tab.
+    consoleLog: ConsoleLogEntry[]
+    // Redis's own result stream (backend/redisquery.Event) — a command's
+    // result isn't tabular (columns/rows), so it doesn't fit ResultSet; see
+    // RedisResultView's transcript-style rendering instead of ResultTabs.
+    redisResults: RedisCommandResult[]
+    // MongoDB's own result stream (backend/mongoquery.Event) — documents, not
+    // rows, rendered by MongoResultView. Parallel to redisResults.
+    mongoResults: MongoCommandResult[]
+}
+
+// Una pestaña que todavía no ejecutó nada no tiene entrada en el mapa: se lee
+// esta constante en su lugar. Congelada y compartida a propósito — nadie la
+// muta, todos los cambios pasan por patchExec, que copia.
+const EMPTY_EXEC: TabExec = Object.freeze({
+    liveRuns: [],
+    resultSets: [],
+    activeResultTab: 0,
+    consoleLog: [],
+    redisResults: [],
+    mongoResults: [],
+})
+
+function emptyResultSet(queryId: string): ResultSet {
     return {
         columns: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: [], note: '',
         sourceSql: '', sortColumn: null, sortDirection: null, hasMore: false, loadingMore: false,
+        queryId, pagingClosedBy: '',
     }
 }
 
@@ -527,7 +581,16 @@ export default function Workspace({
     // Executor.BeginTransaction's doc comment for why this can't just be a
     // client-side flag: it mirrors a real reserved connection on the
     // backend).
-    const [txOpen, setTxOpen] = useState(false)
+    // Indexado por conexión y no un booleano suelto: desde que dos pestañas
+    // pueden ejecutar a la vez, hay que poder responder "¿ESTA conexión tiene
+    // una transacción abierta?" para una que no es la que se está mirando —
+    // ver la guarda de runWithParams.
+    const [txOpenByConn, setTxOpenByConn] = useState<Record<string, boolean>>({})
+    const txOpenByConnRef = useRef(txOpenByConn)
+    txOpenByConnRef.current = txOpenByConn
+    const setTxOpenFor = useCallback((connId: string, open: boolean) => {
+        setTxOpenByConn((prev) => (prev[connId] === open ? prev : {...prev, [connId]: open}))
+    }, [])
     const [txBusy, setTxBusy] = useState(false)
     // Toolbar toggle for capturing DBMS_OUTPUT on Oracle PL/SQL blocks
     // (ENABLE + GET_LINE round trips) — on by default, matching the
@@ -539,20 +602,122 @@ export default function Workspace({
     const [tabs, setTabs] = useState<EditorTab[]>(() => [newScratchTab()])
     const [activeTabId, setActiveTabId] = useState(() => tabs[0].id)
 
-    const [running, setRunning] = useState(false)
-    // Statement progress while `running` — "N/M" for a multi-statement
-    // script, null before the first "columns" event of a run arrives.
-    const [runProgress, setRunProgress] = useState<{current: number; total: number} | null>(null)
-    const [resultSets, setResultSets] = useState<ResultSet[]>([])
-    const [activeResultTab, setActiveResultTab] = useState(0)
-    // One entry per statement of the last SQL run (see ConsoleLogEntry) —
-    // built alongside resultSets in runText's EventsOn handler, rendered by
-    // ExecutionConsole under the "Consola" bottom tab.
-    const [consoleLog, setConsoleLog] = useState<ConsoleLogEntry[]>([])
-    // Redis's own result stream (backend/redisquery.Event) — a command's
-    // result isn't tabular (columns/rows), so it doesn't fit ResultSet; see
-    // RedisResultView's transcript-style rendering instead of ResultTabs.
-    const [redisResults, setRedisResults] = useState<RedisCommandResult[]>([])
+    // **Estado de ejecución POR PESTAÑA.** Antes era uno solo para toda la
+    // ventana —un `running`, un `resultSets`, una consola— y de ahí salía el
+    // `if (running) return` que abría cada función de ejecución: con un único
+    // juego de estado, una segunda consulta habría pisado los resultados de la
+    // primera, así que directamente no se dejaba arrancar.
+    //
+    // El costo era el que se siente: una consulta de diez minutos contra
+    // producción dejaba la aplicación entera en modo espera. No se podía
+    // consultar otra base, ni mirar otra cosa en la misma, hasta que terminara
+    // — y el backend nunca fue el límite: cada ejecución ya viaja con su
+    // queryId propio, tiene su cancelación registrada por ese id y su pool por
+    // conexión. El único que serializaba era este componente.
+    //
+    // Ahora cada pestaña tiene lo suyo y el bloqueo es por pestaña: correr en
+    // la misma pestaña mientras corre sigue sin permitirse (ahí sí se pisarían
+    // los resultados), pero abrir otra —de la misma conexión o de otra— y
+    // ejecutar es inmediato.
+    //
+    // La vista sigue leyendo variables con los nombres de siempre (`running`,
+    // `resultSets`, …): son la entrada de la pestaña ACTIVA, derivadas abajo.
+    // Lo que cambió es la escritura, que ahora dice a qué pestaña le escribe.
+    const [execByTab, setExecByTab] = useState<Record<string, TabExec>>({})
+    // Espejo para los manejadores de eventos, que corren fuera del ciclo de
+    // render y necesitan el estado de AHORA para decidir si la pestaña ya
+    // tiene una ejecución en curso.
+    const execByTabRef = useRef(execByTab)
+    execByTabRef.current = execByTab
+
+    const patchExec = useCallback((tabId: string, patch: Partial<TabExec> | ((prev: TabExec) => Partial<TabExec>)) => {
+        if (!tabId) return
+        setExecByTab((prev) => {
+            const cur = prev[tabId] ?? EMPTY_EXEC
+            return {...prev, [tabId]: {...cur, ...(typeof patch === 'function' ? patch(cur) : patch)}}
+        })
+    }, [])
+
+    // Baja de una corrida: corta su suscripción y borra sus metadatos, con lo
+    // que cualquier evento que llegue después se ignora solo.
+    const endRun = useCallback((queryId: string, unsubscribe?: () => void) => {
+        const off = unsubscribe ?? unsubscribeByRunRef.current[queryId]
+        off?.()
+        delete unsubscribeByRunRef.current[queryId]
+        delete runMetaRef.current[queryId]
+    }, [])
+
+    // Arrancar una consulta en una conexión cierra el cursor pausado que esa
+    // conexión tuviera abierto — es la regla de "un cursor pausado por
+    // conexión" de backend/query/paging.go, y vale para TODA la aplicación, no
+    // solo para la pestaña que ejecuta.
+    //
+    // Antes no se notaba porque no se podía ejecutar nada mientras algo corría.
+    // Ahora sí, así que hay que decirlo donde se ve: el resultado que estaba
+    // paginando pierde su "Cargar más" y muestra por qué, en vez de dejar un
+    // botón que al apretarlo falla con un error del backend sobre un cursor
+    // que no existe.
+    const closePagingOf = useCallback(
+        (connId: string, exceptQueryId: string) => {
+            // Las corridas de esta conexión que ya terminaron y solo seguían
+            // suscriptas para paginar. Las que están EN VUELO no se tocan: el
+            // backend cierra los cursores pausados, no las consultas vivas
+            // (ver cursors.closeConn).
+            const live = new Set(
+                Object.values(execByTabRef.current).flatMap((e) => e.liveRuns.map((r) => r.queryId)),
+            )
+            const closed = Object.entries(runMetaRef.current)
+                .filter(([qid, m]) => m.connId === connId && qid !== exceptQueryId && !live.has(qid))
+                .map(([qid]) => qid)
+            if (closed.length === 0) return
+            // Se dan de baja acá y no dentro del actualizador de estado: un
+            // actualizador de React tiene que ser puro —en modo estricto se lo
+            // invoca dos veces— y esto desuscribe.
+            for (const qid of closed) endRun(qid)
+
+            const closedSet = new Set(closed)
+            setExecByTab((prev) => {
+                let anyChange = false
+                const next: Record<string, TabExec> = {}
+                for (const [tabId, e] of Object.entries(prev)) {
+                    let tabChanged = false
+                    const resultSets = e.resultSets.map((r) => {
+                        if (!r.hasMore || !closedSet.has(r.queryId)) return r
+                        tabChanged = true
+                        return {...r, hasMore: false, pagingClosedBy: 'otra consulta usó esta conexión'}
+                    })
+                    next[tabId] = tabChanged ? {...e, resultSets} : e
+                    anyChange = anyChange || tabChanged
+                }
+                return anyChange ? next : prev
+            })
+        },
+        [endRun],
+    )
+
+    // La ejecución de la pestaña que se está viendo. Todo lo que dibuja la
+    // interfaz sale de acá, así que la vista no sabe que hay un mapa detrás:
+    // sigue leyendo `running`, `resultSets`, `consoleLog`… como siempre.
+    const exec = execByTab[activeTabId] ?? EMPTY_EXEC
+    const running = exec.liveRuns.length > 0
+    // El progreso que se muestra es el de la ÚLTIMA corrida que arrancó: con
+    // dos a la vez en la misma pestaña, mezclar dos "N/M" en un renglón no
+    // dice nada. Cuántas hay se ve al lado.
+    const runProgress = exec.liveRuns[exec.liveRuns.length - 1]?.progress ?? null
+    const liveRunCount = exec.liveRuns.length
+    const resultSets = exec.resultSets
+    const activeResultTab = exec.activeResultTab
+    const consoleLog = exec.consoleLog
+    const redisResults = exec.redisResults
+    const mongoResults = exec.mongoResults
+    // Qué pestañas están ejecutando ahora mismo, para que la tira de pestañas
+    // lo muestre. Sin esto, mandar una consulta larga y cambiar de pestaña
+    // dejaba la ejecución invisible: no había forma de saber que seguía viva
+    // ni cuándo terminó, que es justo lo que hace usable poder irse.
+    const runningTabIds = useMemo(
+        () => new Set(Object.entries(execByTab).filter(([, e]) => e.liveRuns.length > 0).map(([id]) => id)),
+        [execByTab],
+    )
     // A FLUSHALL/FLUSHDB in the script needs confirming before it runs (see
     // lintRedisCommands) — a themed ConfirmDialog, never window.confirm()
     // (see .claude/rules/conventions.md), holding the script text until the
@@ -569,6 +734,11 @@ export default function Workspace({
         connection: vault.ConnectionSummary
         sqlText: string
         params: query.Param[]
+        // La pestaña que pidió la consulta. Entre que se abre el diálogo y se
+        // completan los valores el usuario puede irse a otra —ahora que puede,
+        // porque otra pestaña puede estar ejecutando— y los resultados tienen
+        // que volver a donde se pidieron.
+        tabId: string
     } | null>(null)
     // Last values entered, per editor tab, so re-running the same
     // parameterised query does not mean retyping them. A ref rather than
@@ -592,9 +762,6 @@ export default function Workspace({
     // already the active one).
     const [pendingBrowserKey, setPendingBrowserKey] = useState<{connId: string; key: string; token: number} | null>(null)
     const pendingBrowserKeyTokenRef = useRef(0)
-    // MongoDB's own result stream (backend/mongoquery.Event) — documents, not
-    // rows, rendered by MongoResultView. Parallel to redisResults above.
-    const [mongoResults, setMongoResults] = useState<MongoCommandResult[]>([])
     // A destructive Mongo command (deleteMany/updateMany with {} filter, drop)
     // needs confirming before it runs (lintMongoCommands) — same themed
     // ConfirmDialog pattern as pendingRedisCommandRun.
@@ -652,15 +819,23 @@ export default function Workspace({
     // what it used to be.
     const [activeBottomTab, setActiveBottomTab] = useState<'results' | 'console' | 'dbms' | 'explain'>('results')
 
-    const queryIdRef = useRef<string | null>(null)
-    // Unsubscribe fn of the run currently streaming, so starting a new run can
-    // tear the old one down. Without this a superseded run's handler stays
-    // registered and keeps appending ITS rows into the result state the new run
-    // just cleared — the "me muestra el resultado del SQL anterior" bug, which
-    // looked intermittent because it only shows when the old run is still
-    // streaming (or its terminal event is still in flight) as the new one
-    // starts. Every run function below sets it.
-    const unsubscribeRef = useRef<(() => void) | null>(null)
+    // Metadatos de cada corrida EN VUELO, por queryId: a qué pestaña le
+    // pertenece y en qué índice de `resultSets` empiezan sus resultados.
+    //
+    // Es lo que reemplaza al viejo "queryId vigente": el manejador de eventos
+    // busca acá antes de tocar nada, así que un evento de una corrida que ya
+    // se dio de baja —terminó, se canceló, se cerró la pestaña— no escribe
+    // sobre nada. Y el `base` es lo que permite que dos corridas de la MISMA
+    // pestaña no se pisen: la segunda numera sus resultados detrás de los de
+    // la primera en vez de arrancar de cero.
+    //
+    // Sigue vivo después del último evento mientras quede paginación abierta:
+    // las páginas de "Cargar más" llegan por el mismo queryId.
+    const runMetaRef = useRef<Record<string, {tabId: string; base: number; connId: string}>>({})
+    // Cómo desuscribirse de cada corrida en vuelo, por queryId. Va por corrida
+    // y no por pestaña porque una pestaña puede tener más de una viva, y
+    // cortar "la de la pestaña" mataría la que no era.
+    const unsubscribeByRunRef = useRef<Record<string, () => void>>({})
     const editorRef = useRef<EditorView | null>(null)
     // Cambió la privacidad de una nota, desde donde sea: el candado del árbol
     // tiene que reflejarlo YA. Un control de privacidad que muestra el estado
@@ -688,6 +863,9 @@ export default function Workspace({
     // while the app was closed) — both cases resolve to the same "unbound"
     // state with no special-casing needed.
     const activeTabConnection = activeTabData?.connId ? connections.find((c) => c.id === activeTabData.connId) ?? null : null
+    // Auto-commit off para la conexión que se está mirando. La vista lo lee con
+    // el nombre de siempre; el estado real vive por conexión (txOpenByConn).
+    const txOpen = activeTabConnection ? !!txOpenByConn[activeTabConnection.id] : false
 
     // "Esta pestaña corre SQL": una conexión de base de datos relacional, no
     // SSH, Redis ni MongoDB. Se calcula acá arriba —y no junto al resto de los
@@ -1456,21 +1634,19 @@ export default function Workspace({
     // reserved connection lives in the Go executor, not in this component,
     // so trust it rather than assuming local state survived a reconnect.
     useEffect(() => {
-        if (!activeTabConnection) {
-            setTxOpen(false)
-            return
-        }
-        HasOpenTransaction(activeTabConnection.id)
-            .then(setTxOpen)
-            .catch(() => setTxOpen(false))
-    }, [activeTabConnection?.id])
+        const connId = activeTabConnection?.id
+        if (!connId) return
+        HasOpenTransaction(connId)
+            .then((open) => setTxOpenFor(connId, open))
+            .catch(() => setTxOpenFor(connId, false))
+    }, [activeTabConnection?.id, setTxOpenFor])
 
     async function beginTransaction() {
         if (!activeTabConnection) return
         setTxBusy(true)
         try {
             await BeginTransaction(activeTabConnection.id)
-            setTxOpen(true)
+            setTxOpenFor(activeTabConnection.id, true)
             setStatusMessage('Transacción abierta — auto-commit desactivado')
         } catch (err) {
             setStatusMessage(String(err))
@@ -1484,7 +1660,7 @@ export default function Workspace({
         setTxBusy(true)
         try {
             await CommitTransaction(activeTabConnection.id)
-            setTxOpen(false)
+            setTxOpenFor(activeTabConnection.id, false)
             setStatusMessage('Commit hecho — auto-commit activado')
         } catch (err) {
             setStatusMessage(String(err))
@@ -1498,7 +1674,7 @@ export default function Workspace({
         setTxBusy(true)
         try {
             await RollbackTransaction(activeTabConnection.id)
-            setTxOpen(false)
+            setTxOpenFor(activeTabConnection.id, false)
             setStatusMessage('Rollback hecho — auto-commit activado')
         } catch (err) {
             setStatusMessage(String(err))
@@ -1530,19 +1706,72 @@ export default function Workspace({
     // values are already decided. runText below is what callers use — it
     // asks for them first when the statement declares any.
     const runWithParams = useCallback(
-        (connection: vault.ConnectionSummary, sqlText: string, params: query.ParamValue[]) => {
-            if (running || !sqlText.trim()) return
+        // `tabId` es la pestaña DUEÑA de esta ejecución, y se fija acá y no se
+        // vuelve a mirar: si el usuario se va a otra pestaña mientras corre
+        // —que es justamente lo que ahora se puede hacer— los resultados
+        // tienen que seguir cayendo donde se pidieron. Por defecto es la
+        // pestaña activa; los dos llamadores que crean una pestaña y ejecutan
+        // en el mismo tick pasan la suya a mano, porque en ese momento
+        // `activeTabIdRef` todavía apunta a la anterior.
+        (connection: vault.ConnectionSummary, sqlText: string, params: query.ParamValue[], tabId?: string) => {
+            const runTab = tabId ?? activeTabIdRef.current
+            if (!runTab || !sqlText.trim()) return
 
-            // Drop any subscription still live from a previous run before
-            // claiming the state — see unsubscribeRef.
-            unsubscribeRef.current?.()
+            // **Con una transacción abierta no hay paralelo posible, ni
+            // siquiera en la misma pestaña.** Con auto-commit apagado el
+            // executor RESERVA una única `*sql.Conn` para ese connId y TODO lo
+            // que se mande a esa conexión pasa por ahí (ver
+            // Executor.BeginTransaction y txConn). Dos corridas no serían dos
+            // ejecuciones en paralelo: serían dos secuencias de statements
+            // intercalándose en la MISMA sesión y dentro de la MISMA
+            // transacción, donde un Commit desde cualquier lado confirma el
+            // trabajo del otro. Eso no es concurrencia, es un accidente
+            // esperando — y encima apoyado en que el driver tolere dos
+            // sentencias simultáneas sobre una sola sesión, que no es algo que
+            // convenga suponer.
+            //
+            // Con auto-commit puesto —el caso normal— cada corrida saca su
+            // propia conexión del pool y no hay nada que serializar.
+            if (txOpenByConnRef.current[connection.id]) {
+                const busySameConn = Object.entries(execByTabRef.current).some(
+                    ([tid, e]) => e.liveRuns.length > 0 && tabsRef.current.find((t) => t.id === tid)?.connId === connection.id,
+                )
+                if (busySameConn) {
+                    setStatusMessage(
+                        `"${connection.name}" tiene una transacción abierta y ya está ejecutando: las dos corridas compartirían esa transacción. Esperá a que termine, o hacé Commit/Rollback.`,
+                    )
+                    return
+                }
+            }
 
             const queryId = newQueryId()
-            queryIdRef.current = queryId
-            setRunning(true)
-            setRunProgress(null)
-            setResultSets([])
-            setActiveResultTab(0)
+            // Dónde arrancan los resultados de ESTA corrida. Si la pestaña ya
+            // tiene otra viva, se numeran detrás de lo que hay —así las dos
+            // conviven en la tira de "Resultado N" en vez de pisarse—; si está
+            // libre, la corrida nueva reemplaza lo anterior, que es lo que uno
+            // espera al volver a ejecutar.
+            const prevExec = execByTabRef.current[runTab] ?? EMPTY_EXEC
+            const appending = prevExec.liveRuns.length > 0
+            const base = appending ? prevExec.resultSets.length : 0
+            runMetaRef.current[queryId] = {tabId: runTab, base, connId: connection.id}
+
+            // Empezar una consulta en una conexión CIERRA el cursor pausado que
+            // esa conexión tuviera abierto (regla de "un cursor pausado por
+            // conexión", backend/query/paging.go). Si ese cursor era el de otro
+            // resultado que estaba mostrando "Cargar más", ese botón ya no
+            // sirve: se marca acá en vez de dejarlo fallar cuando lo aprieten.
+            closePagingOf(connection.id, queryId)
+
+            patchExec(runTab, (cur) => ({
+                liveRuns: [...cur.liveRuns, {queryId, progress: null}],
+                resultSets: appending ? cur.resultSets : [],
+                // Se salta a la primera pestaña de resultado de la corrida
+                // nueva: acabás de pedirla, es lo que querés ver. Queda un
+                // instante apuntando a una pestaña que todavía no existe —
+                // hasta el primer evento— y eso es correcto: dice "esto recién
+                // arranca" en vez de dejarte mirando el resultado anterior.
+                activeResultTab: appending ? base : 0,
+            }))
 
             // Per-run scratch state, captured by this closure (a fresh Set/
             // flag every time runText is called, never shared across runs).
@@ -1555,27 +1784,43 @@ export default function Workspace({
             let switchedToConsole = false
 
             const unsubscribe = EventsOn(queryId, (event: QueryEvent) => {
-                // Second line of defence behind the teardown above: a late
-                // event from a superseded run must never touch the current
-                // run's state.
-                if (queryIdRef.current !== queryId) return
+                // Una corrida dada de baja —terminó sin paginación, se
+                // canceló, se cerró su pestaña— ya no tiene dónde escribir.
+                if (!runMetaRef.current[queryId]) return
+                // Índice REAL de este statement dentro de la pestaña: los
+                // resultados de esta corrida arrancan en `base` (ver arriba).
+                const at = base + event.statementIndex
 
-                setRunProgress({current: event.statementIndex + 1, total: event.totalStatements})
+                patchExec(runTab, (cur) => ({
+                    liveRuns: cur.liveRuns.map((r) =>
+                        r.queryId === queryId
+                            ? {...r, progress: {current: event.statementIndex + 1, total: event.totalStatements}}
+                            : r,
+                    ),
+                }))
 
                 // A multi-statement script lands on "Consola" instead of
                 // "Resultados" — see activeBottomTab's doc comment. Decided
                 // once, off the very first event of this run.
+                //
+                // Solo si esta ejecución es la que se está MIRANDO: cuál de las
+                // solapas de abajo está abierta es de la ventana, no de la
+                // pestaña, y un script que arrancó en otra no puede cambiarle
+                // la vista a quien está leyendo una grilla acá.
                 if (!switchedToConsole) {
                     switchedToConsole = true
-                    if (event.totalStatements > 1) setActiveBottomTab('console')
+                    if (event.totalStatements > 1 && activeTabIdRef.current === runTab) setActiveBottomTab('console')
                 }
 
-                setResultSets((prev) => {
+                // `state` y no `cur`: adentro de este reductor `cur` ya es el
+                // resultset del statement que llegó.
+                patchExec(runTab, (state) => {
+                    const prev = state.resultSets
                     const next = [...prev]
-                    while (next.length <= event.statementIndex) {
-                        next.push(emptyResultSet())
+                    while (next.length <= at) {
+                        next.push(emptyResultSet(queryId))
                     }
-                    const cur = {...next[event.statementIndex]}
+                    const cur = {...next[at]}
 
                     switch (event.type) {
                         case 'columns':
@@ -1615,8 +1860,8 @@ export default function Workspace({
                             break
                     }
 
-                    next[event.statementIndex] = cur
-                    return next
+                    next[at] = cur
+                    return {resultSets: next}
                 })
 
                 if (event.type === 'page' || event.type === 'done' || event.type === 'error' || event.type === 'cancelled') {
@@ -1642,41 +1887,43 @@ export default function Workspace({
                     // running thousands of statements would otherwise grow
                     // without bound. Keeps the most recent entries, like any
                     // output pane; "Limpiar consola" empties it on demand.
-                    setConsoleLog((prev) => {
-                        const next = [...prev, newEntry]
-                        return next.length > MAX_CONSOLE_ENTRIES ? next.slice(-MAX_CONSOLE_ENTRIES) : next
+                    patchExec(runTab, (cur) => {
+                        const next = [...cur.consoleLog, newEntry]
+                        return {consoleLog: next.length > MAX_CONSOLE_ENTRIES ? next.slice(-MAX_CONSOLE_ENTRIES) : next}
                     })
                 }
 
                 // La última página cierra la suscripción que se mantuvo viva
                 // para paginar (ver el `if (!event.hasMore)` de abajo).
-                if (event.type === 'page' && !event.hasMore) unsubscribe()
+                if (event.type === 'page' && !event.hasMore) endRun(queryId, unsubscribe)
 
                 if (
                     event.type === 'cancelled' ||
                     ((event.type === 'done' || event.type === 'error') && event.statementIndex === event.totalStatements - 1)
                 ) {
-                    setRunning(false)
-                    setRunProgress(null)
-                    // Solo se corta la suscripción si NO quedan páginas: las
-                    // que entrega FetchMore llegan por este mismo queryId, y
-                    // desuscribirse acá dejaba el botón "Cargar más" colgado en
-                    // "Cargando…" porque nadie recibía las filas.
-                    if (!event.hasMore) unsubscribe()
+                    // La corrida deja de estar viva acá, pero su suscripción
+                    // puede seguir: las páginas que entrega FetchMore llegan
+                    // por este mismo queryId, y cortarla dejaba el botón
+                    // "Cargar más" colgado en "Cargando…" porque nadie recibía
+                    // las filas.
+                    patchExec(runTab, (cur) => ({liveRuns: cur.liveRuns.filter((r) => r.queryId !== queryId)}))
+                    if (!event.hasMore) endRun(queryId, unsubscribe)
                 }
             })
 
-            unsubscribeRef.current = unsubscribe
+            unsubscribeByRunRef.current[queryId] = unsubscribe
 
             ExecuteQuery(connection.id, queryId, sqlText, dbmsOutputEnabled, params).catch((err) => {
-                if (queryIdRef.current !== queryId) return
-                setResultSets([{...emptyResultSet(), status: 'error', error: String(err)}])
-                setRunning(false)
-                setRunProgress(null)
-                unsubscribe()
+                if (!runMetaRef.current[queryId]) return
+                patchExec(runTab, (cur) => {
+                    const next = [...cur.resultSets]
+                    next[base] = {...emptyResultSet(queryId), status: 'error', error: String(err)}
+                    return {resultSets: next, liveRuns: cur.liveRuns.filter((r) => r.queryId !== queryId)}
+                })
+                endRun(queryId, unsubscribe)
             })
         },
-        [running, dbmsOutputEnabled, activeBottomTab],
+        [dbmsOutputEnabled, patchExec],
     )
 
     // runText is what every "run this SQL" path calls. It asks Go whether
@@ -1685,8 +1932,9 @@ export default function Workspace({
     // paramPrompt's onRun. With no placeholders it is the plain run it
     // always was, and costs one extra (local, in-process) call.
     const runText = useCallback(
-        (connection: vault.ConnectionSummary, sqlText: string) => {
-            if (running || !sqlText.trim()) return
+        (connection: vault.ConnectionSummary, sqlText: string, tabId?: string) => {
+            const runTab = tabId ?? activeTabIdRef.current
+            if (!runTab || !sqlText.trim()) return
             void (async () => {
                 let params: query.Param[] = []
                 try {
@@ -1698,13 +1946,16 @@ export default function Workspace({
                     params = []
                 }
                 if (params.length > 0) {
-                    setParamPrompt({connection, sqlText, params})
+                    // La pestaña viaja con el pedido: entre que se abre el
+                    // diálogo y se completan los valores, el usuario puede
+                    // haberse ido a otra — y la consulta es de esta.
+                    setParamPrompt({connection, sqlText, params, tabId: runTab})
                     return
                 }
-                runWithParams(connection, sqlText, [])
+                runWithParams(connection, sqlText, [], runTab)
             })()
         },
-        [running, runWithParams],
+        [runWithParams],
     )
 
     // Redis counterpart of runText — same client-generated queryId +
@@ -1712,56 +1963,68 @@ export default function Workspace({
     // comment), but streams backend/redisquery.Event (one entry per
     // command) into redisResults instead of columns/rows into resultSets.
     const runRedisText = useCallback(
-        (connection: vault.ConnectionSummary, commandText: string) => {
-            if (running || !commandText.trim()) return
-
-            unsubscribeRef.current?.()
-
+        (connection: vault.ConnectionSummary, commandText: string, tabId?: string) => {
+            const runTab = tabId ?? activeTabIdRef.current
+            if (!runTab || !commandText.trim()) return
             const queryId = newQueryId()
-            queryIdRef.current = queryId
-            setRunning(true)
-            setRunProgress(null)
-            setRedisResults([])
+            // Mismo criterio que en SQL: si la pestaña ya tiene una corrida
+            // viva, esta agrega sus resultados detrás en vez de reemplazarlos.
+            const prevExec = execByTabRef.current[runTab] ?? EMPTY_EXEC
+            const appending = prevExec.liveRuns.length > 0
+            const base = appending ? prevExec.redisResults.length : 0
+            runMetaRef.current[queryId] = {tabId: runTab, base, connId: connection.id}
+            patchExec(runTab, (cur) => ({
+                liveRuns: [...cur.liveRuns, {queryId, progress: null}],
+                redisResults: appending ? cur.redisResults : [],
+            }))
 
             const unsubscribe = EventsOn(queryId, (event: RedisQueryEvent) => {
-                if (queryIdRef.current !== queryId) return
-                setRunProgress({current: event.commandIndex + 1, total: event.totalCommands})
-                setRedisResults((prev) => {
-                    const next = [...prev]
-                    while (next.length <= event.commandIndex) {
+                if (!runMetaRef.current[queryId]) return
+                const at = base + event.commandIndex
+                patchExec(runTab, (cur) => ({
+                    liveRuns: cur.liveRuns.map((r) =>
+                        r.queryId === queryId
+                            ? {...r, progress: {current: event.commandIndex + 1, total: event.totalCommands}}
+                            : r,
+                    ),
+                }))
+                patchExec(runTab, (cur) => {
+                    const next = [...cur.redisResults]
+                    while (next.length <= at) {
                         next.push({commandText: '', status: 'running', durationMs: 0, error: ''})
                     }
-                    next[event.commandIndex] = {
-                        commandText: event.commandText ?? next[event.commandIndex].commandText,
+                    next[at] = {
+                        commandText: event.commandText ?? next[at].commandText,
                         status: event.type,
                         resultKind: event.resultKind,
                         result: event.result,
                         durationMs: event.durationMs ?? 0,
                         error: event.error ?? '',
                     }
-                    return next
+                    return {redisResults: next}
                 })
 
                 if (
                     event.type === 'cancelled' ||
                     ((event.type === 'done' || event.type === 'error') && event.commandIndex === event.totalCommands - 1)
                 ) {
-                    setRunning(false)
-                    setRunProgress(null)
-                    unsubscribe()
+                    patchExec(runTab, (cur) => ({liveRuns: cur.liveRuns.filter((r) => r.queryId !== queryId)}))
+                    endRun(queryId, unsubscribe)
                 }
             })
 
-            unsubscribeRef.current = unsubscribe
+            unsubscribeByRunRef.current[queryId] = unsubscribe
 
             ExecuteRedisCommand(connection.id, queryId, commandText).catch((err) => {
-                setRedisResults([{commandText, status: 'error', durationMs: 0, error: String(err)}])
-                setRunning(false)
-                setRunProgress(null)
-                unsubscribe()
+                patchExec(runTab, (cur) => {
+                    const next = [...cur.redisResults]
+                    next[base] = {commandText, status: 'error', durationMs: 0, error: String(err)}
+                    return {redisResults: next, liveRuns: cur.liveRuns.filter((r) => r.queryId !== queryId)}
+                })
+                endRun(queryId, unsubscribe)
             })
         },
-        [running, activeBottomTab],
+        [patchExec],
     )
 
     // MongoDB counterpart of runText/runRedisText — streams
@@ -1769,62 +2032,72 @@ export default function Workspace({
     // active database (the mongosh `db` target) is passed explicitly since a
     // Mongo connection browses many databases.
     const runMongoText = useCallback(
-        (connection: vault.ConnectionSummary, commandText: string) => {
-            if (running || !commandText.trim()) return
-
+        (connection: vault.ConnectionSummary, commandText: string, tabId?: string) => {
+            const runTab = tabId ?? activeTabIdRef.current
+            if (!runTab || !commandText.trim()) return
             const database = mongoDbByConn[connection.id] ?? ''
             if (!database) {
                 setStatusMessage('Elegí una base de datos en el árbol lateral antes de ejecutar comandos MongoDB')
                 return
             }
 
-            unsubscribeRef.current?.()
-
             const queryId = newQueryId()
-            queryIdRef.current = queryId
-            setRunning(true)
-            setRunProgress(null)
-            setMongoResults([])
+            const prevExec = execByTabRef.current[runTab] ?? EMPTY_EXEC
+            const appending = prevExec.liveRuns.length > 0
+            const base = appending ? prevExec.mongoResults.length : 0
+            runMetaRef.current[queryId] = {tabId: runTab, base, connId: connection.id}
+            patchExec(runTab, (cur) => ({
+                liveRuns: [...cur.liveRuns, {queryId, progress: null}],
+                mongoResults: appending ? cur.mongoResults : [],
+            }))
 
             const unsubscribe = EventsOn(queryId, (event: MongoQueryEvent) => {
-                if (queryIdRef.current !== queryId) return
-                setRunProgress({current: event.commandIndex + 1, total: event.totalCommands})
-                setMongoResults((prev) => {
-                    const next = [...prev]
-                    while (next.length <= event.commandIndex) {
+                if (!runMetaRef.current[queryId]) return
+                const at = base + event.commandIndex
+                patchExec(runTab, (cur) => ({
+                    liveRuns: cur.liveRuns.map((r) =>
+                        r.queryId === queryId
+                            ? {...r, progress: {current: event.commandIndex + 1, total: event.totalCommands}}
+                            : r,
+                    ),
+                }))
+                patchExec(runTab, (cur) => {
+                    const next = [...cur.mongoResults]
+                    while (next.length <= at) {
                         next.push({commandText: '', status: 'running'})
                     }
-                    next[event.commandIndex] = {
-                        commandText: event.commandText ?? next[event.commandIndex].commandText,
+                    next[at] = {
+                        commandText: event.commandText ?? next[at].commandText,
                         status: event.type,
                         documents: event.documents,
                         summary: event.summary,
                         durationMs: event.durationMs ?? 0,
                         error: event.error ?? '',
                     }
-                    return next
+                    return {mongoResults: next}
                 })
 
                 if (
                     event.type === 'cancelled' ||
                     ((event.type === 'done' || event.type === 'error') && event.commandIndex === event.totalCommands - 1)
                 ) {
-                    setRunning(false)
-                    setRunProgress(null)
-                    unsubscribe()
+                    patchExec(runTab, (cur) => ({liveRuns: cur.liveRuns.filter((r) => r.queryId !== queryId)}))
+                    endRun(queryId, unsubscribe)
                 }
             })
 
-            unsubscribeRef.current = unsubscribe
+            unsubscribeByRunRef.current[queryId] = unsubscribe
 
             ExecuteMongoQuery(connection.id, queryId, database, commandText).catch((err) => {
-                setMongoResults([{commandText, status: 'error', error: String(err)}])
-                setRunning(false)
-                setRunProgress(null)
-                unsubscribe()
+                patchExec(runTab, (cur) => {
+                    const next = [...cur.mongoResults]
+                    next[base] = {commandText, status: 'error', error: String(err)}
+                    return {mongoResults: next, liveRuns: cur.liveRuns.filter((r) => r.queryId !== queryId)}
+                })
+                endRun(queryId, unsubscribe)
             })
         },
-        [running, activeBottomTab, mongoDbByConn],
+        [mongoDbByConn, patchExec],
     )
 
     // Spec: "linter básico... warning antes de ejecutar". Only for
@@ -1997,14 +2270,16 @@ export default function Workspace({
         setActiveBottomTab('results')
     }
 
+    // Cancela lo que esté corriendo EN LA PESTAÑA QUE SE ESTÁ VIENDO — el
+    // botón vive en su barra, así que no puede tocar las de al lado. Si esa
+    // pestaña tiene más de una corrida viva, las corta todas: son las que ese
+    // botón representa.
     function cancelQuery() {
-        if (!queryIdRef.current) return
-        if (activeTabConnection?.dbType === 'redis') {
-            void CancelRedisCommand(queryIdRef.current)
-        } else if (activeTabConnection?.dbType === 'mongodb') {
-            void CancelMongoQuery(queryIdRef.current)
-        } else {
-            void CancelQuery(queryIdRef.current)
+        const live = (execByTab[activeTabId] ?? EMPTY_EXEC).liveRuns
+        for (const r of live) {
+            if (activeTabConnection?.dbType === 'redis') void CancelRedisCommand(r.queryId)
+            else if (activeTabConnection?.dbType === 'mongodb') void CancelMongoQuery(r.queryId)
+            else void CancelQuery(r.queryId)
         }
     }
 
@@ -2017,22 +2292,26 @@ export default function Workspace({
     // llegan por los mismos eventos del run original (mismo queryId), así que
     // se agregan a la pestaña ya abierta — ver backend/query/paging.go.
     function fetchMoreRows() {
-        const queryId = queryIdRef.current
+        const tabId = activeTabId
+        // El cursor es el de la CORRIDA que produjo este resultado, no el de
+        // la última que arrancó en la pestaña: con dos corridas conviviendo,
+        // pedirle la página siguiente a la otra traería filas de otra consulta.
+        const queryId = (execByTab[tabId] ?? EMPTY_EXEC).resultSets[activeResultTab]?.queryId
         if (!queryId) return
-        setResultSets((prev) => {
-            const next = [...prev]
-            if (next[activeResultTab]) {
-                next[activeResultTab] = {...next[activeResultTab], loadingMore: true}
+        patchExec(tabId, (cur) => {
+            const next = [...cur.resultSets]
+            if (next[cur.activeResultTab]) {
+                next[cur.activeResultTab] = {...next[cur.activeResultTab], loadingMore: true}
             }
-            return next
+            return {resultSets: next}
         })
         FetchMoreRows(queryId).catch((err) => {
-            setResultSets((prev) => {
-                const next = [...prev]
-                if (next[activeResultTab]) {
-                    next[activeResultTab] = {...next[activeResultTab], loadingMore: false, error: String(err)}
+            patchExec(tabId, (cur) => {
+                const next = [...cur.resultSets]
+                if (next[cur.activeResultTab]) {
+                    next[cur.activeResultTab] = {...next[cur.activeResultTab], loadingMore: false, error: String(err)}
                 }
-                return next
+                return {resultSets: next}
             })
         })
     }
@@ -2053,16 +2332,14 @@ export default function Workspace({
     // an in-flight run (the statement already finished by the time its tab
     // exists) nor cancels/reissues anything, unlike sortActiveResult above.
     function closeResultTab(i: number) {
-        setResultSets((prev) => prev.filter((_, idx) => idx !== i))
-        setActiveResultTab((prev) => {
-            if (i > prev) return prev
-            return Math.max(0, prev - 1)
-        })
+        patchExec(activeTabId, (cur) => ({
+            resultSets: cur.resultSets.filter((_, idx) => idx !== i),
+            activeResultTab: i > cur.activeResultTab ? cur.activeResultTab : Math.max(0, cur.activeResultTab - 1),
+        }))
     }
 
     function closeAllResultTabs() {
-        setResultSets([])
-        setActiveResultTab(0)
+        patchExec(activeTabId, {resultSets: [], activeResultTab: 0})
     }
 
     // Double-clicking a table in the sidebar tree always runs against
@@ -2075,6 +2352,10 @@ export default function Workspace({
     function openTableQuery(table: string, schema?: string) {
         if (!selected) return
         const q = limitQueryFor(selected.dbType, table, schema)
+        // La pestaña destino, explícita: cuando se crea una acá, `setActiveTabId`
+        // todavía no se aplicó al llegar a `runText`, y sin decírselo la
+        // ejecución se registraría en la pestaña anterior.
+        let runTab = activeTabId
         if (activeTabData?.connId === selected.id) {
             updateActiveTabContent(q)
         } else {
@@ -2090,8 +2371,9 @@ export default function Workspace({
             }
             setTabs((prev) => [...prev, tab])
             setActiveTabId(tab.id)
+            runTab = tab.id
         }
-        runText(selected, q)
+        runText(selected, q, runTab)
     }
 
     // Opens conn's Redis Browser tab (full-tab key list + editable detail
@@ -2563,6 +2845,32 @@ export default function Workspace({
     }
 
     function closeTab(id: string) {
+        // Cerrar una pestaña con una consulta corriendo la CANCELA. Ahora que
+        // una ejecución sobrevive a irse a otra pestaña, cerrar la suya es la
+        // única acción que la deja sin ningún lado donde mostrarse: seguiría
+        // ocupando una conexión del pool y —en Oracle— un proceso del servidor
+        // para nada. Cancelar además es lo que el motor entiende; abandonar la
+        // suscripción no detiene nada.
+        const conn = connections.find((c) => c.id === tabsRef.current.find((t) => t.id === id)?.connId)
+        for (const r of (execByTabRef.current[id] ?? EMPTY_EXEC).liveRuns) {
+            if (conn?.dbType === 'redis') void CancelRedisCommand(r.queryId)
+            else if (conn?.dbType === 'mongodb') void CancelMongoQuery(r.queryId)
+            else void CancelQuery(r.queryId)
+        }
+        // Todas las corridas de esta pestaña se dan de baja, incluidas las que
+        // ya terminaron pero seguían suscriptas para paginar.
+        for (const [queryId, meta] of Object.entries(runMetaRef.current)) {
+            if (meta.tabId === id) endRun(queryId)
+        }
+        // El estado de ejecución se va con la pestaña: dejarlo sería juntar
+        // resultsets de pestañas cerradas hasta reiniciar la app.
+        setExecByTab((prev) => {
+            if (!(id in prev)) return prev
+            const next = {...prev}
+            delete next[id]
+            return next
+        })
+
         setTabs((prev) => {
             // Closing a redis-browser/ssh-terminal tab disconnects its
             // underlying connection — never leave a live SSH shell or an
@@ -2966,6 +3274,7 @@ export default function Workspace({
                     onChangeTabLanguage={changeTabLanguage}
                     onOpenFile={() => void openFileDialog()}
                     onOpenRecentFile={(path) => void openRecentFile(path)}
+                    runningIds={runningTabIds}
                 />
 
                 <div className="flex flex-col border-b border-outline-variant bg-surface">
@@ -3121,7 +3430,13 @@ export default function Workspace({
                                 <button
                                     onClick={cancelQuery}
                                     disabled={!running}
-                                    title={running ? 'Interrumpir la consulta que está corriendo ahora mismo' : 'Cancelar: deshabilitado, no hay ninguna consulta corriendo'}
+                                    title={
+                                        !running
+                                            ? 'Cancelar: deshabilitado, no hay ninguna consulta corriendo en esta pestaña'
+                                            : liveRunCount > 1
+                                              ? `Interrumpir las ${liveRunCount} corridas de esta pestaña. No toca lo que estén ejecutando las demás.`
+                                              : 'Interrumpir la consulta que está corriendo en esta pestaña. No toca lo que estén ejecutando las demás.'
+                                    }
                                     className={running ? `${TOOLBAR_BTN} bg-error-container text-on-error-container hover:opacity-90` : TOOLBAR_ICON}
                                 >
                                     <Icon name="stop" size={16} filled />
@@ -3784,7 +4099,7 @@ export default function Workspace({
                             <ResultTabs
                                 count={resultSets.length}
                                 active={activeResultTab}
-                                onSelect={setActiveResultTab}
+                                onSelect={(i) => patchExec(activeTabId, {activeResultTab: i})}
                                 onClose={closeResultTab}
                                 onCloseAll={closeAllResultTabs}
                                 statuses={resultSets.map((r) => r.status)}
@@ -3847,7 +4162,24 @@ export default function Workspace({
                                             </button>
                                         </>
                                     )}
-                                    {!activeResult.hasMore && <span className="opacity-70">— resultado completo</span>}
+                                    {/* "Completo" y "se cortó la paginación" son
+                                        dos cosas distintas y hasta ahora se
+                                        veían iguales: sin el cursor abierto no
+                                        hay botón, y sin explicación eso se lee
+                                        como "no hay más filas" cuando en
+                                        realidad puede haber millones. */}
+                                    {!activeResult.hasMore &&
+                                        (activeResult.pagingClosedBy ? (
+                                            <span
+                                                className="flex items-center gap-1 text-tertiary"
+                                                title={`El cursor que paginaba este resultado se cerró porque ${activeResult.pagingClosedBy}: el motor guarda un solo cursor pausado por conexión (backend/query/paging.go). Volvé a ejecutar la consulta para seguir leyendo desde el principio.`}
+                                            >
+                                                <Icon name="link_off" size={12} />
+                                                paginación cerrada — {activeResult.pagingClosedBy}
+                                            </span>
+                                        ) : (
+                                            <span className="opacity-70">— resultado completo</span>
+                                        ))}
 
                                     <label className="ml-auto flex items-center gap-1" title="Cuántas filas trae cada página. 'Todas' desactiva la paginación — cuidado con tablas grandes. Se guarda como preferencia.">
                                         Filas por página
@@ -3874,7 +4206,7 @@ export default function Workspace({
                         </>
                     )
                 ) : activeBottomTab === 'console' ? (
-                    <ExecutionConsole entries={consoleLog} running={running} onClear={() => setConsoleLog([])} />
+                    <ExecutionConsole entries={consoleLog} running={running} onClear={() => patchExec(activeTabId, {consoleLog: []})} />
                 ) : activeBottomTab === 'dbms' ? (
                     <DbmsOutputPanel lines={dbmsOutputLines} />
                 ) : activeBottomTab === 'explain' ? (
@@ -3903,6 +4235,18 @@ export default function Workspace({
                             {runProgress && runProgress.total > 1
                                 ? `Ejecutando ${runProgress.current}/${runProgress.total}…`
                                 : 'Ejecutando…'}
+                            {/* El progreso que se muestra es el de la última
+                                corrida; cuando hay más de una en esta pestaña
+                                hay que decirlo, o el "1/3" parece ser todo lo
+                                que está pasando. */}
+                            {liveRunCount > 1 && (
+                                <span
+                                    title={`${liveRunCount} corridas en curso en esta pestaña. El progreso es el de la última; "Cancelar" las corta todas.`}
+                                    className="rounded-full bg-primary/15 px-1.5 text-ui-10 font-semibold text-primary"
+                                >
+                                    {liveRunCount} corridas
+                                </span>
+                            )}
                         </span>
                     )}
                     {!isRedisActive && activeResult?.status === 'done' && (
@@ -4064,11 +4408,11 @@ export default function Workspace({
                 <Suspense fallback={null}>
                     <QueryParamsDialog
                         params={paramPrompt.params}
-                        initial={paramDraftsRef.current.get(activeTabIdRef.current) ?? {}}
+                        initial={paramDraftsRef.current.get(paramPrompt.tabId) ?? {}}
                         onClose={() => setParamPrompt(null)}
                         onRun={(drafts) => {
-                            paramDraftsRef.current.set(activeTabIdRef.current, drafts)
-                            const {connection, sqlText} = paramPrompt
+                            paramDraftsRef.current.set(paramPrompt.tabId, drafts)
+                            const {connection, sqlText, tabId} = paramPrompt
                             setParamPrompt(null)
                             runWithParams(
                                 connection,
@@ -4078,6 +4422,7 @@ export default function Workspace({
                                     value: draft.value,
                                     type: draft.type,
                                 })),
+                                tabId,
                             )
                         }}
                     />
@@ -4124,6 +4469,9 @@ export default function Workspace({
                         // fresh mongosh editor tab with the generated query — so
                         // the wizard works from the browser too, not only the
                         // editor.
+                        // Misma razón que en openTableQuery: si la pestaña se
+                        // crea acá, hay que nombrarla al ejecutar.
+                        let runTab = activeTabId
                         if (activeTabData?.kind === 'editor' && activeTabData.connId === conn.id && editorRef.current) {
                             editorRef.current.dispatch(editorRef.current.state.replaceSelection(query + '\n'))
                             editorRef.current.focus()
@@ -4140,8 +4488,9 @@ export default function Workspace({
                             }
                             setTabs((prev) => [...prev, tab])
                             setActiveTabId(tab.id)
+                            runTab = tab.id
                         }
-                        if (run) runMongoText(conn, query)
+                        if (run) runMongoText(conn, query, runTab)
                     }}
                 />
             )}
