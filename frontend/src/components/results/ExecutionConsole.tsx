@@ -21,6 +21,21 @@ export interface ConsoleLogEntry {
     // demás.
     note: string
     timestamp: number
+    // De dónde salió la entrada cuando NO la escribió el editor. Hoy: la
+    // grilla editable, que manda sus UPDATE sin que nadie tipee SQL. Vacío o
+    // ausente = del editor, y ahí la cabecera dice «Statement N/M» como
+    // siempre.
+    //
+    // Una escritura que no deja rastro en el log es la que después nadie puede
+    // reconstruir, y era justo la más fácil de hacer sin darse cuenta: un
+    // doble clic en una celda.
+    origin?: string
+    // Los valores que viajaron en los bind de esta entrada, una línea por
+    // sentencia. Hoy los llena la edición de la grilla: sus `UPDATE` salen
+    // parametrizados (`SET LECT_ACT = :1 WHERE NIS_RAD = :2`), y sin esto la
+    // consola decía qué columna se tocó pero no con qué — que es justo lo que
+    // uno vuelve a preguntarse.
+    values?: string[]
 }
 
 interface ExecutionConsoleProps {
@@ -205,9 +220,21 @@ export default function ExecutionConsole({entries, running, onClear}: ExecutionC
                     {entries.map((entry, i) => (
                         <div key={`${entry.index}-${entry.timestamp}-${i}`} className={`border-l-2 p-2 ${STATUS_EDGE[entry.status]}`}>
                             <div className="mb-1 flex items-center gap-1.5 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70">
-                                Statement {entry.index + 1}/{entry.total}
+                                {entry.origin ? (
+                                    <span className="flex items-center gap-1 rounded-full bg-tertiary/15 px-1.5 text-tertiary">
+                                        <Icon name="edit_note" size={12} />
+                                        {entry.origin}
+                                    </span>
+                                ) : (
+                                    <>Statement {entry.index + 1}/{entry.total}</>
+                                )}
                             </div>
                             <HighlightedSql sql={entry.sqlText} />
+                            {entry.values && entry.values.length > 0 && (
+                                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap border-l-2 border-tertiary/40 pl-2 font-mono text-xs text-on-surface-variant">
+                                    {entry.values.join('\n')}
+                                </pre>
+                            )}
                             {entry.dbmsOutput.length > 0 && (
                                 <pre className="mt-1 overflow-x-auto whitespace-pre-wrap border-l-2 border-outline-variant pl-2 font-mono text-xs text-on-surface-variant">
                                     {entry.dbmsOutput.join('\n')}

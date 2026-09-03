@@ -16,6 +16,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
   **La pestaña que está trabajando lo dice**: mientras corre, su solapa muestra un anillo girando junto al nombre. Sin eso, irse a otra pestaña dejaba la ejecución invisible — no había forma de saber que seguía viva ni cuándo terminó, que es justamente lo que hace usable poder irse.
 
+- **Editar una celda de la grilla queda registrado en la consola, con los valores.** Guardar una edición deja ahí las sentencias **exactas** que se ejecutaron —con su duración y cuántas filas tocaron—, marcadas como «Edición de la grilla» para distinguirlas de lo que escribió el usuario. Una entrada por guardado y no una por sentencia: el lote es una sola transacción, y partirlo sugeriría que cada `UPDATE` se pudo confirmar por su cuenta. Si el lote se revierte, la entrada lo dice con el error del motor.
+
+  **Debajo de cada sentencia van sus valores**, y son la mitad que importa: esos `UPDATE` viajan parametrizados (`SET LECT_ACT = :1 WHERE NIS_RAD = :2 AND SEC_NIS = :3`), así que solos dicen qué columna se tocó pero no con qué. Cada bind se muestra con su número, su columna y su valor —en el mismo orden en que los numera el backend—, más el **valor anterior**, que no aparece en ninguna sentencia y es lo único que permite deshacer a mano:
+
+  ```
+  #1  :1 LECT_ACT = '1543'   :2 NIS_RAD = '88213'   :3 SEC_NIS = '1'   (antes '1200')
+  ```
+
+  El backend ya devolvía las sentencias (`ApplyRowEdits` → `EditApplied.Statements`, que es lo que alimenta la vista previa del SQL antes de guardar) y el frontend las descartaba. Así que la escritura más fácil de hacer sin darse cuenta —un doble clic en una celda— era la única de la aplicación que no dejaba rastro en ningún lado.
+
 - **Se avisa cuándo otra consulta te cerró la paginación.** El motor guarda **un solo cursor pausado por conexión** (`backend/query/paging.go`): arrancar cualquier consulta en una conexión cierra el cursor que esa conexión tuviera pausado. Antes no se notaba, porque no se podía ejecutar nada mientras algo corría; ahora sí, y el síntoma sería un «Cargar más» que falla o —peor— un resultado que parece completo cuando le faltan millones de filas. El resultado afectado dice **«paginación cerrada — otra consulta usó esta conexión»**, y su tooltip explica que hay que volver a ejecutar para seguir leyendo.
 
 - **Con una transacción abierta se sigue esperando, y es lo correcto.** Con auto-commit apagado el executor **reserva una única conexión** para esa conexión de base (`Executor.BeginTransaction` / `txConn`) y todo lo que se le mande pasa por ahí. Dos corridas no serían dos ejecuciones en paralelo: serían dos secuencias de sentencias intercalándose en la **misma sesión** y dentro de la **misma transacción**, donde un Commit desde cualquier lado confirma el trabajo del otro — y encima apoyado en que el driver tolere dos sentencias simultáneas sobre una sola sesión, que no es algo que convenga suponer. La barra de estado lo dice y sugiere la salida (esperar, o Commit/Rollback). Para poder preguntarlo por una conexión que no es la que estás mirando, el estado de transacción pasó a estar indexado por conexión.

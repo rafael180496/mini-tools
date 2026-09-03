@@ -2338,6 +2338,43 @@ export default function Workspace({
         }))
     }
 
+    // Deja en la consola de la pestaña activa lo que ejecutó una edición de la
+    // grilla. Es UNA entrada y no una por sentencia: el backend las manda en
+    // una sola transacción —o entran todas o no entra ninguna— y partirlas
+    // sugeriría que cada una se pudo confirmar por su cuenta. La duración es
+    // la del lote, medida acá, porque el backend no informa una por sentencia.
+    function logGridEdits(result: {statements: string[]; values: string[]; rows: number; durationMs: number; error: string}) {
+        const failed = !!result.error
+        if (!failed && result.statements.length === 0) return
+        const entry: ConsoleLogEntry = {
+            index: 0,
+            total: 1,
+            sqlText: failed ? '-- la transacción se revirtió entera, no quedó ninguna sentencia aplicada' : result.statements.join('\n'),
+            status: failed ? 'error' : 'done',
+            hasColumns: false,
+            rowsAffected: result.rows,
+            durationMs: result.durationMs,
+            error: result.error,
+            dbmsOutput: [],
+            note: '',
+            timestamp: Date.now(),
+            // Con una sola sentencia el número sobra; con varias es lo que
+            // aparea cada línea de valores con su UPDATE.
+            values:
+                result.values.length > 1
+                    ? result.values.map((v, i) => `#${i + 1}  ${v}`)
+                    : result.values,
+            origin:
+                failed || result.statements.length === 1
+                    ? 'Edición de la grilla'
+                    : `Edición de la grilla · ${result.statements.length} sentencias en una transacción`,
+        }
+        patchExec(activeTabIdRef.current, (cur) => {
+            const next = [...cur.consoleLog, entry]
+            return {consoleLog: next.length > MAX_CONSOLE_ENTRIES ? next.slice(-MAX_CONSOLE_ENTRIES) : next}
+        })
+    }
+
     function closeAllResultTabs() {
         patchExec(activeTabId, {resultSets: [], activeResultTab: 0})
     }
@@ -4126,6 +4163,14 @@ export default function Workspace({
                                 // clave primaria y escribe el UPDATE.
                                 connId={activeTabConnection?.id}
                                 sqlText={activeResult?.sourceSql}
+                                // Editar una celda ES una escritura, y hasta
+                                // ahora era la única de la aplicación que no
+                                // dejaba rastro: el backend ya devolvía las
+                                // sentencias exactas que ejecutó y el frontend
+                                // las descartaba. Van a la consola de ESTA
+                                // pestaña, con el mismo formato que cualquier
+                                // otra ejecución.
+                                onEditsApplied={logGridEdits}
                             />
 
                             {/* Barra de paginación, estilo DataGrip: el backend

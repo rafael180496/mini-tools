@@ -1131,6 +1131,19 @@ const CONSOLE_ENTRIES = [
         note: '', timestamp: 1788696564000,
     },
     {
+        // Una edición de la grilla: no la escribió nadie en el editor, la
+        // generó el backend al guardar dos celdas. Va con su distintivo.
+        index: 0, total: 1,
+        sqlText: "UPDATE SGCPRO.FUECICLO SET LECT_ACT = :1 WHERE NIS_RAD = :2 AND SEC_NIS = :3\nUPDATE SGCPRO.FUECICLO SET CSMO_ESTM = :1 WHERE NIS_RAD = :2 AND SEC_NIS = :3",
+        status: 'done' as const, hasColumns: false, rowsAffected: 2, durationMs: 61, error: '',
+        dbmsOutput: [], note: '', timestamp: 1788696564500,
+        values: [
+            "#1  :1 LECT_ACT = '1543'   :2 NIS_RAD = '88213'   :3 SEC_NIS = '1'   (antes '1200')",
+            "#2  :1 CSMO_ESTM = '343'   :2 NIS_RAD = '88213'   :3 SEC_NIS = '1'   (antes '0')",
+        ],
+        origin: 'Edición de la grilla · 2 sentencias en una transacción',
+    },
+    {
         index: 2, total: 3,
         sqlText: "SELECT NIS_RAD, F_EMISION\n  FROM SGCPRO.FUECICLO\n WHERE F_EMISION = '2026-08-27'",
         status: 'error' as const, hasColumns: false, rowsAffected: 0, durationMs: 38,

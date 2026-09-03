@@ -24,6 +24,10 @@ interface ResultGridProps {
     // vista previa.
     connId?: string
     sqlText?: string
+    // Aviso de lo que se ejecutó al guardar una edición de la grilla, para que
+    // quede en la consola. Lo consume Workspace, que es quien tiene la consola
+    // de la pestaña; la grilla solo lo reenvía.
+    onEditsApplied?: (result: {statements: string[]; values: string[]; rows: number; durationMs: number; error: string}) => void
 }
 
 const ROW_HEIGHT = 28
@@ -42,6 +46,7 @@ export default function ResultGrid({
     sqlTarget,
     connId,
     sqlText,
+    onEditsApplied,
 }: ResultGridProps) {
     const parentRef = useRef<HTMLDivElement>(null)
     // Set (not a single index) so ctrl/cmd-click and shift-click can build a
@@ -54,7 +59,7 @@ export default function ResultGrid({
     // Edición de celdas, al estilo DataGrip. Ver useRowEditing: lo que se
     // escribe queda PENDIENTE hasta que se manda, y lo que se puede editar lo
     // decide el backend.
-    const editing = useRowEditing(connId, sqlText, columns, rows)
+    const editing = useRowEditing(connId, sqlText, columns, rows, onEditsApplied)
     const [editCell, setEditCell] = useState<{row: number; col: string} | null>(null)
     const [previewSql, setPreviewSql] = useState<string[] | null>(null)
 
