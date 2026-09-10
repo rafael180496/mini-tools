@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -31,8 +32,24 @@ type Event struct {
 	// echo the exact statement/block that just finished next to its
 	// result line, the same way a script's statements are only known by
 	// splitting here (see splitter.go).
-	SQLText      string          `json:"sqlText,omitempty"`
-	Columns      []string        `json:"columns,omitempty"`
+	SQLText string   `json:"sqlText,omitempty"`
+	Columns []string `json:"columns,omitempty"`
+	// ColumnKinds viaja junto a Columns (misma posición) con la clase de cada
+	// columna según el DRIVER: "date" | "datetime" | "number" | "bool" |
+	// "json" | "text", traducida por db.ColumnKind.
+	//
+	// Es lo que permite que "copiar/exportar como INSERT" escriba una fecha
+	// con su conversión explícita (`TO_DATE('2026-06-19 16:44:27', …)`) en vez
+	// del texto ISO que sale de serializar un time.Time, que Oracle rechaza
+	// con ORA-01861 salvo que el NLS_DATE_FORMAT de quien la corra coincida
+	// por casualidad.
+	//
+	// El catálogo ya decía lo mismo (ResultEditTarget), pero solo cuando podía
+	// encontrar la tabla: un sinónimo, una tabla al otro lado de un DB link o
+	// un catálogo todavía sin leer dejaban el tipo en blanco y la fecha salía
+	// como texto. El driver lo declara para CUALQUIER result set, sin depender
+	// de que la consulta salga de una tabla que el catálogo conozca.
+	ColumnKinds  []string        `json:"columnKinds,omitempty"`
 	Rows         [][]interface{} `json:"rows,omitempty"`
 	RowsAffected int64           `json:"rowsAffected,omitempty"`
 	DurationMs   int64           `json:"durationMs,omitempty"`
@@ -427,7 +444,8 @@ func (e *Executor) runQuery(ctx context.Context, execer queryExecer, connID, que
 		e.emitError(connID, queryID, sqlText, err, idx, total)
 		return
 	}
-	e.emit(queryID, Event{Type: "columns", StatementIndex: idx, TotalStatements: total, Columns: columns, SQLText: sqlText})
+	e.emit(queryID, Event{Type: "columns", StatementIndex: idx, TotalStatements: total,
+		Columns: columns, ColumnKinds: columnKinds(rows), SQLText: sqlText})
 
 	values := make([]interface{}, len(columns))
 	scanArgs := make([]interface{}, len(columns))
@@ -593,6 +611,42 @@ func (e *Executor) clearCancel(queryID string) {
 
 // normalizeValue converts a database/sql scanned value into something that
 // marshals cleanly to JSON for the frontend grid.
+// columnKinds lee los tipos que el driver declara para este result set y los
+// traduce con la misma función que usa el catálogo (db.ColumnKind).
+//
+// Un driver puede no informarlos —`ColumnTypes` es opcional en database/sql—;
+// en ese caso devuelve nil y quien recibe el evento se queda sin la
+// información, que es exactamente donde estaba antes.
+func columnKinds(rows *sql.Rows) []string {
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		return nil
+	}
+	kinds := make([]string, len(types))
+	for i, t := range types {
+		kinds[i] = db.ColumnKind(t.DatabaseTypeName())
+		// Sin nombre de tipo (o con uno que no se reconoce) queda el tipo con
+		// el que el driver dice que hay que escanear la columna. Es lo que
+		// rescata el caso que importa: lo que viaja como time.Time es una
+		// fecha, se llame como se llame en ese motor.
+		if kinds[i] == "text" && isTimeScanType(t.ScanType()) {
+			kinds[i] = "datetime"
+		}
+	}
+	return kinds
+}
+
+var timeScanTypes = []reflect.Type{reflect.TypeOf(time.Time{}), reflect.TypeOf(sql.NullTime{})}
+
+func isTimeScanType(t reflect.Type) bool {
+	for _, want := range timeScanTypes {
+		if t == want {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeValue(v interface{}) interface{} {
 	switch x := v.(type) {
 	case []byte:

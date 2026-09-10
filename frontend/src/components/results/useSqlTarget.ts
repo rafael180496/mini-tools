@@ -22,10 +22,21 @@ import type {SqlTarget} from '../../lib/sqlGenerate'
 // es una consulta que no sale de una sola tabla (un JOIN, una vista, una
 // subconsulta), y ahí se cae al marcador `tabla` a propósito: que se vea que
 // hay que completarlo es mejor que un nombre plausible que no existe.
+//
+// **Los tipos, en cambio, no dependen del catálogo.** `resultColumns` /
+// `resultKinds` son los que declaró el driver para ESTE result set (ver
+// Event.ColumnKinds en backend/query/executor.go) y mandan sobre los del
+// catálogo: existen siempre —también para un sinónimo, una tabla al otro lado
+// de un DB link o una conexión cuyo catálogo todavía no se leyó— y describen
+// lo que la consulta realmente devolvió. Sin ellos, una columna DATE salía
+// como el texto ISO de serializar un time.Time (`'2026-06-19T16:44:27Z'`) y
+// Oracle contestaba ORA-01861 al correr el INSERT generado.
 export function useSqlTarget(
     connId: string | undefined,
     sqlText: string | undefined,
     engine: string | undefined,
+    resultColumns?: string[],
+    resultKinds?: string[],
 ): SqlTarget {
     const [resolved, setResolved] = useState<{table: string; kinds: Record<string, string>} | null>(null)
 
@@ -49,7 +60,15 @@ export function useSqlTarget(
         }
     }, [connId, sqlText])
 
+    // El catálogo primero (cubre las columnas que la consulta no proyectó) y
+    // encima el result set, que es el que describe lo que se está mirando.
+    const kinds: Record<string, string> = {...(resolved?.kinds ?? {})}
+    resultColumns?.forEach((c, i) => {
+        const kind = resultKinds?.[i]
+        if (kind) kinds[c.toLowerCase()] = kind
+    })
+
     return resolved
-        ? {table: resolved.table, qualified: true, engine, kinds: resolved.kinds}
-        : {table: 'tabla', engine}
+        ? {table: resolved.table, qualified: true, engine, kinds}
+        : {table: 'tabla', engine, kinds}
 }

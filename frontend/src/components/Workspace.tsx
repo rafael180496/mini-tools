@@ -134,6 +134,12 @@ interface QueryEvent {
     totalStatements: number
     sqlText?: string
     columns?: string[]
+    // La clase de cada columna según el driver ("date" | "datetime" |
+    // "number" | "bool" | "json" | "text"), en el mismo orden que `columns` —
+    // ver Event.ColumnKinds en backend/query/executor.go. Es de donde sale que
+    // una fecha se copie como TO_DATE y no como el texto ISO que Oracle
+    // rechaza.
+    columnKinds?: string[]
     rows?: unknown[][]
     rowsAffected?: number
     durationMs?: number
@@ -174,6 +180,9 @@ interface MongoQueryEvent {
 
 interface ResultSet {
     columns: string[]
+    // Paralelo a `columns`: la clase que declaró el driver para cada una (ver
+    // QueryEvent.columnKinds). Alimenta las sentencias que genera la grilla.
+    columnKinds: string[]
     rows: unknown[][]
     status: 'running' | 'done' | 'error' | 'cancelled'
     rowsAffected: number
@@ -248,7 +257,7 @@ const EMPTY_EXEC: TabExec = Object.freeze({
 
 function emptyResultSet(queryId: string): ResultSet {
     return {
-        columns: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: [], note: '',
+        columns: [], columnKinds: [], rows: [], status: 'running', rowsAffected: 0, durationMs: 0, error: '', dbmsOutput: [], note: '',
         sourceSql: '', sortColumn: null, sortDirection: null, hasMore: false, loadingMore: false,
         queryId, pagingClosedBy: '',
     }
@@ -1825,6 +1834,7 @@ export default function Workspace({
                     switch (event.type) {
                         case 'columns':
                             cur.columns = event.columns ?? []
+                            cur.columnKinds = event.columnKinds ?? []
                             cur.sourceSql = event.sqlText ?? ''
                             seenColumns.add(event.statementIndex)
                             if (pendingSortRef.current) {
@@ -2972,7 +2982,13 @@ export default function Workspace({
     // Contra qué tabla escriben el INSERT y el UPDATE que genera la grilla.
     // Se resuelve acá, una vez, y baja a la barra de exporte y a la grilla:
     // las dos generan la misma sentencia y tienen que nombrar la misma tabla.
-    const sqlTarget = useSqlTarget(activeTabConnection?.id, activeResult?.sourceSql, activeTabConnection?.dbType)
+    const sqlTarget = useSqlTarget(
+        activeTabConnection?.id,
+        activeResult?.sourceSql,
+        activeTabConnection?.dbType,
+        activeResult?.columns,
+        activeResult?.columnKinds,
+    )
     // La salida de DBMS_OUTPUT de TODO el script, no la del resultset que
     // estés mirando: un script con varios bloques PL/SQL escribe desde todos, y
     // atarla a la pestaña de resultados activa hacía que la salida apareciera y

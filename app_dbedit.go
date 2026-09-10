@@ -38,9 +38,10 @@ type EditColumn struct {
 	Nullable bool   `json:"nullable"`
 	IsKey    bool   `json:"isKey"`
 	// Kind es la clase de editor: "text" | "number" | "bool" | "datetime" |
-	// "date" | "json". Se deduce del tipo del motor acá y no en el frontend
-	// para que la regla viva en un solo lugar — son cuatro motores con nombres
-	// distintos para lo mismo.
+	// "date" | "json". Lo deduce `db.ColumnKind` y no el frontend para que la
+	// regla viva en un solo lugar — son cuatro motores con nombres distintos
+	// para lo mismo, y el executor traduce con la MISMA función los tipos que
+	// declara el driver de cada result set (ver `Event.ColumnKinds`).
 	Kind string `json:"kind"`
 	// Editable en false marca las columnas que no se pueden tocar (las de la
 	// clave: cambiar la clave es mover la fila, no corregir un dato).
@@ -104,7 +105,19 @@ func (a *App) ResultEditTarget(connID, sqlText string) (EditTarget, error) {
 	}
 	table := findTable(meta, want)
 	if table == nil {
-		return EditTarget{Reason: fmt.Sprintf("no se encontró la tabla %q en el catálogo — puede ser una vista o estar en otro esquema", src.Table)}, nil
+		// No se puede editar —sin catálogo no hay clave primaria ni tipos que
+		// validar— pero el nombre de la tabla sí se sabe: lo dice la consulta.
+		// Se devuelve tal cual lo escribió el SELECT que acaba de correr, que
+		// es la única forma segura de escribirlo (repetirlo entrecomillado
+		// rompería en Oracle si la consulta lo escribió sin comillas y el
+		// objeto no está en mayúsculas). Así "copiar/exportar como INSERT"
+		// nombra la tabla real en vez del marcador `tabla`, que es lo que pasa
+		// con un sinónimo, una tabla al otro lado de un DB link o un catálogo
+		// que todavía no se leyó.
+		return EditTarget{
+			Table:  src.Raw,
+			Reason: fmt.Sprintf("no se encontró la tabla %q en el catálogo — puede ser una vista, un sinónimo, estar al otro lado de un DB link o en otro esquema", src.Table),
+		}, nil
 	}
 
 	out := EditTarget{Table: qualify(table.Schema, table.Name)}
@@ -114,7 +127,7 @@ func (a *App) ResultEditTarget(connID, sqlText string) (EditTarget, error) {
 			DataType: c.DataType,
 			Nullable: c.Nullable,
 			IsKey:    c.IsPrimaryKey,
-			Kind:     columnKind(c.DataType),
+			Kind:     db.ColumnKind(c.DataType),
 			// La clave no se edita: cambiarla no corrige un dato, mueve la
 			// fila a otra identidad. Eso es un UPDATE que se escribe a mano y
 			// se mira dos veces.
@@ -400,34 +413,4 @@ func findColumn(t EditTarget, name string) *EditColumn {
 		}
 	}
 	return nil
-}
-
-// columnKind traduce el tipo del motor a la clase de editor.
-//
-// Cuatro motores con nombres distintos para lo mismo: `int4`/`NUMBER`/
-// `INTEGER`/`bigint` son todos un número, y `timestamptz`/`DATE`/`datetime2`
-// son todos un instante. La traducción vive acá y no en el frontend para que
-// haya un solo lugar donde agregar un tipo nuevo.
-func columnKind(dataType string) string {
-	t := strings.ToLower(strings.TrimSpace(dataType))
-	switch {
-	case strings.Contains(t, "bool"), t == "bit":
-		return "bool"
-	case strings.Contains(t, "json"):
-		return "json"
-	case strings.Contains(t, "timestamp"), strings.Contains(t, "datetime"):
-		return "datetime"
-	case t == "date":
-		return "date"
-	case strings.Contains(t, "time"):
-		// TIME sin fecha se edita como texto: un selector de fecha para una
-		// hora sola confunde más de lo que ayuda.
-		return "text"
-	case strings.Contains(t, "int"), strings.Contains(t, "numeric"), strings.Contains(t, "decimal"),
-		strings.Contains(t, "number"), strings.Contains(t, "float"), strings.Contains(t, "double"),
-		strings.Contains(t, "real"), strings.Contains(t, "money"):
-		return "number"
-	default:
-		return "text"
-	}
 }

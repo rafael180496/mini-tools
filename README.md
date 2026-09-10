@@ -483,9 +483,11 @@ diferencia.
 ### Copiar filas como SQL que se puede correr
 
 Seleccionás filas y salen como `INSERT` o como `UPDATE`, listas para pegar en
-otro entorno — con la **tabla y el esquema reales**, que la app saca del
-catálogo leyendo de dónde salió la consulta en vez de usar el nombre de la
-conexión, y con las **fechas convertidas para el motor de destino**:
+otro entorno — con la **tabla y el esquema reales**, que la app lee de dónde
+salió la consulta en vez de usar el nombre de la conexión, y con las **fechas
+convertidas para el motor de destino** según el tipo que el driver declara para
+ese resultado (así también salen bien las de un sinónimo o una tabla al otro
+lado de un DB link, que el catálogo no conoce):
 
 ```sql
 INSERT INTO "SGCPRO"."FACTURAS" ("ID", "FECHA_EMISION", "TOTAL")

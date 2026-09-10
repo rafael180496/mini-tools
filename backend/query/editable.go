@@ -34,6 +34,13 @@ type EditSource struct {
 	// Alias con el que la consulta nombra la tabla, si le puso uno. Sirve para
 	// entender `WHERE c.id = …`, no para el UPDATE.
 	Alias string `json:"alias"`
+	// Raw es la referencia a la tabla TAL CUAL la escribió la consulta, con su
+	// esquema y su entrecomillado si los tenía (`SGCPRO.ACTIONS`,
+	// `"public"."users"`). Schema/Table vienen sin comillas para poder
+	// compararlos contra el catálogo; esto es para volver a escribirlas cuando
+	// el catálogo no tiene nada que aportar — y entonces lo único seguro es
+	// repetir el nombre que el motor ya aceptó en el SELECT.
+	Raw string `json:"raw"`
 }
 
 // Estas expresiones se aplican sobre la consulta ya sin comentarios ni cadenas
@@ -127,6 +134,7 @@ func DetectEditSource(sqlText string) (EditSource, error) {
 	if nm == nil {
 		return EditSource{}, fmt.Errorf("no se pudo leer el nombre de la tabla")
 	}
+	src.Raw = strings.TrimSpace(name)
 	src.Schema = unquoteIdent(nm[1])
 	src.Table = unquoteIdent(nm[2])
 	if src.Table == "" {

@@ -13,9 +13,10 @@ interface ResultGridProps {
     sortDirection?: 'asc' | 'desc' | null
     onSort?: (column: string) => void
     // Contra qué tabla y con qué motor se generan el INSERT y el UPDATE.
-    // Sale de useSqlTarget, que se lo pregunta al catálogo del backend: viene
-    // calificado con el esquema y con el tipo de cada columna, así que las
-    // fechas salen convertidas (TO_DATE en Oracle) y no como texto.
+    // Sale de useSqlTarget: la tabla viene calificada con su esquema, y el
+    // tipo de cada columna lo declara el driver del result set (más el
+    // catálogo cuando lo conoce), así que las fechas salen convertidas
+    // (TO_DATE en Oracle) y no como texto.
     sqlTarget?: SqlTarget
     // Conexión y consulta que produjeron estas filas. Con las dos, la grilla
     // puede ofrecer EDITAR: el backend decide si el resultado sale de una sola
