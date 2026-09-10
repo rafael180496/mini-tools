@@ -760,6 +760,18 @@ JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN
   <p class="lead">Seleccionás filas y salen como CSV, <code>INSERT</code> o <code>UPDATE</code> listas para
   pegar en otro entorno — con la tabla real y las fechas convertidas al motor de destino.</p>
 
+  <h2 id="bases-copiar--seleccion">Seleccionar filas</h2>
+  <p>Como en cualquier explorador, y con los mismos gestos que el panel SFTP: clic simple deja marcada esa
+  fila, <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+clic agrega o quita una suelta sin perder el resto,
+  <kbd>Shift</kbd>+clic marca el <strong>rango</strong> desde la última fila tocada, y
+  <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+clic <em>suma</em> ese rango a lo que ya había.
+  <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>A</kbd> marca todas las filas cargadas y <kbd>Esc</kbd> limpia; un clic
+  simple sobre la única fila marcada también la desmarca.</p>
+  <div class="note"><span class="lbl">Filas, no letras</span><p>Con un modificador apretado la grilla marca
+  <strong>filas</strong>: no deja que el navegador extienda su selección de texto, que era lo que pintaba las
+  letras de azul y tapaba el resaltado. Sin modificadores el texto se sigue pudiendo seleccionar arrastrando
+  dentro de una celda, para copiar un valor suelto a mano.</p></div>
+
   <h2 id="bases-copiar--sql">Copiar filas como SQL que se puede correr</h2>
   <p>La <strong>tabla y el esquema son los reales</strong>: la app los lee de dónde salió la consulta, no
   del nombre de la conexión. Y las <strong>fechas se convierten</strong> con el tipo real de cada columna,
@@ -1282,9 +1294,16 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   </ol>
 
   <h2 id="ssh-sftp--permisos">Permisos</h2>
-  <div class="note"><span class="lbl">Sin recordar el octal</span><p>Clic derecho → <strong>Permisos</strong>
-  abre un diálogo con casillas de Lectura/Escritura/Ejecución para Propietario, Grupo y Otros — y muestra el
-  <code>chmod</code> equivalente mientras lo tocás.</p></div>
+  <div class="note"><span class="lbl">Sin recordar el octal</span><p>El botón <strong>Permisos</strong> de la
+  barra de acciones —o clic derecho → <strong>Editar permisos</strong>— abre un diálogo con casillas de
+  Lectura/Escritura/Ejecución para Propietario, Grupo y Otros, y muestra el <code>chmod</code> equivalente
+  mientras lo tocás.</p></div>
+  <p>Se aplica a <strong>toda la selección</strong>, no solo a la fila sobre la que hiciste clic derecho —
+  igual que Enviar y Eliminar. Cuando hay varios elegidos con permisos distintos el diálogo lo avisa: el
+  <code>chmod</code> es absoluto, así que al guardar quedan todos con el mismo modo. Si alguno falla (otro
+  dueño, montaje de solo lectura) se dice <strong>cuáles</strong> y el resto se aplica igual.</p>
+  <div class="note"><span class="lbl">No es <code>chmod -R</code></span><p>Sobre una carpeta cambia los
+  permisos de la carpeta, no los de su contenido.</p></div>
 
   <h2 id="ssh-sftp--macos">La primera vez en macOS</h2>
   <div class="note warn"><span class="lbl">Permisos del sistema</span><p>Al entrar a Descargas, Escritorio o

@@ -359,7 +359,9 @@ export default function SftpPane({
     // Right-click context menu (position + which entry it targets) and the
     // permissions dialog it can open.
     const [menu, setMenu] = useState<{x: number; y: number; entry: sftpx.FileEntry} | null>(null)
-    const [permsFor, setPermsFor] = useState<sftpx.FileEntry | null>(null)
+    // Los permisos se editan sobre una LISTA: el menú y la barra de acciones
+    // pasan la selección entera, no la fila sobre la que se hizo click.
+    const [permsFor, setPermsFor] = useState<sftpx.FileEntry[] | null>(null)
     // Por defecto, lo más reciente arriba. Un panel SFTP se abre casi siempre
     // para ver qué dejó el último proceso —un log, una salida de batch, un
     // archivo que se acaba de subir—, y ordenado por nombre eso queda enterrado
@@ -608,8 +610,12 @@ export default function SftpPane({
         })
     }
 
+    function selectedEntries(): sftpx.FileEntry[] {
+        return entries.filter((e) => selected.has(e.path))
+    }
+
     function selectedItems(): TransferItem[] {
-        return entryItems(entries.filter((e) => selected.has(e.path)))
+        return entryItems(selectedEntries())
     }
 
     // The items an action on `e` should affect: the whole selection if the
@@ -618,6 +624,16 @@ export default function SftpPane({
     function itemsForEntry(e: sftpx.FileEntry): TransferItem[] {
         const sel = selectedItems()
         return selected.has(e.path) && sel.length > 0 ? sel : [{path: e.path, isDir: e.isDir}]
+    }
+
+    // La misma regla que itemsForEntry, pero con las entradas completas: los
+    // permisos necesitan el nombre y el modo actual de cada una, no solo su
+    // ruta. Es lo que faltaba en «Editar permisos», que pasaba `menu.entry`
+    // suelto y por eso el chmod tocaba un archivo y dejaba el resto de la
+    // selección igual, sin ningún aviso.
+    function entriesForEntry(e: sftpx.FileEntry): sftpx.FileEntry[] {
+        const sel = selectedEntries()
+        return selected.has(e.path) && sel.length > 0 ? sel : [e]
     }
 
     // El arrastre entre paneles se apoya en dragRef para el payload real, pero
@@ -772,6 +788,11 @@ export default function SftpPane({
     // la tabla entera (rellenos del virtualizador, estado vacío). Escribir el
     // número a mano en cada una es garantizar que un día no coincida.
     const colCount = 4 + (showKind ? 1 : 0) + (showPerms ? 1 : 0)
+
+    // A qué elementos apunta el menú abierto: se calcula una vez acá en vez de
+    // en cada uso dentro del JSX, que recorrería el listado entero varias veces
+    // por render.
+    const menuEntries = menu ? entriesForEntry(menu.entry) : []
 
     const allVisibleSelected = visible.length > 0 && visible.every((e) => selected.has(e.path))
     // "Algunos": lo que la casilla nativa del encabezado no sabía decir. Con 7
@@ -964,6 +985,18 @@ export default function SftpPane({
                         className="flex items-center gap-1 rounded px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-error-container/40 hover:text-error disabled:opacity-40"
                     >
                         <Icon name="delete" size={14} /> Eliminar
+                    </button>
+                    <button
+                        onClick={() => setPermsFor(selectedEntries())}
+                        disabled={selected.size === 0}
+                        title={
+                            selected.size > 1
+                                ? `Cambiar los permisos (chmod) de los ${selected.size} elementos seleccionados — todos quedan con el mismo modo`
+                                : 'Cambiar los permisos (chmod) de la selección'
+                        }
+                        className="flex items-center gap-1 rounded px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
+                    >
+                        <Icon name="lock" size={14} /> Permisos
                     </button>
                     <div className="relative ml-auto flex items-center">
                         <Icon name="search" size={13} className="pointer-events-none absolute left-1.5 text-on-surface-variant" />
@@ -1276,22 +1309,27 @@ export default function SftpPane({
                         </button>
                         <button
                             onClick={() => {
-                                setPermsFor(menu.entry)
+                                setPermsFor(menuEntries)
                                 setMenu(null)
                             }}
+                            title={
+                                menuEntries.length > 1
+                                    ? `Cambia los permisos (chmod) de los ${menuEntries.length} elementos seleccionados`
+                                    : 'Cambia los permisos (chmod) de este elemento'
+                            }
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant"
                         >
                             <Icon name="lock" size={15} /> Editar permisos
+                            {menuEntries.length > 1 && ` (${menuEntries.length})`}
                         </button>
                     </div>
                 </>
             )}
 
-            {permsFor && (
+            {permsFor && permsFor.length > 0 && (
                 <SftpPermissionsDialog
                     sessionId={host.sessionId}
-                    path={permsFor.path}
-                    name={permsFor.name}
+                    targets={permsFor}
                     onClose={() => setPermsFor(null)}
                     onSaved={() => onRefresh()}
                     onError={onError}

@@ -5,8 +5,12 @@ import Icon from '../Icon'
 
 interface SftpPermissionsDialogProps {
     sessionId: string
-    path: string
-    name: string
+    // Los elementos a los que se les va a aplicar el modo. Es una lista y no un
+    // path suelto porque seleccionar varios y pedirles permisos es el caso
+    // normal en un panel de archivos: antes el diálogo recibía uno solo y el
+    // chmod terminaba aplicándose a ese, dejando el resto de la selección
+    // intacta sin decir nada.
+    targets: sftpx.FileEntry[]
     onClose: () => void
     onSaved: () => void
     onError: (msg: string) => void
@@ -61,22 +65,44 @@ function symbolic(grid: Grid): string {
     return CLASSES.map((c) => BITS.map((b) => (grid[c.key][b.key] ? SYM[b.key] : '-')).join('')).join('')
 }
 
-export default function SftpPermissionsDialog({sessionId, path, name, onClose, onSaved, onError}: SftpPermissionsDialogProps) {
+// Si los elegidos ya no comparten permisos hay que decirlo ANTES de guardar:
+// el chmod es absoluto, así que aplicar un modo los deja a todos iguales y eso
+// pisa diferencias que quizás eran a propósito.
+//
+// Se compara con lo que ya trajo el listado (`FileEntry.mode`, un
+// `os.FileMode.String()` tipo "-rw-r--r--"), sin pedirle nada más al servidor:
+// se descartan los primeros caracteres —el tipo de archivo, que hace que una
+// carpeta y un archivo con los mismos permisos se vean distintos— y se comparan
+// los nueve bits rwx del final.
+function sameMode(targets: sftpx.FileEntry[]): boolean {
+    const bits = (m: string) => m.slice(-9)
+    return targets.every((t) => bits(t.mode) === bits(targets[0].mode))
+}
+
+export default function SftpPermissionsDialog({sessionId, targets, onClose, onSaved, onError}: SftpPermissionsDialogProps) {
     const [info, setInfo] = useState<sftpx.PermInfo | null>(null)
     const [grid, setGrid] = useState<Grid | null>(null)
     const [loading, setLoading] = useState(true)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
 
+    const single = targets.length === 1 ? targets[0] : null
+    // El modo inicial sale del primero: con varios elegidos es un punto de
+    // partida, no una lectura de todos (y cuando difieren, el aviso de abajo lo
+    // dice). Pedir los permisos de cada uno serían N viajes al servidor para
+    // llenar una grilla que se va a pisar entera igual.
+    const seedPath = targets[0]?.path ?? ''
+
     useEffect(() => {
-        SftpPathPermissions(sessionId, path)
+        if (!seedPath) return
+        SftpPathPermissions(sessionId, seedPath)
             .then((res) => {
                 setInfo(res)
                 setGrid(gridFromMode(res.mode))
             })
             .catch((err) => setError(String(err)))
             .finally(() => setLoading(false))
-    }, [sessionId, path])
+    }, [sessionId, seedPath])
 
     function toggle(c: ClassKey, b: BitKey) {
         setGrid((prev) => (prev ? {...prev, [c]: {...prev[c], [b]: !prev[c][b]}} : prev))
@@ -87,22 +113,40 @@ export default function SftpPermissionsDialog({sessionId, path, name, onClose, o
         const mode = modeFromGrid(grid)
         setBusy(true)
         setError('')
-        ChmodSftpPath(sessionId, path, mode)
-            .then(() => {
+        // allSettled y no all: con varios elegidos es normal poder cambiarle
+        // los permisos a unos y no a otros (dueños distintos), y un `all` corta
+        // en el primer rechazo dejando sin informar qué pasó con el resto —
+        // aunque las llamadas ya hayan salido igual.
+        Promise.allSettled(targets.map((t) => ChmodSftpPath(sessionId, t.path, mode)))
+            .then((results) => {
+                const failed = results
+                    .map((r, i) => (r.status === 'rejected' ? `${targets[i].name}: ${String(r.reason)}` : ''))
+                    .filter(Boolean)
+                // Los que sí cambiaron ya cambiaron: se refresca el panel aunque
+                // alguno haya fallado, o la lista seguiría mostrando permisos
+                // viejos que ya no son los del servidor.
                 onSaved()
-                onClose()
-            })
-            .catch((err) => {
-                // Show the raw backend error here (permission denied, read-only
-                // FS, etc.) AND bubble it to the pane banner so it's not lost if
-                // the dialog is dismissed.
-                setError(String(err))
-                onError(String(err))
+                if (failed.length === 0) {
+                    onClose()
+                    return
+                }
+                // Se muestra el error crudo del backend (permiso denegado, FS de
+                // solo lectura…) acá Y se burbujea al panel, para que no se
+                // pierda si se cierra el diálogo. El diálogo queda abierto: es
+                // lo que deja ver CUÁLES fallaron.
+                const msg =
+                    failed.length === targets.length
+                        ? failed.join('\n')
+                        : `${failed.length} de ${targets.length} no se pudieron cambiar:\n${failed.join('\n')}`
+                setError(msg)
+                onError(msg)
             })
             .finally(() => setBusy(false))
     }
 
     const mode = grid ? modeFromGrid(grid) : 0
+    const mixed = targets.length > 1 && !sameMode(targets)
+    const someDir = targets.some((t) => t.isDir)
 
     return (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -117,8 +161,11 @@ export default function SftpPermissionsDialog({sessionId, path, name, onClose, o
                         <Icon name="close" size={18} />
                     </button>
                 </div>
-                <p className="truncate text-xs text-on-surface-variant" title={path}>
-                    {name}
+                <p
+                    className="truncate text-xs text-on-surface-variant"
+                    title={single ? single.path : targets.map((t) => t.path).join('\n')}
+                >
+                    {single ? single.name : `${targets.length} elementos seleccionados`}
                 </p>
 
                 {loading ? (
@@ -169,23 +216,40 @@ export default function SftpPermissionsDialog({sessionId, path, name, onClose, o
                             <span>{octal(mode)}</span>
                             <span className="opacity-60">·</span>
                             <span>{symbolic(grid)}</span>
+                            {targets.length > 1 && (
+                                <span className="ml-auto font-sans not-italic">→ {targets.length} elementos</span>
+                            )}
                         </div>
 
-                        <div className="border-t border-outline-variant pt-3 text-xs">
-                            <p className="mb-1 font-medium text-on-surface-variant">Propiedad (solo lectura)</p>
-                            <div className="flex justify-between py-0.5">
-                                <span className="text-on-surface-variant">Usuario</span>
-                                <span className="text-on-surface">{info?.owner || '—'}</span>
+                        {mixed && (
+                            <p className="text-xs text-on-surface-variant">
+                                Los elementos elegidos <strong className="text-on-surface">no tienen los mismos permisos</strong>.
+                                Se muestra el modo del primero; al guardar, todos quedan con el modo de arriba.
+                            </p>
+                        )}
+                        {someDir && (
+                            <p className="text-xs text-on-surface-variant">
+                                Los permisos se aplican a las carpetas elegidas, <strong className="text-on-surface">no a su contenido</strong>.
+                            </p>
+                        )}
+
+                        {single && (
+                            <div className="border-t border-outline-variant pt-3 text-xs">
+                                <p className="mb-1 font-medium text-on-surface-variant">Propiedad (solo lectura)</p>
+                                <div className="flex justify-between py-0.5">
+                                    <span className="text-on-surface-variant">Usuario</span>
+                                    <span className="text-on-surface">{info?.owner || '—'}</span>
+                                </div>
+                                <div className="flex justify-between py-0.5">
+                                    <span className="text-on-surface-variant">Grupo</span>
+                                    <span className="text-on-surface">{info?.group || '—'}</span>
+                                </div>
                             </div>
-                            <div className="flex justify-between py-0.5">
-                                <span className="text-on-surface-variant">Grupo</span>
-                                <span className="text-on-surface">{info?.group || '—'}</span>
-                            </div>
-                        </div>
+                        )}
                     </>
                 ) : null}
 
-                {error && <p className="text-xs text-error">{error}</p>}
+                {error && <p className="whitespace-pre-wrap text-xs text-error">{error}</p>}
 
                 <div className="flex justify-end gap-2">
                     <button
@@ -200,10 +264,14 @@ export default function SftpPermissionsDialog({sessionId, path, name, onClose, o
                         type="button"
                         onClick={save}
                         disabled={busy || !grid}
-                        title="Aplica los permisos (chmod) al archivo"
+                        title={
+                            targets.length > 1
+                                ? `Aplica los permisos (chmod) a los ${targets.length} elementos elegidos`
+                                : 'Aplica los permisos (chmod) al archivo'
+                        }
                         className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
-                        {busy ? 'Guardando…' : 'Guardar'}
+                        {busy ? 'Guardando…' : targets.length > 1 ? `Guardar en ${targets.length}` : 'Guardar'}
                     </button>
                 </div>
             </div>

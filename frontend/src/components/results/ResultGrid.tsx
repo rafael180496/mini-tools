@@ -55,6 +55,9 @@ export default function ResultGrid({
     // shift-click knows which end of the range to extend from.
     const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
     const anchorRef = useRef<number | null>(null)
+    // Un click simple sobre una fila que YA está seleccionada no reduce la
+    // selección hasta que se suelta el mouse — ver rowMouseDown/rowClick.
+    const pendingCollapse = useRef<number | null>(null)
     const [copyStatus, setCopyStatus] = useState('')
 
     // Edición de celdas, al estilo DataGrip. Ver useRowEditing: lo que se
@@ -80,6 +83,25 @@ export default function ResultGrid({
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
     }, [editing.pendingCount])
+
+    // La grilla NO se remonta al cambiar de pestaña de resultado ni al
+    // ejecutar de nuevo: es el mismo componente con otras filas. Sin esto, la
+    // selección de un resultado quedaba viva sobre el siguiente — marcando
+    // filas que nadie eligió y, si el nuevo tenía menos, apuntando a índices
+    // que ya no existen (copiar como INSERT reventaba sobre un `undefined`).
+    //
+    // Se compara la PRIMERA fila por referencia: paginar con «Cargar más»
+    // agrega al mismo array de origen, así que ahí la primera fila sigue
+    // siendo el mismo objeto y la selección se conserva, que es lo que
+    // corresponde. Un resultado distinto trae filas distintas.
+    const firstRowRef = useRef<unknown>(undefined)
+    useEffect(() => {
+        const first = rows[0]
+        if (first === firstRowRef.current && rows.length > 0) return
+        firstRowRef.current = first
+        setSelectedIndices(new Set())
+        anchorRef.current = null
+    }, [rows])
 
     const colDefs: ColumnDef<unknown[]>[] = columns.map((col, i) => ({
         id: col,
@@ -118,7 +140,14 @@ export default function ResultGrid({
     const totalHeight = virtualizer.getTotalSize()
     const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
     const paddingBottom = virtualItems.length > 0 ? totalHeight - virtualItems[virtualItems.length - 1].end : 0
-    const sortedSelectedIndices = Array.from(selectedIndices).sort((a, b) => a - b)
+    // El filtro por longitud es el cinturón además de los tirantes: el efecto
+    // que limpia la selección al cambiar de resultado corre DESPUÉS del render,
+    // así que en ese render intermedio los índices viejos todavía están acá y
+    // `rows[i]` sería `undefined` — que es un `row.map is not a function` al
+    // copiar como INSERT.
+    const sortedSelectedIndices = Array.from(selectedIndices)
+        .filter((i) => i < rows.length)
+        .sort((a, b) => a - b)
     const selectedRows = sortedSelectedIndices.map((i) => rows[i])
 
     async function copy(text: string, label: string) {
@@ -127,31 +156,119 @@ export default function ResultGrid({
         setTimeout(() => setCopyStatus(''), 2000)
     }
 
-    function clickRow(index: number, e: MouseEvent) {
-        if (e.shiftKey && anchorRef.current !== null) {
-            const [lo, hi] = [Math.min(anchorRef.current, index), Math.max(anchorRef.current, index)]
-            const range = new Set<number>()
-            for (let i = lo; i <= hi; i++) range.add(i)
-            setSelectedIndices(range)
-            return
+    // Selección de filas, con el mismo modelo que el panel SFTP (ver
+    // `rowMouseDown` en components/sftp/SftpPane.tsx):
+    //
+    //   - click simple      → deja seleccionada solo esa fila
+    //   - Ctrl/Cmd+click    → suma o quita esa fila sin perder el resto
+    //   - Shift+click       → marca el rango desde el ancla
+    //   - Ctrl/Cmd+Shift    → suma el rango a lo que ya había
+    //   - Ctrl/Cmd+A / Esc  → marcar todo / limpiar (ver el onKeyDown del scroller)
+    //
+    // **Todo se decide en `mousedown`, no en `click`**, y ese es justamente el
+    // motivo por el que "el Control no funcionaba": en macOS Ctrl+click no
+    // dispara `click` — WebKit lo convierte en `contextmenu`—, así que la rama
+    // de Ctrl no llegaba a correr nunca. Es el mismo bug que ya se había
+    // arreglado en el panel SFTP, y esta grilla se había quedado atrás.
+    //
+    // Y con modificadores hay que llamar a `preventDefault`: el navegador, ante
+    // un Shift+click, extiende su propia selección de TEXTO. Eso es lo que
+    // pintaba las letras de azul y tapaba el resaltado de la fila — "solo se
+    // sombrean las letras". Sin modificadores no se toca, para que arrastrar
+    // sobre una celda siga seleccionando su texto y se pueda copiar un valor
+    // suelto a mano.
+
+    // Marca el rango entre el ancla e `index`. Devuelve false si no hay ancla
+    // utilizable, para que quien llama caiga al click normal.
+    function selectRangeTo(index: number, additive: boolean): boolean {
+        const anchor = anchorRef.current
+        if (anchor === null || anchor < 0 || anchor >= rows.length) return false
+        const [lo, hi] = anchor <= index ? [anchor, index] : [index, anchor]
+        const range: number[] = []
+        for (let i = lo; i <= hi; i++) range.push(i)
+        setSelectedIndices((prev) => (additive ? new Set([...prev, ...range]) : new Set(range)))
+        return true
+    }
+
+    function toggleRow(index: number) {
+        setSelectedIndices((prev) => {
+            const next = new Set(prev)
+            if (next.has(index)) next.delete(index)
+            else next.add(index)
+            return next
+        })
+    }
+
+    function rowMouseDown(index: number, e: MouseEvent) {
+        // El botón derecho no toca la selección.
+        if (e.button !== 0) return
+        pendingCollapse.current = null
+        // El teclado de la grilla (Ctrl/Cmd+A, Esc) necesita el foco, y con el
+        // `preventDefault` de abajo el navegador ya no se lo va a dar solo.
+        parentRef.current?.focus()
+
+        const additive = e.metaKey || e.ctrlKey
+        const ranged = e.shiftKey
+        if (ranged || additive) {
+            e.preventDefault()
+            // Una selección de texto anterior queda pintada encima aunque este
+            // click ya no la extienda; se limpia para que lo único resaltado
+            // sean las filas.
+            window.getSelection()?.removeAllRanges()
         }
-        if (e.ctrlKey || e.metaKey) {
-            setSelectedIndices((prev) => {
-                const next = new Set(prev)
-                if (next.has(index)) next.delete(index)
-                else next.add(index)
-                return next
-            })
-            anchorRef.current = index
-            return
-        }
-        setSelectedIndices((prev) => (prev.size === 1 && prev.has(index) ? new Set() : new Set([index])))
+
+        if (ranged && selectRangeTo(index, additive)) return
+
         anchorRef.current = index
+        if (additive) {
+            toggleRow(index)
+            return
+        }
+        // Sobre una fila que ya está seleccionada no se colapsa nada todavía:
+        // se decide al soltar, así el gesto de arrastrar para marcar texto
+        // dentro de una celda ya seleccionada no borra la selección de filas.
+        if (selectedIndices.has(index)) {
+            pendingCollapse.current = index
+            return
+        }
+        setSelectedIndices(new Set([index]))
+    }
+
+    function rowClick(index: number) {
+        if (pendingCollapse.current !== index) return
+        pendingCollapse.current = null
+        // Un click simple sobre la única fila seleccionada la deselecciona: es
+        // la vuelta a "nada seleccionado" sin tener que usar un modificador.
+        setSelectedIndices((prev) => (prev.size === 1 && prev.has(index) ? new Set() : new Set([index])))
     }
 
     return (
         <div className="relative flex flex-1 flex-col overflow-hidden">
-            <div ref={parentRef} className="flex-1 overflow-auto bg-surface font-mono">
+            <div
+                ref={parentRef}
+                // Foco propio, fuera del orden de tabulación (se lo da el click
+                // en una fila), para poder atender los dos atajos que cualquiera
+                // prueba antes de buscar un botón.
+                tabIndex={-1}
+                onKeyDown={(e) => {
+                    // Dentro del editor de una celda, Ctrl/Cmd+A es "seleccionar
+                    // todo el texto" y Esc es "cancelar la edición": ahí la
+                    // grilla no se mete.
+                    const tag = (e.target as HTMLElement).tagName
+                    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+                    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+                        e.preventDefault()
+                        setSelectedIndices(new Set(rows.map((_, i) => i)))
+                        anchorRef.current = rows.length > 0 ? 0 : null
+                        return
+                    }
+                    if (e.key === 'Escape' && selectedIndices.size > 0) {
+                        e.preventDefault()
+                        setSelectedIndices(new Set())
+                    }
+                }}
+                className="flex-1 overflow-auto bg-surface font-mono outline-none"
+            >
                 <table
                     className="border-collapse text-left text-xs"
                     style={{tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize()}}
@@ -201,15 +318,16 @@ export default function ResultGrid({
                             return (
                                 <tr
                                     key={row.id}
-                                    onClick={(e) => clickRow(vi.index, e)}
-                                    title="Click para seleccionar la fila — Ctrl/Cmd+click para sumar filas sueltas, Shift+click para un rango — habilita copiarlas como texto, CSV, INSERT o UPDATE"
+                                    onMouseDown={(e) => rowMouseDown(vi.index, e)}
+                                    onClick={() => rowClick(vi.index)}
+                                    title="Click para seleccionar la fila — Ctrl/Cmd+click suma filas sueltas, Shift+click marca un rango (con Ctrl/Cmd lo suma), Ctrl/Cmd+A marca todo y Esc limpia — habilita copiarlas como texto, CSV, INSERT o UPDATE"
                                     className={`cursor-pointer ${
                                         isSelected
-                                            ? 'bg-primary-container/40'
+                                            ? 'bg-primary-container/70 hover:bg-primary-container/90'
                                             : 'odd:bg-surface even:bg-surface-container-lowest hover:bg-surface-variant/40'
                                     }`}
                                 >
-                                    {row.getVisibleCells().map((cell) => {
+                                    {row.getVisibleCells().map((cell, ci) => {
                                         const colName = cell.column.id
                                         const editable = editing.editableCols.get(colName.toLowerCase())
                                         const change = editing.valueOf(vi.index, colName)
@@ -240,7 +358,17 @@ export default function ResultGrid({
                                                             ? 'bg-tertiary/15'
                                                             : 'bg-primary/20 font-medium'
                                                         : ''
-                                                } ${editable ? 'cursor-text' : ''}`}
+                                                } ${editable ? 'cursor-text' : ''} ${
+                                                    // Barra de acento en la primera celda de una
+                                                    // fila marcada: el tinte de fondo se pierde
+                                                    // bajo el mouse y sobre una grilla larga cuesta
+                                                    // seguir dónde empieza y termina lo elegido.
+                                                    // Va como sombra interior y no como borde para
+                                                    // no correr el ancho de la columna.
+                                                    isSelected && ci === 0
+                                                        ? 'shadow-[inset_3px_0_0_0_var(--color-primary)]'
+                                                        : ''
+                                                }`}
                                             >
                                                 {isEditing && editable ? (
                                                     <CellEditor
