@@ -376,7 +376,7 @@ opaco**, igual que el módulo Git.
 | `HttpListItems` / `HttpGetItem` / `HttpSaveItem` / `HttpDeleteItem` / `HttpMoveItem` | Un solo tipo `HTTPItem` para carpetas y peticiones, distinguidas por `kind` — es la forma del formato de Postman, así que el import de F6 mapea uno a uno. `MoveHTTPItem` **rechaza** mover una carpeta dentro de su propio subárbol (la desconectaría del árbol sin ningún error visible) |
 | `HttpSend(execID, itemID, request)` | Devuelve `HttpSendResult`, con el error **adentro** y no como error de Go: un 500, un timeout y un certificado inválido son resultados normales de probar un endpoint, no fallas de la app, y devolverlos como error dejaría a la UI sin la duración ni la URL que los produjo. `itemID` puede ir vacío (petición sin guardar) |
 | `HttpCancel(execID)` | El `execID` lo elige el frontend para poder cancelar sin esperar a que `HttpSend` vuelva. Cancelar algo ya terminado no es error |
-| `HttpHistory` / `HttpClearHistory` | Tope de 50 por ítem, **no global**: quien depura corre la misma petición veinte veces y un tope global le borraría el historial de todas las demás. La URL se archiva con los parámetros que parecen secretos reemplazados por `***` |
+| `HttpHistory` / `HttpClearHistory` / `HttpHistoryAll` / `HttpDeleteHistoryEntry` / `HttpClearAllHistory` | Tope de 50 por ítem, **no global**: quien depura corre la misma petición veinte veces y un tope global le borraría el historial de todas las demás. La URL se archiva con los parámetros que parecen secretos reemplazados por `***` |
 | `HttpFormatBody(lang, text)` | JSON con `json.Indent` (**no** un round-trip por `map`, que reordenaría las claves alfabéticamente y convertiría "formatear" en "reescribirme el cuerpo"). Un texto que no parsea vuelve **intacto y sin error**: el caso normal de apretar el botón es un JSON a medio escribir |
 | `HttpDefaultSettings` | Vive en Go para que `verifyTls: true` tenga una sola definición |
 | `HttpBuildRequest(itemID)` | Arma la petición ejecutable desde el ítem guardado. Existe como binding desde F1 —aunque hoy solo copie campos— porque es el punto donde F2 resuelve variables y F4 la auth heredada: que la UI ya llame acá significa que esas fases no tocan el frontend |
@@ -621,8 +621,9 @@ F6 más abajo).
 
 ### F6 — interop (Postman, cURL, snippets)
 
-Cinco bindings: `HttpImportPostman`, `HttpExportPostman`, `HttpImportCurl`,
-`HttpCodeLanguages`, `HttpGenerateCode`.
+Cuatro bindings: `HttpExportPostman`, `HttpImportCurl`, `HttpCodeLanguages`,
+`HttpGenerateCode`. (`HttpImportPostman` existió hasta F10, que lo reemplazó
+por el diálogo único de importar — ver abajo.)
 
 **Round-trip por preservación, no por modelado completo.** Cada ítem guarda
 su JSON original en `postman_raw` (cifrado) y el exportador **parte de ese
@@ -656,6 +657,46 @@ colección entera para dibujar la barra lateral. La contrapartida honesta es
 que un `Bearer` escrito a mano en un header queda en claro dentro del
 archivo del vault; el lugar para un token son las variables secretas de F2,
 que sí se cifran.
+
+### F10 — importar todo, historial global, favoritas
+
+Nueve bindings: `HttpImportDetect(text)` → `httpclient.ImportDetection`,
+`HttpImportText(text, collectionID)` y `HttpImportFiles(paths)` →
+`main.HttpImportBatch`, `HttpImportPickFiles`, `HttpImportPickFolder`,
+`HttpHistoryAll(search)`, `HttpDeleteHistoryEntry(id)`, `HttpClearAllHistory`,
+`HttpSetCollectionFavorite(id, favorite)`.
+
+**Detectar es su propio binding, y no devuelve error.** El diálogo lo llama
+mientras se escribe (con 250 ms de respiro) para decir qué reconoció antes de
+escribir nada; un formato que no se reconoce vuelve con `kind: ""` y un
+`reason` que explica por qué. Importar a ciegas y después ir a buscar al árbol
+qué entró es lo que hace que uno no se anime a arrastrar un archivo que no
+recuerda qué tenía.
+
+**El resultado es una LISTA, no un objeto.** Un volcado de Postman trae varias
+colecciones y varios entornos, y una carpeta arrastrada trae veinte archivos:
+`HttpImportBatch.items` lleva un `HttpImportOutcome` por cosa importada, con su
+`error` propio cuando ese archivo no entró. Lo único que corta la importación
+entera es un fallo de la bóveda (`vaultFailure`), que se distingue a propósito
+de «este archivo no servía».
+
+**`HttpImportText` recibe la colección destino** solo para lo que es UNA
+petición (cURL, texto plano, URL). Vacío significa «creá una»: una petición
+importada que no queda en ningún lado se pierde al cerrar la pestaña, que es lo
+contrario de importarla.
+
+**Los selectores devuelven rutas, no importan nada** (`HttpImportPickFiles`,
+`HttpImportPickFolder`): el frontend las pasa a `HttpImportFiles`, el mismo
+camino que usa el arrastre. Un segundo camino de importación terminaría
+comportándose distinto.
+
+**`HttpSetCollectionFavorite` va aparte de `HttpSaveCollection`**, igual que
+`SetHTTPCollectionNote`: el editor no manda ese campo y meterlo en el UPDATE
+haría que renombrar una colección leída antes de marcarla la desmarcara.
+
+`HttpImportBatch`, `HttpImportOutcome` e `ImportDetection` aparecen en firmas de
+bindings, así que Wails los emite en models.ts (acá se escribieron a mano, sin
+CLI, y se validaron con `scripts/check-bindings.py`).
 
 ## EXPLAIN enriquecido (`backend/explain`)
 

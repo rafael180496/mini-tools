@@ -502,6 +502,10 @@ export default function Workspace({
     // barra lateral no quede mostrando el nombre viejo.
     const [httpToken, setHttpToken] = useState(0)
     const bumpHttp = useCallback(() => setHttpToken((n) => n + 1), [])
+    // Token aparte para el historial: se mueve con cada envío, que es mucho
+    // más seguido que un cambio en el árbol y no tiene por qué releerlo.
+    const [httpHistoryToken, setHttpHistoryToken] = useState(0)
+    const bumpHttpHistory = useCallback(() => setHttpHistoryToken((n) => n + 1), [])
 
     const sidebarModules = useMemo(
         () => [
@@ -985,6 +989,29 @@ export default function Workspace({
                 connId: null,
                 language: 'sql',
                 kind: 'http-request',
+            }
+            setActiveTabId(tab.id)
+            return [...prev, tab]
+        })
+    }, [])
+
+    // Igual que la anterior pero con el método y la URL ya puestos: lo usa el
+    // historial para reabrir un envío que no quedó guardado en ninguna
+    // colección. Es todo lo que se puede reconstruir de él — el historial no
+    // guarda headers ni cuerpo a propósito, para no volverse un archivo de
+    // tokens.
+    const openHttpScratchWith = useCallback((method: string, url: string) => {
+        setTabs((prev) => {
+            const tab: EditorTab = {
+                id: newTabId(),
+                title: 'Petición rápida',
+                path: null,
+                content: '',
+                dirty: false,
+                connId: null,
+                language: 'sql',
+                kind: 'http-request',
+                httpSeed: {method, url},
             }
             setActiveTabId(tab.id)
             return [...prev, tab]
@@ -3087,6 +3114,8 @@ export default function Workspace({
                             onChanged={bumpHttp}
                             onOpenNote={(id) => openNote(id)}
                             onNewScratch={openHttpScratch}
+                            onOpenScratchWith={openHttpScratchWith}
+                            historyToken={httpHistoryToken}
                         />
                     ),
                     connections: (
@@ -3969,11 +3998,13 @@ export default function Workspace({
                         >
                             <HttpRequestTab
                                 itemId={t.httpItemId ?? null}
+                                seed={t.httpSeed}
                                 editorThemeId={editorThemeId}
                                 appTheme={theme}
                                 appearance={editorAppearance}
                                 onChanged={bumpHttp}
                                 onSaved={(item) => bindHttpTab(t.id, item)}
+                                onSent={bumpHttpHistory}
                                 active={activeTabId === t.id}
                             />
                         </div>

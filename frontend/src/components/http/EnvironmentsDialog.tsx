@@ -7,6 +7,7 @@ import {
 } from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import Select from '../Select'
 import ConfirmDialog from '../ConfirmDialog'
 import VariablesTable from './VariablesTable'
 import {parseVariables, type HttpVariable} from './httpShared'
@@ -166,22 +167,21 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                                     title="Nombre del entorno, el que se ve en el selector"
                                     className="min-w-0 flex-1 rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                 />
-                                <select
+                                <Select
                                     value={pinned}
-                                    onChange={(e) => {
-                                        setPinned(e.target.value)
+                                    options={[
+                                        {value: '', label: 'Sin anclar', separatorAfter: collections.length > 0},
+                                        ...collections.map((c) => ({value: c.id, label: `Anclado a «${c.name}»`})),
+                                    ]}
+                                    onChange={(v) => {
+                                        setPinned(v)
                                         setDirty(true)
                                     }}
+                                    size="sm"
+                                    ariaLabel="Colección a la que se ancla el entorno"
                                     title="Anclar este entorno a una colección: al abrir una petición de esa colección se usa este entorno automáticamente, sin importar cuál esté seleccionado. Solo un entorno puede estar anclado a cada colección."
-                                    className="shrink-0 rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                                >
-                                    <option value="">Sin anclar</option>
-                                    {collections.map((c) => (
-                                        <option key={c.id} value={c.id}>
-                                            Anclado a «{c.name}»
-                                        </option>
-                                    ))}
-                                </select>
+                                    className="w-52 shrink-0"
+                                />
                                 <button
                                     onClick={() => void save()}
                                     disabled={!dirty}

@@ -6,6 +6,30 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Agregado
 
+- **Importar dejó de exigir saber qué tenías.** Había dos entradas sin relación entre sí: un botón que abría el selector de archivos esperando una colección de Postman, y un diálogo aparte —escondido en el menú contextual de una colección— para pegar un cURL. Había que saber de antemano de qué clase era lo que tenías y por dónde entraba, y equivocarse daba un error que no explicaba nada.
+
+  Ahora hay **un solo diálogo**: se pega o se suelta, y la aplicación reconoce sola qué es. Entra una **colección de Postman** (v2.0 y v2.1), un **entorno**, el **volcado completo de datos** de Postman —colecciones y entornos en un archivo—, un **comando cURL**, una **petición HTTP en texto plano** (`POST /v1/pedidos HTTP/1.1` con sus headers y su cuerpo) o una **URL suelta**. La detección mira el CONTENIDO y no la extensión, que es lo único que sirve cuando una colección y un entorno son los dos `.json`.
+
+  **Dice qué reconoció antes de escribir nada** («colección de Postman · 23 peticiones en 4 carpetas»), y al terminar dice qué entró, uno por uno. Importar a ciegas y después ir a contar peticiones al árbol es lo que hace que uno no se anime a arrastrar un archivo que no recuerda qué tenía. Lo que **no** se reconoce dice por qué: una colección exportada con el formato viejo (v1) avisa que hay que volver a exportarla como v2.1, en vez de un «no se reconoce» que no deja nada que corregir.
+
+  Se pueden **soltar varios archivos o una carpeta entera**: se recorre buscando `.json` y lo que no es una colección se saltea sin ruido —una carpeta de proyecto tiene `package.json` y `tsconfig.json`, y reportarlos como errores convertiría el resumen en ruido—. Un archivo ilegible **no tumba a los otros diecinueve**: se lista con su error y los demás entran igual.
+
+  Y **pegar un «Copy as cURL» en la barra de URL** de una petición ahora la importa entera —método, headers y cuerpo— en vez de dejar cien caracteres de shell adentro de un campo de URL, que era lo único que podía pasar antes. Lo que no empieza con `curl` se sigue pegando como texto.
+
+  Queda fuera a propósito, y el diálogo lo dice: OpenAPI/Swagger, HAR e Insomnia.
+
+- **Historial de peticiones, de todas y en un solo lugar.** El historial existía desde la primera versión del módulo, pero era **por petición**: había que abrir la petición guardada para ver sus envíos. Eso dejaba fuera justo el caso en el que un historial sirve —«¿cuál era la URL que probé ayer?»—, porque quien pregunta eso no se acuerda de en qué colección estaba, y si la mandó como petición rápida no había colección ninguna.
+
+  La barra lateral del módulo tiene ahora dos secciones, **Colecciones** e **Historial**, y las filtra el mismo buscador de arriba. El historial va agrupado por día (Hoy, Ayer, y después la fecha), con el método, el status y cuánto tardó cada envío. Un clic en una entrada de una petición guardada **abre esa petición**; una de una petición rápida abre una pestaña nueva con su método y su URL. Se borra una entrada con la ✕ de la fila, o el historial entero desde la cabecera.
+
+  **Sigue sin guardar headers ni cuerpo**, y es la misma decisión de siempre: un historial con el `Authorization` de cada envío es un archivo de tokens que nadie pidió tener. Por eso una petición rápida solo se puede reabrir con su método y su URL, y el tooltip lo dice en vez de dejar creer que se perdió algo.
+
+  El nombre de la petición y el de su colección se leen en el momento, no se copian en la fila: renombrar una petición la renombra también en su historial. Y el panel se refresca con cada envío sin releer el árbol de colecciones, que no cambia por mandar una petición.
+
+- **Colecciones favoritas.** Con veinte colecciones importadas, las dos contra las que se trabaja hoy quedaban a media pantalla de scroll, y reordenarlas a mano hay que deshacerlo cuando el trabajo cambia de proyecto. La estrella —en la fila, al pasar el mouse, o en el menú contextual de la colección— las fija arriba.
+
+  Se guarda **cuándo** se marcó y no un simple sí/no: entre varias favoritas, la última marcada es la que se está usando, y eso las ordena sin pedirle a nadie que las ordene. Renombrar una colección no la desmarca —la marca se escribe aparte del guardado normal, por el mismo motivo por el que ya se escribía aparte la nota de documentación.
+
 - **Ejecutar ya no bloquea el resto de la app.** Mientras una consulta corría —diez minutos contra producción, un `init.sql` entero— no se podía ejecutar nada más: ni en otra conexión, ni en otra base, ni en la misma pestaña. Había que esperar. Ahora se ejecuta donde sea, cuando sea: en otra pestaña, en otra conexión, o **en la misma pestaña otra vez sin esperar la anterior**.
 
   El backend nunca fue el límite: cada corrida ya viajaba con su `queryId` propio, con su cancelación registrada por ese id y su pool por conexión. Quien serializaba era la interfaz — tenía **un solo** juego de estado (un `running`, un `resultSets`, una consola), así que una segunda consulta habría pisado los resultados de la primera y por eso directamente no se dejaba arrancar. Ese estado pasó a ser **por pestaña**, y dentro de cada pestaña, **por corrida**: resultados, consola, `DBMS_OUTPUT`, progreso y cancelación son de quien los pidió, y los eventos caen donde se pidieron aunque estés mirando otra cosa.
@@ -29,6 +53,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 - **Se avisa cuándo otra consulta te cerró la paginación.** El motor guarda **un solo cursor pausado por conexión** (`backend/query/paging.go`): arrancar cualquier consulta en una conexión cierra el cursor que esa conexión tuviera pausado. Antes no se notaba, porque no se podía ejecutar nada mientras algo corría; ahora sí, y el síntoma sería un «Cargar más» que falla o —peor— un resultado que parece completo cuando le faltan millones de filas. El resultado afectado dice **«paginación cerrada — otra consulta usó esta conexión»**, y su tooltip explica que hay que volver a ejecutar para seguir leyendo.
 
 - **Con una transacción abierta se sigue esperando, y es lo correcto.** Con auto-commit apagado el executor **reserva una única conexión** para esa conexión de base (`Executor.BeginTransaction` / `txConn`) y todo lo que se le mande pasa por ahí. Dos corridas no serían dos ejecuciones en paralelo: serían dos secuencias de sentencias intercalándose en la **misma sesión** y dentro de la **misma transacción**, donde un Commit desde cualquier lado confirma el trabajo del otro — y encima apoyado en que el driver tolere dos sentencias simultáneas sobre una sola sesión, que no es algo que convenga suponer. La barra de estado lo dice y sugiere la salida (esperar, o Commit/Rollback). Para poder preguntarlo por una conexión que no es la que estás mirando, el estado de transacción pasó a estar indexado por conexión.
+
+### Mejorado
+
+- **El panel de «Código» se lee como código.** El snippet salía en un `<pre>` de un solo color: diez líneas de shell en las que había que buscar a ojo dónde termina un header y empieza el cuerpo, justo lo que uno revisa antes de pegarlo en un ticket. Ahora se dibuja con el **mismo editor y el mismo resaltado** que el resto de la aplicación —el tema elegido, la fuente elegida y el tamaño de letra elegido—, con un resaltador por lenguaje: shell para el cURL, Go para el de `net/http`, y así.
+
+  La cabecera se repartió en dos filas: arriba, **qué petición es** (su método con su color y su URL), que antes no se veía y obligaba a cerrar el panel para acordarse; abajo, los controles. El selector de lenguaje pasó a ser el **selector temado de la aplicación**: el nativo abría el menú del sistema operativo —una lista blanca sobre una ventana oscura, con la tipografía del sistema— y no podía mostrar la librería de cada opción («Go», y debajo «net/http») sin meterla en la misma línea del nombre. «Incluir secretos» es ahora un interruptor, el mismo del resto de la aplicación, y al lado va el conteo de líneas y el botón de copiar con su ícono.
+
+- **Se fueron los últimos desplegables del sistema operativo del módulo HTTP.** El de «Código» era el más visible, pero quedaban seis más con el mismo problema: el tipo de autenticación, dónde viaja la API key, el algoritmo del JWT, el flujo de OAuth 2.0, la operación y la codificación de las variables calculadas, el tipo de campo de un formulario, la pausa del runner y el anclaje de un entorno. Todos usan ahora el selector de la aplicación, que además **respeta el tamaño de letra** de Configuración y puede poner una aclaración bajo cada opción: la advertencia de «se guarda, todavía no se firma» de los tipos de auth que esta versión no ejecuta era, dentro de un `<option>` nativo, una línea larguísima que tapaba el nombre del tipo.
 
 ### Corregido
 

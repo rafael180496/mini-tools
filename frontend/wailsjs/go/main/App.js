@@ -874,6 +874,10 @@ export function HttpCancelRun(arg1) {
   return window['go']['main']['App']['HttpCancelRun'](arg1);
 }
 
+export function HttpClearAllHistory() {
+  return window['go']['main']['App']['HttpClearAllHistory']();
+}
+
 export function HttpClearCookies(arg1, arg2) {
   return window['go']['main']['App']['HttpClearCookies'](arg1, arg2);
 }
@@ -900,6 +904,10 @@ export function HttpDeleteCollection(arg1) {
 
 export function HttpDeleteEnvironment(arg1) {
   return window['go']['main']['App']['HttpDeleteEnvironment'](arg1);
+}
+
+export function HttpDeleteHistoryEntry(arg1) {
+  return window['go']['main']['App']['HttpDeleteHistoryEntry'](arg1);
 }
 
 export function HttpDeleteItem(arg1) {
@@ -934,12 +942,32 @@ export function HttpHistory(arg1) {
   return window['go']['main']['App']['HttpHistory'](arg1);
 }
 
+export function HttpHistoryAll(arg1) {
+  return window['go']['main']['App']['HttpHistoryAll'](arg1);
+}
+
 export function HttpImportCurl(arg1) {
   return window['go']['main']['App']['HttpImportCurl'](arg1);
 }
 
-export function HttpImportPostman() {
-  return window['go']['main']['App']['HttpImportPostman']();
+export function HttpImportDetect(arg1) {
+  return window['go']['main']['App']['HttpImportDetect'](arg1);
+}
+
+export function HttpImportFiles(arg1) {
+  return window['go']['main']['App']['HttpImportFiles'](arg1);
+}
+
+export function HttpImportPickFiles() {
+  return window['go']['main']['App']['HttpImportPickFiles']();
+}
+
+export function HttpImportPickFolder() {
+  return window['go']['main']['App']['HttpImportPickFolder']();
+}
+
+export function HttpImportText(arg1, arg2) {
+  return window['go']['main']['App']['HttpImportText'](arg1, arg2);
 }
 
 export function HttpListCollections() {
@@ -1000,6 +1028,10 @@ export function HttpSend(arg1, arg2, arg3) {
 
 export function HttpSetActiveEnvironment(arg1) {
   return window['go']['main']['App']['HttpSetActiveEnvironment'](arg1);
+}
+
+export function HttpSetCollectionFavorite(arg1, arg2) {
+  return window['go']['main']['App']['HttpSetCollectionFavorite'](arg1, arg2);
 }
 
 export function InitializeVault(arg1) {

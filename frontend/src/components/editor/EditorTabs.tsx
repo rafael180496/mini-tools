@@ -141,6 +141,11 @@ export interface EditorTab {
     // Sin valor en una petición rápida: esa pestaña no direcciona ningún
     // ítem, y toma uno recién cuando el usuario la guarda en una colección.
     httpItemId?: string
+    // Método y URL con los que nace una petición rápida, cuando la abre algo
+    // que ya sabe qué se va a mandar — hoy, el historial al reabrir un envío
+    // que no quedó guardado en ninguna colección. Se consume una sola vez, al
+    // montar la pestaña: después la pestaña es dueña de su propio estado.
+    httpSeed?: {method: string; url: string}
     // Intérprete de una terminal local — solo para kind === 'local-terminal'.
     // Vacío significa "el configurado en Configuración → Terminal".
     shellId?: string

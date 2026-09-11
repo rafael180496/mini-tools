@@ -72,8 +72,20 @@ rm -rf tmp_migrationverify
 > hacía engañosa la sección: leerla daba a entender que agregar una migración
 > era todavía territorio inexplorado.
 
-- **Versión actual: 51.** El slice de `migrations.go` es la lista completa y
+- **Versión actual: 53.** El slice de `migrations.go` es la lista completa y
   autoritativa; cada entrada explica en su comentario por qué existe.
+- **Versiones 52 y 53** (módulo HTTP: colecciones favoritas e historial
+  global): `http_collections.favorite_at` —un INSTANTE y no un 0/1, para que
+  entre varias favoritas mande la última marcada— y un índice de `http_history`
+  por `executed_at`. El índice se escribió primero como
+  `(executed_at DESC, rowid DESC)`, que es el orden real de la consulta, y
+  **SQLite lo rechaza**: el `rowid` no se puede indexar. Quedó solo sobre
+  `executed_at`; el desempate se resuelve ordenando las pocas filas que
+  comparten segundo. Verificadas con el patrón de script efímero de arriba:
+  colección marcada → queda primera; renombrarla **no** la desmarca (es lo que
+  obliga a que `SetHTTPCollectionFavorite` viva fuera de `SaveHTTPCollection`);
+  historial global con su JOIN de nombres, sus filtros, el borrado de una
+  entrada y el vaciado completo.
 - **Versión 51** (única destructiva): `DELETE FROM query_history` al retirarse
   el historial de consultas. Verificada con el patrón de script efímero de
   arriba, extendido como pedía esta misma sección: instalación en frío →

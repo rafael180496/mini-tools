@@ -7,6 +7,7 @@ import {
     HttpClearHistory,
     HttpDefaultSettings,
     HttpFormatBody,
+    HttpImportCurl,
     HttpListCollections,
     HttpGetItem,
     HttpHistory,
@@ -60,6 +61,10 @@ interface HttpRequestTabProps {
     // vez— y obligar a crear y nombrar una colección para eso convierte treinta
     // segundos de trabajo en una carpeta que nadie va a volver a abrir.
     itemId: string | null
+    // Método y URL con los que nace una petición rápida abierta desde el
+    // historial. Se consume al montar: después la pestaña es dueña de su
+    // estado, y volver a aplicarlo pisaría lo que el usuario editó.
+    seed?: {method: string; url: string}
     editorThemeId: string
     appTheme: Theme
     appearance: EditorAppearance
@@ -69,6 +74,11 @@ interface HttpRequestTabProps {
     // Avisa que una petición rápida se guardó y ahora es un ítem de verdad,
     // para que la pestaña deje de ser rápida y pase a apuntar a él.
     onSaved?: (item: vault.HTTPItem) => void
+    // Avisa que se mandó una petición, para que el panel de historial de la
+    // barra lateral no quede viejo. Es su propio aviso y no `onChanged`
+    // porque ese recarga el árbol entero de colecciones, y mandar una
+    // petición no cambia ninguna.
+    onSent?: () => void
     active: boolean
 }
 
@@ -82,14 +92,14 @@ const RAW_LANGS: {id: string; label: string; lang: LanguageId}[] = [
     {id: 'text', label: 'Texto', lang: 'plaintext'},
 ]
 
-export default function HttpRequestTab({itemId, editorThemeId, appTheme, appearance, onChanged, onSaved, active}: HttpRequestTabProps) {
+export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, appearance, onChanged, onSaved, onSent, active}: HttpRequestTabProps) {
     // Una petición rápida no tiene ítem, así que tampoco tiene colección de la
     // que heredar: ni variables, ni autenticación, ni carpeta. Lo que se ve en
     // pantalla es todo lo que se manda.
     const scratch = itemId === null
     const [item, setItem] = useState<vault.HTTPItem | null>(null)
-    const [method, setMethod] = useState('GET')
-    const [url, setUrl] = useState('')
+    const [method, setMethod] = useState(seed?.method || 'GET')
+    const [url, setUrl] = useState(seed?.url ?? '')
     const [params, setParams] = useState<httpclient.KeyValue[]>([])
     const [pathVars, setPathVars] = useState<httpclient.KeyValue[]>([])
     const [headers, setHeaders] = useState<httpclient.KeyValue[]>([])
@@ -119,6 +129,10 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
     const [authPreview, setAuthPreview] = useState<{type: string; executable: boolean; needsToken: boolean} | null>(null)
     const [settings, setSettings] = useState<httpclient.Settings | null>(null)
 
+    // Aviso de que un pegado se convirtió en una petición entera. Dura unos
+    // segundos: pegar un cURL y ver cambiar cinco campos de golpe necesita
+    // una línea que diga qué pasó, pero no un cartel que haya que cerrar.
+    const [pasteNote, setPasteNote] = useState('')
     const [dirty, setDirty] = useState(false)
     const [section, setSection] = useState<EditorSection>('params')
     const [respSection, setRespSection] = useState<ResponseSection>('body')
@@ -271,6 +285,26 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
         }
     }
 
+    // Vuelca una petición que vino de afuera —un cURL pegado en la barra de
+    // URL, o lo que devuelve el panel de IA— sobre los campos de la pestaña.
+    // Una sola función para los dos caminos: cuando eran dos, agregar un campo
+    // a la petición lo dejaba a medias en uno de ellos.
+    function applyImported(req: httpclient.Request, note: string) {
+        setMethod(req.method || 'GET')
+        setUrl(req.url ?? '')
+        setParams(req.params ?? [])
+        setPathVars(req.pathVars ?? [])
+        setHeaders(req.headers ?? [])
+        setBody(new httpclient.Body(req.body ?? {mode: 'none'}))
+        if (req.auth && req.auth.type && req.auth.type !== 'none') setAuth(new httpclient.Auth(req.auth))
+        setDirty(true)
+        setError(null)
+        if (note) {
+            setPasteNote(note)
+            setTimeout(() => setPasteNote(''), 4000)
+        }
+    }
+
     // --- guardar -------------------------------------------------------------
 
     const openSaveDialog = useCallback(async () => {
@@ -411,6 +445,7 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
             setComputedErrors(out?.computedErrors ?? [])
             setRespSection('body')
             void reloadHistory()
+            onSent?.()
         } catch (e) {
             if (generation === execRef.current) setError(String(e))
         } finally {
@@ -497,8 +532,22 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
                     onKeyDown={(e) => {
                         if (e.key === 'Enter') void send()
                     }}
+                    onPaste={(e) => {
+                        // Pegar un «Copy as cURL» en la barra de URL importa
+                        // el comando entero en vez de dejar cien caracteres de
+                        // shell adentro de un campo de URL, que es lo único
+                        // que podía pasar antes. El resto de los pegados
+                        // siguen siendo texto: solo se intercepta lo que
+                        // empieza con `curl`.
+                        const text = e.clipboardData.getData('text')
+                        if (!/^\s*\$?\s*curl[\s\n]/i.test(text)) return
+                        e.preventDefault()
+                        void HttpImportCurl(text)
+                            .then((req) => req && applyImported(req, 'Se importó el comando cURL.'))
+                            .catch((err) => setError(String(err)))
+                    }}
                     placeholder="localhost:3000/dev/blocks/:slug/:date"
-                    title="URL de la petición. Un segmento que empiece con dos puntos (:id) se convierte en una variable de ruta y aparece para completar en la pestaña Params."
+                    title="URL de la petición. Un segmento que empiece con dos puntos (:id) se convierte en una variable de ruta y aparece para completar en la pestaña Params. Pegando un comando cURL acá se importa entero: método, headers y cuerpo incluidos."
                     className="min-w-0 flex-1 rounded bg-surface-container px-2 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                 />
 
@@ -693,7 +742,16 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
                 </div>
             )}
 
-            {showCode && <CodeSnippetPanel itemId={itemId ?? ''} request={request} onClose={() => setShowCode(false)} />}
+            {showCode && (
+                <CodeSnippetPanel
+                    itemId={itemId ?? ''}
+                    request={request}
+                    editorThemeId={editorThemeId}
+                    appTheme={appTheme}
+                    appearance={appearance}
+                    onClose={() => setShowCode(false)}
+                />
+            )}
 
             {computedErrors.length > 0 && (
                 <div
@@ -714,6 +772,13 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
                     <span className="min-w-0 flex-1 break-words">
                         Sin definir: <span className="font-mono">{missing.map((m) => `{{${m}}}`).join('  ')}</span>
                     </span>
+                </div>
+            )}
+
+            {pasteNote && (
+                <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1 text-ui-10 text-on-surface-variant">
+                    <Icon name="content_paste" size={13} className="shrink-0 text-secondary" />
+                    <span className="min-w-0 flex-1 break-words">{pasteNote}</span>
                 </div>
             )}
 
@@ -1298,16 +1363,7 @@ export default function HttpRequestTab({itemId, editorThemeId, appTheme, appeara
                         response={result?.response ?? new httpclient.Response({status: 0})}
                         errorText={result?.error ?? ''}
                         currentDocs={docs}
-                        onApplyRequest={(req) => {
-                            setMethod(req.method || 'GET')
-                            setUrl(req.url ?? '')
-                            setParams(req.params ?? [])
-                            setPathVars(req.pathVars ?? [])
-                            setHeaders(req.headers ?? [])
-                            setBody(new httpclient.Body(req.body ?? {mode: 'none'}))
-                            if (req.auth && req.auth.type && req.auth.type !== 'none') setAuth(new httpclient.Auth(req.auth))
-                            setDirty(true)
-                        }}
+                        onApplyRequest={(req) => applyImported(req, '')}
                         onApplyDocs={(markdown) => {
                             setDocs(markdown)
                             setSection('docs')

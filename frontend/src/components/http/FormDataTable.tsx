@@ -1,6 +1,7 @@
 import {HttpPickFile} from '../../../wailsjs/go/main/App'
 import {httpclient} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import Select from '../Select'
 
 // Tabla de form-data: como la de clave/valor, pero cada fila elige si su
 // valor es TEXTO o un ARCHIVO.
@@ -82,15 +83,19 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                 </td>
                                 <td className="px-2 py-0.5">
                                     {!ghost && (
-                                        <select
+                                        <Select
                                             value={row.type}
-                                            onChange={(e) => update(i, {type: e.target.value, value: ''})}
+                                            options={[
+                                                {value: 'text', label: 'Texto'},
+                                                {value: 'file', label: 'Archivo'},
+                                            ]}
+                                            onChange={(v) => update(i, {type: v, value: ''})}
+                                            size="sm"
+                                            variant="ghost"
+                                            ariaLabel="Tipo del campo del formulario"
                                             title="Texto manda el valor tal cual; Archivo sube el contenido del archivo elegido."
-                                            className="w-full rounded bg-transparent text-ui-11 text-on-surface-variant outline-none focus:ring-1 focus:ring-primary"
-                                        >
-                                            <option value="text">Texto</option>
-                                            <option value="file">Archivo</option>
-                                        </select>
+                                            className="w-full"
+                                        />
                                     )}
                                 </td>
                                 <td className="px-2 py-0.5">

@@ -1,4 +1,5 @@
 import Icon from '../Icon'
+import Select from '../Select'
 import {newComputed, type HttpComputed} from './httpShared'
 
 // Variables calculadas: la firma declarativa que reemplaza a los scripts.
@@ -77,29 +78,29 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
                                 title="Cómo se llama el resultado. Se usa entre llaves dobles en el resto de la petición."
                                 className="w-40 shrink-0 rounded bg-surface-container-highest px-1.5 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                             />
-                            <select
+                            <Select
                                 value={row.op}
-                                onChange={(e) => update(i, {op: e.target.value, enabled: true})}
+                                options={OPS.map((o) => ({value: o.id, label: o.label}))}
+                                onChange={(v) => update(i, {op: v, enabled: true})}
+                                size="sm"
+                                ariaLabel="Operación de la variable calculada"
                                 title="Qué se le hace a la entrada"
-                                className="shrink-0 rounded bg-surface-container-highest px-1.5 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                            >
-                                {OPS.map((o) => (
-                                    <option key={o.id} value={o.id}>
-                                        {o.label}
-                                    </option>
-                                ))}
-                            </select>
+                                className="w-48 shrink-0"
+                            />
                             {op.hashed && (
-                                <select
+                                <Select
                                     value={row.encoding || 'hex'}
-                                    onChange={(e) => update(i, {encoding: e.target.value})}
+                                    options={[
+                                        {value: 'hex', label: 'hex'},
+                                        {value: 'base64', label: 'base64'},
+                                        {value: 'base64url', label: 'base64url'},
+                                    ]}
+                                    onChange={(v) => update(i, {encoding: v})}
+                                    size="sm"
+                                    ariaLabel="Codificación del resultado"
                                     title="Cómo se representan los bytes del resultado. La mayoría de las APIs esperan hexadecimal."
-                                    className="shrink-0 rounded bg-surface-container-highest px-1.5 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                                >
-                                    <option value="hex">hex</option>
-                                    <option value="base64">base64</option>
-                                    <option value="base64url">base64url</option>
-                                </select>
+                                    className="w-28 shrink-0"
+                                />
                             )}
                             {!ghost && (
                                 <button

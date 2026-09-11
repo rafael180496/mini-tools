@@ -3,12 +3,13 @@ import {
     HttpDeleteCollection,
     HttpDeleteItem,
     HttpExportPostman,
+    HttpGetItem,
     HttpImportCurl,
-    HttpImportPostman,
     HttpListCollections,
     HttpListItems,
     HttpSaveCollection,
     HttpSaveItem,
+    HttpSetCollectionFavorite,
 } from '../../../wailsjs/go/main/App'
 import {httpclient, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
@@ -27,6 +28,8 @@ import CookiesDialog from './CookiesDialog'
 import VariablesTable from './VariablesTable'
 import AuthPanel from './AuthPanel'
 import ComputedTable from './ComputedTable'
+import ImportDialog from './ImportDialog'
+import HistoryPanel from './HistoryPanel'
 
 // Árbol de colecciones del módulo HTTP.
 //
@@ -50,6 +53,14 @@ interface HttpTreeProps {
     // Abre una petición rápida: una pestaña para probar un endpoint sin
     // guardarla en ninguna colección.
     onNewScratch: () => void
+    // Abre una petición rápida YA cargada con un método y una URL. Lo usa el
+    // historial para reabrir un envío que no quedó guardado en ninguna
+    // colección: es todo lo que se puede reconstruir de él, porque el
+    // historial no guarda headers ni cuerpo a propósito.
+    onOpenScratchWith: (method: string, url: string) => void
+    // Sube con cada envío: es lo que mantiene vivo el panel de historial sin
+    // releer el árbol de colecciones, que no cambia al mandar una petición.
+    historyToken: number
 }
 
 interface PendingPrompt {
@@ -60,7 +71,22 @@ interface PendingPrompt {
     onSubmit: (value: string) => void
 }
 
-export default function HttpTree({filter, activeItemId, onOpenRequest, refreshToken, onChanged, onOpenNote, onNewScratch}: HttpTreeProps) {
+export default function HttpTree({
+    filter,
+    activeItemId,
+    onOpenRequest,
+    refreshToken,
+    onChanged,
+    onOpenNote,
+    onNewScratch,
+    onOpenScratchWith,
+    historyToken,
+}: HttpTreeProps) {
+    // Qué muestra la barra: el árbol de colecciones o el historial. Dos
+    // secciones y no dos módulos de la barra lateral porque las dos son el
+    // mismo trabajo —peticiones HTTP— y el buscador de arriba filtra las dos.
+    const [section, setSection] = useState<'collections' | 'history'>('collections')
+    const [showImport, setShowImport] = useState(false)
     const [collections, setCollections] = useState<vault.HTTPCollection[]>([])
     const [itemsByCollection, setItemsByCollection] = useState<Record<string, vault.HTTPItem[]>>({})
     const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -288,6 +314,12 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                     },
                 },
                 {
+                    label: c.favoriteAt ? 'Quitar de favoritas' : 'Marcar como favorita',
+                    icon: 'star',
+                    hint: 'Las favoritas quedan arriba de la lista',
+                    onSelect: () => void guard(() => HttpSetCollectionFavorite(c.id, !c.favoriteAt)),
+                },
+                {
                     label: 'Renombrar…',
                     icon: 'edit',
                     onSelect: () =>
@@ -451,8 +483,32 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center pb-1 pl-2 pr-1 pt-2">
-                <span className="flex-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Colecciones</span>
+            <div className="flex items-center gap-0.5 pb-1 pl-1 pr-1 pt-2">
+                {/* Dos secciones y no dos módulos de la barra lateral: son el
+                    mismo trabajo y las filtra el mismo buscador de arriba. */}
+                <button
+                    onClick={() => setSection('collections')}
+                    title="Las colecciones guardadas, con sus carpetas y peticiones"
+                    className={`rounded px-1.5 py-0.5 text-ui-10 font-semibold uppercase tracking-wider ${
+                        section === 'collections'
+                            ? 'bg-surface-variant text-on-surface'
+                            : 'text-on-surface-variant/50 hover:text-on-surface-variant'
+                    }`}
+                >
+                    Colecciones
+                </button>
+                <button
+                    onClick={() => setSection('history')}
+                    title="Todo lo que se mandó desde la aplicación, de lo más nuevo a lo más viejo"
+                    className={`rounded px-1.5 py-0.5 text-ui-10 font-semibold uppercase tracking-wider ${
+                        section === 'history'
+                            ? 'bg-surface-variant text-on-surface'
+                            : 'text-on-surface-variant/50 hover:text-on-surface-variant'
+                    }`}
+                >
+                    Historial
+                </button>
+                <span className="flex-1" />
                 <button
                     onClick={onNewScratch}
                     title="Probar un endpoint sin guardarlo: se abre una pestaña con una petición que no pertenece a ninguna colección. Si después querés conservarla, «Guardar en…» la mete en la que elijas."
@@ -461,17 +517,8 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                     <Icon name="bolt" size={14} />
                 </button>
                 <button
-                    onClick={() =>
-                        void guard(async () => {
-                            const res = await HttpImportPostman()
-                            // null = el usuario canceló el diálogo de archivos.
-                            if (res) {
-                                setImportSummary({name: res.name, requests: res.requests, folders: res.folders, warnings: res.warnings ?? []})
-                                setExpanded((prev) => new Set([...prev, res.collectionId]))
-                            }
-                        })
-                    }
-                    title="Importar una colección exportada de Postman (.json). Se trae completa —peticiones, carpetas, variables, autenticación y scripts— y lo que esta aplicación todavía no ejecuta se guarda igual para no perderlo al volver a exportar."
+                    onClick={() => setShowImport(true)}
+                    title="Importar: pegá un comando cURL, una URL o una petición en texto, o soltá colecciones y entornos exportados de Postman. Una colección se trae completa —peticiones, carpetas, variables, autenticación y scripts— y lo que esta aplicación todavía no ejecuta se guarda igual para no perderlo al volver a exportar."
                     className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="download" size={14} />
@@ -498,6 +545,19 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                 </p>
             )}
 
+            {section === 'history' ? (
+                <HistoryPanel
+                    filter={filter}
+                    refreshToken={refreshToken + historyToken}
+                    onOpenItem={(itemId) =>
+                        void guard(async () => {
+                            const it = await HttpGetItem(itemId)
+                            if (it) onOpenRequest(it)
+                        })
+                    }
+                    onOpenScratch={onOpenScratchWith}
+                />
+            ) : (
             <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
                 {collections.length === 0 && (
                     <p className="px-2 py-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
@@ -508,23 +568,64 @@ export default function HttpTree({filter, activeItemId, onOpenRequest, refreshTo
                     const open = forceOpen || expanded.has(c.id)
                     return (
                         <div key={c.id}>
-                            <button
-                                onClick={() => toggle(c.id)}
-                                onContextMenu={(e) => collectionMenu(c, e)}
-                                title={`Colección "${c.name}". Botón derecho para agregar una petición, renombrarla o borrarla.`}
-                                className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-ui-11 font-medium text-on-surface hover:bg-surface-variant"
-                            >
-                                <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
-                                <Icon name="folder_special" size={13} className="shrink-0 opacity-70" />
-                                <span className="truncate">{c.name}</span>
-                            </button>
+                            <div className="group flex w-full items-center gap-1 rounded pr-1 hover:bg-surface-variant">
+                                <button
+                                    onClick={() => toggle(c.id)}
+                                    onContextMenu={(e) => collectionMenu(c, e)}
+                                    title={`Colección "${c.name}". Botón derecho para agregar una petición, renombrarla o borrarla.`}
+                                    className="flex min-w-0 flex-1 items-center gap-1 rounded px-2 py-1 text-left text-ui-11 font-medium text-on-surface"
+                                >
+                                    <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
+                                    <Icon name="folder_special" size={13} className="shrink-0 opacity-70" />
+                                    <span className="truncate">{c.name}</span>
+                                </button>
+                                {/* La estrella aparece al pasar el mouse y se
+                                    queda fija en las favoritas: marcar una es
+                                    un gesto ocasional, pero SABER cuáles lo
+                                    son se lee todo el tiempo. */}
+                                <button
+                                    onClick={() => void guard(() => HttpSetCollectionFavorite(c.id, !c.favoriteAt))}
+                                    title={
+                                        c.favoriteAt
+                                            ? 'Quitar de favoritas: vuelve a su lugar en la lista'
+                                            : 'Marcar como favorita: queda arriba de la lista'
+                                    }
+                                    className={`shrink-0 rounded p-0.5 hover:text-primary ${
+                                        c.favoriteAt ? 'text-primary' : 'text-on-surface-variant/0 group-hover:text-on-surface-variant/50'
+                                    }`}
+                                >
+                                    {/* Material Symbols no tiene un
+                                        `star_border`: la estrella es la misma
+                                        y lo que cambia es el eje FILL. */}
+                                    <Icon name="star" size={13} filled={!!c.favoriteAt} />
+                                </button>
+                            </div>
                             {open && renderItems(c.id, '', 1)}
                         </div>
                     )
                 })}
             </div>
+            )}
 
             {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} width={260} />}
+
+            {showImport && (
+                <ImportDialog
+                    collections={collections}
+                    // La favorita más reciente va primero en la lista, así que
+                    // es la que corresponde ofrecer para una petición suelta:
+                    // es contra la que se está trabajando.
+                    defaultCollectionId={collections[0]?.id ?? ''}
+                    onClose={() => setShowImport(false)}
+                    onImported={(batch) => {
+                        onChanged()
+                        void reloadCollections()
+                        const ids = batch.items.map((o) => o.collectionId).filter((id): id is string => !!id)
+                        if (ids.length > 0) setExpanded((prev) => new Set([...prev, ...ids]))
+                        for (const id of ids) void reloadItems(id)
+                    }}
+                />
+            )}
 
             {importSummary && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setImportSummary(null)}>

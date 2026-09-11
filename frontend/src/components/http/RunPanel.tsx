@@ -3,6 +3,7 @@ import {HttpCancelRun, HttpRunCollection} from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
 import {main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import Select from '../Select'
 import {methodColor, statusColor} from './httpShared'
 
 // Correr una colección (o una carpeta) entera y ver el resultado.
@@ -101,18 +102,15 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                     <p className="min-w-0 flex-1 truncate text-sm font-medium text-on-surface">Correr «{title}»</p>
 
                     {!running && (
-                        <select
-                            value={delayMs}
-                            onChange={(e) => setDelayMs(Number(e.target.value))}
+                        <Select
+                            value={String(delayMs)}
+                            options={DELAYS.map((d) => ({value: String(d.ms), label: d.label}))}
+                            onChange={(v) => setDelayMs(Number(v))}
+                            size="sm"
+                            ariaLabel="Pausa entre peticiones"
                             title="Pausa entre una petición y la siguiente. Treinta peticiones seguidas sin respirar es exactamente lo que un cortafuegos de aplicación corta."
-                            className="rounded border border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-ui-11 text-on-surface outline-none"
-                        >
-                            {DELAYS.map((d) => (
-                                <option key={d.ms} value={d.ms}>
-                                    {d.label}
-                                </option>
-                            ))}
-                        </select>
+                            className="w-36 shrink-0"
+                        />
                     )}
 
                     {running ? (

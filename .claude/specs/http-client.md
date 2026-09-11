@@ -437,6 +437,74 @@ Cómo quedó:
   contexto del ciclo de vida de Wails, así que una corrida que emita directo
   solo se puede probar con la ventana abierta — que es como no poder probarla.
 
+### F10 — Importar de todo, historial global y favoritas — HECHA
+
+Tres cosas que el módulo no tenía y que se piden solas cuando se lo usa todos
+los días, pedidas por el usuario después de cerrar F9. **[BE][FE]**
+
+**Un solo diálogo de importar, que clasifica solo.** Antes había dos entradas
+sin relación: un botón que abría el selector de archivos esperando una
+colección de Postman, y un diálogo aparte, colgado del menú contextual de una
+colección, para pegar un cURL. Había que saber de antemano qué clase de cosa se
+tenía y por dónde entraba. Ahora se pega o se suelta y `httpclient.DetectImport`
+decide qué es —mirando el CONTENIDO, no la extensión: una colección y un
+entorno son los dos `.json`—; el diálogo dice qué reconoció **antes** de
+escribir nada.
+
+Formatos: colección de Postman v2.0/v2.1, entorno de Postman, volcado de datos
+de Postman (colecciones y entornos en un archivo), comando cURL, petición HTTP
+en texto plano (`POST /v1/pedidos HTTP/1.1` + headers + cuerpo) y una URL
+suelta. **Fuera de alcance, a propósito**: OpenAPI/Swagger, HAR e Insomnia —
+son parsers propios, no variantes de lo de arriba.
+
+- **Arrastrar archivos y carpetas** usa el gancho nativo de Wails
+  (`lib/desktopFileDrop.ts`), no los eventos del navegador: un WebView recibe
+  solo el NOMBRE del archivo, nunca la ruta, y sin ruta no hay nada que leer.
+  Una carpeta se recorre entera buscando `.json` (tope de 200, saltea las
+  ocultas y `node_modules`).
+- **Un archivo ilegible no tumba a los otros diecinueve**: cada uno viaja como
+  un `HttpImportOutcome` con su `error`, y el resumen los lista. Lo único que
+  corta la importación es un fallo de la bóveda (`vaultFailure`), porque seguir
+  escribiendo contra una bóveda que falla solo multiplica el desastre.
+- **Una colección v1 se reconoce para poder decir qué hacer con ella** («abrila
+  en Postman y exportala como v2.1»). Un «no se reconoce» pelado deja a quien
+  pegó algo sin nada que corregir.
+- **Pegar un cURL en la barra de URL** de una petición la importa entera, que
+  es el camino más corto desde el «Copy as cURL» del navegador. Solo se
+  intercepta lo que empieza con `curl`: el resto de los pegados siguen siendo
+  texto.
+
+**Historial global.** El historial existía desde F1 pero era **por petición**:
+había que abrir la petición guardada para ver sus envíos, que deja fuera justo
+el caso en el que sirve —«¿cuál era la URL que probé ayer?»—, porque quien
+pregunta eso no se acuerda de en qué colección estaba, y si la mandó como
+petición rápida no hay colección ninguna. Ahora la barra lateral tiene dos
+secciones, Colecciones e Historial, filtradas por el mismo buscador.
+
+- **Sigue sin guardar headers ni cuerpo**, que es la decisión de F1 y no
+  cambió: un historial con los `Authorization` de cada envío es un archivo de
+  tokens que nadie pidió tener. La consecuencia se ve al hacer clic: una
+  entrada de una petición GUARDADA abre esa petición, con todo lo suyo; una de
+  una petición rápida solo puede prellenar método y URL en una pestaña nueva
+  (`EditorTab.httpSeed`), y el tooltip lo dice.
+- El nombre de la petición y el de su colección salen de un LEFT JOIN, no de
+  una copia en la fila: renombrar una petición tiene que renombrarla también en
+  el historial. El LEFT es lo que deja pasar las rápidas y las de una petición
+  ya borrada.
+- La poda sigue siendo por ítem (50), así que el listado global tiene su propio
+  tope (500) y su propio índice por `executed_at`.
+- El panel se refresca con un token propio (`onSent`), no con el del árbol:
+  mandar una petición no cambia ninguna colección, y releer el árbol en cada
+  envío sería descifrar veinte colecciones para no cambiar nada.
+
+**Colecciones favoritas.** `favorite_at` en `http_collections` (migración 52):
+un instante, no un booleano, porque entre varias favoritas la última marcada es
+la que se está usando y eso las ordena sin pedirle al usuario que las ordene.
+Se marcan con la estrella de la fila o desde su menú contextual, y van primero
+en el listado. `SetHTTPCollectionFavorite` va **aparte** de `SaveHTTPCollection`
+por el mismo motivo que `docs_note_id`: el editor no manda ese campo, y meterlo
+en el guardado haría que renombrar una colección la desmarcara en silencio.
+
 ## Decisiones resueltas (respuestas del usuario, 2026-08-20)
 
 1. **Scripts: SÍ, y suben de prioridad** — parte de las colecciones deriva

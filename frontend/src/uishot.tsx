@@ -1017,7 +1017,16 @@ const {default: SshTerminalTab} = await import('./components/ssh/SshTerminalTab'
 const views_http = (
     <div className="flex h-full">
         <div className="w-72 shrink-0 border-r border-outline-variant">
-            <HttpTree filter="" activeItemId="i4" onOpenRequest={() => {}} refreshToken={0} onChanged={() => {}} onNewScratch={() => {}} />
+            <HttpTree
+                filter=""
+                activeItemId="i4"
+                onOpenRequest={() => {}}
+                refreshToken={0}
+                onChanged={() => {}}
+                onNewScratch={() => {}}
+                onOpenScratchWith={() => {}}
+                historyToken={0}
+            />
         </div>
         <HttpRequestTab
             itemId="i4"

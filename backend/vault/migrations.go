@@ -1237,6 +1237,40 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 52,
+		desc:    "HTTP: colecciones favoritas",
+		apply: func(tx *sql.Tx) error {
+			// Una marca por colección y no un orden manual: con veinte
+			// colecciones importadas, las dos contra las que se trabaja hoy
+			// quedan a media pantalla de scroll, y reordenarlas a mano hay
+			// que deshacerlo cuando el trabajo cambia de proyecto.
+			//
+			// La columna guarda el instante en que se marcó, no un 0/1: entre
+			// varias favoritas, la última marcada es la que se está usando, y
+			// eso ordena la lista sin pedirle al usuario que la ordene.
+			_, err := tx.Exec(`ALTER TABLE http_collections ADD COLUMN favorite_at INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
+	{
+		version: 53,
+		desc:    "HTTP: índice del historial por fecha para el listado global",
+		apply: func(tx *sql.Tx) error {
+			// El índice que había es (item_id, executed_at DESC), y sirve para
+			// el historial de UNA petición. El panel global lee las últimas N
+			// de todas, y sobre ese índice eso es recorrer la tabla entera y
+			// ordenarla en memoria.
+			//
+			// Solo `executed_at`: SQLite no deja indexar el `rowid`, que es el
+			// desempate del ORDER BY. Ese desempate se resuelve con un sort
+			// sobre las pocas filas que comparten segundo, no sobre la tabla.
+			_, err := tx.Exec(
+				`CREATE INDEX IF NOT EXISTS idx_http_history_recent ON http_history (executed_at DESC)`,
+			)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

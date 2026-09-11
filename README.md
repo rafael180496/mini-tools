@@ -304,6 +304,13 @@ Colecciones, carpetas, variables, entornos y herencia de autenticación —
 **guardado en el mismo vault cifrado** que tus conexiones, no en un archivo de
 configuración ni en la nube de nadie.
 
+**Importar es una sola puerta.** Pegás un cURL, una petición en texto o una URL,
+o soltás colecciones y entornos exportados de Postman —incluso una carpeta
+entera—, y la aplicación reconoce sola qué es y te lo dice antes de escribir
+nada. Al lado, el **historial** junta todo lo que mandaste, agrupado por día:
+un clic reabre la petición. No guarda headers ni cuerpo a propósito, porque un
+historial con el `Authorization` de cada envío es un archivo de tokens.
+
 **Importa y exporta Postman sin perder nada.** Cada petición conserva su JSON
 original, así que las respuestas de ejemplo, el `_postman_id` y cualquier campo
 que Postman agregue mañana sobreviven al viaje de ida y vuelta. Al importar te
@@ -578,7 +585,10 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 ### Peticiones HTTP
 
 - **Colecciones, carpetas y peticiones** guardadas en el vault cifrado, con árbol propio en la barra lateral y una pestaña por petición.
+- **Un solo diálogo para importar, que reconoce solo qué le diste**: colecciones de Postman (v2.0/v2.1), entornos y el volcado completo de datos, arrastrando archivos o una carpeta entera; y pegando, un comando cURL, una petición HTTP en texto plano o una URL suelta. Dice qué detectó **antes** de escribir nada y qué entró, uno por uno, al terminar. Lo que no reconoce dice por qué.
 - **Import/export de Postman v2.1 con round-trip**: cada ítem conserva su JSON original, así que las respuestas de ejemplo, el `_postman_id` y los campos que esta versión no modela sobreviven al viaje. El import avisa sus salvedades al importar, no al fallar la petición.
+- **Historial de todo lo que mandaste**, agrupado por día y filtrable, con el status y la duración de cada envío. Un clic reabre la petición guardada; si fue una petición rápida, una pestaña nueva con su método y su URL. **No guarda headers ni cuerpo**, a propósito: un historial con el `Authorization` de cada envío es un archivo de tokens.
+- **Colecciones favoritas**: la estrella fija arriba las dos con las que estás trabajando hoy, y entre varias manda la última marcada.
 - **Los secretos no salen en el export**: una variable marcada como secreta viaja declarada y vacía, y el token de OAuth 2.0 no viaja.
 - **Variables de entorno y de colección** con `{{marcadores}}`, precedencia dinámicas → entorno → colección, resolución anidada (`baseUrl = {{protocol}}://{{host}}`) y aviso de lo que quedó sin definir. Un entorno se puede fijar a una colección.
 - **Autenticación con herencia** petición → carpeta → colección: No Auth, Basic, Bearer, API Key (header o query), JWT HS256/384/512, Digest (RFC 7616), AWS Signature v4 y OAuth 2.0 —client credentials, refresh token, password y authorization code al estándar de aplicaciones nativas (RFC 8252) con PKCE S256—. Lo que no se firma se preserva intacto y se dice.
@@ -587,7 +597,7 @@ Los binarios se publican como assets del [GitHub Release](https://github.com/raf
 - **Runner de colección**: manda una colección o una carpeta en orden, con avance en vivo, pausa opcional entre peticiones y resumen de pasa/falla. Los scripts de test se guardan y se exportan, pero **no se ejecutan acá** — los corre Postman o newman.
 - **Cookies por entorno**: el login de una petición vale para las siguientes, y probar producción y desarrollo a la vez no mezcla las sesiones. Visibles y borrables por dominio.
 - **Generación de código** en cURL, HTTP, Go, JavaScript, Python, Java, C#, PHP, Ruby y PowerShell, con las variables resueltas y los secretos tapados por defecto.
-- **Pegar un «Copy as cURL»** del navegador y queda una petición lista para editar.
+- **Pegar un «Copy as cURL»** del navegador —en el diálogo de importar o directamente en la barra de URL— y queda una petición lista para editar.
 - **Peticiones rápidas**: probar un endpoint sin guardarlo en ninguna colección, con «Guardar en…» si al final servía.
 - **Documentación publicada como nota del vault**, con procedencia y `[[enlaces]]`; regenerarla no pisa lo que editaste a mano.
 - **IA sobre la petición**: explicar la respuesta, diagnosticar el fallo, escribirla desde una descripción, redactar su documentación o sus tests — sin que ningún secreto llegue al modelo.

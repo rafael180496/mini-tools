@@ -338,6 +338,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   <ul>
     <li><a href="#http-colecciones">Colecciones y peticiones</a></li>
     <li><a href="#http-importar">Importar y exportar Postman</a></li>
+    <li><a href="#http-historial">Historial y favoritas</a></li>
     <li><a href="#http-variables">Variables y entornos</a></li>
     <li><a href="#http-auth">Autenticación</a></li>
     <li><a href="#http-firmas">Firmar sin escribir scripts</a></li>
@@ -898,11 +899,28 @@ VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00
   versión todavía no ejecuta.</p>
 
   <h2 id="http-importar--importar">Importar</h2>
+  <p>El ícono de importar de la cabecera abre un solo diálogo para todo: pegás algo o soltás archivos, y la
+  aplicación <strong>reconoce sola</strong> qué es y te lo dice antes de escribir nada.</p>
   <ol class="steps">
-    <li>En la cabecera de <strong>Colecciones</strong>, el ícono de importar toma un <code>.json</code> exportado de Postman (v2.1).</li>
-    <li>Entra completa: peticiones, carpetas, variables, autenticación, descripciones y scripts. Lo que esta versión todavía no ejecuta <strong>se guarda igual</strong>, así que vuelve a salir intacto al exportar.</li>
-    <li>Al terminar te dice qué entró y con qué salvedades — <em>al importar</em>, no cuando la petición falla tres días después.</li>
+    <li><strong>Pegar</strong>: un comando cURL, una petición escrita en texto plano
+      (<code>POST /v1/pedidos HTTP/1.1</code> con sus headers y su cuerpo), una URL suelta, o directamente el
+      JSON de una colección.</li>
+    <li><strong>Soltar archivos o una carpeta</strong>: colecciones de Postman (v2.0 y v2.1), entornos, o el
+      volcado completo de datos de Postman, que trae colecciones y entornos juntos. Una carpeta se recorre
+      entera; lo que no es una colección se saltea sin ruido.</li>
+    <li>Una colección entra completa: peticiones, carpetas, variables, autenticación, descripciones y
+      scripts. Lo que esta versión todavía no ejecuta <strong>se guarda igual</strong>, así que vuelve a
+      salir intacto al exportar.</li>
+    <li>Al terminar te dice <strong>qué entró, uno por uno</strong>, y con qué salvedades — <em>al
+      importar</em>, no cuando la petición falla tres días después.</li>
   </ol>
+  <div class="note tip"><span class="lbl">También en la barra de URL</span><p>Pegar un
+  <strong>«Copy as cURL»</strong> directamente en la barra de URL de una petición la importa entera —método,
+  headers y cuerpo— en vez de dejar cien caracteres de shell adentro del campo. Lo que no empieza con
+  <code>curl</code> se pega como texto, como siempre.</p></div>
+  <div class="note"><span class="lbl">Lo que no entra</span><p>OpenAPI/Swagger, HAR e Insomnia no se
+  importan. Un archivo que no se reconoce te dice <strong>por qué</strong>: una colección exportada con el
+  formato viejo de Postman (v1), por ejemplo, avisa que hay que volver a exportarla como v2.1.</p></div>
 
   <h2 id="http-importar--exportar">Exportar</h2>
   <p>La colección sale en el mismo formato v2.1, así que se puede volver a abrir en Postman o en newman.</p>
@@ -910,6 +928,32 @@ VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00
   secreta sale <strong>declarada y vacía</strong>, y el token de OAuth&nbsp;2.0 directamente no sale. Un
   archivo de colección termina en un chat y en un repositorio; el que lo reciba tiene que poner sus propias
   credenciales.</p></div>
+</article>
+
+<article class="topic" id="http-historial" data-title="Historial y favoritas">
+  <h1>Historial y favoritas</h1>
+  <p class="lead">Todo lo que mandaste, de lo más nuevo a lo más viejo; y las dos colecciones con las que
+  estás trabajando hoy, arriba de las otras veinte.</p>
+
+  <h2 id="http-historial--historial">Historial de peticiones</h2>
+  <p>La barra lateral del módulo tiene dos secciones: <strong>Colecciones</strong> e
+  <strong>Historial</strong>. El historial junta lo que se mandó desde toda la aplicación —guardado o no—
+  agrupado por día, con el método, el status y cuánto tardó. El buscador de arriba lo filtra por URL o por
+  nombre de la petición.</p>
+  <ul>
+    <li>Un clic en una entrada de una petición <strong>guardada</strong> abre esa petición.</li>
+    <li>Un clic en una <strong>petición rápida</strong> abre una pestaña nueva con su método y su URL.</li>
+    <li>La ✕ de la fila borra esa entrada; el ícono de la cabecera vacía el historial entero.</li>
+  </ul>
+  <div class="note warn"><span class="lbl">No guarda headers ni cuerpo</span><p>Y es a propósito: un
+  historial con el <code>Authorization</code> de cada envío es un archivo de tokens que nadie pidió tener.
+  Por eso una petición rápida solo se puede reabrir con su método y su URL — lo demás no está guardado en
+  ningún lado.</p></div>
+
+  <h2 id="http-historial--favoritas">Colecciones favoritas</h2>
+  <p>La estrella de una colección —en la fila, al pasar el mouse, o en su menú contextual— la fija arriba
+  de la lista. Entre varias favoritas manda <strong>la última que marcaste</strong>, que es la que estás
+  usando ahora; no hay que ordenarlas a mano ni deshacer ese orden cuando cambia el proyecto.</p>
 </article>
 
 <article class="topic" id="http-variables" data-title="Variables y entornos">

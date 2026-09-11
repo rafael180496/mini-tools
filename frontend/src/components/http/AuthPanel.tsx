@@ -2,6 +2,7 @@ import {useState} from 'react'
 import {HttpAuthorizeOAuth2, HttpFetchOAuth2Token} from '../../../wailsjs/go/main/App'
 import {httpclient} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import Select from '../Select'
 
 // Editor de autenticación, compartido por la petición, la carpeta y la
 // colección — son el mismo formulario en tres niveles de la herencia.
@@ -79,19 +80,23 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
     return (
         <div className="px-3 py-2 text-ui-11">
             <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Tipo</label>
-            <select
+            {/* El aviso de «todavía no se firma» va como aclaración de la
+                fila y no pegado al rótulo: en un <option> nativo era una línea
+                larguísima que tapaba el nombre del tipo, que es lo que se
+                busca al abrir la lista. */}
+            <Select
                 value={type}
-                onChange={(e) => set({type: e.target.value})}
+                options={TYPES.map((t) => ({
+                    value: t.id,
+                    label: t.label,
+                    hint: t.executable ? undefined : 'se guarda, todavía no se firma',
+                }))}
+                onChange={(v) => set({type: v})}
+                size="sm"
+                ariaLabel="Tipo de autenticación"
                 title="Cómo se autentica esta petición. «Heredar» usa lo que definan la carpeta o la colección, que es lo que permite cambiar un token en un solo lugar."
-                className="w-full rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-            >
-                {TYPES.map((t) => (
-                    <option key={t.id} value={t.id}>
-                        {t.label}
-                        {t.executable ? '' : ' — se guarda, todavía no se firma'}
-                    </option>
-                ))}
-            </select>
+                className="w-full"
+            />
 
             {meta && !meta.executable && (
                 <p className="mt-2 rounded bg-surface-container-lowest px-2 py-1.5 text-ui-10 leading-relaxed text-tertiary">
@@ -137,15 +142,18 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                     <Field label="Valor" value={auth.value ?? ''} onChange={(v) => set({value: v})} secret mono />
                     <div>
                         <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Enviar en</label>
-                        <select
+                        <Select
                             value={auth.in || 'header'}
-                            onChange={(e) => set({in: e.target.value})}
+                            options={[
+                                {value: 'header', label: 'Header'},
+                                {value: 'query', label: 'Query param', hint: 'queda en la URL y en los logs'},
+                            ]}
+                            onChange={(v) => set({in: v})}
+                            size="sm"
+                            ariaLabel="Dónde viaja la API key"
                             title="Header es lo habitual; query pone la clave en la URL, donde queda registrada en los logs del servidor y del proxy."
-                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                        >
-                            <option value="header">Header</option>
-                            <option value="query">Query param</option>
-                        </select>
+                            className="w-full"
+                        />
                     </div>
                 </div>
             )}
@@ -154,16 +162,15 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                 <div className="mt-2 space-y-2">
                     <div>
                         <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Algoritmo</label>
-                        <select
+                        <Select
                             value={auth.algorithm || 'HS256'}
-                            onChange={(e) => set({algorithm: e.target.value})}
+                            options={['HS256', 'HS384', 'HS512'].map((x) => ({value: x, label: x}))}
+                            onChange={(v) => set({algorithm: v})}
+                            size="sm"
+                            ariaLabel="Algoritmo del JWT"
                             title="Solo HMAC: RS* y ES* piden manejar claves privadas en PEM, que es otra conversación."
-                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                        >
-                            {['HS256', 'HS384', 'HS512'].map((x) => (
-                                <option key={x}>{x}</option>
-                            ))}
-                        </select>
+                            className="w-full"
+                        />
                     </div>
                     <Field label="Secreto" value={auth.secret ?? ''} onChange={(v) => set({secret: v})} secret mono />
                     <label className="flex items-center gap-1.5 text-ui-11 text-on-surface-variant">
@@ -210,17 +217,20 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
                 <div className="mt-2 space-y-2">
                     <div>
                         <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Flujo</label>
-                        <select
+                        <Select
                             value={auth.grantType || 'client_credentials'}
-                            onChange={(e) => set({grantType: e.target.value})}
+                            options={[
+                                {value: 'client_credentials', label: 'Client Credentials'},
+                                {value: 'authorization_code', label: 'Authorization Code', hint: 'abre el navegador'},
+                                {value: 'password', label: 'Password'},
+                                {value: 'refresh_token', label: 'Refresh Token'},
+                            ]}
+                            onChange={(v) => set({grantType: v})}
+                            size="sm"
+                            ariaLabel="Flujo de OAuth 2.0"
                             title="«Authorization code» abre el navegador para que autorices vos; los otros tres se resuelven sin salir de la app."
-                            className="w-full rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                        >
-                            <option value="client_credentials">Client Credentials</option>
-                            <option value="authorization_code">Authorization Code (abre el navegador)</option>
-                            <option value="password">Password</option>
-                            <option value="refresh_token">Refresh Token</option>
-                        </select>
+                            className="w-full"
+                        />
                     </div>
                     {auth.grantType === 'authorization_code' && (
                         <Field label="URL de autorización" value={auth.authUrl ?? ''} onChange={(v) => set({authUrl: v})} mono />

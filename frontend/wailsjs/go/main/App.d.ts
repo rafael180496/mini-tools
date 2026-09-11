@@ -459,6 +459,8 @@ export function HttpCancel(arg1:string):Promise<void>;
 
 export function HttpCancelRun(arg1:string):Promise<void>;
 
+export function HttpClearAllHistory():Promise<void>;
+
 export function HttpClearCookies(arg1:string,arg2:string):Promise<void>;
 
 export function HttpClearHistory(arg1:string):Promise<void>;
@@ -472,6 +474,8 @@ export function HttpDefaultSettings():Promise<httpclient.Settings>;
 export function HttpDeleteCollection(arg1:string):Promise<void>;
 
 export function HttpDeleteEnvironment(arg1:string):Promise<void>;
+
+export function HttpDeleteHistoryEntry(arg1:string):Promise<void>;
 
 export function HttpDeleteItem(arg1:string):Promise<void>;
 
@@ -489,9 +493,19 @@ export function HttpGetItem(arg1:string):Promise<vault.HTTPItem>;
 
 export function HttpHistory(arg1:string):Promise<Array<vault.HTTPHistoryEntry>>;
 
+export function HttpHistoryAll(arg1:string):Promise<Array<vault.HTTPHistoryEntry>>;
+
 export function HttpImportCurl(arg1:string):Promise<httpclient.Request>;
 
-export function HttpImportPostman():Promise<main.HttpImportResult>;
+export function HttpImportDetect(arg1:string):Promise<httpclient.ImportDetection>;
+
+export function HttpImportFiles(arg1:Array<string>):Promise<main.HttpImportBatch>;
+
+export function HttpImportPickFiles():Promise<Array<string>>;
+
+export function HttpImportPickFolder():Promise<string>;
+
+export function HttpImportText(arg1:string,arg2:string):Promise<main.HttpImportBatch>;
 
 export function HttpListCollections():Promise<Array<vault.HTTPCollection>>;
 
@@ -522,6 +536,8 @@ export function HttpSaveResponseToFile(arg1:string,arg2:string,arg3:string,arg4:
 export function HttpSend(arg1:string,arg2:string,arg3:httpclient.Request):Promise<main.HttpSendResult>;
 
 export function HttpSetActiveEnvironment(arg1:string):Promise<void>;
+
+export function HttpSetCollectionFavorite(arg1:string,arg2:boolean):Promise<void>;
 
 export function InitializeVault(arg1:string):Promise<void>;
 

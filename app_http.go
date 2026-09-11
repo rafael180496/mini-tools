@@ -584,6 +584,43 @@ func (a *App) HttpClearHistory(itemID string) error {
 	return a.vault.ClearHTTPHistory(itemID)
 }
 
+// HttpHistoryAll son las últimas ejecuciones de TODAS las peticiones, para el
+// panel de historial de la barra lateral. `search` filtra por URL o por
+// nombre de la petición; vacío trae todo.
+func (a *App) HttpHistoryAll(search string) ([]vault.HTTPHistoryEntry, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.ListHTTPHistoryRecent(0, search)
+}
+
+// HttpDeleteHistoryEntry borra UNA ejecución del historial.
+func (a *App) HttpDeleteHistoryEntry(id string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.DeleteHTTPHistoryEntry(id)
+}
+
+// HttpClearAllHistory vacía el historial de todas las peticiones.
+func (a *App) HttpClearAllHistory() error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.ClearAllHTTPHistory()
+}
+
+// HttpSetCollectionFavorite marca o desmarca una colección.
+//
+// Aparte de HttpSaveCollection a propósito: el editor no manda ese campo, y
+// meterlo en el guardado haría que renombrar una colección la desmarcara.
+func (a *App) HttpSetCollectionFavorite(id string, favorite bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetHTTPCollectionFavorite(id, favorite)
+}
+
 // HttpPickFile abre el selector de archivos para un campo de tipo archivo
 // (form-data o cuerpo binario). Devuelve "" si el usuario cancela, que no es
 // un error.
@@ -660,71 +697,15 @@ func (a *App) HttpSaveResponseToFile(spillPath, base64Body, textBody, suggestedN
 
 // --- Interop: Postman, cURL, snippets ----------------------------------------
 
-// HttpImportResult resume qué entró, para poder decirlo en vez de dejar al
-// usuario contando peticiones en el árbol.
+// HttpImportResult cuenta lo que entró mientras se recorre el árbol de una
+// colección. NO viaja al frontend —eso lo hace HttpImportOutcome, en
+// app_http_import.go—: es el acumulador que llena `importItems`.
 type HttpImportResult struct {
-	CollectionID string `json:"collectionId"`
-	Name         string `json:"name"`
-	Requests     int    `json:"requests"`
-	Folders      int    `json:"folders"`
-	// Warnings son cosas que se importaron pero no se van a ejecutar: una
-	// autenticación que no firmamos, un archivo cuya ruta no vino en el
-	// export. Se dicen al terminar, no se descubren al mandar.
-	Warnings []string `json:"warnings,omitempty"`
-}
-
-// HttpImportPostman abre un archivo de colección exportado de Postman y lo
-// trae completo.
-func (a *App) HttpImportPostman() (*HttpImportResult, error) {
-	if err := a.requireUnlocked(); err != nil {
-		return nil, err
-	}
-
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:   "Elegir una colección exportada de Postman",
-		Filters: []runtime.FileFilter{{DisplayName: "Colección de Postman (*.json)", Pattern: "*.json"}},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("app: abriendo el selector: %w", err)
-	}
-	if path == "" {
-		return nil, nil
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("no se pudo leer %q: %w", path, err)
-	}
-	parsed, err := httpclient.ParsePostman(data)
-	if err != nil {
-		return nil, err
-	}
-
-	col, err := a.vault.SaveHTTPCollection(vault.HTTPCollection{
-		Name:        parsed.Name,
-		Description: parsed.Description,
-		Variables:   marshalOrEmpty(parsed.Variables),
-		Auth:        marshalAuth(parsed.Auth),
-		PreRequest:  parsed.PreRequest,
-		TestScript:  parsed.TestScript,
-	})
-	if err != nil {
-		return nil, err
-	}
-	// El crudo de la colección va en su propia escritura para no ensanchar
-	// la firma de SaveHTTPCollection con un campo que solo usa el import.
-	if parsed.Raw != "" {
-		_ = a.vault.SaveHTTPCollectionRaw(col.ID, parsed.Raw)
-	}
-
-	out := &HttpImportResult{CollectionID: col.ID, Name: col.Name, Warnings: parsed.Warnings}
-	if err := a.importItems(col.ID, "", parsed.Items, out); err != nil {
-		// La colección a medias se borra: media colección importada es peor
-		// que ninguna, porque parece completa.
-		_ = a.vault.DeleteHTTPCollection(col.ID)
-		return nil, err
-	}
-	return out, nil
+	CollectionID string
+	Name         string
+	Requests     int
+	Folders      int
+	Warnings     []string
 }
 
 func (a *App) importItems(collectionID, parentID string, items []httpclient.ImportedItem, out *HttpImportResult) error {

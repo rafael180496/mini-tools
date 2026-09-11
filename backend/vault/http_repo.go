@@ -45,8 +45,13 @@ type HTTPCollection struct {
 	// Postman, para que guardar un cambio de nombre no pueda desvincular la
 	// nota sin que nadie lo pida.
 	DocsNoteID string `json:"docsNoteId,omitempty"`
-	CreatedAt  int64  `json:"createdAt"`
-	UpdatedAt  int64  `json:"updatedAt"`
+	// FavoriteAt es el instante en que se marcó como favorita, o 0 si no lo
+	// es. Un instante y no un booleano: entre varias favoritas, la última
+	// marcada es la que se está usando, y eso las ordena sin pedirle al
+	// usuario que las ordene.
+	FavoriteAt int64 `json:"favoriteAt"`
+	CreatedAt  int64 `json:"createdAt"`
+	UpdatedAt  int64 `json:"updatedAt"`
 }
 
 // HTTPItem es una carpeta o una petición dentro de una colección.
@@ -97,9 +102,20 @@ type HTTPHistoryEntry struct {
 	SizeBytes  int64  `json:"sizeBytes"`
 	Error      string `json:"error,omitempty"`
 	ExecutedAt int64  `json:"executedAt"`
+	// Los tres que siguen solo los llena el listado global: salen de un JOIN
+	// con la petición y su colección, no de la fila del historial. Vacíos en
+	// una petición rápida y en una cuya petición ya se borró.
+	ItemName       string `json:"itemName,omitempty"`
+	CollectionID   string `json:"collectionId,omitempty"`
+	CollectionName string `json:"collectionName,omitempty"`
 }
 
 const httpHistoryPerItem = 50
+
+// Tope del listado global. El historial se poda por petición (50 cada una),
+// así que con cuarenta colecciones la tabla entera puede tener miles de
+// filas: el panel muestra las últimas, no todas.
+const httpHistoryGlobalMax = 500
 
 // --- Colecciones -------------------------------------------------------------
 
@@ -173,11 +189,14 @@ func (s *Store) SaveHTTPCollection(c HTTPCollection) (*HTTPCollection, error) {
 }
 
 func (s *Store) ListHTTPCollections() ([]HTTPCollection, error) {
+	// Las favoritas van primero, y entre ellas manda la marcada más
+	// recientemente: es la colección con la que se está trabajando ahora.
 	rows, err := s.db.Query(`SELECT id, name, description, COALESCE(folder_id, ''), sort_order,
 		variables, variables_nonce, auth, auth_nonce,
 		pre_request, pre_request_nonce, test_script, test_script_nonce,
-		computed, computed_nonce, COALESCE(docs_note_id, ''), created_at, updated_at
-		FROM http_collections ORDER BY sort_order, name`)
+		computed, computed_nonce, COALESCE(docs_note_id, ''), favorite_at, created_at, updated_at
+		FROM http_collections
+		ORDER BY CASE WHEN favorite_at > 0 THEN 0 ELSE 1 END, favorite_at DESC, sort_order, name`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: listando colecciones: %w", err)
 	}
@@ -189,7 +208,7 @@ func (s *Store) ListHTTPCollections() ([]HTTPCollection, error) {
 		var vars, varsNonce, auth, authNonce, pre, preNonce, test, testNonce, comp, compNonce []byte
 		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.FolderID, &c.SortOrder,
 			&vars, &varsNonce, &auth, &authNonce,
-			&pre, &preNonce, &test, &testNonce, &comp, &compNonce, &c.DocsNoteID, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			&pre, &preNonce, &test, &testNonce, &comp, &compNonce, &c.DocsNoteID, &c.FavoriteAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("vault: leyendo colección: %w", err)
 		}
 		c.Variables = s.decryptOptional(vars, varsNonce)
@@ -677,6 +696,67 @@ func (s *Store) ListHTTPHistory(itemID string) ([]HTTPHistoryEntry, error) {
 	return out, rows.Err()
 }
 
+// ListHTTPHistoryRecent devuelve las últimas ejecuciones de TODAS las
+// peticiones, para el panel de historial de la barra lateral.
+//
+// El nombre de la petición y el de su colección se traen con LEFT JOIN y no
+// se guardan en la fila: renombrar una petición tiene que renombrarla también
+// en el historial, y una copia congelada diría el nombre viejo. El LEFT es lo
+// que deja pasar las peticiones rápidas (`item_id` NULL) y las de una
+// petición ya borrada — esas entradas siguen siendo el registro de que algo
+// se mandó, aunque ya no haya a dónde volver.
+//
+// `search` filtra por URL o por nombre; vacío trae todo.
+func (s *Store) ListHTTPHistoryRecent(limit int, search string) ([]HTTPHistoryEntry, error) {
+	if limit <= 0 || limit > httpHistoryGlobalMax {
+		limit = httpHistoryGlobalMax
+	}
+	needle := strings.ToLower(strings.TrimSpace(search))
+	like := "%" + needle + "%"
+	rows, err := s.db.Query(
+		`SELECT h.id, COALESCE(h.item_id, ''), h.method, h.url, h.status, h.duration_ms,
+			h.size_bytes, h.error, h.executed_at,
+			COALESCE(i.name, ''), COALESCE(i.collection_id, ''), COALESCE(c.name, '')
+		 FROM http_history h
+		 LEFT JOIN http_items i ON i.id = h.item_id
+		 LEFT JOIN http_collections c ON c.id = i.collection_id
+		 WHERE (? = '' OR LOWER(h.url) LIKE ? OR LOWER(COALESCE(i.name, '')) LIKE ?)
+		 ORDER BY h.executed_at DESC, h.rowid DESC LIMIT ?`,
+		needle, like, like, limit)
+	if err != nil {
+		return nil, fmt.Errorf("vault: leyendo el historial: %w", err)
+	}
+	defer rows.Close()
+
+	out := []HTTPHistoryEntry{}
+	for rows.Next() {
+		var e HTTPHistoryEntry
+		if err := rows.Scan(&e.ID, &e.ItemID, &e.Method, &e.URL, &e.Status,
+			&e.DurationMs, &e.SizeBytes, &e.Error, &e.ExecutedAt,
+			&e.ItemName, &e.CollectionID, &e.CollectionName); err != nil {
+			return nil, fmt.Errorf("vault: leyendo el historial: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// DeleteHTTPHistoryEntry borra una sola ejecución del historial.
+func (s *Store) DeleteHTTPHistoryEntry(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM http_history WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("vault: borrando del historial: %w", err)
+	}
+	return nil
+}
+
+// ClearAllHTTPHistory vacía el historial entero, de todas las peticiones.
+func (s *Store) ClearAllHTTPHistory() error {
+	if _, err := s.db.Exec(`DELETE FROM http_history`); err != nil {
+		return fmt.Errorf("vault: limpiando el historial: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) ClearHTTPHistory(itemID string) error {
 	if _, err := s.db.Exec(`DELETE FROM http_history WHERE COALESCE(item_id, '') = ?`, itemID); err != nil {
 		return fmt.Errorf("vault: limpiando el historial: %w", err)
@@ -881,6 +961,23 @@ func (s *Store) HTTPItemRaw(id string) (string, error) {
 func (s *Store) SetHTTPCollectionNote(id, noteID string) error {
 	if _, err := s.db.Exec(`UPDATE http_collections SET docs_note_id = ? WHERE id = ?`, noteID, id); err != nil {
 		return fmt.Errorf("vault: vinculando la nota de documentación: %w", err)
+	}
+	return nil
+}
+
+// SetHTTPCollectionFavorite marca o desmarca la colección.
+//
+// Aparte del guardado normal por el mismo motivo que la nota de
+// documentación: el editor no manda este campo, y meterlo en el UPDATE de
+// SaveHTTPCollection haría que renombrar una colección leída antes de
+// marcarla la desmarcara sin que nadie lo pida.
+func (s *Store) SetHTTPCollectionFavorite(id string, favorite bool) error {
+	var at int64
+	if favorite {
+		at = time.Now().Unix()
+	}
+	if _, err := s.db.Exec(`UPDATE http_collections SET favorite_at = ? WHERE id = ?`, at, id); err != nil {
+		return fmt.Errorf("vault: marcando la colección como favorita: %w", err)
 	}
 	return nil
 }
