@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useRef} from 'react'
 import Icon from '../Icon'
 import {highlightSql, SQL_TOKEN_CLASS} from '../../lib/sqlHighlight'
+import {formatElapsed} from '../../lib/formatElapsed'
 
 export interface ConsoleLogEntry {
     index: number
@@ -128,13 +129,15 @@ function ResultLine({entry}: {entry: ConsoleLogEntry}) {
         return (
             <span className="text-on-surface-variant">
                 {time} <span className="font-semibold text-secondary">{entry.rowsAffected}</span>{' '}
-                {entry.rowsAffected === 1 ? 'fila obtenida' : 'filas obtenidas'} en {entry.durationMs}ms
+                {entry.rowsAffected === 1 ? 'fila obtenida' : 'filas obtenidas'} en{' '}
+                <span title={`${entry.durationMs} ms`}>{formatElapsed(entry.durationMs)}</span>
             </span>
         )
     }
     return (
         <span className="text-on-surface-variant">
-            {time} <span className="text-secondary">completado</span> en {entry.durationMs}ms
+            {time} <span className="text-secondary">completado</span> en{' '}
+            <span title={`${entry.durationMs} ms`}>{formatElapsed(entry.durationMs)}</span>
             {entry.rowsAffected > 0 ? ` (${entry.rowsAffected} ${entry.rowsAffected === 1 ? 'fila afectada' : 'filas afectadas'})` : ''}
         </span>
     )

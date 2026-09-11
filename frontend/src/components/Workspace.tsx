@@ -116,6 +116,7 @@ import {lintSQL} from '../lib/linter'
 import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
 import {lintMongoCommands} from '../lib/mongoLinter'
+import {formatElapsed} from '../lib/formatElapsed'
 import {setActiveMongoCollections} from '../codemirror/mongoCollectionsStore'
 import type {Theme} from '../hooks/useTheme'
 
@@ -4312,7 +4313,8 @@ export default function Workspace({
                     )}
                     {!isRedisActive && activeResult?.status === 'done' && (
                         <span className="shrink-0">
-                            {activeResult.rowsAffected} filas · {activeResult.durationMs}ms
+                            {activeResult.rowsAffected} filas ·{' '}
+                            <span title={`${activeResult.durationMs} ms`}>{formatElapsed(activeResult.durationMs)}</span>
                         </span>
                     )}
                     {!isRedisActive && activeResult?.status === 'cancelled' && (
