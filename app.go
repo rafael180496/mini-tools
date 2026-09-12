@@ -896,9 +896,10 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 	if err := a.mongoPools.Close(id); err != nil {
 		return nil, err
 	}
-	if err := a.sshSessions.Close(id); err != nil {
-		return nil, err
-	}
+	// CloseConn y no Close: Close espera un sessionID, y acá `id` es una
+	// conexión — llamarlo sería un no-op silencioso que dejaría las terminales
+	// vivas contra un servidor que se acaba de reconfigurar.
+	a.sshSessions.CloseConn(id)
 	a.dropCachedMetadata(id)
 	// The DSN may now point at a different database entirely — both
 	// persisted caches (tables and the schema name list) could reflect a
@@ -1066,9 +1067,9 @@ func (a *App) DeleteConnection(id string) error {
 	if err := a.mongoPools.Close(id); err != nil {
 		return err
 	}
-	if err := a.sshSessions.Close(id); err != nil {
-		return err
-	}
+	// CloseConn cierra TODAS las terminales de esa conexión — ver el
+	// comentario equivalente en UpdateConnection.
+	a.sshSessions.CloseConn(id)
 	if err := a.vault.DeleteSchemaMetadataCache(id); err != nil {
 		return err
 	}
@@ -1110,9 +1111,9 @@ func (a *App) DisconnectConnection(id string) error {
 	if err := a.mongoPools.Close(id); err != nil {
 		return err
 	}
-	if err := a.sshSessions.Close(id); err != nil {
-		return err
-	}
+	// CloseConn cierra TODAS las terminales de esa conexión — ver el
+	// comentario equivalente en UpdateConnection.
+	a.sshSessions.CloseConn(id)
 	a.dropCachedMetadata(id)
 	return nil
 }
@@ -1482,11 +1483,19 @@ func (a *App) DeleteMongoDocument(connID, database, collection, docJSON string) 
 }
 
 // OpenSSHTerminal decrypts connID's saved DSN and opens an interactive
-// PTY-backed shell against it, sized to cols x rows. The frontend must call
-// EventsOn(connID, ...) BEFORE this — connID doubles as the Wails event
-// name streaming Event{Type:"data"} chunks back (see sshconn.Event), same
-// race-avoidance pattern as ExecuteQuery/ExecuteRedisCommand's queryID.
-func (a *App) OpenSSHTerminal(connID string, cols, rows int) error {
+// PTY-backed shell against it, sized to cols x rows, registered under
+// sessionID. The frontend must call EventsOn(sessionID, ...) BEFORE this —
+// sessionID doubles as the Wails event name streaming Event{Type:"data"}
+// chunks back (see sshconn.Event), same race-avoidance pattern as
+// ExecuteQuery/ExecuteRedisCommand's queryID.
+//
+// **Dos identificadores y no uno.** Un mismo servidor admite varias terminales
+// abiertas a la vez —una compilando, otra mirando un log—, así que el connID
+// dice CONTRA QUÉ se conecta y el sessionID CUÁL de las pestañas es. Antes
+// alcanzaba con el connID porque solo se permitía una, y abrir la segunda
+// cerraba la primera sin avisar. Las N sesiones comparten una sola conexión
+// SSH: cada una es un canal más sobre el cliente del pool (ver sshconn/pool.go).
+func (a *App) OpenSSHTerminal(sessionID, connID string, cols, rows int) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
@@ -1494,36 +1503,40 @@ func (a *App) OpenSSHTerminal(connID string, cols, rows int) error {
 	if err != nil {
 		return err
 	}
-	return a.sshSessions.Open(connID, dsn, cols, rows)
+	return a.sshSessions.Open(sessionID, connID, dsn, cols, rows)
 }
 
 // WriteSSHTerminal forwards data (keystrokes/paste from xterm.js) to
-// connID's open shell stdin.
-func (a *App) WriteSSHTerminal(connID, data string) error {
+// sessionID's open shell stdin. El sessionID tiene que ser exacto — ver
+// sshconn.SessionManager.Write.
+func (a *App) WriteSSHTerminal(sessionID, data string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.sshSessions.Write(connID, data)
+	return a.sshSessions.Write(sessionID, data)
 }
 
-// ResizeSSHTerminal reflows connID's PTY after the frontend's terminal
+// ResizeSSHTerminal reflows sessionID's PTY after the frontend's terminal
 // container is resized.
-func (a *App) ResizeSSHTerminal(connID string, cols, rows int) error {
+func (a *App) ResizeSSHTerminal(sessionID string, cols, rows int) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.sshSessions.Resize(connID, cols, rows)
+	return a.sshSessions.Resize(sessionID, cols, rows)
 }
 
-// CloseSSHTerminal tears down connID's live shell session, if any is open —
+// CloseSSHTerminal tears down sessionID's live shell session, if any is open —
 // called when its terminal tab is closed. Unlike a Redis pool (cheap to
 // leave open), a live shell is a real remote process, so this is not
 // optional cleanup the way DisconnectConnection's pool close is.
-func (a *App) CloseSSHTerminal(connID string) error {
+//
+// Cierra UNA pestaña. Las otras terminales del mismo servidor siguen vivas —
+// para bajarlas todas está DisconnectConnection, que habla de la conexión.
+func (a *App) CloseSSHTerminal(sessionID string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.sshSessions.Close(connID)
+	return a.sshSessions.Close(sessionID)
 }
 
 // ListSshSnippets returns every saved SSH snippet — global, reusable across

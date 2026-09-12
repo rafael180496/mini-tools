@@ -1272,7 +1272,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 
   <figure>
     <div class="shot"><img src="docs/screenshots/ssh-terminal.png" alt="Terminal SSH interactiva dentro de una pestaña de la app: salida de systemctl y de un tail con los colores ANSI del servidor, y arriba a la derecha los botones de historial, analizar error, snippets y tema"></div>
-    <figcaption>Una pestaña por conexión, con historial, análisis de errores, snippets y tema de colores.</figcaption>
+    <figcaption>Una pestaña por sesión —podés tener varias contra el mismo servidor—, con historial, análisis de errores, snippets y tema de colores.</figcaption>
   </figure>
 
   <h2 id="ssh-terminal--barra">Arriba las herramientas, abajo el estado</h2>
@@ -1286,10 +1286,32 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 
   <h2 id="ssh-terminal--sesiones">Sesiones</h2>
   <ul>
-    <li><strong>Terminal interactiva real</strong> (xterm.js) por conexión, con PTY y resize automático.</li>
+    <li><strong>Terminal interactiva real</strong> (xterm.js), con PTY y resize automático.</li>
     <li>Cerrar la pestaña <strong>corta la sesión del lado remoto</strong>, no la deja colgada.</li>
     <li><strong>Terminales locales</strong> (PowerShell, zsh, bash, Git Bash…) en el mismo módulo, con los mismos snippets y su propio historial cifrado.</li>
   </ul>
+
+  <h2 id="ssh-terminal--varias">Varias terminales contra el mismo servidor</h2>
+  <p>Podés tener <strong>todas las que quieras</strong> contra el mismo host: una compilando, otra mirando un
+  log, otra para husmear. Cada pestaña es una sesión aparte, con su propio buffer, su propio directorio y su
+  propio scrollback.</p>
+  <ol class="steps">
+    <li>Pasá el mouse por la fila del servidor en la barra lateral y apretá <strong>+</strong> (o
+    <strong>Nueva terminal</strong> en su menú <code>⋮</code>). Abre una sesión más, siempre.</li>
+    <li>El <strong>clic en el nombre</strong> hace lo de siempre: abre la terminal, o te lleva a la que ya
+    está abierta. Así navegar el árbol no te deja shells sueltas contra producción.</li>
+    <li>A partir de la segunda, la pestaña se numera: <code>Terminal — PRODMAIN (2)</code>.</li>
+  </ol>
+  <div class="note"><span class="lbl">Una sola conexión</span><p>Las sesiones <strong>no</strong> son varias
+  conexiones SSH: son varios canales sobre la misma. Una autenticación, un socket y una entrada en el log del
+  servidor, aunque tengas cinco pestañas abiertas — igual que la consola y el explorador de archivos, que ya
+  compartían conexión.</p></div>
+  <p>En la barra lateral, el servidor muestra <strong>cuántas sesiones vivas</strong> tiene cuando hay más de
+  una. <strong>Desconectar</strong> las cierra todas; cerrar una pestaña cierra solo la suya.</p>
+  <p>Todo lo que sigue a una terminal sigue a <em>esa</em> terminal: el directorio, el historial de línea y
+  <strong>Analizar error</strong> son de la pestaña desde la que los pediste. Lo que pregunta por la
+  <em>conexión</em> —el <code>@ssh:</code> del chat y la herramienta MCP— lee la terminal en la que tecleaste
+  por última vez.</p>
 
   <h2 id="ssh-terminal--snippets">Snippets</h2>
   <p>Comandos guardados y reutilizables en cualquier sesión, con carpetas y buscador.

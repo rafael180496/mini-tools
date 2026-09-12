@@ -48,11 +48,21 @@ type SSHErrorAnalysis struct {
 //
 // `agentID` vacío usa el agente activo; con uno explícito la explicación la da
 // ese proveedor, sin cambiar el activo de la app.
-func (a *App) AnalyzeSSHError(connID, selection string, lines int, agentID string) (SSHErrorAnalysis, error) {
+//
+// `sessionID` es la terminal concreta cuyo buffer se analiza. Vacío significa
+// "la de esa conexión": con varias abiertas se elige en la que se tecleó por
+// última vez (ver sshconn.SessionManager.resolve). El botón de la terminal
+// manda el suyo, porque analizar el error de OTRA pestaña del mismo servidor
+// sería exactamente lo que nadie pidió.
+func (a *App) AnalyzeSSHError(connID, sessionID, selection string, lines int, agentID string) (SSHErrorAnalysis, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return SSHErrorAnalysis{}, err
 	}
-	if !a.sshSessions.HasSession(connID) {
+	key := sessionID
+	if key == "" {
+		key = connID
+	}
+	if !a.sshSessions.HasSession(key) {
 		return SSHErrorAnalysis{}, fmt.Errorf("app: no hay ninguna terminal abierta para esa conexión")
 	}
 
@@ -67,13 +77,13 @@ func (a *App) AnalyzeSSHError(connID, selection string, lines int, agentID strin
 		// el texto no lo convierte en algo que quiera mandar entero.
 		out.Lines, out.Redacted = redactSelection(selection)
 	} else {
-		out.Lines, out.Redacted = a.sshSessions.TailRedacted(connID, lines)
+		out.Lines, out.Redacted = a.sshSessions.TailRedacted(key, lines)
 	}
 	if len(out.Lines) == 0 {
 		return out, fmt.Errorf("app: la terminal todavía no imprimió nada que analizar")
 	}
 
-	out.OSInfo = a.sshOSInfo(connID)
+	out.OSInfo = a.sshOSInfo(key)
 
 	answer, err := a.AgentAskWith(
 		agentID,
@@ -95,8 +105,8 @@ func (a *App) AnalyzeSSHError(connID, selection string, lines int, agentID strin
 // hiciera en el medio de un `vi` abierto, sería un desastre. Si el banner de
 // login o un `uname` que el usuario ya corrió lo dicen, se usa; si no, se
 // informa vacío y el prompt lo dice.
-func (a *App) sshOSInfo(connID string) string {
-	lines := a.sshSessions.Tail(connID, maxScrollbackScan)
+func (a *App) sshOSInfo(key string) string {
+	lines := a.sshSessions.Tail(key, maxScrollbackScan)
 	var hits []string
 	for _, l := range lines {
 		low := strings.ToLower(l)
@@ -133,14 +143,18 @@ const maxScrollbackScan = 500
 // Lo usa el resolvedor `@ssh:` y el botón de análisis. **No hay ninguna forma
 // de pedir el buffer de una sesión que no esté abierta**: el buffer vive con la
 // sesión y se va con ella.
-func (a *App) SSHTail(connID string, lines int) ([]string, error) {
+//
+// `key` es un sessionID o un connID. `@ssh:` y la herramienta MCP hablan de una
+// conexión —no tienen ninguna pestaña delante—, así que con varias terminales
+// abiertas contra el mismo servidor leen la última en la que se tecleó.
+func (a *App) SSHTail(key string, lines int) ([]string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
 	}
-	if !a.sshSessions.HasSession(connID) {
+	if !a.sshSessions.HasSession(key) {
 		return nil, fmt.Errorf("app: no hay ninguna terminal abierta para esa conexión")
 	}
-	out := a.sshSessions.Tail(connID, lines)
+	out := a.sshSessions.Tail(key, lines)
 	if out == nil {
 		out = []string{}
 	}
@@ -158,11 +172,16 @@ func (a *App) SSHTail(connID string, lines int) ([]string, error) {
 //
 // Vacío significa "no se sabe", y la interfaz lo dice así en vez de mostrar un
 // directorio inventado. Ver backend/sshconn/scrollback.go.
-func (a *App) SSHCwd(connID string) (string, error) {
+//
+// `key` es un sessionID o un connID, igual que en SSHTail. El explorador de la
+// pestaña combinada manda el sessionID de SU terminal: seguir a "alguna
+// terminal del servidor" saltaría de carpeta cuando el usuario hace cd en otra
+// pestaña, que es un salto que nadie pidió.
+func (a *App) SSHCwd(key string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
 	}
-	return a.sshSessions.Cwd(connID), nil
+	return a.sshSessions.Cwd(key), nil
 }
 
 // redactSelection aplica la misma redacción a un texto seleccionado a mano.

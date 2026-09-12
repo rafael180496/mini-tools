@@ -6,6 +6,10 @@ import Icon from '../Icon'
 interface SshRowMenuProps {
     flatFolders: {folder: vault.Folder; depth: number}[]
     onOpenTerminal: () => void
+    // Abre otra terminal contra el mismo servidor, aunque ya haya una. Es un
+    // ítem aparte y no una variante del de arriba porque son dos intenciones
+    // distintas: "llevame a mi terminal" y "quiero una segunda".
+    onOpenTerminalSession: () => void
     onEdit: () => void
     onMoveToFolder: (folderId: string) => void
     onExport: () => void
@@ -25,7 +29,15 @@ interface SshRowMenuProps {
 // Same portal + fixed-position technique as MoveToFolderMenu: the row is inside
 // an overflow-y-auto container, where an absolutely positioned dropdown gets
 // clipped.
-export default function SshRowMenu({flatFolders, onOpenTerminal, onEdit, onMoveToFolder, onExport, onDelete}: SshRowMenuProps) {
+export default function SshRowMenu({
+    flatFolders,
+    onOpenTerminal,
+    onOpenTerminalSession,
+    onEdit,
+    onMoveToFolder,
+    onExport,
+    onDelete,
+}: SshRowMenuProps) {
     const [open, setOpen] = useState(false)
     // The folder list is a second view of the SAME panel rather than a nested
     // flyout: a submenu that opens sideways off a sidebar this narrow ends up
@@ -80,6 +92,17 @@ export default function SshRowMenu({flatFolders, onOpenTerminal, onEdit, onMoveT
                                     >
                                         <Icon name="terminal" size={14} className="opacity-60" />
                                         Abrir terminal
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onOpenTerminalSession()
+                                            close()
+                                        }}
+                                        title="Abre otra sesión contra este servidor, además de las que ya estén abiertas. Todas comparten una sola conexión SSH: no se autentica de nuevo"
+                                        className={itemClass}
+                                    >
+                                        <Icon name="add" size={14} className="opacity-60" />
+                                        Nueva terminal
                                     </button>
                                     <button
                                         onClick={() => {

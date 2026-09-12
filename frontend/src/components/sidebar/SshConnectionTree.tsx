@@ -27,6 +27,12 @@ interface SshConnectionTreeProps {
     // from clicking the row itself (unlike ConnectionTree, there's no
     // separate "select to expand a tree" step to distinguish it from).
     onOpenSshTerminal: (conn: vault.ConnectionSummary) => void
+    // Abre SIEMPRE una sesión más contra el servidor, aunque ya haya una
+    // pestaña abierta. Separado del anterior a propósito: el clic en el nombre
+    // es también cómo se vuelve a la terminal de siempre, y si abriera una
+    // sesión nueva cada vez, navegar el árbol acumularía shells contra
+    // producción. Las N comparten una única conexión SSH.
+    onOpenSshTerminalSession: (conn: vault.ConnectionSummary) => void
     // Abre una terminal del SISTEMA OPERATIVO (la shell de esta máquina) en una
     // pestaña nueva.
     //
@@ -48,9 +54,14 @@ interface SshConnectionTreeProps {
     // notion of "current" instead.
     activeTabConnectionId: string | null
     onExportConnectionConfig: (connId: string) => void
-    // connIds with a live remote session right now. Drives both the dot next
-    // to the name and whether the disconnect button exists at all.
+    // connIds con al menos UNA sesión remota viva ahora mismo. Decide el punto
+    // al lado del nombre y si el botón de desconectar existe. Cuántas hay no se
+    // muestra acá: las pestañas abiertas ya lo dicen, y un contador en el árbol
+    // repetiría ese dato en el lugar donde menos se mira.
     liveConnIds: Set<string>
+    // Cuántas sesiones vivas tiene cada conexión. Solo se dibuja a partir de
+    // dos: con una, el número no agrega nada al punto verde.
+    liveSessionCounts: Map<string, number>
     onDisconnect: (connId: string) => void
     onDeleteConnection: (connId: string) => void
     reloadToken: number
@@ -84,12 +95,14 @@ export default function SshConnectionTree({
     onNewConnection,
     onEditConnection,
     onOpenSshTerminal,
+    onOpenSshTerminalSession,
     onOpenLocalTerminal,
     onOpenSftp,
     onOpenSshHybrid,
     activeTabConnectionId,
     onExportConnectionConfig,
     liveConnIds,
+    liveSessionCounts,
     onDisconnect,
     onDeleteConnection,
     reloadToken,
@@ -220,6 +233,7 @@ export default function SshConnectionTree({
     function renderConnectionRow(c: vault.ConnectionSummary, depth: number) {
         const isActive = c.id === activeTabConnectionId
         const isLive = liveConnIds.has(c.id)
+        const liveCount = liveSessionCounts.get(c.id) ?? 0
         return (
             <div key={c.id} className="mb-0.5">
                 <div
@@ -249,13 +263,21 @@ export default function SshConnectionTree({
                             />
                         )}
                         <span className="truncate font-medium">{c.name}</span>
-                        {isLive && (
-                            <span
-                                aria-hidden
-                                title="Hay una sesión SSH abierta contra este servidor"
-                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
-                            />
-                        )}
+                        {isLive &&
+                            (liveCount > 1 ? (
+                                <span
+                                    title={`${liveCount} sesiones SSH abiertas contra este servidor`}
+                                    className="shrink-0 rounded-full bg-emerald-500/15 px-1 text-ui-9 leading-tight font-semibold text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"
+                                >
+                                    {liveCount}
+                                </span>
+                            ) : (
+                                <span
+                                    aria-hidden
+                                    title="Hay una sesión SSH abierta contra este servidor"
+                                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                                />
+                            ))}
                         {envStyleOf(c) && (
                             <span
                                 title={`Entorno: ${envStyleOf(c)!.label}`}
@@ -270,6 +292,20 @@ export default function SshConnectionTree({
                         icons crammed into a sidebar this narrow were impossible
                         to tell apart, with "eliminar" a few pixels from the one
                         you meant to click. */}
+                    {/* Nueva sesión. Va en la fila y no solo en el menú
+                        porque con varias terminales por servidor es la acción
+                        que se repite: el menú es para lo que se hace una vez
+                        (editar, mover, exportar). */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onOpenSshTerminalSession(c)
+                        }}
+                        title="Nueva terminal — abre otra sesión contra este servidor, además de las que ya estén abiertas. Todas comparten una sola conexión SSH: no se autentica de nuevo"
+                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                    >
+                        <Icon name="add" size={15} />
+                    </button>
                     <button
                         onClick={(e) => {
                             e.stopPropagation()
@@ -301,7 +337,11 @@ export default function SshConnectionTree({
                                 e.stopPropagation()
                                 onDisconnect(c.id)
                             }}
-                            title="Cerrar la sesión de terminal abierta contra este servidor — la conexión guardada queda intacta"
+                            title={
+                                liveCount > 1
+                                    ? `Cerrar las ${liveCount} sesiones de terminal abiertas contra este servidor — la conexión guardada queda intacta`
+                                    : 'Cerrar la sesión de terminal abierta contra este servidor — la conexión guardada queda intacta'
+                            }
                             className="shrink-0 rounded p-0.5 text-error opacity-80 hover:bg-error-container/40 hover:opacity-100"
                         >
                             <Icon name="power_settings_new" size={15} />
@@ -310,6 +350,7 @@ export default function SshConnectionTree({
                     <SshRowMenu
                         flatFolders={flatFoldersForMenu}
                         onOpenTerminal={() => onOpenSshTerminal(c)}
+                        onOpenTerminalSession={() => onOpenSshTerminalSession(c)}
                         onEdit={() => onEditConnection(c)}
                         onMoveToFolder={(folderId) => onMoveConnectionToFolder(c.id, folderId)}
                         onExport={() => onExportConnectionConfig(c.id)}

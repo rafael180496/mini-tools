@@ -114,8 +114,8 @@ export function AnalyzeRedisPrefixes(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AnalyzeRedisPrefixes'](arg1, arg2, arg3, arg4);
 }
 
-export function AnalyzeSSHError(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['AnalyzeSSHError'](arg1, arg2, arg3, arg4);
+export function AnalyzeSSHError(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['AnalyzeSSHError'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function AppVersion() {
@@ -1206,8 +1206,8 @@ export function OpenSQLFilePath(arg1) {
   return window['go']['main']['App']['OpenSQLFilePath'](arg1);
 }
 
-export function OpenSSHTerminal(arg1, arg2, arg3) {
-  return window['go']['main']['App']['OpenSSHTerminal'](arg1, arg2, arg3);
+export function OpenSSHTerminal(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['OpenSSHTerminal'](arg1, arg2, arg3, arg4);
 }
 
 export function OpenSftpBrowse(arg1, arg2) {

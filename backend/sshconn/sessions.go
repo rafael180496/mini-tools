@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -18,11 +19,15 @@ import (
 // for why the executors never own the Wails runtime import themselves.
 type EmitFunc func(event string, data interface{})
 
-// Event is emitted on the connID-named Wails event for an open terminal
-// session — connID doubles as the event name, same pattern as
+// Event is emitted on the sessionID-named Wails event for an open terminal
+// session — sessionID doubles as the event name, same pattern as
 // query.Event/redisquery.Event's queryID (frontend subscribes with
-// EventsOn(connId, ...) before calling OpenSSHTerminal, avoiding the race
+// EventsOn(sessionId, ...) before calling OpenSSHTerminal, avoiding the race
 // between the first emit and the subscription).
+//
+// El nombre del evento es el sessionID y no el connID justamente porque un
+// servidor puede tener varias terminales abiertas: con el connID de nombre,
+// las dos pestañas recibirían la salida de las dos.
 type Event struct {
 	Type string `json:"type"` // "data" | "closed" | "error"
 	// Data is base64-encoded raw bytes read from the PTY. The remote shell
@@ -40,7 +45,13 @@ type session struct {
 	// connection (see pool.go) — the terminal no longer owns a connection
 	// of its own, so closing the terminal cannot drop an SFTP pane that is
 	// still using the same host, and vice versa.
-	lease     *ClientLease
+	lease *ClientLease
+	// connID es la conexión guardada contra la que corre esta sesión. Se
+	// guarda además de la clave del mapa porque la clave es el sessionID: sin
+	// esto no habría forma de cerrar todas las sesiones de un servidor
+	// (CloseConn) ni de contestarle a un agente que pregunta por la conexión
+	// y no por una pestaña concreta (ver resolve).
+	connID    string
 	sshSess   *ssh.Session
 	stdin     io.WriteCloser
 	agentConn net.Conn // non-nil only when agent forwarding is active
@@ -48,10 +59,23 @@ type session struct {
 	// ANSI, para poder mostrárselas a un agente cuando algo falla. En memoria
 	// y acotado — ver scrollback.go.
 	scroll *scrollback
+	// lastUsed es cuándo se tecleó en esta sesión por última vez. Solo lo usa
+	// resolve para desempatar entre varias sesiones del mismo servidor —
+	// "la terminal de ese servidor" es la última en la que estuvo trabajando
+	// alguien, no la más vieja ni la que más salida escupe (un `tail -f`
+	// olvidado en otra pestaña ganaría siempre si el criterio fuera la salida).
+	lastUsed time.Time
 }
 
-// SessionManager holds one interactive PTY session per connID — not a
+// SessionManager holds interactive PTY sessions keyed by sessionID — not a
 // reusable pool like db.PoolManager/db.RedisPoolManager (see package doc).
+//
+// La clave es el sessionID y NO el connID: un servidor admite varias
+// terminales abiertas a la vez, que es como se trabaja de verdad (una
+// compilando, otra mirando un log). Con el connID de clave, abrir la segunda
+// pestaña cerraba la primera sin decir nada. Las N sesiones de un mismo
+// servidor comparten una sola conexión SSH —cada una es un canal más sobre
+// ella— porque el lease sale del ClientPool refcontado (ver pool.go).
 type SessionManager struct {
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -68,13 +92,17 @@ func NewSessionManager(emit EmitFunc, pool *ClientPool) *SessionManager {
 	return &SessionManager{sessions: make(map[string]*session), emit: emit, pool: pool}
 }
 
-// Open dials dsn, requests a PTY-backed shell, and starts a goroutine that
-// streams its combined stdout/stderr back as Event{Type:"data"} on the
-// connID-named event until the remote shell exits or the connection drops
-// (Event{Type:"closed"}). Any session already open for connID is replaced
-// (closed first) — a terminal tab only ever calls this once per (re)open.
-func (m *SessionManager) Open(connID, dsn string, cols, rows int) error {
-	_ = m.Close(connID)
+// Open pide un canal con PTY sobre la conexión connID, arranca el shell y
+// lanza la goroutine que streamea su stdout/stderr combinado como
+// Event{Type:"data"} en el evento llamado sessionID, hasta que el shell remoto
+// termina o se cae la conexión (Event{Type:"closed"}).
+//
+// Se reemplaza (cerrándola antes) la sesión que ya tuviera ESE sessionID, no
+// las demás del mismo servidor: una pestaña llama a Open una sola vez por
+// (re)apertura, y las otras terminales del mismo host no tienen nada que ver
+// con esta.
+func (m *SessionManager) Open(sessionID, connID, dsn string, cols, rows int) error {
+	_ = m.Close(sessionID)
 
 	// parseDSN is still needed for the terminal-only options (agent
 	// forwarding); the connection itself comes from the pool.
@@ -143,24 +171,32 @@ func (m *SessionManager) Open(connID, dsn string, cols, rows int) error {
 	}
 
 	m.mu.Lock()
-	m.sessions[connID] = &session{lease: lease, sshSess: sshSess, stdin: stdin, agentConn: agentConn, scroll: newScrollback()}
+	m.sessions[sessionID] = &session{
+		lease:     lease,
+		connID:    connID,
+		sshSess:   sshSess,
+		stdin:     stdin,
+		agentConn: agentConn,
+		scroll:    newScrollback(),
+		lastUsed:  time.Now(),
+	}
 	m.mu.Unlock()
 
-	go m.streamOutput(connID, stdout)
+	go m.streamOutput(sessionID, stdout)
 
 	return nil
 }
 
-func (m *SessionManager) streamOutput(connID string, stdout io.Reader) {
+func (m *SessionManager) streamOutput(sessionID string, stdout io.Reader) {
 	buf := make([]byte, readChunkSize)
 	for {
 		n, err := stdout.Read(buf)
 		if n > 0 {
-			m.emit(connID, Event{Type: "data", Data: base64.StdEncoding.EncodeToString(buf[:n])})
+			m.emit(sessionID, Event{Type: "data", Data: base64.StdEncoding.EncodeToString(buf[:n])})
 			// El buffer se llena en el mismo lugar donde se emite, y no en el
 			// frontend: lo que un agente necesita leer no puede depender de
 			// que una pestaña esté abierta y montada.
-			if s := m.get(connID); s != nil {
+			if s := m.get(sessionID); s != nil {
 				s.scroll.write(string(buf[:n]))
 			}
 		}
@@ -168,51 +204,100 @@ func (m *SessionManager) streamOutput(connID string, stdout io.Reader) {
 			break
 		}
 	}
-	m.emit(connID, Event{Type: "closed"})
-	_ = m.Close(connID)
+	m.emit(sessionID, Event{Type: "closed"})
+	_ = m.Close(sessionID)
 }
 
 // Write forwards data (keystrokes/paste, generated by xterm.js — always
-// valid text/ANSI sequences) to connID's shell stdin.
-func (m *SessionManager) Write(connID, data string) error {
-	s := m.get(connID)
+// valid text/ANSI sequences) to sessionID's shell stdin.
+//
+// Exige el sessionID exacto: nunca cae a "alguna sesión de ese servidor" como
+// hace resolve. Escribir en la shell equivocada porque el id no era el que se
+// creía es de las pocas cosas que este código no puede permitirse — lo que
+// viaja acá son teclas que van a ejecutarse.
+func (m *SessionManager) Write(sessionID, data string) error {
+	s := m.getAndTouch(sessionID)
 	if s == nil {
-		return fmt.Errorf("sshconn: no hay una sesión abierta para %q", connID)
+		return fmt.Errorf("sshconn: no hay una sesión abierta para %q", sessionID)
 	}
 	_, err := s.stdin.Write([]byte(data))
 	return err
 }
 
-// Resize reflows connID's PTY after the frontend's xterm.js FitAddon
-// recomputes cols/rows.
-func (m *SessionManager) Resize(connID string, cols, rows int) error {
-	s := m.get(connID)
+// Resize reflows sessionID's PTY after the frontend's xterm.js FitAddon
+// recomputes cols/rows. Exacto por sessionID, igual que Write.
+func (m *SessionManager) Resize(sessionID string, cols, rows int) error {
+	s := m.get(sessionID)
 	if s == nil {
-		return fmt.Errorf("sshconn: no hay una sesión abierta para %q", connID)
+		return fmt.Errorf("sshconn: no hay una sesión abierta para %q", sessionID)
 	}
 	return s.sshSess.WindowChange(rows, cols)
 }
 
-// Close tears down connID's session, if any is open. Idempotent — safe to
+// getAndTouch busca la sesión y la marca como la última usada de su servidor,
+// bajo el mismo lock — ver session.lastUsed y resolve.
+func (m *SessionManager) getAndTouch(sessionID string) *session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[sessionID]
+	if !ok {
+		return nil
+	}
+	s.lastUsed = time.Now()
+	return s
+}
+
+// Close tears down sessionID's session, if any is open. Idempotent — safe to
 // call from both the explicit CloseSSHTerminal binding (terminal tab
 // closed) and streamOutput's own cleanup on remote EOF.
-func (m *SessionManager) Close(connID string) error {
+//
+// Cierra UNA terminal, no las del servidor: las otras pestañas contra el mismo
+// host siguen vivas sobre la misma conexión. Para bajarlas todas está
+// CloseConn.
+func (m *SessionManager) Close(sessionID string) error {
 	m.mu.Lock()
-	s, ok := m.sessions[connID]
+	s, ok := m.sessions[sessionID]
 	if !ok {
 		m.mu.Unlock()
 		return nil
 	}
-	delete(m.sessions, connID)
+	delete(m.sessions, sessionID)
 	m.mu.Unlock()
 
+	closeSession(s)
+	return nil
+}
+
+// CloseConn cierra TODAS las terminales abiertas contra connID.
+//
+// Es lo que necesitan los caminos que hablan de la conexión y no de una
+// pestaña: desconectar, borrar o editar una conexión guardada. Con una sola
+// sesión por servidor eso era Close(connID); ahora Close espera un sessionID
+// y llamarlo con un connID sería un no-op silencioso — la desconexión no
+// desconectaría nada.
+func (m *SessionManager) CloseConn(connID string) {
+	m.mu.Lock()
+	var closing []*session
+	for id, s := range m.sessions {
+		if s.connID == connID {
+			closing = append(closing, s)
+			delete(m.sessions, id)
+		}
+	}
+	m.mu.Unlock()
+
+	for _, s := range closing {
+		closeSession(s)
+	}
+}
+
+func closeSession(s *session) {
 	s.sshSess.Close()
 	// Release the lease, never close the client: the connection is shared,
 	// and an SFTP pane on the same host may still be holding it. The pool
 	// drops it when the last holder lets go.
 	s.lease.Close()
 	closeAgentConn(s.agentConn)
-	return nil
 }
 
 // CloseAll closes every open session — used on app shutdown.
@@ -229,10 +314,41 @@ func (m *SessionManager) CloseAll() {
 	}
 }
 
-func (m *SessionManager) get(connID string) *session {
+func (m *SessionManager) get(sessionID string) *session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.sessions[connID]
+	return m.sessions[sessionID]
+}
+
+// resolve acepta un sessionID O un connID y devuelve la sesión, o nil.
+//
+// Existe por los dos tipos de llamador que tiene la parte de solo lectura de
+// este paquete (el scrollback que leen los agentes):
+//
+//   - una pestaña de terminal sabe su sessionID y quiere EXACTAMENTE su buffer;
+//   - el resolvedor `@ssh:` y la herramienta MCP hablan de una CONEXIÓN — no
+//     tienen ninguna pestaña delante, solo el nombre del servidor.
+//
+// Con varias terminales sobre el mismo host el segundo caso necesita elegir
+// una, y la elegida es la última en la que se tecleó (session.lastUsed): "la
+// terminal de ese servidor", para quien pregunta, es en la que está trabajando.
+// Solo lo usa la lectura — Write y Resize exigen el sessionID exacto.
+func (m *SessionManager) resolve(key string) *session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sessions[key]; ok {
+		return s
+	}
+	var best *session
+	for _, s := range m.sessions {
+		if s.connID != key {
+			continue
+		}
+		if best == nil || s.lastUsed.After(best.lastUsed) {
+			best = s
+		}
+	}
+	return best
 }
 
 func closeAgentConn(c net.Conn) {

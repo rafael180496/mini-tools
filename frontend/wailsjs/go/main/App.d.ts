@@ -79,7 +79,7 @@ export function AgentUsageLimits():Promise<Array<agentlimits.AgentLimits>>;
 
 export function AnalyzeRedisPrefixes(arg1:string,arg2:string,arg3:number,arg4:boolean):Promise<db.RedisPrefixReport>;
 
-export function AnalyzeSSHError(arg1:string,arg2:string,arg3:number,arg4:string):Promise<main.SSHErrorAnalysis>;
+export function AnalyzeSSHError(arg1:string,arg2:string,arg3:string,arg4:number,arg5:string):Promise<main.SSHErrorAnalysis>;
 
 export function AppVersion():Promise<string>;
 
@@ -625,7 +625,7 @@ export function OpenSQLFileDialog():Promise<main.FileContent>;
 
 export function OpenSQLFilePath(arg1:string):Promise<main.FileContent>;
 
-export function OpenSSHTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+export function OpenSSHTerminal(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
 
 export function OpenSftpBrowse(arg1:string,arg2:string):Promise<string>;
 

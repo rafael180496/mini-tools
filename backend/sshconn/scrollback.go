@@ -266,10 +266,12 @@ func hexVal(c byte) (byte, bool) {
 	return 0, false
 }
 
-// Cwd devuelve el directorio de trabajo que la shell de connID informó por
-// OSC 7, o "" si nunca lo informó. Ver stripANSI para por qué no se pregunta.
-func (m *SessionManager) Cwd(connID string) string {
-	s := m.get(connID)
+// Cwd devuelve el directorio de trabajo que la shell informó por OSC 7, o ""
+// si nunca lo informó. Ver stripANSI para por qué no se pregunta.
+//
+// `key` es un sessionID o un connID — ver resolve.
+func (m *SessionManager) Cwd(key string) string {
+	s := m.resolve(key)
 	if s == nil || s.scroll == nil {
 		return ""
 	}
@@ -278,8 +280,8 @@ func (m *SessionManager) Cwd(connID string) string {
 	return s.scroll.cwd
 }
 
-// Tail devuelve las últimas n líneas de la terminal de connID, **con los
-// secretos evidentes redactados**.
+// Tail devuelve las últimas n líneas de una terminal, **con los secretos
+// evidentes redactados**. `key` es un sessionID o un connID — ver resolve.
 //
 // Este método es el que alimenta todo lo que ve un agente (el análisis de
 // errores, `@ssh:` y la herramienta MCP), y por eso la redacción va acá y no en
@@ -290,23 +292,23 @@ func (m *SessionManager) Cwd(connID string) string {
 // Vacío cuando no hay sesión abierta: no es un error, es que no hay nada que
 // leer. Que una terminal cerrada no tenga historial es correcto — el buffer
 // vive con la sesión.
-func (m *SessionManager) Tail(connID string, lines int) []string {
-	out, _ := m.TailRedacted(connID, lines)
+func (m *SessionManager) Tail(key string, lines int) []string {
+	out, _ := m.TailRedacted(key, lines)
 	return out
 }
 
 // TailRedacted devuelve además cuántos valores se ocultaron, para poder
 // decírselo al usuario en vez de que la redacción sea invisible.
-func (m *SessionManager) TailRedacted(connID string, lines int) ([]string, int) {
-	s := m.get(connID)
+func (m *SessionManager) TailRedacted(key string, lines int) ([]string, int) {
+	s := m.resolve(key)
 	if s == nil {
 		return nil, 0
 	}
 	return redactSecrets(s.scroll.tail(lines))
 }
 
-// HasSession informa si hay una terminal abierta para connID, para poder
-// distinguir "no hay nada" de "no está conectado".
-func (m *SessionManager) HasSession(connID string) bool {
-	return m.get(connID) != nil
+// HasSession informa si hay una terminal abierta para esa clave (sessionID o
+// connID), para poder distinguir "no hay nada" de "no está conectado".
+func (m *SessionManager) HasSession(key string) bool {
+	return m.resolve(key) != nil
 }

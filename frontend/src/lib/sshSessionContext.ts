@@ -12,6 +12,18 @@
 // provider would have to wrap the whole workspace to span them. The Redis
 // key store (codemirror/redisKeysStore.ts) already established this shape
 // in the project.
+//
+// **Dos claves distintas, y la diferencia importa.** Un servidor admite varias
+// terminales abiertas a la vez, así que:
+//
+//   - lo que es de UNA SHELL —dónde está parada, si sigue viva, si ya se tecleó
+//     algo en ella— va por `sessionId`. Compartirlo por conexión hacía que un
+//     `cd` en una pestaña moviera el explorador enganchado a la otra;
+//   - lo que es de LA CUENTA —el directorio home— va por `connId`: es el mismo
+//     para todas las terminales de ese servidor y no caduca con ninguna.
+//
+// `registerSession` es lo que une las dos: sin ella el home no sabría a qué
+// sesiones sembrar.
 
 export interface SessionContext {
     // cwd is the shell's current directory, as last reported.
@@ -27,8 +39,19 @@ export interface SessionContext {
 
 type Listener = (ctx: SessionContext) => void
 
+// Todo lo de acá abajo está indexado por sessionId salvo `homes`.
 const contexts = new Map<string, SessionContext>()
 const listeners = new Map<string, Set<Listener>>()
+// A qué conexión pertenece cada sesión abierta. La registra la terminal al
+// montar y la borra al cerrarse; es lo que le permite a setSessionHome sembrar
+// el home en TODAS las terminales de ese servidor sin que quien lo publica
+// (el panel SFTP) tenga que enterarse de cuántas hay.
+const sessionConns = new Map<string, string>()
+
+export function registerSession(sessionId: string, connId: string): void {
+    if (!sessionId || !connId) return
+    sessionConns.set(sessionId, connId)
+}
 // The remote account's home directory, per connection.
 //
 // It is what `cd`, `cd ~` and `cd ~/algo` resolve to — the most common cd
@@ -57,10 +80,17 @@ export function setSessionHome(connId: string, home: string): void {
     // The "only if nothing is known" guard is what keeps this from clobbering a
     // real position: if the file pane opens after the user has already been
     // moving around, the cwd already recorded stands.
-    if (!contexts.has(connId) && !usedShells.has(connId)) publishCwd(connId, home, 'guess')
+    //
+    // Se siembra en CADA terminal abierta de ese servidor, no en una: cuál de
+    // ellas es "la" del panel que acaba de aprender el home no se sabe desde
+    // acá, y la condición de abajo ya protege a las que estén en otro lado.
+    for (const [sessionId, conn] of sessionConns) {
+        if (conn !== connId) continue
+        if (!contexts.has(sessionId) && !usedShells.has(sessionId)) publishCwd(sessionId, home, 'guess')
+    }
 }
 
-// Connections whose shell has already run at least one command.
+// Sessions whose shell has already run at least one command.
 //
 // "The shell is in its home" is only true before anything has been typed. If
 // the file pane opens after the user has been moving around — the drawer starts
@@ -69,8 +99,8 @@ export function setSessionHome(connId: string, home: string): void {
 // difference between an assertion and a fabrication.
 const usedShells = new Set<string>()
 
-export function markShellUsed(connId: string): void {
-    usedShells.add(connId)
+export function markShellUsed(sessionId: string): void {
+    usedShells.add(sessionId)
 }
 
 export function sessionHome(connId: string): string {
@@ -87,28 +117,28 @@ export function sessionHome(connId: string): string {
 const liveTerminals = new Set<string>()
 const liveListeners = new Map<string, Set<(live: boolean) => void>>()
 
-export function setTerminalLive(connId: string, live: boolean): void {
-    const was = liveTerminals.has(connId)
+export function setTerminalLive(sessionId: string, live: boolean): void {
+    const was = liveTerminals.has(sessionId)
     if (was === live) return
-    if (live) liveTerminals.add(connId)
-    else liveTerminals.delete(connId)
-    liveListeners.get(connId)?.forEach((l) => l(live))
+    if (live) liveTerminals.add(sessionId)
+    else liveTerminals.delete(sessionId)
+    liveListeners.get(sessionId)?.forEach((l) => l(live))
 }
 
-export function isTerminalLive(connId: string): boolean {
-    return liveTerminals.has(connId)
+export function isTerminalLive(sessionId: string): boolean {
+    return liveTerminals.has(sessionId)
 }
 
-export function subscribeTerminalLive(connId: string, listener: (live: boolean) => void): () => void {
-    let set = liveListeners.get(connId)
+export function subscribeTerminalLive(sessionId: string, listener: (live: boolean) => void): () => void {
+    let set = liveListeners.get(sessionId)
     if (!set) {
         set = new Set()
-        liveListeners.set(connId, set)
+        liveListeners.set(sessionId, set)
     }
     set.add(listener)
     return () => {
         set!.delete(listener)
-        if (set!.size === 0) liveListeners.delete(connId)
+        if (set!.size === 0) liveListeners.delete(sessionId)
     }
 }
 
@@ -117,16 +147,16 @@ export function subscribeTerminalLive(connId: string, listener: (live: boolean) 
 // A 'guess' never overwrites a 'shell' reading from the same moment: if the
 // shell is announcing its directory, a heuristic parse of what was typed
 // has nothing to add and can only make it wrong.
-export function publishCwd(connId: string, cwd: string, source: SessionContext['source']): void {
-    if (!connId || !cwd) return
+export function publishCwd(sessionId: string, cwd: string, source: SessionContext['source']): void {
+    if (!sessionId || !cwd) return
 
-    const previous = contexts.get(connId)
+    const previous = contexts.get(sessionId)
     if (previous && previous.source === 'shell' && source === 'guess') return
 
     const ctx: SessionContext = {cwd, source, atMs: Date.now()}
-    contexts.set(connId, ctx)
+    contexts.set(sessionId, ctx)
 
-    for (const listener of listeners.get(connId) ?? []) {
+    for (const listener of listeners.get(sessionId) ?? []) {
         // One failing subscriber must not stop the others from being told.
         try {
             listener(ctx)
@@ -136,34 +166,43 @@ export function publishCwd(connId: string, cwd: string, source: SessionContext['
     }
 }
 
-export function currentCwd(connId: string): SessionContext | null {
-    return contexts.get(connId) ?? null
+export function currentCwd(sessionId: string): SessionContext | null {
+    return contexts.get(sessionId) ?? null
 }
 
 // subscribeCwd registers a listener and returns the unsubscribe. Callers
 // wire it in an effect, so a pane that unmounts stops listening.
-export function subscribeCwd(connId: string, listener: Listener): () => void {
-    let set = listeners.get(connId)
+export function subscribeCwd(sessionId: string, listener: Listener): () => void {
+    let set = listeners.get(sessionId)
     if (!set) {
         set = new Set()
-        listeners.set(connId, set)
+        listeners.set(sessionId, set)
     }
     set.add(listener)
 
     return () => {
         set?.delete(listener)
-        if (set && set.size === 0) listeners.delete(connId)
+        if (set && set.size === 0) listeners.delete(sessionId)
     }
 }
 
-// forgetSession drops a connection's context — called when its terminal
-// closes, so a pane that reconnects later does not follow a stale path from
-// a session that no longer exists.
-export function forgetSession(connId: string): void {
-    contexts.delete(connId)
+// forgetSession drops ONE shell's context — called when that terminal closes,
+// so a pane that reconnects later does not follow a stale path from a session
+// that no longer exists. Las demás terminales del mismo servidor no se tocan.
+export function forgetSession(sessionId: string): void {
+    contexts.delete(sessionId)
     // A new session starts fresh in its home, so the used flag goes with the
     // old one. The home itself stays: it is a fact about the account.
-    usedShells.delete(connId)
+    usedShells.delete(sessionId)
+}
+
+// unregisterSession olvida a qué conexión pertenecía una sesión. Aparte de
+// forgetSession porque son dos momentos distintos: una sesión que se cae sigue
+// siendo de su servidor y puede reabrirse en la misma pestaña; el vínculo se
+// suelta recién cuando la pestaña se desmonta.
+export function unregisterSession(sessionId: string): void {
+    sessionConns.delete(sessionId)
+    forgetSession(sessionId)
 }
 
 // --- terminal → context ----------------------------------------------------

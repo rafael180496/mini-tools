@@ -34,6 +34,11 @@ interface SftpTabProps {
     // shell. Ausente = la sincronización no se ofrece, que es lo correcto en
     // una pestaña SFTP suelta, donde no hay ninguna terminal que seguir.
     followTerminalConnId?: string
+    // La sesión de terminal a la que seguir. `followTerminalConnId` sigue
+    // diciendo QUÉ servidor —es con lo que se decide cuál de los dos paneles
+    // se engancha—, y esta dice CUÁL de sus terminales: un servidor puede
+    // tener varias abiertas y sus directorios no tienen nada que ver entre sí.
+    followTerminalSessionId?: string
     // Escribe `cd <ruta>` en esa terminal, sin ejecutarlo. Es la dirección
     // contraria de la sincronización.
     onOpenTerminalAt?: (path: string) => void
@@ -99,6 +104,7 @@ export default function SftpTab({
     connections,
     onOpenRemoteFile,
     followTerminalConnId,
+    followTerminalSessionId,
     onOpenTerminalAt,
 }: SftpTabProps) {
     const [panes, setPanes] = useState<{left: PaneState; right: PaneState}>({
@@ -354,8 +360,13 @@ export default function SftpTab({
     useEffect(() => {
         if (!follow || !followTerminalConnId) return
         let cancelled = false
+        // Sin sessionId se pregunta por la conexión, y el backend contesta con
+        // la terminal en la que se tecleó por última vez (ver SSHCwd). Es el
+        // comportamiento de antes, para el caso en que quien monta el panel no
+        // tenga una terminal concreta que seguir.
+        const key = followTerminalSessionId || followTerminalConnId
         const tick = () => {
-            SSHCwd(followTerminalConnId)
+            SSHCwd(key)
                 .then((dir) => {
                     if (cancelled) return
                     setCwdKnown(!!dir)
@@ -372,7 +383,7 @@ export default function SftpTab({
             cancelled = true
             clearInterval(t)
         }
-    }, [follow, followTerminalConnId])
+    }, [follow, followTerminalConnId, followTerminalSessionId])
 
     useEffect(() => {
         if (!follow || !followSide || !termCwd) return

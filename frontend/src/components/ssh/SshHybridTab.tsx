@@ -11,6 +11,10 @@ import type {TerminalThemeId} from '../../xterm/terminalThemes'
 interface SshHybridTabProps {
     connId: string
     connName: string
+    // La terminal de ESTA pestaña. La arma Workspace.tsx con el id de la
+    // pestaña, igual que para una terminal suelta: la pestaña combinada es una
+    // sesión más contra el servidor, no "la" sesión del servidor.
+    sessionId: string
     connections: vault.ConnectionSummary[]
     theme: Theme
     terminalThemeId: string
@@ -36,6 +40,7 @@ interface SshHybridTabProps {
 export default function SshHybridTab({
     connId,
     connName,
+    sessionId,
     connections,
     theme,
     terminalThemeId,
@@ -119,6 +124,7 @@ export default function SshHybridTab({
                 <SshTerminalTab
                     connId={connId}
                     connName={connName}
+                    sessionId={sessionId}
                     theme={theme}
                     terminalThemeId={terminalThemeId}
                     terminalFontSize={terminalFontSize}
@@ -143,16 +149,21 @@ export default function SshHybridTab({
                             que el control no aparece en vez de aparecer
                             deshabilitado sin explicación. */}
                         <SftpTab
-                            tabId={`hybrid-${connId}`}
+                            tabId={`hybrid-${sessionId}`}
                             initialConnId={connId}
                             connections={connections}
                             onOpenRemoteFile={onOpenRemoteFile}
                             followTerminalConnId={connId}
+                            // Sigue a LA terminal de esta pestaña, no a
+                            // "alguna del servidor": con dos abiertas, un cd en
+                            // la otra haría saltar de carpeta a este explorador
+                            // sin que nadie lo hubiera pedido acá.
+                            followTerminalSessionId={sessionId}
                             // Sin el retorno de carro: el `cd` queda escrito y
                             // el Enter lo pone el usuario. Misma decisión que
                             // el historial y que los comandos que propone el
                             // agente — nada se ejecuta solo en una terminal.
-                            onOpenTerminalAt={(path) => void WriteSSHTerminal(connId, `cd ${shellQuote(path)}`)}
+                            onOpenTerminalAt={(path) => void WriteSSHTerminal(sessionId, `cd ${shellQuote(path)}`)}
                         />
                     </div>
                 </>

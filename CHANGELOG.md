@@ -6,6 +6,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Agregado
 
+- **Varias terminales SSH contra el mismo servidor.** Solo se dejaba **una por conexión**: el backend guardaba las sesiones en un mapa indexado por el id de la conexión, y abrir la segunda pestaña contra el mismo host **cerraba la primera sin avisar** —lo que estuvieras corriendo ahí se moría—. La forma habitual de trabajar en un servidor es al revés: una consola compilando o corriendo un batch, otra mirando el log, una tercera para husmear.
+
+  Ahora cada pestaña es una sesión aparte, con su propio id, su propio buffer y su propio directorio. Se abre otra desde el botón **+** de la fila del servidor en el árbol, o desde **Nueva terminal** en su menú. El clic en el nombre sigue haciendo lo de siempre —abre la terminal, o enfoca la que ya está—: si abriera una sesión nueva cada vez, navegar el árbol acumularía shells contra producción sin que nadie las pidiera. A partir de la segunda, la pestaña se numera (`Terminal — PRODMAIN (2)`).
+
+  **No son varias conexiones SSH.** Las N sesiones son N canales sobre el mismo cliente del pool: una sola autenticación, un solo socket, una sola entrada en el log del servidor — igual que la consola y el explorador de archivos, que ya compartían conexión desde que existe el pool. El árbol muestra el número de sesiones vivas cuando hay más de una, y **Desconectar** las cierra todas (lo dice el tooltip); cerrar una pestaña cierra la suya y nada más.
+
+  Lo que sigue a una terminal ahora sigue a **esa** terminal: el directorio, el historial de línea y el `cd -` son de cada shell, no del servidor, y el explorador de la pestaña combinada se engancha a la consola que tiene al lado en vez de saltar de carpeta cuando hacés `cd` en otra pestaña. **Analizar error** lee el buffer de la terminal desde la que se abrió. Lo que pregunta por la *conexión* y no por una pestaña —el `@ssh:` del chat y la herramienta MCP— lee la terminal en la que se tecleó por última vez, que es lo que alguien quiere decir con «la terminal de ese servidor».
+
+  De paso: cerrar una pestaña de **sesión combinada** dejaba su shell viva en el servidor. Ahora también se cierra.
+
 - **Importar dejó de exigir saber qué tenías.** Había dos entradas sin relación entre sí: un botón que abría el selector de archivos esperando una colección de Postman, y un diálogo aparte —escondido en el menú contextual de una colección— para pegar un cURL. Había que saber de antemano de qué clase era lo que tenías y por dónde entraba, y equivocarse daba un error que no explicaba nada.
 
   Ahora hay **un solo diálogo**: se pega o se suelta, y la aplicación reconoce sola qué es. Entra una **colección de Postman** (v2.0 y v2.1), un **entorno**, el **volcado completo de datos** de Postman —colecciones y entornos en un archivo—, un **comando cURL**, una **petición HTTP en texto plano** (`POST /v1/pedidos HTTP/1.1` con sus headers y su cuerpo) o una **URL suelta**. La detección mira el CONTENIDO y no la extensión, que es lo único que sirve cuando una colección y un entorno son los dos `.json`.

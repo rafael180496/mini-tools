@@ -29,8 +29,10 @@ import {
     publishCwd,
     currentCwd,
     markShellUsed,
+    registerSession,
     sessionHome,
     setTerminalLive,
+    unregisterSession,
 } from '../../lib/sshSessionContext'
 import {inspect, splitCommandLines, type Risk} from '../../lib/productionGuard'
 import {environmentStyle} from '../../lib/environments'
@@ -53,6 +55,11 @@ interface SshTerminalTabProps {
     // borrar, y "limpiar el historial" obliga a acordarse de en qué pestaña
     // estabas parado.
     connName: string
+    // Identifica ESTA terminal, no el servidor. Es el nombre del evento de
+    // Wails por el que llega su salida, y la clave con la que el backend la
+    // distingue de las otras terminales del mismo host — que ahora pueden ser
+    // varias. Lo arma quien monta la pestaña, a partir del id de la pestaña.
+    sessionId: string
     theme: Theme
     // xterm.js color theme id (frontend/src/xterm/terminalThemes.ts's
     // registry) — one global setting shared by every open terminal tab,
@@ -74,7 +81,7 @@ interface SshTerminalTabProps {
     onConnectedChange: (connected: boolean) => void
 }
 
-// Mirrors sshconn.Event (backend/sshconn/sessions.go) — connId doubles as
+// Mirrors sshconn.Event (backend/sshconn/sessions.go) — sessionId doubles as
 // the Wails event name, same pattern as ExecuteQuery/ExecuteRedisCommand's
 // queryID (see their EventsOn calls in Workspace.tsx).
 interface SshEvent {
@@ -98,7 +105,16 @@ function base64ToBytes(b64: string): Uint8Array {
 // render block, the same "never unmount" treatment RedisBrowserTab.tsx gets
 // so its state survives switching tabs. That means this component's mount
 // effect below runs exactly once per session, not on every tab-focus.
-export default function SshTerminalTab({connId, connName, theme, terminalThemeId, onChangeTerminalTheme, terminalFontSize, onConnectedChange}: SshTerminalTabProps) {
+export default function SshTerminalTab({
+    connId,
+    connName,
+    sessionId,
+    theme,
+    terminalThemeId,
+    onChangeTerminalTheme,
+    terminalFontSize,
+    onConnectedChange,
+}: SshTerminalTabProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const termRef = useRef<Terminal | null>(null)
@@ -118,9 +134,10 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
     const modelRef = useRef(new SshLineModel())
     // The previous directory is what `cd -` resolves against. A ref, not
     // state: it is read inside the once-registered onData handler, where a
-    // stale closure would resolve against an old value. (Home comes from
-    // sessionHome() — it is shared with the file pane, which is what learns it
-    // when its browse session opens.)
+    // stale closure would resolve against an old value. Por sesión y no por
+    // conexión, como todo lo que describe dónde está parada UNA shell. (Home
+    // sí es por conexión —sessionHome()—: es un dato de la cuenta, y lo aprende
+    // el panel de archivos al abrir su sesión de navegación.)
     const previousCwdRef = useRef('')
     const [ghostText, setGhostText] = useState('')
     const [ghostPos, setGhostPos] = useState<{left: number; top: number; cellH: number} | null>(null)
@@ -224,7 +241,13 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
             })
         }
 
-        const unsubscribe = EventsOn(connId, (event: SshEvent) => {
+        // El vínculo sesión→conexión se registra antes de abrir nada: es lo
+        // que le permite al bus sembrar el home en ESTA terminal cuando el
+        // panel de archivos lo aprenda, sin que ese panel tenga que saber
+        // cuántas terminales hay abiertas contra el mismo servidor.
+        registerSession(sessionId, connId)
+
+        const unsubscribe = EventsOn(sessionId, (event: SshEvent) => {
             if (event.type === 'data' && event.data) {
                 const bytes = base64ToBytes(event.data)
                 // OSC 7 is the shell ANNOUNCING its directory — authoritative,
@@ -232,20 +255,20 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                 // zsh with the usual prompt setup) make the cd heuristic below
                 // unnecessary; plenty do not, which is why both exist.
                 const announced = parseOsc7(new TextDecoder().decode(bytes))
-                if (announced) publishCwd(connId, announced, 'shell')
+                if (announced) publishCwd(sessionId, announced, 'shell')
                 term.write(bytes, () => positionGhost())
             } else if (event.type === 'closed') {
                 // Drop the shared context so a pane that reconnects later does
                 // not follow a path from a session that no longer exists.
-                forgetSession(connId)
-                setTerminalLive(connId, false)
+                forgetSession(sessionId)
+                setTerminalLive(sessionId, false)
                 term.write('\r\n\x1b[90m[sesión cerrada]\x1b[0m\r\n')
                 setGhostText('')
                 setGhostPos(null)
                 onConnectedChange(false)
                 setConnected(false)
             } else if (event.type === 'error') {
-                setTerminalLive(connId, false)
+                setTerminalLive(sessionId, false)
                 term.write(`\r\n\x1b[31m[error] ${event.error ?? 'desconocido'}\x1b[0m\r\n`)
                 setGhostText('')
                 setGhostPos(null)
@@ -265,7 +288,7 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                 if (ghost) {
                     model.accept(ghost)
                     setGhostText('')
-                    void WriteSSHTerminal(connId, ghost)
+                    void WriteSSHTerminal(sessionId, ghost)
                     return
                 }
             }
@@ -276,13 +299,13 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
             if (data === '\r' || data === '\n') {
                 // From here on the shell may be anywhere, so "it is still in
                 // its home" stops being assertable — see markShellUsed.
-                markShellUsed(connId)
+                markShellUsed(sessionId)
                 const line = model.currentLine()
-                const ctx = currentCwd(connId)
+                const ctx = currentCwd(sessionId)
                 const guessed = parseCdCommand(line, ctx?.cwd ?? '', sessionHome(connId), previousCwdRef.current)
                 if (guessed) {
                     previousCwdRef.current = ctx?.cwd ?? ''
-                    publishCwd(connId, guessed, 'guess')
+                    publishCwd(sessionId, guessed, 'guess')
                 }
             }
 
@@ -317,7 +340,7 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
             const model = modelRef.current
             model.process(data)
             setGhostText(model.suggestion())
-            void WriteSSHTerminal(connId, data)
+            void WriteSSHTerminal(sessionId, data)
         }
         deliverRef.current = deliver
 
@@ -336,11 +359,11 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                 envRef.current = ''
             })
 
-        OpenSSHTerminal(connId, term.cols, term.rows)
+        OpenSSHTerminal(sessionId, connId, term.cols, term.rows)
             .then(() => {
                 onConnectedChange(true)
                 setConnected(true)
-                setTerminalLive(connId, true)
+                setTerminalLive(sessionId, true)
                 // A shell starts in its own home, so this is the one moment
                 // where that can be asserted rather than guessed. Without it a
                 // relative first command (`cd ..`, `cd fuentes`) has no base to
@@ -348,18 +371,18 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                 // also reappears after a reconnect, since closing the session
                 // clears the recorded position but not the home.
                 const home = sessionHome(connId)
-                if (home && !currentCwd(connId)) publishCwd(connId, home, 'guess')
+                if (home && !currentCwd(sessionId)) publishCwd(sessionId, home, 'guess')
             })
             .catch((err) => {
                 term.write(`\r\n\x1b[31m[error] ${String(err)}\x1b[0m\r\n`)
                 onConnectedChange(false)
                 setConnected(false)
-                setTerminalLive(connId, false)
+                setTerminalLive(sessionId, false)
             })
 
         const resizeObserver = new ResizeObserver(() => {
             fitAddon.fit()
-            void ResizeSSHTerminal(connId, term.cols, term.rows)
+            void ResizeSSHTerminal(sessionId, term.cols, term.rows)
         })
         resizeObserver.observe(container)
 
@@ -372,15 +395,17 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
             fitRef.current = null
             onConnectedChange(false)
             setConnected(false)
-            setTerminalLive(connId, false)
+            setTerminalLive(sessionId, false)
+            unregisterSession(sessionId)
         }
-        // Deliberately connId-only — this effect must run exactly once per
+        // Deliberately sessionId-only — this effect must run exactly once per
         // mounted session (see the component doc comment above), not
         // re-run when the app-wide theme toggles or when onConnectedChange's
         // identity changes (it closes over a stable setState setter, so an
-        // older render's closure still updates the right state).
+        // older render's closure still updates the right state). El connId es
+        // fijo para una pestaña, así que no hace falta además como dependencia.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [connId])
+    }, [sessionId])
 
     // Keep an already-open terminal's colors in sync if the user toggles
     // dark/light mode mid-session, or picks a different terminal theme from
@@ -401,8 +426,8 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
         if (!term) return
         term.options.fontSize = terminalFontSize
         fitRef.current?.fit()
-        void ResizeSSHTerminal(connId, term.cols, term.rows)
-    }, [terminalFontSize, connId])
+        void ResizeSSHTerminal(sessionId, term.cols, term.rows)
+    }, [terminalFontSize, sessionId])
 
     const envStyle = environmentStyle(environment)
 
@@ -569,23 +594,24 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
                     // ser un `rm -rf` de la semana pasada no es un atajo, es
                     // una trampa. Ejecutar es un gesto aparte (doble click o
                     // el botón ▶).
-                    onPaste={(cmd) => void WriteSSHTerminal(connId, cmd)}
-                    onRun={(cmd) => void WriteSSHTerminal(connId, cmd + '\r')}
+                    onPaste={(cmd) => void WriteSSHTerminal(sessionId, cmd)}
+                    onRun={(cmd) => void WriteSSHTerminal(sessionId, cmd + '\r')}
                 />
             )}
             {showSnippets && (
-                <SshSnippetsPanel write={(data) => void WriteSSHTerminal(connId, data)} onClose={() => setShowSnippets(false)} />
+                <SshSnippetsPanel write={(data) => void WriteSSHTerminal(sessionId, data)} onClose={() => setShowSnippets(false)} />
             )}
             {analysis && (
                 <SshErrorAnalysis
                     connId={connId}
                     connName={connName}
+                    sessionId={sessionId}
                     selection={analysis.selection}
                     onClose={() => setAnalysis(null)}
                     // Se escribe SIN el retorno de carro: el comando queda en
                     // la línea, se puede leer y editar, y el Enter lo pone el
                     // usuario. Es la misma decisión que el panel de historial.
-                    onInsertCommand={(cmd) => void WriteSSHTerminal(connId, cmd)}
+                    onInsertCommand={(cmd) => void WriteSSHTerminal(sessionId, cmd)}
                 />
             )}
             {showThemePicker && (
@@ -611,10 +637,13 @@ export default function SshTerminalTab({connId, connName, theme, terminalThemeId
     )
 }
 
-// Closes connId's live remote session — called from Workspace.tsx's
+// Closes ONE tab's live remote session — called from Workspace.tsx's
 // closeTab when an 'ssh-terminal' tab is actually closed (unlike a Redis
 // pool, a live shell is a real remote process, not cheap to leave running
 // unattended — see CloseSSHTerminal's doc comment in app.go).
-export function closeSshTerminalSession(connId: string) {
-    void CloseSSHTerminal(connId)
+//
+// Cierra la sesión de esa pestaña y nada más: las otras terminales abiertas
+// contra el mismo servidor siguen vivas sobre la misma conexión SSH.
+export function closeSshTerminalSession(sessionId: string) {
+    void CloseSSHTerminal(sessionId)
 }

@@ -1309,14 +1309,16 @@ const views: Record<string, React.ReactNode> = {
     // La terminal del sistema operativo abierta desde el módulo SSH: la barra
     // con snippets/historial/tema es lo nuevo, el widget de abajo es el mismo
     // que ya usaba el módulo Git.
-    // Terminal SSH con salida real. El id de sesión ES el nombre del evento
-    // por el que llega lo que escribe el servidor: tiene que coincidir con una
-    // clave de TERMINAL_OUTPUT o la captura sale en negro.
+    // Terminal SSH con salida real. El `sessionId` ES el nombre del evento por
+    // el que llega lo que escribe el servidor: tiene que coincidir con una
+    // clave de TERMINAL_OUTPUT o la captura sale en negro. Va aparte del
+    // connId porque un servidor puede tener varias terminales abiertas.
     sshterm: (
         <div className="h-full">
             <SshTerminalTab
                 connId="ssh-shot"
                 connName="build19"
+                sessionId="ssh-shot"
                 theme="dark"
                 terminalThemeId="auto"
                 onChangeTerminalTheme={() => {}}

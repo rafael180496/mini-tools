@@ -22,6 +22,10 @@ import {useAgentChat} from '../agent/AgentChatHost'
 interface Props {
     connId: string
     connName: string
+    // La terminal concreta cuyo buffer se analiza. Con varias abiertas contra
+    // el mismo servidor, mandar solo el connId analizaría el error de otra
+    // pestaña — la última en la que se tecleó, que no tiene por qué ser esta.
+    sessionId: string
     // Texto seleccionado en xterm.js, si el usuario marcó algo. Vacío = las
     // últimas líneas del buffer, que es el caso de "acaba de fallar algo".
     selection: string
@@ -31,7 +35,7 @@ interface Props {
     onInsertCommand: (command: string) => void
 }
 
-export default function SshErrorAnalysis({connId, connName, selection, onClose, onInsertCommand}: Props) {
+export default function SshErrorAnalysis({connId, connName, sessionId, selection, onClose, onInsertCommand}: Props) {
     const [result, setResult] = useState<main.SSHErrorAnalysis | null>(null)
     const [busy, setBusy] = useState(true)
     const [error, setError] = useState('')
@@ -45,14 +49,14 @@ export default function SshErrorAnalysis({connId, connName, selection, onClose, 
     useEffect(() => {
         let cancelled = false
         setBusy(true)
-        AnalyzeSSHError(connId, selection, 60, askAgent)
+        AnalyzeSSHError(connId, sessionId, selection, 60, askAgent)
             .then((r) => !cancelled && setResult(r))
             .catch((e) => !cancelled && setError(String(e)))
             .finally(() => !cancelled && setBusy(false))
         return () => {
             cancelled = true
         }
-    }, [connId, selection, askAgent])
+    }, [connId, sessionId, selection, askAgent])
 
     // Los comandos que propuso el agente, sacados de los bloques de código.
     const commands = extractCommands(result?.answer ?? '')

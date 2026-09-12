@@ -2548,7 +2548,23 @@ export default function Workspace({
     // (see isSshTerminalTabActive's usage further down), instead of the
     // generic "is a connection bound to this tab" dot every other tab kind
     // uses.
-    const [liveSshConnIds, setLiveSshConnIds] = useState<Set<string>>(new Set())
+    // Las sesiones SSH vivas, por sessionId. Antes era un Set de connId y con
+    // una sola terminal por servidor daba igual; con varias no: cerrar una
+    // pestaña borraba el connId del conjunto y el árbol daba por desconectado
+    // un servidor donde seguían corriendo las otras dos.
+    const [liveSshSessionIds, setLiveSshSessionIds] = useState<Map<string, string>>(new Map())
+    // Derivado: qué conexiones tienen AL MENOS una terminal viva. Es lo que
+    // consume el árbol de conexiones, que habla de servidores y no de pestañas.
+    const liveSshConnIds = useMemo(() => new Set(liveSshSessionIds.values()), [liveSshSessionIds])
+    // Cuántas terminales vivas tiene cada servidor. Sale del mapa de arriba y
+    // no de una llamada al backend: el frontend ya sabe qué pestañas hay. Lo
+    // necesita el árbol porque "Desconectar" cierra TODAS las de ese servidor,
+    // y ese número conviene verlo antes de apretarlo, no después.
+    const liveSshSessionCounts = useMemo(() => {
+        const counts = new Map<string, number>()
+        for (const connId of liveSshSessionIds.values()) counts.set(connId, (counts.get(connId) ?? 0) + 1)
+        return counts
+    }, [liveSshSessionIds])
     // Which DB/Redis/Mongo connections have an open pool. Unlike SSH there is
     // no event to subscribe to: a pool is opened lazily by whatever needs it
     // first (a query, a metadata scan, the key tree), so the truth lives in the
@@ -2563,13 +2579,23 @@ export default function Workspace({
                 // are missing for a moment; it must not surface as an error.
             })
     }
-    function setSshConnected(connId: string, connected: boolean) {
-        setLiveSshConnIds((prev) => {
-            const next = new Set(prev)
-            if (connected) next.add(connId)
-            else next.delete(connId)
+    function setSshConnected(sessionId: string, connId: string, connected: boolean) {
+        setLiveSshSessionIds((prev) => {
+            if (connected ? prev.get(sessionId) === connId : !prev.has(sessionId)) return prev
+            const next = new Map(prev)
+            if (connected) next.set(sessionId, connId)
+            else next.delete(sessionId)
             return next
         })
+    }
+
+    // El id de la sesión SSH de una pestaña. Se deriva del id de la pestaña —
+    // igual que `local-tab-${id}` para las terminales locales— así que es
+    // estable mientras la pestaña viva y distinto para cada una, que es
+    // exactamente lo que hace falta para tener varias terminales contra el
+    // mismo servidor.
+    function sshSessionId(tabId: string): string {
+        return `ssh-tab-${tabId}`
     }
 
     // Opens conn's SSH terminal tab — or focuses it if already open, never
@@ -2608,9 +2634,35 @@ export default function Workspace({
             setActiveTabId(existing.id)
             return
         }
+        openSshTerminalSession(conn)
+    }
+
+    // Abre SIEMPRE una terminal más contra el servidor, aunque ya haya una.
+    //
+    // Separado de openSshTerminal —que enfoca la que ya está— y no fusionado
+    // con él: el clic en el nombre del servidor es también cómo se vuelve a la
+    // terminal de siempre, y hacerlo abrir una sesión nueva cada vez
+    // convertiría navegar el árbol en acumular shells contra producción. Abrir
+    // otra es un gesto aparte y explícito.
+    //
+    // Las N sesiones comparten una sola conexión SSH: cada una es un canal más
+    // sobre el cliente del pool (backend/sshconn/pool.go), no otra
+    // autenticación ni otro socket.
+    function openSshTerminalSession(conn: vault.ConnectionSummary) {
+        // El número solo aparece a partir de la segunda: "Terminal — PRODMAIN"
+        // y "Terminal — PRODMAIN (2)" se distinguen; poner "(1)" en la única
+        // que hay sugiere que falta otra.
+        //
+        // Se busca el primer número LIBRE y no se cuenta cuántas hay: con la
+        // (1) cerrada y la (2) abierta, contar daría "(2)" otra vez y quedarían
+        // dos pestañas con el mismo nombre, que es peor que un hueco en la
+        // numeración.
+        const taken = new Set(tabs.filter((t) => t.kind === 'ssh-terminal' && t.connId === conn.id).map((t) => t.title))
+        let title = `Terminal — ${conn.name}`
+        for (let n = 2; taken.has(title); n++) title = `Terminal — ${conn.name} (${n})`
         const tab: EditorTab = {
             id: newTabId(),
-            title: `Terminal — ${conn.name}`,
+            title,
             path: null,
             content: '',
             dirty: false,
@@ -2953,8 +3005,12 @@ export default function Workspace({
             // touch the saved connection itself, same as the sidebar's own
             // "Desconectar" — reconnecting just means reopening the tab.
             const closing = prev.find((t) => t.id === id)
-            if (closing?.kind === 'ssh-terminal' && closing.connId) {
-                closeSshTerminalSession(closing.connId)
+            // Se cierra la sesión DE ESA PESTAÑA (su sessionId), no las del
+            // servidor: las otras terminales contra el mismo host siguen vivas
+            // sobre la misma conexión. La combinada tiene una terminal adentro
+            // y hasta ahora quedaba corriendo al cerrar la pestaña.
+            if ((closing?.kind === 'ssh-terminal' || closing?.kind === 'ssh-hybrid') && closing.connId) {
+                closeSshTerminalSession(sshSessionId(closing.id))
             }
             if (closing?.kind === 'redis-browser' && closing.connId) {
                 void DisconnectConnection(closing.connId)
@@ -3160,12 +3216,14 @@ export default function Workspace({
                         onNewConnection={() => setConnectionDialog('new-ssh')}
                         onEditConnection={(conn) => setConnectionDialog(conn.id)}
                         onOpenSshTerminal={openSshTerminal}
+                        onOpenSshTerminalSession={openSshTerminalSession}
                         onOpenLocalTerminal={openLocalTerminal}
                         onOpenSftp={openSftp}
                         onOpenSshHybrid={openSshHybrid}
                         activeTabConnectionId={activeTabConnection?.id ?? null}
                         onExportConnectionConfig={(connId) => void exportConnectionConfig(connId)}
                         liveConnIds={liveSshConnIds}
+                        liveSessionCounts={liveSshSessionCounts}
                         onDisconnect={(connId) => void disconnectConnection(connId)}
                         onDeleteConnection={(connId) => void deleteConnection(connId)}
                         reloadToken={reloadToken}
@@ -3856,8 +3914,8 @@ export default function Workspace({
                     xterm.js Terminal instance (and the live remote shell
                     behind it) alive while its tab isn't focused, so
                     scrollback/cursor state survives switching away and back.
-                    At most one tab per connId exists (see openSshTerminal's
-                    dedupe). */}
+                    Puede haber VARIAS por connId: cada pestaña es una sesión
+                    aparte (sshSessionId) sobre la misma conexión SSH. */}
                 {tabs
                     .filter((t) => t.kind === 'ssh-terminal' && t.connId)
                     .map((t) => (
@@ -3869,11 +3927,12 @@ export default function Workspace({
                             <SshTerminalTab
                                 connId={t.connId as string}
                                 connName={connections.find((c) => c.id === t.connId)?.name ?? t.title}
+                                sessionId={sshSessionId(t.id)}
                                 theme={theme}
                                 terminalThemeId={terminalThemeId}
                                 onChangeTerminalTheme={changeTerminalTheme}
                                 terminalFontSize={terminalFontSize}
-                                onConnectedChange={(connected) => setSshConnected(t.connId as string, connected)}
+                                onConnectedChange={(connected) => setSshConnected(sshSessionId(t.id), t.connId as string, connected)}
                             />
                         </div>
                     ))}
@@ -3916,12 +3975,13 @@ export default function Workspace({
                             <SshHybridTab
                                 connId={t.connId as string}
                                 connName={connections.find((c) => c.id === t.connId)?.name ?? ''}
+                                sessionId={sshSessionId(t.id)}
                                 connections={connections.filter((c) => c.dbType === 'ssh')}
                                 theme={theme}
                                 terminalThemeId={terminalThemeId}
                                 onChangeTerminalTheme={changeTerminalTheme}
                                 terminalFontSize={terminalFontSize}
-                                onConnectedChange={(connected) => setSshConnected(t.connId as string, connected)}
+                                onConnectedChange={(connected) => setSshConnected(sshSessionId(t.id), t.connId as string, connected)}
                                 onOpenRemoteFile={(host, path) => void openRemoteFile(host, path)}
                             />
                         </div>
