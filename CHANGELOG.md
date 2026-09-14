@@ -4,6 +4,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-09-14
+
 ### Agregado
 
 - **Varias terminales SSH contra el mismo servidor.** Solo se dejaba **una por conexión**: el backend guardaba las sesiones en un mapa indexado por el id de la conexión, y abrir la segunda pestaña contra el mismo host **cerraba la primera sin avisar** —lo que estuvieras corriendo ahí se moría—. La forma habitual de trabajar en un servidor es al revés: una consola compilando o corriendo un batch, otra mirando el log, una tercera para husmear.

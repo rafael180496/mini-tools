@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.5.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.6.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -21,6 +21,46 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 <p align="center">
   <img src="docs/screenshots/ui-workspace.png" width="900" alt="mini-tools: barra lateral con el menú de módulos arriba (bases, SSH, Git, notas) y el árbol de conexiones en carpetas; editor SQL al centro con pestañas rotuladas por tipo y panel de resultados abajo">
 </p>
+
+---
+
+## Novedades — 2.6.0
+
+**La versión que deja de hacerte esperar.** Una consulta larga ya no bloquea el
+resto de la aplicación, un servidor SSH admite todas las terminales que quieras
+—una compilando, otra mirando el log—, importar dejó de exigir saber de antemano
+qué tenías, y el historial de peticiones HTTP pasó a estar donde se lo busca.
+
+- **Ejecutar ya no bloquea nada.** Mientras una consulta corre podés ejecutar
+  otra: en otra pestaña, contra otra conexión, o **en la misma pestaña sin
+  esperar la anterior**. Resultados, consola, `DBMS_OUTPUT` y cancelación son de
+  quien los pidió, y la pestaña que está trabajando lo dice con un anillo
+  girando en su solapa. [Ver la documentación →](https://rafael180496.github.io/mini-tools/#bases-consultas)
+- **Varias terminales SSH contra el mismo servidor.** Antes la segunda cerraba
+  la primera sin avisar y se llevaba lo que estuvieras corriendo. Ahora cada
+  pestaña es una sesión aparte —con su directorio, su historial y su buffer— y
+  siguen siendo **canales sobre una sola conexión**: una autenticación, un
+  socket, una entrada en el log del servidor.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#ssh-terminal)
+- **Importar es un solo diálogo, y reconoce solo qué le diste.** Se pega o se
+  suelta: colección de Postman (v2.0/v2.1), entorno, volcado completo de datos,
+  un comando cURL, una petición en texto plano o una URL. Dice qué reconoció
+  **antes** de escribir nada, acepta varios archivos o una carpeta entera, y lo
+  que no entiende explica por qué. [Ver la documentación →](https://rafael180496.github.io/mini-tools/#http-importar)
+- **Historial de peticiones, de todas y en un solo lugar**, agrupado por día y
+  al lado de las colecciones — más **colecciones favoritas**, que quedan fijadas
+  arriba sin tener que reordenar nada.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#http-historial)
+- **Editar una celda de la grilla queda registrado en la consola**, con las
+  sentencias exactas que se ejecutaron, sus binds y el **valor anterior** de
+  cada celda — que no aparece en ningún `UPDATE` y es lo único que permite
+  deshacer a mano. [Ver la documentación →](https://rafael180496.github.io/mini-tools/#bases-editar)
+- **El panel de «Código» se lee como código**: el mismo editor, el mismo
+  resaltado y el mismo tamaño de letra que el resto de la app. Con él se fueron
+  los últimos desplegables del sistema operativo del módulo HTTP.
+- **Una corrida de una hora ya no se informa en milisegundos** — `1h 9m 26s
+  452ms` en vez de `4166452ms` — y en la grilla de resultados <kbd>Shift</kbd> y
+  <kbd>Ctrl</kbd> vuelven a seleccionar filas en vez de sombrear las letras.
 
 ---
 
@@ -550,8 +590,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.5.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.5.0/mini-tools-v2.5.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.5.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.5.0/mini-tools-v2.5.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). ⚠️ **Esta versión no se corrió en una Windows real**, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.6.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.6.0/mini-tools-v2.6.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.6.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.6.0/mini-tools-v2.6.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Verificado corriendo en Windows 10 y 11, ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -726,11 +766,11 @@ Actions crea el GitHub Release, le pega las notas de esa versión sacadas del
 ```bash
 ./scripts/bump-version.sh minor      # o patch/major
 ./scripts/package-all.sh             # genera el .dmg y el .exe
-cp build/bin/mini-tools-v2.5.0.dmg releases/macos/
-cp build/bin/mini-tools-v2.5.0-windows-amd64.exe releases/windows/
+cp build/bin/mini-tools-v2.6.0.dmg releases/macos/
+cp build/bin/mini-tools-v2.6.0-windows-amd64.exe releases/windows/
 # … volcar el CHANGELOG, actualizar los README con los checksums e index.html …
-git add -A && git commit -m "release: v2.5.0"
-git tag v2.5.0 && git push origin main --tags
+git add -A && git commit -m "release: v2.6.0"
+git tag v2.6.0 && git push origin main --tags
 #  ↑ el release se crea solo
 ```
 
@@ -785,11 +825,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.5.0 |
+| Versión | 2.6.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.5.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.5.0/mini-tools-v2.5.0.dmg)** |
-| SHA-256 | `0a1788c7f70a36448f42cc9a7afcde72be91d030180ef57ea182cdb671cf35a1` |
+| Archivo | **[⬇ Descargar mini-tools-v2.6.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.6.0/mini-tools-v2.6.0.dmg)** |
+| SHA-256 | `b1b44b1a6fcd722d715890fcd1467f8cd9e2544b1d537f3caf9cff1754ac5200` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -801,7 +841,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> ⚠️ **La 2.5.0 no se corrió en una Windows real** — solo se confirmó que cross-compila limpio desde macOS, que es una afirmación mucho más chica. La 2.4.0 sí se probó en Windows 10 y 11, pero eso no se hereda, y esta versión trae la migración **51** del vault, que corre en el primer arranque después de actualizar. Queda sin confirmar: que arranque sin instalar el WebView2 Runtime aparte, esa migración sobre un `vault.db` real, el flujo OAuth 2.0 del módulo HTTP (aviso del Firewall la primera vez), el servidor MCP por named pipe, lanzar los CLIs agénticos y abrir el proyecto en VS Code/Explorador. Detalle en [releases/windows/README.md](releases/windows/README.md).
+> **La 2.6.0 se corrió en Windows 10 y en Windows 11 reales** — arranca sin instalar el WebView2 Runtime aparte, con el DPI correcto y los diálogos nativos respondiendo. Las dos migraciones nuevas del vault (**52** y **53**) son aditivas —una columna con default y un índice—, así que un `vault.db` de una versión anterior se abre sin perder nada. Lo que **no** se ejercitó en esa pasada —el flujo OAuth 2.0, el servidor MCP por named pipe, lanzar los CLIs agénticos y las varias terminales SSH de esta versión— está listado en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -809,10 +849,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.5.0 |
-| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; ⚠️ **esta versión no se corrió en una Windows real** |
-| Archivo | **[⬇ Descargar mini-tools-v2.5.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.5.0/mini-tools-v2.5.0-windows-amd64.exe)** |
-| SHA-256 | `511474dea7f29b95efcb13db9ff2348414b344070f0f4a9dc3393b5c8342e0c0` |
+| Versión | 2.6.0 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; verificado corriendo en Windows 10 y 11 |
+| Archivo | **[⬇ Descargar mini-tools-v2.6.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.6.0/mini-tools-v2.6.0-windows-amd64.exe)** |
+| SHA-256 | `167da81d70e1acb5ba133657993edb269f33b78c3101ec9c092487e9ac4c435a` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

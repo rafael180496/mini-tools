@@ -11,17 +11,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.5.0 |
-| Archivo | `mini-tools-v2.5.0-windows-amd64.exe` |
+| Versión | 2.6.0 |
+| Archivo | `mini-tools-v2.6.0-windows-amd64.exe` |
 | Tamaño | ~57 MB (57,1 MB) |
-| SHA-256 | `511474dea7f29b95efcb13db9ff2348414b344070f0f4a9dc3393b5c8342e0c0` |
+| SHA-256 | `167da81d70e1acb5ba133657993edb269f33b78c3101ec9c092487e9ac4c435a` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.5.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.6.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -35,23 +35,21 @@ Get-FileHash mini-tools-v2.5.0-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-> ⚠️ **La 2.5.0 NO se corrió en una Windows real.** Solo se confirmó que
-> **cross-compila limpio** desde macOS `arm64`, que es una afirmación mucho más
-> chica: el `.exe` se genera sin errores y con la arquitectura correcta, y nada
-> más. Ni WebView2, ni el DPI, ni los diálogos nativos se comprueban compilando.
+**La 2.6.0 se corrió en Windows 10 y en Windows 11 reales, y arrancó bien.** Eso
+confirma lo primero que rompe cuando algo falla: el **WebView2 Runtime carga sin
+instalar nada aparte**, la ventana abre con el DPI correcto y los diálogos
+nativos responden.
 
-La 2.4.0 sí se corrió en Windows 10 y en Windows 11, y arrancó bien — pero eso
-es de esa versión y no se hereda. Esta trae cambios que **tocan justamente el
-arranque**: la migración **51** del vault (vacía `query_history`) corre en el
-primer `Open()` después de actualizar, y una migración que falla deja la app sin
-abrir.
+Esta versión trae dos migraciones nuevas del vault —la **52** (columna
+`favorite_at` de las colecciones HTTP) y la **53** (índice del historial por
+fecha)—, que corren en el primer `Open()` después de actualizar. Las dos son
+aditivas: agregan una columna con default y un índice, no borran ni reescriben
+nada, al revés de la migración 51 de la 2.5.0. Un `vault.db` de una versión
+anterior se abre sin perder nada.
 
-Lo que queda sin confirmar, y hay que mirar acá primero si algo falla:
+Lo que **no** se ejercitó en esa pasada, y es donde hay que mirar primero si algo
+falla:
 
-- **Que arranque sin instalar el WebView2 Runtime aparte.** Si el runtime
-  faltara o no cargara, la ventana quedaría en blanco.
-- **La migración 51 sobre un `vault.db` real** que ya tenga historial guardado
-  (es la única migración destructiva del proyecto; ver el CHANGELOG de 2.5.0).
 - **El flujo OAuth 2.0** del módulo HTTP, que levanta un servidor efímero en
   `127.0.0.1` para capturar el redirect y puede disparar el aviso del
   **Firewall** de Windows la primera vez.
@@ -59,18 +57,17 @@ Lo que queda sin confirmar, y hay que mirar acá primero si algo falla:
   Unix.
 - **Lanzar los CLIs agénticos** (`claude`, `codex`, `agy`) como procesos hijos:
   implica resolver `.cmd`/`.exe` del `PATH` y otro manejo de saltos de línea.
+- **Las varias terminales SSH contra el mismo servidor** de esta versión: son
+  canales sobre el mismo cliente del pool, y en Windows la terminal depende de
+  ConPTY.
 - **Abrir el proyecto en VS Code o en el explorador de archivos**, que resuelve
   `code` del `PATH` y usa `explorer`.
 - **Pegar imágenes en una nota** (`Ctrl+V` desde Recortes), que depende de cómo
   el WebView2 expone el portapapeles.
-- **Los diálogos nativos** de abrir/guardar y el backup del vault.
-- **Las fuentes del sistema que ofrece Configuración → Apariencia.** Consolas
-  existe en Windows y Menlo no; la app cae en silencio a la monoespaciada
-  genérica cuando la elegida falta.
 
-**Esta sección se reescribe en cada release.** Si alguien corre esta versión en
-una Windows real, reemplazar la advertencia de arriba por qué se confirmó y en
-qué versiones de Windows — nunca extrapolar de un release anterior.
+**Esta sección se reescribe en cada release.** Si la versión siguiente sale sin
+que nadie la corra en una Windows real, va la advertencia explícita de "no
+verificado" — nunca extrapolar de un release anterior.
 
 
 ## Compatibilidad del sistema
@@ -100,7 +97,7 @@ qué versiones de Windows — nunca extrapolar de un release anterior.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.5.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.6.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.
