@@ -5,6 +5,7 @@ import Icon from '../Icon'
 import {generateCSV, generateInsertStatements, generateUpdateStatements, type SqlTarget} from '../../lib/sqlGenerate'
 import CellEditor from './CellEditor'
 import {useRowEditing} from './useRowEditing'
+import {MIN_COL_WIDTH, measureColumnWidth, measureColumnWidths} from './columnWidths'
 
 interface ResultGridProps {
     columns: string[]
@@ -95,20 +96,18 @@ export default function ResultGrid({
     // siendo el mismo objeto y la selección se conserva, que es lo que
     // corresponde. Un resultado distinto trae filas distintas.
     const firstRowRef = useRef<unknown>(undefined)
-    useEffect(() => {
-        const first = rows[0]
-        if (first === firstRowRef.current && rows.length > 0) return
-        firstRowRef.current = first
-        setSelectedIndices(new Set())
-        anchorRef.current = null
-    }, [rows])
+
+    // Ancho que le toca a cada columna por su contenido (ver columnWidths.ts).
+    // Es el ancho POR DEFECTO, no el definitivo: lo que el usuario arrastra
+    // vive en el estado de la tabla y pisa a este.
+    const [autoSizes, setAutoSizes] = useState<Record<string, number>>({})
 
     const colDefs: ColumnDef<unknown[]>[] = columns.map((col, i) => ({
         id: col,
         header: col,
         accessorFn: (row) => row[i],
-        size: 160,
-        minSize: 60,
+        size: autoSizes[col] ?? 160,
+        minSize: MIN_COL_WIDTH,
     }))
 
     const table = useReactTable({
@@ -117,6 +116,41 @@ export default function ResultGrid({
         getCoreRowModel: getCoreRowModel(),
         columnResizeMode: 'onChange',
     })
+
+    // Las columnas arrastradas a mano se conservan mientras el resultado tenga
+    // LAS MISMAS columnas —reejecutar la consulta no debería devolver todo a su
+    // sitio—, y se sueltan cuando cambia el juego de columnas, porque ahí los
+    // anchos guardados son de otra consulta.
+    const colsKey = columns.join('\u0000')
+    const colsKeyRef = useRef(colsKey)
+    const tableRef = useRef(table)
+    tableRef.current = table
+
+    useEffect(() => {
+        const first = rows[0]
+        const sameResult = first === firstRowRef.current && rows.length > 0
+        if (sameResult && colsKeyRef.current === colsKey) return
+        firstRowRef.current = first
+        if (colsKeyRef.current !== colsKey) {
+            colsKeyRef.current = colsKey
+            tableRef.current.resetColumnSizing()
+        }
+        setSelectedIndices(new Set())
+        anchorRef.current = null
+        setAutoSizes(measureColumnWidths(columns, rows))
+        // `columns` se deriva de colsKey: agregarlo dispararía el efecto en cada
+        // render, porque el padre arma el array nuevo cada vez.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, colsKey])
+
+    // Doble clic en el agarre: la columna se ajusta a su contenido. Se vuelve a
+    // medir sobre las filas de AHORA —no sobre las que había al abrir— para que
+    // después de «Cargar más» el ajuste tenga en cuenta lo que se sumó.
+    function fitColumn(id: string) {
+        const index = columns.indexOf(id)
+        if (index < 0) return
+        table.setColumnSizing((prev) => ({...prev, [id]: measureColumnWidth(id, index, rows)}))
+    }
 
     const tableRows = table.getRowModel().rows
 
@@ -136,6 +170,7 @@ export default function ResultGrid({
         )
     }
 
+    const isResizing = table.getState().columnSizingInfo.isResizingColumn !== false
     const virtualItems = virtualizer.getVirtualItems()
     const totalHeight = virtualizer.getTotalSize()
     const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0
@@ -270,7 +305,10 @@ export default function ResultGrid({
                 className="flex-1 overflow-auto bg-surface font-mono outline-none"
             >
                 <table
-                    className="border-collapse text-left text-xs"
+                    // select-none mientras se arrastra un borde: sin eso el
+                    // navegador va pintando de azul el texto de las celdas por
+                    // las que pasa el cursor mientras se cambia el ancho.
+                    className={`border-collapse text-left text-xs ${isResizing ? 'select-none' : ''}`}
                     style={{tableLayout: 'fixed', width: '100%', minWidth: table.getTotalSize()}}
                 >
                     <thead className="sticky top-0 z-10 bg-surface-container-high shadow-sm">
@@ -296,20 +334,45 @@ export default function ResultGrid({
                                                 />
                                             )}
                                         </button>
+                                        {/* El borde de la columna ES el agarre. Antes era una
+                                            franja transparente de 4 px: la separación no se veía,
+                                            así que no había nada que invitara a arrastrarla — y
+                                            embocarla era cuestión de suerte. Ahora se dibuja
+                                            siempre una línea, la zona sensible son 9 px a caballo
+                                            del borde (de ahí el -right-1 y el z-20, para ganarle
+                                            a la columna de al lado), y la línea se engrosa y se
+                                            pinta al pasar el mouse o mientras se arrastra. */}
                                         <div
                                             onMouseDown={header.getResizeHandler()}
                                             onTouchStart={header.getResizeHandler()}
-                                            className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-primary/40"
-                                        />
+                                            onDoubleClick={() => fitColumn(header.column.id)}
+                                            title="Arrastrá para cambiar el ancho de la columna — doble clic lo ajusta al contenido"
+                                            className="group absolute -right-1 top-0 z-20 flex h-full w-[9px] cursor-col-resize touch-none select-none items-stretch justify-center"
+                                        >
+                                            <span
+                                                className={
+                                                    header.column.getIsResizing()
+                                                        ? 'w-0.5 bg-primary'
+                                                        : 'w-px bg-outline-variant group-hover:w-0.5 group-hover:bg-primary'
+                                                }
+                                            />
+                                        </div>
                                     </th>
                                 ))}
+                                {/* Columna de relleno, sin ancho propio: con
+                                    table-layout fijo se queda con el espacio que
+                                    sobra a la derecha. Sin ella, ese sobrante se
+                                    repartía entre las columnas reales — y
+                                    arrastrar un borde reescalaba todas las demás
+                                    en vez de mover solo esa. */}
+                                <th aria-hidden className="border-b border-outline-variant" />
                             </tr>
                         ))}
                     </thead>
                     <tbody>
                         {paddingTop > 0 && (
                             <tr>
-                                <td style={{height: paddingTop}} colSpan={columns.length} />
+                                <td style={{height: paddingTop}} colSpan={columns.length + 1} />
                             </tr>
                         )}
                         {virtualItems.map((vi) => {
@@ -352,7 +415,7 @@ export default function ResultGrid({
                                                         ? `Doble clic para editar. ${editable.dataType} — el cambio queda pendiente hasta que lo mandes.`
                                                         : undefined
                                                 }
-                                                className={`truncate whitespace-nowrap border-b border-outline-variant/30 px-3 py-1.5 text-on-surface ${
+                                                className={`truncate whitespace-nowrap border-b border-r border-outline-variant/30 px-3 py-1.5 text-on-surface ${
                                                     change
                                                         ? change.saved
                                                             ? 'bg-tertiary/15'
@@ -389,12 +452,13 @@ export default function ResultGrid({
                                             </td>
                                         )
                                     })}
+                                    <td aria-hidden className="border-b border-outline-variant/30" />
                                 </tr>
                             )
                         })}
                         {paddingBottom > 0 && (
                             <tr>
-                                <td style={{height: paddingBottom}} colSpan={columns.length} />
+                                <td style={{height: paddingBottom}} colSpan={columns.length + 1} />
                             </tr>
                         )}
                     </tbody>

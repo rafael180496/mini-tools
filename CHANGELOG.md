@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Las columnas de la grilla de resultados ya se pueden ensanchar, y arrancan del ancho de lo que traen.** Todas nacían midiendo lo mismo —160 px—, así que la columna de un id de siete dígitos desperdiciaba la mitad mientras la de al lado cortaba la descripción en `Extrae la factura…`. Ahora cada una se mide contra su nombre y contra los valores del resultado, con un piso y un techo para que ni una columna de banderas `S`/`N` quede como un hilo ni un CLOB se lleve la pantalla.
+
+  Arrastrar el borde **ya existía**, pero no había forma de darse cuenta: la zona sensible eran cuatro píxeles transparentes, sin ninguna línea que marcara dónde terminaba una columna y empezaba la otra. Ahora la separación **se dibuja siempre**, se engrosa y se pinta al pasar el mouse por encima —que es lo que invita a agarrarla—, y la zona sensible pasó a nueve píxeles a caballo del borde. **Doble clic ajusta la columna a su contenido**, midiendo las filas que hay en ese momento, así que después de «Cargar más» tiene en cuenta lo que se sumó.
+
+  Y arrastrar un borde ahora mueve **esa** columna. La tabla se estiraba al 100 % del panel, y el sobrante se repartía entre todas: tocar un borde reescalaba las demás y el ancho terminaba en un número que nadie había pedido. El espacio que sobra a la derecha lo absorbe una columna de relleno, así que los anchos son los que se ven. Lo que se mueve a mano se conserva al reejecutar la consulta o al traer más filas, y vuelve al ancho automático cuando el resultado trae otras columnas — que es cuando los anchos guardados son de otra consulta.
+
 ### Corregido
 
 - **La grilla de resultados se dibujaba encima del visor de DDL.** Abrir el DDL de una tabla con una consulta ya ejecutada detrás dejaba la fila de cabecera de los resultados —`ID_SERVICIO`, `ID_MES`, …— atravesada sobre el DDL, tapando una franja de tres o cuatro líneas justo en el medio. Las filas de datos sí quedaban detrás, y esa mezcla era lo que hacía parecer un problema de la consulta y no de la ventana.
