@@ -3317,7 +3317,7 @@ export default function Workspace({
             )}
 
             {deletedPaths.length > 0 && (
-                <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
                     <div className="flex w-96 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg">
                         <h2 className="flex items-center gap-2 text-lg font-semibold">
                             <Icon name="warning" className="text-tertiary" />

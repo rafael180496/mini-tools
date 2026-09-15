@@ -4,6 +4,20 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Corregido
+
+- **La grilla de resultados se dibujaba encima del visor de DDL.** Abrir el DDL de una tabla con una consulta ya ejecutada detrás dejaba la fila de cabecera de los resultados —`ID_SERVICIO`, `ID_MES`, …— atravesada sobre el DDL, tapando una franja de tres o cuatro líneas justo en el medio. Las filas de datos sí quedaban detrás, y esa mezcla era lo que hacía parecer un problema de la consulta y no de la ventana.
+
+  No era casualidad ni cuestión de suerte: el modal se monta antes que el panel de resultados, y la cabecera de la grilla —que es pegajosa, para no perder los nombres de columna al bajar— estaba en la misma capa que el modal. A igual capa gana lo que va después. Ahora el visor se dibuja aparte y por encima de todo, como el resto de los diálogos de la app. El mismo arreglo alcanza al selector de esquemas de una conexión y al aviso de archivos no encontrados, que se montan en el mismo lugar y tenían el mismo defecto.
+
+### Cambiado
+
+- **El visor de DDL, para objetos que no entran en una pantalla.** Era una ventana de 42 rem en la que un `CREATE TABLE` de cincuenta líneas se leía por una ranura. Ahora ocupa el ancho útil de la ventana y el alto que hay, el DDL scrollea adentro del panel —con la cabecera y la barra de estado quietas— y abajo dice cuántas líneas y cuánto pesa lo que se está mirando, que es la diferencia entre saber que falta texto y suponerlo.
+
+  **Ctrl+F busca dentro del DDL** (lo dice la barra de abajo, porque un atajo que no se anuncia no existe) y el foco entra en el panel, así que las flechas y RePág/AvPág funcionan sin hacer clic primero. **Esc cierra**, y cierra el buscador primero si está abierto en vez de llevarse la ventana entera de paso. También cierra el clic afuera, salvo que venga de soltar una selección de texto que empezó adentro.
+
+  Se agregó un botón **Ajustar**: cortar las líneas largas al ancho del panel, o dejarlas correr con scroll horizontal. Una columna virtual con su expresión entera en una línea se lee de las dos formas según lo que se esté buscando, y cambiarlo ya no mueve el scroll ni cierra la búsqueda. **Copiar** confirma con un tilde en vez de cambiar la palabra, y un DDL que no se pudo traer ofrece **Reintentar** en lugar de dejar el error y nada que hacer con él.
+
 ## [2.6.0] - 2026-09-14
 
 ### Agregado

@@ -102,7 +102,7 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
     const filtered = (allSchemas ?? []).filter((s) => s.toLowerCase().includes(search.trim().toLowerCase()))
 
     return (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
             <div
                 onClick={(e) => e.stopPropagation()}
                 className="flex max-h-[85vh] w-104 max-w-[94vw] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high text-on-surface shadow-lg"

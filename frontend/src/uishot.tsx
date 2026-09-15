@@ -868,6 +868,57 @@ const fixtures: Record<string, unknown> = {
         {id: 'n5', title: 'Checklist de pase a producción', isPrivate: false, updatedAt: 1786200000, createdAt: 1785600000, linkCount: 3, folderId: 'f-notes-guardia'},
         {id: 'n6', title: 'Notas sueltas', isPrivate: false, updatedAt: 1786000000, createdAt: 1785000000, linkCount: 0, folderId: ''},
     ],
+
+    // --- DDL de una tabla ----------------------------------------------------
+    //
+    // Largo a propósito: el visor existe para objetos que no entran en una
+    // pantalla, y una fixture de diez líneas no muestra si el panel scrollea.
+    GetObjectDDL: () =>
+        [
+            '  CREATE TABLE "DWHPRO"."DXHT_FACTURACION_CONCEPTOS"',
+            '   (\t"ID_SERVICIO" NUMBER(7,0) NOT NULL ENABLE,',
+            '\t"ID_MES" NUMBER(6,0) NOT NULL ENABLE,',
+            '\t"ID_CONTRATO" NUMBER(3,0) NOT NULL ENABLE,',
+            '\t"ID_FACTURA" NUMBER(1,0) NOT NULL ENABLE,',
+            '\t"TI_OPERACION_FACT" VARCHAR2(1) NOT NULL ENABLE,',
+            '\t"CC_OCURRENCIAS" NUMBER(3,0) NOT NULL ENABLE,',
+            '\t"FE_FACTURA" DATE NOT NULL ENABLE,',
+            '\t"FE_PROCESO" DATE NOT NULL ENABLE,',
+            '\t"IN_DEFINIDO" VARCHAR2(1) NOT NULL ENABLE,',
+            '\t"SG_FACTURACION" NUMBER(1,0) NOT NULL ENABLE,',
+            ...Array.from({length: 10}, (_, i) => `\t"IM_VARIABLE_${String(i + 1).padStart(2, '0')}" NUMBER(13,2) NOT NULL ENABLE,`),
+            '\t"FH_CARGA" DATE NOT NULL ENABLE,',
+            '\t"ID_RANGO_KWH" NUMBER(4,0),',
+            '\t"TEXTO_01" VARCHAR2(20),',
+            '\t"TEXTO_02" VARCHAR2(20),',
+            '\t"TI_ESTIMACION" VARCHAR2(5),',
+            '\t"CS_POTENCIA_LEIDA" NUMBER(9,0),',
+            '\t"CS_POTENCIA_LEIDA_PUNTA" NUMBER(9,0),',
+            '\t"CS_POTENCIA_LEIDA_VALLE" NUMBER(9,0),',
+            '\t"CS_POTENCIA_LEIDA_LLANO" NUMBER(9,0),',
+            '\t"CS_PROMEDIO" NUMBER(9,0),',
+            '\t"FE_CONTABLE" DATE,',
+            '\t"ES_CONTABLE" VARCHAR2(5),',
+            '\t"IM_OTROS_CARGOS_EXENTOS" NUMBER(13,2),',
+            '\t"FE_CONTROL" DATE,',
+            '\t"ES_ANTERIOR" VARCHAR2(5),',
+            '\t"IX_FACTURA" VARCHAR2(86) GENERATED ALWAYS AS (LPAD(TO_CHAR("ID_SERVICIO"),7,\'0\')||LPAD(TO_CHAR("ID_CONTRATO"),3,\'0\')||TO_CHAR("FE_FACTURA",\'YYYYMMDD\')||LPAD(TO_CHAR("ID_FACTURA"),1,\'0\')) VIRTUAL ,',
+            '\t"CS_REACTIVA" NUMBER(9,0),',
+            '\t"FE_FACTURA_ORIGINAL" DATE,',
+            '\t CONSTRAINT "PK_DXHT_FACTURACION_CONCEPTOS" PRIMARY KEY ("ID_SERVICIO", "ID_MES", "ID_FACTURA", "TI_OPERACION_FACT")',
+            '  USING INDEX PCTFREE 10 INITRANS 2 MAXTRANS 255 COMPUTE STATISTICS',
+            '  STORAGE(INITIAL 65536 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645',
+            '  PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1',
+            '  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)',
+            '  TABLESPACE "DATOS4_IND"  ENABLE',
+            '   ) SEGMENT CREATION IMMEDIATE',
+            '  PCTFREE 10 PCTUSED 40 INITRANS 1 MAXTRANS 255',
+            ' NOCOMPRESS LOGGING',
+            '  STORAGE(INITIAL 65536 NEXT 1048576 MINEXTENTS 1 MAXEXTENTS 2147483645',
+            '  PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1',
+            '  BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT)',
+            '  TABLESPACE "DATOS1" ',
+        ].join('\n'),
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1007,6 +1058,7 @@ const {default: GitSettingsDialog} = await import('./components/git/GitSettingsD
 const {default: FolderNotesDialog} = await import('./components/notes/FolderNotesDialog')
 const {default: SftpTab} = await import('./components/sftp/SftpTab')
 const {default: SshTerminalTab} = await import('./components/ssh/SshTerminalTab')
+const {default: DDLViewerModal} = await import('./components/DDLViewerModal')
 
 // --- Vistas ---------------------------------------------------------------
 
@@ -1162,6 +1214,24 @@ const CONSOLE_ENTRIES = [
 ]
 
 const views: Record<string, React.ReactNode> = {
+    // El visor de DDL, con un objeto largo de verdad: lo que se mira acá es que
+    // el panel scrollee adentro del modal (y no desborde) y que la cabecera y
+    // la barra de estado queden fijas mientras el DDL corre.
+    ddl: (
+        <div className="h-full w-full bg-surface">
+            <DDLViewerModal
+                connId="c1"
+                objectType="table"
+                schema="DWHPRO"
+                name="DXHT_FACTURACION_CONCEPTOS"
+                oid={0}
+                dbType="oracle"
+                editorThemeId="auto"
+                appTheme="dark"
+                onClose={() => {}}
+            />
+        </div>
+    ),
     // La consola de ejecución con sus tres desenlaces: SQL resaltado, salida de
     // DBMS_OUTPUT y un error con su código del motor destacado.
     console: (
