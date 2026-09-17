@@ -24,7 +24,7 @@ import {
 } from '../../../wailsjs/go/main/App'
 import {agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
-import AgentChat from './AgentChat'
+import AgentChat, {type ChatContextBlock} from './AgentChat'
 import AgentUsagePanel from './AgentUsagePanel'
 import AgentHistoryPanel from './AgentHistoryPanel'
 import PromptDialog from '../git/PromptDialog'
@@ -84,6 +84,13 @@ interface OpenChatOptions {
     // pestaña (por ejemplo el visor de EXPLAIN, que sabe de qué conexión es el
     // plan aunque la pestaña activa sea otra).
     context?: WorkContext
+    // Contexto que el botón ya tiene en la mano y el chat no podría
+    // reconstruir: las líneas exactas que se analizaron, la respuesta de un
+    // análisis anterior. Se muestran como fichas removibles y viajan con el
+    // próximo mensaje. Una referencia `@` no alcanza para esto: se resuelve al
+    // mandar, contra el estado de ESE momento (otra terminal, otro buffer), y
+    // no conoce lo que contestó un análisis de una tirada.
+    attachments?: ChatContextBlock[]
 }
 
 interface AgentChatApi {
@@ -147,6 +154,8 @@ interface Props {
     // Devuelve la etiqueta de dónde lo puso, o null si no hay dónde.
     onInsertText?: ((text: string) => void) | null
     insertLabel?: string
+    // 'terminal' cuando lo insertado cae en una shell. Ver ChatCodeBlock.
+    insertTarget?: 'editor' | 'terminal'
     children: ReactNode
 }
 
@@ -175,13 +184,14 @@ export default function AgentChatHost({
     onLayoutChange,
     onInsertText,
     insertLabel,
+    insertTarget,
     children,
 }: Props) {
     const [open, setOpen] = useState(false)
     // Una sesión POR contexto de trabajo, indexadas por su clave. El hilo de
     // una conexión sobrevive a irse a otra pestaña y volver.
     const [sessions, setSessions] = useState<Record<string, Session>>({})
-    const [seed, setSeed] = useState<{text: string; token: number} | null>(null)
+    const [seed, setSeed] = useState<{text: string; token: number; attachments?: ChatContextBlock[]} | null>(null)
     const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
     const [active, setActive] = useState<main.ActiveAgent | null>(null)
     const [history, setHistory] = useState<vault.AgentChat[]>([])
@@ -277,7 +287,9 @@ export default function AgentChatHost({
             if (gitOwnsChat) return
             if (opts?.context) setPinned(opts.context)
             setOpen(true)
-            if (opts?.prompt) setSeed({text: opts.prompt, token: Date.now()})
+            if (opts?.prompt || opts?.attachments?.length) {
+                setSeed({text: opts.prompt ?? '', token: Date.now(), attachments: opts.attachments})
+            }
         },
         [gitOwnsChat],
     )
@@ -585,12 +597,18 @@ export default function AgentChatHost({
                                 // se abrió el chat son del módulo activo: a una
                                 // conversación escondida no le corresponden.
                                 seed={visible ? seed : null}
+                                // Se consume una vez: si quedara puesto, la
+                                // próxima conversación que se hiciera visible
+                                // al cambiar de pestaña recibiría las mismas
+                                // fichas y el mismo texto.
+                                onSeedConsumed={() => setSeed(null)}
                                 working={visible ? working : null}
                                 resumeConversationId={s.resumeConversationId}
                                 initialSettings={s.initialSettings}
                                 onInsertText={visible ? (onInsertText ?? undefined) : undefined}
                                 onSessionUsage={visible ? setSessionUsage : undefined}
                                 insertLabel={insertLabel}
+                                insertTarget={insertTarget}
                                 onSend={(text) => onFirstSend(s, sessionKey, text)}
                                 onConversation={(conversationId) => onConversation(s, conversationId)}
                             />

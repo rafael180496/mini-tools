@@ -60,6 +60,8 @@ import {
     CheckSQLMutation,
     ExplainQuery,
     ReadSftpFileForEdit,
+    WriteLocalTerminal,
+    WriteSSHTerminal,
     WriteSftpFileFromEdit,
     ExportConnectionConfig,
     ExportSchemaDDL,
@@ -3377,7 +3379,15 @@ export default function Workspace({
                 // de Redis el botón no aparece, en vez de aparecer y no hacer
                 // nada.
                 onInsertText={
-                    isNoteTabActive || activeTabData?.kind === 'editor'
+                    // En una terminal el bloque se escribe en la línea de
+                    // comandos SIN Enter (ChatCodeBlock solo lo ofrece para un
+                    // comando suelto): lo ejecuta el usuario, y la guarda de
+                    // producción actúa en ese Enter como con cualquier tecleo.
+                    activeTabData && (isSshTerminalTabActive || isHybridTabActive)
+                        ? (text) => void WriteSSHTerminal(sshSessionId(activeTabData.id), text)
+                        : activeTabData && isLocalTerminalTabActive
+                          ? (text) => void WriteLocalTerminal(`local-tab-${activeTabData.id}`, text)
+                          : isNoteTabActive || activeTabData?.kind === 'editor'
                         ? (text) => {
                               const view = isNoteTabActive
                                   ? noteViewsRef.current.get(activeTabId ?? '')
@@ -3388,8 +3398,11 @@ export default function Workspace({
                           }
                         : null
                 }
+                insertTarget={isSshTerminalTabActive || isHybridTabActive || isLocalTerminalTabActive ? 'terminal' : 'editor'}
                 insertLabel={
-                    isNoteTabActive
+                    isSshTerminalTabActive || isHybridTabActive || isLocalTerminalTabActive
+                        ? undefined
+                        : isNoteTabActive
                         ? 'Inserta el bloque en la nota, donde está el cursor'
                         : 'Inserta el bloque en el editor, donde está el cursor — no pisa lo que ya escribiste'
                 }

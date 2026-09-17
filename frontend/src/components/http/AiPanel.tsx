@@ -84,6 +84,9 @@ interface AiPanelProps {
     onApplyDocs: (markdown: string) => void
     onApplyTests: (code: string) => void
     onClose: () => void
+    // Abre el chat con la petición y ESTA respuesta del agente adjuntas, para
+    // repreguntar. Sin chat disponible no llega y el botón no aparece.
+    onFollowUp?: (label: string, answer: string) => void
 }
 
 export default function AiPanel({
@@ -97,6 +100,7 @@ export default function AiPanel({
     onApplyDocs,
     onApplyTests,
     onClose,
+    onFollowUp,
 }: AiPanelProps) {
     const meta = AI_ACTIONS.find((a) => a.id === action)!
     const [prompt, setPrompt] = useState('')
@@ -194,6 +198,16 @@ export default function AiPanel({
                 <p className="flex-1 truncate text-ui-11 font-medium text-on-surface" title={meta.hint}>
                     {meta.label.replace('…', '')}
                 </p>
+                {answer && !running && onFollowUp && (
+                    <button
+                        onClick={() => onFollowUp(`${meta.label.replace('…', '')} — respuesta anterior`, answer)}
+                        title="Abre el chat con la petición, la respuesta y este análisis adjuntos, para repreguntar"
+                        className="flex items-center gap-1 rounded px-1.5 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="forum" size={14} />
+                        Seguir en el chat
+                    </button>
+                )}
                 {answer && !running && (
                     <button
                         onClick={() => void run()}

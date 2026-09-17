@@ -433,7 +433,7 @@ export default function SshTerminalTab({
 
     return (
         <div className="flex h-full min-h-0 w-full">
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 {/* Una sola fila de herramientas, todo ícono y con la
                     explicación en el tooltip. Lo que ES la sesión —a qué
                     servidor, si sigue viva, en qué entorno— vive en el PIE,

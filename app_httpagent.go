@@ -65,6 +65,19 @@ func (a *App) AgentExplainHTTP(itemID string, req httpclient.Request, resp httpc
 	return a.AgentAsk(agentctx.HTTPExplainPrompt(x), "http", itemID)
 }
 
+// AgentHTTPChatContext devuelve la petición y su respuesta como texto listo
+// para adjuntar al chat, con las mismas redacciones que los pedidos de una
+// tirada: cabeceras de credencial tapadas, variables secretas enmascaradas,
+// cuerpo acotado. Se arma en Go y no en el frontend para que haya UN solo
+// criterio de qué es un secreto.
+func (a *App) AgentHTTPChatContext(itemID string, req httpclient.Request, resp httpclient.Response, errText string) (string, error) {
+	x, err := a.exchange(itemID, req, resp, errText)
+	if err != nil {
+		return "", err
+	}
+	return agentctx.HTTPChatContext(x), nil
+}
+
 // AgentDiagnoseHTTP explica por qué falló una petición.
 func (a *App) AgentDiagnoseHTTP(itemID string, req httpclient.Request, resp httpclient.Response, errText string) (string, error) {
 	x, err := a.exchange(itemID, req, resp, errText)

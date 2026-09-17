@@ -448,12 +448,18 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                                             onClick={() =>
                                                 chat.open({
                                                     prompt: '@explain:last ¿cómo sigo con esto?',
+                                                    // El plan viaja por la referencia; lo que
+                                                    // contestó el agente no lo conoce nadie
+                                                    // más, y sin él «¿cómo sigo?» empieza de cero.
+                                                    attachments: [
+                                                        {label: 'Análisis anterior del plan', text: aiAnswer, language: 'markdown', icon: 'smart_toy'},
+                                                    ],
                                                     context: connId
                                                         ? {kind: 'db', id: connId, label: connName ?? ''}
                                                         : undefined,
                                                 })
                                             }
-                                            title="Abre el chat con el plan ya referenciado, para repreguntar sobre esta misma respuesta"
+                                            title="Abre el chat con el plan referenciado y esta respuesta adjunta, para repreguntar sin empezar de cero"
                                             className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                         >
                                             <Icon name="forum" size={14} />

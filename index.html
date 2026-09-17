@@ -1331,6 +1331,12 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p>Comandos guardados y reutilizables en cualquier sesión, con carpetas y buscador.
   <strong>Ejecutar</strong> corre cada línea; <strong>Pegar</strong> las escribe sin confirmar, para cuando
   querés revisar antes de apretar Enter.</p>
+  <p>El script se escribe en un editor con <strong>resaltado de shell</strong>: Tab indenta,
+  <strong>Ctrl+Enter</strong> guarda y <strong>Esc</strong> cancela. El mismo formulario elige la carpeta.</p>
+  <p>El panel <strong>se ensancha arrastrando su borde izquierdo</strong> y recuerda el ancho; doble clic en
+  el borde lo devuelve al original. Para ordenar: arrastrá un snippet o una carpeta sobre otra carpeta (o sobre
+  el fondo, para sacarlo a la raíz), doble clic en una carpeta para renombrarla, y el <strong>+</strong> de su
+  fila crea un snippet ya adentro.</p>
 
   <h2 id="ssh-terminal--historial">Historial cifrado y filtrado</h2>
   <p>Los comandos quedan guardados por conexión, cifrados. <strong>Las líneas que parecen traer una
@@ -1413,6 +1419,19 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   repositorio o cerrás el panel, ese turno sigue corriendo y la respuesta te espera entera al volver — con
   lo que hubieras dejado escrito en la caja de mensaje.</p>
 
+  <h2 id="ia-chat--seguir">Seguir en el chat, con el contexto ya adjunto</h2>
+  <p>Los análisis de una tirada —<strong>Analizar error</strong> de la terminal, el análisis de un plan de
+  ejecución, las acciones de IA de una petición HTTP— tienen <strong>Seguir en el chat</strong>. El chat abre
+  con lo analizado <strong>adjunto como fichas</strong>: las líneas exactas de la terminal con el sistema
+  operativo detectado, la petición y su respuesta, y lo que contestó el agente. Así se repregunta sin volver a
+  explicar nada.</p>
+  <p>Cada ficha se despliega para leer exactamente lo que se va a mandar y se quita con la <strong>×</strong>.
+  Viajan con el próximo mensaje, y lo que ya tuvieras escrito en la caja no se pisa. En una petición HTTP,
+  el menú de IA ofrece además <strong>Preguntar en el chat</strong> desde cero, con la petición adjunta y las
+  credenciales tapadas.</p>
+  <p>Los nombres con espacios se referencian entre comillas —<code>@db:"Prod Facturación/CLIENTES"</code>— y el
+  selector de <kbd>@</kbd> ya las pone solo.</p>
+
   <h2 id="ia-chat--proponer">El agente propone; aplicar es un clic tuyo</h2>
   <p>Ninguna acción de IA ejecuta lo que acaba de escribir. Devuelven texto y vos decidís:</p>
   <div class="tablewrap"><table>
@@ -1420,7 +1439,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td>Bases de datos</td><td>Escribir una consulta desde lenguaje natural, explicar y corregir el error del motor, analizar un plan de ejecución</td></tr>
     <tr><td>HTTP</td><td>Explicar la respuesta, diagnosticar el fallo, escribir la petición, redactar su documentación o sus tests</td></tr>
     <tr><td>Git</td><td>Redactar el mensaje del commit desde el diff preparado y el estilo del repositorio</td></tr>
-    <tr><td>SSH</td><td>Explicar qué está fallando en la salida de la terminal, con el sistema operativo del servidor como contexto</td></tr>
+    <tr><td>SSH y terminal local</td><td>Explicar qué está fallando en la salida de la terminal, con el sistema operativo del servidor como contexto. Un bloque de un solo comando de la respuesta se manda <strong>A la terminal</strong>: queda escrito, sin Enter</td></tr>
     <tr><td>Notas</td><td>Consultar tu base de conocimiento, y —con permiso explícito— dejar asentado lo que averiguó</td></tr>
   </table></div>
 

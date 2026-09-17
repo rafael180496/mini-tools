@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
+    AgentHTTPChatContext,
     HttpActiveEnvironment,
     HttpAuthPreview,
     HttpBuildRequest,
@@ -33,6 +34,8 @@ import AuthPanel from './AuthPanel'
 import ComputedTable from './ComputedTable'
 import CodeSnippetPanel from './CodeSnippetPanel'
 import AiPanel, {AI_ACTIONS, type AiAction} from './AiPanel'
+import {useAgentChat} from '../agent/AgentChatHost'
+import type {ChatContextBlock} from '../agent/AgentChat'
 import {HTTP_METHODS, humanSize, methodColor, parseComputed, parseRows, pathVarsFromURL, serializeRows, statusColor, type HttpComputed} from './httpShared'
 
 // Una petición HTTP abierta: barra de método/URL arriba, editor abajo y
@@ -123,6 +126,38 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
     // Acción de IA abierta en el panel lateral, y si el menú está desplegado.
     const [aiAction, setAiAction] = useState<AiAction | null>(null)
     const [aiMenu, setAiMenu] = useState(false)
+    const chat = useAgentChat()
+
+    // Abre el chat con esta petición —y su respuesta, si ya la hay— adjunta.
+    // El contexto lo arma Go con la misma redacción que los pedidos de una
+    // tirada: lo que se ve en la ficha es exactamente lo que sale, sin
+    // credenciales. `extra` suma lo que ya contestó un análisis.
+    async function askInChat(extra: ChatContextBlock[] = []) {
+        try {
+            const text = await AgentHTTPChatContext(
+                itemId ?? '',
+                request,
+                result?.response ?? new httpclient.Response({status: 0}),
+                result?.error ?? '',
+            )
+            chat.open({
+                attachments: [
+                    {
+                        label: result ? 'Petición y respuesta' : 'Petición (todavía sin respuesta)',
+                        text,
+                        language: 'markdown',
+                        icon: 'http',
+                    },
+                    ...extra,
+                ],
+            })
+        } catch (err) {
+            // Sin el contexto de la petición igual se abre con lo que haya:
+            // perder también la respuesta del análisis sería peor.
+            console.error(err)
+            chat.open({attachments: extra})
+        }
+    }
     // Diálogo de "guardar en una colección" de una petición rápida: la lista
     // de colecciones, cuál se eligió y con qué nombre.
     const [saveTo, setSaveTo] = useState<{collections: vault.HTTPCollection[]; collectionId: string; name: string} | null>(null)
@@ -608,6 +643,24 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         <>
                             <div className="fixed inset-0 z-40" onClick={() => setAiMenu(false)} />
                             <div className="absolute right-0 top-full z-50 mt-1 w-72 overflow-hidden rounded-lg border border-outline-variant bg-surface-container shadow-xl">
+                                {chat.isAvailable && chat.hasAgent && (
+                                    <button
+                                        onClick={() => {
+                                            setAiMenu(false)
+                                            void askInChat()
+                                        }}
+                                        className="flex w-full items-start gap-2 border-b border-outline-variant px-3 py-2 text-left hover:bg-surface-variant"
+                                    >
+                                        <Icon name="forum" size={14} className="mt-0.5 text-primary" />
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block text-ui-11 font-medium text-on-surface">Preguntar en el chat</span>
+                                            <span className="block text-ui-10 leading-relaxed text-on-surface-variant/70">
+                                                Abre el chat con esta petición y su respuesta ya adjuntas —sin credenciales— para
+                                                preguntar lo que quieras y seguir la conversación.
+                                            </span>
+                                        </span>
+                                    </button>
+                                )}
                                 {AI_ACTIONS.map((a) => {
                                     // Sin respuesta todavía no hay nada que explicar ni que
                                     // diagnosticar: se deshabilita y se dice por qué, en vez de
@@ -1375,6 +1428,12 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                             setDirty(true)
                         }}
                         onClose={() => setAiAction(null)}
+                        onFollowUp={
+                            chat.isAvailable && chat.hasAgent
+                                ? (label, answer) =>
+                                      void askInChat([{label, text: answer, language: 'markdown', icon: 'auto_awesome'}])
+                                : undefined
+                        }
                     />
                 </div>
             )}

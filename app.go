@@ -1026,6 +1026,15 @@ func (a *App) SetUIFontScale(pct int) error {
 	return a.vault.SetUIFontScale(pct)
 }
 
+// SetSnippetsPanelWidth persiste el ancho arrastrado del panel de snippets de
+// las terminales. Se llama una vez al soltar, igual que SetSidebarWidth.
+func (a *App) SetSnippetsPanelWidth(px int) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetSnippetsPanelWidth(px)
+}
+
 // SetSidebarWidth persists the sidebar's dragged width. Called once on
 // mouseup, not per pointer move — the vault write has no reason to keep up
 // with the pointer, only to record where it stopped.

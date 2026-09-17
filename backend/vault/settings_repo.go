@@ -197,6 +197,10 @@ type Settings struct {
 	// frontend lee como 100. Ver MinUIFontScale/MaxUIFontScale y la migración
 	// 50.
 	UIFontScale int `json:"uiFontScale"`
+	// SnippetsPanelWidth es el ancho arrastrado del panel de snippets de las
+	// terminales, en píxeles. 0 = sin arrastrar, el frontend usa su default.
+	// Uno solo para todas las terminales: es el mismo panel. Migración 54.
+	SnippetsPanelWidth int `json:"snippetsPanelWidth"`
 }
 
 // GitPanelSession es una pestaña del panel de la pestaña Git: una terminal
@@ -263,10 +267,11 @@ func (s *Store) GetSettings() (Settings, error) {
 	var agentSize, notesSideWidth int
 	var mcpEnabled, mcpNotesWrite bool
 	var uiFontScale int
+	var snippetsPanelWidth int
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write, ui_font_scale FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write, ui_font_scale, snippets_panel_width FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite, &uiFontScale,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite, &uiFontScale, &snippetsPanelWidth,
 	); err != nil {
 		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
 	}
@@ -334,6 +339,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		MCPEnabled:              mcpEnabled,
 		MCPNotesWrite:           mcpNotesWrite,
 		UIFontScale:             uiFontScale,
+		SnippetsPanelWidth:      snippetsPanelWidth,
 	}, nil
 }
 
@@ -397,6 +403,22 @@ func (s *Store) SetNotesSideWidth(width int) error {
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET notes_side_width = ? WHERE id = 1`, width); err != nil {
 		return fmt.Errorf("vault: guardando el ancho de la lista de notas: %w", err)
+	}
+	return nil
+}
+
+// SetSnippetsPanelWidth persiste el ancho del panel de snippets. Acotado en
+// vez de rechazado, mismo criterio que SetNotesSideWidth: un valor fuera de
+// rango nunca llega a guardarse y reaplicarse en cada arranque.
+func (s *Store) SetSnippetsPanelWidth(width int) error {
+	if width < 240 {
+		width = 240
+	}
+	if width > 900 {
+		width = 900
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET snippets_panel_width = ? WHERE id = 1`, width); err != nil {
+		return fmt.Errorf("vault: guardando el ancho del panel de snippets: %w", err)
 	}
 	return nil
 }

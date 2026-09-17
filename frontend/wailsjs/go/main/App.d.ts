@@ -63,6 +63,8 @@ export function AgentGenerateHTTP(arg1:string,arg2:string,arg3:httpclient.Reques
 
 export function AgentGenerateSQL(arg1:string,arg2:string,arg3:string):Promise<main.SQLSuggestion>;
 
+export function AgentHTTPChatContext(arg1:string,arg2:httpclient.Request,arg3:httpclient.Response,arg4:string):Promise<string>;
+
 export function AgentModelCatalog(arg1:string):Promise<agentmodels.Catalog>;
 
 export function AgentPlans():Promise<Array<agentplan.Plan>>;
@@ -790,6 +792,8 @@ export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 export function SetSidebarModule(arg1:string):Promise<void>;
 
 export function SetSidebarWidth(arg1:number):Promise<void>;
+
+export function SetSnippetsPanelWidth(arg1:number):Promise<void>;
 
 export function SetSshHistoryEnabled(arg1:boolean):Promise<void>;
 

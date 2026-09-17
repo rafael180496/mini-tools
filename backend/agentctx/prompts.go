@@ -237,6 +237,12 @@ func ExtractCode(answer string) string {
 // Cuando no se pudo averiguar, **se dice que no se sabe** en vez de callarlo:
 // un agente que sabe que no sabe pregunta o da la respuesta portable, y las dos
 // son mejores que una respuesta segura sobre el sistema equivocado.
+//
+// **Sin herramientas ni búsquedas web, pedido explícito.** Antigravity no tiene
+// una bandera para apagarlas, y con este prompt salía a buscar en la web el
+// banner de login, el usuario y el prompt del servidor (`"sgcpro" "sgcmain"`):
+// tres búsquedas que llevaban la respuesta de ~10 s a ~40 s con el panel
+// girando sin decir nada, y que mandaban nombres internos a un buscador.
 func SSHErrorPrompt(serverName, osInfo, output string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Explicá qué está fallando en esta salida de terminal del servidor %q y cómo arreglarlo.\n\n", serverName)
@@ -262,6 +268,9 @@ func SSHErrorPrompt(serverName, osInfo, output string) string {
 
 **No ejecutes nada.** Devolvés texto: los comandos los corre el usuario en su terminal, donde puede
 leerlos antes. Si alguno es destructivo o irreversible, decilo antes del bloque.
+
+**No uses herramientas ni busques en la web**: todo lo que necesitás está arriba. Los nombres de servidor,
+usuarios, rutas y prompts de esta salida son internos y no deben salir hacia ningún buscador.
 `)
 	return b.String()
 }

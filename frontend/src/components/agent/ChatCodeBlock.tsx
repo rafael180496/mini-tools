@@ -23,13 +23,32 @@ interface Props {
     // insertarlo, ofrecerlo sería prometer algo que no pasa.
     onInsert?: (text: string) => void
     insertLabel?: string
+    // 'terminal': lo insertado cae en una shell, donde un salto de línea es un
+    // Enter. Se ofrece solo para bloques de UN comando y se manda sin el salto
+    // final: queda escrito y el Enter lo pone el usuario —que es además cuando
+    // actúa la guarda de producción de la terminal—. Un bloque de varios
+    // comandos se copia: pegarlo de golpe ejecutaría todos menos el último.
+    insertTarget?: 'editor' | 'terminal'
 }
 
-export default function ChatCodeBlock({lang, code, onInsert, insertLabel}: Props) {
+// Líneas que son comando: sin vacías ni comentarios, y sin el `$ ` de un prompt
+// copiado, que el shell rechazaría.
+function commandLines(code: string): string[] {
+    return code
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith('#'))
+        .map((l) => l.replace(/^\$\s+/, ''))
+}
+
+export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insertTarget = 'editor'}: Props) {
     const [copied, setCopied] = useState(false)
     const [inserted, setInserted] = useState(false)
 
     const lines = code.split('\n').length
+    const toTerminal = insertTarget === 'terminal'
+    const commands = toTerminal ? commandLines(code) : []
+    const canInsert = !!onInsert && (!toTerminal || commands.length === 1)
 
     return (
         <div className="my-1 overflow-hidden rounded border border-outline-variant bg-surface-container-highest">
@@ -43,18 +62,23 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel}: Props
                     {lines} {lines === 1 ? 'línea' : 'líneas'}
                 </span>
 
-                {onInsert && (
+                {canInsert && (
                     <button
                         onClick={() => {
-                            onInsert(code)
+                            onInsert!(toTerminal ? commands[0] : code)
                             setInserted(true)
                             setCopied(false)
                         }}
-                        title={insertLabel ?? 'Inserta este código donde está el cursor, sin pisar lo que ya escribiste'}
+                        title={
+                            insertLabel ??
+                            (toTerminal
+                                ? 'Escribe el comando en la terminal SIN ejecutarlo — lo leés y el Enter lo ponés vos'
+                                : 'Inserta este código donde está el cursor, sin pisar lo que ya escribiste')
+                        }
                         className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
-                        <Icon name={inserted ? 'check' : 'input'} size={12} />
-                        {inserted ? 'Insertado' : 'Al editor'}
+                        <Icon name={inserted ? 'check' : toTerminal ? 'terminal' : 'input'} size={12} />
+                        {inserted ? 'Insertado' : toTerminal ? 'A la terminal' : 'Al editor'}
                     </button>
                 )}
 
@@ -66,7 +90,7 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel}: Props
                     }}
                     title="Copia el bloque entero al portapapeles"
                     className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface ${
-                        onInsert ? '' : 'ml-auto'
+                        canInsert ? '' : 'ml-auto'
                     }`}
                 >
                     <Icon name={copied ? 'check' : 'content_copy'} size={12} />

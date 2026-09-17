@@ -100,6 +100,7 @@ const PERMISSIVE = new Set(['auto', 'edit'])
 const STARTERS: Record<string, string[]> = {
     db: ['Explicá esta consulta', 'Optimizá esta consulta', '¿Qué tablas tiene esta conexión?'],
     ssh: ['¿Qué falló acá?', 'Explicá este log', '¿Cómo reviso el uso de disco?'],
+    http: ['Explicá esta respuesta', '¿Por qué falla esta petición?', 'Escribí pruebas para este endpoint'],
     note: ['Resumí esta nota', '¿Este procedimiento sigue teniendo sentido?', 'Ampliá el último paso'],
     git: ['¿Qué cambió en esta rama?', 'Revisá los cambios preparados', 'Escribí el mensaje del commit'],
     none: ['¿Qué podés hacer en mini-tools?'],
@@ -141,9 +142,24 @@ const MODE_LABELS: Record<string, {label: string; hint: string; danger?: boolean
 }
 
 
+// Bloque de contexto adjunto al próximo mensaje: lo que un módulo le pasa al
+// chat al abrirlo (las líneas que se analizaron, la respuesta de un análisis
+// anterior). Se ve como una ficha, se puede desplegar para leerlo entero y se
+// quita con un clic antes de mandar — mismo criterio que las referencias `@`:
+// lo que sale de la máquina tiene que poder verse antes.
+export interface ChatContextBlock {
+    label: string
+    text: string
+    language?: string
+    icon?: string
+}
+
 interface Turn {
     role: 'user' | 'agent'
     text: string
+    // Etiquetas de los bloques de contexto que viajaron con este mensaje. Solo
+    // se muestran: el texto entero ya se vio en la ficha antes de mandarlo.
+    contexts?: string[]
     tools: ToolCall[]
     usage?: ChatUsage
     error?: string
@@ -172,7 +188,9 @@ interface AgentChatProps {
     // Prompt que llega desde afuera (el botón Preguntar del editor o del
     // diff). Lleva token por el mismo motivo que en el editor: pedir dos veces
     // lo mismo tiene que volver a llenarlo.
-    seed?: {text: string; token: number} | null
+    seed?: {text: string; token: number; attachments?: ChatContextBlock[]} | null
+    // Avisa que el seed ya se aplicó, para que el anfitrión lo suelte.
+    onSeedConsumed?: () => void
     // Conversación del CLI a la que pertenece este chat. Al retomarlo se usa
     // para volver a dibujar lo que ya se habló — la continuidad de la charla
     // no depende de esto, la maneja el backend con el mismo id.
@@ -195,6 +213,9 @@ interface AgentChatProps {
     // lo correcto en un módulo donde no hay dónde insertar nada.
     onInsertText?: (text: string) => void
     insertLabel?: string
+    // Dónde cae lo insertado. En una terminal un salto de línea es un Enter, así
+    // que ahí solo se ofrece insertar bloques de UN comando — ver ChatCodeBlock.
+    insertTarget?: 'editor' | 'terminal'
     // Lo gastado en esta conversación, para que el panel de consumo pueda
     // mostrarlo junto al del mes. Lo calcula este componente porque es quien
     // recibe el informe de cada turno.
@@ -252,6 +273,7 @@ export default function AgentChat({
     agentId,
     agentLabel,
     seed,
+    onSeedConsumed,
     resumeConversationId,
     initialSettings,
     onTurnFinished,
@@ -262,6 +284,7 @@ export default function AgentChat({
     working,
     onInsertText,
     insertLabel,
+    insertTarget,
     onSessionUsage,
     active = true,
 }: AgentChatProps) {
@@ -377,6 +400,9 @@ export default function AgentChat({
     // Imágenes adjuntas al próximo mensaje: rutas ya escritas en el disco,
     // porque los tres CLIs las reciben por ruta y no en memoria.
     const [attachments, setAttachments] = useState<string[]>([])
+    // Bloques de contexto que trajo el módulo que abrió el chat. Viajan con el
+    // próximo mensaje y se vacían al mandarlo.
+    const [contextBlocks, setContextBlocks] = useState<ChatContextBlock[]>([])
     // Mensajes escritos MIENTRAS el agente trabaja. Se mandan solos cuando
     // termina el turno, en orden.
     //
@@ -588,9 +614,30 @@ export default function AgentChat({
         if (el) el.scrollTop = el.scrollHeight
     }, [turns])
 
+    // Lo que llega de afuera se SUMA: pisar lo que el usuario estaba
+    // escribiendo por abrir el chat desde otro botón borra trabajo sin avisar.
     useEffect(() => {
-        if (seed?.text) setInput(seed.text)
-    }, [seed?.token, seed?.text])
+        if (!seed) return
+        if (seed.attachments?.length) {
+            setContextBlocks((prev) => {
+                const fresh = seed.attachments!.filter(
+                    (b) => b.text.trim() && !prev.some((p) => p.label === b.label && p.text === b.text),
+                )
+                return [...prev, ...fresh]
+            })
+        }
+        if (seed.text) setInput((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')} ${seed.text}` : seed.text))
+        onSeedConsumed?.()
+        // Foco con el cursor al final: se abre el chat para escribir la
+        // pregunta, no para ir a buscar la caja con el mouse.
+        window.setTimeout(() => {
+            const el = inputRef.current
+            if (!el) return
+            el.focus()
+            el.setSelectionRange(el.value.length, el.value.length)
+        }, 0)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [seed?.token])
 
     // Resolver las referencias del mensaje mientras se escribe, para poder
     // mostrar qué se va a mandar. Con retardo porque cada resolución puede
@@ -674,16 +721,23 @@ export default function AgentChat({
         async (raw: string) => {
         const text = raw.trim()
         if (!text) return
-        setTurns((prev) => [...prev, {role: 'user', text, tools: []}])
+        const blocks = contextBlocks
+        setTurns((prev) => [
+            ...prev,
+            {role: 'user', text, tools: [], contexts: blocks.length ? blocks.map((b) => b.label) : undefined},
+        ])
         setBusy(true)
         setQueueHeld(false)
         // El contexto de trabajo se antepone al mensaje, no lo reemplaza: el
         // agente ve primero qué estás mirando y después qué le preguntás.
         const fence = '```'
+        const block = (label: string, body: string, lang?: string) =>
+            `${label}:\n\n${fence}${lang ?? ''}\n${body}\n${fence}\n\n`
         const outgoing =
-            attachWorking && working?.text.trim()
-                ? `${working.label}:\n\n${fence}${working.language ?? ''}\n${working.text}\n${fence}\n\n${text}`
-                : text
+            blocks.map((b) => block(b.label, b.text, b.language)).join('') +
+            (attachWorking && working?.text.trim() ? block(working.label, working.text, working.language) : '') +
+            text
+        setContextBlocks([])
         // Antes de mandar y no después: si el turno falla, la conversación
         // igual existe y se puede reintentar desde el historial.
         onSend?.(text)
@@ -698,7 +752,7 @@ export default function AgentChat({
             setQueueHeld(true)
         }
         },
-        [sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend, attachWorking, working],
+        [sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend, attachWorking, working, contextBlocks],
     )
 
     // Los turnos que se muestran. Se conserva el índice REAL de cada uno: los
@@ -1006,7 +1060,22 @@ export default function AgentChat({
                                     tiene que verse tal cual lo mandaste —
                                     reinterpretarlo cambiaría lo que dijiste. */}
                                 {t.role === 'user' ? (
-                                    t.text
+                                    <>
+                                        {t.contexts && t.contexts.length > 0 && (
+                                            <span className="mb-1 flex flex-wrap gap-1">
+                                                {t.contexts.map((label, ci) => (
+                                                    <span
+                                                        key={ci}
+                                                        className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1 py-px text-ui-10 text-primary"
+                                                    >
+                                                        <Icon name="attach_file" size={10} />
+                                                        {label}
+                                                    </span>
+                                                ))}
+                                            </span>
+                                        )}
+                                        {t.text}
+                                    </>
                                 ) : (
                                     <MarkdownPreview
                                         source={t.text}
@@ -1020,6 +1089,7 @@ export default function AgentChat({
                                                 code={code}
                                                 onInsert={onInsertText}
                                                 insertLabel={insertLabel}
+                                                insertTarget={insertTarget}
                                             />
                                         )}
                                     />
@@ -1082,6 +1152,38 @@ export default function AgentChat({
                     onPick={insertMention}
                     onFirstChange={setFirstSuggestion}
                 />
+            )}
+
+            {contextBlocks.length > 0 && (
+                <div className="flex max-h-48 shrink-0 flex-col gap-1 overflow-y-auto border-t border-outline-variant px-1.5 pt-1">
+                    {contextBlocks.map((b, bi) => (
+                        <details key={`${b.label}-${bi}`} className="rounded-md border border-primary/25 bg-primary/5">
+                            <summary className="flex cursor-pointer list-none items-center gap-1.5 px-1.5 py-1 text-ui-10">
+                                <Icon name={b.icon ?? 'attach_file'} size={12} className="shrink-0 text-primary" />
+                                <span className="shrink-0 font-medium text-on-surface">{b.label}</span>
+                                <span className="min-w-0 flex-1 truncate font-mono text-on-surface-variant">
+                                    {b.text.trim().split('\n')[0]}
+                                </span>
+                                <span className="shrink-0 tabular-nums text-on-surface-variant/60">
+                                    {b.text.trim().split('\n').length} lín.
+                                </span>
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault()
+                                        setContextBlocks((prev) => prev.filter((_, j) => j !== bi))
+                                    }}
+                                    title="Quitar este contexto — no se va a mandar"
+                                    className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error"
+                                >
+                                    <Icon name="close" size={12} />
+                                </button>
+                            </summary>
+                            <pre className="max-h-32 overflow-auto border-t border-primary/15 px-1.5 py-1 whitespace-pre-wrap text-ui-10 text-on-surface-variant">
+                                {b.text}
+                            </pre>
+                        </details>
+                    ))}
+                </div>
             )}
 
             {working?.text.trim() && (
@@ -1450,7 +1552,10 @@ export default function AgentChat({
                         // no es nada.
                         const at = v.lastIndexOf('@')
                         const tail = at >= 0 ? v.slice(at + 1) : ''
-                        setMention(at >= 0 && !tail.includes(' ') && !tail.includes('\n') ? tail : null)
+                        // Salvo dentro de comillas abiertas (`@db:"Mi base/`):
+                        // ahí el espacio es parte del nombre, no el final.
+                        const openQuote = /^[a-z]+:"[^"\n]*$/.test(tail)
+                        setMention(at >= 0 && (openQuote || (!tail.includes(' ') && !tail.includes('\n'))) ? tail : null)
                     }}
                     onPaste={(e) => {
                         // Si lo pegado es una imagen se adjunta y se corta el

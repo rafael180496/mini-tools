@@ -82,6 +82,10 @@ export function AgentGenerateSQL(arg1, arg2, arg3) {
   return window['go']['main']['App']['AgentGenerateSQL'](arg1, arg2, arg3);
 }
 
+export function AgentHTTPChatContext(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['AgentHTTPChatContext'](arg1, arg2, arg3, arg4);
+}
+
 export function AgentModelCatalog(arg1) {
   return window['go']['main']['App']['AgentModelCatalog'](arg1);
 }
@@ -1536,6 +1540,10 @@ export function SetSidebarModule(arg1) {
 
 export function SetSidebarWidth(arg1) {
   return window['go']['main']['App']['SetSidebarWidth'](arg1);
+}
+
+export function SetSnippetsPanelWidth(arg1) {
+  return window['go']['main']['App']['SetSnippetsPanelWidth'](arg1);
 }
 
 export function SetSshHistoryEnabled(arg1) {

@@ -1271,6 +1271,17 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 54,
+		desc:    "agrega settings.snippets_panel_width (ancho arrastrado del panel de snippets)",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT 0 = "sin arrastrar": el frontend lo lee como su ancho
+			// por defecto, así que una instalación existente abre el panel
+			// igual que antes.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN snippets_panel_width INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

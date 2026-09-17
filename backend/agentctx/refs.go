@@ -116,11 +116,11 @@ func Policies() []Policy {
 			Syntax:  "@ssh:alias/last_error",
 			Injects: "Las últimas líneas de la terminal SSH activa.",
 			Never:   "La contraseña ni la clave privada de la conexión.",
-			// La terminal SSH streamea su salida al frontend y no la retiene:
-			// no hay buffer del que leer todavía. Se declara acá igual para
-			// que el tipo exista desde el primer día y no haya que rehacer el
-			// registro después — ver la fase 5 del plan.
-			Available: false,
+			// Disponible desde la fase 5: cada sesión guarda su cola de salida
+			// (backend/sshconn/scrollback.go) y resolveSSHRef la lee. Seguía
+			// en false con el comentario de antes, y el selector mostraba
+			// `@ssh:` deshabilitado aunque escrito a mano funcionaba.
+			Available: true,
 		},
 		{
 			Kind:      KindNote,

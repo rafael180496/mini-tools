@@ -72,8 +72,13 @@ rm -rf tmp_migrationverify
 > hacía engañosa la sección: leerla daba a entender que agregar una migración
 > era todavía territorio inexplorado.
 
-- **Versión actual: 53.** El slice de `migrations.go` es la lista completa y
+- **Versión actual: 54.** El slice de `migrations.go` es la lista completa y
   autoritativa; cada entrada explica en su comentario por qué existe.
+- **Versión 54**: `settings.snippets_panel_width` (ancho arrastrado del panel de
+  snippets de las terminales), `DEFAULT 0` = sin arrastrar, que el frontend lee
+  como su ancho por defecto. `SetSnippetsPanelWidth` lo acota a 240–900.
+  Verificada con el script efímero sandboxeado: 0 en frío, 100→240, 5000→900 y
+  el valor sobrevive a reabrir el vault.
 - **Versiones 52 y 53** (módulo HTTP: colecciones favoritas e historial
   global): `http_collections.favorite_at` —un INSTANTE y no un 0/1, para que
   entre varias favoritas mande la última marcada— y un índice de `http_history`

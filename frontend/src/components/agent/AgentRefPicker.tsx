@@ -127,7 +127,22 @@ export default function AgentRefPicker({query, paths, context, onPick, onFirstCh
 function splitKind(query: string): [string | null, string] {
     const i = query.indexOf(':')
     if (i < 0) return [null, query]
-    return [query.slice(0, i), query.slice(i + 1)]
+    // Un valor entre comillas a medio escribir (`@db:"Mi base/`) se lee sin la
+    // comilla de apertura: el resto del selector trabaja con el nombre pelado.
+    return [query.slice(0, i), query.slice(i + 1).replace(/^"/, '')]
+}
+
+// needsQuotes: el parser de Go (agentctx.scanValue) corta el valor en el primer
+// espacio, coma o paréntesis. Una conexión llamada "Prod Facturación" sin
+// comillas se resolvía como `@db:Prod` — que no existe — y la ficha decía
+// "no encontrada" sobre un nombre que el propio selector había escrito.
+function needsQuotes(name: string): boolean {
+    return /[\s,()[\]"]/.test(name)
+}
+
+// refValue arma el valor completo de una referencia, entre comillas si hace falta.
+function refValue(value: string): string {
+    return needsQuotes(value) ? `"${value}"` : value
 }
 
 const KIND_ICONS: Record<string, string> = {
@@ -206,7 +221,7 @@ function buildSuggestions(
                 ...connections
                     .filter((c) => c.dbType !== 'ssh' && c.name.toLowerCase().includes(rest.toLowerCase()))
                     .map((c) => ({
-                        insert: `@explain:${c.name} `,
+                        insert: `@explain:${refValue(c.name)} `,
                         label: `@explain:${c.name}`,
                         hint: 'El último plan guardado de esa conexión',
                         icon: 'query_stats',
@@ -236,7 +251,7 @@ function buildSuggestions(
                 .filter((c) => c.dbType === 'ssh' && c.name.toLowerCase().includes(rest.toLowerCase()))
                 .slice(0, 12)
                 .map((c) => ({
-                    insert: `@ssh:${c.name}/last_error `,
+                    insert: `@ssh:${refValue(`${c.name}/last_error`)} `,
                     label: c.name,
                     hint: 'Las últimas 50 líneas de esa terminal, con los secretos ocultados',
                     icon: 'terminal',
@@ -258,7 +273,8 @@ function dbSuggestions(
         return connections
             .filter((c) => c.dbType !== 'ssh' && c.name.toLowerCase().includes(rest.toLowerCase()))
             .map((c) => ({
-                insert: `@db:${c.name}/`,
+                // Con comillas se abre acá y se cierra al elegir la tabla.
+                insert: needsQuotes(c.name) ? `@db:"${c.name}/` : `@db:${c.name}/`,
                 label: c.name,
                 hint: `${c.dbType} — elegí una tabla`,
                 icon: 'database',
@@ -288,7 +304,7 @@ function dbSuggestions(
     return list
         .filter((t) => t.toLowerCase().includes(tableQuery))
         .map((t) => ({
-            insert: `@db:${conn.name}/${t} `,
+            insert: `@db:${refValue(`${conn.name}/${t}`)} `,
             label: t,
             hint: 'Columnas, tipos, PK y FK — nunca filas',
             icon: 'table_chart',

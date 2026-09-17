@@ -101,6 +101,17 @@ func (x HTTPExchange) writeResponse(b *strings.Builder) {
 	}
 }
 
+// HTTPChatContext es la petición y su respuesta como bloque de contexto para
+// el chat: lo mismo que ven los cinco pedidos de una tirada —ya redactado—,
+// sin la consigna de ninguno. La pregunta la escribe el usuario.
+func HTTPChatContext(x HTTPExchange) string {
+	var b strings.Builder
+	x.writeRequest(&b)
+	x.writeResponse(&b)
+	b.WriteString(httpSecrecyNote)
+	return strings.TrimSpace(b.String())
+}
+
 // httpSecrecyNote se repite en cada prompt a propósito. Sin él, un agente que
 // ve `Authorization: «oculto»` puede concluir que la petición sale sin
 // autenticar y diagnosticar el problema equivocado.
