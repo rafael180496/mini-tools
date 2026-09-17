@@ -14,6 +14,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Corregido
 
+- **Se quitó la insignia PROD/STG/DEV de las conexiones del sidebar.** El entorno ya lo marca la franja de color a la izquierda de la fila; la insignia repetía lo mismo y le robaba ancho a un nombre que ya casi no entraba. Aplica a las conexiones SSH y a las de base de datos. En la terminal, el aviso de producción sigue igual.
+
+- **Los íconos de una conexión SSH con la sesión abierta se encimaban al pasar el mouse.** Con la sesión viva y los botones de la fila a la vista, el nombre se achicaba a cero y su ícono, el punto de color y el indicador de sesión seguían dibujándose igual, por encima de los botones de *Nueva terminal* y *SFTP*, que quedaban tapados. Ahora lo que no entra se recorta dentro de su lugar y los botones se ven siempre.
+
 - **La grilla de resultados se dibujaba encima del visor de DDL.** Abrir el DDL de una tabla con una consulta ya ejecutada detrás dejaba la fila de cabecera de los resultados —`ID_SERVICIO`, `ID_MES`, …— atravesada sobre el DDL, tapando una franja de tres o cuatro líneas justo en el medio. Las filas de datos sí quedaban detrás, y esa mezcla era lo que hacía parecer un problema de la consulta y no de la ventana.
 
   No era casualidad ni cuestión de suerte: el modal se monta antes que el panel de resultados, y la cabecera de la grilla —que es pegajosa, para no perder los nombres de columna al bajar— estaba en la misma capa que el modal. A igual capa gana lo que va después. Ahora el visor se dibuja aparte y por encima de todo, como el resto de los diálogos de la app. El mismo arreglo alcanza al selector de esquemas de una conexión y al aviso de archivos no encontrados, que se montan en el mismo lugar y tenían el mismo defecto.

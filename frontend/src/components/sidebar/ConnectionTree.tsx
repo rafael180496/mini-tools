@@ -387,10 +387,9 @@ export default function ConnectionTree({
                         // La franja de color del entorno va también acá, no
                         // solo en SSH: una conexión marcada como Producción
                         // tiene que verse igual sea una terminal o una base.
-                        // Antes las conexiones de base solo mostraban la
-                        // insignia PROD/STG al final de la fila, que es lo
-                        // último que se mira y lo primero que tapa un nombre
-                        // largo.
+                        // Es la única marca del entorno en la fila: la
+                        // insignia PROD/STG se quitó porque repetía lo que ya
+                        // dice el color y le robaba ancho al nombre.
                         className={`group flex w-full items-center gap-1 py-1.5 pr-3 text-left text-sm transition-colors ${
                             isSelected ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
                         } ${envStyleOf(c)?.border ?? ''}`}
@@ -415,7 +414,7 @@ export default function ConnectionTree({
                                       ? `Click: seleccionar "${c.name}" y ver sus bases/colecciones acá abajo. Doble click: abrir el MongoDB Browser en una pestaña completa.`
                                       : `Conectar y trabajar con "${c.name}" — se conecta si hace falta y la marca como conexión activa`
                             }
-                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                            className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left"
                         >
                             <DbTypeIcon dbType={c.dbType} size={16} />
                             {c.color && (
@@ -433,14 +432,6 @@ export default function ConnectionTree({
                                     title="Hay una conexión abierta contra este servidor"
                                     className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
                                 />
-                            )}
-                            {envStyleOf(c) && (
-                                <span
-                                    title={`Entorno: ${envStyleOf(c)!.label}`}
-                                    className={`shrink-0 rounded px-1 py-px text-ui-9 leading-tight font-semibold tracking-wide ${envStyleOf(c)!.badge}`}
-                                >
-                                    {envStyleOf(c)!.short}
-                                </span>
                             )}
                         </button>
                         {/* Only the engine's own "open in a tab" action stays

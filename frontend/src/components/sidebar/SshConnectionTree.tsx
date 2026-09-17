@@ -248,10 +248,14 @@ export default function SshConnectionTree({
                     <span className="shrink-0 p-0.5 opacity-0" aria-hidden>
                         <Icon name="chevron_right" size={18} />
                     </span>
+                    {/* overflow-hidden: con la sesión viva y el mouse encima
+                        entran cinco botones más en la fila, el nombre se
+                        achica a cero y sin recorte el ícono y los puntos se
+                        dibujaban encima de los botones de al lado. */}
                     <button
                         onClick={() => onOpenSshTerminal(c)}
                         title={`Abrir terminal — conecta por SSH a "${c.name}" en una pestaña nueva (o la enfoca si ya está abierta)`}
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left"
                     >
                         <DbTypeIcon dbType={c.dbType} size={16} />
                         {c.color && (
@@ -278,14 +282,6 @@ export default function SshConnectionTree({
                                     className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
                                 />
                             ))}
-                        {envStyleOf(c) && (
-                            <span
-                                title={`Entorno: ${envStyleOf(c)!.label}`}
-                                className={`shrink-0 rounded px-1 py-px text-ui-9 leading-tight font-semibold tracking-wide ${envStyleOf(c)!.badge}`}
-                            >
-                                {envStyleOf(c)!.short}
-                            </span>
-                        )}
                     </button>
                     {/* Only the actions with a distinct verb stay on the row.
                         Everything else moved into SshRowMenu — seven unlabelled
