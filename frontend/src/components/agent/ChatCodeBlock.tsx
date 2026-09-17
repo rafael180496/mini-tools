@@ -51,11 +51,12 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
     const canInsert = !!onInsert && (!toTerminal || commands.length === 1)
 
     return (
-        <div className="my-1 overflow-hidden rounded border border-outline-variant bg-surface-container-highest">
-            <div className="flex items-center gap-1.5 border-b border-outline-variant bg-surface-container px-1.5 py-0.5 text-ui-10">
+        <div className="my-1.5 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
+            <div className="flex items-center gap-1.5 border-b border-outline-variant bg-surface-container-high px-2 py-1 text-ui-10">
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                 {/* El lenguaje es lo primero: dice de un vistazo si eso es SQL
                     que se puede correr o un pedazo de configuración. */}
-                <span className="font-medium uppercase tracking-wider text-on-surface-variant">
+                <span className="font-mono font-medium text-on-surface">
                     {lang || 'texto'}
                 </span>
                 <span className="text-on-surface-variant/50">
@@ -75,9 +76,9 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
                                 ? 'Escribe el comando en la terminal SIN ejecutarlo — lo leés y el Enter lo ponés vos'
                                 : 'Inserta este código donde está el cursor, sin pisar lo que ya escribiste')
                         }
-                        className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="ml-auto flex shrink-0 items-center gap-1 rounded-md border border-outline-variant px-1.5 py-0.5 text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
                     >
-                        <Icon name={inserted ? 'check' : toTerminal ? 'terminal' : 'input'} size={12} />
+                        <Icon name={inserted ? 'check' : toTerminal ? 'play_arrow' : 'input'} size={12} />
                         {inserted ? 'Insertado' : toTerminal ? 'A la terminal' : 'Al editor'}
                     </button>
                 )}
@@ -89,7 +90,7 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
                         setInserted(false)
                     }}
                     title="Copia el bloque entero al portapapeles"
-                    className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface ${
+                    className={`flex shrink-0 items-center gap-1 rounded-md border border-outline-variant px-1.5 py-0.5 text-on-surface-variant hover:border-primary/60 hover:text-on-surface ${
                         canInsert ? '' : 'ml-auto'
                     }`}
                 >
@@ -102,7 +103,7 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
                 información, y partir una línea larga en dos desalinea todo lo
                 que venía debajo. Por eso el bloque se desplaza en horizontal en
                 vez de cortar. */}
-            <pre className="overflow-x-auto px-2 py-1.5 font-mono text-ui-11 leading-5 text-on-surface">
+            <pre className="overflow-x-auto px-3 py-2 font-mono text-ui-11 leading-5 text-on-surface">
                 {code}
             </pre>
         </div>

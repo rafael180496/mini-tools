@@ -29,6 +29,14 @@ export interface SelectOption {
     // desvincular— de la lista real, sin inventar un modelo de grupos que
     // ningún llamador necesita todavía.
     separatorAfter?: boolean
+    // Explicación de la opción en un segundo renglón, debajo del nombre. Solo
+    // para listas cortas donde elegir mal cuesta —el modo del agente decide
+    // si puede tocar archivos—; en una lista de conexiones el `hint` de una
+    // línea sigue siendo lo correcto.
+    description?: string
+    // Opción peligrosa: se pinta en el color de error, en el menú y en el
+    // disparador cuando queda elegida.
+    danger?: boolean
 }
 
 interface SelectProps {
@@ -48,6 +56,12 @@ interface SelectProps {
     className?: string
     ariaLabel?: string
     title?: string
+    // Ícono de Material Symbols delante del valor en el disparador, para las
+    // opciones que no traen su propio `icon`.
+    leadingIcon?: string
+    // Ancho mínimo del menú en px. Por defecto el del disparador; un disparador
+    // compacto con opciones descriptas necesita más que su propio ancho.
+    menuMinWidth?: number
 }
 
 // Themed dropdown replacing the native <select> everywhere in the app — the
@@ -70,6 +84,8 @@ export default function Select({
     className,
     ariaLabel,
     title,
+    leadingIcon,
+    menuMinWidth,
 }: SelectProps) {
     const sizeClasses = size === 'sm' ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'
     const variantClasses =
@@ -79,10 +95,21 @@ export default function Select({
     const [open, setOpen] = useState(false)
     const [pos, setPos] = useState({top: 0, left: 0, width: 0})
     const btnRef = useRef<HTMLButtonElement>(null)
+    const menuRef = useRef<HTMLDivElement>(null)
 
+    // Abajo del disparador si entra; si no, arriba. Un selector al pie de un
+    // panel —el modo y el modelo del chat, pegados a la caja de texto— abría
+    // su menú fuera de la ventana. También se corre a la izquierda si se pasa
+    // del borde derecho.
     function place() {
         const r = btnRef.current?.getBoundingClientRect()
-        if (r) setPos({top: r.bottom + 6, left: r.left, width: r.width})
+        if (!r) return
+        const menuH = menuRef.current?.offsetHeight ?? 0
+        const menuW = menuRef.current?.offsetWidth ?? 0
+        const below = r.bottom + 6
+        const top = menuH && below + menuH > window.innerHeight - 8 && r.top - 6 - menuH > 8 ? r.top - 6 - menuH : below
+        const left = menuW && r.left + menuW > window.innerWidth - 8 ? Math.max(8, window.innerWidth - 8 - menuW) : r.left
+        setPos({top, left, width: r.width})
     }
 
     // Keep the menu glued to the trigger if the layout shifts while it's open.
@@ -122,8 +149,12 @@ export default function Select({
                 aria-expanded={open}
                 className={`flex items-center gap-2 rounded-md text-on-surface transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClasses} ${sizeClasses} ${className ?? ''}`}
             >
-                {current?.icon}
-                <span className={`min-w-0 flex-1 truncate text-left ${current ? (current.tone ?? '') : 'text-on-surface-variant'}`}>
+                {current?.icon ?? (leadingIcon && <Icon name={leadingIcon} size={14} className="shrink-0 text-on-surface-variant" />)}
+                <span
+                    className={`min-w-0 flex-1 truncate text-left ${
+                        current ? (current.danger ? 'text-error' : (current.tone ?? '')) : 'text-on-surface-variant'
+                    }`}
+                >
                     {label}
                 </span>
                 <Icon name="expand_more" size={18} className={`shrink-0 text-on-surface-variant transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -141,8 +172,17 @@ export default function Select({
                             }}
                         />
                         <div
+                            ref={(el) => {
+                                menuRef.current = el
+                                // Primera medición: la posición inicial se calculó
+                                // sin conocer el alto del menú.
+                                if (el && !el.dataset.placed) {
+                                    el.dataset.placed = '1'
+                                    requestAnimationFrame(place)
+                                }
+                            }}
                             role="listbox"
-                            style={{position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width}}
+                            style={{position: 'fixed', top: pos.top, left: pos.left, minWidth: Math.max(pos.width, menuMinWidth ?? 0)}}
                             onPointerDown={(e) => e.stopPropagation()}
                             className="z-50 max-h-72 min-w-52 max-w-[22rem] overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-highest p-1 text-on-surface shadow-lg"
                         >
@@ -170,12 +210,25 @@ export default function Select({
                                         // buscando. Ahora el nombre manda y la
                                         // pista lo acompaña a la derecha, tenue,
                                         // alineada en su propia columna.
-                                        className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-ui-13 disabled:cursor-not-allowed disabled:opacity-50 ${
-                                            selected ? 'bg-primary/12 text-primary' : 'hover:bg-surface-variant'
-                                        }`}
+                                        className={`flex w-full items-center gap-2 rounded px-2 text-left text-ui-13 disabled:cursor-not-allowed disabled:opacity-50 ${
+                                            o.description ? 'py-1.5' : 'py-1'
+                                        } ${selected ? 'bg-primary/12 text-primary' : 'hover:bg-surface-variant'}`}
                                     >
-                                        {o.icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center">{o.icon}</span>}
-                                        <span className={`min-w-0 flex-1 truncate ${o.tone ?? ''}`}>{o.label}</span>
+                                        {o.icon && (
+                                            <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${o.description ? 'self-start mt-0.5' : ''}`}>
+                                                {o.icon}
+                                            </span>
+                                        )}
+                                        {o.description ? (
+                                            <span className="min-w-0 flex-1">
+                                                <span className={`block truncate ${o.danger ? 'text-error' : (o.tone ?? '')}`}>{o.label}</span>
+                                                <span className="block text-ui-11 leading-snug whitespace-normal text-on-surface-variant/70">
+                                                    {o.description}
+                                                </span>
+                                            </span>
+                                        ) : (
+                                            <span className={`min-w-0 flex-1 truncate ${o.danger ? 'text-error' : (o.tone ?? '')}`}>{o.label}</span>
+                                        )}
                                         {o.hint && (
                                             <span className={`shrink-0 truncate text-ui-11 ${selected ? 'text-primary/70' : 'text-on-surface-variant/60'}`}>
                                                 {o.hint}

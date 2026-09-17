@@ -24,6 +24,7 @@ import {
 } from '../../../wailsjs/go/main/App'
 import {agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import Select from '../Select'
 import AgentChat, {type ChatContextBlock} from './AgentChat'
 import AgentUsagePanel from './AgentUsagePanel'
 import AgentHistoryPanel from './AgentHistoryPanel'
@@ -412,32 +413,36 @@ export default function AgentChatHost({
 
     const panel = (
         <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
-            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container px-2 py-1 text-ui-11">
-                <Icon name="forum" size={13} className="shrink-0 text-primary" />
-                <span className="font-medium text-on-surface">Agente</span>
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container px-2 py-1.5 text-ui-11">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+                    <Icon name="auto_awesome" size={14} />
+                </span>
+                <span className="shrink-0 font-medium text-on-surface-variant">Agente</span>
 
                 {/* Selector del agente activo de la APP. Vive acá y no suelto en
                     el toolbar principal por la regla de configuración de
                     .claude/rules/conventions.md: es un ajuste del chat, y su
                     lugar natural es la barra del chat. */}
-                <select
+<Select
                     value={active?.id ?? ''}
-                    onChange={(e) => chooseAgent(e.target.value)}
+                    onChange={chooseAgent}
                     title={
                         available.length === 0
                             ? 'No hay ningún CLI agéntico instalado en esta máquina. Configuralos en Configuración → Agentes.'
                             : 'Con qué agente hablás. Cambiarlo empieza una conversación nueva: el historial lo guarda cada CLI por su cuenta, así que otro no puede continuar la anterior.'
                     }
                     disabled={available.length === 0}
-                    className="max-w-40 rounded border border-outline-variant bg-surface px-1 py-0.5 text-on-surface outline-none focus:border-primary disabled:opacity-50"
-                >
-                    <option value="">{available.length === 0 ? 'Ninguno instalado' : 'Elegí un agente'}</option>
-                    {available.map((a) => (
-                        <option key={a.id} value={a.id}>
-                            {a.label}
-                        </option>
-                    ))}
-                </select>
+                    size="sm"
+                    variant="ghost"
+                    placeholder={available.length === 0 ? 'Ninguno instalado' : 'Elegí un agente'}
+                    className="max-w-48 min-w-0 font-medium"
+                    menuMinWidth={220}
+                    options={available.map((a) => ({
+                        value: a.id,
+                        label: a.label,
+                        icon: <Icon name={a.id === 'claude' ? 'auto_awesome' : a.id === 'codex' ? 'terminal' : 'rocket_launch'} size={14} />,
+                    }))}
+                />
 
                 <button
                     onClick={() => setTab((t) => (t === 'usage' ? 'chat' : 'usage'))}
@@ -446,11 +451,11 @@ export default function AgentChatHost({
                             ? 'Vuelve a la conversación, que siguió corriendo detrás'
                             : 'Cuánta cuota llevás usada y cuántos tokens gastaste con cada CLI, con tu plan al lado. Ocupa el panel como una solapa: el chat sigue donde estaba.'
                     }
-                    className={`shrink-0 rounded p-0.5 ${
+                    className={`shrink-0 rounded-md p-1 ${
                         usageOpen ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                     }`}
                 >
-                    <Icon name="monitoring" size={14} />
+                    <Icon name="monitoring" size={16} />
                 </button>
 
                 <button
@@ -463,11 +468,11 @@ export default function AgentChatHost({
                             ? 'Vuelve a la conversación, que siguió corriendo detrás'
                             : 'Conversaciones anteriores de TODOS los módulos, no solo de este. Retomar una la continúa donde había quedado. Ocupa el panel como una solapa.'
                     }
-                    className={`shrink-0 rounded p-0.5 ${
+                    className={`shrink-0 rounded-md p-1 ${
                         historyOpen ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                     }`}
                 >
-                    <Icon name="history" size={14} />
+                    <Icon name="history" size={16} />
                 </button>
 
                 <span className="ml-auto flex shrink-0 items-center gap-0.5">
@@ -480,7 +485,7 @@ export default function AgentChatHost({
                                     ? 'Ventana flotante: el chat queda por encima del contenido, sin quitarle ancho'
                                     : `Anclar el panel a la ${d === 'left' ? 'izquierda' : d === 'right' ? 'derecha' : 'parte de abajo'}`
                             }
-                            className={`rounded p-0.5 ${
+                            className={`rounded-md p-1 ${
                                 dock === d ? 'bg-primary/20 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'
                             }`}
                         >
@@ -494,16 +499,16 @@ export default function AgentChatHost({
                                             ? 'dock_to_left'
                                             : 'dock_to_right'
                                 }
-                                size={13}
+                                size={15}
                             />
                         </button>
                     ))}
                     <button
                         onClick={() => setOpen(false)}
                         title="Cierra el panel. La conversación queda como está: volver a abrirlo la retoma."
-                        className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="rounded-md p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
-                        <Icon name="close" size={14} />
+                        <Icon name="close" size={16} />
                     </button>
                 </span>
             </div>

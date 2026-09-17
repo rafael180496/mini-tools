@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react'
 import {AgentAskAgents} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
+import Select from '../Select'
 
 // Con qué proveedor se hace este análisis puntual.
 //
@@ -35,25 +36,23 @@ export default function AskAgentPicker({value, onChange, disabled}: Props) {
     if (agents.length < 2) return null
 
     return (
-        <select
+        <Select
             value={value}
             disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={onChange}
             title="Con qué proveedor se hace ESTE análisis. No cambia el agente activo de la aplicación: sirve para pedirle la misma pregunta a otro modelo y comparar."
-            className="rounded-md border border-outline-variant bg-surface px-1.5 py-1 text-ui-11 text-on-surface-variant hover:text-on-surface disabled:opacity-50"
-        >
-            <option value="">
-                {agents.find((a) => a.active)?.label
-                    ? `${agents.find((a) => a.active)?.label} (activo)`
-                    : 'Agente activo'}
-            </option>
-            {agents
-                .filter((a) => !a.active)
-                .map((a) => (
-                    <option key={a.id} value={a.id}>
-                        {a.label}
-                    </option>
-                ))}
-        </select>
+            size="sm"
+            leadingIcon="auto_awesome"
+            menuMinWidth={200}
+            className="max-w-48 min-w-0 rounded-md"
+            options={[
+                {
+                    value: '',
+                    label: agents.find((a) => a.active)?.label ?? 'Agente activo',
+                    hint: 'activo',
+                },
+                ...agents.filter((a) => !a.active).map((a) => ({value: a.id, label: a.label})),
+            ]}
+        />
     )
 }

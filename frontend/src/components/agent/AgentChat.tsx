@@ -15,6 +15,7 @@ import {
 import {EventsOn} from '../../../wailsjs/runtime'
 import {agentctx, agentmodels} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import Select from '../Select'
 import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
 import AgentRefPicker from './AgentRefPicker'
@@ -97,6 +98,21 @@ const PERMISSIVE = new Set(['auto', 'edit'])
 
 // Tres arranques por módulo. No son plantillas mágicas: son las preguntas que
 // uno hace igual, escritas para no tener que pensarlas frente a una caja vacía.
+// Íconos de los arranques, en el mismo orden que STARTERS: se leen de un
+// vistazo antes que el texto.
+const STARTER_ICONS: Record<string, string[]> = {
+    db: ['menu_book', 'speed', 'table_chart'],
+    ssh: ['bolt', 'description', 'storage'],
+    http: ['menu_book', 'troubleshoot', 'fact_check'],
+    note: ['summarize', 'rule', 'add_notes'],
+    git: ['difference', 'rate_review', 'commit'],
+    none: ['help'],
+}
+
+function formatClock(at?: number): string {
+    return at ? new Date(at).toLocaleTimeString('es', {hour: '2-digit', minute: '2-digit'}) : ''
+}
+
 const STARTERS: Record<string, string[]> = {
     db: ['Explicá esta consulta', 'Optimizá esta consulta', '¿Qué tablas tiene esta conexión?'],
     ssh: ['¿Qué falló acá?', 'Explicá este log', '¿Cómo reviso el uso de disco?'],
@@ -115,6 +131,14 @@ interface ApprovalRequest {
     input: string
     summary: string
     detail: string
+}
+
+const MODE_ICONS: Record<string, string> = {
+    '': 'visibility',
+    plan: 'map',
+    approve: 'verified_user',
+    auto: 'bolt',
+    edit: 'edit_document',
 }
 
 const MODE_LABELS: Record<string, {label: string; hint: string; danger?: boolean}> = {
@@ -160,6 +184,10 @@ interface Turn {
     // Etiquetas de los bloques de contexto que viajaron con este mensaje. Solo
     // se muestran: el texto entero ya se vio en la ficha antes de mandarlo.
     contexts?: string[]
+    // Cuándo se escribió o empezó a llegar. Los turnos redibujados desde el
+    // historial de un CLI no lo traen, y ahí no se muestra hora: inventarla
+    // sería peor que no tenerla.
+    at?: number
     tools: ToolCall[]
     usage?: ChatUsage
     error?: string
@@ -403,6 +431,8 @@ export default function AgentChat({
     // Bloques de contexto que trajo el módulo que abrió el chat. Viajan con el
     // próximo mensaje y se vacían al mandarlo.
     const [contextBlocks, setContextBlocks] = useState<ChatContextBlock[]>([])
+    // Ficha de contexto desplegada arriba de la caja, para leer entera.
+    const [openBlock, setOpenBlock] = useState<number | null>(null)
     // Mensajes escritos MIENTRAS el agente trabaja. Se mandan solos cuando
     // termina el turno, en orden.
     //
@@ -494,7 +524,7 @@ export default function AgentChat({
                 const next = [...prev]
                 let last = next[next.length - 1]
                 if (!last || last.role !== 'agent') {
-                    last = {role: 'agent', text: '', tools: []}
+                    last = {role: 'agent', text: '', tools: [], at: Date.now()}
                     next.push(last)
                 } else {
                     // Los turnos son inmutables para React: mutar el último en
@@ -724,7 +754,7 @@ export default function AgentChat({
         const blocks = contextBlocks
         setTurns((prev) => [
             ...prev,
-            {role: 'user', text, tools: [], contexts: blocks.length ? blocks.map((b) => b.label) : undefined},
+            {role: 'user', text, tools: [], contexts: blocks.length ? blocks.map((b) => b.label) : undefined, at: Date.now()},
         ])
         setBusy(true)
         setQueueHeld(false)
@@ -815,7 +845,7 @@ export default function AgentChat({
                 if (attachFromClipboard(e.dataTransfer)) e.preventDefault()
             }}
         >
-            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1 text-ui-11">
+            <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1.5 text-ui-11">
                 {/* El nombre del agente NO se repite acá: ya está en el
                     selector del encabezado del panel, una línea más arriba.
                     Repetirlo gastaba la línea más visible del chat en un dato
@@ -827,14 +857,14 @@ export default function AgentChat({
                     "acá" en el próximo mensaje. */}
                 {context.kind !== 'none' && context.label && (
                     <span
-                        className="flex min-w-0 shrink items-center gap-1 rounded bg-surface-variant px-1.5 py-0.5 text-on-surface-variant"
+                        className="flex min-w-0 shrink items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
                         title={`El agente está trabajando sobre ${CONTEXT_NOUNS[context.kind]} «${context.label}». Cambia solo cuando cambiás de módulo, y no reinicia la conversación.`}
                     >
-                        <Icon name={CONTEXT_ICONS[context.kind]} size={11} className="shrink-0" />
+                        <Icon name={CONTEXT_ICONS[context.kind]} size={12} className="shrink-0" />
                         <span className="truncate">{describeContext(context)}</span>
                     </span>
                 )}
-                {info?.model && <span className="text-on-surface-variant">{info.model}</span>}
+                {info?.model && <span className="truncate font-mono text-ui-10 text-on-surface-variant">{info.model}</span>}
                 {info && info.mcp.length > 0 && (
                     <span
                         className="truncate text-on-surface-variant"
@@ -916,7 +946,10 @@ export default function AgentChat({
 
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-xs">
                 {turns.length === 0 && (
-                    <div className="flex flex-col items-center gap-2 p-4 text-center text-ui-11 text-on-surface-variant">
+                    <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-ui-11 text-on-surface-variant">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                            <Icon name="auto_awesome" size={22} />
+                        </span>
                         <p>
                             {context.kind !== 'none' && context.label ? (
                                 <>
@@ -930,26 +963,6 @@ export default function AgentChat({
                                 </>
                             )}
                         </p>
-                        {/* Sugerencias que llenan la caja, en vez de un párrafo
-                            explicando qué se puede escribir: frente a una caja
-                            vacía uno no sabe por dónde empezar, y tres ejemplos
-                            del módulo en el que está lo resuelven mejor que una
-                            instrucción. */}
-                        <div className="flex flex-wrap justify-center gap-1">
-                            {(STARTERS[context.kind] ?? STARTERS.none).map((st) => (
-                                <button
-                                    key={st}
-                                    onClick={() => {
-                                        setInput(st)
-                                        inputRef.current?.focus()
-                                    }}
-                                    title="Escribe esto en la caja de mensaje. Podés editarlo antes de mandarlo."
-                                    className="rounded-full border border-outline-variant px-2 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                                >
-                                    {st}
-                                </button>
-                            ))}
-                        </div>
                         <p className="opacity-70">
                             <strong>@</strong> referencia tablas, notas y terminales ·{' '}
                             {navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'} pega una captura
@@ -958,10 +971,21 @@ export default function AgentChat({
                 )}
 
                 {visibleTurns.map(({t, i}) => (
-                    <div key={i} className={`group mb-2 ${t.role === 'user' ? 'text-on-surface' : ''}`}>
-                        <div className="mb-0.5 flex items-center gap-1 text-ui-10 uppercase tracking-wider text-on-surface-variant">
-                            <Icon name={t.role === 'user' ? 'person' : 'smart_toy'} size={11} />
-                            {t.role === 'user' ? 'Vos' : agentLabel}
+                    <div key={i} className={`group mb-3 flex flex-col ${t.role === 'user' ? 'items-end' : 'items-stretch'}`}>
+                        <div
+                            className={`mb-1 flex w-full items-center gap-1.5 text-ui-10 text-on-surface-variant ${
+                                t.role === 'user' ? 'flex-row-reverse' : ''
+                            }`}
+                        >
+                            {t.role === 'user' ? (
+                                <span className="font-semibold uppercase tracking-wider">Vos</span>
+                            ) : (
+                                <>
+                                    <Icon name="auto_awesome" size={12} className="shrink-0 text-primary" />
+                                    <span className="font-semibold uppercase tracking-wider text-primary">{agentLabel}</span>
+                                </>
+                            )}
+                            {t.at && <span className="shrink-0 tabular-nums opacity-60">· {formatClock(t.at)}</span>}
 
                             {/* Acciones del mensaje. Aparecen al pasar por
                                 encima para no ensuciar la lectura, y las dos
@@ -969,18 +993,12 @@ export default function AgentChat({
                                 renderizado— que es lo que sirve para pegar o
                                 reescribir. */}
                             {t.text && (
-                                <span className="ml-auto hidden shrink-0 items-center gap-1 group-hover:flex">
+                                <span className={`hidden shrink-0 items-center gap-1 group-hover:flex ${t.role === 'user' ? 'mr-auto' : 'ml-auto'}`}>
                                     {/* Volver a mandar algo que ya preguntaste,
-                                        casi siempre con un cambio: "lo mismo
-                                        pero para la otra tabla".
-                                        **No rebobina la conversación**, y no
-                                        puede: el hilo vive en el CLI, no acá.
-                                        Trae el texto a la caja para editarlo y
-                                        mandarlo como un mensaje nuevo, que es lo
-                                        único honesto que se puede ofrecer sin
-                                        fingir que borra lo dicho. Nunca pisa lo
-                                        que ya tengas escrito: se agrega al
-                                        final. */}
+                                        casi siempre con un cambio. **No rebobina
+                                        la conversación**: el hilo vive en el CLI.
+                                        Trae el texto a la caja sin pisar lo que
+                                        ya tengas escrito. */}
                                     {t.role === 'user' && (
                                         <button
                                             onClick={() => {
@@ -1009,64 +1027,59 @@ export default function AgentChat({
                             )}
                         </div>
 
-                        {/* Cada acción del agente en una línea: qué herramienta,
-                            sobre qué, y de qué tamaño. Es lo que hace legible
-                            un turno en el que trabaja solo — plegado por
-                            defecto, porque lo que importa de un vistazo es la
-                            secuencia y no el argumento entero. */}
+                        {/* Cada acción del agente como una tarjeta de terminal:
+                            qué herramienta, sobre qué, y de qué tamaño. Plegada
+                            por defecto: de un vistazo importa la secuencia, no
+                            el argumento entero. */}
                         {t.tools.map((tool, j) => (
-                            <details key={j} className="mb-1 rounded border border-outline-variant bg-surface-container px-1.5 py-0.5">
-                                <summary className="flex cursor-pointer items-center gap-1.5 text-ui-11">
-                                    <Icon name="build" size={11} className="shrink-0 text-on-surface-variant" />
-                                    <span className="shrink-0 font-medium text-on-surface">{tool.name}</span>
+                            <details key={j} className="group/tool mb-1.5 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low">
+                                <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1 text-ui-11 hover:bg-surface-variant/50">
+                                    <Icon name="terminal" size={12} className="shrink-0 text-primary" />
+                                    <span className="shrink-0 font-mono font-medium text-on-surface">{tool.name}</span>
                                     {tool.summary && (
                                         <span className="min-w-0 flex-1 truncate font-mono text-on-surface-variant" title={tool.summary}>
                                             {tool.summary}
                                         </span>
                                     )}
                                     {tool.detail && (
-                                        <span className="shrink-0 rounded bg-surface-variant px-1 text-ui-10 text-on-surface-variant">
+                                        <span className="shrink-0 rounded bg-surface-variant px-1 font-mono text-ui-10 text-on-surface-variant">
                                             {tool.detail}
                                         </span>
                                     )}
+                                    <Icon
+                                        name="expand_more"
+                                        size={14}
+                                        className="ml-auto shrink-0 text-on-surface-variant transition-transform group-open/tool:rotate-180"
+                                    />
                                 </summary>
-                                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words text-ui-10 text-on-surface-variant">
+                                <pre className="overflow-x-auto border-t border-outline-variant px-2 py-1.5 font-mono text-ui-10 whitespace-pre-wrap break-words text-on-surface-variant">
                                     {tool.input}
                                 </pre>
                             </details>
                         ))}
 
                         {t.text && (
-                            // El mensaje propio se marca con una barra a la
-                            // izquierda y fondo más fuerte: en la versión
-                            // anterior los dos lados eran bloques casi iguales
-                            // y había que leer el encabezado para saber quién
-                            // hablaba, que es justo lo que un chat evita.
+                            // Lo propio es una burbuja a la derecha; lo del
+                            // agente, una tarjeta a todo el ancho. Quién habla se
+                            // distingue por la forma, sin leer el encabezado.
                             <div
-                                className={`break-words rounded px-2 py-1 ${
+                                className={`break-words ${
                                     t.role === 'user'
-                                        ? 'whitespace-pre-wrap border-l-2 border-primary bg-primary/15 text-on-surface'
-                                        : 'bg-surface-container'
+                                        ? 'max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-tr-sm border border-primary/30 bg-primary/15 px-3 py-1.5 text-on-surface'
+                                        : 'rounded-xl rounded-tl-sm border border-outline-variant bg-surface-container px-3 py-2'
                                 }`}
                             >
-                                {/* La respuesta del agente viene en Markdown
-                                    —los tres lo usan— así que se renderiza en
-                                    vez de mostrarse cruda: sin esto la salida
-                                    se lee con los `**` y los `-` a la vista,
-                                    que es exactamente lo que el formato existe
-                                    para evitar.
-
-                                    El mensaje PROPIO no: lo escribiste vos y
-                                    tiene que verse tal cual lo mandaste —
-                                    reinterpretarlo cambiaría lo que dijiste. */}
+                                {/* La respuesta del agente viene en Markdown y
+                                    se renderiza; el mensaje PROPIO no: tiene que
+                                    verse tal cual lo mandaste. */}
                                 {t.role === 'user' ? (
                                     <>
                                         {t.contexts && t.contexts.length > 0 && (
-                                            <span className="mb-1 flex flex-wrap gap-1">
+                                            <span className="mb-1 flex flex-wrap justify-end gap-1">
                                                 {t.contexts.map((label, ci) => (
                                                     <span
                                                         key={ci}
-                                                        className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1 py-px text-ui-10 text-primary"
+                                                        className="inline-flex items-center gap-0.5 rounded-full bg-primary/15 px-1.5 py-px text-ui-10 text-primary"
                                                     >
                                                         <Icon name="attach_file" size={10} />
                                                         {label}
@@ -1097,13 +1110,15 @@ export default function AgentChat({
                             </div>
                         )}
 
-                        {t.error && <p className="mt-0.5 rounded bg-error-container/40 px-2 py-1 text-ui-11 text-error">{t.error}</p>}
+                        {t.error && (
+                            <p className="mt-1 flex items-start gap-1 rounded-lg border border-error/30 bg-error-container/30 px-2 py-1 text-ui-11 text-error">
+                                <Icon name="error" size={12} className="mt-px shrink-0" />
+                                <span className="min-w-0 flex-1 break-words">{t.error}</span>
+                            </p>
+                        )}
 
                         {t.usage && (
-                            <p
-                                className="mt-0.5 text-ui-10 text-on-surface-variant"
-                                title="Tokens de este turno, informados por el propio CLI"
-                            >
+                            <p className="mt-1 text-ui-10 text-on-surface-variant/70" title="Tokens de este turno, informados por el propio CLI">
                                 {t.usage.total.toLocaleString('es')} tokens · {t.usage.output.toLocaleString('es')} de salida
                                 {/* Costo solo si el CLI lo informa: cero acá
                                     significa "no lo dice", no "salió gratis". */}
@@ -1154,35 +1169,28 @@ export default function AgentChat({
                 />
             )}
 
-            {contextBlocks.length > 0 && (
-                <div className="flex max-h-48 shrink-0 flex-col gap-1 overflow-y-auto border-t border-outline-variant px-1.5 pt-1">
-                    {contextBlocks.map((b, bi) => (
-                        <details key={`${b.label}-${bi}`} className="rounded-md border border-primary/25 bg-primary/5">
-                            <summary className="flex cursor-pointer list-none items-center gap-1.5 px-1.5 py-1 text-ui-10">
-                                <Icon name={b.icon ?? 'attach_file'} size={12} className="shrink-0 text-primary" />
-                                <span className="shrink-0 font-medium text-on-surface">{b.label}</span>
-                                <span className="min-w-0 flex-1 truncate font-mono text-on-surface-variant">
-                                    {b.text.trim().split('\n')[0]}
-                                </span>
-                                <span className="shrink-0 tabular-nums text-on-surface-variant/60">
-                                    {b.text.trim().split('\n').length} lín.
-                                </span>
-                                <button
-                                    onClick={(e) => {
-                                        e.preventDefault()
-                                        setContextBlocks((prev) => prev.filter((_, j) => j !== bi))
-                                    }}
-                                    title="Quitar este contexto — no se va a mandar"
-                                    className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error"
-                                >
-                                    <Icon name="close" size={12} />
-                                </button>
-                            </summary>
-                            <pre className="max-h-32 overflow-auto border-t border-primary/15 px-1.5 py-1 whitespace-pre-wrap text-ui-10 text-on-surface-variant">
-                                {b.text}
-                            </pre>
-                        </details>
-                    ))}
+            {/* Lo que dice una ficha de contexto, entero. Se abre desde la
+                ficha dentro de la caja: lo que sale de la máquina tiene que
+                poder leerse antes de mandarlo. */}
+            {openBlock !== null && contextBlocks[openBlock] && (
+                <div className="mx-2 mt-1.5 flex max-h-48 shrink-0 flex-col overflow-hidden rounded-lg border border-primary/25 bg-primary/5">
+                    <div className="flex shrink-0 items-center gap-1.5 border-b border-primary/15 px-2 py-1 text-ui-10">
+                        <Icon name={contextBlocks[openBlock].icon ?? 'attach_file'} size={12} className="shrink-0 text-primary" />
+                        <span className="min-w-0 flex-1 truncate font-medium text-on-surface">{contextBlocks[openBlock].label}</span>
+                        <span className="shrink-0 tabular-nums text-on-surface-variant/70">
+                            {contextBlocks[openBlock].text.trim().split('\n').length} líneas · se manda tal cual
+                        </span>
+                        <button
+                            onClick={() => setOpenBlock(null)}
+                            title="Cerrar la vista previa"
+                            className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        >
+                            <Icon name="close" size={12} />
+                        </button>
+                    </div>
+                    <pre className="min-h-0 overflow-auto px-2 py-1 font-mono text-ui-10 whitespace-pre-wrap text-on-surface-variant">
+                        {contextBlocks[openBlock].text}
+                    </pre>
                 </div>
             )}
 
@@ -1299,55 +1307,29 @@ export default function AgentChat({
                 </div>
             )}
 
-            {attachments.length > 0 && (
-                <div className="flex shrink-0 flex-wrap items-center gap-1 border-t border-outline-variant px-1.5 pt-1">
-                    {attachments.map((path) => (
-                        <span
-                            key={path}
-                            title={`${path} — se le pasa al agente por su ruta; el archivo vive en los datos de la app, no en el repositorio`}
-                            className="flex items-center gap-1 rounded border border-outline-variant bg-surface-container px-1.5 py-0.5 text-ui-10 text-on-surface-variant"
-                        >
-                            <Icon name="image" size={11} className="shrink-0 text-primary" />
-                            {path.split('/').pop()}
-                            <button
-                                onClick={() => setAttachments((prev) => prev.filter((p) => p !== path))}
-                                title="Quitar del mensaje"
-                                className="rounded hover:text-on-surface"
-                            >
-                                <Icon name="close" size={10} />
-                            </button>
-                        </span>
-                    ))}
-                </div>
-            )}
-
             {/* Controles del turno. Van pegados a la caja de texto y no en un
                 menú escondido porque cambian lo que el agente TIENE PERMITIDO
                 hacer: es lo último que hay que mirar antes de mandar. */}
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-outline-variant px-1.5 pt-1 text-ui-11">
-                <select
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-outline-variant px-2 pt-1.5 text-ui-11">
+<Select
                     value={mode}
-                    onChange={(e) => {
-                        const next = e.target.value
-                        // Pasar a un modo permisivo NO lo activa: abre la
-                        // aprobación. El modo actual no cambia hasta que el
-                        // usuario diga que sí.
+                    onChange={(next) => {
                         if (PERMISSIVE.has(next)) setPendingMode(next)
                         else setMode(next)
                     }}
                     title={MODE_LABELS[mode]?.hint}
-                    className={`rounded border px-1 py-0.5 outline-none focus:border-primary ${
-                        MODE_LABELS[mode]?.danger
-                            ? 'border-error bg-error-container/30 text-on-surface'
-                            : 'border-outline-variant bg-surface text-on-surface'
-                    }`}
-                >
-                    {modes.map((m) => (
-                        <option key={m} value={m}>
-                            {MODE_LABELS[m]?.label ?? m}
-                        </option>
-                    ))}
-                </select>
+                    size="sm"
+                    leadingIcon={MODE_ICONS[mode] ?? 'visibility'}
+                    menuMinWidth={280}
+                    className={`rounded-lg ${MODE_LABELS[mode]?.danger ? 'border-error! bg-error-container/30' : ''}`}
+                    options={modes.map((m) => ({
+                        value: m,
+                        label: MODE_LABELS[m]?.label ?? m,
+                        description: MODE_LABELS[m]?.hint,
+                        danger: MODE_LABELS[m]?.danger,
+                        icon: <Icon name={MODE_ICONS[m] ?? 'visibility'} size={14} />,
+                    }))}
+                />
 
                 {/* Esfuerzo como puntos y no como lista: es una escala, y una
                     escala se entiende mejor viéndola entera que abriendo un
@@ -1379,9 +1361,9 @@ export default function AgentChat({
                     pedirle la ruta al sistema no ahorraría ese paso. */}
                 <label
                     title="Adjunta una imagen desde el equipo. También podés pegarla directamente en la caja de texto."
-                    className="flex shrink-0 cursor-pointer items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-on-surface-variant hover:text-on-surface"
+                    className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
                 >
-                    <Icon name="image" size={12} />
+                    <Icon name="image" size={14} />
                     Imagen
                     <input
                         type="file"
@@ -1415,21 +1397,23 @@ export default function AgentChat({
                     en Claude Code, su cache de modelos en Codex, `agy models`
                     en Antigravity), así que no envejece como una escrita a
                     mano — que era el motivo por el que antes era texto libre. */}
-                <select
+<Select
                     value={model}
-                    onChange={(e) => setModel(e.target.value)}
+                    onChange={setModel}
                     title={
                         catalog?.models.find((m) => m.id === model)?.description ||
                         'Modelo para este turno. La lista la informa el propio CLI.'
                     }
-                    className="max-w-44 rounded border border-outline-variant bg-surface px-1 py-0.5 text-on-surface outline-none focus:border-primary"
-                >
-                    {(catalog?.models ?? [{id: '', label: 'Por defecto', description: '', efforts: []}]).map((m) => (
-                        <option key={m.id || 'default'} value={m.id} title={m.description}>
-                            {m.label}
-                        </option>
-                    ))}
-                </select>
+                    size="sm"
+                    leadingIcon="memory"
+                    menuMinWidth={260}
+                    className="max-w-52 min-w-0 rounded-lg"
+                    options={(catalog?.models ?? [{id: '', label: 'Por defecto', description: '', efforts: []}]).map((m) => ({
+                        value: m.id,
+                        label: m.label,
+                        description: m.description || undefined,
+                    }))}
+                />
 
                 {/* Mientras el modo permisivo está activo se avisa en todos
                     los turnos, no solo al activarlo: una sesión larga hace
@@ -1540,7 +1524,86 @@ export default function AgentChat({
                 />
             )}
 
-            <div className="flex shrink-0 items-end gap-1 border-t border-outline-variant p-1.5">
+            {/* Sugerencias arriba de la caja mientras la conversación está
+                vacía: frente a una caja en blanco uno no sabe por dónde
+                empezar, y tres preguntas del módulo lo resuelven mejor que un
+                párrafo de instrucciones. */}
+            {turns.length === 0 && !busy && !input.trim() && (
+                <div className="flex shrink-0 flex-wrap gap-1.5 px-2 pt-1.5">
+                    {(STARTERS[context.kind] ?? STARTERS.none).map((st, si) => (
+                        <button
+                            key={st}
+                            onClick={() => {
+                                setInput(st)
+                                inputRef.current?.focus()
+                            }}
+                            title="Escribe esto en la caja de mensaje. Podés editarlo antes de mandarlo."
+                            className="flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container px-2 py-1 text-ui-11 text-on-surface-variant hover:border-primary/50 hover:text-on-surface"
+                        >
+                            <Icon
+                                name={(STARTER_ICONS[context.kind] ?? STARTER_ICONS.none)[si] ?? 'chat'}
+                                size={13}
+                                className="shrink-0 text-primary"
+                            />
+                            {st}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            <div className="m-2 flex shrink-0 flex-col rounded-xl border border-outline-variant bg-surface-container-low transition-colors focus-within:border-primary">
+                {/* Fichas de lo que viaja con el mensaje, DENTRO de la caja: el
+                    contexto adjunto y las imágenes son parte del mensaje, no
+                    algo aparte. Clic en una ficha la despliega; la × la quita. */}
+                {(contextBlocks.length > 0 || attachments.length > 0) && (
+                    <div className="flex flex-wrap gap-1 px-2 pt-2">
+                        {contextBlocks.map((b, bi) => (
+                            <span
+                                key={`${b.label}-${bi}`}
+                                className={`flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-ui-10 ${
+                                    openBlock === bi ? 'border-primary bg-primary/20 text-primary' : 'border-primary/30 bg-primary/10 text-primary'
+                                }`}
+                            >
+                                <button
+                                    onClick={() => setOpenBlock((v) => (v === bi ? null : bi))}
+                                    title={`${b.label} — ${b.text.trim().split('\n').length} líneas. Clic para leer exactamente lo que se va a mandar.`}
+                                    className="flex min-w-0 items-center gap-1"
+                                >
+                                    <Icon name={b.icon ?? 'attach_file'} size={11} className="shrink-0" />
+                                    <span className="truncate">{b.label}</span>
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setContextBlocks((prev) => prev.filter((_, n) => n !== bi))
+                                        setOpenBlock(null)
+                                    }}
+                                    title="Quitar este contexto — no se va a mandar"
+                                    className="shrink-0 rounded hover:text-error"
+                                >
+                                    <Icon name="close" size={11} />
+                                </button>
+                            </span>
+                        ))}
+                        {attachments.map((path) => (
+                            <span
+                                key={path}
+                                title={`${path} — se le pasa al agente por su ruta; el archivo vive en los datos de la app, no en el repositorio`}
+                                className="flex max-w-full items-center gap-1 rounded-md border border-outline-variant bg-surface-container px-1.5 py-0.5 text-ui-10 text-on-surface-variant"
+                            >
+                                <Icon name="image" size={11} className="shrink-0 text-primary" />
+                                <span className="truncate">{path.split('/').pop()}</span>
+                                <button
+                                    onClick={() => setAttachments((prev) => prev.filter((p) => p !== path))}
+                                    title="Quitar del mensaje"
+                                    className="shrink-0 rounded hover:text-error"
+                                >
+                                    <Icon name="close" size={11} />
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                )}
+                <div className="flex items-end gap-1 p-1.5">
                 <textarea
                     ref={inputRef}
                     value={input}
@@ -1592,7 +1655,7 @@ export default function AgentChat({
                             ? `${agentLabel} está trabajando — escribí y Enter lo deja en cola para cuando termine`
                             : `Preguntale a ${agentLabel}… (Enter manda, Shift+Enter salta de línea)`
                     }
-                    className="min-w-0 flex-1 resize-none rounded border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface outline-none focus:border-primary"
+                    className="max-h-40 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
                 />
                 {busy ? (
                     <>
@@ -1604,7 +1667,7 @@ export default function AgentChat({
                             onClick={send}
                             disabled={!input.trim()}
                             title="Deja este mensaje en cola: sale solo cuando termine el turno en curso"
-                            className="shrink-0 rounded border border-outline-variant px-2 py-1.5 text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+                            className="shrink-0 rounded-lg border border-outline-variant p-1.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
                         >
                             <Icon name="schedule_send" size={14} />
                         </button>
@@ -1619,7 +1682,7 @@ export default function AgentChat({
                                 setQueueHeld(true)
                             }}
                             title="Corta el turno en curso. Lo que haya en cola no sale solo: queda esperando con un botón para mandarlo."
-                            className="shrink-0 rounded bg-error px-2 py-1.5 text-xs text-on-error"
+                            className="shrink-0 rounded-lg bg-error p-1.5 text-on-error"
                         >
                             <Icon name="stop" size={14} />
                         </button>
@@ -1629,11 +1692,12 @@ export default function AgentChat({
                         onClick={send}
                         disabled={!input.trim()}
                         title="Manda el mensaje (Enter)"
-                        className="shrink-0 rounded bg-primary px-2 py-1.5 text-xs text-on-primary disabled:opacity-40"
+                        className="shrink-0 rounded-lg bg-primary p-1.5 text-on-primary disabled:opacity-40"
                     >
                         <Icon name="send" size={14} />
                     </button>
                 )}
+                </div>
             </div>
         </div>
     )
