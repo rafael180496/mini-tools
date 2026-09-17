@@ -42,6 +42,11 @@ interface SftpPaneProps {
     // Begins a transfer of items from THIS pane to the other one (drag→drop
     // onto the other pane, or the explicit transfer button).
     onTransfer: (items: TransferItem[]) => void
+    // Hay una transferencia preparándose (comprobando el destino). Bloquea el
+    // envío mientras tanto: con cientos de archivos esa comprobación tarda, y un
+    // botón que sigue habilitado durante la espera invita a volver a apretarlo
+    // —que es exactamente cómo se disparaban cuatro transferencias iguales—.
+    transferBusy?: boolean
     // Shared drag payload: set on dragstart here, read on drop in the other
     // pane. A ref (not state) so a drag never re-renders either pane.
     dragRef: React.MutableRefObject<TransferItem[] | null>
@@ -297,6 +302,7 @@ export default function SftpPane({
     onOpenFile,
     onError,
     onTransfer,
+    transferBusy,
     dragRef,
     onDropFromDesktop,
 }: SftpPaneProps) {
@@ -664,6 +670,7 @@ export default function SftpPane({
         setDragOver(false)
         const items = dragRef.current
         dragRef.current = null
+        if (transferBusy) return
         if (items && items.length > 0) onTransfer(items)
     }
 
@@ -972,11 +979,27 @@ export default function SftpPane({
                 <div className="flex shrink-0 items-center gap-1 border-b border-outline-variant px-2 py-1">
                     <button
                         onClick={() => onTransfer(selectedItems())}
-                        disabled={selected.size === 0}
-                        title={`Transferir la selección a ${otherLabel}`}
+                        disabled={selected.size === 0 || transferBusy}
+                        title={
+                            transferBusy
+                                ? 'Se está preparando otra transferencia: se comprueba qué archivos ya existen en el destino antes de tocar nada. Termina sola en unos segundos.'
+                                : `Transferir la selección a ${otherLabel}`
+                        }
                         className="flex items-center gap-1 rounded bg-secondary/15 px-2 py-1 text-ui-11 font-medium text-secondary hover:bg-secondary/25 disabled:opacity-40"
                     >
-                        <Icon name="send" size={14} /> Enviar a {otherLabel}
+                        {transferBusy ? (
+                            <>
+                                <span
+                                    aria-hidden
+                                    className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-secondary"
+                                />
+                                Comprobando el destino…
+                            </>
+                        ) : (
+                            <>
+                                <Icon name="send" size={14} /> Enviar a {otherLabel}
+                            </>
+                        )}
                     </button>
                     <button
                         onClick={() => setConfirmDelete(selectedItems())}
@@ -1044,7 +1067,7 @@ export default function SftpPane({
             {/* Listing / drop target */}
             <div
                 onDragOver={(e) => {
-                    if (dragRef.current && canAct) {
+                    if (dragRef.current && canAct && !transferBusy) {
                         e.preventDefault()
                         // dropEffect manda el cursor que ve el usuario mientras
                         // arrastra. Sin fijarlo el sistema muestra el de "no se
@@ -1265,7 +1288,13 @@ export default function SftpPane({
                                 onTransfer(itemsForEntry(menu.entry))
                                 setMenu(null)
                             }}
-                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant"
+                            disabled={transferBusy}
+                            title={
+                                transferBusy
+                                    ? 'Se está preparando otra transferencia: se comprueba qué archivos ya existen en el destino antes de tocar nada.'
+                                    : `Copia esto al panel de ${otherLabel}. Si la fila está dentro de la selección, se envía la selección entera.`
+                            }
+                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant disabled:opacity-40"
                         >
                             <Icon name="send" size={15} /> Enviar a {otherLabel}
                         </button>

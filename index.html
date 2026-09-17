@@ -1381,6 +1381,13 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <li>La cola muestra <strong>porcentaje, bytes y archivos en vivo</strong>, y cada transferencia se cancela sola sin tocar las demás. Los lotes grandes van en paralelo.</li>
   </ol>
 
+  <div class="note"><span class="lbl">Con cientos de archivos hay una espera antes de la copia</span>
+  <p>Comprobar qué existe del otro lado y contar lo que hay dentro de las carpetas son consultas al
+  servidor, y con una selección grande —sobre todo entre dos remotos— tardan unos segundos. <strong>La fila
+  aparece en la cola apenas apretás el botón</strong> diciendo en qué está («Comprobando el destino…»,
+  «Preparando…»), y mientras tanto <em>Enviar</em> queda deshabilitado: no hace falta —ni conviene— volver
+  a apretarlo, porque cada clic sería una transferencia más.</p></div>
+
   <h2 id="ssh-sftp--permisos">Permisos</h2>
   <div class="note"><span class="lbl">Sin recordar el octal</span><p>El botón <strong>Permisos</strong> de la
   barra de acciones —o clic derecho → <strong>Editar permisos</strong>— abre un diálogo con casillas de

@@ -32,6 +32,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ### Corregido
 
+- **Enviar muchos archivos por SFTP parecía no hacer nada.** Con una selección grande —cien archivos, y peor entre dos servidores remotos— apretar *Enviar* no mostraba absolutamente nada: ni una fila en la cola, ni el diálogo de conflictos, ni un error. El diálogo aparecía medio minuto después, y para entonces uno ya había vuelto a apretar el botón cuatro veces, con lo que arrancaban cuatro transferencias idénticas sobre la misma carpeta.
+
+  La espera era real y estaba escondida: antes de tocar el destino se comprueba qué archivos ya existen ahí, y esa comprobación iba **de a uno** —dos consultas por archivo, una atrás de la otra—. Sobre un enlace con latencia, cien archivos son más de doscientas idas y vueltas en fila. Ahora vuelan **en paralelo** (de a 16, sobre el mismo canal SSH), y lo mismo con el recuento de archivos previo a la copia, que recorre las carpetas seleccionadas a la vez en lugar de una después de otra.
+
+  Y sobre todo, la espera **se ve**: la fila aparece en la cola de transferencias **apenas se aprieta el botón**, diciendo «Comprobando el destino… (112 elementos)» y después «Preparando… (contando archivos)», con su propia barra. Mientras tanto el botón *Enviar* queda deshabilitado mostrando en qué está —igual que el menú contextual y el arrastre entre paneles—, así que un segundo clic ya no puede duplicar la transferencia. Si el diálogo de conflictos se cancela, esa fila queda marcada como cancelada en vez de desaparecer sin explicación.
+
 - **`@ssh:` aparecía como «todavía no disponible» en el selector de `@`**, aunque escrito a mano funcionaba desde hace tiempo: la política seguía marcada como apagada, con un comentario de antes de que la terminal guardara su salida.
 
 - **Las referencias a conexiones con espacios en el nombre no se resolvían.** El selector escribía `@db:Prod Facturación/CLIENTES`, el parser cortaba en el primer espacio y buscaba una conexión llamada «Prod», así que la ficha decía «no encontrada» sobre un nombre que había escrito el propio selector. Ahora pone el valor entre comillas cuando hace falta —en `@db:`, `@explain:` y `@ssh:`— y el selector sigue abierto mientras se escribe dentro de comillas.

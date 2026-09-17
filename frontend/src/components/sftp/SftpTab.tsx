@@ -55,7 +55,14 @@ interface PaneState {
 interface QueueItem {
     id: string
     label: string
-    status: 'running' | 'done' | 'error' | 'cancelled'
+    // 'checking' es la comprobación previa de conflictos: todavía no se copió
+    // un solo byte, pero YA hay una fila en la cola. Esa fila es el arreglo del
+    // "no hace nada": la espera existía igual, lo que faltaba era decirlo.
+    status: 'checking' | 'running' | 'done' | 'error' | 'cancelled'
+    // Cuántos elementos se seleccionaron. Se sabe desde el primer momento, al
+    // revés que totalFiles, que es el total de archivos REALES y solo se
+    // conoce después de recorrer las carpetas.
+    itemCount: number
     percent: number
     filesDone: number
     totalFiles: number
@@ -75,6 +82,9 @@ type Source = {kind: 'pane'; side: Side} | {kind: 'desktop'}
 // A transfer waiting on the conflict dialog's answer: everything launch()
 // needs, held until a policy is chosen.
 interface PendingTransfer {
+    // La fila de la cola que ya se creó para esta transferencia: si el diálogo
+    // se cancela hay que cerrarla, no dejarla girando para siempre.
+    id: string
     src: Source
     toSide: Side
     items: TransferItem[]
@@ -190,6 +200,15 @@ export default function SftpTab({
         return src.kind === 'desktop' ? LOCAL_HOST : panes[src.side].host
     }
 
+    // Una sola transferencia se prepara a la vez. No es para serializar las
+    // copias —varias pueden correr juntas y la cola las muestra— sino para que
+    // los clics repetidos sobre un botón que "no responde" no se conviertan en
+    // cuatro transferencias idénticas contra el mismo destino. El ref es lo que
+    // cierra la puerta de verdad: dos clics seguidos ocurren antes de que React
+    // vuelva a renderizar con el botón deshabilitado.
+    const preparingRef = useRef(false)
+    const [preparing, setPreparing] = useState(false)
+
     // Step 1: check whether anything would be overwritten, and ask before
     // touching the destination. Only then does the transfer start.
     async function beginTransfer(src: Source, toSide: Side, items: TransferItem[]) {
@@ -200,39 +219,73 @@ export default function SftpTab({
             return
         }
         if (items.length === 0) return
+        // Con el diálogo de conflictos abierto tampoco se arranca otra: su fondo
+        // tapa los paneles, pero un arrastre desde el Finder llega igual y
+        // empezaría una transferencia mientras se decide sobre la anterior.
+        if (preparingRef.current || pending) return
+        preparingRef.current = true
+        setPreparing(true)
 
         const from = sourceHost(src)
+        const id = newId()
+        const label = `${src.kind === 'desktop' ? 'Escritorio' : from.connName} → ${to.host.connName}`
+
+        // La fila entra en la cola ANTES de la primera ida al servidor. Con
+        // cientos de archivos la comprobación de conflictos tarda, y hasta que
+        // no terminaba no aparecía absolutamente nada en pantalla: ni fila, ni
+        // diálogo, ni error. Se leía como que el botón no había hecho nada.
+        setQueue((q) => [
+            {
+                id,
+                label,
+                status: 'checking',
+                itemCount: items.length,
+                percent: 0,
+                filesDone: 0,
+                totalFiles: 0,
+                bytesDone: 0,
+                bytesTotal: 0,
+                bytesPerSec: 0,
+                etaSeconds: -1,
+            },
+            ...q,
+        ])
+
+        let conflicts: sftpx.Conflict[] = []
         try {
-            const conflicts = await CheckSftpConflicts(
-                new main.SftpTransferInput({
-                    transferId: '',
-                    src: endpoint(from),
-                    dst: endpoint(to.host),
-                    dstDir: to.dir,
-                    items,
-                }),
-            )
-            if (conflicts && conflicts.length > 0) {
-                setPending({src, toSide, items, conflicts})
-                return
-            }
+            conflicts =
+                (await CheckSftpConflicts(
+                    new main.SftpTransferInput({
+                        transferId: '',
+                        src: endpoint(from),
+                        dst: endpoint(to.host),
+                        dstDir: to.dir,
+                        items,
+                    }),
+                )) ?? []
         } catch (err) {
             // A failed pre-flight must not block the transfer: the check is a
             // courtesy, and the copy itself reports any real problem with a
             // far more specific message. Worst case the user gets the previous
             // behaviour (plain overwrite) instead of a dialog.
             console.warn('sftp: no se pudo comprobar conflictos', err)
+        } finally {
+            preparingRef.current = false
+            setPreparing(false)
         }
-        launch(src, toSide, items, '')
+
+        if (conflicts.length > 0) {
+            setPending({id, src, toSide, items, conflicts})
+            return
+        }
+        launch(id, src, toSide, items, '')
     }
 
     // Step 2: subscribe, enqueue and start. onConflict is '' when nothing
     // collided, which the backend reads as overwrite.
-    function launch(src: Source, toSide: Side, items: TransferItem[], onConflict: ConflictPolicy | '') {
+    function launch(id: string, src: Source, toSide: Side, items: TransferItem[], onConflict: ConflictPolicy | '') {
         const from = sourceHost(src)
         const to = panes[toSide]
-        const id = newId()
-        const label = `${src.kind === 'desktop' ? 'Escritorio' : from.connName} → ${to.host.connName}`
 
         // Subscribe BEFORE StartSftpTransfer so the first emitted event can't
         // race the subscription — same contract as the SSH terminal.
@@ -284,21 +337,9 @@ export default function SftpTab({
         })
         subs.current.set(id, unsub)
 
-        setQueue((q) => [
-            {
-                id,
-                label,
-                status: 'running',
-                percent: 0,
-                filesDone: 0,
-                totalFiles: 0,
-                bytesDone: 0,
-                bytesTotal: 0,
-                bytesPerSec: 0,
-                etaSeconds: -1,
-            },
-            ...q,
-        ])
+        // La fila ya existe (la creó beginTransfer en estado 'checking'): acá
+        // solo pasa a 'running'.
+        updateQueue(id, {status: 'running'})
 
         StartSftpTransfer(
             new main.SftpTransferInput({
@@ -332,7 +373,7 @@ export default function SftpTab({
     }
 
     const dragRef = useRef<TransferItem[] | null>(null)
-    const activeCount = queue.filter((q) => q.status === 'running').length
+    const activeCount = queue.filter((q) => q.status === 'running' || q.status === 'checking').length
 
     // --- sincronización con la terminal ------------------------------------
     //
@@ -463,6 +504,7 @@ export default function SftpTab({
                         onOpenFile={(path) => onOpenRemoteFile?.(panes.left.host, path)}
                         onError={setError}
                         onTransfer={(items) => void beginTransfer({kind: 'pane', side: 'left'}, 'right', items)}
+                        transferBusy={preparing || !!pending}
                         onDropFromDesktop={(paths) => dropFromDesktop('left', paths)}
                         dragRef={dragRef}
                     />
@@ -480,6 +522,7 @@ export default function SftpTab({
                         onOpenFile={(path) => onOpenRemoteFile?.(panes.right.host, path)}
                         onError={setError}
                         onTransfer={(items) => void beginTransfer({kind: 'pane', side: 'right'}, 'left', items)}
+                        transferBusy={preparing || !!pending}
                         onDropFromDesktop={(paths) => dropFromDesktop('right', paths)}
                         dragRef={dragRef}
                     />
@@ -493,7 +536,7 @@ export default function SftpTab({
                         <Icon name="swap_vert" size={14} />
                         Transferencias {activeCount > 0 && <span className="text-secondary">({activeCount} activas)</span>}
                         <button
-                            onClick={() => setQueue((q) => q.filter((it) => it.status === 'running'))}
+                            onClick={() => setQueue((q) => q.filter((it) => it.status === 'running' || it.status === 'checking'))}
                             className="ml-auto rounded px-2 py-0.5 hover:bg-surface-variant hover:text-on-surface"
                             title="Quitar las transferencias finalizadas de la lista"
                         >
@@ -502,41 +545,62 @@ export default function SftpTab({
                     </div>
                     {queue.map((it) => (
                         <div key={it.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                            <Icon
-                                name={
-                                    it.status === 'done'
-                                        ? 'check_circle'
-                                        : it.status === 'error'
-                                          ? 'error'
-                                          : it.status === 'cancelled'
-                                            ? 'cancel'
-                                            : 'sync'
-                                }
-                                size={16}
-                                className={
-                                    it.status === 'done'
-                                        ? 'text-secondary'
-                                        : it.status === 'error'
-                                          ? 'text-error'
-                                          : it.status === 'cancelled'
-                                            ? 'text-on-surface-variant'
-                                            : 'text-primary'
-                                }
-                            />
+                            {it.status === 'checking' ? (
+                                <span
+                                    aria-hidden
+                                    className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-primary"
+                                />
+                            ) : (
+                                <Icon
+                                    name={
+                                        it.status === 'done'
+                                            ? 'check_circle'
+                                            : it.status === 'error'
+                                              ? 'error'
+                                              : it.status === 'cancelled'
+                                                ? 'cancel'
+                                                : 'sync'
+                                    }
+                                    size={16}
+                                    className={
+                                        it.status === 'done'
+                                            ? 'text-secondary'
+                                            : it.status === 'error'
+                                              ? 'text-error'
+                                              : it.status === 'cancelled'
+                                                ? 'text-on-surface-variant'
+                                                : 'text-primary'
+                                    }
+                                />
+                            )}
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
                                     <span className="min-w-0 truncate text-on-surface" title={it.label}>
                                         {it.label}
                                     </span>
                                     <span className="ml-auto shrink-0 text-ui-11 text-on-surface-variant">
-                                        {it.totalFiles > 0 && `${it.filesDone}/${it.totalFiles} archivos · `}
-                                        {formatBytes(it.bytesDone)}
-                                        {it.bytesTotal > 0 && ` / ${formatBytes(it.bytesTotal)}`}
-                                        {it.status === 'running' && it.bytesPerSec > 0 && (
+                                        {/* Las dos esperas previas a la copia tienen nombre propio.
+                                            Antes las dos se veían igual —«0 B», sin archivos y sin
+                                            barra— y con cientos de archivos duraban lo suficiente
+                                            como para que pareciera que no pasaba nada. */}
+                                        {it.status === 'checking' ? (
+                                            <span className="text-primary">
+                                                Comprobando el destino… ({it.itemCount} elemento{it.itemCount === 1 ? '' : 's'})
+                                            </span>
+                                        ) : it.status === 'running' && it.totalFiles === 0 ? (
+                                            <span className="text-primary">Preparando… (contando archivos)</span>
+                                        ) : (
                                             <>
-                                                {' · '}
-                                                <span className="text-primary">{formatRate(it.bytesPerSec)}</span>
-                                                {it.etaSeconds >= 0 && ` · faltan ${formatEta(it.etaSeconds)}`}
+                                                {it.totalFiles > 0 && `${it.filesDone}/${it.totalFiles} archivos · `}
+                                                {formatBytes(it.bytesDone)}
+                                                {it.bytesTotal > 0 && ` / ${formatBytes(it.bytesTotal)}`}
+                                                {it.status === 'running' && it.bytesPerSec > 0 && (
+                                                    <>
+                                                        {' · '}
+                                                        <span className="text-primary">{formatRate(it.bytesPerSec)}</span>
+                                                        {it.etaSeconds >= 0 && ` · faltan ${formatEta(it.etaSeconds)}`}
+                                                    </>
+                                                )}
                                             </>
                                         )}
                                     </span>
@@ -544,15 +608,20 @@ export default function SftpTab({
                                 <div className="mt-1 h-1 overflow-hidden rounded-full bg-surface-container-highest">
                                     <div
                                         className={`h-full rounded-full ${
-                                            it.status === 'error'
-                                                ? 'bg-error'
-                                                : it.status === 'cancelled'
-                                                  ? 'bg-outline'
-                                                  : it.status === 'done'
-                                                    ? 'bg-secondary'
-                                                    : 'bg-primary'
+                                            it.status === 'checking'
+                                                ? 'animate-pulse bg-primary/40'
+                                                : it.status === 'error'
+                                                  ? 'bg-error'
+                                                  : it.status === 'cancelled'
+                                                    ? 'bg-outline'
+                                                    : it.status === 'done'
+                                                      ? 'bg-secondary'
+                                                      : 'bg-primary'
                                         }`}
-                                        style={{width: `${it.status === 'done' ? 100 : it.percent}%`}}
+                                        // Mientras se comprueba el destino no hay un porcentaje que
+                                        // mostrar: la barra late completa para decir "estoy en eso",
+                                        // que es distinto de una barra en cero, que dice "no arrancó".
+                                        style={{width: `${it.status === 'done' || it.status === 'checking' ? 100 : it.percent}%`}}
                                     />
                                 </div>
                                 {it.error && <p className="mt-0.5 whitespace-pre-wrap wrap-break-word text-ui-11 text-error">{it.error}</p>}
@@ -576,10 +645,16 @@ export default function SftpTab({
                     conflicts={pending.conflicts}
                     destLabel={`${panes[pending.toSide].host.connName}: ${panes[pending.toSide].dir}`}
                     onChoose={(policy) => {
-                        launch(pending.src, pending.toSide, pending.items, policy)
+                        launch(pending.id, pending.src, pending.toSide, pending.items, policy)
                         setPending(null)
                     }}
-                    onCancel={() => setPending(null)}
+                    onCancel={() => {
+                        // Cancelar el diálogo cancela la transferencia entera: la
+                        // fila ya está en la cola desde antes de preguntar, y
+                        // dejarla girando sería peor que no haberla mostrado.
+                        updateQueue(pending.id, {status: 'cancelled'})
+                        setPending(null)
+                    }}
                 />
             )}
         </div>

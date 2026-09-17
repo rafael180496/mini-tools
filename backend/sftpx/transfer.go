@@ -233,26 +233,73 @@ func watchConn(fs fileSystem, onLost func()) {
 	}()
 }
 
+// enumWorkers bounds how many of the selected items are walked at once.
+//
+// Igual que el chequeo de conflictos, esto son idas y vueltas: cada archivo
+// suelto de la selección es un stat y cada carpeta un ReadDir, y en serie
+// sobre un enlace lento la transferencia se queda varios segundos sin emitir
+// nada —la fila de progreso ya está en pantalla en 0/0 y parece colgada—
+// antes de copiar el primer byte.
+const enumWorkers = 8
+
 // enumerate walks the requested items into a flat list of file jobs and the
 // total byte count, so progress can be reported as a real percentage. Empty
 // directories are not recreated on the destination (v1) — files carry their
 // parent directories via Create's MkdirAll.
+//
+// Cada ítem se recorre en su propio walker y los resultados se concatenan en
+// el orden de la selección: el paralelismo no puede cambiar el orden en que
+// se copian los archivos, que es el orden en que el usuario los ve moverse.
 func (t *transfer) enumerate(items []Item) error {
-	for _, it := range items {
-		base := t.src.Base(it.Path)
-		if err := t.walk(it.Path, it.IsDir, []string{base}); err != nil {
-			return err
+	found := make([][]fileJob, len(items))
+	errs := make([]error, len(items))
+	sem := make(chan struct{}, enumWorkers)
+	var wg sync.WaitGroup
+
+	for i, it := range items {
+		wg.Add(1)
+		go func(i int, it Item) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			w := &walker{fs: t.src, ctx: t.ctx}
+			if err := w.walk(it.Path, it.IsDir, []string{t.src.Base(it.Path)}); err != nil {
+				errs[i] = err
+				return
+			}
+			found[i] = w.jobs
+		}(i, it)
+	}
+	wg.Wait()
+
+	for i := range items {
+		if errs[i] != nil {
+			return errs[i]
+		}
+		for _, job := range found[i] {
+			t.jobs = append(t.jobs, job)
+			t.bytesTotal += job.size
 		}
 	}
 	return nil
 }
 
-func (t *transfer) walk(p string, isDir bool, rel []string) error {
-	if t.ctx.Err() != nil {
-		return t.ctx.Err()
+// walker recorre UN ítem de la selección. Tiene su propia lista de jobs —y no
+// escribe sobre la del transfer— justamente para que varios puedan correr a la
+// vez sin candado y sin mezclar el orden.
+type walker struct {
+	fs   fileSystem
+	ctx  context.Context
+	jobs []fileJob
+}
+
+func (w *walker) walk(p string, isDir bool, rel []string) error {
+	if w.ctx.Err() != nil {
+		return w.ctx.Err()
 	}
 	if !isDir {
-		info, err := t.src.Stat(p)
+		info, err := w.fs.Stat(p)
 		if err != nil {
 			return err
 		}
@@ -263,25 +310,23 @@ func (t *transfer) walk(p string, isDir bool, rel []string) error {
 		if info.IsDir {
 			isDir = true
 		} else {
-			t.jobs = append(t.jobs, fileJob{srcPath: p, rel: rel, size: info.Size, modTime: info.ModTime})
-			t.bytesTotal += info.Size
+			w.jobs = append(w.jobs, fileJob{srcPath: p, rel: rel, size: info.Size, modTime: info.ModTime})
 			return nil
 		}
 	}
-	entries, err := t.src.ReadDir(p)
+	entries, err := w.fs.ReadDir(p)
 	if err != nil {
 		return err
 	}
 	for _, e := range entries {
 		childRel := append(append([]string{}, rel...), e.Name)
 		if e.IsDir {
-			if err := t.walk(e.Path, true, childRel); err != nil {
+			if err := w.walk(e.Path, true, childRel); err != nil {
 				return err
 			}
 			continue
 		}
-		t.jobs = append(t.jobs, fileJob{srcPath: e.Path, rel: childRel, size: e.Size, modTime: e.ModTime})
-		t.bytesTotal += e.Size
+		w.jobs = append(w.jobs, fileJob{srcPath: e.Path, rel: childRel, size: e.Size, modTime: e.ModTime})
 	}
 	return nil
 }
