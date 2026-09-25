@@ -11,17 +11,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.6.0 |
-| Archivo | `mini-tools-v2.6.0-windows-amd64.exe` |
-| Tamaño | ~57 MB (57,1 MB) |
-| SHA-256 | `167da81d70e1acb5ba133657993edb269f33b78c3101ec9c092487e9ac4c435a` |
+| Versión | 2.7.0 |
+| Archivo | `mini-tools-v2.7.0-windows-amd64.exe` |
+| Tamaño | ~57 MB (57,2 MB) |
+| SHA-256 | `19f53a6edda45dfd8f2ca5aefb5c1adecc3eaafa461baececf1cd175e9806c22` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.6.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.7.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -35,21 +35,26 @@ Get-FileHash mini-tools-v2.6.0-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-**La 2.6.0 se corrió en Windows 10 y en Windows 11 reales, y arrancó bien.** Eso
+**La 2.7.0 se corrió en Windows 10 y en Windows 11 reales, y arrancó bien.** Eso
 confirma lo primero que rompe cuando algo falla: el **WebView2 Runtime carga sin
 instalar nada aparte**, la ventana abre con el DPI correcto y los diálogos
 nativos responden.
 
-Esta versión trae dos migraciones nuevas del vault —la **52** (columna
-`favorite_at` de las colecciones HTTP) y la **53** (índice del historial por
-fecha)—, que corren en el primer `Open()` después de actualizar. Las dos son
-aditivas: agregan una columna con default y un índice, no borran ni reescriben
-nada, al revés de la migración 51 de la 2.5.0. Un `vault.db` de una versión
-anterior se abre sin perder nada.
+Esta versión trae **una** migración nueva del vault —la **54** (columna
+`settings.snippets_panel_width`, el ancho arrastrado del panel de snippets)—,
+que corre en el primer `Open()` después de actualizar. Es aditiva: agrega una
+columna con `DEFAULT 0`, que el frontend lee como "sin arrastrar", así que un
+`vault.db` de la versión anterior abre el panel exactamente igual que antes y no
+pierde nada.
 
 Lo que **no** se ejercitó en esa pasada, y es donde hay que mirar primero si algo
 falla:
 
+- **El cambio de contraseña SSH vencida**, nuevo en esta versión. No está sin
+  verificar solo en Windows: **no se ejercitó contra ningún servidor**, porque
+  hace falta una cuenta con la contraseña efectivamente caducada y un sshd que
+  conduzca el diálogo. Lo que sí se probó contra un servidor real es el camino
+  de al lado — uno que ofrece `keyboard-interactive` y lo rechaza sin preguntar.
 - **El flujo OAuth 2.0** del módulo HTTP, que levanta un servidor efímero en
   `127.0.0.1` para capturar el redirect y puede disparar el aviso del
   **Firewall** de Windows la primera vez.
@@ -57,9 +62,8 @@ falla:
   Unix.
 - **Lanzar los CLIs agénticos** (`claude`, `codex`, `agy`) como procesos hijos:
   implica resolver `.cmd`/`.exe` del `PATH` y otro manejo de saltos de línea.
-- **Las varias terminales SSH contra el mismo servidor** de esta versión: son
-  canales sobre el mismo cliente del pool, y en Windows la terminal depende de
-  ConPTY.
+- **Las varias terminales SSH contra el mismo servidor**: son canales sobre el
+  mismo cliente del pool, y en Windows la terminal depende de ConPTY.
 - **Abrir el proyecto en VS Code o en el explorador de archivos**, que resuelve
   `code` del `PATH` y usa `explorer`.
 - **Pegar imágenes en una nota** (`Ctrl+V` desde Recortes), que depende de cómo
@@ -97,7 +101,7 @@ verificado" — nunca extrapolar de un release anterior.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.6.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.7.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

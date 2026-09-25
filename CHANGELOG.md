@@ -4,6 +4,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-09-25
+
 ### Cambiado
 
 - **La fila activa de la barra lateral dejó de tapar lo que lleva adentro.** La conexión abierta se pintaba con un relleno azul a saturación plena, y encima de ese azul quedaban el ícono del tipo de conexión, el color propio que le pusiste a la conexión, el punto verde de sesión viva y el botón rojo de desconectar: cuatro colores peleando contra un fondo que no era el de ninguna otra parte de la app. Los íconos de acción de la fila quedaban en **2,85:1** contra ese azul — por debajo del mínimo de 3:1 que pide el estándar para un control.
@@ -40,6 +42,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
   Y arrastrar un borde ahora mueve **esa** columna. La tabla se estiraba al 100 % del panel, y el sobrante se repartía entre todas: tocar un borde reescalaba las demás y el ancho terminaba en un número que nadie había pedido. El espacio que sobra a la derecha lo absorbe una columna de relleno, así que los anchos son los que se ven. Lo que se mueve a mano se conserva al reejecutar la consulta o al traer más filas, y vuelve al ancho automático cuando el resultado trae otras columnas — que es cuando los anchos guardados son de otra consulta.
 
+- **El visor de DDL, para objetos que no entran en una pantalla.** Era una ventana de 42 rem en la que un `CREATE TABLE` de cincuenta líneas se leía por una ranura. Ahora ocupa el ancho útil de la ventana y el alto que hay, el DDL scrollea adentro del panel —con la cabecera y la barra de estado quietas— y abajo dice cuántas líneas y cuánto pesa lo que se está mirando, que es la diferencia entre saber que falta texto y suponerlo.
+
+  **Ctrl+F busca dentro del DDL** (lo dice la barra de abajo, porque un atajo que no se anuncia no existe) y el foco entra en el panel, así que las flechas y RePág/AvPág funcionan sin hacer clic primero. **Esc cierra**, y cierra el buscador primero si está abierto en vez de llevarse la ventana entera de paso. También cierra el clic afuera, salvo que venga de soltar una selección de texto que empezó adentro.
+
+  Se agregó un botón **Ajustar**: cortar las líneas largas al ancho del panel, o dejarlas correr con scroll horizontal. Una columna virtual con su expresión entera en una línea se lee de las dos formas según lo que se esté buscando, y cambiarlo ya no mueve el scroll ni cierra la búsqueda. **Copiar** confirma con un tilde en vez de cambiar la palabra, y un DDL que no se pudo traer ofrece **Reintentar** en lugar de dejar el error y nada que hacer con él.
+
 ### Corregido
 
 - **Una contraseña vencida dejaba la terminal SSH sin forma de entrar.** El servidor no rechazaba la clave: pedía una nueva. Pero el cliente solo sabía ofrecer contraseña o llave, y no el diálogo por el que sshd conduce ese cambio, así que la conexión moría con `ssh: unable to authenticate, attempted methods [none password], no supported methods remain` — un texto que no nombra la caducidad por ningún lado y que sale igual con una contraseña simplemente equivocada. Quien lo leía se ponía a revisar credenciales que estaban bien.
@@ -75,14 +83,6 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 - **La grilla de resultados se dibujaba encima del visor de DDL.** Abrir el DDL de una tabla con una consulta ya ejecutada detrás dejaba la fila de cabecera de los resultados —`ID_SERVICIO`, `ID_MES`, …— atravesada sobre el DDL, tapando una franja de tres o cuatro líneas justo en el medio. Las filas de datos sí quedaban detrás, y esa mezcla era lo que hacía parecer un problema de la consulta y no de la ventana.
 
   No era casualidad ni cuestión de suerte: el modal se monta antes que el panel de resultados, y la cabecera de la grilla —que es pegajosa, para no perder los nombres de columna al bajar— estaba en la misma capa que el modal. A igual capa gana lo que va después. Ahora el visor se dibuja aparte y por encima de todo, como el resto de los diálogos de la app. El mismo arreglo alcanza al selector de esquemas de una conexión y al aviso de archivos no encontrados, que se montan en el mismo lugar y tenían el mismo defecto.
-
-### Cambiado
-
-- **El visor de DDL, para objetos que no entran en una pantalla.** Era una ventana de 42 rem en la que un `CREATE TABLE` de cincuenta líneas se leía por una ranura. Ahora ocupa el ancho útil de la ventana y el alto que hay, el DDL scrollea adentro del panel —con la cabecera y la barra de estado quietas— y abajo dice cuántas líneas y cuánto pesa lo que se está mirando, que es la diferencia entre saber que falta texto y suponerlo.
-
-  **Ctrl+F busca dentro del DDL** (lo dice la barra de abajo, porque un atajo que no se anuncia no existe) y el foco entra en el panel, así que las flechas y RePág/AvPág funcionan sin hacer clic primero. **Esc cierra**, y cierra el buscador primero si está abierto en vez de llevarse la ventana entera de paso. También cierra el clic afuera, salvo que venga de soltar una selección de texto que empezó adentro.
-
-  Se agregó un botón **Ajustar**: cortar las líneas largas al ancho del panel, o dejarlas correr con scroll horizontal. Una columna virtual con su expresión entera en una línea se lee de las dos formas según lo que se esté buscando, y cambiarlo ya no mueve el scroll ni cierra la búsqueda. **Copiar** confirma con un tilde en vez de cambiar la palabra, y un DDL que no se pudo traer ofrece **Reintentar** en lugar de dejar el error y nada que hacer con él.
 
 ## [2.6.0] - 2026-09-14
 

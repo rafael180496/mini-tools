@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.6.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.7.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -21,6 +21,58 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 <p align="center">
   <img src="docs/screenshots/ui-workspace.png" width="900" alt="mini-tools: barra lateral con el menú de módulos arriba (bases, SSH, Git, notas) y el árbol de conexiones en carpetas; editor SQL al centro con pestañas rotuladas por tipo y panel de resultados abajo">
 </p>
+
+---
+
+## Novedades — 2.7.0
+
+**La versión que deja de esconder lo que pasa.** El chat del agente deja de
+pedir que le expliques de nuevo lo que acabás de mirar, una contraseña vencida
+en un servidor SSH se cambia sin salir de la app, y la barra lateral deja de
+tapar con un resaltado azul justamente los íconos que hay que leer.
+
+- **Contraseña SSH vencida: se cambia acá.** Cuando el servidor no te deja
+  entrar hasta cambiarla, la terminal lo dice con todas las letras y abre un
+  cuadro para elegir la nueva, con el motivo que dio el servidor a la vista. Se
+  cambia contra la máquina y, recién con su visto bueno, se guarda en el vault.
+  Antes eso terminaba en un error de protocolo que ni nombraba la caducidad.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#ssh-terminal--clave-vencida)
+- **«Seguir en el chat» lleva el contexto, no una referencia.** Desde *Analizar
+  error* el chat abre con **fichas adjuntas**: las líneas exactas que se
+  analizaron, ya redactadas, y la respuesta del agente. Cada ficha se despliega
+  para leer exactamente lo que se va a mandar, y se quita con una ×. Abrirlo
+  desde otro botón ya no pisa lo que estabas escribiendo.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#ia-chat--seguir)
+- **El chat del agente, rediseñado y sin desplegables del sistema.** Los
+  selectores de agente, modo y modelo usan el estilo de la app, y **el modo
+  explica cada opción en el propio menú** — qué puede tocar el agente en *Solo
+  consulta*, *Plan* o *Aplicar ediciones*, que es lo que hay que leer antes de
+  elegir.
+- **IA en los módulos que no la tenían.** El menú de IA de una petición HTTP
+  suma *Preguntar en el chat*, con la petición y su respuesta adjuntas y las
+  credenciales tapadas. En las terminales, un bloque de código de la respuesta
+  que sea **un solo comando** tiene *A la terminal*, que lo escribe en la línea
+  **sin Enter**: se lee, se edita, y lo ejecutás vos.
+- **La barra lateral se lee.** La fila activa dejó de pintarse de azul a
+  saturación plena —donde el ícono de la conexión, su color, el punto de sesión
+  viva y el botón de desconectar quedaban peleando contra el fondo— y pasó a un
+  tinte con una barra. Los íconos de acción pasaron de 2,85:1 de contraste a
+  7,8:1 y de 16 px de área de clic a 23. Y estar parado en algo significa lo
+  mismo en los cinco módulos: en HTTP y en Notas el activo era idéntico al
+  hover.
+- **Enviar cien archivos por SFTP ya no parece colgado.** La comprobación del
+  destino iba de a un archivo por vez; ahora vuela en paralelo, la fila aparece
+  en la cola apenas apretás *Enviar* diciendo en qué está, y el botón queda
+  deshabilitado para que un segundo clic no duplique la transferencia.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#ssh-sftp)
+- **Las columnas de la grilla se ensanchan y arrancan del ancho de lo que
+  traen.** El borde se ve siempre, doble clic ajusta la columna a su contenido,
+  y arrastrar uno mueve **esa** columna en vez de reescalar todas.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#bases-copiar--anchos)
+- **El panel de snippets se ensancha y el script se edita como código**, con
+  resaltado de shell, Tab que indenta, Ctrl+Enter para guardar y carpetas que se
+  manejan como un árbol de verdad.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/#ssh-terminal--snippets)
 
 ---
 
@@ -590,8 +642,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.6.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.6.0/mini-tools-v2.6.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.6.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.6.0/mini-tools-v2.6.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Verificado corriendo en Windows 10 y 11, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.7.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.7.0/mini-tools-v2.7.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.7.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.7.0/mini-tools-v2.7.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Verificado corriendo en Windows 10 y 11, ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -766,11 +818,11 @@ Actions crea el GitHub Release, le pega las notas de esa versión sacadas del
 ```bash
 ./scripts/bump-version.sh minor      # o patch/major
 ./scripts/package-all.sh             # genera el .dmg y el .exe
-cp build/bin/mini-tools-v2.6.0.dmg releases/macos/
-cp build/bin/mini-tools-v2.6.0-windows-amd64.exe releases/windows/
+cp build/bin/mini-tools-v2.7.0.dmg releases/macos/
+cp build/bin/mini-tools-v2.7.0-windows-amd64.exe releases/windows/
 # … volcar el CHANGELOG, actualizar los README con los checksums e index.html …
-git add -A && git commit -m "release: v2.6.0"
-git tag v2.6.0 && git push origin main --tags
+git add -A && git commit -m "release: v2.7.0"
+git tag v2.7.0 && git push origin main --tags
 #  ↑ el release se crea solo
 ```
 
@@ -825,11 +877,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.6.0 |
+| Versión | 2.7.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.6.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.6.0/mini-tools-v2.6.0.dmg)** |
-| SHA-256 | `b1b44b1a6fcd722d715890fcd1467f8cd9e2544b1d537f3caf9cff1754ac5200` |
+| Archivo | **[⬇ Descargar mini-tools-v2.7.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.7.0/mini-tools-v2.7.0.dmg)** |
+| SHA-256 | `1d254bc6f2667f582a17da0ff12c6babb2fc1df91af7d203cec8ef7e1d786fbc` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -841,7 +893,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> **La 2.6.0 se corrió en Windows 10 y en Windows 11 reales** — arranca sin instalar el WebView2 Runtime aparte, con el DPI correcto y los diálogos nativos respondiendo. Las dos migraciones nuevas del vault (**52** y **53**) son aditivas —una columna con default y un índice—, así que un `vault.db` de una versión anterior se abre sin perder nada. Lo que **no** se ejercitó en esa pasada —el flujo OAuth 2.0, el servidor MCP por named pipe, lanzar los CLIs agénticos y las varias terminales SSH de esta versión— está listado en [releases/windows/README.md](releases/windows/README.md).
+> **La 2.7.0 se corrió en Windows 10 y en Windows 11 reales** — arranca sin instalar el WebView2 Runtime aparte, con el DPI correcto y los diálogos nativos respondiendo. La única migración nueva del vault (**54**, el ancho del panel de snippets) es aditiva —una columna con `DEFAULT 0`—, así que un `vault.db` de una versión anterior se abre sin perder nada. Lo que **no** se ejercitó en esa pasada —el cambio de contraseña SSH vencida, el flujo OAuth 2.0, el servidor MCP por named pipe y lanzar los CLIs agénticos— está listado en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -849,10 +901,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.6.0 |
+| Versión | 2.7.0 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; verificado corriendo en Windows 10 y 11 |
-| Archivo | **[⬇ Descargar mini-tools-v2.6.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.6.0/mini-tools-v2.6.0-windows-amd64.exe)** |
-| SHA-256 | `167da81d70e1acb5ba133657993edb269f33b78c3101ec9c092487e9ac4c435a` |
+| Archivo | **[⬇ Descargar mini-tools-v2.7.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.7.0/mini-tools-v2.7.0-windows-amd64.exe)** |
+| SHA-256 | `19f53a6edda45dfd8f2ca5aefb5c1adecc3eaafa461baececf1cd175e9806c22` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).
