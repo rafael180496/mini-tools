@@ -40,7 +40,7 @@ export default function MoveToFolderMenu({
                 ref={btnRef}
                 onClick={openMenu}
                 title="Mover a carpeta"
-                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                className="hidden shrink-0 sidebar-icon group-hover:block"
             >
                 <Icon name="drive_file_move" size={15} />
             </button>

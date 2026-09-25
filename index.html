@@ -1305,6 +1305,27 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <li><strong>Terminales locales</strong> (PowerShell, zsh, bash, Git Bash…) en el mismo módulo, con los mismos snippets y su propio historial cifrado.</li>
   </ul>
 
+  <h2 id="ssh-terminal--clave-vencida">Si la contraseña del servidor está vencida</h2>
+  <p>Cuando la cuenta tiene la contraseña caducada, el servidor no te deja entrar: <strong>pide una
+  nueva</strong>. La terminal lo avisa con todas las letras y abre un cuadro para cambiarla, con el motivo que
+  dio el servidor a la vista (<em>«You are required to change your password immediately»</em>).</p>
+  <ol class="steps">
+    <li>Escribí la contraseña nueva <strong>dos veces</strong>. Es el único lugar de la app donde se pide
+    repetirla, y no es por trámite: acá un error de tecleo no se rechaza, pasa a ser la contraseña real de la
+    cuenta y te deja afuera del servidor.</li>
+    <li><strong>Cambiar y conectar</strong> la cambia contra la máquina. Si el servidor la rechaza por corta o
+    por estar en el diccionario, vas a leer <em>su</em> explicación, no un «no se pudo».</li>
+    <li>Con el visto bueno del servidor, la contraseña nueva <strong>se guarda en la conexión del vault</strong>
+    y la terminal se reconecta sola.</li>
+  </ol>
+  <div class="note"><span class="lbl">Primero el servidor, después el vault</span><p>El orden importa: si se
+  guardara antes de probarla, un rechazo dejaría en el vault una contraseña que la máquina nunca aceptó, y la
+  próxima conexión fallaría como si estuviera mal configurada. Por lo mismo, cancelar el cuadro no toca nada
+  — la contraseña del servidor sigue vencida y la terminal, sin conectar.</p></div>
+  <p>Aplica a las conexiones que autentican <strong>por contraseña</strong>. Una conexión por llave no tiene
+  contraseña de cuenta que caduque. <strong>Test Connection</strong>, en el cuadro de la conexión, también
+  nombra la caducidad en vez del error de autenticación genérico.</p>
+
   <h2 id="ssh-terminal--varias">Varias terminales contra el mismo servidor</h2>
   <p>Podés tener <strong>todas las que quieras</strong> contra el mismo host: una compilando, otra mirando un
   log, otra para husmear. Cada pestaña es una sesión aparte, con su propio buffer, su propio directorio y su

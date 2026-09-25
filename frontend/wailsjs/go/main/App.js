@@ -178,6 +178,10 @@ export function CancelSftpTransfer(arg1) {
   return window['go']['main']['App']['CancelSftpTransfer'](arg1);
 }
 
+export function ChangeSSHPassword(arg1, arg2) {
+  return window['go']['main']['App']['ChangeSSHPassword'](arg1, arg2);
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }

@@ -68,7 +68,7 @@ export default function SshRowMenu({
                 ref={btnRef}
                 onClick={toggle}
                 title="Más acciones"
-                className={`shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 ${open ? 'block' : 'hidden group-hover:block'}`}
+                className={`shrink-0 sidebar-icon ${open ? 'block' : 'hidden group-hover:block'}`}
             >
                 <Icon name="more_vert" size={15} />
             </button>

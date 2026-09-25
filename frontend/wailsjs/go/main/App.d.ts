@@ -111,6 +111,8 @@ export function CancelRedisCommand(arg1:string):Promise<void>;
 
 export function CancelSftpTransfer(arg1:string):Promise<void>;
 
+export function ChangeSSHPassword(arg1:string,arg2:string):Promise<void>;
+
 export function CheckForUpdate():Promise<updatecheck.Info>;
 
 export function CheckRedisLuaScript(arg1:string,arg2:string):Promise<redisquery.LuaResult>;

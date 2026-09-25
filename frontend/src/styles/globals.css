@@ -225,6 +225,74 @@
     font-size: calc(15px * var(--ui-font-scale));
 }
 
+/* Botón de ícono de una fila de la barra lateral (nueva terminal, SFTP, el
+   menú ⋮, las acciones de una carpeta).
+ *
+ * Existe como utilidad y no como una cadena de clases repetida porque eran
+ * veinte copias idénticas de `rounded p-0.5 opacity-70 hover:opacity-100`:
+ * ajustar el contraste o el área de clic obligaba a tocar las veinte, y
+ * alcanzaba con olvidar una para dejar la barra con dos comportamientos.
+ * Mismo criterio que las utilidades text-ui-* de arriba.
+ *
+ * Tres cambios respecto de esa cadena:
+ *
+ * 1. El área de clic pasa de ~16px a ~23px. Un ícono de 15px con medio píxel
+ *    de padding es un blanco más chico que el mínimo razonable para el mouse,
+ *    y en estas filas van de a cuatro pegados.
+ * 2. El color deja de ser "el del texto, al 70 %". Atenuar con opacidad
+ *    depende de lo que haya DEBAJO, y debajo hay una fila que cambia de fondo
+ *    al seleccionarse: el mismo 70 % que se lee bien sobre el fondo normal se
+ *    empasta sobre el resaltado. Con un rol de color, el contraste es el
+ *    mismo en los dos estados.
+ * 3. Al pasar el mouse aparece una capa de estado —on-surface al 10 %, que es
+ *    lo que define MD3— en vez de solo aclararse. Con cuatro íconos juntos,
+ *    saber cuál se va a apretar necesita un límite visible, no un cambio de
+ *    brillo. */
+/* La fila del árbol de la barra lateral en la que estás parado: la conexión
+ * abierta, el repositorio activo, la petición o la nota que estás mirando.
+ *
+ * Es una utilidad porque los cinco módulos de la barra la dibujaban de cuatro
+ * formas distintas —`bg-primary-container` a saturación plena en conexiones y
+ * SSH, al 60 % en Git, y `bg-surface-variant` en HTTP y en notas, que es
+ * EXACTAMENTE el fondo del hover de cualquier fila, así que ahí no había forma
+ * de distinguir la fila activa de la que tenías debajo del mouse—. Estar
+ * parado en algo significa lo mismo en los cinco: tiene que verse igual.
+ *
+ * El relleno saturado se cambió por un tinte más una barra de 2px porque la
+ * fila no es un botón: adentro lleva el ícono del tipo de conexión, el color
+ * propio que le puso el usuario, el punto verde de sesión viva y el botón rojo
+ * de desconectar. En oscuro `primary-container` es #4a8eff —el color semilla, a
+ * toda saturación— y esos cuatro colores terminaban peleando contra un azul
+ * que no era el fondo de nada más en la app. Con el tinte quedan sobre un fondo
+ * casi neutro, y el estado lo dicen la barra y el texto a contraste pleno.
+ *
+ * La barra va como sombra interna y no como borde izquierdo para no pelearse
+ * con el `border-l-4` del entorno: una conexión marcada como Producción tiene
+ * que seguir mostrando su franja roja aunque sea la fila activa. */
+@utility sidebar-row-active {
+    background-color: color-mix(in oklab, var(--color-primary) 12%, transparent);
+    color: var(--color-on-surface);
+    box-shadow: inset 2px 0 0 var(--color-primary);
+
+    &:hover {
+        background-color: color-mix(in oklab, var(--color-primary) 20%, transparent);
+    }
+}
+
+@utility sidebar-icon {
+    border-radius: var(--radius);
+    padding: 0.25rem;
+    color: var(--color-on-surface-variant);
+    transition:
+        background-color 120ms ease,
+        color 120ms ease;
+
+    &:hover {
+        background-color: color-mix(in oklab, var(--color-on-surface) 10%, transparent);
+        color: var(--color-on-surface);
+    }
+}
+
 :root {
     --md-primary: #0058bc;
     --md-on-primary: #ffffff;

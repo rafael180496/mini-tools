@@ -16,6 +16,7 @@ import {EventsOn} from '../../../wailsjs/runtime'
 import type {Theme} from '../../hooks/useTheme'
 import {resolveTerminalTheme, type TerminalThemeId} from '../../xterm/terminalThemes'
 import ProductionGuardDialog from './ProductionGuardDialog'
+import SshPasswordChangeDialog from './SshPasswordChangeDialog'
 import SshSnippetsPanel from './SshSnippetsPanel'
 import SshErrorAnalysis from './SshErrorAnalysis'
 import SshHistoryPanel from './SshHistoryPanel'
@@ -90,6 +91,23 @@ interface SshEvent {
     error?: string
 }
 
+// Fragmento estable del error que devuelve sshconn cuando el servidor pide
+// una contraseña nueva (backend/sshconn/password.go, ErrPasswordExpired).
+// Se compara contra el texto porque eso es lo único que cruza un binding de
+// Wails: un error de Go llega a JS como string, sin tipo ni código. Mismo
+// criterio que GitFileEditor.tsx con "cambió en el disco".
+const PASSWORD_EXPIRED = 'cambiar la contraseña vencida'
+
+// El motivo que dio el servidor viaja pegado al error, después de los dos
+// puntos. Se separa para mostrarlo tal cual en el diálogo en vez de repetir
+// ahí el error entero de Go, que empieza hablando de sshconn.
+function expiredReason(message: string): string {
+    const at = message.indexOf(PASSWORD_EXPIRED)
+    if (at < 0) return ''
+    const rest = message.slice(at + PASSWORD_EXPIRED.length)
+    return rest.startsWith(':') ? rest.slice(1).trim() : ''
+}
+
 // event.data is base64 — the remote shell can emit non-UTF8 bytes (e.g.
 // catting a binary file), which is why the backend never sends it as a
 // plain JSON string (see sshconn.Event's doc comment).
@@ -122,6 +140,16 @@ export default function SshTerminalTab({
     // pedirlo (vacío = las últimas líneas del buffer). Se congela al abrir para
     // que seguir usando la terminal no cambie lo que se está analizando.
     const [analysis, setAnalysis] = useState<{selection: string} | null>(null)
+    // Contraseña vencida: null = no pasó, string = el motivo que dio el
+    // servidor (puede ser ""). Se guarda el motivo y no un booleano porque es
+    // lo que el diálogo le muestra a quien tiene que elegir la nueva.
+    const [expiredReasonText, setExpiredReasonText] = useState<string | null>(null)
+    // Reabrir la terminal después de cambiar la contraseña: el open vive
+    // dentro del efecto de montaje —junto al `term` que necesita—, y ese
+    // efecto corre una sola vez por pestaña. Sin este ref, cambiar la
+    // contraseña dejaría la terminal conectable pero desconectada, y habría
+    // que cerrar la pestaña y abrir otra para usarla.
+    const reopenRef = useRef<(() => void) | null>(null)
     // Si hay algo seleccionado ahora mismo, para ofrecer "analizar lo marcado"
     // en vez de las últimas líneas.
     const [hasSelection, setHasSelection] = useState(false)
@@ -359,26 +387,39 @@ export default function SshTerminalTab({
                 envRef.current = ''
             })
 
-        OpenSSHTerminal(sessionId, connId, term.cols, term.rows)
-            .then(() => {
-                onConnectedChange(true)
-                setConnected(true)
-                setTerminalLive(sessionId, true)
-                // A shell starts in its own home, so this is the one moment
-                // where that can be asserted rather than guessed. Without it a
-                // relative first command (`cd ..`, `cd fuentes`) has no base to
-                // resolve against and the file pane never moves — the case that
-                // also reappears after a reconnect, since closing the session
-                // clears the recorded position but not the home.
-                const home = sessionHome(connId)
-                if (home && !currentCwd(sessionId)) publishCwd(sessionId, home, 'guess')
-            })
-            .catch((err) => {
-                term.write(`\r\n\x1b[31m[error] ${String(err)}\x1b[0m\r\n`)
-                onConnectedChange(false)
-                setConnected(false)
-                setTerminalLive(sessionId, false)
-            })
+        const openTerminal = () => {
+            OpenSSHTerminal(sessionId, connId, term.cols, term.rows)
+                .then(() => {
+                    onConnectedChange(true)
+                    setConnected(true)
+                    setTerminalLive(sessionId, true)
+                    // A shell starts in its own home, so this is the one moment
+                    // where that can be asserted rather than guessed. Without it a
+                    // relative first command (`cd ..`, `cd fuentes`) has no base to
+                    // resolve against and the file pane never moves — the case that
+                    // also reappears after a reconnect, since closing the session
+                    // clears the recorded position but not the home.
+                    const home = sessionHome(connId)
+                    if (home && !currentCwd(sessionId)) publishCwd(sessionId, home, 'guess')
+                })
+                .catch((err) => {
+                    const message = String(err)
+                    onConnectedChange(false)
+                    setConnected(false)
+                    setTerminalLive(sessionId, false)
+                    // Una contraseña vencida es lo único que falla acá y se puede
+                    // arreglar sin salir de la app, así que en vez del error crudo
+                    // —que ni siquiera nombra la caducidad— se abre el diálogo.
+                    if (message.includes(PASSWORD_EXPIRED)) {
+                        term.write(`\r\n\x1b[33m[aviso] La contraseña está vencida; el servidor pide una nueva.\x1b[0m\r\n`)
+                        setExpiredReasonText(expiredReason(message))
+                        return
+                    }
+                    term.write(`\r\n\x1b[31m[error] ${message}\x1b[0m\r\n`)
+                })
+        }
+        reopenRef.current = openTerminal
+        openTerminal()
 
         const resizeObserver = new ResizeObserver(() => {
             fitAddon.fit()
@@ -387,6 +428,7 @@ export default function SshTerminalTab({
         resizeObserver.observe(container)
 
         return () => {
+            reopenRef.current = null
             resizeObserver.disconnect()
             dataDisposable.dispose()
             unsubscribe()
@@ -631,6 +673,21 @@ export default function SshTerminalTab({
                         deliverRef.current(data)
                     }}
                     onCancel={() => setHeld(null)}
+                />
+            )}
+            {expiredReasonText !== null && (
+                <SshPasswordChangeDialog
+                    connId={connId}
+                    connName={connName}
+                    reason={expiredReasonText}
+                    onDone={() => {
+                        setExpiredReasonText(null)
+                        // Reconectar sola y no pedir un clic más: la terminal
+                        // se abrió para usarla, y el cambio de contraseña fue
+                        // el trámite del medio, no el objetivo.
+                        reopenRef.current?.()
+                    }}
+                    onCancel={() => setExpiredReasonText(null)}
                 />
             )}
         </div>

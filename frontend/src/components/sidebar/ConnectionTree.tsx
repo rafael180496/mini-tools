@@ -390,14 +390,16 @@ export default function ConnectionTree({
                         // Es la única marca del entorno en la fila: la
                         // insignia PROD/STG se quitó porque repetía lo que ya
                         // dice el color y le robaba ancho al nombre.
+                        // Misma marca que en los otros árboles de la barra —
+                        // ver `sidebar-row-active` en globals.css.
                         className={`group flex w-full items-center gap-1 py-1.5 pr-3 text-left text-sm transition-colors ${
-                            isSelected ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
+                            isSelected ? 'sidebar-row-active' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                         } ${envStyleOf(c)?.border ?? ''}`}
                     >
                         <button
                             onClick={() => toggleExpand(c)}
                             title={isExpanded ? 'Contraer' : 'Expandir'}
-                            className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100"
+                            className="shrink-0 sidebar-icon"
                         >
                             <Icon name={isExpanded ? 'expand_more' : 'chevron_right'} size={18} />
                         </button>
@@ -425,7 +427,7 @@ export default function ConnectionTree({
                                     style={{backgroundColor: c.color}}
                                 />
                             )}
-                            <span className="truncate font-medium">{c.name}</span>
+                            <span className={`truncate ${isSelected ? 'font-semibold' : 'font-medium'}`}>{c.name}</span>
                             {isLive && (
                                 <span
                                     aria-hidden
@@ -446,7 +448,7 @@ export default function ConnectionTree({
                                     onOpenRedisBrowser(c)
                                 }}
                                 title="Abrir en una pestaña — explorador de keys en modo ventana completa, con edición de valores y exportación masiva"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                                className="hidden shrink-0 sidebar-icon group-hover:block"
                             >
                                 <Icon name="open_in_new" size={15} />
                             </button>
@@ -458,7 +460,7 @@ export default function ConnectionTree({
                                     onOpenMongoBrowser(c)
                                 }}
                                 title="Abrir el MongoDB Browser en una pestaña — explorador de documentos con filtro, asistente y edición"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                                className="hidden shrink-0 sidebar-icon group-hover:block"
                             >
                                 <Icon name="open_in_new" size={15} />
                             </button>
@@ -653,7 +655,7 @@ export default function ConnectionTree({
                                                 }}
                                                 disabled={syncingSchema === schema}
                                                 title={`Sincroniza solo el esquema "${schema}" contra la base de datos — no toca los demás esquemas ya cargados`}
-                                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 disabled:opacity-40 group-hover/schema:block"
+                                                className="hidden shrink-0 sidebar-icon disabled:opacity-40 group-hover/schema:block"
                                             >
                                                 <Icon name="sync" size={13} className={syncingSchema === schema ? 'animate-spin' : ''} />
                                             </button>
@@ -717,7 +719,7 @@ export default function ConnectionTree({
                     <button
                         onClick={() => toggleFolder(node.folder.id)}
                         title={expanded ? 'Contraer carpeta' : 'Expandir carpeta'}
-                        className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100"
+                        className="shrink-0 sidebar-icon"
                     >
                         <Icon name={expanded ? 'expand_more' : 'chevron_right'} size={16} />
                     </button>
@@ -756,7 +758,7 @@ export default function ConnectionTree({
                                     startCreateFolder(node.folder.id)
                                 }}
                                 title="Nueva subcarpeta"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover/folder:block"
+                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
                             >
                                 <Icon name="create_new_folder" size={14} />
                             </button>
@@ -766,7 +768,7 @@ export default function ConnectionTree({
                                     onReorderFolder(node.folder.id, 'up')
                                 }}
                                 title="Mover arriba"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover/folder:block"
+                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
                             >
                                 <Icon name="arrow_upward" size={13} />
                             </button>
@@ -776,7 +778,7 @@ export default function ConnectionTree({
                                     onReorderFolder(node.folder.id, 'down')
                                 }}
                                 title="Mover abajo"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover/folder:block"
+                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
                             >
                                 <Icon name="arrow_downward" size={13} />
                             </button>
@@ -786,7 +788,7 @@ export default function ConnectionTree({
                                     startRenameFolder(node.folder)
                                 }}
                                 title="Renombrar carpeta"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover/folder:block"
+                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
                             >
                                 <Icon name="edit" size={13} />
                             </button>

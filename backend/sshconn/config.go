@@ -58,10 +58,32 @@ func parseDSN(dsn string) (*connParams, error) {
 // documented tradeoff support-lab makes for its own SSH connections
 // (acceptable only on internal/trusted networks; there is no host-key
 // pinning UI yet to configure otherwise).
-func clientConfig(cp *connParams) (*ssh.ClientConfig, error) {
+//
+// answerer contesta el diálogo keyboard-interactive y solo se usa en la auth
+// por contraseña — ver password.go. Con auth por llave no se ofrece ese
+// método a propósito: no hay ninguna contraseña guardada con que contestarlo,
+// y ofrecerlo haría que el servidor preguntara algo que este cliente no
+// puede responder.
+func clientConfig(cp *connParams, answerer *promptAnswerer) (*ssh.ClientConfig, error) {
 	var authMethods []ssh.AuthMethod
 	switch cp.auth {
 	case db.SSHAuthPassword:
+		// El diálogo va PRIMERO y la contraseña suelta después, que es el
+		// mismo orden que trae el ssh de OpenSSH por defecto
+		// (PreferredAuthentications: …,keyboard-interactive,password). No es
+		// por imitarlo: es la única forma de que el cambio de contraseña
+		// llegue a pasar.
+		//
+		// Con `password` adelante, sshd corre la conversación PAM para ese
+		// intento, la cierra al rechazarla, y el keyboard-interactive que
+		// viene después lo contesta con un USERAUTH_FAILURE seco, sin
+		// preguntar nada — x/crypto/ssh lo reporta como
+		// "unexpected message type 51 (expected 60)" y el diálogo de la clave
+		// vencida no aparece nunca. Al revés, la conversación arranca limpia y
+		// es la que pide la contraseña actual y después la nueva.
+		if answerer != nil {
+			authMethods = append(authMethods, ssh.KeyboardInteractive(answerer.challenge))
+		}
 		authMethods = append(authMethods, ssh.Password(cp.password))
 	case db.SSHAuthKey:
 		signer, err := parsePrivateKey(cp.privateKey, cp.passphrase)

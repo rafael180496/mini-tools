@@ -523,7 +523,7 @@ export default function GitRepoTree({
                 <div
                     style={{paddingLeft: `${8 + depth * 14}px`}}
                     className={`group flex items-center gap-1 py-1 pr-2 text-xs ${
-                        activeTabRepoId === repo.id ? 'bg-primary-container/60 text-on-primary-container' : 'text-on-surface hover:bg-surface-variant/50'
+                        activeTabRepoId === repo.id ? 'sidebar-row-active' : 'text-on-surface hover:bg-surface-variant/50'
                     }`}
                 >
                     <button

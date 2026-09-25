@@ -592,7 +592,7 @@ function NoteRow({
         // título, que es lo único que hay que leer.
         <div
             className={`group mx-1 flex flex-col rounded pr-1 ${
-                active ? 'bg-surface-variant' : 'hover:bg-surface-container-high'
+                active ? 'sidebar-row-active' : 'hover:bg-surface-container-high'
             }`}
             style={{paddingLeft: `${depth * 12 + 4}px`}}
         >

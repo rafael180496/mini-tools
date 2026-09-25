@@ -1548,6 +1548,69 @@ func (a *App) CloseSSHTerminal(sessionID string) error {
 	return a.sshSessions.Close(sessionID)
 }
 
+// ChangeSSHPassword contesta el diálogo de contraseña vencida de connID con
+// newPassword y, si el servidor la acepta, la guarda en el DSN del vault.
+//
+// Es el único binding que cambia una credencial CONTRA EL SERVIDOR y no solo
+// en el vault, así que el orden no es negociable: primero el servidor, y
+// recién con su visto bueno el vault. Al revés —guardar y después intentar—
+// dejaría guardada una contraseña que el servidor rechazó, y la conexión
+// quedaría rota sin que nada lo dijera.
+//
+// El guardado es la otra mitad del arreglo: sin él la contraseña del servidor
+// cambia, la del vault no, y la próxima vez que alguien abra esa terminal el
+// error que aparece es un fallo de autenticación común — el peor momento para
+// descubrir que el cambio funcionó.
+func (a *App) ChangeSSHPassword(connID, newPassword string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+
+	dbType, storedDSN, err := a.vault.ConnectionDSN(connID)
+	if err != nil {
+		return err
+	}
+	if dbType != db.DBTypeSSH {
+		return fmt.Errorf("app: la conexión %q no es SSH", connID)
+	}
+	connector, err := db.ConnectorFor(db.DBTypeSSH)
+	if err != nil {
+		return err
+	}
+	params, err := connector.ParseDSN(storedDSN)
+	if err != nil {
+		return err
+	}
+	// Una conexión por llave no tiene contraseña de cuenta que cambiar: lo que
+	// vence ahí es otra cosa (la passphrase de la llave, que es local) y el
+	// diálogo del servidor nunca aparece.
+	if params["auth"] != db.SSHAuthPassword {
+		return fmt.Errorf("app: la conexión %q no autentica por contraseña", connID)
+	}
+
+	if err := sshconn.ChangePassword(storedDSN, newPassword); err != nil {
+		return err
+	}
+
+	params["password"] = newPassword
+	newDSN, err := connector.BuildDSN(params)
+	if err != nil {
+		return err
+	}
+
+	conns, err := a.vault.ListConnections()
+	if err != nil {
+		return err
+	}
+	for _, c := range conns {
+		if c.ID != connID {
+			continue
+		}
+		return a.vault.UpdateConnection(connID, c.Name, db.DBTypeSSH, newDSN, c.Color, c.Environment)
+	}
+	return fmt.Errorf("app: conexión %q no encontrada", connID)
+}
+
 // ListSshSnippets returns every saved SSH snippet — global, reusable across
 // any open terminal session (see vault.SshSnippet's doc comment).
 func (a *App) ListSshSnippets() ([]vault.SshSnippet, error) {

@@ -460,8 +460,8 @@ export default function HttpTree({
                         onContextMenu={(e) => itemMenu(it, e)}
                         title={it.url ? `${it.method || 'GET'} ${it.url}` : 'Petición sin URL todavía'}
                         style={{paddingLeft: 8 + depth * 12}}
-                        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 hover:bg-surface-variant ${
-                            active ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant'
+                        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 ${
+                            active ? 'sidebar-row-active' : 'text-on-surface-variant hover:bg-surface-variant'
                         }`}
                     >
                         {/* El método en monoespaciada y con ancho fijo: es lo

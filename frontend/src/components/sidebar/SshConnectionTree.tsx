@@ -238,8 +238,10 @@ export default function SshConnectionTree({
             <div key={c.id} className="mb-0.5">
                 <div
                     style={{paddingLeft: `${8 + depth * 14}px`}}
+                    // `sidebar-row-active` (globals.css) explica por qué la fila
+                    // activa es un tinte con una barra y no un relleno.
                     className={`group flex w-full items-center gap-1 py-1.5 pr-3 text-left text-sm transition-colors ${
-                        isActive ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
+                        isActive ? 'sidebar-row-active' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                     } ${envStyleOf(c)?.border ?? ''}`}
                 >
                     {/* No schema/keys to browse for an SSH connection — no
@@ -266,7 +268,7 @@ export default function SshConnectionTree({
                                 style={{backgroundColor: c.color}}
                             />
                         )}
-                        <span className="truncate font-medium">{c.name}</span>
+                        <span className={`truncate ${isActive ? 'font-semibold' : 'font-medium'}`}>{c.name}</span>
                         {isLive &&
                             (liveCount > 1 ? (
                                 <span
@@ -298,7 +300,7 @@ export default function SshConnectionTree({
                             onOpenSshTerminalSession(c)
                         }}
                         title="Nueva terminal — abre otra sesión contra este servidor, además de las que ya estén abiertas. Todas comparten una sola conexión SSH: no se autentica de nuevo"
-                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                        className="hidden shrink-0 sidebar-icon group-hover:block"
                     >
                         <Icon name="add" size={15} />
                     </button>
@@ -308,7 +310,7 @@ export default function SshConnectionTree({
                             onOpenSftp(c)
                         }}
                         title="Abrir explorador SFTP — transferir archivos entre hosts"
-                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                        className="hidden shrink-0 sidebar-icon group-hover:block"
                     >
                         <Icon name="swap_horiz" size={15} />
                     </button>
@@ -318,7 +320,7 @@ export default function SshConnectionTree({
                             onOpenSshHybrid(c)
                         }}
                         title="Abrir sesión combinada — consola y explorador de archivos del mismo servidor en una sola pestaña, sobre una única conexión SSH (Ctrl+Shift+F muestra u oculta los archivos)"
-                        className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
+                        className="hidden shrink-0 sidebar-icon group-hover:block"
                     >
                         <Icon name="vertical_split" size={15} />
                     </button>
@@ -338,7 +340,7 @@ export default function SshConnectionTree({
                                     ? `Cerrar las ${liveCount} sesiones de terminal abiertas contra este servidor — la conexión guardada queda intacta`
                                     : 'Cerrar la sesión de terminal abierta contra este servidor — la conexión guardada queda intacta'
                             }
-                            className="shrink-0 rounded p-0.5 text-error opacity-80 hover:bg-error-container/40 hover:opacity-100"
+                            className="shrink-0 rounded p-1 text-error transition-colors hover:bg-error-container/40"
                         >
                             <Icon name="power_settings_new" size={15} />
                         </button>
@@ -375,7 +377,7 @@ export default function SshConnectionTree({
                     <button
                         onClick={() => toggleFolder(node.folder.id)}
                         title={expanded ? 'Contraer carpeta' : 'Expandir carpeta'}
-                        className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100"
+                        className="shrink-0 sidebar-icon"
                     >
                         <Icon name={expanded ? 'expand_more' : 'chevron_right'} size={16} />
                     </button>
@@ -413,7 +415,7 @@ export default function SshConnectionTree({
                                     startCreateFolder(node.folder.id)
                                 }}
                                 title="Nueva subcarpeta"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover/folder:block"
+                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
                             >
                                 <Icon name="create_new_folder" size={14} />
                             </button>
@@ -423,7 +425,7 @@ export default function SshConnectionTree({
                                     onReorderFolder(node.folder.id, 'up')
                                 }}
                                 title="Mover arriba"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover/folder:block"
+                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
                             >
                                 <Icon name="arrow_upward" size={13} />
                             </button>
@@ -433,7 +435,7 @@ export default function SshConnectionTree({
                                     onReorderFolder(node.folder.id, 'down')
                                 }}
                                 title="Mover abajo"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover/folder:block"
+                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
                             >
                                 <Icon name="arrow_downward" size={13} />
                             </button>
@@ -443,7 +445,7 @@ export default function SshConnectionTree({
                                     startRenameFolder(node.folder)
                                 }}
                                 title="Renombrar carpeta"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover/folder:block"
+                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
                             >
                                 <Icon name="edit" size={13} />
                             </button>
