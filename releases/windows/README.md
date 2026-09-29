@@ -1,9 +1,8 @@
 # mini-tools — release Windows
 
 Artefacto de distribución local generado con `./scripts/package-windows.sh`,
-**cross-compilado desde macOS**. **Esta versión sí se corrió en Windows 10 y en
-Windows 11 reales** — ver "Estado de verificación" abajo para qué confirma eso y
-qué no. No es un release firmado ni se publica automáticamente a ningún lado —
+**cross-compilado desde macOS**. **Esta versión NO se corrió todavía en una
+Windows real** — ver "Estado de verificación" abajo. No es un release firmado ni se publica automáticamente a ningún lado —
 solo empaqueta el `.exe` para distribuirlo manualmente (GitHub Releases, USB,
 red interna, etc.).
 
@@ -11,17 +10,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.7.0 |
-| Archivo | `mini-tools-v2.7.0-windows-amd64.exe` |
-| Tamaño | ~57 MB (57,2 MB) |
-| SHA-256 | `19f53a6edda45dfd8f2ca5aefb5c1adecc3eaafa461baececf1cd175e9806c22` |
+| Versión | 2.8.0 |
+| Archivo | `mini-tools-v2.8.0-windows-amd64.exe` |
+| Tamaño | ~58 MB (57,6 MB) |
+| SHA-256 | `1add2b803b73222df3cc8f6899f75b18edf6274b307c4e3b4d8518bbd4e113b1` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.7.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.8.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -35,39 +34,36 @@ Get-FileHash mini-tools-v2.7.0-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-**La 2.7.0 se corrió en Windows 10 y en Windows 11 reales, y arrancó bien.** Eso
-confirma lo primero que rompe cuando algo falla: el **WebView2 Runtime carga sin
-instalar nada aparte**, la ventana abre con el DPI correcto y los diálogos
-nativos responden.
+**La 2.8.0 NO se corrió en una Windows real.** Solo se confirmó que
+cross-compila limpio desde macOS y que el binario es un `PE32+ x86-64`. La
+2.7.0 sí se probó en Windows 10 y 11, pero eso no dice nada de esta versión:
+WebView2, DPI y los diálogos nativos se confirman únicamente corriéndola.
 
-Esta versión trae **una** migración nueva del vault —la **54** (columna
-`settings.snippets_panel_width`, el ancho arrastrado del panel de snippets)—,
-que corre en el primer `Open()` después de actualizar. Es aditiva: agrega una
-columna con `DEFAULT 0`, que el frontend lee como "sin arrastrar", así que un
-`vault.db` de la versión anterior abre el panel exactamente igual que antes y no
-pierde nada.
+Esta versión trae **dos** migraciones nuevas del vault, que corren en el primer
+`Open()` después de actualizar. Las dos son aditivas —agregan una columna con
+valor por defecto— y un `vault.db` de la versión anterior no pierde nada:
 
-Lo que **no** se ejercitó en esa pasada, y es donde hay que mirar primero si algo
-falla:
+- **55**: `vault_notes.pinned` (notas fijadas), `DEFAULT 0`: ninguna nota
+  queda fijada sola.
+- **56**: `settings.language` (idioma de la interfaz), `DEFAULT ''` = sin
+  elegir, que la app lee como **inglés**. Consecuencia visible: **al
+  actualizar, la app pasa a inglés** hasta que se elija español en la pantalla
+  de desbloqueo o en Configuración → Apariencia → Idioma.
 
-- **El cambio de contraseña SSH vencida**, nuevo en esta versión. No está sin
-  verificar solo en Windows: **no se ejercitó contra ningún servidor**, porque
-  hace falta una cuenta con la contraseña efectivamente caducada y un sshd que
-  conduzca el diálogo. Lo que sí se probó contra un servidor real es el camino
-  de al lado — uno que ofrece `keyboard-interactive` y lo rechaza sin preguntar.
-- **El flujo OAuth 2.0** del módulo HTTP, que levanta un servidor efímero en
-  `127.0.0.1` para capturar el redirect y puede disparar el aviso del
-  **Firewall** de Windows la primera vez.
-- **El servidor MCP**, que en Windows usa un **named pipe** en vez de un socket
-  Unix.
-- **Lanzar los CLIs agénticos** (`claude`, `codex`, `agy`) como procesos hijos:
-  implica resolver `.cmd`/`.exe` del `PATH` y otro manejo de saltos de línea.
-- **Las varias terminales SSH contra el mismo servidor**: son canales sobre el
-  mismo cliente del pool, y en Windows la terminal depende de ConPTY.
-- **Abrir el proyecto en VS Code o en el explorador de archivos**, que resuelve
-  `code` del `PATH` y usa `explorer`.
-- **Pegar imágenes en una nota** (`Ctrl+V` desde Recortes), que depende de cómo
-  el WebView2 expone el portapapeles.
+Lo nuevo de esta versión que más depende de la plataforma, y donde hay que
+mirar primero si algo falla en Windows:
+
+- **Cambio de idioma en caliente** con terminales SSH abiertas y consultas
+  corriendo: no debería cortar nada.
+- **Exportar una nota como Markdown**: usa el diálogo nativo de guardado.
+- **Los procesos hijos heredan el idioma** por la variable `MINI_TOOLS_LANG`
+  (hook de aprobación de los agentes, servidor MCP por named pipe, askpass y
+  editor de rebase de git).
+- Lo que ya estaba pendiente de la 2.7.0 sigue sin ejercitarse en Windows: el
+  flujo OAuth 2.0 (aviso del Firewall), el servidor MCP por named pipe, lanzar
+  los CLIs agénticos (`.cmd`/`.exe` del `PATH`), varias terminales SSH contra
+  el mismo servidor (ConPTY), abrir en VS Code / el explorador y pegar
+  imágenes en una nota.
 
 **Esta sección se reescribe en cada release.** Si la versión siguiente sale sin
 que nadie la corra en una Windows real, va la advertencia explícita de "no
@@ -76,8 +72,8 @@ verificado" — nunca extrapolar de un release anterior.
 
 ## Compatibilidad del sistema
 
-- **Windows 10 y Windows 11** son los objetivos declarados, y esta versión se
-  corrió en las dos (ver la sección de arriba). Wails v2 en Windows depende del
+- **Windows 10 y Windows 11** son los objetivos declarados. La 2.7.0 se corrió
+  en las dos; esta versión todavía no (ver la sección de arriba). Wails v2 en Windows depende del
   WebView2 Runtime de Microsoft: Windows 11 lo trae preinstalado y los
   Windows 10 con Edge al día también (llega con las actualizaciones de
   Edge). Un Windows 10 viejo o sin actualizar puede no tenerlo — ahí se
@@ -101,7 +97,7 @@ verificado" — nunca extrapolar de un release anterior.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.7.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.8.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.

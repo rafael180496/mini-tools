@@ -302,7 +302,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
   <a class="brand" href="#introduccion"><span class="mark">mt</span> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.7.0. Lo que está acá existe en ese binario.">2.7.0 · Ayuda</span>
+  <span class="ver" title="Esta documentación describe la versión 2.8.0. Lo que está acá existe en ese binario.">2.8.0 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -1548,6 +1548,20 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p class="lead">Configuración → <strong>Apariencia</strong>. Tres cuerpos distintos, porque son tres cosas
   distintas de leer.</p>
 
+  <h2 id="ajustes-apariencia--idioma">Idioma</h2>
+  <p>La app habla <strong>inglés y español</strong>. Se elige en Configuración → Apariencia →
+  <strong>Idioma</strong>, o con el botón de idioma de la pantalla de desbloqueo, que existe justamente para
+  quien no lee el idioma en el que arrancó. Cambia al instante —sin reiniciar, sin cerrar terminales ni cortar
+  consultas— y queda guardado, también para la pantalla de la clave.</p>
+  <ul>
+    <li><strong>La primera vez arranca en inglés.</strong> Al actualizar desde una versión anterior también: el
+    idioma no se había elegido nunca. Se cambia una sola vez.</li>
+    <li>Se traduce todo lo que dice la app: menús, avisos, mensajes de error y lo que les pide a los agentes de
+    IA, que contestan en el idioma elegido. <strong>Tus datos no</strong>: nombres de conexiones, notas y
+    resultados quedan como los escribiste.</li>
+    <li>El botón <strong>?</strong> abre esta ayuda en el idioma elegido.</li>
+  </ul>
+
   <h2 id="ajustes-apariencia--interfaz">Tamaño de letra de la interfaz</h2>
   <p>Del 90&nbsp;% al 150&nbsp;% en cinco pasos, y agranda <strong>todo</strong>: la barra lateral, los
   menús, las listas, los diálogos, las etiquetas y los íconos, en <em>todos</em> los módulos. Se aplica en
@@ -1719,6 +1733,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <details><summary>¿Los agentes ven mis credenciales?</summary><p>No. El DSN no sale del backend, las notas privadas están fuera de alcance por consulta, y lo que va a un prompt del módulo HTTP lleva los marcadores sin resolver y las cabeceras de credencial tapadas.</p></details>
   <details><summary>¿Tengo que instalar Claude Code o Codex?</summary><p>Solo si los querés usar. La app los detecta si están, y no pasa nada si no.</p></details>
   <details><summary>¿Reemplaza a Postman o a DataGrip?</summary><p>Para el trabajo de soporte del día a día, sí: es lo que estas herramientas hacen, en una ventana y sin cuenta. Para lo muy específico de cada una (colecciones compartidas por equipo, refactors de SQL), no pretende serlo.</p></details>
+  <details><summary>Actualicé y la app está en inglés, ¿por qué?</summary><p>Desde la 2.8.0 la app habla inglés y español, y el idioma por defecto es inglés mientras no se elija otro. Se pasa a español desde el botón de idioma de la pantalla de desbloqueo o en Configuración → Apariencia → Idioma, una sola vez: queda guardado. Ver <a href="#ajustes-apariencia--idioma">Idioma</a>.</p></details>
   <details><summary>¿Se puede usar en Linux?</summary><p>Compila y corre, pero no se empaqueta ni se prueba ahí: no hay artefacto publicado. Se compila desde el código con <code>wails build</code>.</p></details>
   <details><summary>¿Y las capturas de esta ayuda?</summary><p>No salen de una instalación real: se generan montando los componentes en un navegador headless con datos inventados (<code>./scripts/uishot.sh</code>). No hay rutas, hosts ni credenciales de nadie — no porque se hayan borrado, sino porque nunca estuvieron ahí.</p></details>
 </article>
@@ -1728,7 +1743,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.7.0; esta página no hace una sola petición externa.
+  v2.8.0; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
   <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a></p>
