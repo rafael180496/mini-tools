@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 // Hand-rolled, best-effort SQL linter (spec: "linter básico: SELECT *,
 // falta WHERE en UPDATE/DELETE, warning antes de ejecutar"). Statement
 // splitting here is a naive split-on-`;` — unlike backend/query/splitter.go
@@ -54,7 +55,7 @@ export function lintSQL(text: string): LintWarning[] {
 
         if (/SELECT\s+\*/i.test(stmt.text)) {
             warnings.push({
-                message: 'SELECT * puede traer columnas innecesarias — preferí listar las columnas que necesitás.',
+                message: t().editor.lint.selectStar,
                 startLineNumber: stmt.startLine,
                 endLineNumber: stmt.endLine,
                 blocking: false,
@@ -63,7 +64,7 @@ export function lintSQL(text: string): LintWarning[] {
 
         if ((trimmedUpper.startsWith('UPDATE') || trimmedUpper.startsWith('DELETE')) && !upper.includes('WHERE')) {
             warnings.push({
-                message: 'UPDATE/DELETE sin WHERE afecta todas las filas de la tabla.',
+                message: t().editor.lint.noWhere,
                 startLineNumber: stmt.startLine,
                 endLineNumber: stmt.endLine,
                 blocking: true,

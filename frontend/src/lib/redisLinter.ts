@@ -7,6 +7,7 @@
 // warn about otherwise.
 
 import type {LintWarning} from './linter'
+import {t} from '../i18n'
 
 export function lintRedisCommands(text: string): LintWarning[] {
     const warnings: LintWarning[] = []
@@ -17,9 +18,9 @@ export function lintRedisCommands(text: string): LintWarning[] {
 
         const command = trimmed.split(/\s+/)[0]?.toUpperCase()
         if (command === 'FLUSHALL' || command === 'FLUSHDB') {
-            const scope = command === 'FLUSHALL' ? 'de TODAS las bases lógicas' : 'de la base lógica actual'
+            const lint = t().redis.lint
             warnings.push({
-                message: `${command} borra TODAS las keys ${scope} — irreversible.`,
+                message: command === 'FLUSHALL' ? lint.flushAll : lint.flushDb,
                 startLineNumber: i + 1,
                 endLineNumber: i + 1,
                 blocking: true,

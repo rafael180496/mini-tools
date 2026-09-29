@@ -1,5 +1,6 @@
 import type {MouseEvent as ReactMouseEvent, ReactNode} from 'react'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // Fila de los árboles de la barra lateral, con la forma de un explorador tipo
 // Obsidian: guías verticales por nivel, chevron solo donde hay algo que
@@ -80,6 +81,7 @@ export default function TreeRow({
     className = '',
     style,
 }: TreeRowProps) {
+    const t = useT()
     const branch = expanded !== undefined
     return (
         <div
@@ -105,7 +107,10 @@ export default function TreeRow({
                             onToggle?.()
                         }}
                         tabIndex={-1}
-                        title={expanded ? 'Plegar' : 'Desplegar'}
+                        // data-tree-toggle: para el banco de capturas, que no
+                        // puede buscar el botón por su texto (cambia con el idioma).
+                        data-tree-toggle={expanded ? 'open' : 'closed'}
+                        title={expanded ? t.common.collapse : t.common.expand}
                         className="flex shrink-0 items-center justify-center rounded text-on-surface-variant/70 hover:text-on-surface"
                         style={{width: CHEVRON}}
                     >

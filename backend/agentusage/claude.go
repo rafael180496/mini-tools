@@ -3,6 +3,7 @@ package agentusage
 import (
 	"bufio"
 	"encoding/json"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"sort"
@@ -46,7 +47,7 @@ func readClaude(home, repoSlug string, since time.Time) AgentUsage {
 
 	dirs, err := os.ReadDir(root)
 	if err != nil {
-		u.Note = "No hay transcripts de Claude Code en esta máquina."
+		u.Note = i18n.T(i18n.Msg{ES: "No hay transcripts de Claude Code en esta máquina.", EN: "There are no Claude Code transcripts on this machine."})
 		return u
 	}
 
@@ -83,7 +84,7 @@ func readClaude(home, repoSlug string, since time.Time) AgentUsage {
 
 	u.Available = u.All.Messages > 0
 	if !u.Available {
-		u.Note = "Claude Code no registró consumo en el período leído."
+		u.Note = i18n.T(i18n.Msg{ES: "Claude Code no registró consumo en el período leído.", EN: "Claude Code recorded no usage in the period read."})
 		return u
 	}
 
@@ -152,7 +153,7 @@ func scanFile(path string, since time.Time, seen map[string]bool, isRepo bool, u
 
 		model := e.Message.Model
 		if model == "" {
-			model = "desconocido"
+			model = i18n.T(i18n.Msg{ES: "desconocido", EN: "unknown"})
 		}
 		bump(byModel, model, total)
 		if day != "" {

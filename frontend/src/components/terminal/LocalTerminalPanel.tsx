@@ -16,6 +16,7 @@ import type {Theme} from '../../hooks/useTheme'
 import {resolveTerminalTheme} from '../../xterm/terminalThemes'
 import Icon from '../Icon'
 import {SshLineModel} from '../../lib/sshLineModel'
+import {t as tNow, useT} from '../../i18n'
 
 interface LocalTerminalPanelProps {
     // Identifica la sesión en el backend Y es el nombre del evento de Wails
@@ -122,6 +123,7 @@ export default function LocalTerminalPanel({
     fontSize,
     visible,
 }: LocalTerminalPanelProps) {
+    const t = useT()
     const containerRef = useRef<HTMLDivElement>(null)
     const termRef = useRef<Terminal | null>(null)
     const fitRef = useRef<FitAddon | null>(null)
@@ -236,11 +238,11 @@ export default function LocalTerminalPanel({
                 term.write(base64ToBytes(event.data))
             } else if (event.type === 'closed') {
                 setAlive(false)
-                term.write('\r\n\x1b[90m[la shell terminó — usá Reiniciar para abrir otra]\x1b[0m\r\n')
+                term.write(`\r\n\x1b[90m${tNow().terminal.panel.shellEnded}\x1b[0m\r\n`)
             } else if (event.type === 'error') {
                 setAlive(false)
-                setError(event.error ?? 'desconocido')
-                term.write(`\r\n\x1b[31m[error] ${event.error ?? 'desconocido'}\x1b[0m\r\n`)
+                setError(event.error ?? tNow().terminal.panel.unknownError)
+                term.write(`\r\n\x1b[31m[error] ${event.error ?? tNow().terminal.panel.unknownError}\x1b[0m\r\n`)
             }
         })
 
@@ -364,14 +366,14 @@ export default function LocalTerminalPanel({
             <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-2 py-1 text-ui-11">
                 <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${alive ? 'bg-secondary' : 'bg-outline'}`}
-                    title={alive ? 'La sesión está corriendo' : 'No hay ningún proceso corriendo en esta sesión'}
+                    title={alive ? t.terminal.panel.running : t.terminal.panel.notRunning}
                 />
                 <span
                     className="min-w-0 shrink truncate font-mono text-on-surface-variant"
                     title={
                         isAgent
-                            ? `Sesión de ${agentLabel ?? agentId} corriendo dentro de ${shellLabel || 'tu shell'}, en la raíz del repositorio. El agente corre DENTRO del shell: si lo cortás con Ctrl+C te queda la terminal viva en el mismo directorio.`
-                            : `Intérprete en uso: ${shellLabel}. Se cambia en Configuración → Terminal; cambiarlo reinicia esta sesión, porque no se puede cambiar el intérprete de un proceso que ya está corriendo.`
+                            ? t.terminal.panel.agentTooltip({agent: agentLabel ?? agentId ?? '', shell: shellLabel || t.terminal.panel.yourShell})
+                            : t.terminal.panel.shellTooltip({shell: shellLabel})
                     }
                 >
                     {isAgent ? (agentLabel ?? agentId) : shellLabel}
@@ -389,16 +391,16 @@ export default function LocalTerminalPanel({
                                 startAgentRef.current = true
                                 setOpenToken((t) => t + 1)
                             }}
-                            title={`Arranca ${agentLabel ?? agentId} en esta sesión. No se lanzó solo porque la sesión viene restaurada del layout guardado, y un asistente consume cuota: arrancarlo es una decisión tuya, no un efecto de reabrir la app.`}
+                            title={t.terminal.panel.startTooltip({agent: agentLabel ?? agentId ?? ''})}
                             className="flex items-center gap-1 rounded bg-primary px-1.5 py-0.5 text-on-primary hover:opacity-90"
                         >
                             <Icon name="play_arrow" size={13} />
-                            Iniciar
+                            {t.terminal.panel.start}
                         </button>
                     )}
                     <button
                         onClick={() => termRef.current?.clear()}
-                        title="Borra lo que hay en pantalla y el historial de scroll. No cancela lo que esté corriendo ni cierra la sesión — para eso, Ctrl+C."
+                        title={t.terminal.panel.clearTooltip}
                         className="rounded px-1 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="ink_eraser" size={14} />
@@ -410,8 +412,10 @@ export default function LocalTerminalPanel({
                         }}
                         title={
                             alive
-                                ? `Cierra esta sesión y abre una nueva en la raíz del repositorio${isAgent && agentStarted ? `, con ${agentLabel ?? agentId} de nuevo` : ''} — se pierde el directorio en el que estabas y todo lo que esté corriendo`
-                                : 'Abre una sesión nueva: la anterior terminó (con exit, o porque el proceso murió)'
+                                ? isAgent && agentStarted
+                                    ? t.terminal.panel.restartAgentTooltip({agent: agentLabel ?? agentId ?? ''})
+                                    : t.terminal.panel.restartTooltip
+                                : t.terminal.panel.reopenTooltip
                         }
                         className="rounded px-1 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >

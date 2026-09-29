@@ -2,6 +2,8 @@ import {useCallback, useEffect, useState} from 'react'
 import {HttpDocsPreview, HttpPublishDocs, HttpSaveCollection} from '../../../wailsjs/go/main/App'
 import {main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {rich} from './httpShared'
+import {useT} from '../../i18n'
 
 // Documentación de una colección: la descripción general a la izquierda, y a la
 // derecha lo que se va a publicar como nota del vault.
@@ -23,6 +25,7 @@ interface HttpDocsDialogProps {
 }
 
 export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNote}: HttpDocsDialogProps) {
+    const t = useT()
     const [description, setDescription] = useState(collection.description ?? '')
     // Lo último que se guardó, para saber si hay algo pendiente sin depender de
     // la prop, que no vuelve a llegar mientras el diálogo está abierto.
@@ -95,16 +98,16 @@ export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNo
             >
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                     <Icon name="menu_book" size={16} className="text-on-surface-variant" />
-                    <p className="flex-1 text-sm font-medium text-on-surface">Documentación de «{collection.name}»</p>
+                    <p className="flex-1 text-sm font-medium text-on-surface">{t.http.docs.title({name: collection.name})}</p>
                     <button
                         onClick={() => void publish()}
                         disabled={publishing || loading}
-                        title="Escribir esta documentación como una nota del vault, para poder buscarla, enlazarla desde otras notas y consultarla desde el agente."
+                        title={t.http.docs.publishTitle}
                         className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                     >
-                        {publishing ? 'Publicando…' : collection.docsNoteId || result?.noteId ? 'Regenerar la nota' : 'Publicar como nota'}
+                        {publishing ? t.http.docs.publishing : collection.docsNoteId || result?.noteId ? t.http.docs.regenerate : t.http.docs.publish}
                     </button>
-                    <button onClick={onClose} title="Cerrar" className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                    <button onClick={onClose} title={t.common.close} className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                         <Icon name="close" size={16} />
                     </button>
                 </div>
@@ -123,17 +126,11 @@ export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNo
                     >
                         <Icon name={result.status === 'skipped' ? 'edit_note' : 'check_circle'} size={14} />
                         <span className="flex-1 leading-relaxed">
-                            {result.status === 'skipped' ? (
-                                <>
-                                    «{result.title}» la editó una persona, así que no se toca. Lo que se habría escrito está a la derecha: copiá lo que
-                                    quieras de ahí, o borrá la nota para volver a generarla desde cero.
-                                </>
-                            ) : (
-                                <>
-                                    {result.status === 'created' ? 'Nota creada' : 'Nota actualizada'}: «{result.title}», con {result.requests}{' '}
-                                    {result.requests === 1 ? 'petición' : 'peticiones'}.
-                                </>
-                            )}
+                            {result.status === 'skipped'
+                                ? t.http.docs.skipped({title: result.title})
+                                : result.status === 'created'
+                                  ? t.http.docs.created({title: result.title, requests: result.requests})
+                                  : t.http.docs.updated({title: result.title, requests: result.requests})}
                         </span>
                         {result.noteId && onOpenNote && (
                             <button
@@ -141,10 +138,10 @@ export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNo
                                     onOpenNote(result.noteId)
                                     onClose()
                                 }}
-                                title="Abrir la nota en el módulo de notas"
+                                title={t.http.docs.openNoteTitle}
                                 className="rounded border border-current px-2 py-0.5 hover:opacity-80"
                             >
-                                Ver la nota
+                                {t.http.docs.openNote}
                             </button>
                         )}
                     </div>
@@ -153,28 +150,27 @@ export default function HttpDocsDialog({collection, onClose, onChanged, onOpenNo
                 <div className="flex min-h-0 flex-1">
                     <div className="flex w-72 shrink-0 flex-col border-r border-outline-variant">
                         <p className="shrink-0 px-3 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                            Descripción de la colección
+                            {t.http.docs.description}
                         </p>
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             onBlur={() => void saveDescription()}
-                            placeholder={'Qué es esta API, contra qué entorno se usa, a quién preguntarle.\n\nEs Markdown, y acepta [[enlaces]] a otras notas.'}
+                            placeholder={t.http.docs.descriptionPlaceholder}
                             spellCheck={false}
                             className="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-ui-11 leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/40"
                         />
                         <p className="shrink-0 border-t border-outline-variant p-3 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                            La documentación de cada petición se escribe en su pestaña <span className="font-medium">Docs</span>. Ninguna credencial sale
-                            acá: de la autenticación se documenta su forma —el tipo, el usuario, la URL del token—, nunca su valor.
+                            {rich(t.http.docs.descriptionNote)}
                         </p>
                     </div>
 
                     <div className="flex min-w-0 flex-1 flex-col">
                         <p className="shrink-0 px-3 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                            Lo que se publica
+                            {t.http.docs.published}
                         </p>
                         <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-ui-11 leading-relaxed text-on-surface">
-                            {loading ? 'Generando…' : markdown}
+                            {loading ? t.http.docs.generating : markdown}
                         </pre>
                     </div>
                 </div>

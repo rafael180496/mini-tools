@@ -3,7 +3,7 @@ package git
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,7 +65,7 @@ func (r *Runner) probe() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err != nil {
-		r.path, r.version, r.err = "", "", fmt.Errorf("git no está instalado o no está en el PATH: %w", err)
+		r.path, r.version, r.err = "", "", &probeError{i18n.Msg{ES: "git no está instalado o no está en el PATH: %w", EN: "git is not installed or not on the PATH: %w"}, []any{err}, err}
 		return
 	}
 	r.path, r.err = path, nil
@@ -76,11 +76,23 @@ func (r *Runner) probe() {
 	cmd.Env = hardenedEnv(nil)
 	out, verr := cmd.Output()
 	if verr != nil {
-		r.err = fmt.Errorf("no se pudo ejecutar %q: %w", path, verr)
+		r.err = &probeError{i18n.Msg{ES: "no se pudo ejecutar %q: %w", EN: "could not run %q: %w"}, []any{path, verr}, verr}
 		return
 	}
 	r.version = strings.TrimSpace(strings.TrimPrefix(string(bytes.TrimSpace(out)), "git version "))
 }
+
+// probeError es el fallo del sondeo de git. Se guarda en el Runner al
+// arrancar —antes de que se lea el idioma elegido— y se muestra mucho
+// después, así que el texto se arma al leerlo y no al crearlo.
+type probeError struct {
+	m     i18n.Msg
+	args  []any
+	cause error
+}
+
+func (e *probeError) Error() string { return i18n.Errorf(e.m, e.args...).Error() }
+func (e *probeError) Unwrap() error { return e.cause }
 
 // Refresh re-runs the probe, so a user who installs git while the app is open
 // can recover without restarting.
@@ -107,7 +119,7 @@ func (r *Runner) binary() (string, error) {
 		return "", r.err
 	}
 	if r.path == "" {
-		return "", fmt.Errorf("git no está disponible")
+		return "", i18n.New(i18n.Msg{ES: "git no está disponible", EN: "git is not available"})
 	}
 	return r.path, nil
 }
@@ -174,15 +186,15 @@ func (r *Runner) runRaw(ctx context.Context, repoPath string, env []string, args
 		msg := strings.TrimSpace(stderr.String())
 		r.record(repoPath, args, started, true, msg)
 		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("git %s: la operación excedió el tiempo límite", subcommand(args))
+			return nil, i18n.Errorf(i18n.Msg{ES: "git %s: la operación excedió el tiempo límite", EN: "git %s: the operation timed out"}, subcommand(args))
 		}
 		if msg == "" {
-			return nil, fmt.Errorf("git %s: %w", subcommand(args), err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "git %s: %w", EN: "git %s: %w"}, subcommand(args), err)
 		}
 		// The error text is git's own stderr, which may name a remote or a
 		// path but never a credential — tokens travel through askpass, not
 		// argv, so they cannot appear here.
-		return nil, fmt.Errorf("git %s: %s", subcommand(args), msg)
+		return nil, i18n.Errorf(i18n.Msg{ES: "git %s: %s", EN: "git %s: %s"}, subcommand(args), msg)
 	}
 	r.record(repoPath, args, started, false, "")
 	return stdout.Bytes(), nil
@@ -226,16 +238,38 @@ func subcommand(args []string) string {
 	return "git"
 }
 
+// Rótulos del argumento que valida checkRefArg: van dentro del mensaje de
+// error, así que se traducen con él.
+var (
+	argRevision         = i18n.Msg{ES: "revisión", EN: "revision"}
+	argCommit           = i18n.Msg{ES: "commit", EN: "commit"}
+	argRef              = i18n.Msg{ES: "referencia", EN: "reference"}
+	argBranch           = i18n.Msg{ES: "rama", EN: "branch"}
+	argRemote           = i18n.Msg{ES: "remoto", EN: "remote"}
+	argStartPoint       = i18n.Msg{ES: "punto de partida", EN: "start point"}
+	argNewRemoteName    = i18n.Msg{ES: "nuevo nombre de remoto", EN: "new remote name"}
+	argStash            = i18n.Msg{ES: "stash", EN: "stash"}
+	argBase             = i18n.Msg{ES: "base", EN: "base"}
+	argBaseBranch       = i18n.Msg{ES: "rama base", EN: "base branch"}
+	argTag              = i18n.Msg{ES: "tag", EN: "tag"}
+	argUpstream         = i18n.Msg{ES: "upstream", EN: "upstream"}
+	argRemoteBranch     = i18n.Msg{ES: "rama remota", EN: "remote branch"}
+	argNewName          = i18n.Msg{ES: "nuevo nombre", EN: "new name"}
+	argPath             = i18n.Msg{ES: "ruta", EN: "path"}
+	argProductionBranch = i18n.Msg{ES: "rama de producción", EN: "production branch"}
+	argDevelopBranch    = i18n.Msg{ES: "rama de desarrollo", EN: "development branch"}
+)
+
 // checkRefArg rejects a user-supplied ref, path, or remote name that would be
 // parsed as a flag. exec passes arguments without a shell so quoting is not a
 // concern, but `git checkout --orphan` reached through a branch name literally
 // called "--orphan" would still be a real bug.
-func checkRefArg(kind, v string) error {
+func checkRefArg(kind i18n.Msg, v string) error {
 	if v == "" {
-		return fmt.Errorf("%s no puede estar vacío", kind)
+		return i18n.Errorf(i18n.Msg{ES: "%s no puede estar vacío", EN: "%s cannot be empty"}, i18n.T(kind))
 	}
 	if strings.HasPrefix(v, "-") {
-		return fmt.Errorf("%s inválido: %q no puede empezar con '-'", kind, v)
+		return i18n.Errorf(i18n.Msg{ES: "%s inválido: %q no puede empezar con '-'", EN: "invalid %s: %q cannot start with '-'"}, i18n.T(kind), v)
 	}
 	return nil
 }
@@ -246,22 +280,22 @@ func checkRefArg(kind, v string) error {
 // the frontend can pass any path inside the tree rather than exactly the root.
 func (r *Runner) resolveRepo(path string) (string, error) {
 	if path == "" {
-		return "", fmt.Errorf("la ruta del repositorio no puede estar vacía")
+		return "", i18n.New(i18n.Msg{ES: "la ruta del repositorio no puede estar vacía", EN: "the repository path cannot be empty"})
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("ruta de repositorio inválida %q: %w", path, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "ruta de repositorio inválida %q: %w", EN: "invalid repository path %q: %w"}, path, err)
 	}
 	if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-		return "", fmt.Errorf("la ruta %q no es un directorio accesible", path)
+		return "", i18n.Errorf(i18n.Msg{ES: "la ruta %q no es un directorio accesible", EN: "the path %q is not an accessible directory"}, path)
 	}
 	out, err := r.runLocal(abs, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", fmt.Errorf("%q no es un repositorio git: %w", path, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "%q no es un repositorio git: %w", EN: "%q is not a git repository: %w"}, path, err)
 	}
 	root := strings.TrimSpace(out)
 	if root == "" {
-		return "", fmt.Errorf("%q no es un repositorio git", path)
+		return "", i18n.Errorf(i18n.Msg{ES: "%q no es un repositorio git", EN: "%q is not a git repository"}, path)
 	}
 	return root, nil
 }

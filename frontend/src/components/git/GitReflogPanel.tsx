@@ -4,6 +4,7 @@ import {git} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 import PromptDialog from './PromptDialog'
+import {formatDateTime, useT} from '../../i18n'
 
 // El reflog: por dónde estuvo HEAD, y la única forma de volver.
 //
@@ -34,11 +35,11 @@ function fecha(iso: string): string {
     if (!iso) return ''
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'}) + ' ' +
-        d.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'})
+    return formatDateTime(d, {day: '2-digit', month: '2-digit'}) + ' ' + formatDateTime(d, {hour: '2-digit', minute: '2-digit'})
 }
 
 export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props) {
+    const tr = useT().git.reflog
     const [entries, setEntries] = useState<git.ReflogEntry[]>([])
     const [filter, setFilter] = useState('')
     const [loading, setLoading] = useState(false)
@@ -80,13 +81,13 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
                 <input
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    placeholder="Filtrar por mensaje, acción o hash"
+                    placeholder={tr.filterPlaceholder}
                     className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                 />
                 <span className="shrink-0 text-ui-10 text-on-surface-variant">{rows.length}</span>
                 <button
                     onClick={() => void load()}
-                    title="Volver a leer el reflog"
+                    title={tr.reloadTitle}
                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="refresh" size={13} />
@@ -96,12 +97,10 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
             {error && <p className="shrink-0 bg-error-container px-2 py-1 text-ui-11 text-on-error-container">{error}</p>}
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-                {loading && rows.length === 0 && <p className="px-2 py-3 text-ui-11 text-on-surface-variant">Leyendo…</p>}
+                {loading && rows.length === 0 && <p className="px-2 py-3 text-ui-11 text-on-surface-variant">{tr.loading}</p>}
                 {!loading && rows.length === 0 && (
                     <p className="px-2 py-3 text-ui-11 leading-relaxed text-on-surface-variant">
-                        {entries.length === 0
-                            ? 'Este repositorio todavía no tiene movimientos de HEAD.'
-                            : 'Ningún movimiento coincide con el filtro.'}
+                        {entries.length === 0 ? tr.empty : tr.noMatch}
                     </p>
                 )}
                 {rows.map((e) => (
@@ -109,7 +108,7 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
                         <span className="mt-px w-16 shrink-0 font-mono text-ui-10 text-on-surface-variant/60">{e.selector}</span>
                         <button
                             onClick={() => onOpenCommit?.(e.hash)}
-                            title={`Ver el commit ${e.short}`}
+                            title={tr.openCommit({hash: e.short})}
                             className="mt-px w-16 shrink-0 text-left font-mono text-ui-10 text-primary hover:underline"
                         >
                             {e.short}
@@ -120,7 +119,7 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
                                     className={`shrink-0 rounded px-1 text-ui-10 ${
                                         DESTRUCTIVAS.has(e.action) ? 'bg-error-container text-on-error-container' : 'bg-surface-variant text-on-surface-variant'
                                     }`}
-                                    title={DESTRUCTIVAS.has(e.action) ? 'Esta acción reescribió historia: es de las que dejan commits sin referencia' : undefined}
+                                    title={DESTRUCTIVAS.has(e.action) ? tr.destructiveTitle : undefined}
                                 >
                                     {e.action}
                                 </span>
@@ -138,14 +137,14 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
                         <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
                             <button
                                 onClick={() => setBranchFrom(e)}
-                                title="Crear una rama en esta posición. Es la forma segura de recuperar: no mueve nada de lo que tenés ahora y le da nombre propio al commit perdido."
+                                title={tr.branchTitle}
                                 className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                             >
                                 <Icon name="add_circle" size={13} />
                             </button>
                             <button
                                 onClick={() => setResetTo(e)}
-                                title="Mover la rama actual a esta posición con reset --hard. Recupera esto, pero descarta lo que tengas sin commitear."
+                                title={tr.resetTitle}
                                 className="rounded p-0.5 text-on-surface-variant hover:bg-error-container hover:text-on-error-container"
                             >
                                 <Icon name="undo" size={13} />
@@ -156,16 +155,17 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
             </div>
 
             <p className="shrink-0 border-t border-outline-variant px-2 py-1.5 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                El reflog es <span className="font-medium">local y temporal</span>: no se clona, no se empuja, y git lo poda solo (90 días lo alcanzable, 30
-                lo que no). Sirve para recuperar lo de ayer, no como historial.
+                {tr.footer.before}
+                <span className="font-medium">{tr.footer.strong}</span>
+                {tr.footer.after}
             </p>
 
             {branchFrom && (
                 <PromptDialog
-                    title="Crear una rama acá"
-                    label="Nombre de la rama"
-                    initial={`recupero-${branchFrom.short}`}
-                    confirmLabel="Crear"
+                    title={tr.branchDialog.title}
+                    label={tr.branchDialog.label}
+                    initial={tr.branchDialog.initial({hash: branchFrom.short})}
+                    confirmLabel={tr.branchDialog.confirm}
                     onSubmit={(value) => {
                         const target = branchFrom
                         setBranchFrom(null)
@@ -180,9 +180,9 @@ export default function GitReflogPanel({repoId, onChanged, onOpenCommit}: Props)
 
             {resetTo && (
                 <ConfirmDialog
-                    title="Mover la rama actual acá"
-                    description={`La rama actual va a quedar en ${resetTo.short} («${resetTo.subject}»). Todo lo que tengas sin commitear se pierde, y los commits que queden por delante solo van a ser alcanzables desde este mismo reflog. Si lo único que querés es recuperar ese commit, creá una rama en vez de esto.`}
-                    confirmLabel="Reset --hard"
+                    title={tr.resetDialog.title}
+                    description={tr.resetDialog.description({hash: resetTo.short, subject: resetTo.subject})}
+                    confirmLabel={tr.resetDialog.confirm}
                     danger
                     onConfirm={() => {
                         void GitReset(repoId, resetTo.hash, 'hard')

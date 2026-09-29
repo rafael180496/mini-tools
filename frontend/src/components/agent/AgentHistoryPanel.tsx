@@ -1,6 +1,7 @@
 import {useMemo, useState} from 'react'
 import {agents as agentsModel, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {formatDateTime, t as tr, useT} from '../../i18n'
 import {CONTEXT_ICONS, type WorkContextKind} from './workContext'
 
 // Historial de conversaciones, agrupado por módulo.
@@ -42,24 +43,18 @@ type GroupBy = 'module' | 'agent'
 // de uso — la mayoría de las conversaciones salen del repositorio o de una
 // base, y las de "sin módulo" son las viejas, de antes de que el chat fuera
 // único.
-const GROUPS: {kind: WorkContextKind; label: string}[] = [
-    {kind: 'db', label: 'Bases de datos'},
-    {kind: 'git', label: 'Repositorios'},
-    {kind: 'ssh', label: 'Servidores'},
-    {kind: 'note', label: 'Notas'},
-    {kind: 'http', label: 'Peticiones HTTP'},
-    {kind: 'none', label: 'Sin módulo'},
-]
+const GROUPS: WorkContextKind[] = ['db', 'git', 'ssh', 'note', 'http', 'none']
 
 // relativeAge es cómo se ubica una conversación: "hoy", "2d", "3m". Una fecha
 // completa obliga a hacer la cuenta.
 function relativeAge(unix: number): string {
     const days = Math.floor((Date.now() / 1000 - unix) / 86400)
-    if (days <= 0) return 'hoy'
-    if (days === 1) return 'ayer'
-    if (days < 30) return `${days}d`
-    if (days < 365) return `${Math.floor(days / 30)}m`
-    return `${Math.floor(days / 365)}a`
+    const a = tr().agent.age
+    if (days <= 0) return a.today
+    if (days === 1) return a.yesterday
+    if (days < 30) return a.days({n: days})
+    if (days < 365) return a.months({n: Math.floor(days / 30)})
+    return a.years({n: Math.floor(days / 365)})
 }
 
 export default function AgentHistoryPanel({
@@ -72,6 +67,8 @@ export default function AgentHistoryPanel({
     onDelete,
     onClose,
 }: Props) {
+    const t = useT()
+    const groupLabels = t.agent.historyPanel.groups
     const [query, setQuery] = useState('')
     const [groupBy, setGroupBy] = useState<GroupBy>('module')
     // Filtro por módulo. Arranca en el módulo desde el que se abrió; null es
@@ -109,13 +106,13 @@ export default function AgentHistoryPanel({
                 .sort((a, b) => b.items.length - a.items.length)
         }
 
-        return GROUPS.map((g) => ({
-            key: g.kind,
-            icon: CONTEXT_ICONS[g.kind],
-            label: g.label,
-            items: visible.filter((c) => (c.module || 'none') === g.kind),
+        return GROUPS.map((kind) => ({
+            key: kind,
+            icon: CONTEXT_ICONS[kind],
+            label: groupLabels[kind],
+            items: visible.filter((c) => (c.module || 'none') === kind),
         })).filter((g) => g.items.length > 0)
-    }, [chats, query, resourceNames, groupBy, agents, onlyKind])
+    }, [chats, query, resourceNames, groupBy, agents, onlyKind, groupLabels])
 
     const total = grouped.reduce((n, g) => n + g.items.length, 0)
 
@@ -127,14 +124,14 @@ export default function AgentHistoryPanel({
                     <input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder={`Buscar entre ${chats.length} conversaciones…`}
-                        title="Busca por el título de la conversación o por el nombre de la conexión, repositorio o nota desde donde se abrió"
+                        placeholder={t.agent.historyPanel.searchPlaceholder({n: chats.length})}
+                        title={t.agent.historyPanel.searchTitle}
                         className="min-w-0 flex-1 bg-transparent py-0.5 text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/60"
                     />
                     {query && (
                         <button
                             onClick={() => setQuery('')}
-                            title="Limpia la búsqueda"
+                            title={t.agent.historyPanel.clearSearch}
                             className="shrink-0 text-on-surface-variant hover:text-on-surface"
                         >
                             <Icon name="close" size={11} />
@@ -144,11 +141,11 @@ export default function AgentHistoryPanel({
                 {onlyKind && (
                     <button
                         onClick={() => setOnlyKind(null)}
-                        title={`Estás viendo solo las conversaciones de ${GROUPS.find((g) => g.kind === onlyKind)?.label.toLowerCase() ?? 'este módulo'}. Hacé clic para ver todas.`}
+                        title={t.agent.historyPanel.onlyKindTitle({group: groupLabels[onlyKind]?.toLowerCase() ?? t.agent.historyPanel.thisModule})}
                         className="flex shrink-0 items-center gap-1 rounded bg-primary/15 px-1.5 py-0.5 text-ui-10 text-primary"
                     >
                         <Icon name={CONTEXT_ICONS[onlyKind]} size={11} />
-                        Solo este módulo
+                        {t.agent.historyPanel.onlyThisModule}
                         <Icon name="close" size={10} />
                     </button>
                 )}
@@ -160,17 +157,17 @@ export default function AgentHistoryPanel({
                     onClick={() => setGroupBy((g) => (g === 'module' ? 'agent' : 'module'))}
                     title={
                         groupBy === 'module'
-                            ? 'Agrupado por módulo (de dónde salió cada conversación). Hacé clic para agrupar por agente.'
-                            : 'Agrupado por agente. Hacé clic para agrupar por módulo.'
+                            ? t.agent.historyPanel.groupedByModuleTitle
+                            : t.agent.historyPanel.groupedByAgentTitle
                     }
                     className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-10 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name={groupBy === 'module' ? 'category' : 'smart_toy'} size={11} />
-                    {groupBy === 'module' ? 'Módulo' : 'Agente'}
+                    {groupBy === 'module' ? t.agent.historyPanel.module : t.agent.historyPanel.agent}
                 </button>
                 <button
                     onClick={onClose}
-                    title="Vuelve a la conversación, que siguió corriendo detrás"
+                    title={t.agent.historyPanel.backToChat}
                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="close" size={13} />
@@ -181,8 +178,8 @@ export default function AgentHistoryPanel({
                 {total === 0 && (
                     <p className="px-3 py-2 text-ui-11 text-on-surface-variant">
                         {chats.length === 0
-                            ? 'Todavía no hay conversaciones. Una entra al historial con su primer mensaje.'
-                            : `Ninguna coincide con «${query}».`}
+                            ? t.agent.historyPanel.empty
+                            : t.agent.historyPanel.noMatch({query})}
                     </p>
                 )}
 
@@ -199,7 +196,7 @@ export default function AgentHistoryPanel({
                                         return next
                                     })
                                 }
-                                title={`${g.items.length} ${g.items.length === 1 ? 'conversación' : 'conversaciones'} · ${g.label}`}
+                                title={t.agent.historyPanel.groupTitle({n: g.items.length, group: g.label})}
                                 className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-ui-10 font-medium uppercase tracking-wider text-on-surface-variant hover:bg-surface-variant"
                             >
                                 <Icon name={isCollapsed ? 'chevron_right' : 'expand_more'} size={12} className="shrink-0" />
@@ -230,12 +227,12 @@ export default function AgentHistoryPanel({
                                                 disabled={!agent}
                                                 title={
                                                     agent
-                                                        ? `Retoma esta conversación con ${agent.label}. Los mensajes los tiene el CLI: se vuelven a dibujar al abrirla.`
-                                                        : `Esta conversación es de ${c.agentId}, que no está instalado en esta máquina.`
+                                                        ? t.agent.historyPanel.resumeTitle({agent: agent.label})
+                                                        : t.agent.historyPanel.notInstalledTitle({agent: c.agentId})
                                                 }
                                                 className="min-w-0 flex-1 truncate text-left text-on-surface disabled:opacity-50"
                                             >
-                                                {c.title || 'Sin título'}
+                                                {c.title || t.agent.historyPanel.untitled}
                                             </button>
 
                                             {/* El recurso importa más que el
@@ -252,7 +249,7 @@ export default function AgentHistoryPanel({
                                             )}
                                             <span
                                                 className="w-8 shrink-0 text-right text-on-surface-variant/60 group-hover:hidden"
-                                                title={new Date(c.updatedAt * 1000).toLocaleString('es')}
+                                                title={formatDateTime(c.updatedAt)}
                                             >
                                                 {relativeAge(c.updatedAt)}
                                             </span>
@@ -260,14 +257,14 @@ export default function AgentHistoryPanel({
                                             <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
                                                 <button
                                                     onClick={() => onRename(c)}
-                                                    title="Cambiar el nombre de esta conversación. El título sale de lo primero que escribiste, que casi nunca es cómo la vas a buscar después."
+                                                    title={t.agent.historyPanel.renameTitle}
                                                     className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                                 >
                                                     <Icon name="edit" size={12} />
                                                 </button>
                                                 <button
                                                     onClick={() => onDelete(c)}
-                                                    title="Quita la conversación del historial de mini-tools. NO borra la conversación del CLI: esa vive en su propio almacenamiento y se puede seguir retomando desde ahí."
+                                                    title={t.agent.historyPanel.deleteTitle}
                                                     className="rounded p-0.5 text-on-surface-variant hover:bg-error-container hover:text-on-error-container"
                                                 >
                                                     <Icon name="delete" size={12} />

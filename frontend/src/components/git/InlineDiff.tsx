@@ -1,6 +1,7 @@
 import {useMemo} from 'react'
 import {parsePatch} from '../../lib/gitPatch'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // El diff de un archivo, desplegado DENTRO de la lista de cambios.
 //
@@ -40,6 +41,8 @@ interface Props {
 type Row = {kind: 'hunk' | 'add' | 'del' | 'context'; oldNo: number | null; newNo: number | null; text: string; section?: string}
 
 export default function InlineDiff({state, onOpenFull}: Props) {
+    const t = useT()
+    const ti = t.git.diff.inline
     // Se reusa el mismo parser que usa el stage por líneas del panel derecho:
     // dos lectores del mismo parche terminan, tarde o temprano, discrepando en
     // qué línea es cuál.
@@ -69,7 +72,7 @@ export default function InlineDiff({state, onOpenFull}: Props) {
         return (
             <p className="flex items-center gap-1.5 bg-surface-container-lowest px-3 py-1.5 text-ui-11 text-on-surface-variant">
                 <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                Leyendo el diff…
+                {ti.loading}
             </p>
         )
     }
@@ -80,14 +83,14 @@ export default function InlineDiff({state, onOpenFull}: Props) {
         return (
             <p className="flex items-center gap-1.5 bg-surface-container-lowest px-3 py-1.5 text-ui-11 text-on-surface-variant">
                 <Icon name="data_object" size={12} className="shrink-0" />
-                Archivo binario: git no produce un diff de texto para esto.
+                {ti.binary}
             </p>
         )
     }
     if (rows.length === 0) {
         return (
             <p className="bg-surface-container-lowest px-3 py-1.5 text-ui-11 text-on-surface-variant">
-                Sin cambios de contenido — puede ser solo un cambio de permisos o un renombrado.
+                {ti.noContent}
             </p>
         )
     }
@@ -131,11 +134,11 @@ export default function InlineDiff({state, onOpenFull}: Props) {
             {hidden > 0 && (
                 <button
                     onClick={onOpenFull}
-                    title="Abre el archivo en el panel de diff, donde se ve completo y se puede stagear por bloques o por líneas"
+                    title={ti.openFullTitle}
                     className="flex w-full items-center justify-center gap-1.5 border-t border-outline-variant px-2 py-1 text-ui-11 text-primary hover:bg-primary-container/40"
                 >
                     <Icon name="unfold_more" size={12} />
-                    {hidden} líneas más — ver el archivo completo
+                    {ti.moreLines(hidden)}
                 </button>
             )}
         </div>

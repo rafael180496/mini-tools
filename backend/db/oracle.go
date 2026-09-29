@@ -1,12 +1,13 @@
 package db
 
 import (
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 
 	go_ora "github.com/sijms/go-ora/v2"
+
+	"mini-tools/backend/i18n"
 )
 
 type oracleConnector struct{}
@@ -27,11 +28,11 @@ func (oracleConnector) Type() DBType { return DBTypeOracle }
 func (oracleConnector) BuildDSN(params map[string]string) (string, error) {
 	host := params["host"]
 	if host == "" {
-		return "", fmt.Errorf("oracle: falta el parámetro 'host'")
+		return "", i18n.Errorf(i18n.Msg{ES: "oracle: falta el parámetro 'host'", EN: "oracle: missing 'host' parameter"})
 	}
 	user := params["user"]
 	if user == "" {
-		return "", fmt.Errorf("oracle: falta el parámetro 'user'")
+		return "", i18n.Errorf(i18n.Msg{ES: "oracle: falta el parámetro 'user'", EN: "oracle: missing 'user' parameter"})
 	}
 
 	portStr := params["port"]
@@ -40,7 +41,7 @@ func (oracleConnector) BuildDSN(params map[string]string) (string, error) {
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return "", fmt.Errorf("oracle: 'port' inválido: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "oracle: 'port' inválido: %w", EN: "oracle: invalid 'port': %w"}, err)
 	}
 
 	password := params["password"]
@@ -49,26 +50,26 @@ func (oracleConnector) BuildDSN(params map[string]string) (string, error) {
 	case "", "service_name", "easy_connect":
 		service := params["service"]
 		if service == "" {
-			return "", fmt.Errorf("oracle: falta el parámetro 'service' para el modo service_name/easy_connect")
+			return "", i18n.Errorf(i18n.Msg{ES: "oracle: falta el parámetro 'service' para el modo service_name/easy_connect", EN: "oracle: missing 'service' parameter for service_name/easy_connect mode"})
 		}
 		return go_ora.BuildUrl(host, port, service, user, password, nil), nil
 
 	case "sid":
 		sid := params["sid"]
 		if sid == "" {
-			return "", fmt.Errorf("oracle: falta el parámetro 'sid' para el modo sid")
+			return "", i18n.Errorf(i18n.Msg{ES: "oracle: falta el parámetro 'sid' para el modo sid", EN: "oracle: missing 'sid' parameter for sid mode"})
 		}
 		return go_ora.BuildUrl(host, port, "", user, password, map[string]string{"SID": sid}), nil
 
 	case "tns":
 		descriptor := params["connectDescriptor"]
 		if descriptor == "" {
-			return "", fmt.Errorf("oracle: falta el parámetro 'connectDescriptor' para el modo tns")
+			return "", i18n.Errorf(i18n.Msg{ES: "oracle: falta el parámetro 'connectDescriptor' para el modo tns", EN: "oracle: missing 'connectDescriptor' parameter for tns mode"})
 		}
 		return go_ora.BuildUrl(host, port, "", user, password, map[string]string{"connStr": descriptor}), nil
 
 	default:
-		return "", fmt.Errorf("oracle: modo de conexión desconocido %q (usar service_name, easy_connect, sid o tns)", params["mode"])
+		return "", i18n.Errorf(i18n.Msg{ES: "oracle: modo de conexión desconocido %q (usar service_name, easy_connect, sid o tns)", EN: "oracle: unknown connection mode %q (use service_name, easy_connect, sid or tns)"}, params["mode"])
 	}
 }
 
@@ -83,7 +84,7 @@ func (oracleConnector) BuildDSN(params map[string]string) (string, error) {
 func (oracleConnector) ParseDSN(dsn string) (map[string]string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("oracle: parseando DSN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "oracle: parseando DSN: %w", EN: "oracle: parsing DSN: %w"}, err)
 	}
 
 	params := map[string]string{

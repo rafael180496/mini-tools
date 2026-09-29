@@ -3,7 +3,7 @@ package vault
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"mini-tools/backend/i18n"
 )
 
 // OpenTabInfo is one restorable editor tab: its file path, plus which
@@ -197,6 +197,9 @@ type Settings struct {
 	// frontend lee como 100. Ver MinUIFontScale/MaxUIFontScale y la migración
 	// 50.
 	UIFontScale int `json:"uiFontScale"`
+	// Language es el idioma de la interfaz ('en' | 'es'), o '' si nunca se
+	// eligió — el frontend lo lee como inglés. Migración 56.
+	Language string `json:"language"`
 	// SnippetsPanelWidth es el ancho arrastrado del panel de snippets de las
 	// terminales, en píxeles. 0 = sin arrastrar, el frontend usa su default.
 	// Uno solo para todas las terminales: es el mismo panel. Migración 54.
@@ -268,12 +271,13 @@ func (s *Store) GetSettings() (Settings, error) {
 	var mcpEnabled, mcpNotesWrite bool
 	var uiFontScale int
 	var snippetsPanelWidth int
+	var language string
 	if err := s.db.QueryRow(
-		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write, ui_font_scale, snippets_panel_width FROM settings WHERE id = 1`,
+		`SELECT theme, open_tabs, sidebar_collapsed, editor_height, remember_master_key, editor_theme, sidebar_module, sidebar_width, editor_font_family, editor_font_size, editor_line_wrap, editor_line_numbers, editor_tab_size, editor_toolbar, ssh_terminal_theme, auto_backup_enabled, auto_backup_interval_hours, auto_backup_path, auto_save_enabled, auto_save_interval_seconds, git_side_width, git_diff_width, git_diff_context, git_diff_ignore_ws, git_diff_wrap, query_page_size, local_shell, git_term_dock, git_term_size, git_panel_tab, git_side_hidden, git_diff_hidden, terminal_font_size, git_panel_sessions, active_agent, active_model, active_effort, agent_dock, agent_size, notes_last_open, notes_side_width, mcp_enabled, mcp_notes_write, ui_font_scale, snippets_panel_width, language FROM settings WHERE id = 1`,
 	).Scan(
-		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite, &uiFontScale, &snippetsPanelWidth,
+		&theme, &openTabsJSON, &sidebarCollapsed, &editorHeight, &rememberMasterKey, &editorTheme, &sidebarModule, &sidebarWidth, &editorAppearance.FontFamily, &editorAppearance.FontSize, &editorAppearance.LineWrap, &editorAppearance.LineNumbers, &editorAppearance.TabSize, &editorAppearance.Toolbar, &sshTerminalTheme, &autoBackupEnabled, &autoBackupIntervalHours, &autoBackupPath, &autoSaveEnabled, &autoSaveIntervalSeconds, &gitSideWidth, &gitDiffWidth, &gitDiffContext, &gitDiffIgnoreWs, &gitDiffWrap, &queryPageSize, &localShell, &gitTermDock, &gitTermSize, &gitPanelTab, &gitSideHidden, &gitDiffHidden, &terminalFontSize, &gitPanelSessionsJSON, &activeAgent, &activeModel, &activeEffort, &agentDock, &agentSize, &notesLastOpen, &notesSideWidth, &mcpEnabled, &mcpNotesWrite, &uiFontScale, &snippetsPanelWidth, &language,
 	); err != nil {
-		return Settings{}, fmt.Errorf("vault: leyendo settings: %w", err)
+		return Settings{}, i18n.Errorf(i18n.Msg{ES: "vault: leyendo settings: %w", EN: "vault: reading settings: %w"}, err)
 	}
 
 	var openTabs []OpenTabInfo
@@ -286,7 +290,7 @@ func (s *Store) GetSettings() (Settings, error) {
 			// erroring out and losing the user's restored tabs on upgrade.
 			var legacy []string
 			if err2 := json.Unmarshal([]byte(openTabsJSON.String), &legacy); err2 != nil {
-				return Settings{}, fmt.Errorf("vault: parseando open_tabs: %w", err)
+				return Settings{}, i18n.Errorf(i18n.Msg{ES: "vault: parseando open_tabs: %w", EN: "vault: parsing open_tabs: %w"}, err)
 			}
 			openTabs = make([]OpenTabInfo, len(legacy))
 			for i, p := range legacy {
@@ -340,6 +344,7 @@ func (s *Store) GetSettings() (Settings, error) {
 		MCPNotesWrite:           mcpNotesWrite,
 		UIFontScale:             uiFontScale,
 		SnippetsPanelWidth:      snippetsPanelWidth,
+		Language:                language,
 	}, nil
 }
 
@@ -377,7 +382,7 @@ func (s *Store) SetAgentLayout(dock string, size int) error {
 		size = 1200
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET agent_dock = ?, agent_size = ? WHERE id = 1`, dock, size); err != nil {
-		return fmt.Errorf("vault: guardando el layout del chat: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el layout del chat: %w", EN: "vault: saving the chat layout: %w"}, err)
 	}
 	return nil
 }
@@ -385,7 +390,7 @@ func (s *Store) SetAgentLayout(dock string, size int) error {
 // SetNotesLastOpen persiste qué nota quedó abierta, para reabrirla al arrancar.
 func (s *Store) SetNotesLastOpen(noteID string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET notes_last_open = ? WHERE id = 1`, noteID); err != nil {
-		return fmt.Errorf("vault: guardando la última nota abierta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando la última nota abierta: %w", EN: "vault: saving the last open note: %w"}, err)
 	}
 	return nil
 }
@@ -402,7 +407,7 @@ func (s *Store) SetNotesSideWidth(width int) error {
 		width = 700
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET notes_side_width = ? WHERE id = 1`, width); err != nil {
-		return fmt.Errorf("vault: guardando el ancho de la lista de notas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el ancho de la lista de notas: %w", EN: "vault: saving the notes list width: %w"}, err)
 	}
 	return nil
 }
@@ -418,7 +423,7 @@ func (s *Store) SetSnippetsPanelWidth(width int) error {
 		width = 900
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET snippets_panel_width = ? WHERE id = 1`, width); err != nil {
-		return fmt.Errorf("vault: guardando el ancho del panel de snippets: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el ancho del panel de snippets: %w", EN: "vault: saving the snippets panel width: %w"}, err)
 	}
 	return nil
 }
@@ -428,7 +433,7 @@ func (s *Store) SetActiveAgent(agentID, model, effort string) error {
 		`UPDATE settings SET active_agent = ?, active_model = ?, active_effort = ? WHERE id = 1`,
 		agentID, model, effort,
 	); err != nil {
-		return fmt.Errorf("vault: guardando el agente activo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el agente activo: %w", EN: "vault: saving the active agent: %w"}, err)
 	}
 	return nil
 }
@@ -436,10 +441,10 @@ func (s *Store) SetActiveAgent(agentID, model, effort string) error {
 // SetTheme persists the theme preference ("dark" or "light").
 func (s *Store) SetTheme(theme string) error {
 	if theme != "dark" && theme != "light" {
-		return fmt.Errorf("vault: tema inválido %q", theme)
+		return i18n.Errorf(i18n.Msg{ES: "vault: tema inválido %q", EN: "vault: invalid theme %q"}, theme)
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET theme = ? WHERE id = 1`, theme); err != nil {
-		return fmt.Errorf("vault: guardando tema: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando tema: %w", EN: "vault: saving theme: %w"}, err)
 	}
 	return nil
 }
@@ -452,10 +457,10 @@ func (s *Store) SetTheme(theme string) error {
 func (s *Store) SetOpenTabs(tabs []OpenTabInfo) error {
 	encoded, err := json.Marshal(tabs)
 	if err != nil {
-		return fmt.Errorf("vault: serializando open_tabs: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: serializando open_tabs: %w", EN: "vault: serializing open_tabs: %w"}, err)
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET open_tabs = ? WHERE id = 1`, string(encoded)); err != nil {
-		return fmt.Errorf("vault: guardando open_tabs: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando open_tabs: %w", EN: "vault: saving open_tabs: %w"}, err)
 	}
 	return nil
 }
@@ -464,7 +469,7 @@ func (s *Store) SetOpenTabs(tabs []OpenTabInfo) error {
 // full sidebar or an icon-only rail.
 func (s *Store) SetSidebarCollapsed(collapsed bool) error {
 	if _, err := s.db.Exec(`UPDATE settings SET sidebar_collapsed = ? WHERE id = 1`, collapsed); err != nil {
-		return fmt.Errorf("vault: guardando sidebar_collapsed: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando sidebar_collapsed: %w", EN: "vault: saving sidebar_collapsed: %w"}, err)
 	}
 	return nil
 }
@@ -497,7 +502,7 @@ func (s *Store) SetGitPaneWidths(sideWidth, diffWidth int) error {
 		`UPDATE settings SET git_side_width = ?, git_diff_width = ? WHERE id = 1`,
 		clampGitPane(sideWidth), clampGitPane(diffWidth),
 	); err != nil {
-		return fmt.Errorf("vault: guardando anchos de paneles git: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando anchos de paneles git: %w", EN: "vault: saving git panel widths: %w"}, err)
 	}
 	return nil
 }
@@ -547,7 +552,7 @@ func (s *Store) SetGitLayout(dock string, size int, tab string, sideHidden, diff
 		`UPDATE settings SET git_term_dock = ?, git_term_size = ?, git_panel_tab = ?, git_side_hidden = ?, git_diff_hidden = ? WHERE id = 1`,
 		dock, size, tab, sideHidden, diffHidden,
 	); err != nil {
-		return fmt.Errorf("vault: guardando layout de la pestaña git: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando layout de la pestaña git: %w", EN: "vault: saving git tab layout: %w"}, err)
 	}
 	return nil
 }
@@ -564,10 +569,10 @@ func (s *Store) SetGitPanelSessions(sessions []GitPanelSession) error {
 	}
 	blob, err := json.Marshal(sessions)
 	if err != nil {
-		return fmt.Errorf("vault: serializando las sesiones del panel git: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: serializando las sesiones del panel git: %w", EN: "vault: serializing the git panel sessions: %w"}, err)
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET git_panel_sessions = ? WHERE id = 1`, string(blob)); err != nil {
-		return fmt.Errorf("vault: guardando las sesiones del panel git: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando las sesiones del panel git: %w", EN: "vault: saving the git panel sessions: %w"}, err)
 	}
 	return nil
 }
@@ -582,7 +587,7 @@ func (s *Store) SetTerminalFontSize(size int) error {
 		size = MaxTerminalFontSize
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET terminal_font_size = ? WHERE id = 1`, size); err != nil {
-		return fmt.Errorf("vault: guardando terminal_font_size: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando terminal_font_size: %w", EN: "vault: saving terminal_font_size: %w"}, err)
 	}
 	return nil
 }
@@ -611,7 +616,7 @@ func (s *Store) SetUIFontScale(pct int) error {
 		}
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET ui_font_scale = ? WHERE id = 1`, pct); err != nil {
-		return fmt.Errorf("vault: guardando ui_font_scale: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando ui_font_scale: %w", EN: "vault: saving ui_font_scale: %w"}, err)
 	}
 	return nil
 }
@@ -627,7 +632,7 @@ func (s *Store) SetQueryPageSize(n int) error {
 		n = 100000
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET query_page_size = ? WHERE id = 1`, n); err != nil {
-		return fmt.Errorf("vault: guardando query_page_size: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando query_page_size: %w", EN: "vault: saving query_page_size: %w"}, err)
 	}
 	return nil
 }
@@ -649,7 +654,7 @@ func (s *Store) SetGitDiffPrefs(context int, ignoreWs, wrap bool) error {
 		`UPDATE settings SET git_diff_context = ?, git_diff_ignore_ws = ?, git_diff_wrap = ? WHERE id = 1`,
 		context, ignoreWs, wrap,
 	); err != nil {
-		return fmt.Errorf("vault: guardando preferencias de diff: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando preferencias de diff: %w", EN: "vault: saving diff preferences: %w"}, err)
 	}
 	return nil
 }
@@ -659,7 +664,7 @@ func (s *Store) SetGitDiffPrefs(context int, ignoreWs, wrap bool) error {
 // just storage, no range validation here.
 func (s *Store) SetEditorHeight(height int) error {
 	if _, err := s.db.Exec(`UPDATE settings SET editor_height = ? WHERE id = 1`, height); err != nil {
-		return fmt.Errorf("vault: guardando editor_height: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando editor_height: %w", EN: "vault: saving editor_height: %w"}, err)
 	}
 	return nil
 }
@@ -670,7 +675,7 @@ func (s *Store) SetEditorHeight(height int) error {
 // to "auto" there, same "storage only" reasoning as SetEditorHeight.
 func (s *Store) SetEditorTheme(theme string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET editor_theme = ? WHERE id = 1`, theme); err != nil {
-		return fmt.Errorf("vault: guardando editor_theme: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando editor_theme: %w", EN: "vault: saving editor_theme: %w"}, err)
 	}
 	return nil
 }
@@ -681,7 +686,7 @@ func (s *Store) SetEditorTheme(theme string) error {
 // an unrecognized id just falls back to "auto" there.
 func (s *Store) SetSshTerminalTheme(theme string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET ssh_terminal_theme = ? WHERE id = 1`, theme); err != nil {
-		return fmt.Errorf("vault: guardando ssh_terminal_theme: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando ssh_terminal_theme: %w", EN: "vault: saving ssh_terminal_theme: %w"}, err)
 	}
 	return nil
 }
@@ -693,7 +698,7 @@ func (s *Store) SetSshTerminalTheme(theme string) error {
 // rather than being rejected here (see Settings.LocalShell).
 func (s *Store) SetLocalShell(id string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET local_shell = ? WHERE id = 1`, id); err != nil {
-		return fmt.Errorf("vault: guardando local_shell: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando local_shell: %w", EN: "vault: saving local_shell: %w"}, err)
 	}
 	return nil
 }
@@ -703,7 +708,7 @@ func (s *Store) SetLocalShell(id string) error {
 // backend/autobackup.Scheduler to start/stop after this succeeds.
 func (s *Store) SetAutoBackupEnabled(enabled bool) error {
 	if _, err := s.db.Exec(`UPDATE settings SET auto_backup_enabled = ? WHERE id = 1`, enabled); err != nil {
-		return fmt.Errorf("vault: guardando auto_backup_enabled: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando auto_backup_enabled: %w", EN: "vault: saving auto_backup_enabled: %w"}, err)
 	}
 	return nil
 }
@@ -715,10 +720,10 @@ func (s *Store) SetAutoBackupEnabled(enabled bool) error {
 // hours panics time.NewTicker.
 func (s *Store) SetAutoBackupIntervalHours(hours int) error {
 	if hours < MinAutoBackupIntervalHours || hours > MaxAutoBackupIntervalHours {
-		return fmt.Errorf("vault: intervalo de backup automático inválido: %d (debe ser entre %d y %d horas)", hours, MinAutoBackupIntervalHours, MaxAutoBackupIntervalHours)
+		return i18n.Errorf(i18n.Msg{ES: "vault: intervalo de backup automático inválido: %d (debe ser entre %d y %d horas)", EN: "vault: invalid automatic backup interval: %d (must be between %d and %d hours)"}, hours, MinAutoBackupIntervalHours, MaxAutoBackupIntervalHours)
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET auto_backup_interval_hours = ? WHERE id = 1`, hours); err != nil {
-		return fmt.Errorf("vault: guardando auto_backup_interval_hours: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando auto_backup_interval_hours: %w", EN: "vault: saving auto_backup_interval_hours: %w"}, err)
 	}
 	return nil
 }
@@ -729,7 +734,7 @@ func (s *Store) SetAutoBackupIntervalHours(hours int) error {
 // a directory.
 func (s *Store) SetAutoBackupPath(path string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET auto_backup_path = ? WHERE id = 1`, path); err != nil {
-		return fmt.Errorf("vault: guardando auto_backup_path: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando auto_backup_path: %w", EN: "vault: saving auto_backup_path: %w"}, err)
 	}
 	return nil
 }
@@ -739,7 +744,7 @@ func (s *Store) SetAutoBackupPath(path string) error {
 // so there's nothing server-side to reconfigure.
 func (s *Store) SetAutoSaveEnabled(enabled bool) error {
 	if _, err := s.db.Exec(`UPDATE settings SET auto_save_enabled = ? WHERE id = 1`, enabled); err != nil {
-		return fmt.Errorf("vault: guardando auto_save_enabled: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando auto_save_enabled: %w", EN: "vault: saving auto_save_enabled: %w"}, err)
 	}
 	return nil
 }
@@ -748,10 +753,10 @@ func (s *Store) SetAutoSaveEnabled(enabled bool) error {
 // range (a 0/negative interval would make setInterval useless / thrash).
 func (s *Store) SetAutoSaveIntervalSeconds(seconds int) error {
 	if seconds < MinAutoSaveIntervalSeconds || seconds > MaxAutoSaveIntervalSeconds {
-		return fmt.Errorf("vault: intervalo de auto-guardado inválido: %d (debe ser entre %d y %d segundos)", seconds, MinAutoSaveIntervalSeconds, MaxAutoSaveIntervalSeconds)
+		return i18n.Errorf(i18n.Msg{ES: "vault: intervalo de auto-guardado inválido: %d (debe ser entre %d y %d segundos)", EN: "vault: invalid auto-save interval: %d (must be between %d and %d seconds)"}, seconds, MinAutoSaveIntervalSeconds, MaxAutoSaveIntervalSeconds)
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET auto_save_interval_seconds = ? WHERE id = 1`, seconds); err != nil {
-		return fmt.Errorf("vault: guardando auto_save_interval_seconds: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando auto_save_interval_seconds: %w", EN: "vault: saving auto_save_interval_seconds: %w"}, err)
 	}
 	return nil
 }
@@ -815,7 +820,7 @@ func (s *Store) SetEditorAppearance(a EditorAppearance) error {
 		a.FontFamily, a.FontSize, a.LineWrap, a.LineNumbers, a.TabSize, a.Toolbar,
 	)
 	if err != nil {
-		return fmt.Errorf("vault: guardando apariencia del editor: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando apariencia del editor: %w", EN: "vault: saving editor appearance: %w"}, err)
 	}
 	return nil
 }
@@ -833,7 +838,7 @@ func (s *Store) SetSidebarWidth(px int) error {
 		px = 640
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET sidebar_width = ? WHERE id = 1`, px); err != nil {
-		return fmt.Errorf("vault: guardando sidebar_width: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando sidebar_width: %w", EN: "vault: saving sidebar_width: %w"}, err)
 	}
 	return nil
 }
@@ -841,7 +846,7 @@ func (s *Store) SetSidebarWidth(px int) error {
 // SetSidebarModule persists which sidebar module the master menu has open.
 func (s *Store) SetSidebarModule(id string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET sidebar_module = ? WHERE id = 1`, id); err != nil {
-		return fmt.Errorf("vault: guardando sidebar_module: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando sidebar_module: %w", EN: "vault: saving sidebar_module: %w"}, err)
 	}
 	return nil
 }
@@ -854,7 +859,7 @@ func (s *Store) SetSidebarModule(id string) error {
 // servidor no hay nadie que pueda usarlo.
 func (s *Store) SetMCPNotesWrite(enabled bool) error {
 	if _, err := s.db.Exec(`UPDATE settings SET mcp_notes_write = ? WHERE id = 1`, enabled); err != nil {
-		return fmt.Errorf("vault: guardando mcp_notes_write: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando mcp_notes_write: %w", EN: "vault: saving mcp_notes_write: %w"}, err)
 	}
 	return nil
 }
@@ -867,7 +872,29 @@ func (s *Store) SetMCPNotesWrite(enabled bool) error {
 // decide si volver a encenderlo.
 func (s *Store) SetMCPEnabled(enabled bool) error {
 	if _, err := s.db.Exec(`UPDATE settings SET mcp_enabled = ? WHERE id = 1`, enabled); err != nil {
-		return fmt.Errorf("vault: guardando mcp_enabled: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando mcp_enabled: %w", EN: "vault: saving mcp_enabled: %w"}, err)
+	}
+	return nil
+}
+
+// Languages son los idiomas que la interfaz sabe hablar.
+var Languages = []string{"en", "es"}
+
+// SetLanguage persiste el idioma de la interfaz. Un valor desconocido se
+// rechaza en vez de guardarse: un idioma sin diccionario dejaría la app sin
+// texto al próximo arranque.
+func (s *Store) SetLanguage(lang string) error {
+	ok := false
+	for _, l := range Languages {
+		if l == lang {
+			ok = true
+		}
+	}
+	if !ok {
+		return i18n.Errorf(i18n.Msg{ES: "vault: idioma desconocido %q", EN: "vault: unknown language %q"}, lang)
+	}
+	if _, err := s.db.Exec(`UPDATE settings SET language = ? WHERE id = 1`, lang); err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el idioma: %w", EN: "vault: saving the language: %w"}, err)
 	}
 	return nil
 }

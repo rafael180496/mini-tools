@@ -7,51 +7,53 @@
 // accent colors elsewhere in this app already are (not tied to the MD3
 // semantic tokens, which don't have enough distinct hues for 7 types).
 export interface RedisTypeStyle {
-    label: string
+    // name is the Redis type name as shown (string, hash, json…): a
+    // technical term, the same in every language.
+    name: string
     icon: string
     badgeClass: string
 }
 
 export const REDIS_TYPE_STYLES: Record<string, RedisTypeStyle> = {
     string: {
-        label: 'string',
+        name: 'string',
         icon: 'notes',
         badgeClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
     },
     hash: {
-        label: 'hash',
+        name: 'hash',
         icon: 'table_rows',
         badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
     },
     list: {
-        label: 'list',
+        name: 'list',
         icon: 'reorder',
         badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
     },
     set: {
-        label: 'set',
+        name: 'set',
         icon: 'scatter_plot',
         badgeClass: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300',
     },
     zset: {
-        label: 'zset',
+        name: 'zset',
         icon: 'leaderboard',
         badgeClass: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
     },
     stream: {
-        label: 'stream',
+        name: 'stream',
         icon: 'stream',
         badgeClass: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300',
     },
     'ReJSON-RL': {
-        label: 'json',
+        name: 'json',
         icon: 'data_object',
         badgeClass: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300',
     },
 }
 
 const FALLBACK_STYLE: RedisTypeStyle = {
-    label: '',
+    name: '',
     icon: 'help',
     badgeClass: 'bg-surface-container-highest text-on-surface-variant',
 }
@@ -62,5 +64,5 @@ const FALLBACK_STYLE: RedisTypeStyle = {
 export const REDIS_TYPES = ['string', 'hash', 'list', 'set', 'zset', 'stream', 'ReJSON-RL'] as const
 
 export function redisTypeStyle(type: string): RedisTypeStyle {
-    return REDIS_TYPE_STYLES[type] ?? {...FALLBACK_STYLE, label: type}
+    return REDIS_TYPE_STYLES[type] ?? {...FALLBACK_STYLE, name: type}
 }

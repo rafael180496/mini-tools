@@ -27,6 +27,7 @@ import {
 } from '../../../wailsjs/go/main/App'
 import {git, vault} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
+import {useT} from '../../i18n'
 import Icon from '../Icon'
 import SidebarSection from '../sidebar/SidebarSection'
 import TreeRow, {TREE_FOLDER_ICON} from '../sidebar/TreeRow'
@@ -124,6 +125,9 @@ export default function GitRepoTree({
     onMatchCount,
     onMoveRepoToFolder,
 }: GitRepoTreeProps) {
+    const t = useT()
+    const tg = t.sidebar.git
+    const tf = t.sidebar.folders
     const [repos, setRepos] = useState<vault.GitRepo[]>([])
     const [probe, setProbe] = useState<git.Availability | null>(null)
     const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -221,23 +225,23 @@ export default function GitRepoTree({
     function localBranchMenu(e: ReactMouseEvent, repoId: string, b: git.Branch) {
         menu.openAt(e, [
             {
-                label: 'Checkout',
+                label: tg.checkout,
                 icon: 'check',
                 disabled: b.isCurrent,
-                title: b.isCurrent ? 'Ya estás en esta rama' : `Cambia el repositorio a "${b.name}" (lo mismo que el doble clic)`,
+                title: b.isCurrent ? tg.alreadyOnBranch : tg.checkoutTitle({name: b.name}),
                 onSelect: () => void checkout(repoId, b.name),
             },
-            {label: 'Crear rama desde acá…', icon: 'call_split', onSelect: () => startCreateBranch(repoId, b.name)},
+            {label: tg.branchFromHere, icon: 'call_split', onSelect: () => startCreateBranch(repoId, b.name)},
             'separator',
             {
-                label: 'Cambiar nombre…',
+                label: tg.renameEllipsis,
                 icon: 'edit',
                 onSelect: () =>
                     setPrompt({
-                        title: `Renombrar la rama "${b.name}"`,
-                        label: 'Nuevo nombre',
+                        title: tg.renameBranchTitle({name: b.name}),
+                        label: tg.newName,
                         initial: b.name,
-                        description: 'Renombrar solo afecta tu repositorio local (preserva el reflog y el upstream). Si la rama ya está publicada, el nombre viejo sigue en el remoto hasta que lo borres.',
+                        description: tg.renameBranchDesc,
                         onSubmit: async (v) => {
                             try {
                                 await GitRenameBranch(repoId, b.name, v)
@@ -248,14 +252,14 @@ export default function GitRepoTree({
                         },
                     }),
             },
-            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(b.name)},
+            {label: tg.copyName, icon: 'content_copy', onSelect: () => copy(b.name)},
             'separator',
             {
-                label: 'Borrar rama',
+                label: tg.deleteBranch,
                 icon: 'delete',
                 danger: true,
                 disabled: b.isCurrent,
-                title: b.isCurrent ? 'No podés borrar la rama en la que estás: cambiá a otra primero' : 'Borra la rama local; la del remoto no se toca',
+                title: b.isCurrent ? tg.cantDeleteCurrent : tg.deleteBranchTitle,
                 onSelect: () => setConfirmDeleteBranch({repoId, name: b.name}),
             },
         ])
@@ -266,25 +270,23 @@ export default function GitRepoTree({
     function remoteBranchMenu(e: ReactMouseEvent, repoId: string, b: git.Branch) {
         menu.openAt(e, [
             {
-                label: 'Checkout',
+                label: tg.checkout,
                 icon: 'check',
-                title: 'Si no tenés la rama local, se crea siguiendo a esta (lo mismo que el doble clic)',
+                title: tg.checkoutRemoteTitle,
                 onSelect: () => void checkout(repoId, b.name),
             },
-            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(b.name)},
+            {label: tg.copyName, icon: 'content_copy', onSelect: () => copy(b.name)},
         ])
     }
 
     // Create a new local branch (optionally from a start point) and check it out.
     function startCreateBranch(repoId: string, from = '') {
         setPrompt({
-            title: from ? `Crear rama desde "${from}"` : 'Crear rama',
-            label: 'Nombre de la rama',
-            placeholder: 'mi-rama',
-            confirmLabel: 'Crear y cambiar',
-            description: from
-                ? `La rama nueva arranca en el commit al que apunta "${from}" y se hace checkout.`
-                : 'La rama nueva se crea en el commit actual (HEAD) y se hace checkout.',
+            title: from ? tg.createBranchFrom({from}) : tg.createBranch,
+            label: tg.branchName,
+            placeholder: tg.branchPlaceholder,
+            confirmLabel: tg.createAndSwitch,
+            description: from ? tg.createBranchFromDesc({from}) : tg.createBranchDesc,
             onSubmit: async (name) => {
                 try {
                     // startPoint vacío = HEAD, checkout = true
@@ -299,13 +301,13 @@ export default function GitRepoTree({
 
     function startCreateTag(repoId: string) {
         setPrompt({
-            title: 'Crear tag',
-            label: 'Nombre del tag',
+            title: tg.createTag,
+            label: tg.tagName,
             placeholder: 'v1.0.0',
-            secondLabel: 'Mensaje (opcional)',
-            secondPlaceholder: 'Con mensaje crea un tag anotado; sin mensaje, uno liviano.',
-            confirmLabel: 'Crear tag',
-            description: 'El tag se crea en el commit actual (HEAD), local. Después te pregunto si querés pushearlo.',
+            secondLabel: tg.tagMessage,
+            secondPlaceholder: tg.tagMessagePlaceholder,
+            confirmLabel: tg.createTag,
+            description: tg.createTagDesc,
             onSubmit: async (name, msg) => {
                 try {
                     // ref vacío = HEAD
@@ -358,7 +360,7 @@ export default function GitRepoTree({
     async function newRepo() {
         setError(null)
         try {
-            const path = await GitPickFolder('Elegir la carpeta del repositorio nuevo')
+            const path = await GitPickFolder(tg.pickNewRepoFolder)
             if (!path) return
             await GitInitRepo(path)
             refresh()
@@ -372,9 +374,9 @@ export default function GitRepoTree({
     // encabezado y en el clic derecho sobre el fondo del árbol.
     const available = !!probe?.available
     const addEntries: TreeMenuEntry[] = [
-        {label: 'Abrir repositorio…', icon: 'folder_open', disabled: !available, title: 'Uno que ya existe en tu disco', onSelect: () => void openRepo()},
-        {label: 'Nuevo repositorio…', icon: 'create_new_folder', disabled: !available, title: 'git init en una carpeta', onSelect: () => void newRepo()},
-        {label: 'Clonar…', icon: 'cloud_download', disabled: !available, title: 'Desde una URL', onSelect: () => setShowClone(true)},
+        {label: tg.openRepoEllipsis, icon: 'folder_open', disabled: !available, title: tg.openRepoDesc, onSelect: () => void openRepo()},
+        {label: tg.newRepoEllipsis, icon: 'create_new_folder', disabled: !available, title: tg.newRepoDesc, onSelect: () => void newRepo()},
+        {label: tg.clone, icon: 'cloud_download', disabled: !available, title: tg.cloneDesc, onSelect: () => setShowClone(true)},
     ]
 
     // Remote right-click menu — the actions from the reference client, plus a
@@ -383,9 +385,9 @@ export default function GitRepoTree({
         const repoId = repo.id
         menu.openAt(e, [
             {
-                label: `Fetch de ${remote.name}`,
+                label: tg.fetchFrom({remote: remote.name}),
                 icon: 'cloud_download',
-                title: 'Trae lo nuevo del remoto sin tocar tus ramas locales',
+                title: tg.fetchTitle,
                 onSelect: async () => {
                     try {
                         await GitFetch(repoId, new git.FetchOptions({remote: remote.name}), new git.AuthConfig({}))
@@ -397,9 +399,9 @@ export default function GitRepoTree({
             },
             'separator',
             {
-                label: 'Editar remoto…',
+                label: tg.editRemote,
                 icon: 'edit',
-                title: 'Nombre, URL de fetch y URL de push',
+                title: tg.editRemoteTitle,
                 // Reemplaza a los viejos "Renombrar remoto" y "Cambiar URL",
                 // que eran dos prompts de una línea: servían para PEGAR una
                 // URL nueva, no para ver la que estaba puesta — que es lo que
@@ -408,7 +410,7 @@ export default function GitRepoTree({
                 onSelect: () => setSettingsFor({repo, tab: 'remotes'}),
             },
             {
-                label: 'Copiar URL',
+                label: tg.copyUrl,
                 icon: 'link',
                 onSelect: async () => {
                     try {
@@ -420,7 +422,7 @@ export default function GitRepoTree({
                 },
             },
             'separator',
-            {label: 'Eliminar remoto', icon: 'delete', danger: true, onSelect: () => setConfirmRemoveRemote({repoId, name: remote.name})},
+            {label: tg.removeRemote, icon: 'delete', danger: true, onSelect: () => setConfirmRemoveRemote({repoId, name: remote.name})},
         ])
     }
 
@@ -439,30 +441,30 @@ export default function GitRepoTree({
         }
         menu.openAt(e, [
             {
-                label: 'Checkout',
+                label: tg.checkout,
                 icon: 'check',
-                title: 'Deja el repo en HEAD desacoplado',
+                title: tg.checkoutTagTitle,
                 onSelect: () => void guard(() => GitCheckout(repoId, tag.name)),
             },
             {
-                label: 'Crear rama desde acá…',
+                label: tg.branchFromHere,
                 icon: 'call_split',
                 onSelect: () =>
                     setPrompt({
-                        title: `Crear rama desde el tag "${tag.name}"`,
-                        label: 'Nombre de la rama',
-                        placeholder: 'mi-rama',
-                        confirmLabel: 'Crear y cambiar',
-                        description: `La rama nueva arranca en el commit ${tag.hash.slice(0, 8)}, al que apunta el tag. El tag no se modifica.`,
+                        title: tg.createBranchFromTag({tag: tag.name}),
+                        label: tg.branchName,
+                        placeholder: tg.branchPlaceholder,
+                        confirmLabel: tg.createAndSwitch,
+                        description: tg.createBranchFromTagDesc({hash: tag.hash.slice(0, 8)}),
                         onSubmit: (v) => void guard(() => GitCreateBranch(repoId, v, tag.name, true)),
                     }),
             },
             'separator',
-            {label: 'Push a origin', icon: 'upload', onSelect: () => void guard(() => GitPushTag(repoId, 'origin', tag.name, new git.AuthConfig({})))},
-            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(tag.name)},
+            {label: tg.pushToOrigin, icon: 'upload', onSelect: () => void guard(() => GitPushTag(repoId, 'origin', tag.name, new git.AuthConfig({})))},
+            {label: tg.copyName, icon: 'content_copy', onSelect: () => copy(tag.name)},
             'separator',
-            {label: 'Borrar tag', icon: 'delete', danger: true, hint: 'local', title: 'Solo de tu repositorio: la copia del remoto queda', onSelect: () => setConfirmTag({repoId, name: tag.name, remote: false})},
-            {label: 'Borrar de origin', icon: 'delete_forever', danger: true, hint: 'remoto', title: 'Solo del remoto: tu copia local queda', onSelect: () => setConfirmTag({repoId, name: tag.name, remote: true})},
+            {label: tg.deleteTag, icon: 'delete', danger: true, hint: tg.localHint, title: tg.deleteTagTitle, onSelect: () => setConfirmTag({repoId, name: tag.name, remote: false})},
+            {label: tg.deleteFromOrigin, icon: 'delete_forever', danger: true, hint: tg.remoteHint, title: tg.deleteFromOriginTitle, onSelect: () => setConfirmTag({repoId, name: tag.name, remote: true})},
         ])
     }
 
@@ -476,10 +478,10 @@ export default function GitRepoTree({
             }
         }
         menu.openAt(e, [
-            {label: 'Aplicar', icon: 'download', title: 'Aplica los cambios y conserva el stash', onSelect: () => void guard(() => GitStashApply(repoId, stash.ref, false))},
-            {label: 'Pop', icon: 'move_up', title: 'Aplica los cambios y borra el stash', onSelect: () => void guard(() => GitStashApply(repoId, stash.ref, true))},
+            {label: tg.apply, icon: 'download', title: tg.applyTitle, onSelect: () => void guard(() => GitStashApply(repoId, stash.ref, false))},
+            {label: tg.pop, icon: 'move_up', title: tg.popTitle, onSelect: () => void guard(() => GitStashApply(repoId, stash.ref, true))},
             'separator',
-            {label: 'Descartar stash', icon: 'delete', danger: true, onSelect: () => setConfirmStash({repoId, ref: stash.ref, message: stash.message})},
+            {label: tg.dropStash, icon: 'delete', danger: true, onSelect: () => setConfirmStash({repoId, ref: stash.ref, message: stash.message})},
         ])
     }
 
@@ -535,21 +537,21 @@ export default function GitRepoTree({
     function startCreateFolder(parentId: string) {
         if (parentId) setExpandedFolders((prev) => new Set(prev).add(parentId))
         setPrompt({
-            title: parentId ? 'Subcarpeta nueva' : 'Carpeta nueva',
-            label: 'Nombre',
-            placeholder: 'Trabajo',
-            confirmLabel: 'Crear',
-            description: 'Las carpetas solo organizan la lista: no mueven nada en tu disco.',
+            title: parentId ? tf.newSubfolder : tf.newFolder,
+            label: tf.nameLabel,
+            placeholder: tg.folderPlaceholder,
+            confirmLabel: tf.create,
+            description: tg.foldersOnlyOrganize,
             onSubmit: (name) => onCreateFolder(name, parentId),
         })
     }
 
     function startRenameFolder(folder: vault.Folder) {
         setPrompt({
-            title: 'Cambiar el nombre de la carpeta',
-            label: 'Nombre',
+            title: tf.renameTitle,
+            label: tf.nameLabel,
             initial: folder.name,
-            confirmLabel: 'Guardar',
+            confirmLabel: t.common.save,
             onSubmit: (name) => onRenameFolder(folder.id, name),
         })
     }
@@ -558,28 +560,28 @@ export default function GitRepoTree({
         menu.openAt(e, [
             ...addEntries,
             'separator',
-            {label: 'Carpeta nueva', icon: 'create_new_folder', onSelect: () => startCreateFolder('')},
+            {label: tf.newFolder, icon: 'create_new_folder', onSelect: () => startCreateFolder('')},
             'separator',
-            {label: 'Desplegar todo', icon: 'unfold_more', disabled: !!q || gitFolders.length === 0, onSelect: expandAll},
-            {label: 'Plegar todo', icon: 'unfold_less', disabled: !!q, onSelect: collapseAll},
+            {label: tf.expandAll, icon: 'unfold_more', disabled: !!q || gitFolders.length === 0, onSelect: expandAll},
+            {label: tf.collapseAll, icon: 'unfold_less', disabled: !!q, onSelect: collapseAll},
         ])
 
     function folderMenu(e: ReactMouseEvent, folder: vault.Folder) {
         const open = isFolderExpanded(folder.id)
         menu.openAt(e, [
-            {label: 'Subcarpeta nueva', icon: 'create_new_folder', onSelect: () => startCreateFolder(folder.id)},
-            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: !!q, onSelect: () => toggleFolder(folder.id)},
+            {label: tf.newSubfolder, icon: 'create_new_folder', onSelect: () => startCreateFolder(folder.id)},
+            {label: open ? t.common.collapse : t.common.expand, icon: open ? 'unfold_less' : 'unfold_more', disabled: !!q, onSelect: () => toggleFolder(folder.id)},
             'separator',
-            {label: 'Subir', icon: 'arrow_upward', title: 'Sube la carpeta un lugar entre sus hermanas', onSelect: () => onReorderFolder(folder.id, 'up')},
-            {label: 'Bajar', icon: 'arrow_downward', title: 'Baja la carpeta un lugar entre sus hermanas', onSelect: () => onReorderFolder(folder.id, 'down')},
+            {label: tf.moveUp, icon: 'arrow_upward', title: tg.moveUpTitle, onSelect: () => onReorderFolder(folder.id, 'up')},
+            {label: tf.moveDown, icon: 'arrow_downward', title: tg.moveDownTitle, onSelect: () => onReorderFolder(folder.id, 'down')},
             'separator',
-            {label: 'Cambiar nombre…', icon: 'edit', onSelect: () => startRenameFolder(folder)},
+            {label: tg.renameEllipsis, icon: 'edit', onSelect: () => startRenameFolder(folder)},
             'separator',
             {
-                label: 'Borrar carpeta',
+                label: tg.deleteFolder,
                 icon: 'delete',
                 danger: true,
-                title: 'Los repositorios que tenga adentro se mueven a la carpeta contenedora: no se quitan ni se borran',
+                title: tg.deleteFolderTitle,
                 onSelect: () => setConfirmDeleteFolder(folder),
             },
         ])
@@ -588,28 +590,28 @@ export default function GitRepoTree({
     function repoMenu(e: ReactMouseEvent, repo: vault.GitRepo) {
         const open = expanded.has(repo.id)
         menu.openAt(e, [
-            {label: 'Abrir en una pestaña', icon: 'open_in_new', hint: 'doble clic', onSelect: () => onOpenRepo(repo)},
-            {label: open ? 'Plegar' : 'Ver ramas, remotos y tags', icon: open ? 'unfold_less' : 'unfold_more', onSelect: () => toggleRepo(repo.id)},
+            {label: tg.openInTab, icon: 'open_in_new', hint: t.sidebar.connections.doubleClick, onSelect: () => onOpenRepo(repo)},
+            {label: open ? t.common.collapse : tg.showDetail, icon: open ? 'unfold_less' : 'unfold_more', onSelect: () => toggleRepo(repo.id)},
             'separator',
-            {label: 'Crear rama…', icon: 'call_split', title: 'Rama local nueva en el commit actual (HEAD), con checkout', onSelect: () => startCreateBranch(repo.id)},
-            {label: 'Crear tag…', icon: 'sell', title: 'Tag nuevo en el commit actual (HEAD)', onSelect: () => startCreateTag(repo.id)},
+            {label: tg.createBranchEllipsis, icon: 'call_split', title: tg.createBranchMenuTitle, onSelect: () => startCreateBranch(repo.id)},
+            {label: tg.createTagEllipsis, icon: 'sell', title: tg.createTagMenuTitle, onSelect: () => startCreateTag(repo.id)},
             'separator',
             {
-                label: 'Configuración de git…',
+                label: tg.gitSettings,
                 icon: 'settings',
-                title: 'Identidad (nombre y email, local o global) y tokens de acceso',
+                title: tg.gitSettingsTitle,
                 onSelect: () => setSettingsFor({repo, tab: 'identity'}),
             },
-            {label: 'Remotos…', icon: 'lan', title: 'Agregar, ver y cambiar la URL (token incluido), renombrar o quitar', onSelect: () => setSettingsFor({repo, tab: 'remotes'})},
+            {label: tg.remotesEllipsis, icon: 'lan', title: tg.remotesMenuTitle, onSelect: () => setSettingsFor({repo, tab: 'remotes'})},
             'separator',
-            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFoldersForMenu, repo.folderId ?? '', (f) => onMoveRepoToFolder(repo.id, f))},
-            {label: 'Copiar ruta', icon: 'content_copy', title: repo.path, onSelect: () => copy(repo.path)},
+            {label: tf.moveTo, icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFoldersForMenu, repo.folderId ?? '', (f) => onMoveRepoToFolder(repo.id, f))},
+            {label: tg.copyPath, icon: 'content_copy', title: repo.path, onSelect: () => copy(repo.path)},
             'separator',
             {
-                label: 'Quitar de la lista',
+                label: tg.removeFromList,
                 icon: 'playlist_remove',
                 danger: true,
-                title: 'Saca el repositorio de la barra — no borra nada de tu disco',
+                title: tg.removeFromListTitle,
                 onSelect: () => setConfirmRemove(repo),
             },
         ])
@@ -632,7 +634,7 @@ export default function GitRepoTree({
                     iconClass={active ? 'text-primary' : undefined}
                     label={repo.name}
                     labelClass={active ? 'text-on-surface font-medium' : 'text-on-surface/90'}
-                    title={`${repo.name} — ${repo.path}. Doble clic: abrirlo en una pestaña. Clic derecho: más opciones.`}
+                    title={tg.repoTitle({name: repo.name, path: repo.path})}
                     active={active}
                     expanded={isExpanded}
                     onToggle={() => toggleRepo(repo.id)}
@@ -644,7 +646,7 @@ export default function GitRepoTree({
                     onContextMenu={(e) => repoMenu(e, repo)}
                     trailing={
                         current ? (
-                            <span className="max-w-[96px] truncate font-mono text-ui-10 text-on-surface-variant/60" title={`Rama actual: ${current.name}`}>
+                            <span className="max-w-[96px] truncate font-mono text-ui-10 text-on-surface-variant/60" title={tg.currentBranch({name: current.name})}>
                                 {current.name}
                             </span>
                         ) : undefined
@@ -656,12 +658,12 @@ export default function GitRepoTree({
                                     e.stopPropagation()
                                     setSettingsFor({repo, tab: 'identity'})
                                 }}
-                                title="Configuración de git de este repositorio: identidad (nombre y email, local o global), remotos y tokens de acceso"
+                                title={tg.settingsButtonTitle}
                                 className="sidebar-icon !p-0.5"
                             >
                                 <Icon name="settings" size={14} />
                             </button>
-                            <MenuButton onOpen={(e) => repoMenu(e, repo)} title="Opciones del repositorio" />
+                            <MenuButton onOpen={(e) => repoMenu(e, repo)} title={tg.repoOptions} />
                         </>
                     }
                 />
@@ -669,7 +671,7 @@ export default function GitRepoTree({
                     (detail ? (
                         renderRepoDetail(repo, detail, depth + 1)
                     ) : (
-                        <TreeRow depth={depth + 1} icon="progress_activity" iconClass="animate-spin text-primary" label="Cargando…" labelClass="text-on-surface-variant" />
+                        <TreeRow depth={depth + 1} icon="progress_activity" iconClass="animate-spin text-primary" label={t.common.loading} labelClass="text-on-surface-variant" />
                     ))}
             </div>
         )
@@ -690,13 +692,13 @@ export default function GitRepoTree({
                     iconFilled={!open}
                     label={folder.name}
                     labelClass="text-on-surface font-medium"
-                    title={`${folder.name} — ${folderRepos.length} ${folderRepos.length === 1 ? 'repositorio' : 'repositorios'}. Clic derecho: más opciones.`}
+                    title={tg.folderTitle({name: folder.name, count: folderRepos.length})}
                     expanded={open}
                     onToggle={() => toggleFolder(folder.id)}
                     onClick={() => toggleFolder(folder.id)}
                     onContextMenu={(e) => folderMenu(e, folder)}
                     trailing={folderRepos.length ? <span className="text-ui-10 tabular-nums text-on-surface-variant/50">{folderRepos.length}</span> : undefined}
-                    actions={<MenuButton onOpen={(e) => folderMenu(e, folder)} title="Opciones de la carpeta" />}
+                    actions={<MenuButton onOpen={(e) => folderMenu(e, folder)} title={tf.folderOptions} />}
                 />
                 {open && (
                     <>
@@ -711,12 +713,12 @@ export default function GitRepoTree({
     return (
         <SidebarSection
             title="Git"
-            count={q ? `${rootRepos.length + visibleFolderNodes.length} de ${repos.length}` : repos.length ? String(repos.length) : null}
+            count={q ? tf.countOf({shown: rootRepos.length + visibleFolderNodes.length, total: repos.length}) : repos.length ? String(repos.length) : null}
             actions={
                 <>
                     <button
                         onClick={() => startCreateFolder('')}
-                        title="Crea una carpeta para agrupar repositorios — las carpetas solo organizan, nunca mueven nada en tu disco"
+                        title={tg.newFolderTitle}
                         className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="create_new_folder" size={16} />
@@ -726,12 +728,12 @@ export default function GitRepoTree({
                         disabled={!!q || (!anyOpen && gitFolders.length === 0)}
                         title={
                             q
-                                ? 'Buscando, las carpetas se despliegan solas'
+                                ? tg.searchKeepsOpen
                                 : anyOpen
-                                  ? 'Plegar todas las carpetas y repositorios'
+                                  ? tg.collapseAllTitle
                                   : gitFolders.length
-                                    ? 'Desplegar todas las carpetas (los repositorios se despliegan de a uno: cada uno consulta a git)'
-                                    : 'No hay carpetas para desplegar'
+                                    ? tg.expandAllTitle
+                                    : tg.noFoldersToExpand
                         }
                         className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                     >
@@ -740,7 +742,7 @@ export default function GitRepoTree({
                     <button
                         onClick={(e) => menu.openAt(e, addEntries)}
                         disabled={!available}
-                        title={available ? 'Abrir un repositorio que ya existe, crear uno nuevo (git init) o clonar desde una URL' : 'Deshabilitado: el módulo Git usa el git del sistema y no está instalado en este equipo'}
+                        title={available ? tg.addTitle : tg.addDisabledTitle}
                         className="rounded p-0.5 text-primary hover:bg-surface-variant disabled:opacity-40"
                     >
                         <Icon name="add" size={16} />
@@ -752,9 +754,11 @@ export default function GitRepoTree({
                 failure — see backend/git's package doc on the exec tradeoff. */}
             {probe && !probe.available && (
                 <div className="mx-3 mb-2 rounded border border-outline-variant bg-error-container/40 p-2 text-ui-11 text-on-error-container">
-                    <p className="font-medium">git no está instalado</p>
+                    <p className="font-medium">{tg.notInstalled}</p>
                     <p className="mt-0.5 opacity-80">
-                        El módulo Git usa el git del sistema. Instalalo (en macOS: <span className="font-mono">xcode-select --install</span>) y reabrí la app.
+                        {tg.notInstalledBefore}
+                        <span className="font-mono">{XCODE_INSTALL_CMD}</span>
+                        {tg.notInstalledAfter}
                     </p>
                 </div>
             )}
@@ -762,22 +766,22 @@ export default function GitRepoTree({
             {error && (
                 <div className="mx-3 mt-2 flex items-start gap-1 rounded bg-error-container/40 p-1.5 text-ui-10 text-on-error-container">
                     <span className="min-w-0 flex-1 break-words">{error}</span>
-                    <button onClick={() => setError(null)} title="Cerrar este error" className="shrink-0">
+                    <button onClick={() => setError(null)} title={tg.closeError} className="shrink-0">
                         <Icon name="close" size={12} />
                     </button>
                 </div>
             )}
 
             <div className="mt-0.5 min-h-0 flex-1 pb-6" onContextMenu={blankMenu}>
-                {!hasAnything && q && <p className="p-3 text-xs text-on-surface-variant/60">Sin coincidencias para "{filter}".</p>}
+                {!hasAnything && q && <p className="p-3 text-xs text-on-surface-variant/60">{tf.noMatchesFor({query: filter})}</p>}
                 {/* Empty state: the three ways to add a repository, as a
                     standalone Git client offers on its start screen. */}
                 {!hasAnything && !q && available && (
                     <div className="space-y-1.5 px-3 py-2">
-                        <p className="pb-1 text-ui-11 text-on-surface-variant/70">Todavía no agregaste ningún repositorio.</p>
-                        <EmptyAction icon="folder_open" label="Abrir repositorio" desc="Uno que ya existe en tu disco" onClick={() => void openRepo()} />
-                        <EmptyAction icon="create_new_folder" label="Nuevo repositorio" desc="git init en una carpeta" onClick={() => void newRepo()} />
-                        <EmptyAction icon="cloud_download" label="Clonar…" desc="Desde una URL" onClick={() => setShowClone(true)} />
+                        <p className="pb-1 text-ui-11 text-on-surface-variant/70">{tg.empty}</p>
+                        <EmptyAction icon="folder_open" label={tg.openRepo} desc={tg.openRepoDesc} onClick={() => void openRepo()} />
+                        <EmptyAction icon="create_new_folder" label={tg.newRepo} desc={tg.newRepoDesc} onClick={() => void newRepo()} />
+                        <EmptyAction icon="cloud_download" label={tg.clone} desc={tg.cloneDesc} onClick={() => setShowClone(true)} />
                     </div>
                 )}
                 {/* Carpetas primero y después los repositorios sueltos, el
@@ -790,9 +794,9 @@ export default function GitRepoTree({
 
             {confirmDeleteFolder && (
                 <ConfirmDialog
-                    title="Eliminar carpeta"
-                    description={`Esto elimina la carpeta "${confirmDeleteFolder.name}". Los repositorios y subcarpetas que tenga adentro se mueven a la carpeta contenedora (o a la raíz) — nunca se quitan de la lista ni se borran de tu disco.`}
-                    confirmLabel="Eliminar"
+                    title={tf.deleteFolder}
+                    description={tg.deleteFolderDesc({name: confirmDeleteFolder.name})}
+                    confirmLabel={tf.deleteAction}
                     danger
                     onConfirm={() => onDeleteFolder(confirmDeleteFolder.id)}
                     onClose={() => setConfirmDeleteFolder(null)}
@@ -815,12 +819,12 @@ export default function GitRepoTree({
                 <GroupRow
                     depth={depth}
                     icon="account_tree"
-                    label="Ramas"
+                    label={tg.branches}
                     count={local.length}
                     open={openSections.has(key('branches'))}
                     onToggle={() => toggleSection(key('branches'))}
-                    add={{title: 'Crear una rama local nueva en el commit actual (HEAD)', onClick: () => startCreateBranch(repo.id)}}
-                    onMenu={(e) => menu.openAt(e, [{label: 'Crear rama…', icon: 'call_split', onSelect: () => startCreateBranch(repo.id)}])}
+                    add={{title: tg.addBranchTitle, onClick: () => startCreateBranch(repo.id)}}
+                    onMenu={(e) => menu.openAt(e, [{label: tg.createBranchEllipsis, icon: 'call_split', onSelect: () => startCreateBranch(repo.id)}])}
                 >
                     <SidebarBranchTree
                         node={buildBranchTree(local)}
@@ -837,13 +841,13 @@ export default function GitRepoTree({
                                 labelClass={b.isCurrent ? 'font-semibold text-primary' : 'text-on-surface/85'}
                                 title={
                                     b.isCurrent
-                                        ? `"${b.name}" es la rama actual${b.upstream ? ` — sigue a ${b.upstream}` : ''}. Clic derecho para renombrar o borrar`
-                                        : `Doble clic para hacer checkout de "${b.name}"${b.upstream ? ` — sigue a ${b.upstream}` : ' — sin upstream configurado'}. Clic derecho para más acciones`
+                                        ? tg.currentBranchTitle({name: b.name, upstream: b.upstream ?? ''})
+                                        : tg.branchTitle({name: b.name, upstream: b.upstream ?? ''})
                                 }
                                 onDoubleClick={() => void checkout(repo.id, b.name)}
                                 onContextMenu={(e) => localBranchMenu(e, repo.id, b)}
                                 trailing={<AheadBehind branch={b} />}
-                                actions={<MenuButton onOpen={(e) => localBranchMenu(e, repo.id, b)} title="Opciones de la rama" />}
+                                actions={<MenuButton onOpen={(e) => localBranchMenu(e, repo.id, b)} title={tg.branchOptions} />}
                             />
                         )}
                     />
@@ -851,16 +855,16 @@ export default function GitRepoTree({
                 <GroupRow
                     depth={depth}
                     icon="lan"
-                    label="Remotos"
+                    label={tg.remotes}
                     count={detail.remotes.length}
                     open={openSections.has(key('remotes'))}
                     onToggle={() => toggleSection(key('remotes'))}
                     add={{
                         icon: 'settings',
-                        title: 'Administrar los remotos de este repositorio: agregar uno, ver y cambiar su URL (token incluido), renombrarlo o quitarlo',
+                        title: tg.manageRemotesTitle,
                         onClick: () => setSettingsFor({repo, tab: 'remotes'}),
                     }}
-                    onMenu={(e) => menu.openAt(e, [{label: 'Administrar remotos…', icon: 'settings', onSelect: () => setSettingsFor({repo, tab: 'remotes'})}])}
+                    onMenu={(e) => menu.openAt(e, [{label: tg.manageRemotes, icon: 'settings', onSelect: () => setSettingsFor({repo, tab: 'remotes'})}])}
                 >
                     {detail.remotes.map((r) => {
                         const remoteBranches = detail.branches.filter((b) => b.isRemote && b.name.startsWith(`${r.name}/`))
@@ -875,13 +879,13 @@ export default function GitRepoTree({
                                     icon="cloud"
                                     iconClass="text-on-surface-variant/80"
                                     label={r.name}
-                                    title={`${r.fetchUrl} — clic derecho para fetch, editar la URL, copiarla o quitar el remoto`}
+                                    title={tg.remoteTitle({url: r.fetchUrl})}
                                     expanded={remoteBranches.length ? open : undefined}
                                     onToggle={() => toggleSection(closedKey)}
                                     onClick={() => remoteBranches.length && toggleSection(closedKey)}
                                     onContextMenu={(e) => remoteMenu(e, repo, r)}
                                     trailing={<Count n={remoteBranches.length} />}
-                                    actions={<MenuButton onOpen={(e) => remoteMenu(e, repo, r)} title="Opciones del remoto" />}
+                                    actions={<MenuButton onOpen={(e) => remoteMenu(e, repo, r)} title={tg.remoteOptions} />}
                                 />
                                 {open && (
                                     <SidebarBranchTree
@@ -897,10 +901,10 @@ export default function GitRepoTree({
                                                 iconClass="text-on-surface-variant/60"
                                                 label={leafLabel(b, folderPath, r.name)}
                                                 labelClass="text-on-surface-variant"
-                                                title={`Doble clic para hacer checkout de "${b.name}" — si no tenés la rama local, se crea siguiendo a esta`}
+                                                title={tg.remoteBranchTitle({name: b.name})}
                                                 onDoubleClick={() => void checkout(repo.id, b.name)}
                                                 onContextMenu={(e) => remoteBranchMenu(e, repo.id, b)}
-                                                actions={<MenuButton onOpen={(e) => remoteBranchMenu(e, repo.id, b)} title="Opciones de la rama remota" />}
+                                                actions={<MenuButton onOpen={(e) => remoteBranchMenu(e, repo.id, b)} title={tg.remoteBranchOptions} />}
                                             />
                                         )}
                                     />
@@ -912,31 +916,31 @@ export default function GitRepoTree({
                 <GroupRow
                     depth={depth}
                     icon="sell"
-                    label="Tags"
+                    label={tg.tags}
                     count={detail.tags.length}
                     open={openSections.has(key('tags'))}
                     onToggle={() => toggleSection(key('tags'))}
-                    add={{title: 'Crear un tag nuevo en el commit actual (HEAD)', onClick: () => startCreateTag(repo.id)}}
-                    onMenu={(e) => menu.openAt(e, [{label: 'Crear tag…', icon: 'sell', onSelect: () => startCreateTag(repo.id)}])}
+                    add={{title: tg.addTagTitle, onClick: () => startCreateTag(repo.id)}}
+                    onMenu={(e) => menu.openAt(e, [{label: tg.createTagEllipsis, icon: 'sell', onSelect: () => startCreateTag(repo.id)}])}
                 >
-                    {detail.tags.map((t) => (
+                    {detail.tags.map((tag) => (
                         <TreeRow
-                            key={t.name}
+                            key={tag.name}
                             depth={depth + 1}
                             icon="sell"
                             iconClass="text-on-surface-variant/80"
-                            label={t.name}
-                            title={`${t.annotated ? 'Tag anotado' : 'Tag liviano'} — ${t.hash.slice(0, 8)}. Clic derecho para crear rama, checkout, push o borrar`}
-                            onContextMenu={(e) => tagMenu(e, repo.id, t)}
-                            trailing={<span className="font-mono text-ui-10 text-on-surface-variant/50">{t.hash.slice(0, 7)}</span>}
-                            actions={<MenuButton onOpen={(e) => tagMenu(e, repo.id, t)} title="Opciones del tag" />}
+                            label={tag.name}
+                            title={tg.tagTitle({annotated: tag.annotated, hash: tag.hash.slice(0, 8)})}
+                            onContextMenu={(e) => tagMenu(e, repo.id, tag)}
+                            trailing={<span className="font-mono text-ui-10 text-on-surface-variant/50">{tag.hash.slice(0, 7)}</span>}
+                            actions={<MenuButton onOpen={(e) => tagMenu(e, repo.id, tag)} title={tg.tagOptions} />}
                         />
                     ))}
                 </GroupRow>
                 <GroupRow
                     depth={depth}
                     icon="inventory_2"
-                    label="Stashes"
+                    label={tg.stashes}
                     count={detail.stashes.length}
                     open={openSections.has(key('stashes'))}
                     onToggle={() => toggleSection(key('stashes'))}
@@ -948,9 +952,9 @@ export default function GitRepoTree({
                             icon="inventory_2"
                             iconClass="text-on-surface-variant/80"
                             label={st.message}
-                            title={`${st.ref} — guardado el ${st.date}. Clic derecho para aplicar, hacer pop o descartar`}
+                            title={tg.stashTitle({ref: st.ref, date: st.date})}
                             onContextMenu={(e) => stashMenu(e, repo.id, st)}
-                            actions={<MenuButton onOpen={(e) => stashMenu(e, repo.id, st)} title="Opciones del stash" />}
+                            actions={<MenuButton onOpen={(e) => stashMenu(e, repo.id, st)} title={tg.stashOptions} />}
                         />
                     ))}
                 </GroupRow>
@@ -966,9 +970,9 @@ export default function GitRepoTree({
             <>
             {confirmRemove && (
                 <ConfirmDialog
-                    title="Quitar repositorio"
-                    description={`Esto quita "${confirmRemove.name}" de la lista del sidebar. La carpeta ${confirmRemove.path} y todo su contenido quedan intactos en tu disco — no se borra nada.`}
-                    confirmLabel="Quitar"
+                    title={tg.removeRepo}
+                    description={tg.removeRepoDesc({name: confirmRemove.name, path: confirmRemove.path})}
+                    confirmLabel={tg.remove}
                     onConfirm={async () => {
                         try {
                             await GitRemoveRepo(confirmRemove.id)
@@ -996,9 +1000,9 @@ export default function GitRepoTree({
 
             {confirmRemoveRemote && (
                 <ConfirmDialog
-                    title="Eliminar remoto"
-                    description={`Esto elimina el remoto "${confirmRemoveRemote.name}" de la configuración local del repositorio. No borra nada en el servidor, pero las ramas remotas que lo seguían dejan de estar disponibles hasta que lo vuelvas a agregar.`}
-                    confirmLabel="Eliminar"
+                    title={tg.removeRemote}
+                    description={tg.removeRemoteDesc({name: confirmRemoveRemote.name})}
+                    confirmLabel={tf.deleteAction}
                     danger
                     onConfirm={async () => {
                         try {
@@ -1014,13 +1018,11 @@ export default function GitRepoTree({
 
             {confirmTag && (
                 <ConfirmDialog
-                    title={confirmTag.remote ? 'Borrar tag del remoto' : 'Borrar tag local'}
+                    title={confirmTag.remote ? tg.deleteRemoteTagTitle : tg.deleteLocalTagTitle}
                     description={
-                        confirmTag.remote
-                            ? `Esto borra el tag "${confirmTag.name}" de origin. Tu copia local se conserva. Ojo: quien ya lo haya traído sigue teniéndolo, y si después recreás el tag en otro commit, distintas personas van a tener ideas distintas de a qué apunta.`
-                            : `Esto borra el tag "${confirmTag.name}" solo de tu repositorio local. La copia en el remoto (si la hay) queda intacta — para esa usá "Borrar de origin".`
+                        confirmTag.remote ? tg.deleteRemoteTagDesc({name: confirmTag.name}) : tg.deleteLocalTagDesc({name: confirmTag.name})
                     }
-                    confirmLabel="Borrar"
+                    confirmLabel={t.common.delete}
                     danger
                     onConfirm={async () => {
                         try {
@@ -1037,9 +1039,9 @@ export default function GitRepoTree({
 
             {confirmDeleteBranch && (
                 <ConfirmDialog
-                    title="Borrar rama local"
-                    description={`Esto borra la rama "${confirmDeleteBranch.name}" de tu repositorio local. Si tiene commits que no están en ninguna otra rama, quedan accesibles solo por el reflog hasta que expire. La copia en el remoto (si la hay) no se toca.`}
-                    confirmLabel="Borrar"
+                    title={tg.deleteLocalBranch}
+                    description={tg.deleteLocalBranchDesc({name: confirmDeleteBranch.name})}
+                    confirmLabel={t.common.delete}
                     danger
                     onConfirm={async () => {
                         try {
@@ -1055,9 +1057,9 @@ export default function GitRepoTree({
 
             {confirmPushTag && (
                 <ConfirmDialog
-                    title="Pushear tag"
-                    description={`Se creó el tag "${confirmPushTag.name}" localmente. ¿Pushearlo a origin ahora? (Se usa el token guardado del host si hay uno; si no, git resuelve las credenciales como siempre.)`}
-                    confirmLabel="Pushear"
+                    title={tg.pushTag}
+                    description={tg.pushTagDesc({name: confirmPushTag.name})}
+                    confirmLabel={tg.push}
                     onConfirm={async () => {
                         try {
                             await GitPushTag(confirmPushTag.repoId, 'origin', confirmPushTag.name, new git.AuthConfig({}))
@@ -1072,9 +1074,9 @@ export default function GitRepoTree({
 
             {confirmStash && (
                 <ConfirmDialog
-                    title="Descartar stash"
-                    description={`Esto borra el stash "${confirmStash.message}" sin aplicarlo. Los cambios que tenía guardados se pierden y no quedan en el reflog: no hay forma de recuperarlos después.`}
-                    confirmLabel="Descartar"
+                    title={tg.dropStash}
+                    description={tg.dropStashDesc({message: confirmStash.message})}
+                    confirmLabel={tg.drop}
                     danger
                     onConfirm={async () => {
                         try {
@@ -1103,6 +1105,9 @@ export default function GitRepoTree({
     }
 }
 
+// Comando, no texto: se muestra igual en todos los idiomas.
+const XCODE_INSTALL_CMD = 'xcode-select --install'
+
 // EmptyAction is one row of the empty-state start screen — an icon, a label
 // and a one-line description, the same shape a standalone Git client uses for
 // Open / New / Clone.
@@ -1130,11 +1135,12 @@ function Count({n}: {n: number}) {
 // (no solo en el title): "tengo 8 commits sin pushear" es justo lo que se
 // busca de un vistazo antes de cambiar de rama.
 function AheadBehind({branch}: {branch: git.Branch}) {
+    const t = useT()
     if (!branch.ahead && !branch.behind) return null
     return (
         <span
             className="flex items-center gap-1 font-mono text-ui-10 tabular-nums text-on-surface-variant/70"
-            title={`${branch.ahead} ${branch.ahead === 1 ? 'commit' : 'commits'} por delante y ${branch.behind} por detrás de ${branch.upstream || 'su upstream'}`}
+            title={t.sidebar.git.aheadBehind({ahead: branch.ahead, behind: branch.behind, upstream: branch.upstream ?? ''})}
         >
             {branch.ahead > 0 && (
                 <span className="flex items-center text-primary">
@@ -1179,6 +1185,7 @@ function GroupRow({
     onMenu?: (e: ReactMouseEvent) => void
     children: ReactNode
 }) {
+    const t = useT()
     // Sin elementos no hay nada que desplegar: el chevron prometería algo.
     const branch = count > 0
     return (
@@ -1189,7 +1196,7 @@ function GroupRow({
                 iconClass="text-on-surface-variant/70"
                 label={label}
                 labelClass="text-on-surface-variant"
-                title={branch ? (open ? `Plegar ${label.toLowerCase()}` : `Ver ${label.toLowerCase()} (${count})`) : `Sin ${label.toLowerCase()}`}
+                title={branch ? (open ? t.sidebar.git.groupCollapse({label}) : t.sidebar.git.groupShow({label, count})) : t.sidebar.git.groupEmpty({label})}
                 expanded={branch ? open : undefined}
                 onToggle={onToggle}
                 onClick={() => branch && onToggle()}
@@ -1210,7 +1217,7 @@ function GroupRow({
                                     <Icon name={add.icon ?? 'add'} size={14} />
                                 </button>
                             )}
-                            {onMenu && <MenuButton onOpen={onMenu} title={`Opciones de ${label.toLowerCase()}`} />}
+                            {onMenu && <MenuButton onOpen={onMenu} title={t.sidebar.git.groupOptions({label})} />}
                         </>
                     ) : undefined
                 }
@@ -1236,6 +1243,7 @@ function SidebarBranchTree({
     onToggle: (path: string) => void
     renderBranch: (branch: git.Branch, folderPath: string, depth: number) => ReactNode
 }) {
+    const t = useT()
     return (
         <>
             {node.folders.map((folder) => {
@@ -1254,8 +1262,8 @@ function SidebarBranchTree({
                             labelClass="text-on-surface-variant"
                             title={
                                 open
-                                    ? `Plegar "${folder.path}" — sus ${total} ramas dejan de ocupar la lista`
-                                    : `Desplegar "${folder.path}" — tiene ${total} ${total === 1 ? 'rama' : 'ramas'}`
+                                    ? t.sidebar.git.branchFolderCollapse({path: folder.path, count: total})
+                                    : t.sidebar.git.branchFolderExpand({path: folder.path, count: total})
                             }
                             expanded={open}
                             onToggle={() => onToggle(folder.path)}

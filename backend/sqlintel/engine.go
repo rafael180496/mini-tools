@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Item kinds. The frontend maps these onto CodeMirror's completion icons,
@@ -356,11 +358,11 @@ func (c *collector) projected(ctx Context) {
 	}
 	for _, p := range ctx.Projected {
 		if p.IsAlias {
-			detail := "alias de esta consulta"
+			detail := i18n.T(i18n.Msg{ES: "alias de esta consulta", EN: "alias in this query"})
 			if p.Expr != "" {
 				detail += " · " + p.Expr
 			}
-			c.add(p.Name, KindAlias, detail, "", "Nombre definido en el SELECT de esta misma consulta. No existe en el catálogo.", 700)
+			c.add(p.Name, KindAlias, detail, "", i18n.T(i18n.Msg{ES: "Nombre definido en el SELECT de esta misma consulta. No existe en el catálogo.", EN: "Name defined in this query's own SELECT. It doesn't exist in the catalog."}), 700)
 			continue
 		}
 		// Projected columns lead the list without displacing a better
@@ -390,12 +392,12 @@ func (c *collector) aliasHint(idx *SchemaIndex, ctx Context) {
 	// is correct (an alias equal to the table name is pointless) and needs
 	// no special case.
 	alias := uniqueAlias(ctx.AliasSlot.Name, taken)
-	detail := "alias para " + ctx.AliasSlot.Name
+	detail := i18n.T(i18n.Msg{ES: "alias para %s", EN: "alias for %s"}, ctx.AliasSlot.Name)
 	if t, ok := idx.Resolve(*ctx.AliasSlot); ok {
-		detail = "alias para " + t.Qualified
+		detail = i18n.T(i18n.Msg{ES: "alias para %s", EN: "alias for %s"}, t.Qualified)
 	}
 	c.add(alias, KindAlias, detail,
-		"", "Nombre corto para referirte a esta tabla en el resto de la consulta. Es el mismo que usan los JOIN sugeridos, así que no se contradicen.",
+		"", i18n.T(i18n.Msg{ES: "Nombre corto para referirte a esta tabla en el resto de la consulta. Es el mismo que usan los JOIN sugeridos, así que no se contradicen.", EN: "Short name to refer to this table in the rest of the query. It's the same one the suggested JOINs use, so they don't contradict each other."}),
 		900)
 }
 
@@ -457,7 +459,7 @@ func (c *collector) starExpansion(idx *SchemaIndex, ctx Context) {
 		return
 	}
 
-	label := "* → " + strconv.Itoa(len(cols)) + " columnas"
+	label := i18n.T(i18n.Msg{ES: "* → %d columnas", EN: "* → %d columns"}, len(cols))
 	detail := strings.Join(from, ", ")
 	// Pre-scored rather than run through Match: the label is a sentence, not
 	// a name, so prefix matching would rank it by accident. The score sits
@@ -466,7 +468,7 @@ func (c *collector) starExpansion(idx *SchemaIndex, ctx Context) {
 	c.items = append(c.items, Item{
 		Label: label, Kind: KindExpand, Detail: detail,
 		Apply: strings.Join(cols, ", "),
-		Info:  "Reemplaza el * por la lista de columnas, en el orden del catálogo. Sirve para quitar una sola columna sin tener que escribir el resto.",
+		Info:  i18n.T(i18n.Msg{ES: "Reemplaza el * por la lista de columnas, en el orden del catálogo. Sirve para quitar una sola columna sin tener que escribir el resto.", EN: "Replaces the * with the column list, in catalog order. Handy to drop a single column without typing the rest."}),
 		Score: 1200,
 	})
 }
@@ -481,7 +483,7 @@ func (c *collector) tablesWithBonus(idx *SchemaIndex, bonus int) {
 		}
 		extra := 0
 		if t.FromScript {
-			detail += " · declarada en el script"
+			detail += i18n.T(i18n.Msg{ES: " · declarada en el script", EN: " · declared in the script"})
 			// Just written by hand a few lines up: more likely to be what is
 			// meant than any one table out of a catalog of thousands.
 			extra = 60
@@ -555,7 +557,7 @@ func (c *collector) joinTemplates(idx *SchemaIndex, ctx Context) {
 					detail += " · FK"
 				}
 				c.add(clause, KindJoin, detail, clause,
-					"Cláusula JOIN completa, con alias, derivada de la llave foránea declarada en el esquema.",
+					i18n.T(i18n.Msg{ES: "Cláusula JOIN completa, con alias, derivada de la llave foránea declarada en el esquema.", EN: "Full JOIN clause, with aliases, derived from the foreign key declared in the schema."}),
 					joinTemplateBonus)
 				offered++
 			}
@@ -663,7 +665,7 @@ func (c *collector) functions(d *Dialect, clause Clause) {
 		if apply == "" {
 			apply = f.Name + "(${1})"
 		}
-		c.add(f.Name, KindFunction, f.Signature, apply, f.Doc, bonus)
+		c.add(f.Name, KindFunction, f.Signature, apply, f.Doc.Text(), bonus)
 	}
 }
 
@@ -708,7 +710,7 @@ func (c *collector) snippets(d *Dialect) {
 		return
 	}
 	for _, s := range d.AllSnippets() {
-		c.add(s.Label, KindSnippet, s.Detail, s.Body, "", 400)
+		c.add(s.Label, KindSnippet, s.Detail.Text(), s.Body, "", 400)
 	}
 }
 
@@ -742,7 +744,7 @@ func (c *collector) joins(idx *SchemaIndex, ctx Context) {
 		// are most useful. They are appended pre-scored instead.
 		c.items = append(c.items, Item{
 			Label: label, Kind: KindJoin, Detail: detail, Apply: apply,
-			Info: "Condición derivada de la llave foránea declarada en el esquema.",
+			Info: i18n.T(i18n.Msg{ES: "Condición derivada de la llave foránea declarada en el esquema.", EN: "Condition derived from the foreign key declared in the schema."}),
 			Score: 1600,
 		})
 	}

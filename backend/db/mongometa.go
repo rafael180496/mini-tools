@@ -2,10 +2,11 @@ package db
 
 import (
 	"context"
-	"fmt"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
+	"mini-tools/backend/i18n"
 )
 
 // MongoDatabaseInfo is one database in the sidebar tree's top level.
@@ -37,7 +38,7 @@ type MongoIndex struct {
 func ListMongoDatabases(ctx context.Context, client *mongo.Client) ([]MongoDatabaseInfo, error) {
 	res, err := client.ListDatabases(ctx, bson.D{})
 	if err != nil {
-		return nil, fmt.Errorf("db: listando bases Mongo: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando bases Mongo: %w", EN: "db: listing Mongo databases: %w"}, err)
 	}
 	out := make([]MongoDatabaseInfo, 0, len(res.Databases))
 	for _, d := range res.Databases {
@@ -52,7 +53,7 @@ func ListMongoCollections(ctx context.Context, client *mongo.Client, dbName stri
 	database := client.Database(dbName)
 	specs, err := database.ListCollectionSpecifications(ctx, bson.D{})
 	if err != nil {
-		return nil, fmt.Errorf("db: listando colecciones Mongo de %q: %w", dbName, err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando colecciones Mongo de %q: %w", EN: "db: listing Mongo collections of %q: %w"}, dbName, err)
 	}
 
 	out := make([]MongoCollectionInfo, 0, len(specs))
@@ -75,7 +76,7 @@ func ListMongoCollections(ctx context.Context, client *mongo.Client, dbName stri
 func GetMongoIndexes(ctx context.Context, client *mongo.Client, dbName, collName string) ([]MongoIndex, error) {
 	cursor, err := client.Database(dbName).Collection(collName).Indexes().List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando índices Mongo de %q.%q: %w", dbName, collName, err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando índices Mongo de %q.%q: %w", EN: "db: listing Mongo indexes of %q.%q: %w"}, dbName, collName, err)
 	}
 	defer cursor.Close(ctx)
 
@@ -91,7 +92,7 @@ func GetMongoIndexes(ctx context.Context, client *mongo.Client, dbName, collName
 			Sparse bool     `bson:"sparse"`
 		}
 		if err := cursor.Decode(&doc); err != nil {
-			return nil, fmt.Errorf("db: decodificando índice Mongo: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: decodificando índice Mongo: %w", EN: "db: decoding Mongo index: %w"}, err)
 		}
 		idx := MongoIndex{Name: doc.Name, Unique: doc.Unique, Sparse: doc.Sparse}
 		if len(doc.Key) > 0 {

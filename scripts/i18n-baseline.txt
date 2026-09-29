@@ -1,0 +1,3 @@
+# Textos de interfaz que todavía no pasan por i18n, por archivo.
+# Generado por scripts/i18n-check.sh --update. Solo puede bajar.
+

@@ -30,6 +30,7 @@
 import {StrictMode} from 'react'
 import {createRoot} from 'react-dom/client'
 import './styles/globals.css'
+import {normalizeLang, setLanguage, t} from './i18n'
 import GitOutputNotice from './components/git/GitOutputNotice'
 
 // --- Bindings simulados ---------------------------------------------------
@@ -480,6 +481,25 @@ const fixtures: Record<string, unknown> = {
             {field: 'actualizado', value: '2026-08-14T10:22:05Z'},
         ],
     },
+    // --- MongoDB Browser ---
+    // Pedidos de la misma tienda de juguete que el Redis de arriba.
+    ListMongoDatabases: [{name: 'events', sizeOnDisk: 81920, empty: false}],
+    ListMongoCollections: [
+        {name: 'orders', type: 'collection', estimatedCount: 1842},
+        {name: 'payments', type: 'collection', estimatedCount: 977},
+    ],
+    GetMongoIndexes: [],
+    ListMongoDocuments: [
+        '{"_id":{"$oid":"66bc1f0a9d3e2a0012ab3401"},"cliente":"u:1042","estado":"pagado","total":1249,"items":2}',
+        '{"_id":{"$oid":"66bc1f0a9d3e2a0012ab3402"},"cliente":"u:1043","estado":"pendiente","total":310.5,"items":1}',
+    ],
+    CountMongoDocuments: 1842,
+    SampleMongoFields: [
+        {path: '_id', types: ['objectId'], count: 100, frequency: 1},
+        {path: 'cliente', types: ['string'], count: 100, frequency: 1},
+        {path: 'estado', types: ['string'], count: 100, frequency: 1},
+        {path: 'total', types: ['double', 'int'], count: 100, frequency: 1},
+    ],
     // --- Módulo de base de datos ---
     // Conexiones repartidas en carpetas, como queda un equipo real después de
     // unos meses: un entorno productivo aparte, uno de pruebas, y lo local
@@ -1046,6 +1066,8 @@ const {default: AgentChat} = await import('./components/agent/AgentChat')
 const {default: GitRepoTab} = await import('./components/git/GitRepoTab')
 const {default: Workspace} = await import('./components/Workspace')
 const {default: RedisBrowserTab} = await import('./components/redis/RedisBrowserTab')
+const {default: MongoBrowserTab} = await import('./components/mongo/MongoBrowserTab')
+const {default: MongoFindWizard} = await import('./components/mongo/MongoFindWizard')
 const {default: NoteEditorTab} = await import('./components/notes/NoteEditorTab')
 const {default: NotesGraphView} = await import('./components/notes/NotesGraphView')
 const {default: SettingsDialog} = await import('./components/SettingsDialog')
@@ -1354,6 +1376,8 @@ const views: Record<string, React.ReactNode> = {
     newmenu: views_repo,
     history: views_repo,
     redis: <RedisBrowserTab connId="c3" initialKey="cart:u:1042" initialKeyToken={1} />,
+    mongo: <MongoBrowserTab connId="c6" initialDatabase="events" initialCollection="orders" initialToken={1} onOpenWizard={() => {}} />,
+    mongowizard: <MongoFindWizard connId="c6" database="events" initialCollection="orders" onGenerate={() => {}} onClose={() => {}} />,
     agents: <GitAgentPanel repoId="r1" onOpenFile={() => {}} onAskAgent={() => {}} defaultAgent="" onSetDefaultAgent={() => {}} />,
     chat: views_chat,
     chatdb: views_chatdb,
@@ -1527,24 +1551,24 @@ const autoClick = (find: () => HTMLElement | undefined) => {
 }
 
 if (view === 'gitconfig' && new URLSearchParams(location.search).get('edit')) {
-    autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.title.startsWith('Ver y cambiar la URL')))
+    autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.hasAttribute('data-remote-edit')))
 }
 if (view === 'agentmode') {
     // Por title y no por texto: el Icon renderiza su ligadura como texto, así
     // que textContent es "smart_toyAgente" y nunca matchea "Agente".
-    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Modo agente')))
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.hasAttribute('data-agent-mode-toggle')))
 }
 if (view === 'panelagents') {
-    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Asistentes de código')))
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.hasAttribute('data-open-agents')))
 }
 if (view === 'newmenu') {
     // El menú "Nueva" del panel de agentes: es donde aparecen las
     // conversaciones que el CLI ya tenía, y solo se ve abierto.
     // Primero el modo agente (para que exista la tira de la solapa Agentes) y
     // después el `+` de esa tira, que es donde vive el historial.
-    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Modo agente')))
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.hasAttribute('data-agent-mode-toggle')))
     setTimeout(() => {
-        autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Empezar una conversación nueva')))
+        autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title === t().git.tab.panel.newChatTitle))
     }, 400)
 }
 if (view === 'thinking') {
@@ -1558,12 +1582,12 @@ if (view === 'thinking') {
         const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
         set?.call(ta, 'de qué trata el proyecto')
         ta.dispatchEvent(new Event('input', {bubbles: true}))
-        return [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Manda el mensaje'))
+        return document.querySelector<HTMLButtonElement>('button[data-chat-send]') ?? undefined
     })
 }
 if (view === 'sidebarmenu' || view === 'sidebaropen') {
     const expand = () =>
-        [...document.querySelectorAll<HTMLButtonElement>('button[title="Desplegar"]')].forEach((b) => b.click())
+        [...document.querySelectorAll<HTMLButtonElement>('button[data-tree-toggle="closed"]')].forEach((b) => b.click())
     setTimeout(expand, 1200)
     setTimeout(expand, 1600)
     setTimeout(() => {
@@ -1588,14 +1612,19 @@ if (view === 'workspace' || view === 'sidebar' || view === 'sidebarmenu' || view
 if (view === 'tabmenu') {
     // Dos clics encadenados, como los daría una persona: el rótulo de la
     // pestaña abre su menú, y adentro está el selector de conexión.
-    autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.title.startsWith('Vinculada a')))
+    // Por atributo data-*, no por el tooltip ni el aria-label: cambian con el idioma.
+    autoClick(() => document.querySelector<HTMLButtonElement>('button[data-tab-binding="bound"]') ?? undefined)
     setTimeout(() => {
-        autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.getAttribute('aria-label') === 'Conexión de la pestaña'))
+        autoClick(() => document.querySelector<HTMLButtonElement>('[data-tab-connection-select] button') ?? undefined)
     }, 400)
 }
 if (view === 'settings') {
     const section = new URLSearchParams(location.search).get('section')
-    if (section) autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find((b) => b.title.startsWith(section)))
+    // Por id de sección (data-section), no por el rótulo, que cambia con el
+    // idioma. Se aceptan también los nombres de antes (Vault, Terminal, IA).
+    const legacy: Record<string, string> = {apariencia: 'general', appearance: 'general', ia: 'ai'}
+    const id = section ? (legacy[section.toLowerCase()] ?? section.toLowerCase()) : ''
+    if (id) autoClick(() => document.querySelector<HTMLButtonElement>(`button[role="tab"][data-section="${id}"]`) ?? undefined)
 }
 if (view === 'sidebarsearch') {
     // Se escribe en el buscador como lo haría una persona: el contador de
@@ -1611,9 +1640,9 @@ if (view === 'sidebarsearch') {
     })
 }
 if (view === 'history') {
-    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Modo agente')))
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.hasAttribute('data-agent-mode-toggle')))
     setTimeout(() => {
-        autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Todas las conversaciones de este repositorio, por agente')))
+        autoClick(() => [...document.querySelectorAll('button')].find((b) => b.hasAttribute('data-agents-history')))
     }, 1200)
 }
 if (view === 'redis') {
@@ -1633,12 +1662,12 @@ if (view === 'notes') {
     }, 1200)
 }
 if (view === 'notespreview') {
-    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Ver la nota renderizada')))
+    autoClick(() => document.querySelector<HTMLElement>('button[data-note-preview-toggle]') ?? undefined)
 }
 if (view === 'mcp') {
     // El tutorial viene plegado: se abre, que es justamente lo que hay que
     // fotografiar.
-    autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Los pasos exactos')))
+    autoClick(() => document.querySelector<HTMLButtonElement>('button[data-mcp-howto]') ?? undefined)
 }
 if (view === 'gridedit') {
     // Se edita una celda de verdad, como lo haría una persona: doble clic,
@@ -1663,12 +1692,10 @@ if (view === 'http') {
     // el árbol plegado y sin respuesta no muestra nada de lo que hace.
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Reserve v3')))
     setTimeout(() => {
-        const body = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('Body'))
-        body?.click()
+        document.querySelector<HTMLButtonElement>('button[data-http-section="body"]')?.click()
     }, 1400)
     setTimeout(() => {
-        const enviar = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Enviar')
-        enviar?.click()
+        document.querySelector<HTMLButtonElement>('button[data-http-send]')?.click()
     }, 1800)
 }
 if (view === 'commitgraph') {
@@ -1703,7 +1730,7 @@ if (view === 'schematree') {
     }, 2100)
 }
 if (view === 'pullnoticeopen') {
-    autoClick(() => [...document.querySelectorAll<HTMLElement>('button')].find((b) => b.textContent?.includes('archivos actualizados')))
+    autoClick(() => [...document.querySelectorAll<HTMLElement>('button')].find((b) => b.hasAttribute('data-pull-notice-toggle')))
 }
 if (view === 'chatmode') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Chat · Claude Code')))
@@ -1716,6 +1743,14 @@ views.pullnoticeopen = views.pullnotice
 views.sidebarmenu = views.sidebar
 // sidebaropen: lo mismo, desplegado y sin menú (para ver las guías).
 views.sidebaropen = views.sidebar
+// unlock / unlockcreate: la pantalla de la clave maestra (vault ya creado /
+// primera vez).
+const {default: UnlockScreen} = await import('./components/lock/UnlockScreen')
+views.unlock = <UnlockScreen isInitialized theme="dark" onToggleTheme={() => {}} onInitialize={async () => {}} onUnlock={async () => {}} onRestore={async () => {}} />
+views.unlockcreate = <UnlockScreen isInitialized={false} theme="dark" onToggleTheme={() => {}} onInitialize={async () => {}} onUnlock={async () => {}} onRestore={async () => {}} />
+// El idioma se fija antes de montar, igual que App.tsx lo carga antes de
+// dibujar: UISHOT_LANG=es|en (por defecto, el de la app).
+setLanguage(normalizeLang(new URLSearchParams(location.search).get('lang')))
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
         <div className="h-screen w-screen bg-surface text-on-surface">

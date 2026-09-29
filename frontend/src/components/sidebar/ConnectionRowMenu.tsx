@@ -2,6 +2,7 @@ import {useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import {createPortal} from 'react-dom'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // One entry of the menu. `danger` puts it below a separator in error colours —
 // there is exactly one of those, and keeping it apart from the rest is the
@@ -33,6 +34,7 @@ interface ConnectionRowMenuProps {
 // Portal + fixed position because the row lives in an overflow-y-auto
 // container, where an absolutely positioned dropdown gets clipped.
 export default function ConnectionRowMenu({items, flatFolders, onMoveToFolder}: ConnectionRowMenuProps) {
+    const t = useT()
     const [open, setOpen] = useState(false)
     // The folder list is a second view of the same panel, not a sideways
     // flyout — the sidebar is too narrow for one to fit on screen.
@@ -64,7 +66,7 @@ export default function ConnectionRowMenu({items, flatFolders, onMoveToFolder}: 
             <button
                 ref={btnRef}
                 onClick={toggle}
-                title="Más acciones"
+                title={t.sidebar.folders.moreActions}
                 className={`shrink-0 sidebar-icon ${open ? 'block' : 'hidden group-hover:block'}`}
             >
                 <Icon name="more_vert" size={15} />
@@ -96,7 +98,7 @@ export default function ConnectionRowMenu({items, flatFolders, onMoveToFolder}: 
                                     ))}
                                     <button onClick={() => setView('folders')} className={itemClass}>
                                         <Icon name="drive_file_move" size={14} className="shrink-0 opacity-60" />
-                                        Mover a carpeta
+                                        {t.sidebar.folders.moveToFolder}
                                         <Icon name="chevron_right" size={14} className="ml-auto shrink-0 opacity-60" />
                                     </button>
                                     {dangerous.length > 0 && <div className="my-1 border-t border-outline-variant" />}
@@ -119,7 +121,7 @@ export default function ConnectionRowMenu({items, flatFolders, onMoveToFolder}: 
                                 <>
                                     <button onClick={() => setView('main')} className={`${itemClass} font-medium`}>
                                         <Icon name="chevron_left" size={14} className="shrink-0 opacity-60" />
-                                        Mover a carpeta
+                                        {t.sidebar.folders.moveToFolder}
                                     </button>
                                     <div className="my-1 border-t border-outline-variant" />
                                     <button
@@ -130,7 +132,7 @@ export default function ConnectionRowMenu({items, flatFolders, onMoveToFolder}: 
                                         className={itemClass}
                                     >
                                         <Icon name="close" size={14} className="shrink-0 opacity-60" />
-                                        Sin carpeta
+                                        {t.sidebar.folders.noFolder}
                                     </button>
                                     {flatFolders.map(({folder, depth}) => (
                                         <button
@@ -147,7 +149,7 @@ export default function ConnectionRowMenu({items, flatFolders, onMoveToFolder}: 
                                         </button>
                                     ))}
                                     {flatFolders.length === 0 && (
-                                        <p className="px-2 py-1.5 text-xs text-on-surface-variant">No hay carpetas creadas.</p>
+                                        <p className="px-2 py-1.5 text-xs text-on-surface-variant">{t.sidebar.folders.noFoldersCreated}</p>
                                     )}
                                 </>
                             )}

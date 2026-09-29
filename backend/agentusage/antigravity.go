@@ -2,6 +2,7 @@ package agentusage
 
 import (
 	"database/sql"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,11 +47,11 @@ func readAntigravity(home, repoRoot string) AgentUsage {
 	u := AgentUsage{Agent: "antigravity", Source: dir}
 
 	if _, err := os.Stat(dir); err != nil {
-		u.Note = "No se encontró Antigravity CLI en esta máquina."
+		u.Note = i18n.T(i18n.Msg{ES: "No se encontró Antigravity CLI en esta máquina.", EN: "Antigravity CLI was not found on this machine."})
 		return u
 	}
 
-	u.Note = "Antigravity no escribe los tokens consumidos en el disco. Lo que sí se puede leer acá es la actividad; la cuota se consulta con el botón de arriba."
+	u.Note = i18n.T(i18n.Msg{ES: "Antigravity no escribe los tokens consumidos en el disco. Lo que sí se puede leer acá es la actividad; la cuota se consulta con el botón de arriba.", EN: "Antigravity does not write the tokens it consumes to disk. What can be read here is the activity; the quota is checked with the button above."})
 
 	act, ok := readAntigravityActivity(filepath.Join(dir, "conversation_summaries.db"), repoRoot)
 	if ok {

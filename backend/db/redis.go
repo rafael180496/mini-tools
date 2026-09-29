@@ -1,10 +1,11 @@
 package db
 
 import (
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // RedisMode selects which of the 3 topologies a Redis connection targets.
@@ -66,7 +67,7 @@ func (redisConnector) BuildDSN(params map[string]string) (string, error) {
 	case RedisModeStandalone:
 		host := params["host"]
 		if host == "" {
-			return "", fmt.Errorf("redis: falta el parámetro 'host' para el modo standalone")
+			return "", i18n.Errorf(i18n.Msg{ES: "redis: falta el parámetro 'host' para el modo standalone", EN: "redis: missing 'host' parameter for standalone mode"})
 		}
 		port := params["port"]
 		if port == "" {
@@ -82,7 +83,7 @@ func (redisConnector) BuildDSN(params map[string]string) (string, error) {
 	case RedisModeCluster:
 		nodes := params["nodes"]
 		if nodes == "" {
-			return "", fmt.Errorf("redis: falta el parámetro 'nodes' para el modo cluster")
+			return "", i18n.Errorf(i18n.Msg{ES: "redis: falta el parámetro 'nodes' para el modo cluster", EN: "redis: missing 'nodes' parameter for cluster mode"})
 		}
 		first, err := firstNode(nodes)
 		if err != nil {
@@ -94,11 +95,11 @@ func (redisConnector) BuildDSN(params map[string]string) (string, error) {
 	case RedisModeSentinel:
 		sentinels := params["sentinels"]
 		if sentinels == "" {
-			return "", fmt.Errorf("redis: falta el parámetro 'sentinels' para el modo sentinel")
+			return "", i18n.Errorf(i18n.Msg{ES: "redis: falta el parámetro 'sentinels' para el modo sentinel", EN: "redis: missing 'sentinels' parameter for sentinel mode"})
 		}
 		master := params["master"]
 		if master == "" {
-			return "", fmt.Errorf("redis: falta el parámetro 'master' para el modo sentinel")
+			return "", i18n.Errorf(i18n.Msg{ES: "redis: falta el parámetro 'master' para el modo sentinel", EN: "redis: missing 'master' parameter for sentinel mode"})
 		}
 		first, err := firstNode(sentinels)
 		if err != nil {
@@ -114,7 +115,7 @@ func (redisConnector) BuildDSN(params map[string]string) (string, error) {
 		q.Set("master", master)
 
 	default:
-		return "", fmt.Errorf("redis: modo de conexión desconocido %q (usar standalone, cluster o sentinel)", params["mode"])
+		return "", i18n.Errorf(i18n.Msg{ES: "redis: modo de conexión desconocido %q (usar standalone, cluster o sentinel)", EN: "redis: unknown connection mode %q (use standalone, cluster or sentinel)"}, params["mode"])
 	}
 
 	u.RawQuery = q.Encode()
@@ -127,7 +128,7 @@ func (redisConnector) BuildDSN(params map[string]string) (string, error) {
 func (redisConnector) ParseDSN(dsn string) (map[string]string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("redis: parseando DSN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "redis: parseando DSN: %w", EN: "redis: parsing DSN: %w"}, err)
 	}
 
 	params := map[string]string{}
@@ -171,7 +172,7 @@ func normalizeDBIndex(raw string) (string, error) {
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 0 || n > 15 {
-		return "", fmt.Errorf("redis: 'db' inválido (debe ser 0-15): %q", raw)
+		return "", i18n.Errorf(i18n.Msg{ES: "redis: 'db' inválido (debe ser 0-15): %q", EN: "redis: invalid 'db' (must be 0-15): %q"}, raw)
 	}
 	return strconv.Itoa(n), nil
 }
@@ -185,5 +186,5 @@ func firstNode(list string) (string, error) {
 			return p, nil
 		}
 	}
-	return "", fmt.Errorf("redis: la lista de nodos está vacía")
+	return "", i18n.Errorf(i18n.Msg{ES: "redis: la lista de nodos está vacía", EN: "redis: the node list is empty"})
 }

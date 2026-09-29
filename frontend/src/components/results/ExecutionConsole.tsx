@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef} from 'react'
 import Icon from '../Icon'
 import {highlightSql, SQL_TOKEN_CLASS} from '../../lib/sqlHighlight'
 import {formatElapsed} from '../../lib/formatElapsed'
+import {formatDateTime, formatNumber, useT} from '../../i18n'
 
 export interface ConsoleLogEntry {
     index: number
@@ -45,8 +46,13 @@ interface ExecutionConsoleProps {
     onClear: () => void
 }
 
+// La duración exacta, en milisegundos, para el tooltip.
+function msTitle(ms: number) {
+    return formatNumber(ms, {style: 'unit', unit: 'millisecond', unitDisplay: 'short'})
+}
+
 function timeLabel(ts: number) {
-    return new Date(ts).toLocaleTimeString(undefined, {hour12: false})
+    return formatDateTime(new Date(ts), {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false})
 }
 
 // El SQL ejecutado, con el mismo resaltado por colores que el editor —
@@ -96,12 +102,13 @@ function ErrorMessage({text}: {text: string}) {
 // full backend message (never truncated — that's the whole point of this
 // view over a bare "Resultado N" grid tab for a DDL-heavy script).
 function ResultLine({entry}: {entry: ConsoleLogEntry}) {
+    const t = useT()
     const time = <span className="text-on-surface-variant/60">[{timeLabel(entry.timestamp)}]</span>
 
     if (entry.status === 'cancelled') {
         return (
             <span className="text-tertiary">
-                {time} cancelado
+                {time} {t.results.console.cancelled}
             </span>
         )
     }
@@ -113,7 +120,7 @@ function ResultLine({entry}: {entry: ConsoleLogEntry}) {
             <div className="mt-1 flex items-start gap-1.5 rounded border border-error/40 bg-error/10 px-2 py-1 text-error">
                 <Icon name="error" size={14} filled className="mt-0.5 shrink-0" />
                 <span className="min-w-0 whitespace-pre-wrap wrap-break-word">
-                    {time} <ErrorMessage text={entry.error || 'Error desconocido'} />
+                    {time} <ErrorMessage text={entry.error || t.results.console.unknownError} />
                 </span>
             </div>
         )
@@ -129,16 +136,16 @@ function ResultLine({entry}: {entry: ConsoleLogEntry}) {
         return (
             <span className="text-on-surface-variant">
                 {time} <span className="font-semibold text-secondary">{entry.rowsAffected}</span>{' '}
-                {entry.rowsAffected === 1 ? 'fila obtenida' : 'filas obtenidas'} en{' '}
-                <span title={`${entry.durationMs} ms`}>{formatElapsed(entry.durationMs)}</span>
+                {t.results.console.rowsFetchedIn(entry.rowsAffected)}{' '}
+                <span title={msTitle(entry.durationMs)}>{formatElapsed(entry.durationMs)}</span>
             </span>
         )
     }
     return (
         <span className="text-on-surface-variant">
-            {time} <span className="text-secondary">completado</span> en{' '}
-            <span title={`${entry.durationMs} ms`}>{formatElapsed(entry.durationMs)}</span>
-            {entry.rowsAffected > 0 ? ` (${entry.rowsAffected} ${entry.rowsAffected === 1 ? 'fila afectada' : 'filas afectadas'})` : ''}
+            {time} <span className="text-secondary">{t.results.console.completed}</span> {t.results.console.completedIn}{' '}
+            <span title={msTitle(entry.durationMs)}>{formatElapsed(entry.durationMs)}</span>
+            {entry.rowsAffected > 0 ? t.results.console.rowsAffected(entry.rowsAffected) : ''}
         </span>
     )
 }
@@ -164,6 +171,7 @@ const STATUS_EDGE: Record<ConsoleLogEntry['status'], string> = {
 // vivía en una solapa aparte se retiró porque decía lo mismo con menos
 // contexto (ver CHANGELOG).
 export default function ExecutionConsole({entries, running, onClear}: ExecutionConsoleProps) {
+    const t = useT()
     const bottomRef = useRef<HTMLDivElement>(null)
     const errorCount = useMemo(() => entries.filter((e) => e.status === 'error').length, [entries])
 
@@ -178,17 +186,15 @@ export default function ExecutionConsole({entries, running, onClear}: ExecutionC
                     último script: es un log corrido. Antes decía "60/12", que
                     se leía como un progreso que nunca terminaba. */}
                 <span className="text-xs text-on-surface-variant">
-                    {entries.length === 0
-                        ? 'Sin statements ejecutados todavía.'
-                        : `${entries.length} ${entries.length === 1 ? 'statement ejecutado' : 'statements ejecutados'}`}
+                    {entries.length === 0 ? t.results.console.noStatements : t.results.console.statementCount(entries.length)}
                 </span>
                 {errorCount > 0 && (
                     <span
-                        title={`${errorCount} de los statements de esta consola terminó con error — tienen el borde y el mensaje en rojo`}
+                        title={t.results.console.errorCountTitle(errorCount)}
                         className="flex items-center gap-1 rounded-full bg-error/15 px-1.5 text-ui-10 font-semibold text-error"
                     >
                         <Icon name="error" size={12} filled />
-                        {errorCount} con error
+                        {t.results.console.errorCount(errorCount)}
                     </span>
                 )}
                 {running && (
@@ -197,26 +203,25 @@ export default function ExecutionConsole({entries, running, onClear}: ExecutionC
                             aria-hidden
                             className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent border-primary"
                         />
-                        ejecutando…
+                        {t.results.console.running}
                     </span>
                 )}
                 <div className="flex-1" />
                 <button
                     onClick={onClear}
                     disabled={entries.length === 0}
-                    title="Borra el log de esta consola — no cancela nada ni deshace lo que ya se ejecutó, solo vacía lo que se ve acá"
+                    title={t.results.console.clearTitle}
                     className="flex items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                 >
                     <Icon name="delete_sweep" size={14} />
-                    Limpiar consola
+                    {t.results.console.clear}
                 </button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-surface-container-lowest">
                 {entries.length === 0 && !running && (
                     <p className="p-3 text-xs text-on-surface-variant">
-                        Ejecutá un script con "Bloque" para ver acá el detalle de cada statement — texto completo, si terminó OK
-                        (con duración) o con error.
+                        {t.results.console.emptyHint}
                     </p>
                 )}
                 <div className="flex flex-col divide-y divide-outline-variant">
@@ -229,7 +234,7 @@ export default function ExecutionConsole({entries, running, onClear}: ExecutionC
                                         {entry.origin}
                                     </span>
                                 ) : (
-                                    <>Statement {entry.index + 1}/{entry.total}</>
+                                    <>{t.results.console.statementHeader({n: entry.index + 1, total: entry.total})}</>
                                 )}
                             </div>
                             <HighlightedSql sql={entry.sqlText} />

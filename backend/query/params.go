@@ -1,11 +1,11 @@
 package query
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/sqlintel"
 )
 
@@ -253,7 +253,7 @@ func BindStatement(stmt string, dbType db.DBType, values map[string]ParamValue, 
 	for _, t := range toks {
 		v, ok := values[t.Name]
 		if !ok {
-			return "", nil, fmt.Errorf("query: falta el valor del parámetro %s", t.Raw)
+			return "", nil, i18n.Errorf(i18n.Msg{ES: "query: falta el valor del parámetro %s", EN: "query: missing value for parameter %s"}, t.Raw)
 		}
 		b.WriteString(string(text[prev:t.start]))
 		b.WriteString(ordinalPlaceholder(dbType, len(args)+1))

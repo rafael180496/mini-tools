@@ -2,11 +2,11 @@ package vault
 
 import (
 	"database/sql"
-	"fmt"
 	"strings"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 )
 
 // Configuración por agente de código (backend/agents): con qué comando se
@@ -31,7 +31,7 @@ type AgentConfig struct {
 func (s *Store) ListAgentConfigs() (map[string]AgentConfig, error) {
 	rows, err := s.db.Query(`SELECT agent_id, command, encrypted_key IS NOT NULL FROM agent_configs`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando configuración de agentes: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando configuración de agentes: %w", EN: "vault: listing agent settings: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -39,7 +39,7 @@ func (s *Store) ListAgentConfigs() (map[string]AgentConfig, error) {
 	for rows.Next() {
 		var c AgentConfig
 		if err := rows.Scan(&c.AgentID, &c.Command, &c.HasKey); err != nil {
-			return nil, fmt.Errorf("vault: leyendo configuración de agente: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo configuración de agente: %w", EN: "vault: reading agent settings: %w"}, err)
 		}
 		out[c.AgentID] = c
 	}
@@ -51,14 +51,14 @@ func (s *Store) ListAgentConfigs() (map[string]AgentConfig, error) {
 // cadena vacía como si fuera una elección.
 func (s *Store) SetAgentCommand(agentID, command string) error {
 	if strings.TrimSpace(agentID) == "" {
-		return fmt.Errorf("vault: falta el id del agente")
+		return i18n.Errorf(i18n.Msg{ES: "vault: falta el id del agente", EN: "vault: missing agent id"})
 	}
 	command = strings.TrimSpace(command)
 	if _, err := s.db.Exec(`
 		INSERT INTO agent_configs (agent_id, command, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(agent_id) DO UPDATE SET command = excluded.command, updated_at = excluded.updated_at
 	`, agentID, command, time.Now().Unix()); err != nil {
-		return fmt.Errorf("vault: guardando el comando del agente: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el comando del agente: %w", EN: "vault: saving the agent command: %w"}, err)
 	}
 	return nil
 }
@@ -66,10 +66,10 @@ func (s *Store) SetAgentCommand(agentID, command string) error {
 // SetAgentKey cifra y guarda la API key de un agente bajo la clave maestra.
 func (s *Store) SetAgentKey(agentID, apiKey string) error {
 	if strings.TrimSpace(agentID) == "" {
-		return fmt.Errorf("vault: falta el id del agente")
+		return i18n.Errorf(i18n.Msg{ES: "vault: falta el id del agente", EN: "vault: missing agent id"})
 	}
 	if strings.TrimSpace(apiKey) == "" {
-		return fmt.Errorf("vault: la API key está vacía")
+		return i18n.Errorf(i18n.Msg{ES: "vault: la API key está vacía", EN: "vault: the API key is empty"})
 	}
 
 	key, err := s.gate.Key()
@@ -78,14 +78,14 @@ func (s *Store) SetAgentKey(agentID, apiKey string) error {
 	}
 	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(apiKey))
 	if err != nil {
-		return fmt.Errorf("vault: cifrando la API key: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: cifrando la API key: %w", EN: "vault: encrypting the API key: %w"}, err)
 	}
 
 	if _, err := s.db.Exec(`
 		INSERT INTO agent_configs (agent_id, command, encrypted_key, key_nonce, updated_at) VALUES (?, '', ?, ?, ?)
 		ON CONFLICT(agent_id) DO UPDATE SET encrypted_key = excluded.encrypted_key, key_nonce = excluded.key_nonce, updated_at = excluded.updated_at
 	`, agentID, ciphertext, nonce, time.Now().Unix()); err != nil {
-		return fmt.Errorf("vault: guardando la API key del agente: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando la API key del agente: %w", EN: "vault: saving the agent's API key: %w"}, err)
 	}
 	return nil
 }
@@ -98,7 +98,7 @@ func (s *Store) ClearAgentKey(agentID string) error {
 		`UPDATE agent_configs SET encrypted_key = NULL, key_nonce = NULL, updated_at = ? WHERE agent_id = ?`,
 		time.Now().Unix(), agentID,
 	); err != nil {
-		return fmt.Errorf("vault: borrando la API key del agente: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando la API key del agente: %w", EN: "vault: deleting the agent's API key: %w"}, err)
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func (s *Store) AgentKey(agentID string) (string, error) {
 		return "", nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("vault: leyendo la API key del agente: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo la API key del agente: %w", EN: "vault: reading the agent's API key: %w"}, err)
 	}
 	if len(ciphertext) == 0 || len(nonce) == 0 {
 		return "", nil
@@ -130,7 +130,7 @@ func (s *Store) AgentKey(agentID string) (string, error) {
 	}
 	plaintext, err := mtcrypto.Decrypt(key, ciphertext, nonce)
 	if err != nil {
-		return "", fmt.Errorf("vault: descifrando la API key del agente: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: descifrando la API key del agente: %w", EN: "vault: decrypting the agent's API key: %w"}, err)
 	}
 	return string(plaintext), nil
 }

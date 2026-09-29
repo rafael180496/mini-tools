@@ -9,6 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"mini-tools/backend/i18n"
 )
 
 // MongoFieldInfo is one field path discovered by sampling a collection.
@@ -62,7 +64,7 @@ func SampleMongoFields(ctx context.Context, client *mongo.Client, database, coll
 	cur, err := client.Database(database).Collection(collection).
 		Find(ctx, bson.D{}, options.Find().SetLimit(sampleSize))
 	if err != nil {
-		return nil, fmt.Errorf("db: muestreando campos de %s.%s: %w", database, collection, err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: muestreando campos de %s.%s: %w", EN: "db: sampling fields of %s.%s: %w"}, database, collection, err)
 	}
 	defer cur.Close(ctx)
 
@@ -84,7 +86,7 @@ func SampleMongoFields(ctx context.Context, client *mongo.Client, database, coll
 		}
 	}
 	if err := cur.Err(); err != nil {
-		return nil, fmt.Errorf("db: leyendo muestra de %s.%s: %w", database, collection, err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: leyendo muestra de %s.%s: %w", EN: "db: reading sample of %s.%s: %w"}, database, collection, err)
 	}
 
 	out := make([]MongoFieldInfo, 0, len(counts))

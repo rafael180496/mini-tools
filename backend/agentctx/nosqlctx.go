@@ -1,11 +1,11 @@
 package agentctx
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // Contexto de esquema para los dos motores que no son relacionales.
@@ -38,7 +38,7 @@ type MongoCollection struct {
 func BuildMongoContext(database string, colls []MongoCollection, hintText string) SchemaContext {
 	out := SchemaContext{TotalTables: len(colls)}
 	if len(colls) == 0 {
-		out.Text = "(no se pudieron listar las colecciones de esta conexión)"
+		out.Text = i18n.T(i18n.Msg{ES: "(no se pudieron listar las colecciones de esta conexión)", EN: "(the collections of this connection could not be listed)"})
 		return out
 	}
 
@@ -51,7 +51,7 @@ func BuildMongoContext(database string, colls []MongoCollection, hintText string
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "// Base: %s (%d colecciones)\n\n", database, len(colls))
+	b.WriteString(i18n.T(i18n.Msg{ES: "// Base: %s (%d colecciones)", EN: "// Database: %s (%d collections)"}, database, len(colls)) + "\n\n")
 
 	if len(picked) == 0 {
 		// Igual que en el caso relacional: si el pedido no nombra ninguna, se
@@ -62,9 +62,9 @@ func BuildMongoContext(database string, colls []MongoCollection, hintText string
 			names = append(names, c.Name)
 		}
 		sort.Strings(names)
-		b.WriteString("// El pedido no menciona ninguna colección conocida. Disponibles:\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "// El pedido no menciona ninguna colección conocida. Disponibles:", EN: "// The request does not mention any known collection. Available:"}) + "\n")
 		b.WriteString("// " + strings.Join(names, ", ") + "\n")
-		b.WriteString("// Si necesitás los campos de alguna, pedila antes de escribir la consulta.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "// Si necesitás los campos de alguna, pedila antes de escribir la consulta.", EN: "// If you need the fields of any of them, ask for it before writing the query."}) + "\n")
 		out.Text = b.String()
 		return out
 	}
@@ -74,16 +74,16 @@ func BuildMongoContext(database string, colls []MongoCollection, hintText string
 	}
 	for _, c := range picked {
 		out.Included = append(out.Included, c.Name)
-		fmt.Fprintf(&b, "// Colección %s (~%d documentos)\n", c.Name, c.Count)
+		b.WriteString(i18n.T(i18n.Msg{ES: "// Colección %s (~%d documentos)", EN: "// Collection %s (~%d documents)"}, c.Name, c.Count) + "\n")
 		if len(c.Fields) > 0 {
-			b.WriteString("//   campos: " + strings.Join(c.Fields, ", ") + "\n")
+			b.WriteString(i18n.T(i18n.Msg{ES: "//   campos: ", EN: "//   fields: "}) + strings.Join(c.Fields, ", ") + "\n")
 		}
 		if len(c.Indexes) > 0 {
-			b.WriteString("//   índices: " + strings.Join(c.Indexes, ", ") + "\n")
+			b.WriteString(i18n.T(i18n.Msg{ES: "//   índices: ", EN: "//   indexes: "}) + strings.Join(c.Indexes, ", ") + "\n")
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("// Los campos salen de muestrear documentos: pueden faltar los de documentos raros.\n")
+	b.WriteString(i18n.T(i18n.Msg{ES: "// Los campos salen de muestrear documentos: pueden faltar los de documentos raros.", EN: "// The fields come from sampling documents: those of unusual documents may be missing."}) + "\n")
 	out.Text = b.String()
 	return out
 }
@@ -99,7 +99,7 @@ func BuildMongoContext(database string, colls []MongoCollection, hintText string
 func BuildRedisContext(keys []db.RedisKeyEntry, totalKeys int64) SchemaContext {
 	out := SchemaContext{TotalTables: int(totalKeys)}
 	if len(keys) == 0 {
-		out.Text = "// (no se pudo muestrear ninguna clave de esta conexión)"
+		out.Text = i18n.T(i18n.Msg{ES: "// (no se pudo muestrear ninguna clave de esta conexión)", EN: "// (no key of this connection could be sampled)"})
 		return out
 	}
 
@@ -130,9 +130,9 @@ func BuildRedisContext(keys []db.RedisKeyEntry, totalKeys int64) SchemaContext {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Patrones de clave observados (muestra de %d claves", len(keys))
+	b.WriteString(i18n.T(i18n.Msg{ES: "# Patrones de clave observados (muestra de %d claves", EN: "# Observed key patterns (sample of %d keys"}, len(keys)))
 	if totalKeys > 0 {
-		fmt.Fprintf(&b, " sobre ~%d en la base", totalKeys)
+		b.WriteString(i18n.T(i18n.Msg{ES: " sobre ~%d en la base", EN: " out of ~%d in the database"}, totalKeys))
 	}
 	b.WriteString(")\n#\n")
 	for _, p := range patterns {
@@ -142,11 +142,11 @@ func BuildRedisContext(keys []db.RedisKeyEntry, totalKeys int64) SchemaContext {
 			types = append(types, t)
 		}
 		sort.Strings(types)
-		fmt.Fprintf(&b, "# %-44s %-8s ~%d claves\n", p, strings.Join(types, "/"), a.count)
+		b.WriteString(i18n.T(i18n.Msg{ES: "# %-44s %-8s ~%d claves", EN: "# %-44s %-8s ~%d keys"}, p, strings.Join(types, "/"), a.count) + "\n")
 		out.Included = append(out.Included, p)
 	}
-	b.WriteString("#\n# Son PATRONES, no claves reales: los identificadores están reemplazados por *.\n")
-	b.WriteString("# Ningún valor de ninguna clave está incluido acá.\n")
+	b.WriteString("#\n" + i18n.T(i18n.Msg{ES: "# Son PATRONES, no claves reales: los identificadores están reemplazados por *.", EN: "# These are PATTERNS, not real keys: identifiers are replaced with *."}) + "\n")
+	b.WriteString(i18n.T(i18n.Msg{ES: "# Ningún valor de ninguna clave está incluido acá.", EN: "# No value of any key is included here."}) + "\n")
 	return finishRedis(&b, out)
 }
 

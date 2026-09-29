@@ -1,5 +1,6 @@
 import {linter, type Diagnostic} from '@codemirror/lint'
 import type {EditorState, Extension} from '@codemirror/state'
+import {t} from '../i18n'
 
 // Lint del frontmatter de los archivos agénticos (SKILL.md, subagentes,
 // comandos slash).
@@ -37,8 +38,7 @@ function diagnostics(state: EditorState): Diagnostic[] {
                 from: firstLine.from,
                 to: firstLine.to,
                 severity: 'warning',
-                message:
-                    'Falta el bloque de frontmatter. Sin él, el CLI no carga este archivo — y no avisa: simplemente no aparece. Tiene que empezar con una línea "---".',
+                message: t().notes.frontmatterLint.missing,
             },
         ]
     }
@@ -64,7 +64,7 @@ function diagnostics(state: EditorState): Diagnostic[] {
                 from: firstLine.from,
                 to: firstLine.to,
                 severity: 'warning',
-                message: 'El bloque de frontmatter nunca se cierra: falta la línea "---" del final.',
+                message: t().notes.frontmatterLint.unclosed,
             },
         ]
     }
@@ -73,21 +73,18 @@ function diagnostics(state: EditorState): Diagnostic[] {
     const close = doc.line(closeLine)
 
     for (const [key, why] of [
-        ['name', 'Sin `name`, el CLI no tiene con qué referirse a esto y lo ignora.'],
-        [
-            'description',
-            'Sin `description`, el agente no tiene con qué decidir si esto es relevante para lo que le pediste, así que en la práctica nunca lo usa.',
-        ],
+        ['name', t().notes.frontmatterLint.whyName],
+        ['description', t().notes.frontmatterLint.whyDescription],
     ] as const) {
         const at = keys.get(key)
         if (at === undefined) {
-            out.push({from: close.from, to: close.to, severity: 'warning', message: `Falta \`${key}\` en el frontmatter. ${why}`})
+            out.push({from: close.from, to: close.to, severity: 'warning', message: t().notes.frontmatterLint.missingKey({key, why})})
             continue
         }
         const line = doc.line(at)
         const value = line.text.slice(line.text.indexOf(':') + 1).trim()
         if (value === '') {
-            out.push({from: line.from, to: line.to, severity: 'warning', message: `\`${key}\` está vacío. ${why}`})
+            out.push({from: line.from, to: line.to, severity: 'warning', message: t().notes.frontmatterLint.emptyKey({key, why})})
         }
     }
     return out

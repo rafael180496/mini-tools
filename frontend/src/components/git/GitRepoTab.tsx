@@ -119,6 +119,7 @@ import LocalTerminalPanel from '../terminal/LocalTerminalPanel'
 import TerminalThemeMenu from '../terminal/TerminalThemeMenu'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../../xterm/terminalFont'
 import PromptDialog from './PromptDialog'
+import {t as i18n, useT} from '../../i18n'
 
 // Everything PromptDialog takes except onClose, which this component owns.
 interface PromptSpec {
@@ -144,7 +145,8 @@ interface PendingConfirm {
     description: string
     confirmLabel: string
     run: () => Promise<unknown>
-    label: string
+    // El comando de git que corre (lo que muestra el indicador de ocupado).
+    command: string
     danger?: boolean
     // Same escape hatch run() takes: a confirmed action that knows how to
     // recover from a specific failure handles it here instead of landing in
@@ -225,6 +227,28 @@ const PANEL_MIN = 140
 
 const LOG_PAGE = 200
 
+// Nombres de git que se muestran tal cual en los dos idiomas (no son texto
+// traducible: son el comando o la ref que el usuario reconoce).
+const UPSTREAM_PLACEHOLDER = 'origin/main'
+const GIT = 'git'
+const RESET_HARD = 'Reset --hard'
+const CMD = {
+    fetch: 'fetch',
+    fetchAll: 'fetch --all',
+    fetchTags: 'fetch --tags',
+    fetchPrune: 'fetch --prune',
+    pull: 'pull',
+    pullFfOnly: 'pull --ff-only',
+    pullRebase: 'pull --rebase',
+    pullRebaseAutostash: 'pull --rebase --autostash',
+    push: 'push',
+    pushSetUpstream: 'push --set-upstream',
+    pushTags: 'push --tags',
+    pushForceWithLease: 'push --force-with-lease',
+    pushForce: 'push --force',
+    pushNoVerify: 'push --no-verify',
+}
+
 // Contador de sesiones de terminal del proceso. Existe para que dos sesiones
 // —de la misma pestaña o de dos pestañas del MISMO repositorio— nunca
 // compartan id, que además es el nombre de su evento de Wails.
@@ -237,9 +261,9 @@ function nextTerminalSeq() {
 // Anclajes del panel. Tres botones y no un menú: son tres opciones
 // excluyentes y el estado actual se ve de un vistazo.
 const DOCK_BUTTONS = [
-    {id: 'left' as const, icon: 'dock_to_right', title: 'Anclar el panel a la izquierda — útil para tenerlo al lado del grafo en una pantalla ancha'},
-    {id: 'bottom' as const, icon: 'dock_to_bottom', title: 'Anclar el panel abajo, a lo ancho de la pestaña — el lugar clásico, y el que más columnas le da a la terminal'},
-    {id: 'right' as const, icon: 'dock_to_left', title: 'Anclar el panel a la derecha — deja el grafo y las ramas a la izquierda, como en un IDE'},
+    {id: 'left' as const, icon: 'dock_to_right'},
+    {id: 'bottom' as const, icon: 'dock_to_bottom'},
+    {id: 'right' as const, icon: 'dock_to_left'},
 ]
 
 // shortAbout recorta el asunto para el título de una solapa. Se queda con el
@@ -251,7 +275,7 @@ function shortAbout(about: string): string {
 }
 
 function newShellSession(repoId: string): PanelSession {
-    return {id: `git-term-${repoId}-${nextTerminalSeq()}`, kind: 'shell', title: 'Terminal', autoStart: false}
+    return {id: `git-term-${repoId}-${nextTerminalSeq()}`, kind: 'shell', title: i18n().git.tab.session.terminal, autoStart: false}
 }
 
 export default function GitRepoTab({
@@ -269,6 +293,8 @@ export default function GitRepoTab({
     onChanged,
     active,
 }: GitRepoTabProps) {
+    const t = useT()
+    const g = t.git.tab
     const [view, setView] = useState<CenterView>('commits')
     // Contexto de trabajo que esta pestaña le da al chat: el chat es uno solo
     // para toda la app (components/agent/) y lo que lo ancla a este
@@ -605,7 +631,7 @@ export default function GitRepoTab({
                     id: `git-term-${repoId}-${nextTerminalSeq()}`,
                     kind: p.kind === 'agent' ? 'agent' : p.kind === 'chat' ? 'chat' : 'shell',
                     agentId: p.agentId || undefined,
-                    title: p.title || (p.kind === 'agent' ? (p.agentId ?? 'Agente') : 'Terminal'),
+                    title: p.title || (p.kind === 'agent' ? (p.agentId ?? i18n().git.tab.session.agent) : i18n().git.tab.session.terminal),
                     autoStart: false,
                 }))
                 // Restaurar la solapa de sesiones implica levantar sus
@@ -780,7 +806,7 @@ export default function GitRepoTab({
                 id: chat.id,
                 kind: 'chat',
                 agentId: chat.agentId,
-                title: chat.title || `Chat con ${agentList.find((a) => a.id === chat.agentId)?.label ?? chat.agentId}`,
+                title: chat.title || i18n().git.tab.session.chatWith({agent: agentList.find((a) => a.id === chat.agentId)?.label ?? chat.agentId}),
                 autoStart: false,
             }
             const next = [...sessions, session]
@@ -842,7 +868,7 @@ export default function GitRepoTab({
                     id: `git-term-${repoId}-${nextTerminalSeq()}`,
                     kind: 'chat',
                     agentId,
-                    title: `Chat · ${shortAbout(about)}`,
+                    title: i18n().git.tab.session.chatAbout({about: shortAbout(about)}),
                     autoStart: false,
                 }
                 const next = [...sessions, session]
@@ -925,7 +951,7 @@ export default function GitRepoTab({
             }
 
             const id = `git-term-${repoId}-${nextTerminalSeq()}`
-            const title = conv.title || `Conversación con ${agentList.find((a) => a.id === agentId)?.label ?? agentId}`
+            const title = conv.title || i18n().git.tab.session.conversationWith({agent: agentList.find((a) => a.id === agentId)?.label ?? agentId})
             try {
                 await CreateAgentChat(id, repoId, agentId, title, 'git', repoId)
                 await TouchAgentChat(id, conv.id)
@@ -1008,9 +1034,9 @@ export default function GitRepoTab({
                 x: e.clientX,
                 y: e.clientY,
                 items: draftables.map((a) => ({
-                    label: `Redactar con ${a.label}`,
+                    label: i18n().git.tab.draft.draftWith({agent: a.label}),
                     icon: 'auto_awesome',
-                    hint: 'Solo para este mensaje — no cambia el agente por defecto de la aplicación',
+                    hint: i18n().git.tab.draft.onlyThisMessage,
                     onSelect: () => void draftCommitMessage(a.id),
                 })),
             })
@@ -1029,7 +1055,7 @@ export default function GitRepoTab({
                 return
             }
             if (usable.length === 0) {
-                setError('No hay ningún asistente de código instalado en este equipo.')
+                setError(i18n().git.tab.noAgentsInstalled)
                 return
             }
             if (usable.length === 1) {
@@ -1040,7 +1066,7 @@ export default function GitRepoTab({
                 x: e?.clientX ?? 200,
                 y: e?.clientY ?? 200,
                 items: usable.map((a) => ({
-                    label: `Preguntar a ${a.label}`,
+                    label: i18n().git.tab.askAgentLabel({agent: a.label}),
                     icon: 'smart_toy',
                     hint: about,
                     onSelect: () => askAgent(a.id, prompt, about),
@@ -1058,7 +1084,7 @@ export default function GitRepoTab({
                           id: `git-term-${repoId}-${nextTerminalSeq()}`,
                           kind,
                           agentId: agent.id,
-                          title: kind === 'chat' ? `Chat · ${agent.label}` : agent.label,
+                          title: kind === 'chat' ? i18n().git.tab.session.chatAbout({about: agent.label}) : agent.label,
                           // Creada por un clic acá y ahora: el agente arranca
                           // solo. Solo las restauradas esperan (ver PanelSession).
                           autoStart: true,
@@ -1075,7 +1101,7 @@ export default function GitRepoTab({
                 persistLayout({tab: 'agents'})
                 enterAgentMode()
                 if (agent) {
-                    void CreateAgentChat(session.id, repoId, agent.id, `Chat con ${agent.label}`, 'git', repoId).catch(() => {})
+                    void CreateAgentChat(session.id, repoId, agent.id, i18n().git.tab.session.chatWith({agent: agent.label}), 'git', repoId).catch(() => {})
                 }
                 return
             }
@@ -1092,10 +1118,10 @@ export default function GitRepoTab({
     const renameChat = useCallback(
         (id: string, current: string) => {
             setPrompt({
-                title: 'Renombrar el chat',
-                label: 'Nombre',
+                title: i18n().git.tab.chat.renameTitle,
+                label: i18n().git.tab.chat.nameLabel,
                 initial: current,
-                confirmLabel: 'Guardar',
+                confirmLabel: i18n().common.save,
                 onSubmit: (name: string) => {
                     const title = name.trim()
                     if (!title) return
@@ -1118,7 +1144,7 @@ export default function GitRepoTab({
     const chatMenuItems = useCallback(
         (): (DropdownItem | DropdownHeader | 'separator')[] => {
             const usable = agentList.filter((a) => a.available && chatCapable.has(a.id))
-            const items: (DropdownItem | DropdownHeader | 'separator')[] = [{header: 'Empezar una conversación'}]
+            const items: (DropdownItem | DropdownHeader | 'separator')[] = [{header: i18n().git.tab.chat.startHeader}]
 
             for (const a of usable) {
                 items.push({
@@ -1132,9 +1158,9 @@ export default function GitRepoTab({
             const saved = chatHistory.length + cliChats.length
             if (saved > 0) {
                 items.push('separator', {
-                    label: 'Ver el historial completo',
+                    label: i18n().git.tab.chat.viewHistory,
                     icon: 'history',
-                    hint: `${saved} conversación${saved === 1 ? '' : 'es'}`,
+                    hint: i18n().git.tab.chat.conversations(saved),
                     onSelect: () => setAgentsView('history'),
                 })
             }
@@ -1441,7 +1467,7 @@ export default function GitRepoTab({
                 if (!outside) return
                 setSelectedCommit(outside)
                 setNotice(
-                    `El último commit de "${b.name}" (${outside.shortHash}) queda fuera de los ${LOG_PAGE} commits cargados en el grafo, así que no hay fila a la que saltar. Lo tenés a la derecha.`,
+                    i18n().git.tab.notice.branchTipOutside({branch: b.name, hash: outside.shortHash, count: LOG_PAGE}),
                 )
             } catch (e) {
                 setError(String(e))
@@ -1473,7 +1499,7 @@ export default function GitRepoTab({
                 if (!outside) return
                 setSelectedCommit(outside)
                 setNotice(
-                    `El commit ${outside.shortHash} queda fuera de los ${LOG_PAGE} commits cargados en el grafo, así que no hay fila a la que saltar. Lo tenés a la derecha.`,
+                    i18n().git.tab.notice.commitOutside({hash: outside.shortHash, count: LOG_PAGE}),
                 )
             } catch (e) {
                 setError(String(e))
@@ -1490,40 +1516,41 @@ export default function GitRepoTab({
             // "origin/feature/x" → local branch name "feature/x": strip only
             // the remote prefix (first path segment), keep any nested name.
             const localName = b.name.slice(b.name.indexOf('/') + 1)
+            const m = i18n().git.tab.branchMenu
             return [
                 {
-                    label: `Checkout ${b.name}`,
+                    label: m.checkout({name: b.name}),
                     icon: 'check',
-                    hint: 'Crea una rama local que la sigue',
+                    hint: m.checkoutRemoteHint,
                     onSelect: () => void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => { if (ok) void selectBranch(b) }),
                 },
                 {
-                    label: `Crear rama local '${localName}'`,
+                    label: m.createLocal({name: localName}),
                     icon: 'account_tree',
                     disabled: branches.some((x) => !x.isRemote && x.name === localName),
-                    hint: branches.some((x) => !x.isRemote && x.name === localName) ? 'Ya existe una rama local con ese nombre' : undefined,
+                    hint: branches.some((x) => !x.isRemote && x.name === localName) ? m.localExists : undefined,
                     onSelect: () => run(`checkout -b ${localName}`, () => GitCreateBranch(repoId, localName, b.name, true)),
                 },
                 {
-                    label: `Merge ${b.name} en ${current?.name ?? 'la actual'}`,
+                    label: m.mergeInto({name: b.name, into: current?.name ?? m.theCurrentShort}),
                     icon: 'merge',
                     onSelect: () => run(`merge ${b.name}`, () => GitMerge(repoId, b.name, false)),
                 },
                 rebaseOntoItem(b),
                 searchInBranchItem(b),
-                {label: `Copiar '${b.name}'`, icon: 'content_copy', onSelect: () => copy(b.name)},
+                {label: m.copyName({name: b.name}), icon: 'content_copy', onSelect: () => copy(b.name)},
                 'separator',
                 {
-                    label: `Borrar ${b.name}`,
+                    label: m.delete({name: b.name}),
                     icon: 'delete',
                     danger: true,
-                    hint: 'Borra la rama en el servidor',
+                    hint: m.deleteRemoteHint,
                     onSelect: () =>
                         setConfirm({
-                            title: 'Borrar rama remota',
-                            description: `Esto borra la rama "${b.name}" en el servidor, no solo tu copia local. Cualquiera que la estuviera usando la pierde. Si tenés una rama local con los mismos commits, esos commits siguen existiendo en tu máquina.`,
-                            confirmLabel: 'Borrar del remoto',
-                            label: 'push --delete',
+                            title: m.deleteRemoteTitle,
+                            description: m.deleteRemoteDesc({name: b.name}),
+                            confirmLabel: m.deleteFromRemote,
+                            command: 'push --delete',
                             run: () => GitDeleteRemoteBranch(repoId, b.name, new git.AuthConfig({})),
                         }),
                 },
@@ -1531,16 +1558,17 @@ export default function GitRepoTab({
         }
 
         const remoteCandidates = branches.filter((x) => x.isRemote).map((x) => x.name)
+        const m = i18n().git.tab.branchMenu
         return [
             {
-                label: `Checkout ${b.name}`,
+                label: m.checkout({name: b.name}),
                 icon: 'check',
                 disabled: b.isCurrent,
-                hint: b.isCurrent ? 'Ya estás en esta rama' : undefined,
+                hint: b.isCurrent ? m.alreadyOn : undefined,
                 onSelect: () => void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => { if (ok) void selectBranch(b) }),
             },
             {
-                label: `Merge ${b.name} en ${current?.name ?? 'la rama actual'}`,
+                label: m.mergeInto({name: b.name, into: current?.name ?? m.theCurrent}),
                 icon: 'merge',
                 disabled: b.isCurrent,
                 onSelect: () => run(`merge ${b.name}`, () => GitMerge(repoId, b.name, false)),
@@ -1549,53 +1577,53 @@ export default function GitRepoTab({
             searchInBranchItem(b),
             'separator',
             {
-                label: `Renombrar ${b.name}…`,
+                label: m.rename({name: b.name}),
                 icon: 'edit',
                 onSelect: () =>
                     setPrompt({
-                        title: `Renombrar la rama "${b.name}"`,
-                        label: 'Nuevo nombre',
+                        title: m.renameTitle({name: b.name}),
+                        label: m.newName,
                         initial: b.name,
-                        description: 'Renombrar solo afecta tu repositorio local. Si la rama ya está publicada, el nombre viejo sigue existiendo en el remoto hasta que lo borres.',
+                        description: m.renameDesc,
                         onSubmit: (v) => run(`branch -m ${v}`, () => GitRenameBranch(repoId, b.name, v)),
                     }),
             },
             {
-                label: 'Set upstream…',
+                label: m.setUpstream,
                 icon: 'link',
                 disabled: remoteCandidates.length === 0,
-                hint: b.upstream ? `Ahora: ${b.upstream}` : 'Sin upstream',
+                hint: b.upstream ? m.upstreamNow({upstream: b.upstream}) : m.noUpstream,
                 onSelect: () =>
                     setPrompt({
-                        title: `Upstream de "${b.name}"`,
-                        label: 'Rama remota',
+                        title: m.upstreamTitle({name: b.name}),
+                        label: m.remoteBranch,
                         initial: b.upstream || remoteCandidates[0] || '',
-                        placeholder: 'origin/main',
-                        description: `Vincular la rama hace que pull y push sepan a dónde ir, y que los contadores de adelante/atrás tengan sentido. Remotas disponibles: ${remoteCandidates.join(', ') || 'ninguna'}.`,
+                        placeholder: UPSTREAM_PLACEHOLDER,
+                        description: m.upstreamDesc({remotes: remoteCandidates.join(', ') || m.none}),
                         onSubmit: (v) => run('branch --set-upstream-to', () => GitSetUpstream(repoId, b.name, v)),
                     }),
             },
             {
-                label: 'Unset upstream',
+                label: m.unsetUpstream,
                 icon: 'link_off',
                 disabled: !b.upstream,
-                hint: 'No borra nada, solo desvincula',
+                hint: m.unsetUpstreamHint,
                 onSelect: () => run('branch --unset-upstream', () => GitUnsetUpstream(repoId, b.name)),
             },
-            {label: `Copiar '${b.name}'`, icon: 'content_copy', onSelect: () => copy(b.name)},
+            {label: m.copyName({name: b.name}), icon: 'content_copy', onSelect: () => copy(b.name)},
             'separator',
             {
-                label: `Borrar ${b.name}`,
+                label: m.delete({name: b.name}),
                 icon: 'delete',
                 danger: true,
                 disabled: b.isCurrent,
-                hint: b.isCurrent ? 'No podés borrar la rama en la que estás' : undefined,
+                hint: b.isCurrent ? m.cantDeleteCurrent : undefined,
                 onSelect: () =>
                     setConfirm({
-                        title: 'Borrar rama local',
-                        description: `Esto borra la rama "${b.name}" de tu repositorio local. Si tiene commits que no están en ninguna otra rama, quedan accesibles solo por el reflog hasta que expire. La copia en el remoto (si la hay) no se toca.`,
-                        confirmLabel: 'Borrar',
-                        label: 'branch -D',
+                        title: m.deleteLocalTitle,
+                        description: m.deleteLocalDesc({name: b.name}),
+                        confirmLabel: i18n().common.delete,
+                        command: 'branch -D',
                         run: () => GitDeleteBranch(repoId, b.name, true),
                     }),
             },
@@ -1607,40 +1635,41 @@ export default function GitRepoTab({
     // in both places, with two differences this panel can afford: it knows
     // which commit the graph is showing, and its confirmations go through
     // this tab's own setConfirm/setPrompt.
-    function tagMenuItems(t: git.Tag): (DropdownItem | 'separator')[] {
-        const short = t.hash.slice(0, 8)
+    function tagMenuItems(tag: git.Tag): (DropdownItem | 'separator')[] {
+        const short = tag.hash.slice(0, 8)
+        const m = i18n().git.tab.tagMenu
         return [
             {
-                label: `Crear rama desde ${t.name}…`,
+                label: m.branchFrom({name: tag.name}),
                 icon: 'account_tree',
                 // Offered above checkout on purpose: checking a tag out leaves
                 // the repository in detached HEAD, which is where people lose
                 // commits. Branching from it is what someone who wants to work
                 // from a release almost always actually means.
-                hint: 'Lo que casi siempre querés en vez de un checkout',
+                hint: m.branchFromHint,
                 onSelect: () =>
                     setPrompt({
-                        title: `Crear rama desde el tag "${t.name}"`,
-                        label: 'Nombre de la rama',
+                        title: m.branchFromTitle({name: tag.name}),
+                        label: m.branchName,
                         initial: '',
-                        description: `La rama nueva arranca en el commit ${short}, al que apunta el tag. El tag no se modifica.`,
-                        onSubmit: (v) => run(`checkout -b ${v} ${t.name}`, () => GitCreateBranch(repoId, v, t.name, true)),
+                        description: m.branchFromDesc({hash: short}),
+                        onSubmit: (v) => run(`checkout -b ${v} ${tag.name}`, () => GitCreateBranch(repoId, v, tag.name, true)),
                     }),
             },
             {
-                label: `Checkout ${t.name}`,
+                label: m.checkout({name: tag.name}),
                 icon: 'check',
-                hint: 'Deja el repo en HEAD desacoplado',
-                onSelect: () => run(`checkout ${t.name}`, () => GitCheckout(repoId, t.name)),
+                hint: m.checkoutHint,
+                onSelect: () => run(`checkout ${tag.name}`, () => GitCheckout(repoId, tag.name)),
             },
-            {label: `Copiar '${t.name}'`, icon: 'content_copy', onSelect: () => copy(t.name)},
-            {label: `Copiar el commit ${short}`, icon: 'content_copy', onSelect: () => copy(t.hash)},
+            {label: m.copyName({name: tag.name}), icon: 'content_copy', onSelect: () => copy(tag.name)},
+            {label: m.copyCommit({hash: short}), icon: 'content_copy', onSelect: () => copy(tag.hash)},
             'separator',
             {
-                label: `Push ${t.name} a origin`,
+                label: m.pushToOrigin({name: tag.name}),
                 icon: 'upload',
-                hint: 'Un tag no viaja solo con un push normal',
-                onSelect: () => run(`push origin ${t.name}`, () => GitPushTag(repoId, 'origin', t.name, new git.AuthConfig({}))),
+                hint: m.pushHint,
+                onSelect: () => run(`push origin ${tag.name}`, () => GitPushTag(repoId, 'origin', tag.name, new git.AuthConfig({}))),
             },
             'separator',
             // Local y remoto van separados a propósito: borrar un tag local lo
@@ -1648,31 +1677,31 @@ export default function GitRepoTab({
             // que da trabajar con tags. Un solo "Borrar" tendría que elegir por
             // el usuario cuál de las dos cosas hace.
             {
-                label: `Borrar ${t.name}`,
+                label: m.delete({name: tag.name}),
                 icon: 'delete',
                 danger: true,
-                hint: 'Solo local',
+                hint: m.localOnly,
                 onSelect: () =>
                     setConfirm({
-                        title: 'Borrar tag local',
-                        description: `Esto borra el tag "${t.name}" de tu repositorio local. La copia en el remoto (si la hay) sigue existiendo, y un fetch con tags te lo vuelve a traer. El commit ${short} no se toca.`,
-                        confirmLabel: 'Borrar',
-                        label: 'tag -d',
-                        run: () => GitDeleteTag(repoId, t.name),
+                        title: m.deleteLocalTitle,
+                        description: m.deleteLocalDesc({name: tag.name, hash: short}),
+                        confirmLabel: i18n().common.delete,
+                        command: 'tag -d',
+                        run: () => GitDeleteTag(repoId, tag.name),
                     }),
             },
             {
-                label: `Borrar ${t.name} de origin`,
+                label: m.deleteFromOrigin({name: tag.name}),
                 icon: 'delete_forever',
                 danger: true,
-                hint: 'Solo en el remoto',
+                hint: m.remoteOnly,
                 onSelect: () =>
                     setConfirm({
-                        title: 'Borrar tag del remoto',
-                        description: `Esto borra el tag "${t.name}" en el servidor, no tu copia local. Si el tag marca una versión publicada, cualquiera que dependa de él lo pierde. El commit ${short} no se toca.`,
-                        confirmLabel: 'Borrar del remoto',
-                        label: 'push --delete',
-                        run: () => GitDeleteRemoteTag(repoId, 'origin', t.name, new git.AuthConfig({})),
+                        title: m.deleteRemoteTitle,
+                        description: m.deleteRemoteDesc({name: tag.name, hash: short}),
+                        confirmLabel: i18n().git.tab.branchMenu.deleteFromRemote,
+                        command: 'push --delete',
+                        run: () => GitDeleteRemoteTag(repoId, 'origin', tag.name, new git.AuthConfig({})),
                     }),
             },
         ]
@@ -1681,22 +1710,23 @@ export default function GitRepoTab({
     // Right-click menu for a commit row.
     function commitMenuItems(c: git.CommitInfo): (DropdownItem | 'separator')[] {
         const short = c.shortHash
+        const m = i18n().git.tab.commitMenu
         return [
             // Va primero porque es de solo lectura y sin consecuencias, a
             // diferencia de todo lo que sigue.
             {
-                label: 'Preguntarle al agente sobre este commit',
+                label: m.askAgent,
                 icon: 'smart_toy',
-                hint: 'Abre el chat con el prompt escrito; enviar y seguir la conversación es tuyo',
+                hint: m.askAgentHint,
                 onSelect: () =>
                     askAgentPicking(
-                        `Explicá qué hizo el commit ${c.hash} de este repositorio (git show ${c.hash}) y `,
+                        m.askAgentPrompt({hash: c.hash}),
                         `commit ${short}`,
                     ),
             },
             'separator',
             {
-                label: 'Reordenar y combinar desde acá…',
+                label: m.rebaseFromHere,
                 icon: 'low_priority',
                 // Rebases onto this commit, so THIS one is the base and
                 // everything after it is what gets rewritten — which is what
@@ -1705,55 +1735,55 @@ export default function GitRepoTab({
             },
             'separator',
             {
-                label: 'Crear rama acá…',
+                label: m.branchHere,
                 icon: 'account_tree',
                 onSelect: () =>
                     setPrompt({
-                        title: `Crear rama en ${short}`,
-                        label: 'Nombre de la rama',
-                        placeholder: 'mi-rama',
-                        confirmLabel: 'Crear y cambiar',
-                        description: `La rama nueva arranca en "${c.subject}".`,
+                        title: m.branchAtTitle({hash: short}),
+                        label: i18n().git.tab.tagMenu.branchName,
+                        placeholder: m.branchPlaceholder,
+                        confirmLabel: m.createAndSwitch,
+                        description: m.branchAtDesc({subject: c.subject}),
                         onSubmit: (v) => run(`checkout -b ${v}`, () => GitCreateBranch(repoId, v, c.hash, true)),
                     }),
             },
             {
-                label: 'Crear tag acá…',
+                label: m.tagHere,
                 icon: 'sell',
                 onSelect: () =>
                     setPrompt({
-                        title: `Crear tag en ${short}`,
-                        label: 'Nombre del tag',
+                        title: m.tagAtTitle({hash: short}),
+                        label: m.tagName,
                         placeholder: 'v1.0.0',
-                        secondLabel: 'Mensaje (opcional)',
-                        secondPlaceholder: 'Con mensaje crea un tag anotado; sin mensaje, uno liviano.',
-                        confirmLabel: 'Crear tag',
-                        description: 'El tag se crea solo local. Para publicarlo, usá "Push" desde el menú del tag en el sidebar.',
+                        secondLabel: m.tagMessage,
+                        secondPlaceholder: m.tagMessageHint,
+                        confirmLabel: m.createTag,
+                        description: m.tagAtDesc,
                         onSubmit: (v, msg) => run(`tag ${v}`, () => GitCreateTag(repoId, v, c.hash, msg)),
                     }),
             },
-            {label: 'Checkout este commit', icon: 'check', hint: 'Deja HEAD desacoplado', onSelect: () => run(`checkout ${short}`, () => GitCheckout(repoId, c.hash))},
+            {label: m.checkoutThis, icon: 'check', hint: m.checkoutThisHint, onSelect: () => run(`checkout ${short}`, () => GitCheckout(repoId, c.hash))},
             'separator',
             {
-                label: `Revert ${short}`,
+                label: m.revert({hash: short}),
                 icon: 'undo',
-                hint: 'Crea un commit que lo deshace',
+                hint: m.revertHint,
                 onSelect: () => run(`revert ${short}`, () => GitRevert(repoId, c.hash, false)),
             },
             {
-                label: `Cherry pick ${short}`,
+                label: m.cherryPick({hash: short}),
                 icon: 'content_paste',
-                hint: 'Copia este commit a la rama actual',
+                hint: m.cherryPickHint,
                 onSelect: () => run(`cherry-pick ${short}`, () => GitCherryPick(repoId, c.hash, false)),
             },
-            {label: `Copiar '${c.hash}'`, icon: 'content_copy', onSelect: () => copy(c.hash)},
+            {label: i18n().git.tab.branchMenu.copyName({name: c.hash}), icon: 'content_copy', onSelect: () => copy(c.hash)},
             ...(c.branches.length > 0
                 ? ([
                       'separator',
                       {
-                          label: `Ocultar ${c.branches.length === 1 ? `la rama ${c.branches[0]}` : `${c.branches.length} ramas`}`,
+                          label: m.hideBranches({count: c.branches.length, first: c.branches[0]}),
                           icon: 'visibility_off',
-                          hint: 'Quita estas ramas del grafo (no las borra)',
+                          hint: m.hideBranchesHint,
                           onSelect: () => setHidden((prev) => new Set([...prev, ...c.branches])),
                       },
                   ] as (DropdownItem | 'separator')[])
@@ -1763,28 +1793,28 @@ export default function GitRepoTab({
             // differ enormously in what they destroy — a single "Reset" entry
             // with a mode picker buries that distinction behind another click.
             {
-                label: 'Reset --soft acá',
+                label: m.resetSoft,
                 icon: 'restart_alt',
-                hint: 'Conserva todo staged',
+                hint: m.resetSoftHint,
                 onSelect: () => run('reset --soft', () => GitReset(repoId, c.hash, 'soft')),
             },
             {
-                label: 'Reset --mixed acá',
+                label: m.resetMixed,
                 icon: 'restart_alt',
-                hint: 'Conserva los cambios sin stagear',
+                hint: m.resetMixedHint,
                 onSelect: () => run('reset --mixed', () => GitReset(repoId, c.hash, 'mixed')),
             },
             {
-                label: 'Reset --hard acá',
+                label: m.resetHard,
                 icon: 'restart_alt',
                 danger: true,
-                hint: 'Destruye lo no commiteado',
+                hint: m.resetHardHint,
                 onSelect: () =>
                     setConfirm({
-                        title: 'Reset --hard',
-                        description: `Esto mueve "${current?.name ?? 'la rama actual'}" a ${short} y sobrescribe el índice Y el working tree. Todo cambio sin commitear se destruye sin quedar en el reflog: no hay forma de recuperarlo. Los commits que queden atrás solo van a ser accesibles por el reflog hasta que expire.`,
-                        confirmLabel: 'Reset --hard',
-                        label: 'reset --hard',
+                        title: RESET_HARD,
+                        description: m.resetHardDesc({branch: current?.name ?? i18n().git.tab.branchMenu.theCurrent, hash: short}),
+                        confirmLabel: RESET_HARD,
+                        command: 'reset --hard',
                         run: () => GitReset(repoId, c.hash, 'hard'),
                     }),
             },
@@ -2042,17 +2072,17 @@ export default function GitRepoTab({
     const upstream = current?.upstream ?? ''
 
     const fetchItems: DropdownItem[] = [
-        {label: 'fetch', hint: 'Trae los cambios del remoto', icon: 'cloud_download', onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({}), new git.AuthConfig({})))},
-        {label: 'fetch --all', hint: 'De todos los remotos', onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({all: true}), new git.AuthConfig({})))},
-        {label: 'fetch --tags', hint: 'Incluye los tags', onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({tags: true}), new git.AuthConfig({})))},
-        {label: 'fetch --prune', hint: 'Borra ramas remotas ya eliminadas', onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({prune: true}), new git.AuthConfig({})))},
+        {label: CMD.fetch, hint: g.fetch.fetchHint, icon: 'cloud_download', onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({}), new git.AuthConfig({})))},
+        {label: CMD.fetchAll, hint: g.fetch.allHint, onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({all: true}), new git.AuthConfig({})))},
+        {label: CMD.fetchTags, hint: g.fetch.tagsHint, onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({tags: true}), new git.AuthConfig({})))},
+        {label: CMD.fetchPrune, hint: g.fetch.pruneHint, onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({prune: true}), new git.AuthConfig({})))},
     ]
 
     const pullItems: DropdownItem[] = [
-        {label: 'pull', hint: 'Trae e integra', icon: 'download', onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({}), new git.AuthConfig({})))},
-        {label: 'pull --ff-only', hint: 'Falla en vez de crear un merge', onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({ffOnly: true}), new git.AuthConfig({})))},
-        {label: 'pull --rebase', hint: 'Reaplica tus commits encima', onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({rebase: true}), new git.AuthConfig({})))},
-        {label: 'pull --rebase --autostash', hint: 'Guarda y restaura cambios sin commitear', onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({rebase: true, autostash: true}), new git.AuthConfig({})))},
+        {label: CMD.pull, hint: g.pull.pullHint, icon: 'download', onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({}), new git.AuthConfig({})))},
+        {label: CMD.pullFfOnly, hint: g.pull.ffOnlyHint, onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({ffOnly: true}), new git.AuthConfig({})))},
+        {label: CMD.pullRebase, hint: g.pull.rebaseHint, onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({rebase: true}), new git.AuthConfig({})))},
+        {label: CMD.pullRebaseAutostash, hint: g.pull.autostashHint, onSelect: () => run('pull', () => GitPull(repoId, new git.PullOptions({rebase: true, autostash: true}), new git.AuthConfig({})))},
     ]
 
     // La recuperación de "esta rama todavía no tiene upstream" vale para
@@ -2072,11 +2102,12 @@ export default function GitRepoTab({
     const recoverMissingUpstream = useCallback(
         (opts: Record<string, unknown>, label: string) => (e: unknown): boolean => {
             if (!current?.name || !String(e).includes('no upstream branch')) return false
+            const m = i18n().git.tab.push
             setConfirm({
-                title: 'Publicar y vincular la rama',
-                description: `"${current.name}" todavía no tiene upstream configurado, así que \`${label}\` no sabe a dónde publicarla. ¿Publicarla en "origin" y vincularla (--set-upstream), manteniendo el resto de las opciones?`,
-                confirmLabel: 'Publicar y vincular',
-                label: `${label} --set-upstream`,
+                title: m.publishTitle,
+                description: m.publishDesc({branch: current.name, command: label}),
+                confirmLabel: m.publishConfirm,
+                command: `${label} --set-upstream`,
                 danger: false,
                 run: () =>
                     GitPush(repoId, new git.PushOptions({...opts, setUpstream: true, remote: 'origin', branch: current.name}), new git.AuthConfig({})),
@@ -2105,16 +2136,16 @@ export default function GitRepoTab({
     const promptCreateBranch = useCallback(
         (prefix: string) =>
             setPrompt({
-                title: prefix ? `Crear rama en "${prefix}"` : 'Crear rama',
-                label: 'Nombre de la rama',
+                title: prefix ? i18n().git.tab.create.branchInTitle({prefix}) : i18n().git.tab.create.branchTitle,
+                label: i18n().git.tab.tagMenu.branchName,
                 // Con el prefijo puesto, una convención de nombres se sostiene
                 // sola en vez de depender de que cada uno lo escriba igual.
                 initial: prefix ? `${prefix}/` : '',
-                placeholder: 'mi-rama',
-                confirmLabel: 'Crear y cambiar',
+                placeholder: i18n().git.tab.commitMenu.branchPlaceholder,
+                confirmLabel: i18n().git.tab.commitMenu.createAndSwitch,
                 description: current?.name
-                    ? `Arranca en "${current.name}", donde estás parado ahora, y te cambia a la rama nueva.`
-                    : 'Arranca donde estás parado ahora y te cambia a la rama nueva.',
+                    ? i18n().git.tab.create.branchDescAt({branch: current.name})
+                    : i18n().git.tab.create.branchDesc,
                 onSubmit: (v) => run(`checkout -b ${v}`, () => GitCreateBranch(repoId, v, '', true)),
             }),
         [repoId, current?.name, run],
@@ -2123,15 +2154,15 @@ export default function GitRepoTab({
     const promptCreateTag = useCallback(
         () =>
             setPrompt({
-                title: 'Crear tag',
-                label: 'Nombre del tag',
+                title: i18n().git.tab.commitMenu.createTag,
+                label: i18n().git.tab.commitMenu.tagName,
                 placeholder: 'v1.0.0',
-                secondLabel: 'Mensaje (opcional)',
-                secondPlaceholder: 'Con mensaje crea un tag anotado; sin mensaje, uno liviano.',
-                confirmLabel: 'Crear tag',
+                secondLabel: i18n().git.tab.commitMenu.tagMessage,
+                secondPlaceholder: i18n().git.tab.commitMenu.tagMessageHint,
+                confirmLabel: i18n().git.tab.commitMenu.createTag,
                 description: current?.name
-                    ? `Se crea sobre "${current.name}", donde estás parado ahora, y queda solo local: para publicarlo usá "Push" desde el menú del tag.`
-                    : 'Se crea donde estás parado ahora y queda solo local: para publicarlo usá "Push" desde el menú del tag.',
+                    ? i18n().git.tab.create.tagDescAt({branch: current.name})
+                    : i18n().git.tab.create.tagDesc,
                 onSubmit: (v, msg) => run(`tag ${v}`, () => GitCreateTag(repoId, v, '', msg)),
             }),
         [repoId, current?.name, run],
@@ -2146,12 +2177,12 @@ export default function GitRepoTab({
                 y: e.clientY,
                 items: [
                     {
-                        label: `Crear rama en "${folderPath}"…`,
+                        label: i18n().git.tab.folderMenu.branchIn({folder: folderPath}),
                         icon: 'account_tree',
-                        hint: 'Abre el nombre con el prefijo ya puesto',
+                        hint: i18n().git.tab.folderMenu.branchInHint,
                         onSelect: () => promptCreateBranch(folderPath),
                     },
-                    {label: `Copiar "${folderPath}/"`, icon: 'content_copy', onSelect: () => copy(`${folderPath}/`)},
+                    {label: i18n().git.tab.folderMenu.copyPrefix({folder: folderPath}), icon: 'content_copy', onSelect: () => copy(`${folderPath}/`)},
                 ],
             })
         },
@@ -2176,25 +2207,25 @@ export default function GitRepoTab({
                 items: isRemote
                     ? [
                           {
-                              label: `Fetch de ${folderPath}`,
+                              label: i18n().git.tab.folderMenu.fetchFrom({remote: folderPath}),
                               icon: 'cloud_download',
-                              hint: 'Trae los cambios de este remoto',
+                              hint: i18n().git.tab.folderMenu.fetchFromHint,
                               onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({remote: folderPath}), new git.AuthConfig({}))),
                           },
                           'separator',
                           {
-                              label: 'Editar remoto…',
+                              label: i18n().git.tab.folderMenu.editRemote,
                               icon: 'edit',
-                              hint: 'Nombre, URL de fetch y URL de push',
+                              hint: i18n().git.tab.folderMenu.editRemoteHint,
                               onSelect: () => openSettings('remotes'),
                           },
                           {
-                              label: 'Copiar URL',
+                              label: i18n().git.tab.folderMenu.copyUrl,
                               icon: 'content_copy',
                               onSelect: () => void GitRemoteURLForCopy(repoId, folderPath).then(copy).catch((err) => setError(String(err))),
                           },
                       ]
-                    : [{label: `Copiar "${folderPath}/"`, icon: 'content_copy', onSelect: () => copy(`${folderPath}/`)}],
+                    : [{label: i18n().git.tab.folderMenu.copyPrefix({folder: folderPath}), icon: 'content_copy', onSelect: () => copy(`${folderPath}/`)}],
             })
         },
         // Igual que openFolderMenu: `copy` se define nueva en cada render y
@@ -2212,15 +2243,15 @@ export default function GitRepoTab({
         if (!flow.initialized) {
             return [
                 {
-                    label: 'Inicializar Git Flow…',
+                    label: g.flow.init,
                     icon: 'account_tree',
-                    hint: `Crea "${flow.develop}" a partir de "${flow.master}"`,
+                    hint: g.flow.initHint({develop: flow.develop, master: flow.master}),
                     onSelect: () =>
                         setConfirm({
-                            title: 'Inicializar Git Flow',
-                            description: `Escribe la convención de nombres en la configuración de este repositorio (${flow.feature}, ${flow.release}, ${flow.hotfix}) y crea la rama "${flow.develop}" a partir de "${flow.master}" si todavía no existe. Son las mismas claves que usa el comando \`git flow\`, así que el repositorio queda compatible con quien lo use desde una terminal. No te cambia de rama y no toca ningún commit.`,
-                            confirmLabel: 'Inicializar',
-                            label: 'git flow init',
+                            title: g.flow.initTitle,
+                            description: g.flow.initDesc({feature: flow.feature, release: flow.release, hotfix: flow.hotfix, develop: flow.develop, master: flow.master}),
+                            confirmLabel: g.flow.initConfirm,
+                            command: 'git flow init',
                             danger: false,
                             run: () => GitFlowInit(repoId, new git.GitFlowConfig({})),
                         }),
@@ -2233,24 +2264,24 @@ export default function GitRepoTab({
         // arrancado desde develop se lleva a producción todo lo que develop
         // tenga sin publicar.
         const start = (kind: string, label: string, prefix: string, base: string): DropdownItem => ({
-            label: `${label}…`,
+            label: g.flow.startLabel({label}),
             icon: kind === 'hotfix' ? 'emergency' : 'account_tree',
-            hint: `${prefix}… desde ${base}`,
+            hint: g.flow.startHint({prefix, base}),
             onSelect: () =>
                 setPrompt({
                     title: label,
-                    label: 'Nombre',
-                    placeholder: kind === 'release' || kind === 'hotfix' ? '1.2.0' : 'TIGOCHAT-1234',
-                    confirmLabel: 'Crear y cambiar',
-                    description: `Crea "${prefix}<nombre>" a partir de "${base}" y te cambia a ella. Si escribís el prefijo, no se duplica.`,
+                    label: g.chat.nameLabel,
+                    placeholder: kind === 'release' || kind === 'hotfix' ? '1.2.0' : g.flow.featurePlaceholder,
+                    confirmLabel: g.commitMenu.createAndSwitch,
+                    description: g.flow.startDesc({prefix, base}),
                     onSubmit: (v) => run(`git flow ${kind} start`, () => GitFlowStart(repoId, kind, v)),
                 }),
         })
 
         return [
-            start('feature', 'Nueva feature', flow.feature, flow.develop),
-            start('release', 'Nueva release', flow.release, flow.develop),
-            start('hotfix', 'Nuevo hotfix', flow.hotfix, flow.master),
+            start('feature', g.flow.newFeature, flow.feature, flow.develop),
+            start('release', g.flow.newRelease, flow.release, flow.develop),
+            start('hotfix', g.flow.newHotfix, flow.hotfix, flow.master),
         ]
     }
 
@@ -2263,9 +2294,9 @@ export default function GitRepoTab({
     // de la rama a mano, con lo cual la función existía sin ser usable desde
     // donde se piensa ("quiero buscar algo en ESTA rama").
     const searchInBranchItem = (b: git.Branch): DropdownItem => ({
-        label: `Buscar en ${b.name}…`,
+        label: g.branchMenu.searchIn({name: b.name}),
         icon: 'manage_search',
-        hint: 'Acota el historial a esa rama',
+        hint: g.branchMenu.searchInHint,
         onSelect: () => {
             const text = `hash:${b.name} `
             setSearchText(text)
@@ -2291,17 +2322,17 @@ export default function GitRepoTab({
     // con el botón derecho. Al revés es lo que la gente teme al ver "rebase"
     // en el menú de una rama ajena.
     const rebaseOntoItem = (b: git.Branch): DropdownItem => ({
-        label: `Rebase ${current?.name ?? 'la rama actual'} sobre ${b.name}`,
+        label: g.branchMenu.rebaseOnto({current: current?.name ?? g.branchMenu.theCurrent, name: b.name}),
         icon: 'low_priority',
-        hint: 'Reescribe TUS commits encima de esa rama',
+        hint: g.branchMenu.rebaseOntoHint,
         disabled: b.isCurrent,
         danger: true,
         onSelect: () =>
             setConfirm({
-                title: 'Rebasar sobre otra rama',
-                description: `Reaplica los commits de ${current?.name ? `"${current.name}"` : 'la rama actual'} encima de "${b.name}". Quedan con hash nuevo: si esta rama ya está publicada, el push que venga después va a necesitar --force y cualquiera que la tenga bajada va a tener que rehacerla. Si aparecen conflictos el rebase se detiene y desde la barra de arriba podés resolverlos o abortar. Los cambios sin commitear se guardan y se restauran solos.`,
-                confirmLabel: 'Rebasar',
-                label: `rebase ${b.name}`,
+                title: g.branchMenu.rebaseOntoTitle,
+                description: g.branchMenu.rebaseOntoDesc({current: current?.name ? `"${current.name}"` : g.branchMenu.theCurrent, name: b.name}),
+                confirmLabel: g.branchMenu.rebaseOntoConfirm,
+                command: `rebase ${b.name}`,
                 danger: true,
                 run: () => GitRebase(repoId, b.name, true),
             }),
@@ -2309,37 +2340,35 @@ export default function GitRepoTab({
 
     const pushItems: (DropdownItem | 'separator')[] = [
         {
-            label: 'push',
-            hint: 'Publica tus commits',
+            label: CMD.push,
+            hint: g.push.pushHint,
             icon: 'upload',
             onSelect: () => void pushWith({}, 'push'),
         },
         {
-            label: 'push --set-upstream',
-            hint: 'Publica y vincula la rama',
+            label: CMD.pushSetUpstream,
+            hint: g.push.setUpstreamHint,
             disabled: !!upstream,
             onSelect: () => run('push', () => GitPush(repoId, new git.PushOptions({setUpstream: true, remote: 'origin', branch: current?.name ?? ''}), new git.AuthConfig({}))),
         },
-        {label: 'push --tags', hint: 'Incluye los tags', onSelect: () => void pushWith({tags: true}, 'push --tags')},
+        {label: CMD.pushTags, hint: g.fetch.tagsHint, onSelect: () => void pushWith({tags: true}, 'push --tags')},
         'separator',
         // Revisar ANTES de publicar, que es cuando todavía se puede arreglar
         // barato. No pushea: abre el chat con el prompt escrito.
         {
-            label: 'Revisar con el agente antes de pushear',
+            label: g.push.review,
             icon: 'smart_toy',
-            hint: upstream ? `Revisa ${upstream}..HEAD sin publicar nada` : 'La rama no tiene upstream: se revisan los commits locales',
+            hint: upstream ? g.push.reviewHint({upstream}) : g.push.reviewHintNoUpstream,
             onSelect: () =>
                 askAgentPicking(
-                    upstream
-                        ? `Revisá los commits que estoy por pushear en este repositorio (git log ${upstream}..HEAD y git diff ${upstream}..HEAD) y decime si ves algo que no debería publicarse. `
-                        : 'Revisá los commits locales de esta rama que todavía no están publicados y decime si ves algo que no debería publicarse. ',
-                    'lo que voy a pushear',
+                    upstream ? g.push.reviewPrompt({upstream}) : g.push.reviewPromptNoUpstream,
+                    g.push.reviewAbout,
                 ),
         },
         'separator',
         {
-            label: 'push --force-with-lease',
-            hint: 'Reescribe, pero aborta si alguien subió algo',
+            label: CMD.pushForceWithLease,
+            hint: g.push.forceWithLeaseHint,
             danger: true,
             onSelect: () => void pushWith({forceWithLease: true}, 'push --force-with-lease'),
         },
@@ -2349,21 +2378,21 @@ export default function GitRepoTab({
             // mismo menú: lo que se pierde no está en el reflog de nadie.
             // --force-with-lease no la pide porque aborta solo cuando habría
             // pisado algo.
-            label: 'push --force',
-            hint: 'Reescribe el remoto y descarta commits ajenos',
+            label: CMD.pushForce,
+            hint: g.push.forceHint,
             danger: true,
             onSelect: () =>
                 setConfirm({
-                    title: 'Forzar la publicación',
-                    description: `Esto reescribe ${upstream ? `"${upstream}"` : 'la rama en el remoto'} con lo que tenés local. Los commits que otra persona haya subido y vos no tengas desaparecen del remoto, y quien los tenga solo en su máquina los va a tener que recuperar a mano. Si lo que querés es reescribir tu propia historia (un rebase, un amend) sin riesgo de pisar a nadie, cancelá y usá "push --force-with-lease": hace lo mismo pero aborta si el remoto se movió desde tu último fetch.`,
-                    confirmLabel: 'Forzar el push',
-                    label: 'push --force',
+                    title: g.push.forceTitle,
+                    description: g.push.forceDesc({target: upstream ? `"${upstream}"` : g.push.forceRemoteBranch}),
+                    confirmLabel: g.push.forceConfirm,
+                    command: 'push --force',
                     danger: true,
                     run: () => GitPush(repoId, new git.PushOptions({force: true}), new git.AuthConfig({})),
                     onError: recoverMissingUpstream({force: true}, 'push --force'),
                 }),
         },
-        {label: 'push --no-verify', hint: 'Saltea los hooks de pre-push', danger: true, onSelect: () => void pushWith({noVerify: true}, 'push --no-verify')},
+        {label: CMD.pushNoVerify, hint: g.push.noVerifyHint, danger: true, onSelect: () => void pushWith({noVerify: true}, 'push --no-verify')},
     ]
 
     const staged = status?.files?.filter((f) => f.staged) ?? []
@@ -2466,12 +2495,12 @@ export default function GitRepoTab({
                     <Icon name="folder_open" size={16} className="opacity-70" />
                     {repoName}
                 </span>
-                <span className="flex items-center gap-1 rounded bg-primary-container px-2 py-0.5 text-ui-11 text-on-primary-container" title={upstream ? `Rama actual, siguiendo a ${upstream}` : 'Rama actual — sin upstream configurado'}>
+                <span className="flex items-center gap-1 rounded bg-primary-container px-2 py-0.5 text-ui-11 text-on-primary-container" title={upstream ? g.toolbar.currentBranchTracking({upstream}) : g.toolbar.currentBranchNoUpstream}>
                     <Icon name="account_tree" size={13} />
-                    {status?.detached ? 'HEAD desacoplado' : (current?.name ?? status?.branch ?? '—')}
+                    {status?.detached ? g.toolbar.detached : (current?.name ?? status?.branch ?? '—')}
                 </span>
                 {!!current && (current.ahead > 0 || current.behind > 0) && (
-                    <span className="flex items-center gap-1 text-ui-11 text-on-surface-variant" title={`${current.ahead} commits tuyos sin publicar, ${current.behind} commits del remoto sin traer`}>
+                    <span className="flex items-center gap-1 text-ui-11 text-on-surface-variant" title={g.toolbar.aheadBehind({ahead: current.ahead, behind: current.behind})}>
                         {current.ahead > 0 && <span className="flex items-center"><Icon name="arrow_upward" size={12} />{current.ahead}</span>}
                         {current.behind > 0 && <span className="flex items-center"><Icon name="arrow_downward" size={12} />{current.behind}</span>}
                     </span>
@@ -2480,29 +2509,29 @@ export default function GitRepoTab({
                 {hidden.size > 0 && (
                     <button
                         onClick={() => setHidden(new Set())}
-                        title={`Volver a mostrar en el grafo: ${[...hidden].join(', ')}`}
+                        title={g.toolbar.unhideTitle({names: [...hidden].join(', ')})}
                         className="ml-2 flex items-center gap-1 rounded bg-tertiary-container px-2 py-0.5 text-ui-11 text-on-tertiary-container hover:opacity-90"
                     >
                         <Icon name="visibility_off" size={13} />
-                        {hidden.size} oculta{hidden.size > 1 ? 's' : ''}
+                        {g.toolbar.hiddenCount(hidden.size)}
                     </button>
                 )}
 
                 <div className="ml-auto flex items-center gap-0.5">
-                    <DropdownMenu label="Fetch" icon="cloud_download" title="Traer cambios del remoto sin integrarlos a tu rama" items={fetchItems} disabled={!!busy} />
-                    <DropdownMenu label="Pull" icon="download" title="Traer los cambios del remoto e integrarlos a tu rama actual" items={pullItems} disabled={!!busy} />
-                    <DropdownMenu label="Push" icon="upload" title="Publicar tus commits locales en el remoto" items={pushItems} disabled={!!busy} />
+                    <DropdownMenu label={g.toolbar.fetch} icon="cloud_download" title={g.toolbar.fetchTitle} items={fetchItems} disabled={!!busy} />
+                    <DropdownMenu label={g.toolbar.pull} icon="download" title={g.toolbar.pullTitle} items={pullItems} disabled={!!busy} />
+                    <DropdownMenu label={g.toolbar.push} icon="upload" title={g.toolbar.pushTitle} items={pushItems} disabled={!!busy} />
                     <button
                         onClick={() => void reload()}
                         disabled={!!busy}
-                        title="Volver a leer el repositorio desde disco — útil si cambiaste algo por fuera de la app"
+                        title={g.toolbar.reloadTitle}
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                     >
                         <Icon name="refresh" size={16} />
                     </button>
                     <button
                         onClick={() => openSettings('identity')}
-                        title="Configurar el nombre y email con el que se firman tus commits, y los tokens de acceso para push y pull"
+                        title={g.toolbar.settingsTitle}
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="settings" size={16} />
@@ -2513,21 +2542,21 @@ export default function GitRepoTab({
             {busy && (
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-primary-container px-3 py-1.5 text-ui-11 font-medium text-on-primary-container">
                     <span aria-hidden className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-on-primary-container" />
-                    Ejecutando <span className="font-mono">git {busy}</span>…
+                    {g.toolbar.running.before}<span className="font-mono">{GIT} {busy}</span>{g.toolbar.running.after}
                 </div>
             )}
             {inProgress && (
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-error-container/50 px-3 py-1.5 text-ui-11 text-on-error-container">
                     <Icon name="warning" size={14} className="shrink-0" />
                     <span className="min-w-0 flex-1">
-                        Hay un <span className="font-mono">{inProgress}</span> en curso, probablemente con conflictos. Resolvé los archivos en conflicto y commiteá, o abortá para volver al estado anterior.
+                        {g.inProgress.before}<span className="font-mono">{inProgress}</span>{g.inProgress.after}
                     </span>
                     <button
                         onClick={() => setView('conflicts')}
-                        title="Abre el resolutor de conflictos: muestra las dos versiones lado a lado y permite elegir bloque por bloque, sin editar los marcadores a mano"
+                        title={g.inProgress.resolveTitle}
                         className="shrink-0 rounded bg-primary px-2 py-0.5 text-on-primary hover:opacity-90"
                     >
-                        Resolver conflictos
+                        {g.inProgress.resolve}
                     </button>
                     {/* El abortar valía para merge, cherry-pick y revert pero
                         NO para rebase — justamente la única que reescribe
@@ -2536,10 +2565,10 @@ export default function GitRepoTab({
                     <button
                         onClick={() => run(`${inProgress} --abort`, () => GitAbort(repoId, inProgress))}
                         disabled={!!busy}
-                        title={`Cancelar el ${inProgress} y volver al estado que tenía el repositorio antes de empezarlo`}
+                        title={g.inProgress.abortTitle({op: inProgress})}
                         className="shrink-0 rounded bg-error px-2 py-0.5 text-on-error hover:opacity-90 disabled:opacity-40"
                     >
-                        Abortar
+                        {g.inProgress.abort}
                     </button>
                 </div>
             )}
@@ -2547,11 +2576,11 @@ export default function GitRepoTab({
                 {forge?.compareUrl && (
                     <button
                         onClick={() => void GitOpenInBrowser(forge.compareUrl)}
-                        title={`Abre en el navegador la página de ${forge.provider} para crear el pull request de "${status?.branch}". No usa ningún token: se apoya en la sesión que ya tenés abierta.`}
+                        title={g.bar.createPrTitle({provider: forge.provider, branch: status?.branch ?? ''})}
                         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-primary hover:bg-surface-variant"
                     >
                         <Icon name="call_merge" size={13} />
-                        Crear pull request
+                        {g.bar.createPr}
                     </button>
                 )}
                 {/* Describir el PR va al lado de crearlo, que es donde uno se
@@ -2562,15 +2591,15 @@ export default function GitRepoTab({
                     <button
                         onClick={() =>
                             askAgentPicking(
-                                `Escribí el título y el cuerpo del pull request de la rama "${status?.branch ?? ''}" de este repositorio, mirando los commits que la separan de su base (git log y git diff contra la rama principal). `,
-                                `PR de ${status?.branch ?? 'esta rama'}`,
+                                g.bar.describePrPrompt({branch: status?.branch ?? ''}),
+                                g.bar.describePrAbout({branch: status?.branch ?? g.bar.thisBranch}),
                             )
                         }
-                        title="Le pide al agente el título y el cuerpo del PR a partir de los commits de la rama. Lo escribe en el chat para que lo revises y lo pegues."
+                        title={g.bar.describePrTitle}
                         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="smart_toy" size={13} />
-                        Describir
+                        {g.bar.describePr}
                     </button>
                 )}
                 {/* Modo agente: deja archivos + conversación y esconde ramas,
@@ -2583,11 +2612,8 @@ export default function GitRepoTab({
                     sobrevivir a lo que apaga. */}
                 <button
                     onClick={toggleAgentMode}
-                    title={
-                        agentMode
-                            ? 'Volver a la vista de siempre: ramas, grafo y diff'
-                            : 'Modo agente: archivos del proyecto y conversación, sin ramas, grafo ni diff ocupando la pantalla'
-                    }
+                    data-agent-mode-toggle
+                    title={agentMode ? g.bar.agentModeOff : g.bar.agentModeOn}
                     className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
                         agentMode
                             ? 'bg-primary text-on-primary'
@@ -2595,7 +2621,7 @@ export default function GitRepoTab({
                     }`}
                 >
                     <Icon name="smart_toy" size={14} />
-                    Agente
+                    {g.bar.agent}
                 </button>
                 {/* Los interruptores de paneles viven en un menú y no como
                     botones sueltos: la fila ya tenía "Crear pull request",
@@ -2605,34 +2631,34 @@ export default function GitRepoTab({
                     visibles casi siempre) compite visualmente con los que
                     marcan algo abierto de verdad. */}
                 <DropdownMenu
-                    label="Vista"
+                    label={g.viewMenu.label}
                     icon="visibility"
-                    title="Mostrar u ocultar los paneles de esta pestaña. Lo que elijas queda guardado y la pestaña vuelve a abrirse así."
+                    title={g.viewMenu.title}
                     width={300}
                     items={[
                         {
-                            label: sideHidden ? 'Mostrar el panel de ramas' : 'Ocultar el panel de ramas',
+                            label: sideHidden ? g.viewMenu.showBranches : g.viewMenu.hideBranches,
                             icon: sideHidden ? 'visibility' : 'visibility_off',
-                            hint: sideHidden ? 'Ahora está oculto' : 'Izquierda',
+                            hint: sideHidden ? g.viewMenu.nowHidden : g.viewMenu.left,
                             onSelect: toggleSide,
                         },
                         {
-                            label: diffHidden ? 'Mostrar el panel de diff' : 'Ocultar el panel de diff',
+                            label: diffHidden ? g.viewMenu.showDiff : g.viewMenu.hideDiff,
                             icon: diffHidden ? 'visibility' : 'visibility_off',
-                            hint: diffHidden ? 'Ahora está oculto' : 'Derecha',
+                            hint: diffHidden ? g.viewMenu.nowHidden : g.viewMenu.right,
                             onSelect: toggleDiff,
                         },
                         'separator',
                         {
-                            label: showWorktrees ? 'Ocultar worktrees' : 'Ver worktrees',
+                            label: showWorktrees ? g.viewMenu.hideWorktrees : g.viewMenu.showWorktrees,
                             icon: 'dashboard',
-                            hint: 'Varias ramas a la vez, en carpetas distintas',
+                            hint: g.viewMenu.worktreesHint,
                             onSelect: () => setShowWorktrees((v) => !v),
                         },
                         {
-                            label: showSubmodules ? 'Ocultar submódulos' : 'Ver submódulos',
+                            label: showSubmodules ? g.viewMenu.hideSubmodules : g.viewMenu.showSubmodules,
                             icon: 'account_tree',
-                            hint: 'Repos anidados, fijados en un commit',
+                            hint: g.viewMenu.submodulesHint,
                             onSelect: () => setShowSubmodules((v) => !v),
                         },
                         'separator',
@@ -2647,18 +2673,18 @@ export default function GitRepoTab({
                         ...gitFlowItems(),
                         'separator',
                         {
-                            label: 'Editar .gitignore',
+                            label: g.viewMenu.editFile({file: '.gitignore'}),
                             icon: 'rule',
-                            hint: 'Qué archivos git no tiene que versionar',
+                            hint: g.viewMenu.gitignoreHint,
                             onSelect: () => {
                                 setEditRequest({path: '.gitignore', token: Date.now()})
                                 setView('files')
                             },
                         },
                         {
-                            label: 'Editar .gitattributes',
+                            label: g.viewMenu.editFile({file: '.gitattributes'}),
                             icon: 'tune',
-                            hint: 'Finales de línea, diff y merge por tipo de archivo',
+                            hint: g.viewMenu.gitattributesHint,
                             onSelect: () => {
                                 setEditRequest({path: '.gitattributes', token: Date.now()})
                                 setView('files')
@@ -2676,7 +2702,7 @@ export default function GitRepoTab({
                         onClick={() => {
                             void OpenRepoInEditor(repoId, editors[0].id).catch((e) => setError(String(e)))
                         }}
-                        title={`Abre esta carpeta en ${editors[0].label}. La app sigue abierta: lo que edites afuera aparece acá al refrescar.`}
+                        title={g.bar.openInEditor({editor: editors[0].label})}
                         className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
                     >
                         <Icon name="code_blocks" size={13} />
@@ -2687,21 +2713,21 @@ export default function GitRepoTab({
                     onClick={() => {
                         void OpenRepoInFileManager(repoId).catch((e) => setError(String(e)))
                     }}
-                    title="Abre la carpeta del repositorio en el explorador de archivos de tu sistema (Finder, Explorador de Windows, el de tu escritorio)."
+                    title={g.bar.folderTitle}
                     className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant ${
                         editors.length > 0 ? '' : 'ml-auto'
                     }`}
                 >
                     <Icon name="folder_open" size={13} />
-                    Carpeta
+                    {g.bar.folder}
                 </button>
                 {panelTab === null && <button
                     onClick={() => openPanel('terminal')}
-                    title="Abre una terminal de verdad en la raíz de este repositorio: podés hacer cd, correr los tests, un rebase interactivo o cualquier comando que la interfaz no cubra, sin salir de la app. Se puede anclar abajo, a la izquierda o a la derecha, y el intérprete (zsh, bash, PowerShell, Git Bash…) se elige en Configuración → Terminal."
+                    title={g.bar.terminalTitle}
                     className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
                 >
                     <Icon name="terminal" size={13} />
-                    Terminal
+                    {g.session.terminal}
                 </button>}
                 {/* Antes acá había un botón "Comandos" que repetía una solapa
                     del panel de abajo. Se reemplazó por el acceso a lo
@@ -2711,18 +2737,19 @@ export default function GitRepoTab({
                     anunciara qué había adentro. */}
                 {panelTab === null && <button
                     onClick={() => openPanel('agents')}
-                    title="Asistentes de código sobre este repositorio: chatear con Claude Code, Codex o Antigravity, ver qué skills e instrucciones tiene preparadas el repo, qué servidores MCP ve cada agente, y cuántos tokens llevás gastados."
+                    data-open-agents
+                    title={g.bar.agentsTitle}
                     className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
                 >
                     <Icon name="smart_toy" size={13} />
-                    Agentes
+                    {g.bar.agents}
                 </button>}
             </div>
 
             {showWorktrees && (
                 <div className="shrink-0 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
                     {worktrees.length === 0 ? (
-                        <p className="text-on-surface-variant">Solo hay un checkout de este repositorio.</p>
+                        <p className="text-on-surface-variant">{g.worktrees.onlyOne}</p>
                     ) : (
                         worktrees.map((w) => (
                             <div key={w.path} className="flex items-center gap-2 py-0.5">
@@ -2732,19 +2759,19 @@ export default function GitRepoTab({
                                     {w.path}
                                 </span>
                                 {w.prunable && (
-                                    <span className="shrink-0 text-tertiary" title={w.reason || 'La carpeta ya no existe'}>
-                                        carpeta ausente
+                                    <span className="shrink-0 text-tertiary" title={w.reason || g.worktrees.folderGoneTitle}>
+                                        {g.worktrees.folderGone}
                                     </span>
                                 )}
                                 {w.isMain ? (
-                                    <span className="shrink-0 text-on-surface-variant/60">principal</span>
+                                    <span className="shrink-0 text-on-surface-variant/60">{g.worktrees.main}</span>
                                 ) : (
                                     <button
                                         onClick={() => void run('worktree remove', () => GitRemoveWorktree(repoId, w.path, false))}
-                                        title="Elimina este worktree. Si tiene cambios sin commitear, git se niega — es el comportamiento correcto."
+                                        title={g.worktrees.removeTitle}
                                         className="shrink-0 rounded px-1 text-error hover:bg-error-container"
                                     >
-                                        Quitar
+                                        {g.worktrees.remove}
                                     </button>
                                 )}
                             </div>
@@ -2762,52 +2789,51 @@ export default function GitRepoTab({
                         bajaron, contra URLs para las que puede que no tengas
                         credenciales. */}
                     <div className="flex flex-wrap items-center gap-1 pb-1">
-                        <span className="mr-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Submódulos</span>
+                        <span className="mr-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">{g.submodules.heading}</span>
                         <button
                             onClick={() =>
                                 setPrompt({
-                                    title: 'Agregar submódulo',
-                                    label: 'URL del repositorio',
-                                    placeholder: 'git@servidor:grupo/proyecto.git',
-                                    secondLabel: 'Carpeta (opcional)',
-                                    secondPlaceholder: 'Vacío = el último tramo de la URL',
-                                    confirmLabel: 'Agregar y clonar',
-                                    description:
-                                        'Lo clona adentro de este repositorio y lo deja fijado en el commit que tenga ahora. Queda como un cambio sin commitear: hay que commitear .gitmodules y la carpeta para que le llegue al resto.',
+                                    title: g.submodules.addTitle,
+                                    label: g.submodules.urlLabel,
+                                    placeholder: g.submodules.urlPlaceholder,
+                                    secondLabel: g.submodules.folderLabel,
+                                    secondPlaceholder: g.submodules.folderPlaceholder,
+                                    confirmLabel: g.submodules.addConfirm,
+                                    description: g.submodules.addDesc,
                                     onSubmit: (url, path) =>
                                         run('submodule add', () => GitAddSubmodule(repoId, url, path, '', new git.AuthConfig({}))),
                                 })
                             }
-                            title="Clona otro repositorio adentro de este y lo deja fijado en un commit. Vas a tener que commitear el resultado para que le llegue a los demás."
+                            title={g.submodules.addButtonTitle}
                             className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
-                            Agregar…
+                            {g.submodules.addButton}
                         </button>
                         <button
                             onClick={() => void run('submodule update', () => GitUpdateSubmodules(repoId, false, true, new git.AuthConfig({})))}
-                            title="Deja cada submódulo YA clonado en el commit exacto que fija este repositorio. Es lo que hay que correr después de un pull que movió alguno."
+                            title={g.submodules.updateAllTitle}
                             className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
-                            Actualizar todos
+                            {g.submodules.updateAll}
                         </button>
                         <button
                             onClick={() => void run('submodule update --init', () => GitUpdateSubmodules(repoId, true, true, new git.AuthConfig({})))}
-                            title="Como el anterior, pero además CLONA los que nunca se bajaron. Va por red contra la URL de cada uno, así que puede pedir credenciales."
+                            title={g.submodules.updateInitTitle}
                             className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
-                            Actualizar e inicializar
+                            {g.submodules.updateInit}
                         </button>
                         <button
                             onClick={() => void run('submodule sync', () => GitSyncSubmodules(repoId, true))}
-                            title="Copia las URLs de .gitmodules a la configuración de cada submódulo. Hace falta cuando alguien cambió la URL de un submódulo y commiteó: sin esto tu copia sigue yendo a la dirección vieja para siempre."
+                            title={g.submodules.syncTitle}
                             className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
-                            Sincronizar URLs
+                            {g.submodules.sync}
                         </button>
                     </div>
 
                     {submodules.length === 0 ? (
-                        <p className="text-on-surface-variant">Este repositorio no tiene submódulos.</p>
+                        <p className="text-on-surface-variant">{g.submodules.none}</p>
                     ) : (
                         submodules.map((m) => (
                             <div key={m.path} className="flex items-center gap-2 py-0.5">
@@ -2816,34 +2842,34 @@ export default function GitRepoTab({
                                     size={12}
                                     className={`shrink-0 ${m.conflicted ? 'text-error' : 'text-on-surface-variant'}`}
                                 />
-                                <span className="shrink-0 font-mono text-on-surface" title={m.url || 'Sin URL en .gitmodules'}>
+                                <span className="shrink-0 font-mono text-on-surface" title={m.url || g.submodules.noUrl}>
                                     {m.path}
                                 </span>
                                 <span
                                     className="min-w-0 flex-1 truncate font-mono text-on-surface-variant/70"
-                                    title={`Este repositorio lo fija en el commit ${m.hash}`}
+                                    title={g.submodules.pinnedAt({hash: m.hash})}
                                 >
                                     {m.described || m.hash.slice(0, 7)}
                                 </span>
                                 {!m.initialized && (
                                     <span
                                         className="shrink-0 text-tertiary"
-                                        title="Registrado pero nunca clonado: la carpeta está vacía. Es el estado normal de un clon recién hecho, se arregla con «Actualizar e inicializar»."
+                                        title={g.submodules.uninitTitle}
                                     >
-                                        sin inicializar
+                                        {g.submodules.uninit}
                                     </span>
                                 )}
                                 {m.modified && (
                                     <span
                                         className="shrink-0 text-tertiary"
-                                        title="Está parado en un commit distinto del que fija este repositorio. No es un error, pero es la forma más común de que una compilación deje de ser reproducible — y no se ve en la lista de cambios del padre."
+                                        title={g.submodules.movedTitle}
                                     >
-                                        movido
+                                        {g.submodules.moved}
                                     </span>
                                 )}
                                 {m.conflicted && (
-                                    <span className="shrink-0 text-error" title="Un merge dejó en conflicto cuál es el commit fijado. Se resuelve eligiendo el commit y commiteándolo en el padre.">
-                                        conflicto
+                                    <span className="shrink-0 text-error" title={g.submodules.conflictTitle}>
+                                        {g.submodules.conflict}
                                     </span>
                                 )}
                                 <button
@@ -2852,29 +2878,25 @@ export default function GitRepoTab({
                                             GitUpdateSubmodule(repoId, m.path, !m.initialized, true, new git.AuthConfig({})),
                                         )
                                     }
-                                    title={
-                                        m.initialized
-                                            ? `Deja "${m.path}" en el commit que fija este repositorio.`
-                                            : `Clona "${m.path}" por primera vez y lo deja en el commit fijado. Va por red.`
-                                    }
+                                    title={m.initialized ? g.submodules.updateOneTitle({path: m.path}) : g.submodules.initOneTitle({path: m.path})}
                                     className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                 >
-                                    {m.initialized ? 'Actualizar' : 'Inicializar'}
+                                    {m.initialized ? g.submodules.update : g.submodules.init}
                                 </button>
                                 <button
                                     onClick={() =>
                                         setConfirm({
-                                            title: 'Quitar el submódulo',
-                                            description: `Saca "${m.path}" de este repositorio: vacía su carpeta, lo borra de .gitmodules y del índice, y elimina el clon que git deja cacheado en .git/modules. Ese último paso es el que permite volver a agregarlo después; sin él, git rechaza el alta diciendo que ya hay un directorio local. El repositorio del submódulo en su propio servidor no se toca. Queda como un cambio sin commitear.`,
-                                            confirmLabel: 'Quitar',
-                                            label: `submodule deinit ${m.path}`,
+                                            title: g.submodules.removeTitle,
+                                            description: g.submodules.removeDesc({path: m.path}),
+                                            confirmLabel: g.worktrees.remove,
+                                            command: `submodule deinit ${m.path}`,
                                             run: () => GitRemoveSubmodule(repoId, m.path),
                                         })
                                     }
-                                    title={`Desregistra "${m.path}" de este repositorio. No borra nada en el servidor del submódulo.`}
+                                    title={g.submodules.removeButtonTitle({path: m.path})}
                                     className="shrink-0 rounded px-1 text-error hover:bg-error-container"
                                 >
-                                    Quitar
+                                    {g.worktrees.remove}
                                 </button>
                             </div>
                         ))
@@ -2931,38 +2953,38 @@ export default function GitRepoTab({
                             active={view === 'commits'}
                             onClick={() => setView('commits')}
                             icon="history"
-                            label="Commits"
+                            label={g.views.commits}
                             compact={compactTabs}
-                            title="Ver el historial de commits del repositorio"
+                            title={g.views.commitsTitle}
                         />
                         <ViewTab
                             compact={compactTabs}
                             active={view === 'changes'}
                             onClick={() => setView('changes')}
                             icon="edit_note"
-                            label="Cambios"
+                            label={g.views.changes}
                             // Live count, updated by the status poll — this is
                             // what makes uncommitted changes made outside the app
                             // visible without leaving the Commits view.
                             badge={status?.files.length ?? 0}
-                            title="Ver los archivos modificados en el working tree y armar un commit"
+                            title={g.views.changesTitle}
                         />
                         <ViewTab
                             compact={compactTabs}
                             active={view === 'stash'}
                             onClick={() => setView('stash')}
                             icon="inventory_2"
-                            label="Stash"
+                            label={g.views.stash}
                             badge={stashes.length}
-                            title="Ver los cambios apartados en stashes, con su contenido, antes de aplicarlos"
+                            title={g.views.stashTitle}
                         />
                         <ViewTab
                             compact={compactTabs}
                             active={view === 'files'}
                             onClick={() => setView('files')}
                             icon="edit_document"
-                            label="Archivos"
-                            title="Abrir y editar los archivos del repositorio sin salir de la app"
+                            label={g.views.files}
+                            title={g.views.filesTitle}
                         />
                     </div>
                     {/* Commit search. Distinct from the branch filter below:
@@ -2985,13 +3007,13 @@ export default function GitRepoTab({
                                     }
                                 }}
                                 onBlur={() => setSearch(parseGitSearch(searchText))}
-                                placeholder="Buscar commits: autor: mensaje: archivo:…"
-                                title={`Busca en TODO el historial, no solo en lo cargado — el filtro lo aplica git.\n\n${GIT_SEARCH_HELP}`}
+                                placeholder={g.search.placeholder}
+                                title={g.search.inputTitle({help: GIT_SEARCH_HELP()})}
                                 className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                             />
                             <button
                                 onClick={() => setShowSearchHelp((v) => !v)}
-                                title="Ver los prefijos de búsqueda disponibles"
+                                title={g.search.helpTitle}
                                 className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
                             >
                                 <Icon name="help" size={13} />
@@ -3002,7 +3024,7 @@ export default function GitRepoTab({
                                         setSearchText('')
                                         setSearch(EMPTY_SEARCH)
                                     }}
-                                    title="Limpiar la búsqueda"
+                                    title={g.search.clearTitle}
                                     className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
                                 >
                                     <Icon name="close" size={13} />
@@ -3012,7 +3034,7 @@ export default function GitRepoTab({
 
                         {showSearchHelp && (
                             <pre className="mt-1 whitespace-pre-wrap rounded bg-surface-container px-1.5 py-1 text-ui-10 leading-relaxed text-on-surface-variant">
-                                {GIT_SEARCH_HELP}
+                                {GIT_SEARCH_HELP()}
                             </pre>
                         )}
 
@@ -3020,15 +3042,15 @@ export default function GitRepoTab({
                             silently narrows history is how people conclude a
                             commit disappeared. */}
                         {!isEmptySearch(search) && (
-                            <p className="mt-1 px-0.5 text-ui-10 text-tertiary">Filtrado por {describeSearch(search)}</p>
+                            <p className="mt-1 px-0.5 text-ui-10 text-tertiary">{g.search.filteredBy({filter: describeSearch(search)})}</p>
                         )}
 
                         <label
                             className="mt-1 flex items-center gap-1 px-0.5 text-ui-10 text-on-surface-variant"
-                            title="Muestra solo la rama actual, los troncos (main/master/develop) y las ramas que ancles. En un repo con cientos de ramas remotas es la diferencia entre un grafo legible y una pared de carriles."
+                            title={g.search.focusTitle}
                         >
                             <input type="checkbox" checked={focusMode} onChange={(e) => setFocusMode(e.target.checked)} className="accent-primary" />
-                            Solo mi trabajo
+                            {g.search.focus}
                         </label>
                     </div>
 
@@ -3042,12 +3064,12 @@ export default function GitRepoTab({
                             <input
                                 value={branchFilter}
                                 onChange={(e) => setBranchFilter(e.target.value)}
-                                placeholder="Filtrar ramas y tags…"
-                                title="Filtra por nombre en las ramas locales, las remotas y los tags a la vez — no hace falta decidir de antemano qué de las tres cosas estás buscando"
+                                placeholder={g.refs.filterPlaceholder}
+                                title={g.refs.filterTitle}
                                 className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                             />
                             {branchFilter && (
-                                <button onClick={() => setBranchFilter('')} title="Limpiar el filtro" className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface">
+                                <button onClick={() => setBranchFilter('')} title={g.refs.clearFilter} className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface">
                                     <Icon name="close" size={13} />
                                 </button>
                             )}
@@ -3059,13 +3081,11 @@ export default function GitRepoTab({
                             open={!collapsedSections.has('local')}
                             onToggle={() => toggleSection('local')}
                             action={{
-                                title: current?.name
-                                    ? `Crear una rama nueva a partir de "${current.name}" y cambiarte a ella`
-                                    : 'Crear una rama nueva a partir de donde estás parado y cambiarte a ella',
+                                title: current?.name ? g.refs.newBranchFrom({branch: current.name}) : g.refs.newBranchHere,
                                 onSelect: () => promptCreateBranch(''),
                             }}
                         >
-                            Ramas
+                            {g.refs.branches}
                         </SectionLabel>
                         {/* Las ancladas van planas y arriba de todo: anclarlas
                             existe justamente para sacarlas del montón, así que
@@ -3094,11 +3114,11 @@ export default function GitRepoTab({
                             onToggle={() => toggleSection('remote')}
                             action={{
                                 icon: 'settings',
-                                title: 'Administrar los remotos: agregar uno, ver y cambiar su URL (con el token, si lo tiene embebido), renombrarlo o quitarlo',
+                                title: g.refs.manageRemotes,
                                 onSelect: () => openSettings('remotes'),
                             }}
                         >
-                            Remotas
+                            {g.refs.remotes}
                         </SectionLabel>
                         {!collapsedSections.has('remote') && pinnedRemote.map((b) => (
                             <BranchRow {...branchRowProps(b)} key={b.name} />
@@ -3130,13 +3150,11 @@ export default function GitRepoTab({
                                     open={!collapsedSections.has('tags')}
                                     onToggle={() => toggleSection('tags')}
                                     action={{
-                                        title: current?.name
-                                            ? `Etiquetar el commit actual de "${current.name}". El tag queda local hasta que lo publiques`
-                                            : 'Etiquetar el commit donde estás parado. El tag queda local hasta que lo publiques',
+                                        title: current?.name ? g.refs.newTagOn({branch: current.name}) : g.refs.newTagHere,
                                         onSelect: promptCreateTag,
                                     }}
                                 >
-                                    Tags
+                                    {g.refs.tags}
                                 </SectionLabel>
                                 {!collapsedSections.has('tags') && tagGroups.groups.map((group) => {
                                     const key = `tag:${group.key}`
@@ -3147,8 +3165,8 @@ export default function GitRepoTab({
                                                 onClick={() => toggleFolder(key)}
                                                 title={
                                                     open
-                                                        ? `Plegar "${group.key}" — sus ${group.tags.length} tags dejan de ocupar la lista`
-                                                        : `Desplegar "${group.key}" — tiene ${group.tags.length} tags`
+                                                        ? g.refs.collapseGroup({group: group.key, count: group.tags.length})
+                                                        : g.refs.expandGroup({group: group.key, count: group.tags.length})
                                                 }
                                                 className="flex w-full items-center gap-1 rounded py-1 pl-2 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
                                             >
@@ -3171,14 +3189,14 @@ export default function GitRepoTab({
                         )}
 
                         {branchFilter && localBranches.length === 0 && remoteBranches.length === 0 && visibleTags.length === 0 && (
-                            <p className="px-2 py-3 text-ui-11 text-on-surface-variant/70">Ninguna rama ni tag coincide con «{branchFilter}».</p>
+                            <p className="px-2 py-3 text-ui-11 text-on-surface-variant/70">{g.refs.noMatch({filter: branchFilter})}</p>
                         )}
                     </div>
                 </div>
                 )}
 
                 {!sideHidden && (
-                    <PaneHandle onStart={() => setDragging('side')} title="Arrastrá para cambiar el ancho del panel de ramas — el tamaño se guarda" />
+                    <PaneHandle onStart={() => setDragging('side')} title={g.panes.sideHandle} />
                 )}
 
                 {/* Center: graph or working-tree changes */}
@@ -3193,8 +3211,8 @@ export default function GitRepoTab({
                             onResolved={() => void reload()}
                             onAsk={(path) =>
                                 askAgentPicking(
-                                    `Estoy resolviendo un conflicto de ${inProgress || 'merge'} en el archivo ${path} de este repositorio. Leelo, explicame qué está en conflicto y proponeme un criterio para resolverlo. No lo edites: la resolución la aplico yo. `,
-                                    `conflicto en ${path}`,
+                                    g.ask.conflictPrompt({op: inProgress || 'merge', path}),
+                                    g.ask.conflictAbout({path}),
                                 )
                             }
                             onClose={() => setView('commits')}
@@ -3281,7 +3299,7 @@ export default function GitRepoTab({
                 </div>
 
                 {!diffHidden && (
-                    <PaneHandle onStart={() => setDragging('diff')} title="Arrastrá para cambiar el ancho del panel de diff — el tamaño se guarda" />
+                    <PaneHandle onStart={() => setDragging('diff')} title={g.panes.diffHandle} />
                 )}
 
                 {/* Right: commit detail + file list + diff.
@@ -3367,8 +3385,8 @@ export default function GitRepoTab({
                                                   // pegar el parche entero en
                                                   // el prompt gasta contexto y
                                                   // rompe el pegado del PTY.
-                                                  `Revisá el cambio sin commitear de ${selectedPath} (git diff) y `,
-                                                  `diff de ${selectedPath}`,
+                                                  g.ask.diffPrompt({path: selectedPath}),
+                                                  g.ask.diffAbout({path: selectedPath}),
                                               )
                                         : undefined
                                 }
@@ -3393,7 +3411,7 @@ export default function GitRepoTab({
                             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
                                 <Icon name="difference" size={28} className="text-on-surface-variant/40" />
                                 <p className="text-xs text-on-surface-variant/70">
-                                    {view === 'commits' ? 'Elegí un commit y después un archivo para ver el diff.' : 'Elegí un archivo modificado para ver el diff.'}
+                                    {view === 'commits' ? g.panes.pickCommitThenFile : g.panes.pickFile}
                                 </p>
                             </div>
                         )}
@@ -3427,11 +3445,7 @@ export default function GitRepoTab({
                         }}
                         role="separator"
                         aria-orientation={dock === 'bottom' ? 'horizontal' : 'vertical'}
-                        title={
-                            dock === 'bottom'
-                                ? 'Arrastrá para cambiar el alto del panel — el tamaño queda guardado'
-                                : 'Arrastrá para cambiar el ancho del panel — el tamaño queda guardado'
-                        }
+                        title={dock === 'bottom' ? g.panel.resizeHeight : g.panel.resizeWidth}
                         className={`absolute z-10 ${
                             dock === 'bottom'
                                 ? 'left-0 right-0 top-0 h-1.5 cursor-row-resize'
@@ -3453,33 +3467,33 @@ export default function GitRepoTab({
                     >
                         <button
                             onClick={() => openPanel('terminal')}
-                            title="Sesiones abiertas: terminales y asistentes de código corriendo en este repositorio"
+                            title={g.panel.sessionsTitle}
                             className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'terminal' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
                         >
                             <Icon name="terminal" size={13} />
-                            Sesiones
+                            {g.panel.sessions}
                         </button>
                         <button
                             onClick={() => {
                                 setPanelTab('commands')
                                 persistLayout({tab: 'commands'})
                             }}
-                            title="Registro de solo lectura de los comandos git que ejecutó la app, con su salida y cuánto tardaron"
+                            title={g.panel.commandsTitle}
                             className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'commands' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
                         >
                             <Icon name="history" size={13} />
-                            {dock === 'bottom' ? 'Comandos ejecutados' : 'Comandos'}
+                            {dock === 'bottom' ? g.panel.commandsLong : g.panel.commands}
                         </button>
                         <button
                             onClick={() => {
                                 setPanelTab('reflog')
                                 persistLayout({tab: 'reflog'})
                             }}
-                            title="Por dónde estuvo HEAD: el registro local que permite recuperar un commit que un reset, un rebase o un cambio de rama dejaron sin referencia"
+                            title={g.panel.reflogTitle}
                             className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'reflog' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
                         >
                             <Icon name="restore" size={13} />
-                            Reflog
+                            {g.panel.reflog}
                         </button>
                         <button
                             onClick={() => {
@@ -3487,11 +3501,11 @@ export default function GitRepoTab({
                                 persistLayout({tab: 'agents'})
                                 enterAgentMode()
                             }}
-                            title="Qué le ofrece este repositorio a un agente: skills, subagentes, comandos y archivos de instrucciones — incluidos los que faltan"
+                            title={g.panel.agentsTitle}
                             className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${panelTab === 'agents' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'}`}
                         >
                             <Icon name="smart_toy" size={13} />
-                            Agentes
+                            {g.bar.agents}
                             {/* Un contador: una solapa que dice cuántas cosas
                                 tiene adentro invita a abrirla; una vacía de
                                 señales se ignora. Cuenta lo que ESTE repo
@@ -3507,8 +3521,8 @@ export default function GitRepoTab({
                                 disabled={terminalFontSize <= TERMINAL_FONT_MIN}
                                 title={
                                     terminalFontSize <= TERMINAL_FONT_MIN
-                                        ? `Ya estás en el tamaño mínimo (${TERMINAL_FONT_MIN}px) — más chico deja de leerse`
-                                        : `Achicar la letra a ${terminalFontSize - 1}px. Entran más columnas y más líneas; aplica a todas las terminales y queda guardado.`
+                                        ? g.panel.fontMin({px: TERMINAL_FONT_MIN})
+                                        : g.panel.fontDecrease({px: terminalFontSize - 1})
                                 }
                                 className="rounded px-1 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30 disabled:hover:bg-transparent"
                             >
@@ -3519,8 +3533,8 @@ export default function GitRepoTab({
                                 disabled={terminalFontSize >= TERMINAL_FONT_MAX}
                                 title={
                                     terminalFontSize >= TERMINAL_FONT_MAX
-                                        ? `Ya estás en el tamaño máximo (${TERMINAL_FONT_MAX}px) — más grande entran tan pocas columnas que la salida se rompe`
-                                        : `Agrandar la letra a ${terminalFontSize + 1}px. Aplica a todas las terminales y queda guardado.`
+                                        ? g.panel.fontMax({px: TERMINAL_FONT_MAX})
+                                        : g.panel.fontIncrease({px: terminalFontSize + 1})
                                 }
                                 className="rounded px-1 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30 disabled:hover:bg-transparent"
                             >
@@ -3532,7 +3546,7 @@ export default function GitRepoTab({
                                 <button
                                     key={d.id}
                                     onClick={() => changeDock(d.id)}
-                                    title={dock === d.id ? `${d.title} (es donde está ahora)` : d.title}
+                                    title={dock === d.id ? g.panel.dockCurrent({title: g.dock[d.id]}) : g.dock[d.id]}
                                     className={`rounded px-1 py-0.5 ${
                                         dock === d.id
                                             ? 'bg-primary/15 text-primary'
@@ -3548,7 +3562,7 @@ export default function GitRepoTab({
                                     setPanelTab(null)
                                     persistLayout({tab: null})
                                 }}
-                                title="Cierra el panel. Las sesiones siguen vivas: al volver a abrirlo seguís en el mismo directorio y con lo mismo en pantalla."
+                                title={g.panel.closeTitle}
                                 className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                             >
                                 <Icon name="close" size={15} />
@@ -3568,7 +3582,7 @@ export default function GitRepoTab({
                         >
                             <button
                                 onClick={() => setAgentsView('context')}
-                                title="Qué le ofrece este repositorio a un agente: skills, instrucciones, servidores MCP, consumo y plan"
+                                title={g.panel.contextTitle}
                                 className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
                                     agentsView === 'context'
                                         ? 'bg-primary/15 text-primary'
@@ -3576,11 +3590,12 @@ export default function GitRepoTab({
                                 }`}
                             >
                                 <Icon name="dataset" size={12} />
-                                Contexto
+                                {g.panel.context}
                             </button>
                             <button
                                 onClick={() => setAgentsView('history')}
-                                title="Todas las conversaciones de este repositorio, por agente — incluidas las que ya tenías fuera de la app"
+                                data-agents-history
+                                title={g.panel.historyTitle}
                                 className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 ${
                                     agentsView === 'history'
                                         ? 'bg-primary/15 text-primary'
@@ -3588,7 +3603,7 @@ export default function GitRepoTab({
                                 }`}
                             >
                                 <Icon name="history" size={12} />
-                                Historial
+                                {g.panel.history}
                                 {chatHistory.length + cliChats.length > 0 && (
                                     <span className="opacity-60">{chatHistory.length + cliChats.length}</span>
                                 )}
@@ -3622,14 +3637,14 @@ export default function GitRepoTab({
                                                     y: e.clientY,
                                                     items: [
                                                         {
-                                                            label: 'Renombrar el chat…',
+                                                            label: g.panel.renameChat,
                                                             icon: 'edit',
                                                             onSelect: () =>
                                                                 setPrompt({
-                                                                    title: 'Renombrar el chat',
-                                                                    label: 'Nombre',
+                                                                    title: g.chat.renameTitle,
+                                                                    label: g.chat.nameLabel,
                                                                     initial: s.title,
-                                                                    confirmLabel: 'Guardar',
+                                                                    confirmLabel: t.common.save,
                                                                     onSubmit: (name: string) => {
                                                                         const title = name.trim()
                                                                         if (!title) return
@@ -3643,10 +3658,10 @@ export default function GitRepoTab({
                                                                 }),
                                                         },
                                                         {
-                                                            label: 'Quitar del historial',
+                                                            label: g.panel.removeFromHistory,
                                                             icon: 'delete',
                                                             danger: true,
-                                                            hint: 'La conversación sigue en el CLI; se pierde el atajo',
+                                                            hint: g.panel.removeFromHistoryHintShort,
                                                             onSelect: () => {
                                                                 void DeleteAgentChat(s.id).then(reloadChatHistory).catch(() => {})
                                                                 closeSession(s.id)
@@ -3655,7 +3670,7 @@ export default function GitRepoTab({
                                                     ],
                                                 })
                                             }}
-                                            title={`${s.title} — click derecho para renombrarlo o quitarlo del historial`}
+                                            title={g.panel.chatTabTitle({title: s.title})}
                                             className="max-w-40 truncate"
                                         >
                                             {s.title}
@@ -3665,7 +3680,7 @@ export default function GitRepoTab({
                                                 closeSession(s.id)
                                                 setActiveChatId((cur) => (cur === s.id ? null : cur))
                                             }}
-                                            title="Cierra la conversación. Queda en el historial y se puede retomar."
+                                            title={g.panel.closeChatTitle}
                                             className="rounded hover:text-on-surface"
                                         >
                                             <Icon name="close" size={12} />
@@ -3676,7 +3691,7 @@ export default function GitRepoTab({
                             <DropdownMenu
                                 label=""
                                 icon="add"
-                                title="Empezar una conversación nueva con un agente. Las anteriores están en Historial, con buscador y agrupadas por agente."
+                                title={g.panel.newChatTitle}
                                 width={360}
                                 items={chatMenuItems()}
                             />
@@ -3708,15 +3723,15 @@ export default function GitRepoTab({
                                                       y: e.clientY,
                                                       items: [
                                                           {
-                                                              label: 'Renombrar el chat…',
+                                                              label: g.panel.renameChat,
                                                               icon: 'edit',
                                                               onSelect: () =>
                                                                   setPrompt({
-                                                                      title: 'Renombrar el chat',
-                                                                      label: 'Nombre',
+                                                                      title: g.chat.renameTitle,
+                                                                      label: g.chat.nameLabel,
                                                                       placeholder: s.title,
                                                                       initial: s.title,
-                                                                      confirmLabel: 'Guardar',
+                                                                      confirmLabel: t.common.save,
                                                                       onSubmit: (name: string) => {
                                                                           const title = name.trim()
                                                                           if (!title) return
@@ -3730,10 +3745,10 @@ export default function GitRepoTab({
                                                                   }),
                                                           },
                                                           {
-                                                              label: 'Quitar del historial',
+                                                              label: g.panel.removeFromHistory,
                                                               icon: 'delete',
                                                               danger: true,
-                                                              hint: 'La conversación sigue existiendo en el CLI; se pierde el atajo para retomarla',
+                                                              hint: g.panel.removeFromHistoryHint,
                                                               onSelect: () => {
                                                                   void DeleteAgentChat(s.id)
                                                                       .then(reloadChatHistory)
@@ -3748,10 +3763,10 @@ export default function GitRepoTab({
                                     }
                                     title={
                                         s.kind === 'chat'
-                                            ? `${s.title} — click derecho para renombrarlo o quitarlo del historial`
+                                            ? g.panel.chatTabTitle({title: s.title})
                                             : s.kind === 'agent'
-                                              ? `Sesión de ${s.title} en este repositorio`
-                                              : 'Terminal en la raíz de este repositorio'
+                                              ? g.panel.agentSessionTitle({title: s.title})
+                                              : g.panel.terminalSessionTitle
                                     }
                                     className={`group flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 ${
                                         activeSessionId === s.id
@@ -3772,7 +3787,7 @@ export default function GitRepoTab({
                                             e.stopPropagation()
                                             closeSession(s.id)
                                         }}
-                                        title={`Cierra esta sesión y termina su proceso${s.kind === 'agent' ? ` — ${s.title} deja de correr` : ''}`}
+                                        title={s.kind === 'agent' ? g.panel.closeAgentSession({title: s.title}) : g.panel.closeSession}
                                         className="shrink-0 rounded opacity-0 hover:bg-surface-variant group-hover:opacity-70"
                                     >
                                         <Icon name="close" size={12} />
@@ -3781,9 +3796,9 @@ export default function GitRepoTab({
                             ))}
 
                             <DropdownMenu
-                                label="Nueva"
+                                label={g.panel.newSession}
                                 icon="add"
-                                title="Abrir una terminal en este repositorio, o un asistente en su terminal completa con su propio render y su diálogo de permisos. Para chatear con un agente, la solapa Agentes."
+                                title={g.panel.newSessionTitle}
                                 width={340}
                                 items={[
                                     // Acá NO van los chats. Esta solapa es la
@@ -3794,20 +3809,18 @@ export default function GitRepoTab({
                                     // misma conversación abierta desde dos
                                     // menús distintos.
                                     {
-                                        label: 'Terminal',
+                                        label: g.session.terminal,
                                         icon: 'terminal',
-                                        hint: 'Shell en la raíz del repositorio',
+                                        hint: g.panel.shellAtRoot,
                                         onSelect: () => addSession('shell'),
                                     },
                                     // Los CLIs en su terminal completa: es otra
                                     // cosa que el chat y por eso va en otro
                                     // grupo, no intercalado.
                                     ...agentList.map((a) => ({
-                                        label: `${a.label} en terminal`,
+                                        label: g.panel.agentInTerminal({agent: a.label}),
                                         icon: 'smart_toy',
-                                        hint: a.available
-                                            ? `${a.vendor} — su render y su propio diálogo de permisos`
-                                            : 'No está instalado en este equipo',
+                                        hint: a.available ? g.panel.agentInTerminalHint({vendor: a.vendor}) : g.panel.notInstalled,
                                         disabled: !a.available,
                                         onSelect: () => addSession('agent', a),
                                     })),
@@ -3831,7 +3844,7 @@ export default function GitRepoTab({
                         {panelTab === 'terminal' && sessions.filter((s) => s.kind !== 'chat').length === 0 && (
                             <div className="absolute inset-0 overflow-y-auto p-4">
                                 <p className="mb-3 text-xs text-on-surface-variant">
-                                    Trabajá sobre <span className="text-on-surface">{repoName}</span> sin salir de la app.
+                                    {g.launcher.workOn.before}<span className="text-on-surface">{repoName}</span>{g.launcher.workOn.after}
                                 </p>
 
                                 <div className="flex flex-col gap-1.5">
@@ -3841,14 +3854,14 @@ export default function GitRepoTab({
                                             <button
                                                 key={`chat-${a.id}`}
                                                 onClick={() => addSession('chat', a)}
-                                                title={`Conversación con ${a.label}: se ve lo que hace paso a paso y cuántos tokens costó. Para que edite archivos hay que autorizarlo explícitamente.`}
+                                                title={g.launcher.chatTitle({agent: a.label})}
                                                 className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
                                             >
                                                 <Icon name="chat" size={14} className="mt-0.5 shrink-0 text-primary" />
                                                 <span className="min-w-0">
-                                                    <span className="block text-xs text-on-surface">Chatear con {a.label}</span>
+                                                    <span className="block text-xs text-on-surface">{g.launcher.chatWith({agent: a.label})}</span>
                                                     <span className="block text-ui-11 text-on-surface-variant">
-                                                        Pregunta, revisa y propone. Edita solo si lo autorizás.
+                                                        {g.launcher.chatDesc}
                                                     </span>
                                                 </span>
                                             </button>
@@ -3857,17 +3870,16 @@ export default function GitRepoTab({
                                     {chatHistory.length > 0 && (
                                         <button
                                             onClick={() => resumeChat(chatHistory[0])}
-                                            title={`Retoma "${chatHistory[0].title || 'la última conversación'}" donde la dejaste`}
+                                            title={g.launcher.resumeTitle({title: chatHistory[0].title || g.launcher.theLastConversation})}
                                             className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
                                         >
                                             <Icon name="history" size={14} className="mt-0.5 shrink-0 text-primary" />
                                             <span className="min-w-0">
                                                 <span className="block truncate text-xs text-on-surface">
-                                                    Seguir: {chatHistory[0].title || 'última conversación'}
+                                                    {g.launcher.resume({title: chatHistory[0].title || g.launcher.lastConversation})}
                                                 </span>
                                                 <span className="block text-ui-11 text-on-surface-variant">
-                                                    {chatHistory.length} conversación{chatHistory.length === 1 ? '' : 'es'} guardada
-                                                    {chatHistory.length === 1 ? '' : 's'} en este repositorio
+                                                    {g.launcher.savedCount(chatHistory.length)}
                                                 </span>
                                             </span>
                                         </button>
@@ -3875,14 +3887,14 @@ export default function GitRepoTab({
 
                                     <button
                                         onClick={() => addSession('shell')}
-                                        title="Una shell en la raíz del repositorio, para lo que la interfaz no cubre"
+                                        title={g.launcher.terminalTitle}
                                         className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
                                     >
                                         <Icon name="terminal" size={14} className="mt-0.5 shrink-0 text-on-surface-variant" />
                                         <span className="min-w-0">
-                                            <span className="block text-xs text-on-surface">Abrir una terminal</span>
+                                            <span className="block text-xs text-on-surface">{g.launcher.openTerminal}</span>
                                             <span className="block text-ui-11 text-on-surface-variant">
-                                                Shell en la raíz del repositorio
+                                                {g.panel.shellAtRoot}
                                             </span>
                                         </span>
                                     </button>
@@ -3893,14 +3905,14 @@ export default function GitRepoTab({
                                             persistLayout({tab: 'agents'})
                                             enterAgentMode()
                                         }}
-                                        title="Skills, subagentes, archivos de instrucciones, servidores MCP y consumo de tokens de este repositorio"
+                                        title={g.launcher.contextTitle}
                                         className="flex items-start gap-2 rounded border border-outline-variant px-2 py-1.5 text-left hover:bg-surface-container-high"
                                     >
                                         <Icon name="smart_toy" size={14} className="mt-0.5 shrink-0 text-on-surface-variant" />
                                         <span className="min-w-0">
-                                            <span className="block text-xs text-on-surface">Ver qué tiene este repositorio</span>
+                                            <span className="block text-xs text-on-surface">{g.launcher.context}</span>
                                             <span className="block text-ui-11 text-on-surface-variant">
-                                                Skills, instrucciones, servidores MCP y consumo
+                                                {g.launcher.contextDesc}
                                             </span>
                                         </span>
                                     </button>
@@ -3908,8 +3920,7 @@ export default function GitRepoTab({
 
                                 {agentList.filter((a) => a.available).length === 0 && (
                                     <p className="mt-3 text-ui-11 text-on-surface-variant">
-                                        No hay ningún asistente de código instalado en este equipo. Se configuran en Configuración →
-                                        Agentes de código.
+                                        {g.launcher.noAgents}
                                     </p>
                                 )}
                             </div>
@@ -3977,13 +3988,13 @@ export default function GitRepoTab({
                                                 (a) => a.available && chatCapable.has(a.id) && a.id !== exclude,
                                             )
                                             if (!other) {
-                                                setError('No hay otro asistente con chat instalado para revisar.')
+                                                setError(g.review.noOther)
                                                 return
                                             }
                                             askAgent(
                                                 other.id,
-                                                'Revisá los cambios sin commitear de este repositorio (git diff) como si fueras otro par: decime qué está mal, qué falta y qué no haría así. ',
-                                                'revisión cruzada',
+                                                g.review.prompt,
+                                                g.review.about,
                                             )
                                         }}
                                         onConversation={(conversationId) => {
@@ -4017,22 +4028,21 @@ export default function GitRepoTab({
                             <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 border-b border-outline-variant bg-surface-container-high px-2 py-1 text-ui-11">
                                 <Icon name="smart_toy" size={13} className="shrink-0 text-primary" />
                                 <span className="min-w-0 flex-1 truncate text-on-surface-variant">
-                                    Prompt listo sobre <span className="text-on-surface">{pendingPrompt.about}</span> — insertalo cuando el agente
-                                    haya arrancado.
+                                    {g.pending.before}<span className="text-on-surface">{pendingPrompt.about}</span>{g.pending.after}
                                 </span>
                                 <button
                                     onClick={() => {
                                         void WriteLocalTerminal(pendingPrompt.sessionId, pendingPrompt.text)
                                         setPendingPrompt(null)
                                     }}
-                                    title="Escribe el prompt en la sesión. No lo envía: revisalo, completalo y mandalo vos."
+                                    title={g.pending.insertTitle}
                                     className="shrink-0 rounded bg-primary px-2 py-0.5 text-on-primary"
                                 >
-                                    Insertar
+                                    {g.pending.insert}
                                 </button>
                                 <button
                                     onClick={() => setPendingPrompt(null)}
-                                    title="Descarta el prompt"
+                                    title={g.pending.discardTitle}
                                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                 >
                                     <Icon name="close" size={14} />
@@ -4060,7 +4070,7 @@ export default function GitRepoTab({
                                     reloadToken={logToken}
                                     onAsk={(command, output) =>
                                         askAgentPicking(
-                                            `Este comando falló en este repositorio:\n\n${command}\n\nY devolvió:\n\n${output}\n\nExplicame qué pasó y cómo salir de esto. `,
+                                            g.ask.failedCommandPrompt({command, output}),
                                             command,
                                         )
                                     }
@@ -4085,11 +4095,10 @@ export default function GitRepoTab({
                                     onRename={renameChat}
                                     onDelete={(id) => {
                                         setConfirm({
-                                            title: 'Quitar del historial',
-                                            description:
-                                                'La conversación sigue existiendo en el agente: lo que se pierde es el atajo para retomarla desde acá.',
-                                            label: chatHistory.find((c) => c.id === id)?.title || 'Sin nombre',
-                                            confirmLabel: 'Quitar',
+                                            title: g.panel.removeFromHistory,
+                                            description: g.panel.removeFromHistoryDesc,
+                                            command: chatHistory.find((c) => c.id === id)?.title || g.panel.untitled,
+                                            confirmLabel: g.worktrees.remove,
                                             danger: true,
                                             run: () => DeleteAgentChat(id).then(reloadChatHistory),
                                         })
@@ -4146,7 +4155,7 @@ export default function GitRepoTab({
                     description={confirm.description}
                     confirmLabel={confirm.confirmLabel}
                     danger={confirm.danger ?? true}
-                    onConfirm={() => run(confirm.label, confirm.run, confirm.onError)}
+                    onConfirm={() => run(confirm.command, confirm.run, confirm.onError)}
                     onClose={() => setConfirm(null)}
                 />
             )}
@@ -4164,9 +4173,9 @@ export default function GitRepoTab({
 
             {confirmDiscardPatch && (
                 <ConfirmDialog
-                    title="Descartar este bloque"
-                    description="Esto revierte solo el bloque seleccionado en el working tree y lo devuelve al estado del último commit. A diferencia de un commit o un stash, NO queda en el reflog: no hay forma de recuperarlo después."
-                    confirmLabel="Descartar bloque"
+                    title={g.discard.hunkTitle}
+                    description={g.discard.hunkDesc}
+                    confirmLabel={g.discard.hunkConfirm}
                     danger
                     onConfirm={() =>
                         run('apply --reverse', () => GitApplyPatch(repoId, confirmDiscardPatch, false, true))
@@ -4177,9 +4186,9 @@ export default function GitRepoTab({
 
             {confirmDiscard && (
                 <ConfirmDialog
-                    title="Descartar cambios"
-                    description={`Esto descarta los cambios sin commitear de ${confirmDiscard.length === 1 ? `"${confirmDiscard[0]}"` : `${confirmDiscard.length} archivos`} y los vuelve al último commit. A diferencia de un commit o un stash, esto NO queda en el reflog: no hay forma de recuperarlo después.`}
-                    confirmLabel="Descartar"
+                    title={g.discard.filesTitle}
+                    description={g.discard.filesDesc({count: confirmDiscard.length, first: confirmDiscard[0]})}
+                    confirmLabel={g.discard.filesConfirm}
                     danger
                     onConfirm={() => run('restore', () => GitDiscard(repoId, confirmDiscard))}
                     onClose={() => setConfirmDiscard(null)}
@@ -4222,6 +4231,7 @@ function stagedPaths(status: git.RepoStatus | null): string[] {
 }
 
 function Banner({kind, text, onClose}: {kind: 'error' | 'info'; text: string; onClose: () => void}) {
+    const t = useT()
     return (
         <div
             className={`flex shrink-0 items-start gap-2 border-b border-outline-variant px-3 py-1.5 text-ui-11 ${
@@ -4232,7 +4242,7 @@ function Banner({kind, text, onClose}: {kind: 'error' | 'info'; text: string; on
             {/* Errors from git are multi-line and the useful part is often the
                 last line — wrapped and shown whole rather than truncated. */}
             <pre className="max-h-[30vh] min-w-0 flex-1 overflow-auto whitespace-pre-wrap break-words font-mono">{text}</pre>
-            <button onClick={onClose} title="Cerrar este mensaje" className="shrink-0 rounded p-0.5 hover:bg-surface-variant/50">
+            <button onClick={onClose} title={t.git.tab.closeMessage} className="shrink-0 rounded p-0.5 hover:bg-surface-variant/50">
                 <Icon name="close" size={14} />
             </button>
         </div>
@@ -4312,6 +4322,7 @@ function SectionLabel({
     // otra cosa.
     action?: {title: string; onSelect: () => void; icon?: string}
 }) {
+    const t = useT()
     const label = (
         <>
             <Icon
@@ -4336,7 +4347,7 @@ function SectionLabel({
         <div className="flex w-full items-center pb-1 pt-2 pr-1">
             <button
                 onClick={onToggle}
-                title={open === false ? 'Desplegar esta sección' : 'Plegar esta sección — el contador sigue a la vista'}
+                title={open === false ? t.git.tab.section.expand : t.git.tab.section.collapse}
                 className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 text-left text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface-variant"
             >
                 {label}
@@ -4380,14 +4391,15 @@ function BranchFolderRow({
     onContextMenu?: (e: React.MouseEvent) => void
 }) {
     const total = countBranches(node)
+    const t = useT()
     return (
         <button
             onClick={onToggle}
             onContextMenu={onContextMenu}
             title={
                 open
-                    ? `Plegar "${node.path}" — sus ${total} ramas dejan de ocupar la lista`
-                    : `Desplegar "${node.path}" — tiene ${total} ${total === 1 ? 'rama' : 'ramas'}`
+                    ? t.git.tab.tree.collapseFolder({folder: node.path, count: total})
+                    : t.git.tab.tree.expandFolder({folder: node.path, count: total})
             }
             style={{paddingLeft: 8 + depth * 12}}
             className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
@@ -4472,6 +4484,7 @@ function TagRow({
     onContextMenu: (e: ReactMouseEvent) => void
 }) {
     const date = tag.taggerDate ? tag.taggerDate.slice(0, 10) : ''
+    const tr = useT().git.tab.tree
     return (
         <button
             onClick={onSelect}
@@ -4480,10 +4493,10 @@ function TagRow({
                 onContextMenu(e)
             }}
             title={[
-                `Tag "${tag.name}" → commit ${tag.hash.slice(0, 8)}`,
-                tag.annotated ? 'Anotado' : 'Ligero (sin mensaje ni autor propios)',
+                tr.tagTitle({name: tag.name, hash: tag.hash.slice(0, 8)}),
+                tag.annotated ? tr.annotated : tr.lightweight,
                 tag.message ? `\n${tag.message}` : '',
-                '\nClick: llevar el grafo a ese commit. Click derecho: crear rama desde el tag, push, borrar…',
+                tr.tagHelp,
             ]
                 .filter(Boolean)
                 .join(' · ')}
@@ -4527,6 +4540,7 @@ function BranchRow({
     isPinned?: boolean
     onTogglePin?: () => void
 }) {
+    const tr = useT().git.tab.tree
     return (
         <button
             onClick={onSelect}
@@ -4536,11 +4550,10 @@ function BranchRow({
                 onContextMenu(e)
             }}
             disabled={disabled}
-            title={`Click para ir al último commit de "${branch.name}". ${
-                branch.isCurrent
-                    ? 'Ya es la rama actual'
-                    : `Doble click para hacer checkout${branch.isRemote ? ' (crea una rama local que la sigue)' : ''}`
-            }. Click derecho para más acciones`}
+            title={tr.branchTitle({
+                name: branch.name,
+                middle: branch.isCurrent ? tr.alreadyCurrent : branch.isRemote ? tr.doubleClickRemote : tr.doubleClick,
+            })}
             style={{paddingLeft: 10 + (depth ?? 0) * 12}}
             className={`group relative flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 transition-colors disabled:opacity-40 ${
                 // Three states that must stay distinguishable at a glance:
@@ -4563,9 +4576,7 @@ function BranchRow({
                     onTogglePin?.()
                 }}
                 title={
-                    isPinned
-                        ? `Desanclar "${branch.name}" — dejará de quedar arriba de la lista`
-                        : `Anclar "${branch.name}" para que quede siempre arriba de la lista, y se incluya en "Solo mi trabajo"`
+                    isPinned ? tr.unpin({name: branch.name}) : tr.pin({name: branch.name})
                 }
                 className={`shrink-0 ${isPinned ? 'text-tertiary' : 'text-on-surface-variant/30 opacity-0 group-hover:opacity-100'}`}
             >
@@ -4635,6 +4646,7 @@ function CommitDetail({
     // Tope de "expandir todo": arriba de esto son cientos de lecturas de parche
     // seguidas, y la pestaña se traba antes de terminar de dibujar.
     const canExpandAll = files.length > 0 && files.length <= EXPAND_ALL_LIMIT
+    const d = useT().git.tab.detail
 
     return (
         <div className={`flex min-h-0 flex-col ${full ? 'flex-1' : 'max-h-[55%] shrink-0'}`}>
@@ -4642,15 +4654,15 @@ function CommitDetail({
                 <p className="text-xs font-medium text-on-surface">{commit.subject}</p>
                 {commit.body && <pre className="whitespace-pre-wrap break-words text-ui-11 text-on-surface-variant">{commit.body}</pre>}
                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 pt-1 text-ui-10 text-on-surface-variant">
-                    <dt className="text-on-surface-variant/60">Autor</dt>
-                    <dd className="truncate">{commit.author} &lt;{commit.email}&gt;</dd>
-                    <dt className="text-on-surface-variant/60">Fecha</dt>
+                    <dt className="text-on-surface-variant/60">{d.author}</dt>
+                    <dd className="truncate">{commit.author} {'<'}{commit.email}{'>'}</dd>
+                    <dt className="text-on-surface-variant/60">{d.date}</dt>
                     <dd>{commit.date}</dd>
-                    <dt className="text-on-surface-variant/60">Hash</dt>
+                    <dt className="text-on-surface-variant/60">{d.hash}</dt>
                     <dd className="truncate font-mono">{commit.hash}</dd>
                     {(commit.parents?.length ?? 0) > 0 && (
                         <>
-                            <dt className="text-on-surface-variant/60">{commit.parents.length > 1 ? 'Padres' : 'Padre'}</dt>
+                            <dt className="text-on-surface-variant/60">{commit.parents.length > 1 ? d.parents : d.parent}</dt>
                             <dd className="truncate font-mono">{commit.parents.join(' ')}</dd>
                         </>
                     )}
@@ -4659,45 +4671,45 @@ function CommitDetail({
                         uno ajeno. */}
                     {((commit.branches?.length ?? 0) > 0 || (commit.tags?.length ?? 0) > 0) && (
                         <>
-                            <dt className="text-on-surface-variant/60">Refs</dt>
+                            <dt className="text-on-surface-variant/60">{d.refs}</dt>
                             <dd className="flex flex-wrap gap-1">
                                 {commit.branches?.map((b) => (
-                                    <span key={b} title={`Este commit es alcanzable desde ${b}`} className="rounded-full bg-primary-container/60 px-1.5 text-ui-9 text-on-primary-container">
+                                    <span key={b} title={d.reachableFrom({branch: b})} className="rounded-full bg-primary-container/60 px-1.5 text-ui-9 text-on-primary-container">
                                         {b}
                                     </span>
                                 ))}
-                                {commit.tags?.map((t) => (
-                                    <span key={t} title={`Tag ${t} en este commit`} className="rounded-full bg-tertiary/20 px-1.5 text-ui-9 text-tertiary">
-                                        {t}
+                                {commit.tags?.map((tg) => (
+                                    <span key={tg} title={d.tagOnCommit({tag: tg})} className="rounded-full bg-tertiary/20 px-1.5 text-ui-9 text-tertiary">
+                                        {tg}
                                     </span>
                                 ))}
                             </dd>
                         </>
                     )}
-                    <dt className="text-on-surface-variant/60">Cambios</dt>
+                    <dt className="text-on-surface-variant/60">{d.changes}</dt>
                     <dd className="font-mono">
-                        {files.length} {files.length === 1 ? 'archivo' : 'archivos'} · <span className="text-secondary">+{insertions}</span>{' '}
+                        {d.fileCount(files.length)} · <span className="text-secondary">+{insertions}</span>{' '}
                         <span className="text-error">−{deletions}</span>
                     </dd>
                 </dl>
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-3 py-1 text-ui-10 text-on-surface-variant">
-                <span className="font-semibold uppercase tracking-wider text-on-surface-variant/70">Archivos</span>
+                <span className="font-semibold uppercase tracking-wider text-on-surface-variant/70">{d.files}</span>
                 <span className="rounded-full bg-surface-variant px-1.5 text-ui-9 font-semibold text-on-surface-variant">{files.length}</span>
                 <button
                     onClick={() => (expandedCount > 0 ? onCollapseAll() : onExpandAll(files.map((f) => f.path)))}
                     disabled={expandedCount === 0 && !canExpandAll}
                     title={
                         expandedCount > 0
-                            ? 'Vuelve a plegar todos los diffs abiertos'
+                            ? d.collapseAllTitle
                             : canExpandAll
-                              ? `Abre el diff de los ${files.length} archivos, para leer el commit entero de corrido`
-                              : `Este commit toca ${files.length} archivos: abrirlos todos son ${files.length} lecturas de parche seguidas y la pestaña se traba. Abrilos de a uno con el triangulito.`
+                              ? d.expandAllTitle({count: files.length})
+                              : d.tooManyTitle({count: files.length})
                     }
                     className="ml-auto shrink-0 rounded px-1.5 py-0.5 hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                 >
-                    {expandedCount > 0 ? 'Colapsar todo' : 'Expandir todo'}
+                    {expandedCount > 0 ? d.collapseAll : d.expandAll}
                 </button>
             </div>
 
@@ -4716,10 +4728,10 @@ function CommitDetail({
                                     disabled={f.isBinary}
                                     title={
                                         f.isBinary
-                                            ? 'Archivo binario: git no produce un diff de texto para esto'
+                                            ? d.binaryTitle
                                             : diff
-                                              ? `Ocultar los cambios de ${f.path}`
-                                              : `Ver acá mismo lo que este commit le hizo a ${f.path}`
+                                              ? d.hideChanges({path: f.path})
+                                              : d.showChanges({path: f.path})
                                     }
                                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30"
                                 >
@@ -4727,13 +4739,13 @@ function CommitDetail({
                                 </button>
                                 <button
                                     onClick={() => onSelectPath(f.path)}
-                                    title={`Abrir ${f.path} en el panel de diff — ahí se ve con blame, más contexto y búsqueda`}
+                                    title={d.openInDiff({path: f.path})}
                                     className="min-w-0 flex-1 truncate text-left font-mono text-on-surface"
                                 >
                                     {f.origPath ? `${f.origPath} → ${f.path}` : f.path}
                                 </button>
                                 {f.isBinary ? (
-                                    <span className="shrink-0 text-ui-9 text-on-surface-variant/60">binario</span>
+                                    <span className="shrink-0 text-ui-9 text-on-surface-variant/60">{d.binary}</span>
                                 ) : (
                                     <span className="shrink-0 font-mono text-ui-9">
                                         <span className="text-secondary">+{f.stat.insertions}</span> <span className="text-error">−{f.stat.deletions}</span>
@@ -4798,28 +4810,30 @@ function ChangesPanel({
     // La última redacción del agente, mientras el campo siga siendo la suya.
     draft?: main.CommitDraft | null
 }) {
+    const t = useT()
+    const c = t.git.tab.changes
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto">
                 <FileGroup
-                    title="Preparados"
+                    title={c.staged}
                     files={staged}
                     selectedPath={selectedPath}
                     onSelectPath={onSelectPath}
-                    action={{icon: 'remove', title: 'Quitar del stage (el archivo no se toca)', onClick: (p) => onUnstage([p])}}
-                    empty="Nada en el stage todavía."
+                    action={{icon: 'remove', title: c.unstage, onClick: (p) => onUnstage([p])}}
+                    empty={c.stagedEmpty}
                     inlineDiffs={inlineDiffs}
                     onToggleDiff={onToggleDiff}
                     staged
                 />
                 <FileGroup
-                    title="Cambios"
+                    title={c.unstaged}
                     files={unstaged}
                     selectedPath={selectedPath}
                     onSelectPath={onSelectPath}
-                    action={{icon: 'add', title: 'Agregar al stage', onClick: (p) => onStage([p])}}
-                    secondaryAction={{icon: 'undo', title: 'Descartar los cambios de este archivo — no se puede deshacer', danger: true, onClick: (p) => onDiscard([p])}}
-                    empty="Sin cambios en el working tree."
+                    action={{icon: 'add', title: c.stage, onClick: (p) => onStage([p])}}
+                    secondaryAction={{icon: 'undo', title: c.discardFile, danger: true, onClick: (p) => onDiscard([p])}}
+                    empty={c.unstagedEmpty}
                     inlineDiffs={inlineDiffs}
                     onToggleDiff={onToggleDiff}
                 />
@@ -4829,11 +4843,11 @@ function ChangesPanel({
                 <button
                     onClick={onStageAll}
                     disabled={busy || unstaged.length === 0}
-                    title={unstaged.length === 0 ? 'No hay cambios sin stagear' : `Agregar los ${unstaged.length} archivos modificados al stage`}
+                    title={unstaged.length === 0 ? c.nothingToStage : c.stageAllTitle({count: unstaged.length})}
                     className="flex w-full items-center justify-center gap-1.5 rounded bg-surface-variant px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
                 >
                     <Icon name="add" size={13} />
-                    Stagear todo
+                    {c.stageAll}
                 </button>
 
                 {/* Commit helper. The ticket half is what actually saves
@@ -4849,13 +4863,13 @@ function ChangesPanel({
                             const scope = currentPrefixOf(commitMessage).scope || extractTicket(branchName)
                             onChangeMessage(type ? applyPrefix(commitMessage, buildCommitPrefix(type, scope)) : commitMessage)
                         }}
-                        title="Prefijo de Conventional Commits. Cambiarlo reemplaza el que ya tenga el mensaje, no apila uno nuevo."
+                        title={c.typeTitle}
                         className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container px-1 py-0.5 text-ui-11 text-on-surface"
                     >
-                        <option value="">tipo…</option>
-                        {COMMIT_TYPES.map((t) => (
-                            <option key={t.value} value={t.value} title={t.hint}>
-                                {t.label}
+                        <option value="">{c.typePlaceholder}</option>
+                        {COMMIT_TYPES.map((ct) => (
+                            <option key={ct.value} value={ct.value} title={ct.hint}>
+                                {ct.label}
                             </option>
                         ))}
                     </select>
@@ -4865,7 +4879,7 @@ function ChangesPanel({
                                 const {type} = currentPrefixOf(commitMessage)
                                 onChangeMessage(applyPrefix(commitMessage, buildCommitPrefix(type || 'feat', extractTicket(branchName))))
                             }}
-                            title={`Usa "${extractTicket(branchName)}" como scope, leído del nombre de la rama (${branchName})`}
+                            title={c.ticketTitle({ticket: extractTicket(branchName), branch: branchName})}
                             className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 font-mono text-ui-10 text-on-surface-variant hover:text-on-surface"
                         >
                             {extractTicket(branchName)}
@@ -4881,9 +4895,9 @@ function ChangesPanel({
                     <textarea
                         value={commitMessage}
                         onChange={(e) => onChangeMessage(e.target.value)}
-                        placeholder="Mensaje del commit…"
+                        placeholder={c.messagePlaceholder}
                         rows={3}
-                        title="Mensaje del commit — la primera línea es el resumen, dejá una línea en blanco antes del cuerpo"
+                        title={c.messageTitle}
                         className="w-full resize-none rounded border-none bg-transparent px-2 py-1.5 pr-14 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/50"
                     />
                     {onDraftMessage && (
@@ -4892,11 +4906,7 @@ function ChangesPanel({
                                 onClick={onDraftMessage}
                                 disabled={busy || staged.length === 0 || drafting}
                                 title={
-                                    drafting
-                                        ? 'El agente está leyendo el diff preparado y escribiendo el mensaje'
-                                        : staged.length === 0
-                                          ? 'Agregá archivos al stage: el mensaje se redacta a partir de lo que está preparado, no del working tree'
-                                          : 'Redactar el mensaje con el agente por defecto, a partir del diff preparado y del estilo de los últimos commits. Lo escribe en el campo — commitear sigue siendo tuyo.'
+                                    drafting ? c.draftingTitle : staged.length === 0 ? c.draftNeedsStaged : c.draftTitle
                                 }
                                 className="flex items-center gap-1 rounded px-1.5 py-0.5 text-primary hover:bg-primary-container/50 disabled:opacity-40"
                             >
@@ -4910,14 +4920,14 @@ function ChangesPanel({
                                     acción sirve— va con la palabra al lado, y
                                     se calla apenas hay texto para no taparlo. */}
                                 {(!commitMessage.trim() || drafting) && (
-                                    <span className="text-ui-10">{drafting ? 'Redactando…' : 'Redactar'}</span>
+                                    <span className="text-ui-10">{drafting ? c.drafting : c.draft}</span>
                                 )}
                             </button>
                             {onPickDraftAgent && (
                                 <button
                                     onClick={(e) => onPickDraftAgent({clientX: e.clientX, clientY: e.clientY})}
                                     disabled={busy || staged.length === 0 || drafting}
-                                    title="Redactar con OTRO de los agentes instalados. Es para esta redacción nada más: no cambia el agente por defecto de la aplicación."
+                                    title={c.draftOtherTitle}
                                     className="rounded px-0.5 py-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
                                 >
                                     <Icon name="expand_more" size={13} />
@@ -4932,18 +4942,16 @@ function ChangesPanel({
                     en el asistente de consultas. */}
                 {draft && (
                     <p
-                        title={`El agente vio el diff preparado de ${draft.files.length} ${draft.files.length === 1 ? 'archivo' : 'archivos'} y los últimos mensajes del repositorio como referencia de estilo.${
-                            draft.diffTruncated ? ' El parche era más grande que el tope y se le mandó recortado, con la lista completa de archivos.' : ''
-                        } Editar el mensaje a mano hace desaparecer esta línea.`}
+                        title={c.draftInfoTitle({count: draft.files.length, truncated: draft.diffTruncated})}
                         className="flex items-center gap-1 px-0.5 text-ui-10 text-on-surface-variant/70"
                     >
                         <Icon name="auto_awesome" size={11} className="shrink-0 text-primary" />
                         <span className="truncate">
-                            {draft.agentLabel} · {draft.files.length} {draft.files.length === 1 ? 'archivo' : 'archivos'} · +{draft.insertions}/−{draft.deletions}
+                            {draft.agentLabel} · {t.git.tab.detail.fileCount(draft.files.length)} · +{draft.insertions}/−{draft.deletions}
                         </span>
                         {draft.diffTruncated && (
-                            <span className="shrink-0 text-tertiary" title="El parche superaba el tope que se le manda al agente: escribió sobre el principio del diff más la lista completa de archivos. Revisá el mensaje antes de commitear.">
-                                · recortado
+                            <span className="shrink-0 text-tertiary" title={c.truncatedTitle}>
+                                · {c.truncated}
                             </span>
                         )}
                     </p>
@@ -4954,15 +4962,15 @@ function ChangesPanel({
                     disabled={busy || staged.length === 0 || !commitMessage.trim()}
                     title={
                         staged.length === 0
-                            ? 'Agregá al menos un archivo al stage antes de commitear'
+                            ? c.commitNeedsStaged
                             : !commitMessage.trim()
-                              ? 'Escribí un mensaje para el commit'
-                              : `Commitear los ${staged.length} archivos en el stage`
+                              ? c.commitNeedsMessage
+                              : c.commitTitle({count: staged.length})
                     }
                     className="flex w-full items-center justify-center gap-1.5 rounded bg-secondary px-2 py-1.5 text-xs font-medium text-on-secondary hover:opacity-90 disabled:opacity-40"
                 >
                     <Icon name="check" size={14} />
-                    Commit{staged.length > 0 ? ` (${staged.length})` : ''}
+                    {c.commitButton(staged.length)}
                 </button>
             </div>
         </div>
@@ -4997,6 +5005,7 @@ function FileGroup({
     // working tree, y confundirlos muestra el parche equivocado.
     staged?: boolean
 }) {
+    const c = useT().git.tab.changes
     return (
         <div>
             <p className="sticky top-0 z-10 flex items-center gap-1.5 bg-surface-container-low px-3 py-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70">
@@ -5029,14 +5038,14 @@ function FileGroup({
                             de escribirlo, sin ir y volver al panel derecho. */}
                         <button
                             onClick={() => onToggleDiff(f.path, !!staged)}
-                            title={diff ? `Ocultar los cambios de ${name}` : `Ver los cambios de ${name} acá mismo, sin cambiar de panel`}
+                            title={diff ? c.hideFileChanges({name}) : c.showFileChanges({name})}
                             className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name={diff ? 'expand_more' : 'chevron_right'} size={13} />
                         </button>
                         <button
                             onClick={() => onSelectPath(f.path)}
-                            title={f.origPath ? `Ver el diff de ${f.path} (renombrado desde ${f.origPath})` : `Ver el diff de ${f.path}`}
+                            title={f.origPath ? c.viewDiffRenamed({path: f.path, from: f.origPath}) : c.viewDiff({path: f.path})}
                             className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left"
                         >
                             <span className="shrink-0 truncate text-on-surface">{name}</span>
@@ -5073,13 +5082,14 @@ function FileGroup({
 // user most often misreads as an error.
 function StatusChip({file}: {file: git.FileStatus}) {
     const code = file.untracked ? '?' : file.staged ? file.indexStatus : file.workStatus
+    const s = useT().git.tab.status
     const meaning: Record<string, {label: string; cls: string}> = {
-        M: {label: 'Modificado', cls: 'text-tertiary'},
-        A: {label: 'Agregado', cls: 'text-secondary'},
-        D: {label: 'Borrado', cls: 'text-error'},
-        R: {label: 'Renombrado', cls: 'text-primary'},
-        C: {label: 'Copiado', cls: 'text-primary'},
-        '?': {label: 'Sin trackear — git todavía no lo conoce', cls: 'text-on-surface-variant/60'},
+        M: {label: s.modified, cls: 'text-tertiary'},
+        A: {label: s.added, cls: 'text-secondary'},
+        D: {label: s.deleted, cls: 'text-error'},
+        R: {label: s.renamed, cls: 'text-primary'},
+        C: {label: s.copied, cls: 'text-primary'},
+        '?': {label: s.untracked, cls: 'text-on-surface-variant/60'},
     }
     const m = meaning[code] ?? {label: code, cls: 'text-on-surface-variant'}
     return (

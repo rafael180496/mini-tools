@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // Contexto de esquema para el asistente de consultas.
@@ -50,7 +51,7 @@ type SchemaContext struct {
 // seguido en el SQL que en la frase.
 func BuildSchemaContext(meta *db.SchemaMetadata, dbType db.DBType, text string) SchemaContext {
 	if meta == nil || len(meta.Tables) == 0 {
-		return SchemaContext{Text: "(no se pudo leer el esquema de esta conexión)"}
+		return SchemaContext{Text: i18n.T(i18n.Msg{ES: "(no se pudo leer el esquema de esta conexión)", EN: "(the schema of this connection could not be read)"})}
 	}
 
 	byName := make(map[string]*db.Table, len(meta.Tables))
@@ -100,7 +101,7 @@ func BuildSchemaContext(meta *db.SchemaMetadata, dbType db.DBType, text string) 
 		// Nada reconocible en el pedido: se listan los NOMBRES para que el
 		// agente sepa qué hay, sin gastar contexto en columnas que quizá no
 		// necesite.
-		b.WriteString(fmt.Sprintf("-- El pedido no menciona ninguna tabla conocida. Tablas disponibles (%d):\n", len(meta.Tables)))
+		b.WriteString(i18n.T(i18n.Msg{ES: "-- El pedido no menciona ninguna tabla conocida. Tablas disponibles (%d):", EN: "-- The request does not mention any known table. Available tables (%d):"}, len(meta.Tables)) + "\n")
 		names := make([]string, 0, len(meta.Tables))
 		for i := range meta.Tables {
 			names = append(names, qualifiedName(meta.Tables[i]))
@@ -108,23 +109,25 @@ func BuildSchemaContext(meta *db.SchemaMetadata, dbType db.DBType, text string) 
 		sort.Strings(names)
 		if len(names) > maxNameOnlyTables {
 			names = names[:maxNameOnlyTables]
-			b.WriteString("-- (lista recortada)\n")
+			b.WriteString(i18n.T(i18n.Msg{ES: "-- (lista recortada)", EN: "-- (list truncated)"}) + "\n")
 		}
 		b.WriteString("-- " + strings.Join(names, ", ") + "\n")
-		b.WriteString("-- Si necesitás el detalle de alguna, pedilo antes de escribir la consulta.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "-- Si necesitás el detalle de alguna, pedilo antes de escribir la consulta.", EN: "-- If you need the details of any of them, ask for it before writing the query."}) + "\n")
 		out.Text = b.String()
 		return out
 	}
 
-	b.WriteString(fmt.Sprintf("-- Esquema de %s (%d de %d tablas, elegidas por lo que menciona el pedido)\n\n",
-		dialectName(dbType), len(list), len(meta.Tables)))
+	b.WriteString(i18n.T(i18n.Msg{
+		ES: "-- Esquema de %s (%d de %d tablas, elegidas por lo que menciona el pedido)",
+		EN: "-- %s schema (%d of %d tables, chosen from what the request mentions)",
+	}, dialectName(dbType), len(list), len(meta.Tables)) + "\n\n")
 	for _, t := range list {
 		out.Included = append(out.Included, qualifiedName(*t))
 		b.WriteString(tableDDL(*t))
 		b.WriteString("\n")
 	}
 	if len(meta.Tables) > len(list) {
-		b.WriteString(fmt.Sprintf("-- Hay %d tablas más en esta conexión que no se incluyeron acá.\n", len(meta.Tables)-len(list)))
+		b.WriteString(i18n.T(i18n.Msg{ES: "-- Hay %d tablas más en esta conexión que no se incluyeron acá.", EN: "-- There are %d more tables in this connection that were not included here."}, len(meta.Tables)-len(list)) + "\n")
 	}
 	out.Text = b.String()
 	return out

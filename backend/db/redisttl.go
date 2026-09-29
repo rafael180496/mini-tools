@@ -2,10 +2,11 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"mini-tools/backend/i18n"
 )
 
 // TTL management for a key, split out from rediskeys.go so the expiry
@@ -27,18 +28,18 @@ import (
 // "no expiry". Removing an expiry is PersistRedisKey's job, explicitly.
 func SetRedisKeyTTL(ctx context.Context, client redis.UniversalClient, key string, seconds int64) error {
 	if seconds <= 0 {
-		return fmt.Errorf("db: un TTL de %d segundos borraría la clave; usá PERSIST para quitar el vencimiento", seconds)
+		return i18n.Errorf(i18n.Msg{ES: "db: un TTL de %d segundos borraría la clave; usá PERSIST para quitar el vencimiento", EN: "db: a TTL of %d seconds would delete the key; use PERSIST to remove the expiry"}, seconds)
 	}
 
 	ok, err := client.Expire(ctx, key, time.Duration(seconds)*time.Second).Result()
 	if err != nil {
-		return fmt.Errorf("db: EXPIRE de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: EXPIRE de %q: %w", EN: "db: EXPIRE of %q: %w"}, key, err)
 	}
 	if !ok {
 		// EXPIRE returns 0 when the key does not exist — which, in a
 		// browser, most often means it expired between the listing and the
 		// click. Saying so beats a silent no-op.
-		return fmt.Errorf("db: la clave %q ya no existe (¿venció?)", key)
+		return i18n.Errorf(i18n.Msg{ES: "db: la clave %q ya no existe (¿venció?)", EN: "db: key %q no longer exists (did it expire?)"}, key)
 	}
 	return nil
 }
@@ -52,7 +53,7 @@ func SetRedisKeyTTL(ctx context.Context, client redis.UniversalClient, key strin
 func PersistRedisKey(ctx context.Context, client redis.UniversalClient, key string) error {
 	changed, err := client.Persist(ctx, key).Result()
 	if err != nil {
-		return fmt.Errorf("db: PERSIST de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: PERSIST de %q: %w", EN: "db: PERSIST of %q: %w"}, key, err)
 	}
 	if changed {
 		return nil
@@ -60,10 +61,10 @@ func PersistRedisKey(ctx context.Context, client redis.UniversalClient, key stri
 
 	exists, err := client.Exists(ctx, key).Result()
 	if err != nil {
-		return fmt.Errorf("db: EXISTS de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: EXISTS de %q: %w", EN: "db: EXISTS of %q: %w"}, key, err)
 	}
 	if exists == 0 {
-		return fmt.Errorf("db: la clave %q ya no existe (¿venció?)", key)
+		return i18n.Errorf(i18n.Msg{ES: "db: la clave %q ya no existe (¿venció?)", EN: "db: key %q no longer exists (did it expire?)"}, key)
 	}
 	return nil // Already persistent.
 }

@@ -12,6 +12,7 @@ import MongoPager from './MongoPager'
 import {mongoResultToTable} from '../../lib/mongoResultToTable'
 import {fieldKey} from '../../lib/mongoFilter'
 import {deriveFieldModel, valueToLiteral} from '../../lib/mongoFields'
+import {useT} from '../../i18n'
 
 interface MongoDocumentPanelProps {
     connId: string
@@ -26,6 +27,8 @@ interface MongoDocumentPanelProps {
 // names + operators, can be built with a wizard, and — like Redis's tree — a
 // field can be clicked in any document to filter by it.
 export default function MongoDocumentPanel({connId, database, collection}: MongoDocumentPanelProps) {
+    const t = useT()
+    const dp = t.mongo.documents
     const [docs, setDocs] = useState<string[]>([])
     const [total, setTotal] = useState(0)
     const [page, setPage] = useState(0)
@@ -143,19 +146,19 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
         setMessage('')
         try {
             await ReplaceMongoDocument(connId, database, collection, draft)
-            setMessage('Documento actualizado')
+            setMessage(dp.updated)
             void load(page, appliedFilter, pageSize)
         } catch (e) {
-            setError(`No se pudo guardar: ${e}`)
+            setError(dp.saveFailed({error: String(e)}))
         }
     }
 
     async function copyDoc(doc: string) {
         try {
             await navigator.clipboard.writeText(prettyJson(doc))
-            setMessage('Documento copiado al portapapeles')
+            setMessage(dp.copied)
         } catch {
-            setError('No se pudo copiar')
+            setError(dp.copyFailed)
         }
     }
 
@@ -163,14 +166,15 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
         setMessage('')
         try {
             await DeleteMongoDocument(connId, database, collection, doc)
-            setMessage('Documento eliminado')
+            setMessage(dp.deleted)
             void load(page, appliedFilter, pageSize)
         } catch (e) {
-            setError(`No se pudo eliminar: ${e}`)
+            setError(dp.deleteFailed({error: String(e)}))
         }
     }
 
-    const table = viewMode === 'table' && docs.length > 0 ? mongoResultToTable(docs) : {columns: [], rows: []}
+    const isTable = viewMode === 'table'
+    const table = isTable && docs.length > 0 ? mongoResultToTable(docs) : {columns: [], rows: []}
 
     return (
         <div className="flex h-full flex-col">
@@ -182,20 +186,20 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
                 <div className="inline-flex shrink-0 overflow-hidden rounded-md border border-outline-variant">
                     <button
                         onClick={() => setViewMode('json')}
-                        title="Ver documentos como JSON con color"
+                        title={dp.viewJsonHint}
                         className={`px-2 py-0.5 ${viewMode === 'json' ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
                     >
                         JSON
                     </button>
                     <button
                         onClick={() => setViewMode('table')}
-                        title="Ver documentos como tabla"
+                        title={dp.viewTableHint}
                         className={`px-2 py-0.5 ${viewMode === 'table' ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
                     >
-                        Tabla
+                        {dp.table}
                     </button>
                 </div>
-                <span className="shrink-0 text-on-surface-variant">{total} doc(s)</span>
+                <span className="shrink-0 text-on-surface-variant">{dp.count(total)}</span>
             </div>
 
             {/* Filter row */}
@@ -203,24 +207,24 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
                 <MongoFilterInput value={filter} onChange={setFilter} onApply={applyFilter} fields={fieldModel.fields} valuesByField={fieldModel.valuesByField} />
                 <button
                     onClick={() => setShowWizard(true)}
-                    title="Asistente para construir el filtro sin escribir JSON"
+                    title={dp.wizardHint}
                     className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-2 py-1 text-on-surface-variant hover:bg-surface-container-high"
                 >
                     <Icon name="filter_alt" size={14} />
-                    Asistente
+                    {dp.wizard}
                 </button>
-                <button onClick={applyFilter} title="Aplicar filtro (Enter)" className="shrink-0 rounded bg-primary px-2.5 py-1 text-on-primary">
-                    Filtrar
+                <button onClick={applyFilter} title={dp.filterHint} className="shrink-0 rounded bg-primary px-2.5 py-1 text-on-primary">
+                    {dp.filter}
                 </button>
                 {appliedFilter && (
-                    <button onClick={clearFilter} title="Quitar el filtro" className="shrink-0 rounded px-2 py-1 text-on-surface-variant hover:text-on-surface">
-                        Limpiar
+                    <button onClick={clearFilter} title={dp.clearHint} className="shrink-0 rounded px-2 py-1 text-on-surface-variant hover:text-on-surface">
+                        {dp.clear}
                     </button>
                 )}
             </div>
 
             <p className="px-2 py-0.5 text-ui-10 text-on-surface-variant/60">
-                Ctrl+Espacio autocompleta campos y valores · doble-click un campo de un documento para filtrar por él
+                {dp.tip}
             </p>
 
             {error && <p className="px-2 py-1 text-xs text-error">{error}</p>}
@@ -228,10 +232,10 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
 
             <div className="flex-1 overflow-y-auto p-2">
                 {loading ? (
-                    <p className="text-xs text-on-surface-variant">Cargando…</p>
+                    <p className="text-xs text-on-surface-variant">{t.common.loading}</p>
                 ) : docs.length === 0 ? (
-                    <p className="text-xs text-on-surface-variant">Sin documentos.</p>
-                ) : viewMode === 'table' ? (
+                    <p className="text-xs text-on-surface-variant">{dp.empty}</p>
+                ) : isTable ? (
                     <MongoDocTable columns={table.columns} rows={table.rows} />
                 ) : (
                     <div className="space-y-1.5">
@@ -246,18 +250,18 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
                                             <button
                                                 onClick={saveEdit}
                                                 disabled={!draftValid}
-                                                title={draftValid ? 'Guardar (replaceOne por _id)' : 'El JSON tiene errores de sintaxis'}
+                                                title={draftValid ? dp.saveHint : dp.jsonErrors}
                                                 className="shrink-0 rounded bg-primary px-2 py-0.5 text-xs text-on-primary disabled:opacity-40"
                                             >
-                                                Guardar
+                                                {t.common.save}
                                             </button>
-                                            <button onClick={() => setEditing(null)} title="Cancelar edición" className="shrink-0 rounded px-2 py-0.5 text-xs text-on-surface-variant hover:text-on-surface">
-                                                Cancelar
+                                            <button onClick={() => setEditing(null)} title={dp.cancelEditHint} className="shrink-0 rounded px-2 py-0.5 text-xs text-on-surface-variant hover:text-on-surface">
+                                                {t.common.cancel}
                                             </button>
                                         </>
                                     ) : (
                                         <>
-                                            <button onClick={() => copyDoc(d)} title="Copiar el documento (JSON) al portapapeles" className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-on-surface">
+                                            <button onClick={() => copyDoc(d)} title={dp.copyHint} className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-on-surface">
                                                 <Icon name="content_copy" size={14} />
                                             </button>
                                             <button
@@ -266,12 +270,12 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
                                                     setDraft(prettyJson(d))
                                                     setDraftValid(true)
                                                 }}
-                                                title="Editar este documento como JSON"
+                                                title={dp.editHint}
                                                 className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-on-surface"
                                             >
                                                 <Icon name="edit" size={14} />
                                             </button>
-                                            <button onClick={() => setPendingDelete(d)} title="Eliminar este documento" className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-error">
+                                            <button onClick={() => setPendingDelete(d)} title={dp.deleteHint} className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-error">
                                                 <Icon name="delete" size={14} />
                                             </button>
                                         </>
@@ -312,9 +316,9 @@ export default function MongoDocumentPanel({connId, database, collection}: Mongo
 
             {pendingDelete && (
                 <ConfirmDialog
-                    title="Eliminar documento"
-                    description="Se eliminará este documento (deleteOne por _id). Es irreversible."
-                    confirmLabel="Eliminar"
+                    title={dp.deleteTitle}
+                    description={dp.deleteConfirm}
+                    confirmLabel={dp.delete}
                     danger
                     onConfirm={() => doDelete(pendingDelete)}
                     onClose={() => setPendingDelete(null)}

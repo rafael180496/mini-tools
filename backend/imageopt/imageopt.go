@@ -26,13 +26,14 @@ package imageopt
 
 import (
 	"bytes"
-	"fmt"
 	"image"
 	"image/png"
 
 	// Registran los decodificadores para image.DecodeConfig/Decode. El de GIF
 	// no se importa a propósito: si no se puede decodificar, no se acepta.
 	_ "image/jpeg"
+
+	"mini-tools/backend/i18n"
 )
 
 // Result es la imagen ya validada y, si correspondía, comprimida.
@@ -62,9 +63,9 @@ func Prepare(raw []byte) (Result, error) {
 	switch mime {
 	case "image/png", "image/jpeg":
 	case "":
-		return Result{}, fmt.Errorf("eso no es una imagen PNG ni JPG")
+		return Result{}, i18n.Errorf(i18n.Msg{ES: "eso no es una imagen PNG ni JPG", EN: "that's not a PNG or JPG image"})
 	default:
-		return Result{}, fmt.Errorf("solo se aceptan imágenes PNG y JPG, y esto es %s", mime)
+		return Result{}, i18n.Errorf(i18n.Msg{ES: "solo se aceptan imágenes PNG y JPG, y esto es %s", EN: "only PNG and JPG images are accepted, and this is %s"}, mime)
 	}
 
 	// Se decodifica la configuración para confirmar que la imagen es válida y
@@ -72,7 +73,7 @@ func Prepare(raw []byte) (Result, error) {
 	// falla acá y no al mostrarlo.
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
 	if err != nil {
-		return Result{}, fmt.Errorf("la imagen está dañada o incompleta: %w", err)
+		return Result{}, i18n.Errorf(i18n.Msg{ES: "la imagen está dañada o incompleta: %w", EN: "the image is damaged or incomplete: %w"}, err)
 	}
 
 	out := Result{Data: raw, Mime: mime, OriginalSize: len(raw), Width: cfg.Width, Height: cfg.Height}

@@ -11,6 +11,7 @@ import {MenuButton, menuAnchor, moveToFolderSubmenu, useTreeMenu, type TreeMenuE
 import {flattenForMenu} from './MoveToFolderMenu'
 import {buildFolderTree, countConnectionsIn, type FolderNode} from '../../lib/folderTree'
 import {environmentStyle} from '../../lib/environments'
+import {useT} from '../../i18n'
 
 // envStyleOf resolves a connection's environment marking to its colours. See
 // lib/environments.ts — an unmarked connection renders exactly as before.
@@ -119,6 +120,10 @@ export default function SshConnectionTree({
     onMatchCount,
     onMoveConnectionToFolder,
 }: SshConnectionTreeProps) {
+    const t = useT()
+    const ts = t.sidebar.ssh
+    const tc = t.sidebar.connections
+    const tf = t.sidebar.folders
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
     // Intérpretes disponibles en esta máquina, para el menú de terminal local.
     // Se piden al abrir el menú y no al montar la barra: es una lista que solo
@@ -206,19 +211,19 @@ export default function SshConnectionTree({
 
     const shellItems = (shells: localterm.Shell[]): TreeMenuEntry[] => [
         {
-            label: 'Predeterminada',
+            label: ts.defaultShell,
             icon: 'terminal',
-            title: 'Abre el intérprete elegido en Configuración → Terminal',
-            onSelect: () => onOpenLocalTerminal('', 'shell por defecto'),
+            title: ts.defaultShellTitle,
+            onSelect: () => onOpenLocalTerminal('', ts.defaultShellTabLabel),
         },
         ...(shells.length ? (['separator'] as TreeMenuEntry[]) : []),
         ...shells.map(
             (sh): TreeMenuEntry => ({
                 label: sh.label,
                 icon: 'terminal',
-                hint: sh.available ? undefined : 'falta',
+                hint: sh.available ? undefined : ts.shellMissing,
                 disabled: !sh.available,
-                title: sh.available ? `Abre ${sh.label} (${sh.path}) en una pestaña nueva` : `${sh.label} no está instalado en esta máquina`,
+                title: sh.available ? ts.shellOpenTitle({label: sh.label, path: sh.path}) : ts.shellNotInstalled({label: sh.label}),
                 onSelect: () => onOpenLocalTerminal(sh.id, sh.label),
             }),
         ),
@@ -228,27 +233,27 @@ export default function SshConnectionTree({
         const liveCount = liveSessionCounts.get(c.id) ?? 0
         const isLive = liveConnIds.has(c.id)
         menu.openAt(e, [
-            {label: 'Abrir terminal', icon: 'terminal', hint: 'clic', title: 'Abre la terminal de este servidor, o la enfoca si ya está abierta', onSelect: () => onOpenSshTerminal(c)},
+            {label: ts.openTerminal, icon: 'terminal', hint: ts.click, title: ts.openTerminalTitle, onSelect: () => onOpenSshTerminal(c)},
             {
-                label: 'Nueva terminal',
+                label: ts.newTerminal,
                 icon: 'add',
-                title: 'Abre otra sesión contra este servidor, además de las que ya estén abiertas. Todas comparten una sola conexión SSH: no se autentica de nuevo',
+                title: ts.newTerminalTitle,
                 onSelect: () => onOpenSshTerminalSession(c),
             },
-            {label: 'Explorador SFTP', icon: 'swap_horiz', title: 'Transferir archivos entre esta máquina y el servidor', onSelect: () => onOpenSftp(c)},
+            {label: ts.sftp, icon: 'swap_horiz', title: ts.sftpTitle, onSelect: () => onOpenSftp(c)},
             {
-                label: 'Sesión combinada',
+                label: ts.hybrid,
                 icon: 'vertical_split',
-                title: 'Consola y explorador de archivos del mismo servidor en una sola pestaña, sobre una única conexión SSH (Ctrl+Shift+F muestra u oculta los archivos)',
+                title: ts.hybridTitle,
                 onSelect: () => onOpenSshHybrid(c),
             },
             'separator',
-            {label: 'Editar conexión', icon: 'edit', onSelect: () => onEditConnection(c)},
-            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFoldersForMenu, c.folderId ?? '', (f) => onMoveConnectionToFolder(c.id, f))},
+            {label: tc.editConnection, icon: 'edit', onSelect: () => onEditConnection(c)},
+            {label: tf.moveTo, icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFoldersForMenu, c.folderId ?? '', (f) => onMoveConnectionToFolder(c.id, f))},
             {
-                label: 'Exportar configuración',
+                label: tc.exportConfig,
                 icon: 'output',
-                title: 'Guarda host, puerto y usuario en un archivo — nunca la contraseña ni la llave privada',
+                title: ts.exportConfigTitle,
                 onSelect: () => onExportConnectionConfig(c.id),
             },
             'separator',
@@ -257,14 +262,14 @@ export default function SshConnectionTree({
             ...(isLive
                 ? [
                       {
-                          label: liveCount > 1 ? `Desconectar (${liveCount} sesiones)` : 'Desconectar',
+                          label: liveCount > 1 ? ts.disconnectSessions({count: liveCount}) : tc.disconnect,
                           icon: 'power_settings_new',
-                          title: 'Cierra las sesiones de terminal abiertas contra este servidor — la conexión guardada queda intacta',
+                          title: ts.disconnectTitle,
                           onSelect: () => onDisconnect(c.id),
                       } as TreeMenuEntry,
                   ]
                 : []),
-            {label: 'Eliminar conexión', icon: 'delete', danger: true, onSelect: () => setConfirmDelete(c)},
+            {label: tc.deleteConnection, icon: 'delete', danger: true, onSelect: () => setConfirmDelete(c)},
         ])
     }
 
@@ -272,19 +277,19 @@ export default function SshConnectionTree({
         const f = node.folder
         const open = isFolderExpanded(f.id)
         menu.openAt(e, [
-            {label: 'Subcarpeta nueva', icon: 'create_new_folder', onSelect: () => startCreateFolder(f.id)},
+            {label: tf.newSubfolder, icon: 'create_new_folder', onSelect: () => startCreateFolder(f.id)},
             'separator',
-            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: !!q, onSelect: () => toggleFolder(f.id)},
+            {label: open ? t.common.collapse : t.common.expand, icon: open ? 'unfold_less' : 'unfold_more', disabled: !!q, onSelect: () => toggleFolder(f.id)},
             'separator',
-            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => setRenamingFolder(f)},
-            {label: 'Subir', icon: 'arrow_upward', title: 'Mueve la carpeta un lugar hacia arriba entre sus hermanas', onSelect: () => onReorderFolder(f.id, 'up')},
-            {label: 'Bajar', icon: 'arrow_downward', title: 'Mueve la carpeta un lugar hacia abajo entre sus hermanas', onSelect: () => onReorderFolder(f.id, 'down')},
+            {label: tf.rename, icon: 'edit', onSelect: () => setRenamingFolder(f)},
+            {label: tf.moveUp, icon: 'arrow_upward', title: tf.moveUpTitle, onSelect: () => onReorderFolder(f.id, 'up')},
+            {label: tf.moveDown, icon: 'arrow_downward', title: tf.moveDownTitle, onSelect: () => onReorderFolder(f.id, 'down')},
             'separator',
             {
-                label: 'Eliminar carpeta',
+                label: tf.deleteFolder,
                 icon: 'delete',
                 danger: true,
-                title: 'Su contenido se mueve a la carpeta contenedora, nunca se borra',
+                title: tf.deleteFolderTitle,
                 onSelect: () => setConfirmDeleteFolder(f),
             },
         ])
@@ -292,13 +297,13 @@ export default function SshConnectionTree({
 
     const blankMenu = (e: ReactMouseEvent) =>
         openWithShells(e, (shells) => [
-            {label: 'Conexión SSH nueva', icon: 'add', onSelect: onNewConnection},
-            {label: 'Carpeta nueva', icon: 'create_new_folder', onSelect: () => startCreateFolder('')},
+            {label: ts.newConnection, icon: 'add', onSelect: onNewConnection},
+            {label: tf.newFolder, icon: 'create_new_folder', onSelect: () => startCreateFolder('')},
             'separator',
-            {label: 'Terminal de esta máquina', icon: 'terminal', submenu: shellItems(shells)},
+            {label: ts.localTerminal, icon: 'terminal', submenu: shellItems(shells)},
             'separator',
-            {label: 'Desplegar todo', icon: 'unfold_more', disabled: !!q || sshFolders.length === 0, onSelect: expandAll},
-            {label: 'Plegar todo', icon: 'unfold_less', disabled: !!q || sshFolders.length === 0, onSelect: collapseAll},
+            {label: tf.expandAll, icon: 'unfold_more', disabled: !!q || sshFolders.length === 0, onSelect: expandAll},
+            {label: tf.collapseAll, icon: 'unfold_less', disabled: !!q || sshFolders.length === 0, onSelect: collapseAll},
         ])
 
     function renderConnectionRow(c: vault.ConnectionSummary, depth: number) {
@@ -329,10 +334,7 @@ export default function SshConnectionTree({
                 }
                 labelClass={isActive ? 'text-on-surface font-medium' : undefined}
                 title={
-                    c.name +
-                    (env ? ` · ${env.label}` : '') +
-                    (isLive ? ` · ${liveCount > 1 ? `${liveCount} sesiones abiertas` : 'sesión abierta'}` : '') +
-                    '. Clic: abrir su terminal (o enfocarla). Clic derecho: más opciones.'
+                    ts.rowTitle({name: c.name, env: env?.label ?? '', live: isLive, count: liveCount})
                 }
                 onClick={() => onOpenSshTerminal(c)}
                 onContextMenu={(e) => connectionMenu(e, c)}
@@ -342,7 +344,7 @@ export default function SshConnectionTree({
                     isLive ? (
                         liveCount > 1 ? (
                             <span
-                                title={`${liveCount} sesiones SSH abiertas contra este servidor`}
+                                title={ts.liveCountTitle({count: liveCount})}
                                 className="rounded-full bg-secondary/15 px-1 text-ui-9 leading-tight font-semibold tabular-nums text-secondary"
                             >
                                 {liveCount}
@@ -350,7 +352,7 @@ export default function SshConnectionTree({
                         ) : (
                             <span
                                 aria-hidden
-                                title="Hay una sesión SSH abierta contra este servidor"
+                                title={ts.liveDot}
                                 className="h-1.5 w-1.5 rounded-full bg-secondary"
                             />
                         )
@@ -368,7 +370,7 @@ export default function SshConnectionTree({
                                         e.stopPropagation()
                                         onOpenSshTerminalSession(c)
                                     }}
-                                    title="Nueva terminal — abre otra sesión contra este servidor. Todas comparten una sola conexión SSH: no se autentica de nuevo"
+                                    title={ts.newTerminalButtonTitle}
                                     className="sidebar-icon p-0.5!"
                                 >
                                     <Icon name="add" size={14} />
@@ -380,8 +382,8 @@ export default function SshConnectionTree({
                                     }}
                                     title={
                                         liveCount > 1
-                                            ? `Cerrar las ${liveCount} sesiones de terminal abiertas contra este servidor — la conexión guardada queda intacta`
-                                            : 'Cerrar la sesión de terminal abierta contra este servidor — la conexión guardada queda intacta'
+                                            ? ts.closeSessions({count: liveCount})
+                                            : ts.closeSession
                                     }
                                     className="rounded p-0.5 text-error hover:bg-error-container/40"
                                 >
@@ -389,7 +391,7 @@ export default function SshConnectionTree({
                                 </button>
                             </>
                         )}
-                        <MenuButton onOpen={(e) => connectionMenu(e, c)} title="Opciones del servidor: terminal, SFTP, editar, mover, exportar, eliminar" />
+                        <MenuButton onOpen={(e) => connectionMenu(e, c)} title={ts.serverOptions} />
                     </>
                 }
             />
@@ -413,13 +415,13 @@ export default function SshConnectionTree({
                     iconFilled={!expanded}
                     label={node.folder.name}
                     labelClass="text-on-surface font-medium"
-                    title={`${node.folder.name} — ${total} ${total === 1 ? 'servidor' : 'servidores'}. Clic derecho: más opciones.`}
+                    title={ts.folderTitle({name: node.folder.name, count: total})}
                     expanded={expanded}
                     onToggle={() => toggleFolder(node.folder.id)}
                     onClick={() => toggleFolder(node.folder.id)}
                     onContextMenu={(e) => folderMenu(e, node)}
                     trailing={total > 0 ? <span className="text-ui-10 tabular-nums text-on-surface-variant/50">{total}</span> : undefined}
-                    actions={<MenuButton onOpen={(e) => folderMenu(e, node)} title="Opciones de la carpeta" />}
+                    actions={<MenuButton onOpen={(e) => folderMenu(e, node)} title={tf.folderOptions} />}
                 />
                 {expanded && (
                     <>
@@ -430,7 +432,7 @@ export default function SshConnectionTree({
                                 style={{paddingLeft: `${(depth + 1) * TREE_INDENT + 28}px`}}
                                 className="py-0.5 text-ui-11 text-on-surface-variant/60"
                             >
-                                {q ? 'Sin coincidencias.' : 'Carpeta vacía.'}
+                                {q ? tf.noMatches : tf.emptyFolder}
                             </p>
                         )}
                     </>
@@ -444,12 +446,12 @@ export default function SshConnectionTree({
     return (
         <SidebarSection
             title="SSH"
-            count={q ? `${rootConnections.length + visibleFolderNodes.length} de ${connections.length}` : connections.length ? String(connections.length) : null}
+            count={q ? tf.countOf({shown: rootConnections.length + visibleFolderNodes.length, total: connections.length}) : connections.length ? String(connections.length) : null}
             actions={
                 <>
                     <button
                         onClick={() => startCreateFolder('')}
-                        title="Crea una carpeta para agrupar servidores SSH — las carpetas solo organizan, nunca cambian a qué host apunta una conexión"
+                        title={ts.newFolderTitle}
                         className={headerBtn}
                     >
                         <Icon name="create_new_folder" size={16} />
@@ -459,12 +461,12 @@ export default function SshConnectionTree({
                         disabled={!!q || sshFolders.length === 0}
                         title={
                             q
-                                ? 'Con una búsqueda activa las carpetas ya están desplegadas'
+                                ? ts.searchKeepsOpen
                                 : sshFolders.length === 0
-                                  ? 'Todavía no hay carpetas que desplegar'
+                                  ? ts.noFoldersToExpand
                                   : expandedFolders.size > 0
-                                    ? 'Plegar todas las carpetas'
-                                    : 'Desplegar todas las carpetas'
+                                    ? ts.collapseAllTitle
+                                    : tf.expandAllTitle
                         }
                         className={headerBtn}
                     >
@@ -477,12 +479,12 @@ export default function SshConnectionTree({
                         acaba de bajar). */}
                     <button
                         onClick={(e) => openWithShells(e, shellItems)}
-                        title="Abre una terminal de ESTA máquina (PowerShell, zsh, bash…) en una pestaña, con los mismos snippets y su propio historial. No es un servidor: lo que ejecutes corre en tu equipo."
+                        title={ts.localTerminalTitle}
                         className={headerBtn}
                     >
                         <Icon name="terminal" size={16} />
                     </button>
-                    <button onClick={onNewConnection} title="Crea una nueva conexión SSH (host, usuario y clave o llave)" className={headerBtn}>
+                    <button onClick={onNewConnection} title={ts.newConnectionTitle} className={headerBtn}>
                         <Icon name="add" size={16} />
                     </button>
                 </>
@@ -494,7 +496,7 @@ export default function SshConnectionTree({
             <div className="min-h-0 flex-1 pb-6" onContextMenu={blankMenu}>
                 {rootConnections.length === 0 && visibleFolderNodes.length === 0 && (
                     <p className="p-3 text-xs text-on-surface-variant/60">
-                        {q ? `Sin coincidencias para "${filter}".` : 'Sin conexiones SSH todavía.'}
+                        {q ? tf.noMatchesFor({query: filter}) : ts.noConnections}
                     </p>
                 )}
                 {visibleFolderNodes.map((node) => renderFolderNode(node, 0))}
@@ -505,11 +507,11 @@ export default function SshConnectionTree({
 
             {creatingFolderIn !== null && (
                 <PromptDialog
-                    title={creatingFolderIn ? 'Subcarpeta nueva' : 'Carpeta nueva'}
-                    label="Nombre"
-                    placeholder="Nombre de la carpeta..."
-                    confirmLabel="Crear"
-                    description="Las carpetas solo organizan: nunca cambian a qué host apunta una conexión."
+                    title={creatingFolderIn ? tf.newSubfolder : tf.newFolder}
+                    label={tf.nameLabel}
+                    placeholder={tf.namePlaceholder}
+                    confirmLabel={tf.create}
+                    description={ts.foldersOnlyOrganize}
                     onSubmit={(value) => {
                         const parent = creatingFolderIn
                         setCreatingFolderIn(null)
@@ -520,10 +522,10 @@ export default function SshConnectionTree({
             )}
             {renamingFolder && (
                 <PromptDialog
-                    title="Cambiar el nombre de la carpeta"
-                    label="Nombre"
+                    title={tf.renameTitle}
+                    label={tf.nameLabel}
                     initial={renamingFolder.name}
-                    confirmLabel="Guardar"
+                    confirmLabel={t.common.save}
                     onSubmit={(value) => {
                         const id = renamingFolder.id
                         setRenamingFolder(null)
@@ -534,9 +536,9 @@ export default function SshConnectionTree({
             )}
             {confirmDelete && (
                 <ConfirmDialog
-                    title="Eliminar conexión"
-                    description={`Esto elimina "${confirmDelete.name}" del vault de forma permanente. Cualquier terminal abierta contra ella se cierra. No se puede deshacer.`}
-                    confirmLabel="Eliminar"
+                    title={tc.deleteConnection}
+                    description={ts.deleteConnectionDesc({name: confirmDelete.name})}
+                    confirmLabel={tf.deleteAction}
                     danger
                     onConfirm={() => onDeleteConnection(confirmDelete.id)}
                     onClose={() => setConfirmDelete(null)}
@@ -544,9 +546,9 @@ export default function SshConnectionTree({
             )}
             {confirmDeleteFolder && (
                 <ConfirmDialog
-                    title="Eliminar carpeta"
-                    description={`Esto elimina la carpeta "${confirmDeleteFolder.name}". Las conexiones y subcarpetas que tenga adentro se mueven a la carpeta contenedora (o a la raíz) — nunca se borran.`}
-                    confirmLabel="Eliminar"
+                    title={tf.deleteFolder}
+                    description={tc.deleteFolderDesc({name: confirmDeleteFolder.name})}
+                    confirmLabel={tf.deleteAction}
                     danger
                     onConfirm={() => onDeleteFolder(confirmDeleteFolder.id)}
                     onClose={() => setConfirmDeleteFolder(null)}

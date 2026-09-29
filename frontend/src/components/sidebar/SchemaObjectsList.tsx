@@ -3,6 +3,7 @@ import {db} from '../../../wailsjs/go/models'
 import type {DDLObjectType} from '../DDLViewerModal'
 import TreeRow from './TreeRow'
 import {MenuButton, type TreeMenuEntry} from './TreeMenu'
+import {useT} from '../../i18n'
 
 export interface OpenDDLParams {
     objectType: DDLObjectType
@@ -32,13 +33,6 @@ interface SchemaObjectsListProps {
 }
 
 type Category = 'procedures' | 'functions' | 'triggers' | 'packages'
-
-const CATEGORY_LABELS: Record<Category, string> = {
-    procedures: 'Procedures',
-    functions: 'Functions',
-    triggers: 'Triggers',
-    packages: 'Packages',
-}
 
 const CATEGORY_ICONS: Record<Category, string> = {
     procedures: 'terminal',
@@ -71,6 +65,8 @@ const copy = (text: string) => void navigator.clipboard.writeText(text).catch(()
 // active, so a category with a surviving match doesn't stay collapsed behind
 // a manual click.
 export default function SchemaObjectsList({procedures, functions, triggers, packages, onOpenDDL, depth, openMenu, forceExpanded}: SchemaObjectsListProps) {
+    const t = useT()
+    const o = t.sidebar.connections.objects
     const [expanded, setExpanded] = useState<Set<Category>>(new Set())
 
     function toggle(category: Category) {
@@ -85,11 +81,11 @@ export default function SchemaObjectsList({procedures, functions, triggers, pack
     const objectMenu = (e: ReactMouseEvent, p: OpenDDLParams) => {
         const qualified = p.schema ? `${p.schema}.${p.name}` : p.name
         openMenu(e, [
-            {label: 'Ver DDL', icon: 'code', onSelect: () => onOpenDDL(p)},
+            {label: o.viewDDL, icon: 'code', onSelect: () => onOpenDDL(p)},
             'separator',
-            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(p.name)},
+            {label: o.copyName, icon: 'content_copy', onSelect: () => copy(p.name)},
             ...(p.schema
-                ? [{label: 'Copiar con esquema', icon: 'content_copy', hint: qualified, title: `Copia ${qualified}`, onSelect: () => copy(qualified)}]
+                ? [{label: o.copyQualified, icon: 'content_copy', hint: qualified, title: o.copyQualifiedTitle({name: qualified}), onSelect: () => copy(qualified)}]
                 : []),
         ])
     }
@@ -97,24 +93,24 @@ export default function SchemaObjectsList({procedures, functions, triggers, pack
     function renderCategory(category: Category, rows: ObjectRow[]): ReactNode {
         if (rows.length === 0) return null
         const isExpanded = forceExpanded || expanded.has(category)
-        const label = CATEGORY_LABELS[category]
+        const label = o.categories[category]
         return (
             <div key={category}>
                 <TreeRow
                     depth={depth}
                     icon={CATEGORY_ICONS[category]}
                     label={label}
-                    title={`${isExpanded ? 'Plegar' : 'Ver'} ${label.toLowerCase()} (${rows.length})`}
+                    title={o.categoryTitle({expanded: isExpanded, label, count: rows.length})}
                     expanded={isExpanded}
                     onToggle={() => toggle(category)}
                     onClick={() => toggle(category)}
                     onContextMenu={(e) =>
                         openMenu(e, [
                             {
-                                label: isExpanded ? 'Plegar' : 'Desplegar',
+                                label: isExpanded ? t.common.collapse : t.common.expand,
                                 icon: isExpanded ? 'unfold_less' : 'unfold_more',
                                 disabled: forceExpanded,
-                                title: forceExpanded ? 'Con el filtro activo las categorías con coincidencias quedan abiertas' : undefined,
+                                title: forceExpanded ? o.filterKeepsOpen : undefined,
                                 onSelect: () => toggle(category),
                             },
                         ])
@@ -130,11 +126,11 @@ export default function SchemaObjectsList({procedures, functions, triggers, pack
                             iconClass="text-on-surface-variant/70"
                             label={r.params.name}
                             labelClass="text-on-surface-variant"
-                            title={`${r.params.schema ? `${r.params.schema}.` : ''}${r.params.name} — clic: ver su DDL actual`}
+                            title={o.objectTitle({name: `${r.params.schema ? `${r.params.schema}.` : ''}${r.params.name}`})}
                             onClick={() => onOpenDDL(r.params)}
                             onContextMenu={(e) => objectMenu(e, r.params)}
                             trailing={r.hint ? <span className="max-w-[90px] truncate text-ui-10 text-on-surface-variant/50">→ {r.hint}</span> : undefined}
-                            actions={<MenuButton onOpen={(e) => objectMenu(e, r.params)} title="Opciones del objeto" />}
+                            actions={<MenuButton onOpen={(e) => objectMenu(e, r.params)} title={o.objectOptions} />}
                         />
                     ))}
             </div>
@@ -160,10 +156,10 @@ export default function SchemaObjectsList({procedures, functions, triggers, pack
             )}
             {renderCategory(
                 'triggers',
-                triggers.map((t) => ({
-                    key: `${t.schema ?? ''}.${t.name}`,
-                    params: {objectType: 'trigger', schema: t.schema ?? '', name: t.name, oid: t.oid ?? 0},
-                    hint: t.table || undefined,
+                triggers.map((tr) => ({
+                    key: `${tr.schema ?? ''}.${tr.name}`,
+                    params: {objectType: 'trigger', schema: tr.schema ?? '', name: tr.name, oid: tr.oid ?? 0},
+                    hint: tr.table || undefined,
                 })),
             )}
             {renderCategory(

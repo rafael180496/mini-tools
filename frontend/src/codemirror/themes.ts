@@ -6,6 +6,7 @@ import {material} from '@uiw/codemirror-theme-material'
 import {solarizedLight, solarizedDark} from '@uiw/codemirror-theme-solarized'
 import {vscodeDark} from '@uiw/codemirror-theme-vscode'
 import {tokyoNight} from '@uiw/codemirror-theme-tokyo-night'
+import {t} from '../i18n'
 import type {Theme as AppTheme} from '../hooks/useTheme'
 
 // "auto" is not a real CodeMirror extension — it's resolved to
@@ -28,7 +29,10 @@ export const EDITOR_THEME_IDS = [
 export type EditorThemeId = (typeof EDITOR_THEME_IDS)[number]
 
 export const EDITOR_THEME_LABELS: Record<EditorThemeId, string> = {
-    auto: 'Automático (sigue el tema de la app)',
+    // Getter: se lee en el idioma activo cada vez, no al cargar el módulo.
+    get auto() {
+        return t().settings.themeAuto
+    },
     githubLight: 'GitHub Light',
     githubDark: 'GitHub Dark',
     dracula: 'Dracula',

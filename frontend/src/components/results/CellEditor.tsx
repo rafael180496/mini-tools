@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from 'react'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // El editor de UNA celda, elegido según el tipo de la columna.
 //
@@ -35,6 +36,7 @@ function toInputValue(kind: string, raw: string | null): string {
 }
 
 export default function CellEditor({kind, initial, nullable, onCommit, onCancel}: Props) {
+    const t = useT()
     const [value, setValue] = useState(() => toInputValue(kind, initial))
     const ref = useRef<HTMLInputElement | HTMLSelectElement>(null)
 
@@ -67,8 +69,8 @@ export default function CellEditor({kind, initial, nullable, onCommit, onCancel}
                     onKeyDown={keys}
                     className={common}
                 >
-                    <option value="true">true</option>
-                    <option value="false">false</option>
+                    <option value="true">{String(true)}</option>
+                    <option value="false">{String(false)}</option>
                 </select>
             ) : (
                 <input
@@ -88,7 +90,7 @@ export default function CellEditor({kind, initial, nullable, onCommit, onCancel}
             {nullable && (
                 <button
                     onClick={() => onCommit(null)}
-                    title="Deja la celda sin dato (NULL). Es distinto de dejarla vacía: la base guarda esa diferencia."
+                    title={t.results.cellEditor.nullTitle}
                     className="shrink-0 rounded px-1 text-ui-10 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     NULL
@@ -96,14 +98,14 @@ export default function CellEditor({kind, initial, nullable, onCommit, onCancel}
             )}
             <button
                 onClick={() => onCommit(value)}
-                title="Guarda el cambio como PENDIENTE. Todavía no toca la base: se manda con el botón de arriba."
+                title={t.results.cellEditor.commitTitle}
                 className="shrink-0 rounded text-primary hover:bg-surface-variant"
             >
                 <Icon name="check" size={13} />
             </button>
             <button
                 onClick={onCancel}
-                title="Descarta este cambio (Esc)"
+                title={t.results.cellEditor.cancelTitle}
                 className="shrink-0 rounded text-on-surface-variant hover:bg-surface-variant"
             >
                 <Icon name="close" size={13} />

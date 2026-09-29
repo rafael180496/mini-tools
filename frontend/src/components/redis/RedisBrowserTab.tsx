@@ -8,6 +8,7 @@ import RedisPrefixTree from './RedisPrefixTree'
 import RedisMetricsPanel from './RedisMetricsPanel'
 import RedisLiveMonitor from './RedisLiveMonitor'
 import RedisLuaPanel from './RedisLuaPanel'
+import {useT} from '../../i18n'
 
 interface RedisBrowserTabProps {
     connId: string
@@ -29,6 +30,7 @@ interface RedisBrowserTabProps {
 // the right, plus a bulk selection bar for exporting or deleting several
 // keys at once.
 export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: RedisBrowserTabProps) {
+    const t = useT()
     const [selectedKey, setSelectedKey] = useState<string | null>(null)
     const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
     const [reloadToken, setReloadToken] = useState(0)
@@ -86,9 +88,9 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                 format === 'csv' && typeof e.value !== 'string' ? JSON.stringify(e.value) : e.value,
             ])
             const dest = await ExportResult(columns, rows, format)
-            setStatusMessage(dest ? `Exportado a ${dest}` : '')
+            setStatusMessage(dest ? t.redis.browser.exportedTo({path: dest}) : '')
         } catch (err) {
-            setStatusMessage(`Error: ${String(err)}`)
+            setStatusMessage(t.redis.browser.error({error: String(err)}))
         } finally {
             setExporting(false)
         }
@@ -116,11 +118,11 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
             if (selectedKey && selectedKeys.has(selectedKey)) setSelectedKey(null)
             setSelectedKeys(new Set())
             setReloadToken((n) => n + 1)
-            setStatusMessage(`${deleted} clave(s) eliminada(s)`)
+            setStatusMessage(t.redis.browser.deletedCount(deleted))
         } catch (err) {
             // The error text carries how many were already deleted — a
             // partial destructive operation is unusable without that.
-            setStatusMessage(`Error: ${String(err)}`)
+            setStatusMessage(t.redis.browser.error({error: String(err)}))
             setReloadToken((n) => n + 1)
         } finally {
             setBulkDeleting(false)
@@ -132,12 +134,12 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
             <div className="flex w-80 shrink-0 flex-col overflow-hidden border-r border-outline-variant">
                 {selectedKeys.size > 0 && (
                     <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1.5 text-xs">
-                        <span className="text-on-surface-variant">{selectedKeys.size} seleccionadas</span>
+                        <span className="text-on-surface-variant">{t.redis.browser.selectedCount(selectedKeys.size)}</span>
                         <div className="flex-1" />
                         <button
                             onClick={() => void exportSelected('json')}
                             disabled={exporting}
-                            title="Exporta las keys seleccionadas a un archivo .json (type/TTL/valor completo por key)"
+                            title={t.redis.browser.exportJsonHint}
                             className="flex items-center gap-1 rounded px-2 py-1 text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
                         >
                             <Icon name="data_object" size={13} />
@@ -146,7 +148,7 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                         <button
                             onClick={() => void exportSelected('csv')}
                             disabled={exporting}
-                            title="Exporta las keys seleccionadas a un archivo .csv (valores complejos aplanados a texto)"
+                            title={t.redis.browser.exportCsvHint}
                             className="flex items-center gap-1 rounded px-2 py-1 text-on-surface-variant hover:bg-surface-variant disabled:opacity-50"
                         >
                             <Icon name="grid_on" size={13} />
@@ -155,11 +157,11 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                         <button
                             onClick={() => setConfirmBulkDelete(true)}
                             disabled={bulkDeleting}
-                            title="Elimina todas las keys seleccionadas — no se puede deshacer"
+                            title={t.redis.browser.deleteSelectedHint}
                             className="flex items-center gap-1 rounded px-2 py-1 text-error hover:bg-error-container disabled:opacity-50"
                         >
                             <Icon name="delete" size={13} />
-                            Eliminar
+                            {t.redis.browser.delete}
                         </button>
                     </div>
                 )}
@@ -171,13 +173,13 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                             setShowMonitor(false)
                             setShowLua(false)
                         }}
-                        title="Muestra el estado del servidor: memoria contra su límite, aciertos de caché, clientes conectados, operaciones por segundo y CPU — lo que hoy hay que ir a mirar con redis-cli INFO"
+                        title={t.redis.browser.serverStatusHint}
                         className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${
                             showMetrics ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                         }`}
                     >
                         <Icon name="monitoring" size={14} />
-                        Estado del servidor
+                        {t.redis.browser.serverStatus}
                     </button>
                     <button
                         onClick={() => {
@@ -185,13 +187,13 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                             setShowMetrics(false)
                             setShowLua(false)
                         }}
-                        title="Escucha canales de Pub/Sub o consume un stream en vivo, sin salir a una terminal aparte. Usa una conexión dedicada mientras esté activo."
+                        title={t.redis.browser.liveMonitorHint}
                         className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${
                             showMonitor ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                         }`}
                     >
                         <Icon name="sensors" size={14} />
-                        Monitor en vivo
+                        {t.redis.browser.liveMonitor}
                     </button>
                     <button
                         onClick={() => {
@@ -199,13 +201,13 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                             setShowMetrics(false)
                             setShowMonitor(false)
                         }}
-                        title="Escribí y probá un script Lua, validándolo antes de mandarlo. Un script de Redis es atómico: mientras corre, el servidor no atiende a nadie más."
+                        title={t.redis.browser.luaHint}
                         className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs ${
                             showLua ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                         }`}
                     >
                         <Icon name="code" size={14} />
-                        Script Lua
+                        {t.redis.browser.lua}
                     </button>
                 </div>
                 <RedisPrefixTree connId={connId} onSelectPrefix={setPrefixPattern} activePattern={prefixPattern} />
@@ -244,15 +246,15 @@ export default function RedisBrowserTab({connId, initialKey, initialKeyToken}: R
                         }}
                     />
                 ) : (
-                    <p className="p-4 text-sm text-on-surface-variant">Seleccioná una key para ver su valor.</p>
+                    <p className="p-4 text-sm text-on-surface-variant">{t.redis.browser.pickKey}</p>
                 )}
             </div>
 
             {confirmBulkDelete && (
                 <ConfirmDialog
-                    title="Eliminar keys seleccionadas"
-                    description={`Esto elimina ${selectedKeys.size} key(s) de Redis de forma permanente. No se puede deshacer.`}
-                    confirmLabel={bulkDeleting ? 'Eliminando…' : 'Eliminar'}
+                    title={t.redis.browser.deleteSelectedTitle}
+                    description={t.redis.browser.deleteSelectedConfirm(selectedKeys.size)}
+                    confirmLabel={bulkDeleting ? t.redis.browser.deleting : t.redis.browser.delete}
                     danger
                     onConfirm={() => void bulkDelete()}
                     onClose={() => setConfirmBulkDelete(false)}

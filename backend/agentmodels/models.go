@@ -28,6 +28,7 @@ import (
 	"context"
 	"encoding/json"
 	"mini-tools/backend/agents"
+	"mini-tools/backend/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,11 +60,13 @@ type Catalog struct {
 // claudeAliases son los alias documentados por Claude Code en su propio
 // `--model`. Es la única lista escrita a mano del paquete: un alias apunta
 // siempre al último modelo de esa familia, así que no envejece.
-var claudeAliases = []Model{
-	{ID: "opus", Label: "Opus", Description: "El más capaz para tareas complejas y largas"},
-	{ID: "sonnet", Label: "Sonnet", Description: "Equilibrio entre capacidad y velocidad para el día a día"},
-	{ID: "haiku", Label: "Haiku", Description: "El más rápido, para respuestas cortas"},
-	{ID: "fable", Label: "Fable", Description: "Para lo más difícil y de más aliento"},
+func claudeAliases() []Model {
+	return []Model{
+		{ID: "opus", Label: "Opus", Description: i18n.T(i18n.Msg{ES: "El más capaz para tareas complejas y largas", EN: "The most capable, for long and complex tasks"})},
+		{ID: "sonnet", Label: "Sonnet", Description: i18n.T(i18n.Msg{ES: "Equilibrio entre capacidad y velocidad para el día a día", EN: "A balance of capability and speed for everyday work"})},
+		{ID: "haiku", Label: "Haiku", Description: i18n.T(i18n.Msg{ES: "El más rápido, para respuestas cortas", EN: "The fastest, for short answers"})},
+		{ID: "fable", Label: "Fable", Description: i18n.T(i18n.Msg{ES: "Para lo más difícil y de más aliento", EN: "For the hardest and longest-running work"})},
+	}
 }
 
 // claudeEfforts salen de su `--effort`, que los enumera.
@@ -86,8 +89,9 @@ const cacheTTL = 10 * time.Minute
 
 // For devuelve el catálogo de un agente.
 func For(agentID string) Catalog {
+	key := agentID + "|" + i18n.Lang()
 	cacheMu.Lock()
-	if c, ok := cache[agentID]; ok && time.Since(c.at) < cacheTTL {
+	if c, ok := cache[key]; ok && time.Since(c.at) < cacheTTL {
 		cacheMu.Unlock()
 		return c.catalog
 	}
@@ -96,7 +100,7 @@ func For(agentID string) Catalog {
 	cat := build(agentID)
 
 	cacheMu.Lock()
-	cache[agentID] = cached{catalog: cat, at: time.Now()}
+	cache[key] = cached{catalog: cat, at: time.Now()}
 	cacheMu.Unlock()
 	return cat
 }
@@ -105,11 +109,11 @@ func build(agentID string) Catalog {
 	// La opción vacía va SIEMPRE primera y en todos los agentes: "el que ya
 	// tenés configurado" es la respuesta correcta para quien no quiere elegir,
 	// y es la única que no puede fallar.
-	def := Model{ID: "", Label: "Por defecto", Description: "El que tenga configurado el CLI"}
+	def := Model{ID: "", Label: i18n.T(i18n.Msg{ES: "Por defecto", EN: "Default"}), Description: i18n.T(i18n.Msg{ES: "El que tenga configurado el CLI", EN: "Whatever the CLI has configured"})}
 
 	switch agentID {
 	case "claude":
-		return Catalog{Models: append([]Model{def}, claudeAliases...), Efforts: claudeEfforts}
+		return Catalog{Models: append([]Model{def}, claudeAliases()...), Efforts: claudeEfforts}
 	case "codex":
 		return Catalog{Models: append([]Model{def}, codexModels()...)}
 	case "antigravity":

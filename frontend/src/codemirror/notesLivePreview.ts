@@ -3,6 +3,7 @@ import {RangeSetBuilder, StateField, type EditorState, type Extension} from '@co
 import {Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate} from '@codemirror/view'
 import {cachedNoteImage, loadNoteImage} from '../lib/noteImages'
 import {isTableStart, parseTable} from '../lib/markdownTable'
+import {t} from '../i18n'
 
 // Vista en vivo del editor de notas: el documento se ve como documento.
 //
@@ -61,7 +62,7 @@ class ImageWidget extends WidgetType {
         // se está leyendo.
         const ph = document.createElement('span')
         ph.className = 'cm-note-image-loading'
-        ph.textContent = this.alt || 'imagen'
+        ph.textContent = this.alt || t().notes.image
         wrap.appendChild(ph)
 
         // La caché y el "ya lo pedí" los maneja lib/noteImages, compartidos
@@ -75,7 +76,7 @@ class ImageWidget extends WidgetType {
                 view.dispatch({})
             })
             .catch(() => {
-                ph.textContent = `${this.alt || 'imagen'} — no se pudo cargar`
+                ph.textContent = t().notes.imageFailed({alt: this.alt || t().notes.image})
             })
         return wrap
     }
@@ -298,8 +299,8 @@ function wikiDecorations(
                         'data-wiki': target,
                         ...(editing ? {'data-wiki-mod': '1'} : {}),
                         title: editing
-                            ? `Cmd/Ctrl + clic para abrir «${target}». Sin la tecla, el clic edita el enlace.`
-                            : `Abrir «${target}». Si todavía no existe, se ofrece crearla.`,
+                            ? t().notes.livePreview.wikiEditing({target})
+                            : t().notes.livePreview.wikiOpen({target}),
                     },
                 })
 

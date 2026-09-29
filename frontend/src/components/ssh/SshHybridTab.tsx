@@ -5,8 +5,12 @@ import Icon from '../Icon'
 import SftpTab from '../sftp/SftpTab'
 import type {PaneHost} from '../sftp/types'
 import SshTerminalTab from './SshTerminalTab'
+import {useT} from '../../i18n'
 import {WriteSSHTerminal} from '../../../wailsjs/go/main/App'
 import type {TerminalThemeId} from '../../xterm/terminalThemes'
+
+// Nombre de teclas: igual en los dos idiomas.
+const FILES_SHORTCUT = 'Ctrl+Shift+F'
 
 interface SshHybridTabProps {
     connId: string
@@ -49,6 +53,7 @@ export default function SshHybridTab({
     onConnectedChange,
     onOpenRemoteFile,
 }: SshHybridTabProps) {
+    const t = useT()
     const [drawerOpen, setDrawerOpen] = useState(false)
     // Proportional to the window rather than a fixed number of pixels: a file
     // browser given 320px on a 1400px-tall screen shows two rows and its own
@@ -99,21 +104,21 @@ export default function SshHybridTab({
                 <span className="font-mono text-on-surface">{connName}</span>
                 <span
                     className="text-on-surface-variant/70"
-                    title="La consola y los archivos comparten una única conexión SSH: no se autentica dos veces ni se abre un segundo socket contra el servidor."
+                    title={t.ssh.hybrid.sharedTooltip}
                 >
-                    consola y archivos sobre una sola conexión
+                    {t.ssh.hybrid.shared}
                 </span>
 
                 <button
                     onClick={() => setDrawerOpen((v) => !v)}
-                    title="Muestra u oculta el explorador de archivos de este servidor (Ctrl+Shift+F). La consola sigue viva detrás mientras esté abierto."
+                    title={t.ssh.hybrid.filesTooltip}
                     className={`ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 ${
                         drawerOpen ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                     }`}
                 >
                     <Icon name="folder_open" size={13} />
-                    Archivos
-                    <span className="font-mono opacity-60">Ctrl+Shift+F</span>
+                    {t.ssh.hybrid.files}
+                    <span className="font-mono opacity-60">{FILES_SHORTCUT}</span>
                 </button>
             </div>
 
@@ -137,7 +142,7 @@ export default function SshHybridTab({
                 <>
                     <div
                         onMouseDown={startResize}
-                        title="Arrastrar para cambiar el alto del explorador"
+                        title={t.ssh.hybrid.resizeTooltip}
                         className="group flex h-1.5 shrink-0 cursor-row-resize items-center justify-center bg-surface-container-low hover:bg-primary/30"
                     >
                         <div className="h-0.5 w-8 rounded-full bg-outline-variant group-hover:bg-primary" />

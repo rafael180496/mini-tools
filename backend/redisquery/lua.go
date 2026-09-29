@@ -2,12 +2,13 @@ package redisquery
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"mini-tools/backend/i18n"
 )
 
 // Lua script support.
@@ -39,7 +40,7 @@ type LuaResult struct {
 // so validating is not wasted work even when the script is fine.
 func CheckLuaScript(ctx context.Context, client redis.UniversalClient, script string) (LuaResult, error) {
 	if strings.TrimSpace(script) == "" {
-		return LuaResult{}, fmt.Errorf("redisquery: el script está vacío")
+		return LuaResult{}, i18n.Errorf(i18n.Msg{ES: "redisquery: el script está vacío", EN: "redisquery: the script is empty"})
 	}
 
 	sha, err := client.ScriptLoad(ctx, script).Result()
@@ -47,7 +48,7 @@ func CheckLuaScript(ctx context.Context, client redis.UniversalClient, script st
 		// Redis reports compilation problems as a normal command error with
 		// the Lua parser's own message, which is far more useful than
 		// anything this layer could invent — pass it through.
-		return LuaResult{}, fmt.Errorf("redisquery: el script no compila: %w", err)
+		return LuaResult{}, i18n.Errorf(i18n.Msg{ES: "redisquery: el script no compila: %w", EN: "redisquery: the script doesn't compile: %w"}, err)
 	}
 	return LuaResult{SHA: sha}, nil
 }
@@ -90,7 +91,7 @@ func RunLuaScript(ctx context.Context, runner commandRunner, client redis.Univer
 		if err == redis.Nil {
 			return LuaResult{SHA: loaded.SHA, Kind: "nil", DurationMs: duration}, nil
 		}
-		return LuaResult{SHA: loaded.SHA, DurationMs: duration}, fmt.Errorf("redisquery: ejecutando el script: %w", err)
+		return LuaResult{SHA: loaded.SHA, DurationMs: duration}, i18n.Errorf(i18n.Msg{ES: "redisquery: ejecutando el script: %w", EN: "redisquery: running the script: %w"}, err)
 	}
 
 	kind, value := NormalizeReply(res)

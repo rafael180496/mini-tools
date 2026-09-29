@@ -1,0 +1,2 @@
+# Mensajes de error del backend que todavía no pasan por backend/i18n.
+# Generado por scripts/i18n-check.sh --update. Solo puede bajar.

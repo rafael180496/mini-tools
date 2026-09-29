@@ -2,6 +2,7 @@ package agentusage
 
 import (
 	"database/sql"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,13 +36,13 @@ func readCodex(home, repoRoot string, since time.Time) AgentUsage {
 	u := AgentUsage{Agent: "codex", Source: dir}
 
 	if _, err := os.Stat(dir); err != nil {
-		u.Note = "No se encontró Codex CLI en esta máquina."
+		u.Note = i18n.T(i18n.Msg{ES: "No se encontró Codex CLI en esta máquina.", EN: "Codex CLI was not found on this machine."})
 		return u
 	}
 
 	dbPath := latestStateDB(dir)
 	if dbPath == "" {
-		u.Note = "Codex está instalado pero todavía no registró conversaciones."
+		u.Note = i18n.T(i18n.Msg{ES: "Codex está instalado pero todavía no registró conversaciones.", EN: "Codex is installed but has not recorded any conversations yet."})
 		return u
 	}
 	u.Source = dbPath
@@ -50,7 +51,7 @@ func readCodex(home, repoRoot string, since time.Time) AgentUsage {
 	// corriendo al mismo tiempo.
 	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
 	if err != nil {
-		u.Note = "No se pudo leer la base de conversaciones de Codex."
+		u.Note = i18n.T(i18n.Msg{ES: "No se pudo leer la base de conversaciones de Codex.", EN: "The Codex conversation database could not be read."})
 		return u
 	}
 	defer db.Close()
@@ -60,7 +61,7 @@ func readCodex(home, repoRoot string, since time.Time) AgentUsage {
 		// Un esquema distinto del esperado NO se reporta como "sin consumo":
 		// decirlo es lo que permite darse cuenta de que hay que actualizar
 		// esto, en vez de mostrar un cero que parece un dato.
-		u.Note = "La base de Codex tiene un formato que esta versión no sabe leer."
+		u.Note = i18n.T(i18n.Msg{ES: "La base de Codex tiene un formato que esta versión no sabe leer.", EN: "The Codex database has a format this version cannot read."})
 		return u
 	}
 	defer rows.Close()
@@ -92,19 +93,19 @@ func readCodex(home, repoRoot string, since time.Time) AgentUsage {
 		}
 
 		if model == "" {
-			model = "desconocido"
+			model = i18n.T(i18n.Msg{ES: "desconocido", EN: "unknown"})
 		}
 		bump(byModel, model, tokens)
 		bump(byDay, ts.Local().Format("2006-01-02"), tokens)
 	}
 	if rows.Err() != nil {
-		u.Note = "No se pudo terminar de leer la base de Codex."
+		u.Note = i18n.T(i18n.Msg{ES: "No se pudo terminar de leer la base de Codex.", EN: "The Codex database could not be read to the end."})
 		return u
 	}
 
 	u.Available = u.All.Messages > 0
 	if !u.Available {
-		u.Note = "Codex no registró consumo en el período leído."
+		u.Note = i18n.T(i18n.Msg{ES: "Codex no registró consumo en el período leído.", EN: "Codex recorded no usage in the period read."})
 		return u
 	}
 
@@ -116,7 +117,7 @@ func readCodex(home, repoRoot string, since time.Time) AgentUsage {
 	}
 	// Sin desglose por clase de token no hay porcentaje de caché que calcular.
 	// Se deja en cero, que la UI muestra como tal.
-	u.Note = "Codex informa un total por conversación, sin separar entrada, salida ni caché."
+	u.Note = i18n.T(i18n.Msg{ES: "Codex informa un total por conversación, sin separar entrada, salida ni caché.", EN: "Codex reports one total per conversation, without separating input, output or cache."})
 	return u
 }
 

@@ -1,0 +1,138 @@
+import type {Messages} from '../types'
+import type es from '../es/results'
+
+const en: Messages<typeof es> = {
+    placeholderTable: 'table_name',
+    updateReviewComment: (p: {table: string}) =>
+        `-- Check the WHERE before running: by default it matches every column of the row,\n-- narrow it to the real primary key of ${p.table} if it has one.\n`,
+    grid: {
+        empty: 'No results yet.',
+        sortTitle: 'Sort by this column — click again to reverse the order',
+        resizeTitle: 'Drag to change the column width — double-click fits it to its content',
+        rowTitle:
+            'Click to select the row — Ctrl/Cmd+click adds single rows, Shift+click selects a range (with Ctrl/Cmd it adds it), Ctrl/Cmd+A selects all and Esc clears — lets you copy them as text, CSV, INSERT or UPDATE',
+        editCellTitle: (p) => `Double-click to edit. ${p.dataType} — the change stays pending until you send it.`,
+        pendingCount: (n) => (n === 1 ? '1 unsaved change' : `${n} unsaved changes`),
+        previewSql: 'View SQL',
+        previewSqlTitle: 'Shows the exact UPDATE that will run, with its WHERE, before touching the database.',
+        save: 'Save to database',
+        saving: 'Saving…',
+        saveTitle:
+            'Runs the UPDATEs in ONE transaction. Each one must affect exactly one row: if any affects a different number, the whole batch is rolled back. (Cmd/Ctrl + Enter)',
+        discard: 'Discard',
+        discardTitle: 'Discards the pending changes. The database was not touched, so there is nothing to undo.',
+        readOnly: (p) => `Read-only: ${p.reason}`,
+        previewHeading: 'This is what will run',
+        previewNoteBefore: 'Values are shown inline in the statement so you can read it. When it runs they travel as ',
+        previewNoteParams: 'parameters',
+        previewNoteAfter: ', separate from the text — which is what keeps a value with quotes from changing what the UPDATE does.',
+        execute: 'Run',
+        selectedRows: (n) => `${n} rows`,
+        rowsCopied: (n) => (n === 1 ? 'Row copied' : 'Rows copied'),
+        csvCopied: 'CSV copied',
+        insertCopied: 'INSERT copied',
+        updateCopied: 'UPDATE copied',
+        copyRows: (n) => (n === 1 ? 'Copy row' : 'Copy rows'),
+        copyRowsTitle: 'Copies the row values separated by tabs (one row per line), ready to paste into a spreadsheet',
+        copyCsv: 'Copy as CSV',
+        copyCsvTitle: 'Copies the selected rows as CSV (with header), ready to paste into Excel/Sheets without the export dialog',
+        copyInsert: 'Copy as INSERT',
+        copyInsertTitle: 'Copies the selected rows as INSERT statements, ready to paste into the editor',
+        copyUpdate: 'Copy as UPDATE',
+        copyUpdateTitle:
+            'Copies the selected rows as UPDATE statements (with a WHERE on every column — review them before running), ready to edit and paste into the editor',
+        deselectTitle: 'Deselects all rows',
+    },
+    rowEditing: {
+        missingKeys: (p) => `to edit, the SELECT needs ${p.keys}: it is the key that identifies each row`,
+        before: (p) => `${p.line}   (was ${p.value})`,
+    },
+    cellEditor: {
+        nullTitle: 'Leaves the cell with no value (NULL). That is not the same as leaving it empty: the database keeps the difference.',
+        commitTitle: 'Saves the change as PENDING. It does not touch the database yet: send it with the button above.',
+        cancelTitle: 'Discard this change (Esc)',
+    },
+    dbmsOutput: {
+        lineCount: (n) => (n === 1 ? '1 line' : `${n} lines`),
+        filteredCount: (p) => `${p.visible} of ${p.total} lines`,
+        filterPlaceholder: 'Filter lines…',
+        filterTitle: 'Keeps only the lines that contain this text — to find the ERROR in a 300-line log without reading all of it',
+        clearFilterTitle: 'Clear the filter and see the whole log again',
+        wrapOnTitle:
+            'Long lines wrap to the panel width. Turn it off so they are not broken and scroll horizontally — needed when the output is columns aligned with spaces.',
+        wrapOffTitle: 'Long lines run off to the right with horizontal scroll. Turn it on to wrap them to the panel width.',
+        copyFilteredTitle: 'Copy only the lines the filter shows',
+        copyAllTitle: 'Copy the whole output to the clipboard',
+        copy: 'Copy',
+        copied: 'Copied',
+        noMatch: (p) => `No line contains «${p.filter}».`,
+    },
+    console: {
+        cancelled: 'cancelled',
+        unknownError: 'Unknown error',
+        rowsFetchedIn: (n) => (n === 1 ? 'row fetched in' : 'rows fetched in'),
+        completed: 'completed',
+        completedIn: 'in',
+        rowsAffected: (n) => (n === 1 ? ' (1 row affected)' : ` (${n} rows affected)`),
+        noStatements: 'No statements run yet.',
+        statementCount: (n) => (n === 1 ? '1 statement run' : `${n} statements run`),
+        errorCountTitle: (n) =>
+            n === 1
+                ? '1 statement in this console ended with an error — it has a red edge and message'
+                : `${n} statements in this console ended with an error — they have a red edge and message`,
+        errorCount: (n) => (n === 1 ? '1 error' : `${n} errors`),
+        running: 'running…',
+        clear: 'Clear console',
+        clearTitle: 'Clears this console log — it does not cancel or undo anything already run, it only empties what you see here',
+        emptyHint:
+            'Run a script with "Block" to see each statement in detail here — full text, and whether it finished OK (with duration) or with an error.',
+        statementHeader: (p) => `Statement ${p.n}/${p.total}`,
+    },
+    export: {
+        exportedTo: (p) => `Exported to ${p.dest}`,
+        error: (p) => `Error: ${p.error}`,
+        insertsCopied: (n) => (n === 1 ? '1 INSERT copied to the clipboard' : `${n} INSERTs copied to the clipboard`),
+        button: 'Export',
+        buttonTitle: 'Exports the rows of the current result to a file, or copies them as SQL statements',
+        csvTitle: 'Saves the result as a .csv file (comma-separated values)',
+        jsonTitle: 'Saves the result as a .json file (an array of objects, one row per object)',
+        xlsxTitle: 'Saves the result as an Excel file (.xlsx)',
+        xlsx: 'Excel (.xlsx)',
+        copyInsert: 'Copy as INSERT',
+        copyInsertTitle: 'Copies the result to the clipboard as INSERT statements, ready to paste into another SQL editor',
+    },
+    json: {
+        dblClickFilterTitle: (p) => `Double-click to filter by ${p.key}`,
+        filterByTitle: (p) => `Filter by ${p.key}`,
+    },
+    mongo: {
+        empty: 'No results yet — run a MongoDB command.',
+        jsonTitle: 'View the documents as colored JSON',
+        table: 'Table',
+        tableTitle: 'View the documents as a table (one column per top-level field)',
+        filterPlaceholder: 'Filter documents by text…',
+        filterTitle: 'Shows only the documents that contain this text (searches the document JSON)',
+        cancelled: 'Cancelled.',
+        running: 'Running…',
+        noDocuments: 'No documents.',
+        noMatch: 'No document matches the filter.',
+    },
+    redis: {
+        empty: 'No results yet — run a command.',
+        binary: (n) => `binary / non-printable content (${n} characters)`,
+        cancelled: 'Cancelled',
+        running: 'Running…',
+        emptyArray: '(empty)',
+        matched: (n) => `Matched: ${n}`,
+        matchedNoRows: (n) => `Matched: ${n} (no results on this page)`,
+    },
+    tabs: {
+        label: (n) => `Result ${n}`,
+        selectTitle: (p) =>
+            `View the result of statement ${p.n} of ${p.count} — each statement in a block gets its own result tab${p.hint}`,
+        closeTitle: (n) => `Close the "Result ${n}" tab — it only hides this result, it does not cancel or re-run anything`,
+        closeAll: 'Close all',
+        closeAllTitle: 'Close all result tabs for this script',
+    },
+}
+export default en

@@ -3,6 +3,8 @@ import {PickVaultBackupFileFirstRun} from '../../../wailsjs/go/main/App'
 import logo from '../../assets/logo.png'
 import type {Theme} from '../../hooks/useTheme'
 import Icon from '../Icon'
+import {useLanguage} from '../../hooks/useLanguage'
+import {LANGUAGES, useT} from '../../i18n'
 
 interface UnlockScreenProps {
     isInitialized: boolean
@@ -23,6 +25,8 @@ function fileName(path: string) {
 }
 
 export default function UnlockScreen({isInitialized, theme, onToggleTheme, onInitialize, onUnlock, onRestore}: UnlockScreenProps) {
+    const t = useT()
+    const {lang, changeLanguage} = useLanguage()
     const [password, setPassword] = useState('')
     const [confirm, setConfirm] = useState('')
     const [error, setError] = useState('')
@@ -39,7 +43,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
         setError('')
 
         if (!isInitialized && password !== confirm) {
-            setError('Las contraseñas no coinciden')
+            setError(t.lock.passwordsDontMatch)
             return
         }
 
@@ -51,7 +55,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                 await onInitialize(password)
             }
         } catch (err) {
-            setError(isInitialized ? 'Clave maestra incorrecta' : String(err))
+            setError(isInitialized ? t.lock.wrongPassword : String(err))
         } finally {
             setBusy(false)
         }
@@ -103,15 +107,30 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
 
     return (
         <div className="relative flex h-full w-full items-center justify-center bg-background font-sans text-on-background">
-            <button
-                type="button"
-                onClick={onToggleTheme}
-                title="Cambiar tema"
-                className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-high"
-            >
-                <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} size={16} />
-                {theme === 'dark' ? 'Claro' : 'Oscuro'}
-            </button>
+            <div className="absolute right-4 top-4 flex items-center gap-2">
+                {/* El idioma se cambia acá mismo y no solo en Configuración: la
+                    primera vez la app arranca en inglés, y quien no lo lee no
+                    debería tener que crear el vault para llegar al ajuste. Cada
+                    idioma se nombra en sí mismo. */}
+                <button
+                    type="button"
+                    onClick={() => changeLanguage(lang === 'en' ? 'es' : 'en')}
+                    title={t.lock.switchLanguage}
+                    className="flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-high"
+                >
+                    <Icon name="translate" size={16} />
+                    {LANGUAGES.find((l) => l.id !== lang)?.label}
+                </button>
+                <button
+                    type="button"
+                    onClick={onToggleTheme}
+                    title={t.lock.toggleTheme}
+                    className="flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-high"
+                >
+                    <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} size={16} />
+                    {theme === 'dark' ? t.lock.themeLight : t.lock.themeDark}
+                </button>
+            </div>
 
             {restorePath !== null ? (
                 <form
@@ -119,7 +138,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                     className="flex w-80 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container p-6 shadow-lg"
                 >
                     <img src={logo} alt="mini-tools" className="mx-auto h-16 w-16" />
-                    <h1 className="text-center text-xl font-bold text-on-surface">Restaurar desde backup</h1>
+                    <h1 className="text-center text-xl font-bold text-on-surface">{t.lock.restore.title}</h1>
                     <div className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-highest px-3 py-2 text-xs text-on-surface-variant">
                         <Icon name="description" size={16} className="shrink-0" />
                         <span className="min-w-0 flex-1 truncate" title={restorePath}>
@@ -129,31 +148,31 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                             type="button"
                             onClick={() => void startRestore()}
                             disabled={busy}
-                            title="Elegir un archivo de backup distinto"
+                            title={t.lock.restore.changeFileTitle}
                             className="shrink-0 text-primary hover:underline disabled:opacity-50"
                         >
-                            Cambiar
+                            {t.lock.restore.changeFile}
                         </button>
                     </div>
                     <p className="text-xs text-on-surface-variant">
-                        Ingresá la clave maestra con la que se generó este backup — casi seguro distinta de cualquier otra.
+                        {t.lock.restore.hint}
                     </p>
                     <input
                         type="password"
                         autoFocus
                         value={backupPassword}
                         onChange={(e) => setBackupPassword(e.target.value)}
-                        placeholder="Clave del backup"
+                        placeholder={t.lock.restore.passwordPlaceholder}
                         className="rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                     />
                     {error && <p className="text-xs text-error">{error}</p>}
                     <button
                         type="submit"
                         disabled={busy || !backupPassword}
-                        title="Verifica la clave contra el backup y restaura el vault"
+                        title={t.lock.restore.submitTitle}
                         className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
                     >
-                        {busy ? 'Restaurando…' : 'Restaurar'}
+                        {busy ? t.lock.restore.submitting : t.lock.restore.submit}
                     </button>
                     <button
                         type="button"
@@ -164,7 +183,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                         disabled={busy}
                         className="text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-50"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                 </form>
             ) : (
@@ -174,19 +193,19 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                 >
                     <img src={logo} alt="mini-tools" className="mx-auto h-16 w-16" />
                     <h1 className="text-center text-xl font-bold text-on-surface">
-                        {isInitialized ? 'Desbloquear vault' : 'Crear clave maestra'}
+                        {isInitialized ? t.lock.unlockTitle : t.lock.createTitle}
                     </h1>
                     <p className="text-xs text-on-surface-variant">
                         {isInitialized
-                            ? 'Ingresa tu clave maestra para acceder a tus conexiones.'
-                            : 'Esta clave cifra tus conexiones guardadas. Si la pierdes, pierdes el vault — no hay recuperación.'}
+                            ? t.lock.unlockHint
+                            : t.lock.createHint}
                     </p>
                     <input
                         type="password"
                         autoFocus
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Clave maestra"
+                        placeholder={t.lock.passwordPlaceholder}
                         className="rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                     />
                     {!isInitialized && (
@@ -194,7 +213,7 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                             type="password"
                             value={confirm}
                             onChange={(e) => setConfirm(e.target.value)}
-                            placeholder="Confirmar clave"
+                            placeholder={t.lock.confirmPlaceholder}
                             className="rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                         />
                     )}
@@ -204,22 +223,22 @@ export default function UnlockScreen({isInitialized, theme, onToggleTheme, onIni
                         disabled={busy || !password}
                         title={
                             isInitialized
-                                ? 'Descifra tus conexiones guardadas con esta clave maestra'
-                                : 'Crea el vault cifrado donde se guardarán tus conexiones — esta clave no se guarda en ningún lado, solo vos la sabés'
+                                ? t.lock.unlockSubmitTitle
+                                : t.lock.createSubmitTitle
                         }
                         className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
                     >
-                        {isInitialized ? 'Desbloquear' : 'Crear vault'}
+                        {isInitialized ? t.lock.unlockSubmit : t.lock.createSubmit}
                     </button>
                     {!isInitialized && (
                         <button
                             type="button"
                             onClick={() => void startRestore()}
                             disabled={busy}
-                            title="Elegí el archivo .mtbackup; después te pedimos la clave con la que se generó ese backup"
+                            title={t.lock.restore.startTitle}
                             className="text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-50"
                         >
-                            Restaurar desde backup…
+                            {t.lock.restore.start}
                         </button>
                     )}
                 </form>

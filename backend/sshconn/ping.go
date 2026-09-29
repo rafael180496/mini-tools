@@ -2,7 +2,7 @@ package sshconn
 
 import (
 	"errors"
-	"fmt"
+	"mini-tools/backend/i18n"
 )
 
 // PingSSHDSN opens a short-lived SSH connection to verify dsn is reachable
@@ -17,7 +17,7 @@ func PingSSHDSN(dsn string) error {
 		if errors.Is(err, ErrPasswordExpired) || errors.Is(err, ErrInteractiveRefused) || errors.Is(err, ErrAuthRejected) {
 			return err
 		}
-		return fmt.Errorf("sshconn: ping falló: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "sshconn: ping falló: %w", EN: "sshconn: ping failed: %w"}, err)
 	}
 	return client.Close()
 }

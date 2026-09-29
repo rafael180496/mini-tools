@@ -46,10 +46,11 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"hash"
 	"os"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // sqliteHeader is the 16-byte magic every plaintext SQLite database starts
@@ -122,15 +123,15 @@ func LooksEncrypted(path string) (bool, error) {
 func DecryptToFile(srcPath, key, destPath string) (detectedVariant string, err error) {
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
-		return "", fmt.Errorf("sqlcipher: leyendo %q: %w", srcPath, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlcipher: leyendo %q: %w", EN: "sqlcipher: reading %q: %w"}, srcPath, err)
 	}
 	if len(data) < 512 {
-		return "", fmt.Errorf("sqlcipher: %q es demasiado chico para ser una base SQLite", srcPath)
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlcipher: %q es demasiado chico para ser una base SQLite", EN: "sqlcipher: %q is too small to be a SQLite database"}, srcPath)
 	}
 	// An unencrypted SQLite file starts with the plaintext header; decrypting
 	// it would be a mistake, so reject it clearly instead of producing garbage.
 	if bytes.HasPrefix(data, sqliteHeader) {
-		return "", fmt.Errorf("sqlcipher: %q no está cifrada (es una base SQLite normal) — desactivá la opción de cifrado", srcPath)
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlcipher: %q no está cifrada (es una base SQLite normal) — desactivá la opción de cifrado", EN: "sqlcipher: %q is not encrypted (it's a regular SQLite database) — turn off the encryption option"}, srcPath)
 	}
 
 	plain, name, err := decrypt(data, key)
@@ -139,7 +140,7 @@ func DecryptToFile(srcPath, key, destPath string) (detectedVariant string, err e
 	}
 	// 0600: the decrypted copy is as sensitive as the passphrase itself.
 	if err := os.WriteFile(destPath, plain, 0o600); err != nil {
-		return "", fmt.Errorf("sqlcipher: escribiendo copia descifrada: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlcipher: escribiendo copia descifrada: %w", EN: "sqlcipher: writing decrypted copy: %w"}, err)
 	}
 	return name, nil
 }
@@ -152,7 +153,7 @@ func decrypt(data []byte, key string) ([]byte, string, error) {
 			return out, v.name, nil
 		}
 	}
-	return nil, "", fmt.Errorf("no se pudo descifrar: clave incorrecta, o una versión de SQLCipher no soportada (se probó %s)", variantNames())
+	return nil, "", i18n.Errorf(i18n.Msg{ES: "no se pudo descifrar: clave incorrecta, o una versión de SQLCipher no soportada (se probó %s)", EN: "could not decrypt: wrong key, or an unsupported SQLCipher version (tried %s)"}, variantNames())
 }
 
 func tryVariant(data []byte, key string, v variant) []byte {

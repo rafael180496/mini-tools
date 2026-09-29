@@ -3,6 +3,7 @@ package httpclient
 import (
 	"encoding/json"
 	"fmt"
+	"mini-tools/backend/i18n"
 	"net/url"
 	"strings"
 )
@@ -21,6 +22,10 @@ import (
 // La detección se hace sobre el CONTENIDO y no sobre la extensión: una
 // colección de Postman y un entorno de Postman son los dos `.json`, y el
 // archivo que alguien renombró sigue siendo lo que era.
+
+var msgNothingToImport = i18n.Msg{ES: "no hay nada que importar", EN: "there is nothing to import"}
+
+var msgUntitled = i18n.Msg{ES: "Sin nombre", EN: "Untitled"}
 
 // ImportKind es qué resultó ser el contenido.
 type ImportKind string
@@ -70,7 +75,7 @@ type ImportDetection struct {
 func DetectImport(data []byte) ImportDetection {
 	text := strings.TrimSpace(string(data))
 	if text == "" {
-		return ImportDetection{Reason: "no hay nada que importar"}
+		return ImportDetection{Reason: i18n.T(msgNothingToImport)}
 	}
 
 	if strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[") {
@@ -78,24 +83,24 @@ func DetectImport(data []byte) ImportDetection {
 	}
 	if looksLikeCurl(text) {
 		if req, err := ParseCurl(text); err == nil {
-			return ImportDetection{Kind: ImportCurl, Label: "comando cURL", Method: req.Method, URL: req.URL}
+			return ImportDetection{Kind: ImportCurl, Label: i18n.T(i18n.Msg{ES: "comando cURL", EN: "cURL command"}), Method: req.Method, URL: req.URL}
 		} else {
-			return ImportDetection{Reason: "parece un comando cURL pero no se pudo leer: " + err.Error()}
+			return ImportDetection{Reason: i18n.T(i18n.Msg{ES: "parece un comando cURL pero no se pudo leer: %s", EN: "looks like a cURL command but could not be read: %s"}, err.Error())}
 		}
 	}
 	if req, err := ParseRawHTTP(text); err == nil {
-		return ImportDetection{Kind: ImportRawHTTP, Label: "petición HTTP en texto", Method: req.Method, URL: req.URL}
+		return ImportDetection{Kind: ImportRawHTTP, Label: i18n.T(i18n.Msg{ES: "petición HTTP en texto", EN: "plain-text HTTP request"}), Method: req.Method, URL: req.URL}
 	}
 	if u, ok := bareURL(text); ok {
 		return ImportDetection{Kind: ImportURL, Label: "URL", Method: "GET", URL: text, Name: u.Host}
 	}
-	return ImportDetection{Reason: "no se reconoce: no es JSON de Postman, ni un comando cURL, ni una petición en texto, ni una URL"}
+	return ImportDetection{Reason: i18n.T(i18n.Msg{ES: "no se reconoce: no es JSON de Postman, ni un comando cURL, ni una petición en texto, ni una URL", EN: "not recognized: it is not Postman JSON, a cURL command, a plain-text request or a URL"})}
 }
 
 func detectJSON(data []byte) ImportDetection {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return ImportDetection{Reason: "el JSON no se pudo leer: " + err.Error()}
+		return ImportDetection{Reason: i18n.T(i18n.Msg{ES: "el JSON no se pudo leer: %s", EN: "the JSON could not be read: %s"}, err.Error())}
 	}
 
 	// Volcado completo de datos de Postman (Settings → Data → Export). Trae
@@ -103,7 +108,7 @@ func detectJSON(data []byte) ImportDetection {
 	if raw, ok := doc["collections"]; ok {
 		var cols []json.RawMessage
 		if json.Unmarshal(raw, &cols) == nil {
-			out := ImportDetection{Kind: ImportPostmanDump, Label: "volcado de datos de Postman", Collections: len(cols)}
+			out := ImportDetection{Kind: ImportPostmanDump, Label: i18n.T(i18n.Msg{ES: "volcado de datos de Postman", EN: "Postman data dump"}), Collections: len(cols)}
 			for _, c := range cols {
 				sub := detectJSON(c)
 				out.Requests += sub.Requests
@@ -127,7 +132,7 @@ func detectJSON(data []byte) ImportDetection {
 			if json.Unmarshal(raw, &vals) == nil {
 				return ImportDetection{
 					Kind:      ImportPostmanEnvironment,
-					Label:     "entorno de Postman",
+					Label:     i18n.T(i18n.Msg{ES: "entorno de Postman", EN: "Postman environment"}),
 					Name:      jsonString(doc["name"]),
 					Variables: len(vals),
 				}
@@ -142,7 +147,7 @@ func detectJSON(data []byte) ImportDetection {
 		}
 		reqs, folders := countItems(col.Items)
 		return ImportDetection{
-			Kind: ImportPostmanCollection, Label: "colección de Postman",
+			Kind: ImportPostmanCollection, Label: i18n.T(i18n.Msg{ES: "colección de Postman", EN: "Postman collection"}),
 			Name: col.Name, Requests: reqs, Folders: folders, Variables: len(col.Variables),
 		}
 	}
@@ -151,9 +156,9 @@ func detectJSON(data []byte) ImportDetection {
 	// decir qué hacer — el formato cambió en 2016 y Postman sigue pudiendo
 	// convertirlo, pero nada de eso se adivina desde un "no se reconoce".
 	if _, ok := doc["requests"]; ok {
-		return ImportDetection{Reason: "es una colección de Postman v1: abrila en Postman y exportala como v2.1"}
+		return ImportDetection{Reason: i18n.T(i18n.Msg{ES: "es una colección de Postman v1: abrila en Postman y exportala como v2.1", EN: "it is a Postman v1 collection: open it in Postman and export it as v2.1"})}
 	}
-	return ImportDetection{Reason: "es JSON, pero no una colección ni un entorno de Postman (le falta info.name)"}
+	return ImportDetection{Reason: i18n.T(i18n.Msg{ES: "es JSON, pero no una colección ni un entorno de Postman (le falta info.name)", EN: "it is JSON, but not a Postman collection or environment (info.name is missing)"})}
 }
 
 func countItems(items []ImportedItem) (requests, folders int) {
@@ -207,10 +212,10 @@ func SplitPostmanDump(data []byte) (collections, environments []json.RawMessage,
 		Environments []json.RawMessage `json:"environments"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, nil, fmt.Errorf("el volcado no se pudo leer: %w", err)
+		return nil, nil, i18n.Errorf(i18n.Msg{ES: "el volcado no se pudo leer: %w", EN: "the data dump could not be read: %w"}, err)
 	}
 	if len(doc.Collections) == 0 && len(doc.Environments) == 0 {
-		return nil, nil, fmt.Errorf("el volcado no trae colecciones ni entornos")
+		return nil, nil, i18n.Errorf(i18n.Msg{ES: "el volcado no trae colecciones ni entornos", EN: "the data dump has no collections or environments"})
 	}
 	return doc.Collections, doc.Environments, nil
 }
@@ -239,10 +244,10 @@ func ParsePostmanEnvironment(data []byte) (*ImportedEnvironment, error) {
 		} `json:"values"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("el entorno no es JSON válido: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "el entorno no es JSON válido: %w", EN: "the environment is not valid JSON: %w"}, err)
 	}
 	if strings.TrimSpace(doc.Name) == "" {
-		return nil, fmt.Errorf("no parece un entorno de Postman: le falta el nombre")
+		return nil, i18n.Errorf(i18n.Msg{ES: "no parece un entorno de Postman: le falta el nombre", EN: "this does not look like a Postman environment: it has no name"})
 	}
 
 	out := &ImportedEnvironment{Name: doc.Name}
@@ -291,16 +296,16 @@ func ParseRawHTTP(text string) (Request, error) {
 		i++
 	}
 	if i == len(lines) {
-		return Request{}, fmt.Errorf("no hay nada que importar")
+		return Request{}, i18n.New(msgNothingToImport)
 	}
 
 	fields := strings.Fields(strings.TrimSpace(lines[i]))
 	if len(fields) < 2 {
-		return Request{}, fmt.Errorf("la primera línea no tiene la forma «MÉTODO ruta»")
+		return Request{}, i18n.Errorf(i18n.Msg{ES: "la primera línea no tiene la forma «MÉTODO ruta»", EN: "the first line is not in the form “METHOD path”"})
 	}
 	method := strings.ToUpper(fields[0])
 	if !rawHTTPMethods[method] {
-		return Request{}, fmt.Errorf("%q no es un método HTTP", fields[0])
+		return Request{}, i18n.Errorf(i18n.Msg{ES: "%q no es un método HTTP", EN: "%q is not an HTTP method"}, fields[0])
 	}
 	target := fields[1]
 	i++
@@ -315,7 +320,7 @@ func ParseRawHTTP(text string) (Request, error) {
 		}
 		idx := strings.Index(line, ":")
 		if idx <= 0 {
-			return Request{}, fmt.Errorf("la línea %q no es un header", strings.TrimSpace(line))
+			return Request{}, i18n.Errorf(i18n.Msg{ES: "la línea %q no es un header", EN: "the line %q is not a header"}, strings.TrimSpace(line))
 		}
 		key := strings.TrimSpace(line[:idx])
 		value := strings.TrimSpace(line[idx+1:])
@@ -331,7 +336,7 @@ func ParseRawHTTP(text string) (Request, error) {
 
 	if strings.HasPrefix(target, "/") {
 		if host == "" {
-			return Request{}, fmt.Errorf("la ruta es relativa y no hay header Host del que sacar el servidor")
+			return Request{}, i18n.Errorf(i18n.Msg{ES: "la ruta es relativa y no hay header Host del que sacar el servidor", EN: "the path is relative and there is no Host header to take the server from"})
 		}
 		req.URL = rawHTTPScheme(host) + "://" + host + target
 	} else {

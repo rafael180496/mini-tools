@@ -5,6 +5,7 @@ import Icon from '../Icon'
 import MarkdownPreview from '../MarkdownPreview'
 import AskAgentPicker from '../agent/AskAgentPicker'
 import {useAgentChat} from '../agent/AgentChatHost'
+import {useT} from '../../i18n'
 
 // Analizar un error de la terminal SSH con el agente.
 //
@@ -42,6 +43,8 @@ interface Props {
 }
 
 const WIDTH_DEFAULT = 460
+// Comando sugerido cuando no se detectó el sistema: igual en todos los idiomas.
+const UNAME = 'uname -a'
 const WIDTH_MIN = 320
 const WIDTH_MAX = 1000
 
@@ -50,6 +53,7 @@ const WIDTH_MAX = 1000
 let rememberedWidth = WIDTH_DEFAULT
 
 export default function SshErrorAnalysis({connId, connName, sessionId, selection, onClose, onInsertCommand}: Props) {
+    const t = useT()
     const [result, setResult] = useState<main.SSHErrorAnalysis | null>(null)
     const [busy, setBusy] = useState(true)
     const [error, setError] = useState('')
@@ -134,7 +138,7 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                     setWidth(WIDTH_DEFAULT)
                     rememberedWidth = WIDTH_DEFAULT
                 }}
-                title="Arrastrar para cambiar el ancho del panel. Doble clic vuelve al ancho por defecto"
+                title={t.ssh.analysis.resizeTooltip}
                 className="absolute inset-y-0 -left-0.5 z-10 w-1.5 cursor-col-resize hover:bg-primary/30"
             />
 
@@ -144,15 +148,14 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                     <Icon name="troubleshoot" size={15} />
                 </span>
                 <div className="min-w-0 flex-1 leading-tight">
-                    <p className="text-xs font-semibold text-on-surface">Análisis del error</p>
+                    <p className="text-xs font-semibold text-on-surface">{t.ssh.analysis.title}</p>
                     <p className="truncate text-ui-10 text-on-surface-variant" title={connName}>
-                        {selection.trim() ? 'Selección de ' : 'Últimas líneas de '}
-                        {connName}
+                        {selection.trim() ? t.ssh.analysis.selectionOf({name: connName}) : t.ssh.analysis.lastLinesOf({name: connName})}
                     </p>
                 </div>
                 <button
                     onClick={onClose}
-                    title="Cierra el análisis. La terminal no se toca."
+                    title={t.ssh.analysis.closeTooltip}
                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="close" size={16} />
@@ -165,29 +168,29 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                 <button
                     onClick={() => setAttempt((n) => n + 1)}
                     disabled={busy}
-                    title="Vuelve a hacer la misma pregunta — relee las últimas líneas de la terminal"
+                    title={t.ssh.analysis.retryTooltip}
                     className={smallButton}
                 >
                     <Icon name="refresh" size={13} />
-                    Reintentar
+                    {t.ssh.analysis.retry}
                 </button>
                 {result && (
                     <button
                         onClick={() => setShowSent((v) => !v)}
-                        title="Muestra exactamente qué líneas de la terminal se le mandaron al agente. Lo que sale de tu máquina tiene que poder verse."
+                        title={t.ssh.analysis.sentTooltip}
                         className={`${smallButton} ${showSent ? 'bg-surface-variant text-on-surface' : ''}`}
                     >
                         <Icon name="visibility" size={13} />
-                        {result.lines.length} líneas
+                        {t.ssh.analysis.lines(result.lines.length)}
                     </button>
                 )}
                 {!!result?.redacted && (
                     <span
                         className="flex shrink-0 items-center gap-1 rounded-md bg-tertiary/15 px-1.5 py-1 text-ui-11 text-tertiary"
-                        title="Se encontraron valores que parecen secretos en la salida de la terminal (una contraseña en la línea de comandos, un token en una cabecera, una clave privada pegada) y NO se le mandaron al agente. Si la respuesta parece incompleta, puede ser por esto."
+                        title={t.ssh.analysis.redactedTooltip}
                     >
                         <Icon name="shield" size={12} filled />
-                        {result.redacted} {result.redacted === 1 ? 'oculto' : 'ocultos'}
+                        {t.ssh.analysis.redacted(result.redacted)}
                     </span>
                 )}
                 <div className="flex-1" />
@@ -206,24 +209,24 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                                 attachments: [
                                     {
                                         label: result.osInfo
-                                            ? `Salida analizada de ${connName} (${result.lines.length} líneas)`
-                                            : `Salida analizada de ${connName} (${result.lines.length} líneas, SO no detectado)`,
+                                            ? t.ssh.analysis.attachmentLabel({name: connName, lines: result.lines.length})
+                                            : t.ssh.analysis.attachmentLabelNoOs({name: connName, lines: result.lines.length}),
                                         text:
-                                            (result.osInfo ? `# Sistema operativo detectado\n${result.osInfo}\n\n# Salida\n` : '') +
+                                            (result.osInfo ? `${t.ssh.analysis.attachmentOsHeader}\n${result.osInfo}\n\n${t.ssh.analysis.attachmentOutputHeader}\n` : '') +
                                             result.lines.join('\n'),
                                         icon: 'terminal',
                                     },
                                     ...(result.answer
-                                        ? [{label: 'Análisis anterior del agente', text: result.answer, language: 'markdown', icon: 'troubleshoot'}]
+                                        ? [{label: t.ssh.analysis.previousAnswer, text: result.answer, language: 'markdown', icon: 'troubleshoot'}]
                                         : []),
                                 ],
                             })
                         }
-                        title="Abre el chat con la salida analizada, el sistema detectado y esta respuesta ya adjuntos, para repreguntar sin volver a explicar nada"
+                        title={t.ssh.analysis.continueTooltip}
                         className={smallButton}
                     >
                         <Icon name="forum" size={13} />
-                        Seguir en el chat
+                        {t.ssh.analysis.continueInChat}
                     </button>
                 )}
             </div>
@@ -233,13 +236,12 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                     <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
                         <span aria-hidden className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent border-primary" />
                         <p className="text-xs text-on-surface">
-                            {elapsed < 3 ? 'Leyendo la salida y el sistema del servidor…' : 'El agente está analizando el error…'}
+                            {elapsed < 3 ? t.ssh.analysis.reading : t.ssh.analysis.thinking}
                         </p>
-                        <p className="font-mono text-ui-11 tabular-nums text-on-surface-variant">{elapsed} s</p>
+                        <p className="font-mono text-ui-11 tabular-nums text-on-surface-variant">{t.ssh.analysis.seconds(elapsed)}</p>
                         {elapsed >= 15 && (
                             <p className="max-w-xs text-ui-10 text-on-surface-variant/70">
-                                Es normal que tarde hasta un minuto: el agente corre en tu máquina y razona antes de
-                                contestar. Si pasan 3 minutos sin respuesta, se corta solo y avisa.
+                                {t.ssh.analysis.slowNote}
                             </p>
                         )}
                     </div>
@@ -249,7 +251,7 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                     <div className="flex flex-col gap-2 rounded-lg border border-error/40 bg-error-container/30 p-2.5">
                         <p className="flex items-center gap-1.5 text-xs font-medium text-error">
                             <Icon name="error" size={14} />
-                            No se pudo analizar
+                            {t.ssh.analysis.failed}
                         </p>
                         <p className="wrap-break-word text-ui-11 text-on-surface-variant">{error}</p>
                         <button
@@ -257,7 +259,7 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                             className="flex w-fit items-center gap-1 rounded-md bg-primary px-2 py-1 text-ui-11 font-medium text-on-primary hover:opacity-90"
                         >
                             <Icon name="refresh" size={13} />
-                            Reintentar
+                            {t.ssh.analysis.retry}
                         </button>
                     </div>
                 )}
@@ -265,19 +267,19 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                 {result && !result.osInfo && !busy && (
                     <p
                         className="mb-2 flex gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-2 py-1.5 text-ui-10 text-on-surface-variant"
-                        title="El sistema se deduce de lo que la terminal ya imprimió (el banner de login, un uname que hayas corrido). No se ejecuta nada por tu cuenta: escribir en tu sesión interactiva aparecería en tu pantalla y podría caer dentro de un editor abierto."
+                        title={t.ssh.analysis.noOsTooltip}
                     >
                         <Icon name="info" size={13} className="mt-px shrink-0" />
                         <span>
-                            No se pudo determinar el sistema operativo del servidor, así que la respuesta puede no ser
-                            específica. Corré <span className="font-mono text-on-surface">uname -a</span> y reintentá.
+                            {t.ssh.analysis.noOsBefore} <span className="font-mono text-on-surface">{UNAME}</span>{' '}
+                            {t.ssh.analysis.noOsAfter}
                         </span>
                     </p>
                 )}
 
                 {showSent && result && (
                     <pre className="mb-2 max-h-48 overflow-auto rounded-lg border border-outline-variant bg-surface-container-low px-2 py-1.5 font-mono text-ui-10 text-on-surface-variant">
-                        {result.osInfo && `# sistema detectado\n${result.osInfo}\n\n# salida\n`}
+                        {result.osInfo && `${t.ssh.analysis.sentOsHeader}\n${result.osInfo}\n\n${t.ssh.analysis.sentOutputHeader}\n`}
                         {result.lines.join('\n')}
                     </pre>
                 )}
@@ -294,8 +296,8 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
             {commands.length > 0 && !busy && (
                 <div className="flex max-h-[40%] shrink-0 flex-col border-t border-outline-variant bg-surface-container-low">
                     <p className="shrink-0 px-3 pt-2 pb-1 text-ui-10 text-on-surface-variant">
-                        <span className="font-semibold uppercase tracking-wider">Comandos propuestos</span> · ninguno se
-                        ejecuta solo: <em>Insertar</em> lo escribe y el Enter lo ponés vos
+                        <span className="font-semibold uppercase tracking-wider">{t.ssh.analysis.proposedTitle}</span>{' '}
+                        {t.ssh.analysis.proposedNoteBefore} <em>{t.ssh.analysis.insert}</em> {t.ssh.analysis.proposedNoteAfter}
                     </p>
                     <div className="min-h-0 overflow-y-auto px-2 pb-2">
                         {commands.map((c, i) => (
@@ -309,17 +311,17 @@ export default function SshErrorAnalysis({connId, connName, sessionId, selection
                                 </code>
                                 <button
                                     onClick={() => copyCommand(c, i)}
-                                    title="Copia el comando al portapapeles"
+                                    title={t.ssh.analysis.copyTooltip}
                                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                 >
                                     <Icon name={copied === i ? 'check' : 'content_copy'} size={13} />
                                 </button>
                                 <button
                                     onClick={() => onInsertCommand(c)}
-                                    title="Escribe el comando en la terminal SIN ejecutarlo — podés leerlo y editarlo antes de apretar Enter"
+                                    title={t.ssh.analysis.insertTooltip}
                                     className="shrink-0 rounded-md bg-primary/15 px-2 py-0.5 text-ui-11 font-medium text-primary hover:bg-primary hover:text-on-primary"
                                 >
-                                    Insertar
+                                    {t.ssh.analysis.insert}
                                 </button>
                             </div>
                         ))}

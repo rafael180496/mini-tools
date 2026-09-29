@@ -3,6 +3,7 @@ import {createPortal} from 'react-dom'
 import {ClearRecentFiles, ListRecentFiles} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface RecentFilesMenuProps {
     onOpen: (path: string) => void
@@ -30,6 +31,7 @@ function splitPath(path: string): {dir: string; name: string} {
 // something other than "visible" forces the other axis to behave as "auto"
 // too — see those two components' own comments on this exact issue).
 export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
+    const t = useT()
     const [open, setOpen] = useState(false)
     const [pos, setPos] = useState({top: 0, left: 0})
     const btnRef = useRef<HTMLButtonElement>(null)
@@ -54,11 +56,11 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
             <button
                 ref={btnRef}
                 onClick={toggleOpen}
-                title="Muestra los últimos archivos .sql que abriste, para reabrirlos rápido"
+                title={t.editor.recent.title}
                 className="flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
             >
                 <Icon name="history" size={16} />
-                Recientes
+                {t.editor.recent.button}
             </button>
             {open &&
                 createPortal(
@@ -69,7 +71,7 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
                             onClick={(e) => e.stopPropagation()}
                             className="z-50 rounded-lg border border-outline-variant bg-surface-container-high p-1 text-on-surface shadow-lg"
                         >
-                            {files.length === 0 && <p className="p-2 text-xs text-on-surface-variant">Sin archivos recientes.</p>}
+                            {files.length === 0 && <p className="p-2 text-xs text-on-surface-variant">{t.editor.recent.empty}</p>}
                             {files.map((f) => {
                                 const {dir, name} = splitPath(f.path)
                                 return (
@@ -95,11 +97,11 @@ export default function RecentFilesMenu({onOpen}: RecentFilesMenuProps) {
                                     onClick={() => {
                                         void ClearRecentFiles().then(() => setFiles([]))
                                     }}
-                                    title="Borra la lista de archivos recientes (no borra los archivos, solo el historial)"
+                                    title={t.editor.recent.clearTitle}
                                     className="mt-1 flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                 >
                                     <Icon name="delete_sweep" size={14} />
-                                    Limpiar historial
+                                    {t.editor.recent.clear}
                                 </button>
                             )}
                         </div>

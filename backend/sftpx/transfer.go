@@ -2,8 +2,8 @@ package sftpx
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/sshconn"
 	"sync"
 	"sync/atomic"
@@ -135,7 +135,7 @@ type transfer struct {
 // reported both as a returned error and as an "error" terminal event.
 func (m *TransferManager) Start(req Request) error {
 	if req.ID == "" {
-		return fmt.Errorf("sftpx: falta el id de la transferencia")
+		return i18n.New(i18n.Msg{ES: "sftpx: falta el id de la transferencia", EN: "sftpx: the transfer id is missing"})
 	}
 
 	src, err := openEndpoint(m.pool, req.Src)
@@ -186,7 +186,7 @@ func (m *TransferManager) Cancel(id string) error {
 	t := m.transfers[id]
 	m.mu.Unlock()
 	if t == nil {
-		return fmt.Errorf("sftpx: no hay una transferencia activa con id %q", id)
+		return i18n.Errorf(i18n.Msg{ES: "sftpx: no hay una transferencia activa con id %q", EN: "sftpx: there is no active transfer with id %q"}, id)
 	}
 	t.mu.Lock()
 	t.userCanceled = true
@@ -476,7 +476,7 @@ func (t *transfer) failConn() {
 		return
 	}
 	t.mu.Unlock()
-	t.fail(fmt.Errorf("sftpx: se perdió la conexión con el host"))
+	t.fail(i18n.New(i18n.Msg{ES: "sftpx: se perdió la conexión con el host", EN: "sftpx: the connection to the host was lost"}))
 }
 
 // finish emits exactly one terminal event based on how the run ended.

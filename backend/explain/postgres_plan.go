@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strings"
 
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/query"
 )
 
@@ -77,15 +77,15 @@ func PostgresPlan(ctx context.Context, pool *sql.DB, sqlText string, analyze boo
 		err = pool.QueryRowContext(ctx, explainSQL).Scan(&rawJSON)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("explain: ejecutando EXPLAIN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: ejecutando EXPLAIN: %w", EN: "explain: running EXPLAIN: %w"}, err)
 	}
 
 	var results []pgExplainResult
 	if err := json.Unmarshal([]byte(rawJSON), &results); err != nil {
-		return nil, fmt.Errorf("explain: parseando JSON de postgres: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: parseando JSON de postgres: %w", EN: "explain: parsing postgres JSON: %w"}, err)
 	}
 	if len(results) == 0 {
-		return nil, fmt.Errorf("explain: postgres no devolvió ningún plan")
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: postgres no devolvió ningún plan", EN: "explain: postgres returned no plan"})
 	}
 
 	plan := &Plan{
@@ -115,12 +115,12 @@ func PostgresPlan(ctx context.Context, pool *sql.DB, sqlText string, analyze boo
 func runInRolledBackTx(ctx context.Context, pool *sql.DB, explainSQL string) (string, error) {
 	conn, err := pool.Conn(ctx)
 	if err != nil {
-		return "", fmt.Errorf("reservando conexión: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "reservando conexión: %w", EN: "reserving connection: %w"}, err)
 	}
 	defer conn.Close()
 
 	if _, err := conn.ExecContext(ctx, "BEGIN"); err != nil {
-		return "", fmt.Errorf("abriendo transacción: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "abriendo transacción: %w", EN: "opening transaction: %w"}, err)
 	}
 	defer func() {
 		_, _ = conn.ExecContext(context.Background(), "ROLLBACK")

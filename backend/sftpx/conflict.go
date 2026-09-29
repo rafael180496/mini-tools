@@ -2,6 +2,7 @@ package sftpx
 
 import (
 	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"sync"
 )
@@ -164,10 +165,10 @@ func resolveConflict(dstFS fileSystem, dstDir, name, policy string, srcModTime i
 				return candidate, false, nil
 			}
 		}
-		return "", false, fmt.Errorf("sftpx: no se encontró un nombre libre para %q", name)
+		return "", false, i18n.Errorf(i18n.Msg{ES: "sftpx: no se encontró un nombre libre para %q", EN: "sftpx: no free name was found for %q"}, name)
 
 	default:
-		return "", false, fmt.Errorf("sftpx: política de conflicto desconocida: %q", policy)
+		return "", false, i18n.Errorf(i18n.Msg{ES: "sftpx: política de conflicto desconocida: %q", EN: "sftpx: unknown conflict policy: %q"}, policy)
 	}
 }
 

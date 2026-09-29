@@ -1,5 +1,6 @@
 import type {EditorView} from '@codemirror/view'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // Barra de formato de una nota.
 //
@@ -22,11 +23,11 @@ import Icon from '../Icon'
 // metadato de la nota y se aplica a la vista — el texto sigue siendo texto.
 export type NoteAlign = 'left' | 'center' | 'right' | 'justify'
 
-const ALIGNS: {value: NoteAlign; icon: string; label: string}[] = [
-    {value: 'left', icon: 'format_align_left', label: 'Alinear a la izquierda'},
-    {value: 'center', icon: 'format_align_center', label: 'Centrar'},
-    {value: 'right', icon: 'format_align_right', label: 'Alinear a la derecha'},
-    {value: 'justify', icon: 'format_align_justify', label: 'Justificar'},
+const ALIGNS: {value: NoteAlign; icon: string; key: 'alignLeft' | 'alignCenter' | 'alignRight' | 'alignJustify'}[] = [
+    {value: 'left', icon: 'format_align_left', key: 'alignLeft'},
+    {value: 'center', icon: 'format_align_center', key: 'alignCenter'},
+    {value: 'right', icon: 'format_align_right', key: 'alignRight'},
+    {value: 'justify', icon: 'format_align_justify', key: 'alignJustify'},
 ]
 
 interface Props {
@@ -87,17 +88,19 @@ function prefixLines(view: EditorView | null, prefix: string) {
 }
 
 export default function NoteToolbar({view, align, onAlign, onPickImage, onToggleFold}: Props) {
+    const t = useT()
+    const tb = t.notes.toolbar
     const btn = 'rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
 
     return (
         <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-outline-variant bg-surface-container px-2 py-1">
-            <button onClick={() => prefixLines(view, '# ')} title="Título de sección (# en Markdown)" className={btn}>
+            <button onClick={() => prefixLines(view, '# ')} title={tb.h1} className={btn}>
                 <span className="px-0.5 text-ui-13 font-bold">H1</span>
             </button>
-            <button onClick={() => prefixLines(view, '## ')} title="Subtítulo (## en Markdown)" className={btn}>
+            <button onClick={() => prefixLines(view, '## ')} title={tb.h2} className={btn}>
                 <span className="px-0.5 text-ui-12 font-bold">H2</span>
             </button>
-            <button onClick={() => prefixLines(view, '### ')} title="Sub-subtítulo (### en Markdown)" className={btn}>
+            <button onClick={() => prefixLines(view, '### ')} title={tb.h3} className={btn}>
                 <span className="px-0.5 text-ui-11 font-bold">H3</span>
             </button>
 
@@ -105,37 +108,37 @@ export default function NoteToolbar({view, align, onAlign, onPickImage, onToggle
 
             <button
                 onClick={() => wrapSelection(view, '**')}
-                title="Negrita — seleccioná el texto y apretá acá (Cmd/Ctrl+B)"
+                title={tb.bold}
                 className={btn}
             >
                 <Icon name="format_bold" size={15} />
             </button>
             <button
                 onClick={() => wrapSelection(view, '*')}
-                title="Itálica — seleccioná el texto y apretá acá (Cmd/Ctrl+I)"
+                title={tb.italic}
                 className={btn}
             >
                 <Icon name="format_italic" size={15} />
             </button>
-            <button onClick={() => wrapSelection(view, '~~')} title="Tachado" className={btn}>
+            <button onClick={() => wrapSelection(view, '~~')} title={tb.strike} className={btn}>
                 <Icon name="format_strikethrough" size={15} />
             </button>
-            <button onClick={() => wrapSelection(view, '`')} title="Código en línea" className={btn}>
+            <button onClick={() => wrapSelection(view, '`')} title={tb.inlineCode} className={btn}>
                 <Icon name="code" size={15} />
             </button>
 
             <span className="mx-1 h-4 w-px bg-outline-variant" />
 
-            <button onClick={() => prefixLines(view, '- ')} title="Lista con viñetas" className={btn}>
+            <button onClick={() => prefixLines(view, '- ')} title={tb.bullets} className={btn}>
                 <Icon name="format_list_bulleted" size={15} />
             </button>
-            <button onClick={() => prefixLines(view, '1. ')} title="Lista numerada" className={btn}>
+            <button onClick={() => prefixLines(view, '1. ')} title={tb.numbered} className={btn}>
                 <Icon name="format_list_numbered" size={15} />
             </button>
-            <button onClick={() => prefixLines(view, '- [ ] ')} title="Lista de verificación" className={btn}>
+            <button onClick={() => prefixLines(view, '- [ ] ')} title={tb.checklist} className={btn}>
                 <Icon name="checklist" size={15} />
             </button>
-            <button onClick={() => prefixLines(view, '> ')} title="Cita" className={btn}>
+            <button onClick={() => prefixLines(view, '> ')} title={tb.quote} className={btn}>
                 <Icon name="format_quote" size={15} />
             </button>
 
@@ -147,7 +150,7 @@ export default function NoteToolbar({view, align, onAlign, onPickImage, onToggle
                 <button
                     key={a.value}
                     onClick={() => onAlign(a.value)}
-                    title={`${a.label}. Es una propiedad de la nota, no del texto: el Markdown queda limpio y se sigue abriendo igual en cualquier otro editor.`}
+                    title={tb.alignTitle({label: tb[a.key]})}
                     className={
                         align === a.value
                             ? 'rounded bg-primary/20 p-1 text-primary'
@@ -162,41 +165,41 @@ export default function NoteToolbar({view, align, onAlign, onPickImage, onToggle
 
             <button
                 onClick={() => wrapSelection(view, '[', '](url)')}
-                title="Enlace a una página web. Para enlazar OTRA NOTA, escribí [[ y elegila de la lista."
+                title={tb.webLink}
                 className={btn}
             >
                 <Icon name="link" size={15} />
             </button>
             <button
                 onClick={() => wrapSelection(view, '[[', ']]')}
-                title="Enlace a otra nota. También se abre escribiendo [[ en el texto."
+                title={tb.noteLink}
                 className={btn}
             >
                 <Icon name="hub" size={15} />
             </button>
             <button
                 onClick={onPickImage}
-                title="Inserta una imagen PNG o JPG. Se guarda CIFRADA dentro del vault, igual que el texto de la nota, y los PNG se recomprimen sin perder un solo píxel. También podés pegarla con Cmd/Ctrl+V."
+                title={tb.image}
                 className={btn}
             >
                 <Icon name="image" size={15} />
             </button>
             <button
                 onClick={() =>
-                    wrapSelection(view, '\n| Campo | Valor |\n|---|---|\n| ', ' |  |\n')
+                    wrapSelection(view, `\n| ${tb.tableField} | ${tb.tableValue} |\n|---|---|\n| `, ' |  |\n')
                 }
-                title="Tabla de dos columnas"
+                title={tb.table}
                 className={btn}
             >
                 <Icon name="table" size={15} />
             </button>
-            <button onClick={onToggleFold} title="Bloque plegable, para el detalle largo" className={btn}>
+            <button onClick={onToggleFold} title={tb.fold} className={btn}>
                 <Icon name="unfold_more" size={15} />
             </button>
 
             <span
                 className="ml-auto text-ui-10 text-on-surface-variant/70"
-                title="La nota se guarda como Markdown puro: exportada, se abre en Obsidian o en cualquier editor de texto sin perder nada."
+                title={tb.markdownTitle}
             >
                 Markdown
             </span>

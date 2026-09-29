@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -214,23 +214,23 @@ func (r *Runner) AddSubmodule(repoPath, url, path, branch string, auth AuthConfi
 		return "", err
 	}
 	if strings.TrimSpace(url) == "" {
-		return "", fmt.Errorf("la URL del submódulo no puede estar vacía")
+		return "", i18n.New(i18n.Msg{ES: "la URL del submódulo no puede estar vacía", EN: "the submodule URL cannot be empty"})
 	}
 	if strings.HasPrefix(strings.TrimSpace(url), "-") {
-		return "", fmt.Errorf("URL inválida: %q no puede empezar con '-'", url)
+		return "", i18n.Errorf(i18n.Msg{ES: "URL inválida: %q no puede empezar con '-'", EN: "invalid URL: %q cannot start with '-'"}, url)
 	}
 	// La ruta es opcional: sin ella git usa el último tramo de la URL, que es
 	// lo que la gente quiere casi siempre y ahorra escribirla dos veces.
 	path = strings.TrimSpace(path)
 	if path != "" {
-		if err := checkRefArg("ruta", path); err != nil {
+		if err := checkRefArg(argPath, path); err != nil {
 			return "", err
 		}
 	}
 
 	args := []string{"submodule", "add"}
 	if branch != "" {
-		if err := checkRefArg("rama", branch); err != nil {
+		if err := checkRefArg(argBranch, branch); err != nil {
 			return "", err
 		}
 		args = append(args, "-b", branch)
@@ -266,7 +266,7 @@ func (r *Runner) UpdateSubmodule(repoPath, path string, init, recursive bool, au
 	if err != nil {
 		return "", err
 	}
-	if err := checkRefArg("ruta", path); err != nil {
+	if err := checkRefArg(argPath, path); err != nil {
 		return "", err
 	}
 	return r.runNetwork(root, auth, submoduleUpdateArgs(init, recursive, path)...)
@@ -327,7 +327,7 @@ func (r *Runner) RemoveSubmodule(repoPath, path string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("ruta", path); err != nil {
+	if err := checkRefArg(argPath, path); err != nil {
 		return err
 	}
 
@@ -343,10 +343,10 @@ func (r *Runner) RemoveSubmodule(repoPath, path string) error {
 		// The two git steps already succeeded; refusing to report success
 		// over a path that could not be validated is the right trade, but
 		// the message has to say what WAS done.
-		return fmt.Errorf("el submódulo se quitó del repositorio, pero no se pudo limpiar su clon en .git/modules: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "el submódulo se quitó del repositorio, pero no se pudo limpiar su clon en .git/modules: %w", EN: "the submodule was removed from the repository, but its clone in .git/modules could not be cleaned up: %w"}, err)
 	}
 	if err := os.RemoveAll(cached); err != nil {
-		return fmt.Errorf("el submódulo se quitó del repositorio, pero quedó su clon en %s: %w", cached, err)
+		return i18n.Errorf(i18n.Msg{ES: "el submódulo se quitó del repositorio, pero quedó su clon en %s: %w", EN: "the submodule was removed from the repository, but its clone was left in %s: %w"}, cached, err)
 	}
 	return nil
 }
@@ -362,7 +362,7 @@ func submoduleGitDir(root, path string) (string, error) {
 		return "", err
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		return "", fmt.Errorf("ruta de submódulo inválida: %q", path)
+		return "", i18n.Errorf(i18n.Msg{ES: "ruta de submódulo inválida: %q", EN: "invalid submodule path: %q"}, path)
 	}
 	return target, nil
 }

@@ -1,0 +1,77 @@
+// Textos de git.agent. Ver .claude/specs/i18n.md.
+export default {
+    loading: 'Leyendo la configuración agéntica del repositorio…',
+    heading: 'Lo que este repositorio le ofrece a un agente',
+    reloadTitle: 'Vuelve a leer .claude/ y los archivos de instrucciones — útil después de crear un skill o un CLAUDE.md',
+    defaultAgent: 'Agente por defecto',
+    defaultAgentTitle: 'Con qué asistente se abren las sesiones desde este repositorio cuando usás Preguntar. Sin elegir, se pregunta cada vez.',
+    askEachTime: 'Preguntar cada vez',
+    instructions: {
+        title: 'Instrucciones del proyecto',
+        openTitle: (p: {file: string; agents: string}) => `Abre ${p.file} en el editor. Lo lee ${p.agents}.`,
+        missingTitle: (p: {file: string; agents: string}) =>
+            `${p.file} no existe en este repositorio, así que ${p.agents} abre acá sin ninguna instrucción del proyecto. Al abrirlo se crea vacío y podés escribirlo.`,
+        missingTag: ' — falta',
+        noneAtAll: 'Este repositorio no tiene ningún archivo de instrucciones: cualquier agente que abras acá arranca sin contexto del proyecto.',
+        someMissing: (p: {files: string; fileCount: number; agents: string; agentCount: number}) =>
+            `Falta${p.fileCount > 1 ? 'n' : ''} ${p.files} — ${p.agents} no lee${p.agentCount > 1 ? 'n' : ''} los archivos de los otros.`,
+    },
+    skills: 'Skills',
+    askSkillPrompt: (p: {name: string}) => `Usá el skill "${p.name}" para `,
+    subagents: 'Subagentes',
+    commands: 'Comandos',
+    nothing: 'No hay skills, subagentes ni comandos definidos — ni en este repositorio ni en tu carpeta personal.',
+    usage: {
+        title: (p: {days: number}) => `Consumo de tokens · ${p.days} días`,
+        unknownPlan: 'plan desconocido',
+        tokensDetail: (p: {total: string; messages: string}) => `${p.total} tokens en ${p.messages} respuestas`,
+        tokens: (p: {n: string}) => `${p.n} tokens`,
+        conversationsTitle: 'Conversaciones registradas por el CLI en esta máquina',
+        conversations: 'Conversaciones:',
+        stepsTitle: 'Pasos (turnos de trabajo del agente) sumados de todas las conversaciones',
+        steps: 'Pasos:',
+        repoConversationsTitle: 'Conversaciones cuyo workspace incluye este repositorio',
+        thisRepo: 'Este repo:',
+        repoActivity: (p: {conversations: number; steps: number}) => `${p.conversations} conv · ${p.steps} pasos`,
+        lastUsed: (p: {when: string}) => `último uso: ${p.when}`,
+        repoTokensDetail: (p: {total: string; messages: string}) => `${p.total} tokens en ${p.messages} respuestas sobre este repositorio`,
+        cacheTitle: 'Qué parte de los tokens de ENTRADA salió del caché en vez de reprocesarse. Es el único número de acá sobre el que se puede actuar: cuanto más alto, más barata la sesión larga.',
+        cache: 'Caché:',
+        outputTitle: 'Los tokens que generó el modelo. Son los más caros de las cuatro clases.',
+        output: 'Salida:',
+        footnote: 'Las barras de límite son el porcentaje que calculó el servidor de cada proveedor y que su CLI dejó cacheado en esta máquina: se leen tal cual, con la hora en que se midieron — no son en vivo. Los porcentajes de consumo (por modelo, caché, este repo) son proporciones de lo gastado, no de un tope.',
+    },
+    mcp: {
+        title: 'Servidores MCP',
+        none: (p: {looked: number; present: number}) =>
+            `Ningún agente tiene servidores MCP configurados para este repositorio. Se miraron ${p.looked} ubicaciones (${p.present} existen).`,
+        addTitle: 'Agrega un servidor MCP a uno de los archivos de configuración que la app puede escribir',
+        add: 'Agregar servidor',
+        fileTitle: 'En qué archivo se escribe. Los que no aparecen no se editan desde la app.',
+        namePlaceholder: 'nombre (ej. github)',
+        commandPlaceholder: 'comando (ej. npx)',
+        argsPlaceholder: 'argumentos separados por espacios',
+        envPlaceholder: 'env: CLAVE=valor, OTRA=valor',
+        envTitle: 'Variables de entorno del servidor. Se escriben en TU archivo de configuración en texto plano, que es como lo lee el CLI — mini-tools no las guarda ni las administra.',
+        serverTitle: (p: {target: string; agent: string; project: boolean; source: string}) =>
+            `${p.target}\n\nLo lee ${p.agent} · ${p.project ? 'solo en este repositorio' : 'en cualquier repositorio de esta máquina'}\nDefinido en ${p.source}`,
+        remote: 'remoto',
+        envKeysTitle: 'Nombres de las variables de entorno que este servidor recibe. Sus valores no salen del backend.',
+        envKeys: (p: {keys: string}) => `env: ${p.keys}`,
+        removeTitle: (p: {name: string; source: string}) =>
+            `Quita "${p.name}" de ${p.source}. Se deja una copia .mini-tools.bak al lado antes de tocar el archivo.`,
+        removeConfirmTitle: (p: {name: string}) => `Quitar "${p.name}"`,
+        removeConfirm: (p: {source: string}) =>
+            `Se va a sacar de ${p.source}. El agente deja de tener esa herramienta. Antes de escribir se deja una copia .mini-tools.bak al lado, y el resto del archivo no se toca.`,
+        removeLabel: 'Quitar',
+    },
+    personal: 'personal',
+    collapseSection: 'Plegar esta sección',
+    expandSection: (p: {count: number}) => `Desplegar — tiene ${p.count}`,
+    entry: {
+        askTitle: (p: {name: string}) => `Le pide al agente que use "${p.name}" y deja el prompt escrito para que lo completes`,
+        personalTitle: (p: {path: string}) =>
+            `${p.path} — está en tu carpeta personal, no en el repositorio: la ven tus agentes en esta máquina, no el resto del equipo`,
+        openTitle: (p: {path: string}) => `${p.path} — click para abrirlo en el editor`,
+    },
+}

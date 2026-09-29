@@ -6,6 +6,7 @@
 // filter check, same tolerance the other hand-rolled linters accept.
 
 import type {LintWarning} from './linter'
+import {t} from '../i18n'
 
 export function lintMongoCommands(text: string): LintWarning[] {
     const warnings: LintWarning[] = []
@@ -16,7 +17,7 @@ export function lintMongoCommands(text: string): LintWarning[] {
 
         if (/\.(deleteMany|updateMany)\s*\(\s*\{\s*\}/.test(trimmed)) {
             warnings.push({
-                message: 'Filtro vacío {} — afecta TODOS los documentos de la colección.',
+                message: t().mongo.lint.emptyFilter,
                 startLineNumber: i + 1,
                 endLineNumber: i + 1,
                 blocking: true,
@@ -24,7 +25,7 @@ export function lintMongoCommands(text: string): LintWarning[] {
         }
         if (/\.drop(Database)?\s*\(/.test(trimmed)) {
             warnings.push({
-                message: 'drop() elimina la colección/base completa — irreversible.',
+                message: t().mongo.lint.drop,
                 startLineNumber: i + 1,
                 endLineNumber: i + 1,
                 blocking: true,

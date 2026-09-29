@@ -2,13 +2,7 @@ import {useState} from 'react'
 import {CheckRedisLuaScript, RunRedisLuaScript} from '../../../wailsjs/go/main/App'
 import {redisquery} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
-
-const EXAMPLE = `-- KEYS[1] es la clave; ARGV[1] el valor
-if redis.call('EXISTS', KEYS[1]) == 1 then
-  return redis.call('GET', KEYS[1])
-end
-redis.call('SET', KEYS[1], ARGV[1])
-return ARGV[1]`
+import {useT} from '../../i18n'
 
 interface RedisLuaPanelProps {
     connId: string
@@ -23,7 +17,11 @@ interface RedisLuaPanelProps {
 // is therefore its own button rather than something folded into running,
 // and the panel says why.
 export default function RedisLuaPanel({connId, onClose}: RedisLuaPanelProps) {
-    const [script, setScript] = useState(EXAMPLE)
+    const t = useT()
+    const lt = t.redis.lua
+    // The starting example carries a comment line, so it comes from the
+    // dictionary like any other text.
+    const [script, setScript] = useState(lt.example)
     const [keys, setKeys] = useState('')
     const [args, setArgs] = useState('')
     const [result, setResult] = useState<redisquery.LuaResult | null>(null)
@@ -64,14 +62,14 @@ export default function RedisLuaPanel({connId, onClose}: RedisLuaPanelProps) {
         <div className="flex h-full flex-col overflow-hidden">
             <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-xs">
                 <Icon name="code" size={15} className="shrink-0 text-primary" />
-                <span className="font-semibold text-on-surface">Script Lua</span>
+                <span className="font-semibold text-on-surface">{t.redis.browser.lua}</span>
                 <span
                     className="text-on-surface-variant/70"
-                    title="Redis ejecuta los scripts de forma atómica: mientras uno corre, el servidor no atiende a nadie más. Por eso conviene validar antes, y por eso un bucle infinito acá es una caída."
+                    title={lt.atomicHint}
                 >
-                    se ejecuta de forma atómica — bloquea al servidor mientras corre
+                    {lt.atomic}
                 </span>
-                <button onClick={onClose} title="Cierra el panel de scripts" className="ml-auto rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
+                <button onClick={onClose} title={lt.closeHint} className="ml-auto rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
                     <Icon name="close" size={16} />
                 </button>
             </div>
@@ -85,28 +83,28 @@ export default function RedisLuaPanel({connId, onClose}: RedisLuaPanelProps) {
                     }}
                     spellCheck={false}
                     rows={12}
-                    title="Cuerpo del script. Usá KEYS[] para las claves y ARGV[] para el resto de los parámetros."
+                    title={lt.scriptHint}
                     className="w-full resize-y rounded border border-outline-variant bg-surface-container-low p-2 font-mono text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary"
                 />
 
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                     <label className="block text-on-surface-variant">
-                        KEYS (separadas por comas)
+                        {lt.keys}
                         <input
                             value={keys}
                             onChange={(e) => setKeys(e.target.value)}
-                            placeholder="mi:clave"
-                            title="Las claves que el script va a tocar. No es lo mismo que pasarlas por ARGV: Redis rutea y valida un script por las KEYS que declara, así que una clave pasada como ARGV funciona en un solo nodo y se rompe el día que el despliegue se reparta en shards."
+                            placeholder={lt.keysPlaceholder}
+                            title={lt.keysHint}
                             className="mt-0.5 w-full rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-on-surface"
                         />
                     </label>
                     <label className="block text-on-surface-variant">
-                        ARGV (separados por comas)
+                        {lt.argv}
                         <input
                             value={args}
                             onChange={(e) => setArgs(e.target.value)}
-                            placeholder="valor"
-                            title="Parámetros que no son claves"
+                            placeholder={lt.argvPlaceholder}
+                            title={lt.argvHint}
                             className="mt-0.5 w-full rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-on-surface"
                         />
                     </label>
@@ -116,26 +114,26 @@ export default function RedisLuaPanel({connId, onClose}: RedisLuaPanelProps) {
                     <button
                         onClick={() => void check()}
                         disabled={busy}
-                        title="Compila el script sin ejecutarlo (SCRIPT LOAD). Encuentra errores de sintaxis antes de que el script bloquee al servidor, y deja la versión compilada en caché — así que validar no es trabajo perdido."
+                        title={lt.validateHint}
                         className="flex items-center gap-1 rounded border border-outline-variant px-2.5 py-1 text-on-surface hover:bg-surface-container-high disabled:opacity-40"
                     >
                         <Icon name="spellcheck" size={14} />
-                        Validar
+                        {lt.validate}
                     </button>
                     <button
                         onClick={() => void run()}
                         disabled={busy}
-                        title="Valida y después ejecuta el script contra el servidor"
+                        title={lt.runHint}
                         className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-on-primary disabled:opacity-40"
                     >
                         <Icon name="play_arrow" size={14} />
-                        Ejecutar
+                        {lt.run}
                     </button>
 
                     {checked && !error && (
-                        <span className="flex items-center gap-1 text-primary" title="El script compila. El SHA es el identificador con el que Redis lo tiene en caché.">
+                        <span className="flex items-center gap-1 text-primary" title={lt.compilesHint}>
                             <Icon name="check_circle" size={13} />
-                            compila · <span className="font-mono">{checked.slice(0, 12)}…</span>
+                            {lt.compiles} · <span className="font-mono">{checked.slice(0, 12)}…</span>
                         </span>
                     )}
                 </div>
@@ -145,18 +143,18 @@ export default function RedisLuaPanel({connId, onClose}: RedisLuaPanelProps) {
                 {result && (
                     <div className="mt-3">
                         <div className="mb-1 flex items-center gap-2 text-ui-11 uppercase tracking-wide text-on-surface-variant">
-                            Resultado
+                            {lt.result}
                             {!!result.durationMs && (
                                 <span
                                     className="font-mono normal-case text-on-surface-variant/70"
-                                    title="Cuánto tardó el script. Como es atómico, es también cuánto esperó todo el resto de los clientes."
+                                    title={lt.durationHint}
                                 >
-                                    {result.durationMs} ms
+                                    {lt.durationMs(result.durationMs)}
                                 </span>
                             )}
                         </div>
                         <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded border border-outline-variant bg-surface-container-low p-2 font-mono text-xs text-on-surface">
-                            {result.kind === 'nil' ? '(nil)' : JSON.stringify(result.value, null, 2)}
+                            {result.kind === 'nil' ? lt.nil : JSON.stringify(result.value, null, 2)}
                         </pre>
                     </div>
                 )}

@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **La app habla inglés y español.** Se elige en **Configuración → Apariencia → Idioma**, o con el botón de idioma de la pantalla de desbloqueo, y cambia al instante —sin reiniciar, sin cerrar terminales ni cortar consultas en curso—. Queda guardado y vale también en la pantalla de la clave maestra. **La primera vez arranca en inglés**; quien use español lo cambia una sola vez. Lo que no se traduce son tus datos: nombres de conexiones, notas, resultados.
+
+  Los textos salen de un diccionario por módulo en vez de estar escritos a mano en cada pantalla, y el inglés se valida contra el español al compilar: un texto que falta en un idioma no llega a la app. La ayuda en línea también existe en los dos idiomas —con sus capturas en cada idioma—, y el botón **?** abre la del idioma elegido.
+
+  **También el backend**: los mensajes de error, los avisos y los rótulos que arma el programa por dentro salen en el idioma elegido. Y los agentes de IA contestan en ese idioma: los pedidos que arma la app (explicar un error, redactar un commit, generar SQL, revisar una petición HTTP…) se escriben en el idioma de la interfaz. Los conflictos al guardar un archivo, la contraseña SSH vencida y las notas privadas se reconocen por un código y no por el texto del error, así que siguen funcionando igual en los dos idiomas.
+
 ### Cambiado
 
 - **Un pull con muchos cambios ya no tapa el módulo Git.** La salida de git se volcaba entera en un aviso sin tope de alto: un pull de ciento cincuenta archivos empujaba el grafo fuera de la pantalla y no había forma de llegar a él sin cerrar el mensaje. Además git, al no tener terminal, recortaba las rutas largas a `.../resto`, así que ni siquiera se podía saber qué archivo era.

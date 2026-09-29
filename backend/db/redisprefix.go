@@ -2,11 +2,12 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
+
+	"mini-tools/backend/i18n"
 )
 
 // Namespace analysis: what is actually in this keyspace, grouped by the
@@ -111,7 +112,7 @@ func AnalyzeRedisPrefixes(
 
 		page, err := ScanKeys(ctx, client, cursor, "*", "", redisPrefixScanBatch)
 		if err != nil {
-			return RedisPrefixReport{}, fmt.Errorf("db: escaneando prefijos: %w", err)
+			return RedisPrefixReport{}, i18n.Errorf(i18n.Msg{ES: "db: escaneando prefijos: %w", EN: "db: scanning prefixes: %w"}, err)
 		}
 
 		for _, entry := range page.Keys {
@@ -222,7 +223,7 @@ func DeleteRedisKeys(ctx context.Context, client redis.UniversalClient, keys []s
 			for _, k := range batch {
 				n, err := client.Del(ctx, k).Result()
 				if err != nil {
-					return deleted, fmt.Errorf("db: borrando %q (ya se borraron %d): %w", k, deleted, err)
+					return deleted, i18n.Errorf(i18n.Msg{ES: "db: borrando %q (ya se borraron %d): %w", EN: "db: deleting %q (%d already deleted): %w"}, k, deleted, err)
 				}
 				deleted += n
 			}
@@ -231,7 +232,7 @@ func DeleteRedisKeys(ctx context.Context, client redis.UniversalClient, keys []s
 
 		n, err := client.Del(ctx, batch...).Result()
 		if err != nil {
-			return deleted, fmt.Errorf("db: borrando un lote de claves (ya se borraron %d): %w", deleted, err)
+			return deleted, i18n.Errorf(i18n.Msg{ES: "db: borrando un lote de claves (ya se borraron %d): %w", EN: "db: deleting a batch of keys (%d already deleted): %w"}, deleted, err)
 		}
 		deleted += n
 	}

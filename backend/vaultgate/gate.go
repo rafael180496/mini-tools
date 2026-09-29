@@ -1,15 +1,15 @@
 package vaultgate
 
 import (
-	"errors"
 	"sync"
 
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 )
 
 // ErrLocked is returned by any bound method that requires an unlocked vault
 // while the app has not been unlocked yet.
-var ErrLocked = errors.New("vault: locked")
+var ErrLocked = i18n.New(i18n.Msg{ES: "vault: bloqueado", EN: "vault: locked"})
 
 // Gate holds the derived vault key in memory while the app is unlocked.
 // There is no bypass: any code path that needs the key must go through Key,

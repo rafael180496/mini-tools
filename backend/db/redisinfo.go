@@ -2,11 +2,12 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
+
+	"mini-tools/backend/i18n"
 )
 
 // Health metrics from INFO — the numbers people open redis-cli for.
@@ -87,7 +88,7 @@ func GetRedisServerInfo(ctx context.Context, client redis.UniversalClient) (Redi
 
 	raw, err := client.Info(ctx).Result()
 	if err != nil {
-		return RedisServerInfo{}, fmt.Errorf("db: INFO de Redis: %w", err)
+		return RedisServerInfo{}, i18n.Errorf(i18n.Msg{ES: "db: INFO de Redis: %w", EN: "db: Redis INFO: %w"}, err)
 	}
 	info := parseRedisInfo(raw)
 	info.Nodes = 1
@@ -139,7 +140,7 @@ func clusterServerInfo(ctx context.Context, cc *redis.ClusterClient) (RedisServe
 		return nil
 	})
 	if err != nil {
-		return RedisServerInfo{}, fmt.Errorf("db: INFO de Redis (cluster): %w", err)
+		return RedisServerInfo{}, i18n.Errorf(i18n.Msg{ES: "db: INFO de Redis (cluster): %w", EN: "db: Redis INFO (cluster): %w"}, err)
 	}
 
 	total.HitRatePct = hitRate(total.KeyspaceHits, total.KeyspaceMisses)

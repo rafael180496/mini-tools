@@ -6,6 +6,7 @@ import {BrowserOpenURL} from '../../../wailsjs/runtime'
 import Icon from '../Icon'
 import SidebarMasterMenu, {type SidebarModuleDef, type SidebarModuleId} from './SidebarMasterMenu'
 import type {Theme} from '../../hooks/useTheme'
+import {useLang, useT, type Lang} from '../../i18n'
 
 // La barra lateral entera: identidad, menú master, búsqueda y el árbol del
 // módulo abierto.
@@ -71,6 +72,13 @@ interface SidebarProps {
 // y tenerla repetida en dos archivos es tenerla desactualizada en uno.
 export const DOCS_URL = 'https://rafael180496.github.io/mini-tools/'
 
+// docsUrl es la ayuda en el idioma de la interfaz: la inglesa en la raíz y la
+// española en `es/`. Las anclas (`#tema`) son las mismas en las dos páginas,
+// así que un enlace profundo se arma igual: `docsUrl(lang) + '#tema'`.
+export function docsUrl(lang: Lang): string {
+    return lang === 'es' ? `${DOCS_URL}es/` : DOCS_URL
+}
+
 // Los tres botones del pie —tema, configuración y ayuda— comparten forma,
 // tamaño de área clickeable y respuesta al hover desde acá.
 //
@@ -114,11 +122,13 @@ function FooterIconButton({
 // justamente cuando alguien no sabe dónde está parado. Es el mismo motivo por
 // el que ahora la acompañan el tema y la configuración.
 function HelpButton() {
+    const t = useT()
+    const lang = useLang()
     return (
         <FooterIconButton
             icon="help"
-            onClick={() => BrowserOpenURL(DOCS_URL)}
-            title="Abrir la documentación en el navegador: qué hace cada módulo, ejemplos de uso y recetas de principio a fin"
+            onClick={() => BrowserOpenURL(docsUrl(lang))}
+            title={t.shell.sidebar.helpTitle}
         />
     )
 }
@@ -126,14 +136,15 @@ function HelpButton() {
 // Tema claro/oscuro. El ícono muestra a DÓNDE lleva el clic, no dónde estás:
 // en oscuro se ve el sol, que es lo que vas a obtener.
 function ThemeButton({theme, onToggle}: {theme: Theme; onToggle: () => void}) {
+    const t = useT()
     return (
         <FooterIconButton
             icon={theme === 'dark' ? 'light_mode' : 'dark_mode'}
             onClick={onToggle}
             title={
                 theme === 'dark'
-                    ? 'Cambiar al tema claro — se guarda y arranca así la próxima vez'
-                    : 'Cambiar al tema oscuro — se guarda y arranca así la próxima vez'
+                    ? t.shell.sidebar.themeToLight
+                    : t.shell.sidebar.themeToDark
             }
         />
     )
@@ -141,6 +152,7 @@ function ThemeButton({theme, onToggle}: {theme: Theme; onToggle: () => void}) {
 
 // Configuración de la app: apariencia, vault, terminal y agentes.
 function SettingsButton({onOpen, updateAvailable}: {onOpen: () => void; updateAvailable: string | null}) {
+    const t = useT()
     return (
         <FooterIconButton
             icon="settings"
@@ -148,8 +160,8 @@ function SettingsButton({onOpen, updateAvailable}: {onOpen: () => void; updateAv
             badge={Boolean(updateAvailable)}
             title={
                 updateAvailable
-                    ? `Configuración: apariencia, vault, terminal y agentes — y el link para bajar la v${updateAvailable}, que ya está disponible`
-                    : 'Configuración: tamaño de letra y tema del editor, backup del vault, terminal y agentes de IA'
+                    ? t.shell.sidebar.settingsUpdateTitle({latest: updateAvailable})
+                    : t.shell.sidebar.settingsTitle
             }
         />
     )
@@ -177,6 +189,7 @@ function SidebarFooter({
     onToggleTheme: () => void
     onOpenSettings: () => void
 }) {
+    const t = useT()
     const [version, setVersion] = useState('')
 
     useEffect(() => {
@@ -208,8 +221,8 @@ function SidebarFooter({
                     onClick={onOpenRepo}
                     title={
                         updateDownloadName
-                            ? `Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para descargar ${updateDownloadName}`
-                            : `Estás en la v${version || '—'} y hay una v${updateAvailable} disponible — clic para abrir su página de descarga`
+                            ? t.shell.sidebar.updateDownload({current: version || '—', latest: updateAvailable, file: updateDownloadName})
+                            : t.shell.sidebar.updatePage({current: version || '—', latest: updateAvailable})
                     }
                     className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-surface-variant"
                 >
@@ -234,7 +247,7 @@ function SidebarFooter({
                 barra de título de la ventana, la versión no está en ningún
                 otro lado. */}
             <span
-                title={`mini-tools ${label} — la versión instalada en este equipo`}
+                title={t.shell.sidebar.versionTitle({version: label})}
                 className="flex min-w-0 flex-1 items-center gap-1.5 px-1"
             >
                 <img src={logo} alt="" className="h-4 w-4 shrink-0 object-contain" />
@@ -257,6 +270,7 @@ function SidebarFooterMark({
     updateDownloadName: string | null
     onOpenRepo: () => void
 }) {
+    const t = useT()
     const [version, setVersion] = useState('')
 
     useEffect(() => {
@@ -271,9 +285,9 @@ function SidebarFooterMark({
             title={
                 updateAvailable
                     ? updateDownloadName
-                        ? `mini-tools v${version || '—'} — hay una v${updateAvailable} disponible, clic para descargar ${updateDownloadName}`
-                        : `mini-tools v${version || '—'} — hay una v${updateAvailable} disponible, clic para abrir su página de descarga`
-                    : `mini-tools ${version ? `v${version}` : '—'} — la versión instalada en este equipo`
+                        ? t.shell.sidebar.markUpdateDownload({current: version || '—', latest: updateAvailable, file: updateDownloadName})
+                        : t.shell.sidebar.markUpdatePage({current: version || '—', latest: updateAvailable})
+                    : t.shell.sidebar.versionTitle({version: version ? `v${version}` : '—'})
             }
             className={`relative flex h-9 w-full items-center justify-center border-t border-outline-variant ${
                 updateAvailable ? 'hover:bg-surface-variant' : 'cursor-default'
@@ -286,6 +300,7 @@ function SidebarFooterMark({
 }
 
 export default function Sidebar({modules, activeModule, onSelectModule, collapsed, onToggleCollapsed, filter, onFilterChange, bodies, width, onStartResize, updateAvailable, updateDownloadName, onOpenRepo, theme, onToggleTheme, onOpenSettings}: SidebarProps) {
+    const t = useT()
     const active = modules.find((m) => m.id === activeModule) ?? modules[0]
 
     if (collapsed) {
@@ -293,7 +308,7 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
             <aside className="flex h-full w-11 shrink-0 flex-col items-center border-r border-outline-variant bg-surface-container-low py-2 text-on-surface">
                 <button
                     onClick={onToggleCollapsed}
-                    title="Mostrar la barra lateral con el árbol de conexiones, servidores, repositorios y notas"
+                    title={t.shell.sidebar.expand}
                     className="rounded-lg p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="left_panel_open" size={18} />
@@ -349,7 +364,7 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
                         <div className="mx-1 h-5 w-px shrink-0 bg-outline-variant" />
                         <button
                             onClick={onToggleCollapsed}
-                            title="Ocultar la barra lateral y darle todo el ancho al editor — queda una columna con los íconos de los módulos para volver"
+                            title={t.shell.sidebar.collapse}
                             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name="left_panel_close" size={18} />
@@ -370,14 +385,14 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
                     <input
                         value={filter}
                         onChange={(e) => onFilterChange(e.target.value)}
-                        placeholder="Buscar en todo…"
-                        title="Busca a la vez en conexiones de base de datos, servidores SSH, repositorios Git y notas — por nombre del elemento o de la carpeta que lo contiene. Los íconos de arriba muestran cuántas coincidencias tiene cada módulo"
+                        placeholder={t.shell.sidebar.searchPlaceholder}
+                        title={t.shell.sidebar.searchTitle}
                         className="min-w-0 flex-1 bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
                     />
                     {filter && (
                         <button
                             onClick={() => onFilterChange('')}
-                            title="Limpiar la búsqueda y volver a ver el módulo completo"
+                            title={t.shell.sidebar.clearSearch}
                             className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
                         >
                             <Icon name="close" size={14} />
@@ -409,7 +424,7 @@ export default function Sidebar({modules, activeModule, onSelectModule, collapse
                 es exactamente el pixel que uno intenta agarrar. */}
             <div
                 onMouseDown={onStartResize}
-                title="Arrastrar para cambiar el ancho de la barra lateral — el tamaño queda guardado"
+                title={t.shell.sidebar.resize}
                 className="absolute inset-y-0 -right-0.5 z-10 w-1.5 cursor-col-resize hover:bg-primary/30"
             />
         </aside>

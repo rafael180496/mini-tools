@@ -2,13 +2,14 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
+
+	"mini-tools/backend/i18n"
 )
 
 const defaultMongoPingTimeout = 5 * time.Second
@@ -35,7 +36,7 @@ func (m *MongoPoolManager) Get(connID string) (*mongo.Client, error) {
 
 	client, ok := m.clients[connID]
 	if !ok {
-		return nil, fmt.Errorf("db: no hay un cliente Mongo abierto para la conexión %q", connID)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: no hay un cliente Mongo abierto para la conexión %q", EN: "db: no Mongo client open for connection %q"}, connID)
 	}
 	return client, nil
 }
@@ -66,7 +67,7 @@ func (m *MongoPoolManager) Open(connID, dsn string) (*mongo.Client, error) {
 
 	client, err := mongo.Connect(options.Client().ApplyURI(dsn))
 	if err != nil {
-		return nil, fmt.Errorf("db: abriendo cliente Mongo: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: abriendo cliente Mongo: %w", EN: "db: opening Mongo client: %w"}, err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultMongoPingTimeout)
@@ -74,7 +75,7 @@ func (m *MongoPoolManager) Open(connID, dsn string) (*mongo.Client, error) {
 
 	if err := client.Ping(ctx, readpref.Primary()); err != nil {
 		_ = client.Disconnect(context.Background())
-		return nil, fmt.Errorf("db: haciendo ping al cliente Mongo: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: haciendo ping al cliente Mongo: %w", EN: "db: pinging Mongo client: %w"}, err)
 	}
 
 	m.clients[connID] = client
@@ -123,7 +124,7 @@ func (m *MongoPoolManager) CloseAll() {
 func PingMongoDSN(dsn string) error {
 	client, err := mongo.Connect(options.Client().ApplyURI(dsn))
 	if err != nil {
-		return fmt.Errorf("db: abriendo para probar conexión Mongo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: abriendo para probar conexión Mongo: %w", EN: "db: opening to test Mongo connection: %w"}, err)
 	}
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), defaultMongoPingTimeout)
@@ -135,7 +136,7 @@ func PingMongoDSN(dsn string) error {
 	defer cancel()
 
 	if err := client.Ping(ctx, readpref.Primary()); err != nil {
-		return fmt.Errorf("db: ping Mongo falló: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: ping Mongo falló: %w", EN: "db: Mongo ping failed: %w"}, err)
 	}
 	return nil
 }

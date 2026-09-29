@@ -4,10 +4,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 	"unicode"
+
+	"mini-tools/backend/i18n"
 )
 
 // Base de conocimiento cifrada (migraciones 34-36).
@@ -156,7 +157,7 @@ func (s *Store) CreateNote(id, title, content, frontmatter string) error {
 		id, encTitle, titleNonce, encContent, contentNonce, encFm, fmNonce,
 		TitleHash(title), contentChecksum(title, content, frontmatter), now, now,
 	); err != nil {
-		return fmt.Errorf("vault: creando la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: creando la nota: %w", EN: "vault: creating the note: %w"}, err)
 	}
 	return s.reindexLinks(id, content)
 }
@@ -188,10 +189,10 @@ func (s *Store) UpdateNote(id, title, content, frontmatter string) error {
 		TitleHash(title), contentChecksum(title, content, frontmatter), time.Now().Unix(), id,
 	)
 	if err != nil {
-		return fmt.Errorf("vault: guardando la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando la nota: %w", EN: "vault: saving the note: %w"}, err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("vault: no existe la nota %q", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: no existe la nota %q", EN: "vault: note %q does not exist"}, id)
 	}
 	return s.reindexLinks(id, content)
 }
@@ -204,7 +205,7 @@ func (s *Store) UpdateNote(id, title, content, frontmatter string) error {
 // borrando la carpeta.
 func (s *Store) SetNoteFolder(id, folderID string) error {
 	if _, err := s.db.Exec(`UPDATE vault_notes SET folder_id = ? WHERE id = ?`, folderID, id); err != nil {
-		return fmt.Errorf("vault: moviendo la nota de carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo la nota de carpeta: %w", EN: "vault: moving the note to another folder: %w"}, err)
 	}
 	return nil
 }
@@ -221,7 +222,7 @@ func (s *Store) SetNotePrivacy(id string, private bool) error {
 	}
 	if _, err := s.db.Exec(`UPDATE vault_notes SET is_private = ?, updated_at = ? WHERE id = ?`,
 		v, time.Now().Unix(), id); err != nil {
-		return fmt.Errorf("vault: cambiando la privacidad de la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: cambiando la privacidad de la nota: %w", EN: "vault: changing the note's privacy: %w"}, err)
 	}
 	return nil
 }
@@ -232,7 +233,7 @@ func (s *Store) SetNotePrivacy(id string, private bool) error {
 // lo que pasó, y borrarlas escondería que otras notas la mencionaban.
 func (s *Store) DeleteNote(id string) error {
 	if _, err := s.db.Exec(`DELETE FROM vault_note_links WHERE source_note_id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando los enlaces de la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando los enlaces de la nota: %w", EN: "vault: deleting the note's links: %w"}, err)
 	}
 	// Las imágenes se van con la nota: dejarlas sería basura cifrada que nadie
 	// puede ver ni borrar desde la interfaz.
@@ -240,7 +241,7 @@ func (s *Store) DeleteNote(id string) error {
 		return err
 	}
 	if _, err := s.db.Exec(`DELETE FROM vault_notes WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando la nota: %w", EN: "vault: deleting the note: %w"}, err)
 	}
 	return nil
 }
@@ -265,9 +266,9 @@ func (s *Store) scanNote(row *sql.Row) (Note, error) {
 	if err := row.Scan(&n.ID, &encTitle, &titleNonce, &encContent, &contentNonce,
 		&encFm, &fmNonce, &private, &checksum, &n.CreatedAt, &n.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
-			return Note{}, fmt.Errorf("vault: no existe esa nota")
+			return Note{}, i18n.Errorf(i18n.Msg{ES: "vault: no existe esa nota", EN: "vault: that note does not exist"})
 		}
-		return Note{}, fmt.Errorf("vault: leyendo la nota: %w", err)
+		return Note{}, i18n.Errorf(i18n.Msg{ES: "vault: leyendo la nota: %w", EN: "vault: reading the note: %w"}, err)
 	}
 	n.IsPrivate = private != 0
 	n.Title = s.decryptOptional(encTitle, titleNonce)
@@ -287,7 +288,7 @@ func (s *Store) ListNotes() ([]NoteSummary, error) {
 		        COALESCE(n.folder_id, ''), n.pinned
 		 FROM vault_notes n ORDER BY n.updated_at DESC`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo las notas: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo las notas: %w", EN: "vault: reading the notes: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -307,6 +308,23 @@ func (s *Store) ListNotes() ([]NoteSummary, error) {
 	return out, rows.Err()
 }
 
+// ErrNotePrivate identifica el rechazo de NoteForAI por una nota privada:
+// quien necesite distinguirlo de "no existe" usa errors.Is, no el texto (que
+// cambia con el idioma).
+var ErrNotePrivate = i18n.New(i18n.Msg{ES: "vault: la nota es privada", EN: "vault: the note is private"})
+
+var msgNotePrivate = i18n.Msg{
+	ES: "la nota %q está marcada como PRIVADA y los agentes no pueden leerla. " +
+		"Si querés permitirlo, abrila y desmarcá el candado en su barra de herramientas",
+	EN: "the note %q is marked as PRIVATE and agents cannot read it. " +
+		"To allow it, open it and clear the lock in its toolbar",
+}
+
+type privateNoteError struct{ title string }
+
+func (e *privateNoteError) Error() string        { return i18n.T(msgNotePrivate, e.title) }
+func (e *privateNoteError) Is(target error) bool { return target == ErrNotePrivate }
+
 // NoteForAI es **la única puerta** por la que un agente puede leer una nota.
 //
 // Devuelve un error explícito cuando la nota es privada, y ese error está
@@ -325,15 +343,13 @@ func (s *Store) NoteForAI(title string) (Note, error) {
 		`SELECT id, is_private FROM vault_notes WHERE title_hash = ?`, TitleHash(title),
 	).Scan(&id, &private)
 	if err == sql.ErrNoRows {
-		return Note{}, fmt.Errorf("no hay ninguna nota que se llame %q", title)
+		return Note{}, i18n.Errorf(i18n.Msg{ES: "no hay ninguna nota que se llame %q", EN: "there is no note named %q"}, title)
 	}
 	if err != nil {
-		return Note{}, fmt.Errorf("vault: buscando la nota: %w", err)
+		return Note{}, i18n.Errorf(i18n.Msg{ES: "vault: buscando la nota: %w", EN: "vault: looking up the note: %w"}, err)
 	}
 	if private != 0 {
-		return Note{}, fmt.Errorf(
-			"la nota %q está marcada como PRIVADA y los agentes no pueden leerla. "+
-				"Si querés permitirlo, abrila y desmarcá el candado en su barra de herramientas", title)
+		return Note{}, &privateNoteError{title: title}
 	}
 	return s.GetNote(id)
 }
@@ -353,7 +369,7 @@ func (s *Store) SearchNotesForAI(query string, limit int) ([]NoteSummary, error)
 		`SELECT id, encrypted_title, title_nonce, encrypted_content, content_nonce, updated_at
 		 FROM vault_notes WHERE is_private = 0 ORDER BY updated_at DESC`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: buscando en las notas: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: buscando en las notas: %w", EN: "vault: searching the notes: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -404,7 +420,7 @@ func (s *Store) DuplicateNote(srcID, newID, title string, newAssetID func() (str
 	}
 	var folderID string
 	if err := s.db.QueryRow(`SELECT COALESCE(folder_id, '') FROM vault_notes WHERE id = ?`, srcID).Scan(&folderID); err != nil {
-		return fmt.Errorf("vault: leyendo la carpeta de la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: leyendo la carpeta de la nota: %w", EN: "vault: reading the note's folder: %w"}, err)
 	}
 	assetIDs, err := s.NoteAssetIDs(srcID)
 	if err != nil {
@@ -453,7 +469,7 @@ func (s *Store) DuplicateNote(srcID, newID, title string, newAssetID func() (str
 		newID, encTitle, titleNonce, encContent, contentNonce, encFm, fmNonce,
 		TitleHash(title), private, contentChecksum(title, content, src.Frontmatter), folderID, now, now,
 	); err != nil {
-		return fmt.Errorf("vault: duplicando la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: duplicando la nota: %w", EN: "vault: duplicating the note: %w"}, err)
 	}
 	for old, id := range renames {
 		if _, err := tx.Exec(
@@ -461,7 +477,7 @@ func (s *Store) DuplicateNote(srcID, newID, title string, newAssetID func() (str
 			 SELECT ?, ?, mime, encrypted_data, data_nonce, size_bytes, ? FROM vault_note_assets WHERE id = ?`,
 			id, newID, now, old,
 		); err != nil {
-			return fmt.Errorf("vault: copiando las imágenes de la nota: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: copiando las imágenes de la nota: %w", EN: "vault: copying the note's images: %w"}, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -479,10 +495,10 @@ func (s *Store) SetNotePinned(id string, pinned bool) error {
 	}
 	res, err := s.db.Exec(`UPDATE vault_notes SET pinned = ? WHERE id = ?`, v, id)
 	if err != nil {
-		return fmt.Errorf("vault: fijando la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: fijando la nota: %w", EN: "vault: pinning the note: %w"}, err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("vault: no existe la nota %q", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: no existe la nota %q", EN: "vault: note %q does not exist"}, id)
 	}
 	return nil
 }
@@ -503,7 +519,7 @@ func (s *Store) SetNotePinned(id string, pinned bool) error {
 // borrarla: reescribirlos sería editar notas que no se tocaron.
 func (s *Store) MergeNotes(srcID, dstID string) error {
 	if srcID == dstID {
-		return fmt.Errorf("vault: una nota no se puede fundir consigo misma")
+		return i18n.Errorf(i18n.Msg{ES: "vault: una nota no se puede fundir consigo misma", EN: "vault: a note cannot be merged with itself"})
 	}
 	src, err := s.GetNote(srcID)
 	if err != nil {
@@ -540,16 +556,16 @@ func (s *Store) MergeNotes(srcID, dstID string) error {
 		 WHERE id = ?`,
 		encContent, contentNonce, contentChecksum(dst.Title, body, dst.Frontmatter), private, time.Now().Unix(), dstID,
 	); err != nil {
-		return fmt.Errorf("vault: fundiendo las notas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: fundiendo las notas: %w", EN: "vault: merging the notes: %w"}, err)
 	}
 	if _, err := tx.Exec(`UPDATE vault_note_assets SET note_id = ? WHERE note_id = ?`, dstID, srcID); err != nil {
-		return fmt.Errorf("vault: pasando las imágenes: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: pasando las imágenes: %w", EN: "vault: moving the images: %w"}, err)
 	}
 	if _, err := tx.Exec(`DELETE FROM vault_note_links WHERE source_note_id = ?`, srcID); err != nil {
-		return fmt.Errorf("vault: borrando los enlaces de la nota fundida: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando los enlaces de la nota fundida: %w", EN: "vault: deleting the merged note's links: %w"}, err)
 	}
 	if _, err := tx.Exec(`DELETE FROM vault_notes WHERE id = ?`, srcID); err != nil {
-		return fmt.Errorf("vault: borrando la nota fundida: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando la nota fundida: %w", EN: "vault: deleting the merged note: %w"}, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return err

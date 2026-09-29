@@ -5,6 +5,7 @@ import Icon from '../Icon'
 import MarkdownPreview from '../MarkdownPreview'
 import {useAgentChat} from '../agent/AgentChatHost'
 import AskAgentPicker from '../agent/AskAgentPicker'
+import {formatNumber, t as tNow, useT} from '../../i18n'
 
 // Severity → visual weight. The rule the whole panel is built on: a plan
 // node is flagged by a LEFT BORDER and a badge, never by filling its row
@@ -46,7 +47,7 @@ function fmtMs(ms: number): string {
 }
 
 function fmtRows(n: number): string {
-    return n.toLocaleString('es')
+    return formatNumber(n)
 }
 
 // The planner's error, written in the direction it went. Formatting the raw
@@ -57,7 +58,9 @@ function fmtRows(n: number): string {
 function misestimateLabel(ratio: number): string {
     const factor = ratio >= 1 ? ratio : 1 / ratio
     const shown = factor >= 100 ? factor.toFixed(0) : factor.toFixed(1)
-    return ratio >= 1 ? `×${shown} más` : `×${shown} menos`
+    // Se lee el diccionario al momento de usarlo (ver i18n/index.ts).
+    const tr = tNow().db.explain
+    return ratio >= 1 ? tr.timesMore({factor: shown}) : tr.timesFewer({factor: shown})
 }
 
 interface PlanNodeViewProps {
@@ -69,6 +72,7 @@ interface PlanNodeViewProps {
 // One plan node. Collapsible, so a deep plan can be folded down to the
 // branch being investigated instead of scrolling past everything.
 function PlanNodeView({node, depth, analyzed}: PlanNodeViewProps) {
+    const tr = useT().db.explain
     const [collapsed, setCollapsed] = useState(false)
     const children = node.children ?? []
     const style = node.severity ? SEVERITY_STYLE[node.severity] : undefined
@@ -92,10 +96,10 @@ function PlanNodeView({node, depth, analyzed}: PlanNodeViewProps) {
                     disabled={children.length === 0}
                     title={
                         children.length === 0
-                            ? 'Este nodo no tiene hijos'
+                            ? tr.noChildren
                             : collapsed
-                              ? `Expande los ${children.length} nodos hijos`
-                              : 'Colapsa este subárbol para leer el resto del plan'
+                              ? tr.expandChildren({count: children.length})
+                              : tr.collapseSubtree
                     }
                     className="shrink-0 rounded text-on-surface-variant hover:text-on-surface disabled:invisible"
                 >
@@ -105,21 +109,21 @@ function PlanNodeView({node, depth, analyzed}: PlanNodeViewProps) {
                 <span className="font-sans font-medium text-on-surface">{node.operation}</span>
                 {node.objectName && <span className="text-primary">{node.objectName}</span>}
                 {node.indexName && (
-                    <span className="text-on-surface-variant" title="Índice utilizado por este nodo">
-                        via {node.indexName}
+                    <span className="text-on-surface-variant" title={tr.indexHint}>
+                        {tr.via({index: node.indexName})}
                     </span>
                 )}
 
                 {/* Estimated vs actual side by side — the comparison is the
                     point of running Analyze, so it should not need arithmetic. */}
                 {!!node.rows && (
-                    <span className="text-on-surface-variant/80" title="Filas estimadas por el planner">
-                        est {fmtRows(node.rows)}
+                    <span className="text-on-surface-variant/80" title={tr.estimatedHint}>
+                        {tr.estimated({rows: fmtRows(node.rows)})}
                     </span>
                 )}
                 {analyzed && (
-                    <span className="text-on-surface-variant/80" title="Filas devueltas realmente">
-                        real {fmtRows(node.actualRows ?? 0)}
+                    <span className="text-on-surface-variant/80" title={tr.actualHint}>
+                        {tr.actual({rows: fmtRows(node.actualRows ?? 0)})}
                     </span>
                 )}
                 {misestimated && (
@@ -127,8 +131,8 @@ function PlanNodeView({node, depth, analyzed}: PlanNodeViewProps) {
                         className="rounded bg-tertiary/15 px-1 font-sans text-ui-10 font-medium text-tertiary"
                         title={
                             node.rowsRatio! >= 1
-                                ? `El planner esperaba muchas menos filas de las que este nodo devolvió (${misestimateLabel(node.rowsRatio!)}). Con estadísticas desactualizadas elige mal la estrategia de join.`
-                                : `El planner esperaba muchas más filas de las que este nodo devolvió (${misestimateLabel(node.rowsRatio!)}). Con estadísticas desactualizadas elige mal la estrategia de join.`
+                                ? tr.underestimatedHint({label: misestimateLabel(node.rowsRatio!)})
+                                : tr.overestimatedHint({label: misestimateLabel(node.rowsRatio!)})
                         }
                     >
                         {misestimateLabel(node.rowsRatio!)}
@@ -136,43 +140,43 @@ function PlanNodeView({node, depth, analyzed}: PlanNodeViewProps) {
                 )}
 
                 {!!node.cost && (
-                    <span className="text-on-surface-variant/60" title="Costo total estimado del subárbol">
-                        cost {node.cost.toFixed(2)}
+                    <span className="text-on-surface-variant/60" title={tr.costHint}>
+                        {tr.cost({cost: node.cost.toFixed(2)})}
                     </span>
                 )}
                 {analyzed && !!node.selfTimeMs && (
                     <span
                         className="text-on-surface-variant/80"
-                        title="Tiempo propio de este nodo, ya descontado el de sus hijos — es lo que realmente identifica al culpable"
+                        title={tr.selfTimeHint}
                     >
-                        {fmtMs(node.selfTimeMs)} propios
+                        {tr.selfTime({time: fmtMs(node.selfTimeMs)})}
                     </span>
                 )}
                 {!!node.loops && node.loops > 1 && (
-                    <span className="text-on-surface-variant/60" title="Cantidad de veces que se ejecutó este nodo">
-                        ×{node.loops} vueltas
+                    <span className="text-on-surface-variant/60" title={tr.loopsHint}>
+                        {tr.loops({count: node.loops})}
                     </span>
                 )}
 
                 {node.isFullScan && style && (
                     <span className={`flex items-center gap-1 rounded px-1.5 font-sans text-ui-10 font-medium ${style.badge}`}>
                         <Icon name={style.icon} size={11} filled />
-                        Full scan
+                        {tr.fullScan}
                     </span>
                 )}
                 {node.isBottleneck && (
                     <span
                         className="flex items-center gap-1 rounded bg-tertiary/15 px-1.5 font-sans text-ui-10 font-medium text-tertiary"
-                        title="Nodo con más peso propio del plan — por acá empezar a optimizar"
+                        title={tr.bottleneckHint}
                     >
                         <Icon name="speed" size={11} filled />
-                        {node.impactPct ? `${node.impactPct.toFixed(0)}%` : 'cuello de botella'}
+                        {node.impactPct ? `${node.impactPct.toFixed(0)}%` : tr.bottleneck}
                     </span>
                 )}
 
                 {node.filter && (
                     <span className="w-full truncate pl-5 text-on-surface-variant/60" title={node.filter}>
-                        filtro: {node.filter}
+                        {tr.filter({filter: node.filter})}
                     </span>
                 )}
                 {!node.filter && node.detail && node.detail !== node.operation && (
@@ -198,6 +202,7 @@ function Metric({label, value, hint, accent}: {label: string; value: string; hin
 }
 
 function InsightRow({insight}: {insight: explain.Insight}) {
+    const tr = useT().db.explain
     const [copied, setCopied] = useState(false)
     const style = SEVERITY_STYLE[insight.severity] ?? SEVERITY_STYLE.info
 
@@ -222,11 +227,11 @@ function InsightRow({insight}: {insight: explain.Insight}) {
                         <button
                             type="button"
                             onClick={() => void copy()}
-                            title="Copia la sentencia al portapapeles. No se ejecuta: crear un índice ocupa disco y hace más lentas las escrituras, así que la decisión (y el orden de las columnas) queda en tus manos."
+                            title={tr.copySqlHint}
                             className="mt-0.5 flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
                         >
                             <Icon name={copied ? 'check' : 'content_copy'} size={12} />
-                            {copied ? 'Copiado' : 'Copiar'}
+                            {copied ? tr.copied : tr.copy}
                         </button>
                     </div>
                 )}
@@ -254,6 +259,7 @@ type View = 'tree' | 'insights' | 'raw'
 // no close button and no fixed height: the tab bar closes it (with its own
 // X, like a result tab) and the shared panel sizes it.
 export default function ExplainPlanPanel({plan, loading, error, connId, connName}: ExplainPlanPanelProps) {
+    const tr = useT().db.explain
     const [view, setView] = useState<View>('tree')
     const chat = useAgentChat()
     // Análisis del agente: se pide a mano y se muestra debajo del diagnóstico
@@ -288,22 +294,23 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
     const criticalCount = insights.filter((i) => i.severity === 'critical').length
 
     const tabs: {id: View; label: string; hint: string; badge?: number}[] = [
-        {id: 'tree', label: 'Árbol', hint: 'Plan como árbol de nodos, colapsable'},
-        {
-            id: 'insights',
-            label: 'Diagnóstico',
-            hint: 'Qué está mal y qué hacer al respecto, con la sentencia lista para copiar',
-            badge: insights.length,
-        },
-        {id: 'raw', label: 'Texto', hint: 'Salida cruda del motor, tal cual la devolvió'},
+        {id: 'tree', label: tr.tabTree, hint: tr.tabTreeHint},
+        {id: 'insights', label: tr.tabInsights, hint: tr.tabInsightsHint, badge: insights.length},
+        {id: 'raw', label: tr.tabRaw, hint: tr.tabRawHint},
     ]
+    // Fuera del JSX: el chequeo de i18n toma los literales de una comparación
+    // dentro de {…} como si fueran texto de interfaz.
+    const isPostgres = plan?.engine === 'postgres'
+    const showTree = view === 'tree'
+    const showInsights = view === 'insights'
+    const showRaw = view === 'raw'
 
     return (
         <div className="flex min-h-0 flex-1 flex-col bg-surface">
             <div className="flex items-center justify-between gap-3 border-b border-outline-variant px-3 py-1">
                 <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-on-surface-variant">
                     <Icon name="query_stats" size={15} />
-                    {analyzed ? 'EXPLAIN ANALYZE' : 'EXPLAIN'}
+                    {analyzed ? tr.headerAnalyze : tr.header}
                 </span>
 
                 {/* Summary bar: the numbers worth seeing before reading a
@@ -314,58 +321,58 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-0.5">
                         {!!plan.planningTimeMs && (
                             <Metric
-                                label="Planificación"
+                                label={tr.planning}
                                 value={fmtMs(plan.planningTimeMs)}
-                                hint="Lo que tardó el motor en decidir el plan, antes de ejecutar nada"
+                                hint={tr.planningHint}
                             />
                         )}
                         {!!plan.executionTimeMs && (
                             <Metric
-                                label="Ejecución"
+                                label={tr.execution}
                                 value={fmtMs(plan.executionTimeMs)}
-                                hint="Tiempo real de ejecución de la consulta"
+                                hint={tr.executionHint}
                                 accent
                             />
                         )}
                         {!!plan.totalCost && (
                             <Metric
-                                label="Costo total"
+                                label={tr.totalCost}
                                 value={plan.totalCost.toFixed(2)}
-                                hint="Costo estimado por el planner. Es una unidad interna del motor: sirve para comparar planes entre sí, no para leerla como tiempo."
+                                hint={tr.totalCostHint}
                             />
                         )}
                         {!!plan.estimatedRows && (
                             <Metric
-                                label={analyzed ? 'Filas est/real' : 'Filas estimadas'}
+                                label={analyzed ? tr.rowsEstActual : tr.rowsEstimated}
                                 value={analyzed && plan.actualRows ? `${fmtRows(plan.estimatedRows)} / ${fmtRows(plan.actualRows)}` : fmtRows(plan.estimatedRows)}
-                                hint="Filas que el planner esperaba devolver, y las que realmente devolvió"
+                                hint={tr.rowsHint}
                             />
                         )}
                         {plan.buffers && (
                             <Metric
-                                label="Caché"
+                                label={tr.cache}
                                 value={`${plan.buffers.hitRatePct.toFixed(0)}%`}
-                                hint={`${fmtRows(plan.buffers.hit)} bloques desde memoria, ${fmtRows(plan.buffers.read)} leídos de disco. Un porcentaje bajo en una consulta que se repite significa que el conjunto de trabajo no entra en shared_buffers.`}
+                                hint={tr.cacheHint({hit: fmtRows(plan.buffers.hit), read: fmtRows(plan.buffers.read)})}
                             />
                         )}
                         {!!plan.nodeCount && (
-                            <Metric label="Nodos" value={String(plan.nodeCount)} hint="Cantidad de operaciones en el plan" />
+                            <Metric label={tr.nodes} value={String(plan.nodeCount)} hint={tr.nodesHint} />
                         )}
                         {plan.rolledBack && (
                             <span
                                 className="flex items-center gap-1 rounded bg-tertiary/15 px-1.5 py-0.5 text-ui-10 font-medium text-tertiary"
-                                title="La consulta modifica datos, así que se ejecutó dentro de una transacción que se revirtió al terminar. Los tiempos son reales; los cambios no se aplicaron."
+                                title={tr.rolledBackHint}
                             >
                                 <Icon name="undo" size={11} />
-                                Revertido
+                                {tr.rolledBack}
                             </span>
                         )}
-                        {!analyzed && plan.engine === 'postgres' && (
+                        {!analyzed && isPostgres && (
                             <span
                                 className="text-ui-10 text-on-surface-variant/70"
-                                title="Este plan son previsiones del planner. Explain Analyze ejecuta la consulta y muestra filas y tiempos reales."
+                                title={tr.estimatesOnlyHint}
                             >
-                                solo estimaciones
+                                {tr.estimatesOnly}
                             </span>
                         )}
                     </div>
@@ -374,24 +381,24 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                 <div className="flex shrink-0 items-center gap-1">
                     {plan && !loading && !error && (
                         <div className="flex rounded-md border border-outline-variant p-0.5">
-                            {tabs.map((t) => (
+                            {tabs.map((tab) => (
                                 <button
-                                    key={t.id}
+                                    key={tab.id}
                                     type="button"
-                                    onClick={() => setView(t.id)}
-                                    title={t.hint}
+                                    onClick={() => setView(tab.id)}
+                                    title={tab.hint}
                                     className={`flex items-center gap-1 rounded px-2 py-0.5 text-ui-11 ${
-                                        view === t.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                                        view === tab.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                                     }`}
                                 >
-                                    {t.label}
-                                    {!!t.badge && (
+                                    {tab.label}
+                                    {!!tab.badge && (
                                         <span
                                             className={`rounded-full px-1 text-ui-9 font-semibold ${
                                                 criticalCount > 0 ? 'bg-error/20 text-error' : 'bg-surface-variant text-on-surface-variant'
                                             }`}
                                         >
-                                            {t.badge}
+                                            {tab.badge}
                                         </span>
                                     )}
                                 </button>
@@ -402,20 +409,20 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
             </div>
 
             <div className="flex-1 overflow-auto">
-                {loading && <p className="p-2 text-xs text-on-surface-variant">Generando plan…</p>}
+                {loading && <p className="p-2 text-xs text-on-surface-variant">{tr.generating}</p>}
                 {error && <p className="p-2 text-xs text-error">{error}</p>}
 
-                {!loading && !error && plan?.root && view === 'tree' && (
+                {!loading && !error && plan?.root && showTree && (
                     <div className="py-1">
                         <PlanNodeView node={plan.root} depth={0} analyzed={analyzed} />
                     </div>
                 )}
 
-                {!loading && !error && view === 'insights' && (
+                {!loading && !error && showInsights && (
                     <div className="flex flex-col divide-y divide-outline-variant/40 p-1">
                         {insights.length === 0 ? (
                             <p className="p-2 text-xs text-on-surface-variant">
-                                Sin observaciones: el plan no muestra recorridos completos costosos ni desvíos del planner.
+                                {tr.noInsights}
                             </p>
                         ) : (
                             insights.map((insight, i) => <InsightRow key={i} insight={insight} />)
@@ -431,11 +438,11 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                                     <button
                                         onClick={analyzeWithAgent}
                                         disabled={aiBusy}
-                                        title="Le manda al agente la consulta, el plan y el esquema de las tablas involucradas, junto con lo que ya detectó la app, y pide una explicación y qué cambiar. No ejecuta nada ni crea ningún índice."
+                                        title={tr.analyzeHint}
                                         className="flex items-center gap-1.5 rounded-md border border-outline-variant px-2.5 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-50"
                                     >
                                         <Icon name="smart_toy" size={14} />
-                                        {aiBusy ? 'Analizando…' : aiAnswer ? 'Volver a analizar' : 'Analizar con el agente'}
+                                        {aiBusy ? tr.analyzing : aiAnswer ? tr.reanalyze : tr.analyze}
                                     </button>
 
                                     {/* Con qué proveedor. Si la respuesta de
@@ -447,23 +454,23 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                                         <button
                                             onClick={() =>
                                                 chat.open({
-                                                    prompt: '@explain:last ¿cómo sigo con esto?',
+                                                    prompt: tr.followUpPrompt,
                                                     // El plan viaja por la referencia; lo que
                                                     // contestó el agente no lo conoce nadie
                                                     // más, y sin él «¿cómo sigo?» empieza de cero.
                                                     attachments: [
-                                                        {label: 'Análisis anterior del plan', text: aiAnswer, language: 'markdown', icon: 'smart_toy'},
+                                                        {label: tr.previousAnalysis, text: aiAnswer, language: 'markdown', icon: 'smart_toy'},
                                                     ],
                                                     context: connId
                                                         ? {kind: 'db', id: connId, label: connName ?? ''}
                                                         : undefined,
                                                 })
                                             }
-                                            title="Abre el chat con el plan referenciado y esta respuesta adjunta, para repreguntar sin empezar de cero"
+                                            title={tr.followUpHint}
                                             className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                         >
                                             <Icon name="forum" size={14} />
-                                            Seguir en el chat
+                                            {tr.followUp}
                                         </button>
                                     )}
                                 </div>
@@ -476,9 +483,7 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                                     <div className="rounded-lg border border-outline-variant bg-surface-container p-2 text-xs text-on-surface">
                                         <MarkdownPreview source={aiAnswer} />
                                         <p className="mt-2 border-t border-outline-variant pt-1 text-ui-10 text-on-surface-variant">
-                                            Es una sugerencia. Un índice cuesta disco, enlentece las escrituras y su orden de
-                                            columnas depende de las otras consultas que corren contra esa tabla — crearlo lo
-                                            decidís vos.
+                                            {tr.suggestionNote}
                                         </p>
                                     </div>
                                 )}
@@ -487,11 +492,11 @@ export default function ExplainPlanPanel({plan, loading, error, connId, connName
                     </div>
                 )}
 
-                {!loading && !error && view === 'raw' && (
+                {!loading && !error && showRaw && (
                     <pre className="whitespace-pre-wrap p-2 font-mono text-ui-11 text-on-surface-variant">{plan?.rawText}</pre>
                 )}
 
-                {!loading && !error && !plan?.root && view === 'tree' && <p className="p-2 text-xs text-on-surface-variant">Sin plan.</p>}
+                {!loading && !error && !plan?.root && showTree && <p className="p-2 text-xs text-on-surface-variant">{tr.noPlan}</p>}
             </div>
         </div>
     )

@@ -1,8 +1,9 @@
 import {db} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import MongoFieldCombo from './MongoFieldCombo'
-import {BSON_TYPES, inferBsonType, typeWarning, type BsonType} from '../../lib/mongoBson'
-import {MONGO_BSON_TYPE_NAMES, MONGO_OPERATORS, operatorDef, type MongoCondition} from '../../lib/mongoFilter'
+import {bsonTypes, inferBsonType, typeWarning, type BsonType} from '../../lib/mongoBson'
+import {MONGO_BSON_TYPE_NAMES, mongoOperators, operatorDef, type MongoCondition} from '../../lib/mongoFilter'
+import {useT} from '../../i18n'
 
 interface MongoConditionRowProps {
     condition: MongoCondition
@@ -19,10 +20,16 @@ interface MongoConditionRowProps {
 // fails silently with zero results rather than with an error. "Auto" infers
 // (and says what it inferred), the rest force the user's choice.
 export default function MongoConditionRow({condition, fields, onChange, onRemove, removable}: MongoConditionRowProps) {
+    const t = useT()
+    const cr = t.mongo.condition
+    const types = bsonTypes()
     const def = operatorDef(condition.op)
     const valueType = condition.valueType ?? 'auto'
     const fieldInfo = fields.find((f) => f.path === condition.field.trim())
-    const warning = def.valueKind === 'text' || def.valueKind === 'list'
+    const typedValue = def.valueKind === 'text' || def.valueKind === 'list'
+    const isRegex = condition.op === '$regex'
+    const showInferred = valueType === 'auto' && condition.value.trim() !== '' && typedValue
+    const warning = typedValue
         ? typeWarning(condition.value, valueType, condition.field, fieldInfo?.types)
         : ''
 
@@ -33,7 +40,7 @@ export default function MongoConditionRow({condition, fields, onChange, onRemove
                     value={condition.field}
                     onChange={(v) => onChange({field: v})}
                     fields={fields}
-                    placeholder="campo"
+                    placeholder={cr.field}
                     className="flex-1"
                 />
 
@@ -43,7 +50,7 @@ export default function MongoConditionRow({condition, fields, onChange, onRemove
                     title={def.hint}
                     className="w-36 shrink-0 rounded border border-outline-variant bg-surface-container-low px-1 py-1 text-xs text-on-surface"
                 >
-                    {MONGO_OPERATORS.map((op) => (
+                    {mongoOperators().map((op) => (
                         <option key={op.value} value={op.value} title={op.hint}>
                             {op.label}
                         </option>
@@ -56,16 +63,16 @@ export default function MongoConditionRow({condition, fields, onChange, onRemove
                     typed: $exists takes a boolean and $type takes a type
                     name, so offering "cast this as ObjectId" there would be
                     meaningless. */}
-                {(def.valueKind === 'text' || def.valueKind === 'list') && (
+                {typedValue && (
                     <select
                         value={valueType}
                         onChange={(e) => onChange({valueType: e.target.value as BsonType})}
-                        title={BSON_TYPES.find((t) => t.value === valueType)?.hint}
+                        title={types.find((bt) => bt.value === valueType)?.hint}
                         className="w-24 shrink-0 rounded border border-outline-variant bg-surface-container-low px-1 py-1 text-xs text-on-surface"
                     >
-                        {BSON_TYPES.map((t) => (
-                            <option key={t.value} value={t.value} title={t.hint}>
-                                {t.label}
+                        {types.map((bt) => (
+                            <option key={bt.value} value={bt.value} title={bt.hint}>
+                                {bt.label}
                             </option>
                         ))}
                     </select>
@@ -74,7 +81,7 @@ export default function MongoConditionRow({condition, fields, onChange, onRemove
                 <button
                     onClick={onRemove}
                     disabled={!removable}
-                    title={removable ? 'Quita esta condición del filtro' : 'No se puede quitar la única condición'}
+                    title={removable ? cr.removeHint : cr.cannotRemove}
                     className="shrink-0 text-on-surface-variant hover:text-error disabled:opacity-30"
                 >
                     <Icon name="remove_circle_outline" size={16} />
@@ -82,10 +89,10 @@ export default function MongoConditionRow({condition, fields, onChange, onRemove
             </div>
 
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-1">
-                {condition.op === '$regex' && (
+                {isRegex && (
                     <label
                         className="flex items-center gap-1 text-ui-11 text-on-surface-variant"
-                        title="Agrega $options: 'i' para que la búsqueda no distinga mayúsculas de minúsculas"
+                        title={cr.ignoreCaseHint}
                     >
                         <input
                             type="checkbox"
@@ -93,16 +100,16 @@ export default function MongoConditionRow({condition, fields, onChange, onRemove
                             onChange={(e) => onChange({caseInsensitive: e.target.checked})}
                             className="accent-primary"
                         />
-                        ignorar mayúsculas
+                        {cr.ignoreCase}
                     </label>
                 )}
 
                 {/* What "auto" decided, spelled out. The whole failure mode
                     this guards against is invisible, so the inference has to
                     stop being invisible too. */}
-                {valueType === 'auto' && condition.value.trim() !== '' && (def.valueKind === 'text' || def.valueKind === 'list') && (
+                {showInferred && (
                     <span className="text-ui-11 text-on-surface-variant/70">
-                        auto → {inferBsonType(condition.value)}
+                        {cr.autoInferred({type: inferBsonType(condition.value)})}
                     </span>
                 )}
 
@@ -126,6 +133,8 @@ function ValueInput({
     def: ReturnType<typeof operatorDef>
     onChange: (patch: Partial<MongoCondition>) => void
 }) {
+    const t = useT()
+    const cr = t.mongo.condition
     const shared = 'min-w-0 flex-1 rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-xs text-on-surface'
 
     if (def.valueKind === 'bool') {
@@ -133,11 +142,11 @@ function ValueInput({
             <select
                 value={condition.value.trim() === 'false' ? 'false' : 'true'}
                 onChange={(e) => onChange({value: e.target.value})}
-                title="El campo debe estar presente (true) o ausente (false) en el documento"
+                title={cr.existsHint}
                 className={shared}
             >
-                <option value="true">true — el campo existe</option>
-                <option value="false">false — el campo no existe</option>
+                <option value="true">{cr.existsTrue}</option>
+                <option value="false">{cr.existsFalse}</option>
             </select>
         )
     }
@@ -147,12 +156,12 @@ function ValueInput({
             <select
                 value={condition.value || 'string'}
                 onChange={(e) => onChange({value: e.target.value})}
-                title="Tipo BSON que debe tener el campo"
+                title={cr.typeHint}
                 className={shared}
             >
-                {MONGO_BSON_TYPE_NAMES.map((t) => (
-                    <option key={t} value={t}>
-                        {t}
+                {MONGO_BSON_TYPE_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                        {name}
                     </option>
                 ))}
             </select>
@@ -164,7 +173,7 @@ function ValueInput({
             value={condition.value}
             onChange={(e) => onChange({value: e.target.value})}
             placeholder={
-                def.valueKind === 'list' ? 'a, b, c' : def.valueKind === 'number' ? 'cantidad' : condition.op === '$regex' ? 'patrón' : 'valor'
+                def.valueKind === 'list' ? cr.listPlaceholder : def.valueKind === 'number' ? cr.countPlaceholder : condition.op === '$regex' ? cr.patternPlaceholder : cr.valuePlaceholder
             }
             title={def.hint}
             className={shared}

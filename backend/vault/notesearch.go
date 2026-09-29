@@ -1,10 +1,11 @@
 package vault
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 	"unicode"
+
+	"mini-tools/backend/i18n"
 )
 
 // Buscador de la base de conocimiento.
@@ -235,7 +236,7 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 		linkedFrom = map[string]bool{}
 		rows, err := s.db.Query(`SELECT source_note_id FROM vault_note_links WHERE target_title_hash = ?`, TitleHash(q.LinksTo))
 		if err != nil {
-			return nil, fmt.Errorf("vault: filtrando por enlaces: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: filtrando por enlaces: %w", EN: "vault: filtering by links: %w"}, err)
 		}
 		for rows.Next() {
 			var id string
@@ -252,7 +253,7 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 		        , COALESCE(folder_id, ''), pinned
 		 FROM vault_notes`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: buscando en las notas: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: buscando en las notas: %w", EN: "vault: searching the notes: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -473,7 +474,7 @@ func collapseSpace(s string) string {
 func (s *Store) AllNoteTags() ([]NoteTag, error) {
 	rows, err := s.db.Query(`SELECT encrypted_content, content_nonce, encrypted_frontmatter, frontmatter_nonce FROM vault_notes`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo las etiquetas: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo las etiquetas: %w", EN: "vault: reading the tags: %w"}, err)
 	}
 	defer rows.Close()
 

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Column describes one table column, enough for autocomplete and the
@@ -147,7 +149,7 @@ func FetchSchemaMetadata(ctx context.Context, pool *sql.DB, dbType DBType, schem
 	case DBTypeSQLServer:
 		meta, err = fetchSQLServerMetadata(ctx, pool, schemas)
 	default:
-		return nil, fmt.Errorf("db: metadata no soportada para %q", dbType)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: metadata no soportada para %q", EN: "db: metadata not supported for %q"}, dbType)
 	}
 	if err != nil {
 		return nil, err
@@ -190,7 +192,7 @@ func listPostgresSchemas(ctx context.Context, pool *sql.DB) ([]string, error) {
 		ORDER BY schema_name
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando esquemas postgres: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando esquemas postgres: %w", EN: "db: listing postgres schemas: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -198,7 +200,7 @@ func listPostgresSchemas(ctx context.Context, pool *sql.DB) ([]string, error) {
 	for rows.Next() {
 		var s string
 		if err := rows.Scan(&s); err != nil {
-			return nil, fmt.Errorf("db: escaneando esquema postgres: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando esquema postgres: %w", EN: "db: scanning postgres schema: %w"}, err)
 		}
 		schemas = append(schemas, s)
 	}
@@ -220,7 +222,7 @@ func listOracleSchemas(ctx context.Context, pool *sql.DB) ([]string, error) {
 		SELECT DISTINCT owner FROM all_tab_columns ORDER BY owner
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando esquemas oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando esquemas oracle: %w", EN: "db: listing oracle schemas: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -228,7 +230,7 @@ func listOracleSchemas(ctx context.Context, pool *sql.DB) ([]string, error) {
 	for rows.Next() {
 		var s string
 		if err := rows.Scan(&s); err != nil {
-			return nil, fmt.Errorf("db: escaneando esquema oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando esquema oracle: %w", EN: "db: scanning oracle schema: %w"}, err)
 		}
 		schemas = append(schemas, s)
 	}
@@ -247,7 +249,7 @@ func ListSchemasForDSN(ctx context.Context, dbType DBType, dsn string) ([]string
 
 	conn, err := sql.Open(dbType.DriverName(), dsn)
 	if err != nil {
-		return nil, fmt.Errorf("db: abriendo para listar esquemas: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: abriendo para listar esquemas: %w", EN: "db: opening to list schemas: %w"}, err)
 	}
 	defer conn.Close()
 
@@ -264,7 +266,7 @@ func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, er
 		ORDER BY name
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando tablas sqlite: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando tablas sqlite: %w", EN: "db: listing sqlite tables: %w"}, err)
 	}
 
 	var names []string
@@ -272,7 +274,7 @@ func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, er
 		var name string
 		if err := rows.Scan(&name); err != nil {
 			rows.Close()
-			return nil, fmt.Errorf("db: leyendo nombre de tabla sqlite: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: leyendo nombre de tabla sqlite: %w", EN: "db: reading sqlite table name: %w"}, err)
 		}
 		names = append(names, name)
 	}
@@ -287,7 +289,7 @@ func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, er
 
 		colRows, err := pool.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%q)`, name))
 		if err != nil {
-			return nil, fmt.Errorf("db: leyendo columnas de %q: %w", name, err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: leyendo columnas de %q: %w", EN: "db: reading columns of %q: %w"}, name, err)
 		}
 		for colRows.Next() {
 			var cid, notnull, pk int
@@ -295,7 +297,7 @@ func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, er
 			var dflt sql.NullString
 			if err := colRows.Scan(&cid, &colName, &colType, &notnull, &dflt, &pk); err != nil {
 				colRows.Close()
-				return nil, fmt.Errorf("db: escaneando columna de %q: %w", name, err)
+				return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando columna de %q: %w", EN: "db: scanning column of %q: %w"}, name, err)
 			}
 			t.Columns = append(t.Columns, Column{
 				Name: colName, DataType: colType, Nullable: notnull == 0, IsPrimaryKey: pk > 0,
@@ -305,14 +307,14 @@ func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, er
 
 		fkRows, err := pool.QueryContext(ctx, fmt.Sprintf(`PRAGMA foreign_key_list(%q)`, name))
 		if err != nil {
-			return nil, fmt.Errorf("db: leyendo FKs de %q: %w", name, err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: leyendo FKs de %q: %w", EN: "db: reading FKs of %q: %w"}, name, err)
 		}
 		for fkRows.Next() {
 			var id, seq int
 			var refTable, from, to, onUpdate, onDelete, match string
 			if err := fkRows.Scan(&id, &seq, &refTable, &from, &to, &onUpdate, &onDelete, &match); err != nil {
 				fkRows.Close()
-				return nil, fmt.Errorf("db: escaneando FK de %q: %w", name, err)
+				return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando FK de %q: %w", EN: "db: scanning FK of %q: %w"}, name, err)
 			}
 			t.ForeignKeys = append(t.ForeignKeys, ForeignKey{Column: from, ReferencedTable: refTable, ReferencedColumn: to})
 		}
@@ -325,14 +327,14 @@ func fetchSQLiteMetadata(ctx context.Context, pool *sql.DB) (*SchemaMetadata, er
 		SELECT name, tbl_name FROM sqlite_master WHERE type = 'trigger' ORDER BY name
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando triggers sqlite: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando triggers sqlite: %w", EN: "db: listing sqlite triggers: %w"}, err)
 	}
 	var triggers []Trigger
 	for triggerRows.Next() {
 		var name, table string
 		if err := triggerRows.Scan(&name, &table); err != nil {
 			triggerRows.Close()
-			return nil, fmt.Errorf("db: escaneando trigger sqlite: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando trigger sqlite: %w", EN: "db: scanning sqlite trigger: %w"}, err)
 		}
 		triggers = append(triggers, Trigger{Name: name, Table: table})
 	}
@@ -376,13 +378,13 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) 
 		ORDER BY table_schema, table_name, ordinal_position
 	`, colFilter), colArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando columnas postgres: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando columnas postgres: %w", EN: "db: listing postgres columns: %w"}, err)
 	}
 	for rows.Next() {
 		var schema, table, col, dtype, nullable string
 		if err := rows.Scan(&schema, &table, &col, &dtype, &nullable); err != nil {
 			rows.Close()
-			return nil, fmt.Errorf("db: escaneando columna postgres: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando columna postgres: %w", EN: "db: scanning postgres column: %w"}, err)
 		}
 		k := key(schema, table)
 		t, ok := index[k]
@@ -408,13 +410,13 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) 
 		%s
 	`, pkFilter), pkArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando primary keys postgres: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando primary keys postgres: %w", EN: "db: listing postgres primary keys: %w"}, err)
 	}
 	for pkRows.Next() {
 		var schema, table, col string
 		if err := pkRows.Scan(&schema, &table, &col); err != nil {
 			pkRows.Close()
-			return nil, fmt.Errorf("db: escaneando primary key postgres: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando primary key postgres: %w", EN: "db: scanning postgres primary key: %w"}, err)
 		}
 		if t, ok := index[key(schema, table)]; ok {
 			for i := range t.Columns {
@@ -438,13 +440,13 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) 
 		%s
 	`, fkFilter), fkArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando foreign keys postgres: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando foreign keys postgres: %w", EN: "db: listing postgres foreign keys: %w"}, err)
 	}
 	for fkRows.Next() {
 		var schema, table, col, refTable, refCol string
 		if err := fkRows.Scan(&schema, &table, &col, &refTable, &refCol); err != nil {
 			fkRows.Close()
-			return nil, fmt.Errorf("db: escaneando foreign key postgres: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando foreign key postgres: %w", EN: "db: scanning postgres foreign key: %w"}, err)
 		}
 		if t, ok := index[key(schema, table)]; ok {
 			t.ForeignKeys = append(t.ForeignKeys, ForeignKey{Column: col, ReferencedTable: refTable, ReferencedColumn: refCol})
@@ -473,7 +475,7 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) 
 		ORDER BY n.nspname, p.proname
 	`, routineFilter), routineArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando funciones/procedures postgres: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando funciones/procedures postgres: %w", EN: "db: listing postgres functions/procedures: %w"}, err)
 	}
 	var procedures []Procedure
 	var functions []Function
@@ -483,7 +485,7 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) 
 		var returnType sql.NullString
 		if err := routineRows.Scan(&schema, &name, &oid, &kind, &returnType); err != nil {
 			routineRows.Close()
-			return nil, fmt.Errorf("db: escaneando función/procedure postgres: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando función/procedure postgres: %w", EN: "db: scanning postgres function/procedure: %w"}, err)
 		}
 		if kind == "p" {
 			procedures = append(procedures, Procedure{Schema: schema, Name: name, OID: oid})
@@ -512,7 +514,7 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) 
 		ORDER BY n.nspname, t.tgname
 	`, triggerFilter), triggerArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando triggers postgres: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando triggers postgres: %w", EN: "db: listing postgres triggers: %w"}, err)
 	}
 	var triggers []Trigger
 	for triggerRows.Next() {
@@ -520,7 +522,7 @@ func fetchPostgresMetadata(ctx context.Context, pool *sql.DB, schemas []string) 
 		var oid int64
 		if err := triggerRows.Scan(&schema, &name, &table, &oid); err != nil {
 			triggerRows.Close()
-			return nil, fmt.Errorf("db: escaneando trigger postgres: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando trigger postgres: %w", EN: "db: scanning postgres trigger: %w"}, err)
 		}
 		triggers = append(triggers, Trigger{Schema: schema, Name: name, Table: table, OID: oid})
 	}
@@ -574,13 +576,13 @@ func fetchOracleMetadataUnqualified(ctx context.Context, pool *sql.DB) (*SchemaM
 		ORDER BY table_name, column_id
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando columnas oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando columnas oracle: %w", EN: "db: listing oracle columns: %w"}, err)
 	}
 	for rows.Next() {
 		var table, col, dtype, nullable string
 		if err := rows.Scan(&table, &col, &dtype, &nullable); err != nil {
 			rows.Close()
-			return nil, fmt.Errorf("db: escaneando columna oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando columna oracle: %w", EN: "db: scanning oracle column: %w"}, err)
 		}
 		t, ok := index[table]
 		if !ok {
@@ -602,13 +604,13 @@ func fetchOracleMetadataUnqualified(ctx context.Context, pool *sql.DB) (*SchemaM
 		WHERE cons.constraint_type = 'P'
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando primary keys oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando primary keys oracle: %w", EN: "db: listing oracle primary keys: %w"}, err)
 	}
 	for pkRows.Next() {
 		var table, col string
 		if err := pkRows.Scan(&table, &col); err != nil {
 			pkRows.Close()
-			return nil, fmt.Errorf("db: escaneando primary key oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando primary key oracle: %w", EN: "db: scanning oracle primary key: %w"}, err)
 		}
 		if t, ok := index[table]; ok {
 			for i := range t.Columns {
@@ -632,13 +634,13 @@ func fetchOracleMetadataUnqualified(ctx context.Context, pool *sql.DB) (*SchemaM
 		WHERE c.constraint_type = 'R'
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando foreign keys oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando foreign keys oracle: %w", EN: "db: listing oracle foreign keys: %w"}, err)
 	}
 	for fkRows.Next() {
 		var table, col, refTable, refCol string
 		if err := fkRows.Scan(&table, &col, &refTable, &refCol); err != nil {
 			fkRows.Close()
-			return nil, fmt.Errorf("db: escaneando foreign key oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando foreign key oracle: %w", EN: "db: scanning oracle foreign key: %w"}, err)
 		}
 		if t, ok := index[table]; ok {
 			t.ForeignKeys = append(t.ForeignKeys, ForeignKey{Column: col, ReferencedTable: refTable, ReferencedColumn: refCol})
@@ -675,14 +677,14 @@ func fetchOracleUnqualifiedRoutines(ctx context.Context, pool *sql.DB) (procedur
 		ORDER BY object_type, object_name
 	`)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("db: listando procedures/functions/packages oracle: %w", err)
+		return nil, nil, nil, i18n.Errorf(i18n.Msg{ES: "db: listando procedures/functions/packages oracle: %w", EN: "db: listing oracle procedures/functions/packages: %w"}, err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var name, objType string
 		if err := rows.Scan(&name, &objType); err != nil {
-			return nil, nil, nil, fmt.Errorf("db: escaneando objeto oracle: %w", err)
+			return nil, nil, nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando objeto oracle: %w", EN: "db: scanning oracle object: %w"}, err)
 		}
 		switch objType {
 		case "PROCEDURE":
@@ -705,7 +707,7 @@ func fetchOracleUnqualifiedTriggers(ctx context.Context, pool *sql.DB) ([]Trigge
 		SELECT trigger_name, table_name FROM user_triggers ORDER BY trigger_name
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando triggers oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando triggers oracle: %w", EN: "db: listing oracle triggers: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -713,7 +715,7 @@ func fetchOracleUnqualifiedTriggers(ctx context.Context, pool *sql.DB) ([]Trigge
 	for rows.Next() {
 		var name, table string
 		if err := rows.Scan(&name, &table); err != nil {
-			return nil, fmt.Errorf("db: escaneando trigger oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando trigger oracle: %w", EN: "db: scanning oracle trigger: %w"}, err)
 		}
 		triggers = append(triggers, Trigger{Name: name, Table: table})
 	}
@@ -734,13 +736,13 @@ func fetchOracleMetadataForOwners(ctx context.Context, pool *sql.DB, schemas []s
 		ORDER BY owner, table_name, column_id
 	`, colFilter), colArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando columnas oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando columnas oracle: %w", EN: "db: listing oracle columns: %w"}, err)
 	}
 	for rows.Next() {
 		var owner, table, col, dtype, nullable string
 		if err := rows.Scan(&owner, &table, &col, &dtype, &nullable); err != nil {
 			rows.Close()
-			return nil, fmt.Errorf("db: escaneando columna oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando columna oracle: %w", EN: "db: scanning oracle column: %w"}, err)
 		}
 		k := key(owner, table)
 		t, ok := index[k]
@@ -766,13 +768,13 @@ func fetchOracleMetadataForOwners(ctx context.Context, pool *sql.DB, schemas []s
 		%s
 	`, pkFilter), pkArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando primary keys oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando primary keys oracle: %w", EN: "db: listing oracle primary keys: %w"}, err)
 	}
 	for pkRows.Next() {
 		var owner, table, col string
 		if err := pkRows.Scan(&owner, &table, &col); err != nil {
 			pkRows.Close()
-			return nil, fmt.Errorf("db: escaneando primary key oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando primary key oracle: %w", EN: "db: scanning oracle primary key: %w"}, err)
 		}
 		if t, ok := index[key(owner, table)]; ok {
 			for i := range t.Columns {
@@ -799,13 +801,13 @@ func fetchOracleMetadataForOwners(ctx context.Context, pool *sql.DB, schemas []s
 		%s
 	`, fkFilter), fkArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando foreign keys oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando foreign keys oracle: %w", EN: "db: listing oracle foreign keys: %w"}, err)
 	}
 	for fkRows.Next() {
 		var owner, table, col, refOwner, refTable, refCol string
 		if err := fkRows.Scan(&owner, &table, &col, &refOwner, &refTable, &refCol); err != nil {
 			fkRows.Close()
-			return nil, fmt.Errorf("db: escaneando foreign key oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando foreign key oracle: %w", EN: "db: scanning oracle foreign key: %w"}, err)
 		}
 		if t, ok := index[key(owner, table)]; ok {
 			refName := refTable
@@ -846,14 +848,14 @@ func fetchOracleOwnerRoutines(ctx context.Context, pool *sql.DB, schemas []strin
 		ORDER BY owner, object_type, object_name
 	`, filter), args...)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("db: listando procedures/functions/packages oracle: %w", err)
+		return nil, nil, nil, i18n.Errorf(i18n.Msg{ES: "db: listando procedures/functions/packages oracle: %w", EN: "db: listing oracle procedures/functions/packages: %w"}, err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var owner, name, objType string
 		if err := rows.Scan(&owner, &name, &objType); err != nil {
-			return nil, nil, nil, fmt.Errorf("db: escaneando objeto oracle: %w", err)
+			return nil, nil, nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando objeto oracle: %w", EN: "db: scanning oracle object: %w"}, err)
 		}
 		switch objType {
 		case "PROCEDURE":
@@ -878,7 +880,7 @@ func fetchOracleOwnerTriggers(ctx context.Context, pool *sql.DB, schemas []strin
 		ORDER BY owner, trigger_name
 	`, filter), args...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando triggers oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando triggers oracle: %w", EN: "db: listing oracle triggers: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -886,7 +888,7 @@ func fetchOracleOwnerTriggers(ctx context.Context, pool *sql.DB, schemas []strin
 	for rows.Next() {
 		var owner, name, table string
 		if err := rows.Scan(&owner, &name, &table); err != nil {
-			return nil, fmt.Errorf("db: escaneando trigger oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando trigger oracle: %w", EN: "db: scanning oracle trigger: %w"}, err)
 		}
 		triggers = append(triggers, Trigger{Schema: owner, Name: name, Table: table})
 	}
@@ -923,7 +925,7 @@ func listSQLServerSchemas(ctx context.Context, pool *sql.DB) ([]string, error) {
 		ORDER BY name
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando esquemas sqlserver: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando esquemas sqlserver: %w", EN: "db: listing sqlserver schemas: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -931,7 +933,7 @@ func listSQLServerSchemas(ctx context.Context, pool *sql.DB) ([]string, error) {
 	for rows.Next() {
 		var s string
 		if err := rows.Scan(&s); err != nil {
-			return nil, fmt.Errorf("db: escaneando esquema sqlserver: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando esquema sqlserver: %w", EN: "db: scanning sqlserver schema: %w"}, err)
 		}
 		schemas = append(schemas, s)
 	}
@@ -959,13 +961,13 @@ func fetchSQLServerMetadata(ctx context.Context, pool *sql.DB, schemas []string)
 		ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
 	`, colFilter), colArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando columnas sqlserver: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando columnas sqlserver: %w", EN: "db: listing sqlserver columns: %w"}, err)
 	}
 	for rows.Next() {
 		var schema, table, col, dtype, nullable string
 		if err := rows.Scan(&schema, &table, &col, &dtype, &nullable); err != nil {
 			rows.Close()
-			return nil, fmt.Errorf("db: escaneando columna sqlserver: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando columna sqlserver: %w", EN: "db: scanning sqlserver column: %w"}, err)
 		}
 		k := key(schema, table)
 		t, ok := index[k]
@@ -991,13 +993,13 @@ func fetchSQLServerMetadata(ctx context.Context, pool *sql.DB, schemas []string)
 		%s
 	`, pkFilter), pkArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando primary keys sqlserver: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando primary keys sqlserver: %w", EN: "db: listing sqlserver primary keys: %w"}, err)
 	}
 	for pkRows.Next() {
 		var schema, table, col string
 		if err := pkRows.Scan(&schema, &table, &col); err != nil {
 			pkRows.Close()
-			return nil, fmt.Errorf("db: escaneando primary key sqlserver: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando primary key sqlserver: %w", EN: "db: scanning sqlserver primary key: %w"}, err)
 		}
 		if t, ok := index[key(schema, table)]; ok {
 			for i := range t.Columns {
@@ -1026,13 +1028,13 @@ func fetchSQLServerMetadata(ctx context.Context, pool *sql.DB, schemas []string)
 		%s
 	`, fkFilter), fkArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando foreign keys sqlserver: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando foreign keys sqlserver: %w", EN: "db: listing sqlserver foreign keys: %w"}, err)
 	}
 	for fkRows.Next() {
 		var schema, table, col, refSchema, refTable, refCol string
 		if err := fkRows.Scan(&schema, &table, &col, &refSchema, &refTable, &refCol); err != nil {
 			fkRows.Close()
-			return nil, fmt.Errorf("db: escaneando foreign key sqlserver: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando foreign key sqlserver: %w", EN: "db: scanning sqlserver foreign key: %w"}, err)
 		}
 		if t, ok := index[key(schema, table)]; ok {
 			refName := refTable
@@ -1078,14 +1080,14 @@ func fetchSQLServerRoutines(ctx context.Context, pool *sql.DB, schemas []string)
 		ORDER BY s.name, o.name
 	`, filter), args...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("db: listando procedures/functions sqlserver: %w", err)
+		return nil, nil, i18n.Errorf(i18n.Msg{ES: "db: listando procedures/functions sqlserver: %w", EN: "db: listing sqlserver procedures/functions: %w"}, err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var schema, name, objType string
 		if err := rows.Scan(&schema, &name, &objType); err != nil {
-			return nil, nil, fmt.Errorf("db: escaneando rutina sqlserver: %w", err)
+			return nil, nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando rutina sqlserver: %w", EN: "db: scanning sqlserver routine: %w"}, err)
 		}
 		if strings.TrimSpace(objType) == "P" {
 			procedures = append(procedures, Procedure{Schema: schema, Name: name})
@@ -1112,7 +1114,7 @@ func fetchSQLServerTriggers(ctx context.Context, pool *sql.DB, schemas []string)
 		ORDER BY s.name, tr.name
 	`, filter), args...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando triggers sqlserver: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando triggers sqlserver: %w", EN: "db: listing sqlserver triggers: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -1120,7 +1122,7 @@ func fetchSQLServerTriggers(ctx context.Context, pool *sql.DB, schemas []string)
 	for rows.Next() {
 		var schema, name, table string
 		if err := rows.Scan(&schema, &name, &table); err != nil {
-			return nil, fmt.Errorf("db: escaneando trigger sqlserver: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando trigger sqlserver: %w", EN: "db: scanning sqlserver trigger: %w"}, err)
 		}
 		triggers = append(triggers, Trigger{Schema: schema, Name: name, Table: table})
 	}

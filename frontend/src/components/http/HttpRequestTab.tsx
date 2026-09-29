@@ -36,7 +36,8 @@ import CodeSnippetPanel from './CodeSnippetPanel'
 import AiPanel, {AI_ACTIONS, type AiAction} from './AiPanel'
 import {useAgentChat} from '../agent/AgentChatHost'
 import type {ChatContextBlock} from '../agent/AgentChat'
-import {HTTP_METHODS, humanSize, methodColor, parseComputed, parseRows, pathVarsFromURL, serializeRows, statusColor, type HttpComputed} from './httpShared'
+import {HTTP_METHODS, humanSize, methodColor, parseComputed, parseRows, pathVarsFromURL, rich, serializeRows, statusColor, type HttpComputed} from './httpShared'
+import {formatDateTime, useT} from '../../i18n'
 
 // Una petición HTTP abierta: barra de método/URL arriba, editor abajo y
 // panel de respuesta al pie.
@@ -92,13 +93,15 @@ const RAW_LANGS: {id: string; label: string; lang: LanguageId}[] = [
     {id: 'json', label: 'JSON', lang: 'json'},
     {id: 'xml', label: 'XML', lang: 'xml'},
     {id: 'html', label: 'HTML', lang: 'html'},
-    {id: 'text', label: 'Texto', lang: 'plaintext'},
+    // El rótulo de «text» es texto de la interfaz: se resuelve al dibujar.
+    {id: 'text', label: '', lang: 'plaintext'},
 ]
 
 export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, appearance, onChanged, onSaved, onSent, active}: HttpRequestTabProps) {
     // Una petición rápida no tiene ítem, así que tampoco tiene colección de la
     // que heredar: ni variables, ni autenticación, ni carpeta. Lo que se ve en
     // pantalla es todo lo que se manda.
+    const t = useT()
     const scratch = itemId === null
     const [item, setItem] = useState<vault.HTTPItem | null>(null)
     const [method, setMethod] = useState(seed?.method || 'GET')
@@ -143,7 +146,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
             chat.open({
                 attachments: [
                     {
-                        label: result ? 'Petición y respuesta' : 'Petición (todavía sin respuesta)',
+                        label: result ? t.http.request.chatWithResponse : t.http.request.chatNoResponse,
                         text,
                         language: 'markdown',
                         icon: 'http',
@@ -350,12 +353,12 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                 collectionId: cols[0]?.id ?? '',
                 // Un nombre propuesto a partir de la URL: el último tramo de
                 // la ruta es lo que uno reconocería en el árbol.
-                name: nameFromURL(url) || 'Petición',
+                name: nameFromURL(url) || t.http.request.defaultName,
             })
         } catch (e) {
             setError(String(e))
         }
-    }, [url])
+    }, [url, t])
 
     // Lo que se persiste, igual para una petición guardada y para una rápida
     // que recién se está guardando.
@@ -458,7 +461,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
 
     async function send() {
         if (!url.trim()) {
-            setError('Escribí una URL antes de enviar.')
+            setError(t.http.request.urlRequired)
             return
         }
         const generation = ++execRef.current
@@ -535,8 +538,15 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
     }, [result, pretty])
 
     if (!item && !scratch) {
-        return <div className="flex flex-1 items-center justify-center text-ui-11 text-on-surface-variant">Cargando la petición…</div>
+        return <div className="flex flex-1 items-center justify-center text-ui-11 text-on-surface-variant">{t.http.request.loading}</div>
     }
+
+    // Comparaciones que usa el JSX de abajo, con nombre: se leen mejor que
+    // una cadena de `===` en cada bloque.
+    const onSection = (id: EditorSection) => section === id
+    const onResp = (id: ResponseSection) => respSection === id
+    const bodyIs = (mode: string) => body.mode === mode
+    const inheritsAuth = auth.type === 'inherit'
 
     const rawLang = (RAW_LANGS.find((l) => l.id === (body.rawLang ?? 'json'))?.lang ?? 'plaintext') as LanguageId
     const canFormat = body.mode === 'raw' && (body.rawLang === 'json' || body.rawLang === 'xml')
@@ -556,8 +566,8 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                     options={HTTP_METHODS.map((m) => ({value: m, label: m, tone: `${methodColor(m)} font-semibold`}))}
                     onChange={(v) => touch(setMethod)(v)}
                     size="sm"
-                    ariaLabel="Método HTTP"
-                    title="Método HTTP. GET solo lee; POST, PUT y PATCH modifican; DELETE borra — por eso cada uno tiene su color acá, en el árbol y en el historial."
+                    ariaLabel={t.http.request.methodAria}
+                    title={t.http.request.methodTitle}
                     className="w-28 shrink-0 font-mono"
                 />
 
@@ -578,21 +588,21 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         if (!/^\s*\$?\s*curl[\s\n]/i.test(text)) return
                         e.preventDefault()
                         void HttpImportCurl(text)
-                            .then((req) => req && applyImported(req, 'Se importó el comando cURL.'))
+                            .then((req) => req && applyImported(req, t.http.request.curlImported))
                             .catch((err) => setError(String(err)))
                     }}
-                    placeholder="localhost:3000/dev/blocks/:slug/:date"
-                    title="URL de la petición. Un segmento que empiece con dos puntos (:id) se convierte en una variable de ruta y aparece para completar en la pestaña Params. Pegando un comando cURL acá se importa entero: método, headers y cuerpo incluidos."
+                    placeholder={t.http.request.urlPlaceholder}
+                    title={t.http.request.urlTitle}
                     className="min-w-0 flex-1 rounded bg-surface-container px-2 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                 />
 
                 {sending ? (
                     <button
                         onClick={() => void HttpCancel(execId)}
-                        title="Cortar la petición en curso. El servidor puede haberla recibido igual: cancelar corta la espera de la respuesta, no deshace lo que ya hizo."
+                        title={t.http.request.cancelTitle}
                         className="shrink-0 rounded bg-error px-3 py-1 text-ui-11 text-on-error hover:opacity-90"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                 ) : (
                     <button
@@ -602,14 +612,11 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         // mandar antes de saberlo dejaba esa decisión en manos
                         // del valor por defecto de un booleano.
                         disabled={!settings}
-                        title={
-                            settings
-                                ? 'Enviar la petición tal como está en pantalla, incluso con cambios sin guardar — es lo que permite probar antes de decidir si vale la pena guardarla.'
-                                : 'Esperando la configuración de la petición…'
-                        }
+                        title={settings ? t.http.request.sendTitle : t.http.request.waitingSettings}
+                        data-http-send
                         className="shrink-0 rounded bg-primary px-3 py-1 text-ui-11 font-medium text-on-primary hover:opacity-90 disabled:opacity-40"
                     >
-                        Enviar
+                        {t.http.request.send}
                     </button>
                 )}
 
@@ -618,7 +625,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                     options={[
                         // "Sin entorno" no es un entorno más: es no usar
                         // ninguno, y por eso va separado de la lista real.
-                        {value: '', label: 'Sin entorno', separatorAfter: envs.length > 0},
+                        {value: '', label: t.http.request.noEnv, separatorAfter: envs.length > 0},
                         ...envs.map((e) => ({value: e.id, label: e.name, icon: <Icon name="lan" size={14} />})),
                     ]}
                     onChange={(id) => {
@@ -626,15 +633,15 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         void HttpSetActiveEnvironment(id).catch(() => {})
                     }}
                     size="sm"
-                    ariaLabel="Entorno activo"
-                    title="Entorno activo: define los valores de las {{llaves}} y pisa a las variables de la colección. Si un entorno está anclado a esta colección, gana él sin importar lo que diga este selector."
+                    ariaLabel={t.http.request.envAria}
+                    title={t.http.request.envTitle}
                     className="w-36 shrink-0"
                 />
 
                 <div className="relative shrink-0">
                     <button
                         onClick={() => setAiMenu((v) => !v)}
-                        title="Ayuda con IA sobre esta petición: explicar la respuesta, diagnosticar un fallo, escribirla desde una descripción, redactar su documentación o sus tests. El agente propone; aplicarlo es un clic tuyo."
+                        title={t.http.request.aiTitle}
                         className={`rounded p-1 hover:bg-surface-variant ${aiMenu || aiAction ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
                     >
                         <Icon name="auto_awesome" size={16} />
@@ -653,10 +660,9 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                     >
                                         <Icon name="forum" size={14} className="mt-0.5 text-primary" />
                                         <span className="min-w-0 flex-1">
-                                            <span className="block text-ui-11 font-medium text-on-surface">Preguntar en el chat</span>
+                                            <span className="block text-ui-11 font-medium text-on-surface">{t.http.request.askChat}</span>
                                             <span className="block text-ui-10 leading-relaxed text-on-surface-variant/70">
-                                                Abre el chat con esta petición y su respuesta ya adjuntas —sin credenciales— para
-                                                preguntar lo que quieras y seguir la conversación.
+                                                {t.http.request.askChatHint}
                                             </span>
                                         </span>
                                     </button>
@@ -666,6 +672,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                     // diagnosticar: se deshabilita y se dice por qué, en vez de
                                     // dejar que el agente conteste sobre la nada.
                                     const blocked = a.needsResponse && !result
+                                    const text = t.http.ai.actions[a.id]
                                     return (
                                         <button
                                             key={a.id}
@@ -674,13 +681,13 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                                 setAiAction(a.id)
                                             }}
                                             disabled={blocked}
-                                            title={blocked ? 'Mandá la petición primero: todavía no hay respuesta que mirar.' : a.hint}
+                                            title={blocked ? t.http.request.needsResponse : text.hint}
                                             className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-surface-variant disabled:opacity-40 disabled:hover:bg-transparent"
                                         >
                                             <Icon name={a.icon} size={14} className="mt-0.5 text-on-surface-variant" />
                                             <span className="min-w-0 flex-1">
-                                                <span className="block text-ui-11 text-on-surface">{a.label}</span>
-                                                <span className="block text-ui-10 leading-relaxed text-on-surface-variant/70">{a.hint}</span>
+                                                <span className="block text-ui-11 text-on-surface">{text.label}</span>
+                                                <span className="block text-ui-10 leading-relaxed text-on-surface-variant/70">{text.hint}</span>
                                             </span>
                                         </button>
                                     )
@@ -692,7 +699,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
 
                 <button
                     onClick={() => setShowCode(true)}
-                    title="Ver esta petición escrita como cURL, Go, Python, JavaScript y otros — con las variables ya resueltas, listo para pegar."
+                    title={t.http.request.codeTitle}
                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="code" size={16} />
@@ -701,13 +708,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                 <button
                     onClick={() => void (scratch && !item ? openSaveDialog() : save())}
                     disabled={saving || (!scratch && !dirty)}
-                    title={
-                        scratch && !item
-                            ? 'Guardar esta petición en una colección (Ctrl+S). Hasta que lo hagas vive solo en esta pestaña.'
-                            : dirty
-                              ? 'Guardar los cambios en la colección (Ctrl+S)'
-                              : 'No hay cambios sin guardar'
-                    }
+                    title={scratch && !item ? t.http.request.saveScratchTitle : dirty ? t.http.request.saveTitle : t.http.request.noChanges}
                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30"
                 >
                     <Icon name={scratch && !item ? 'bookmark_add' : 'save'} size={16} />
@@ -718,15 +719,14 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container-lowest px-2 py-1 text-ui-11 text-on-surface-variant">
                     <Icon name="bolt" size={14} className="text-tertiary" />
                     <span className="flex-1 leading-relaxed">
-                        Petición rápida: no está guardada en ninguna colección, así que no hereda variables ni autenticación de ninguna. Las variables
-                        del entorno activo sí valen. Se pierde al cerrar la pestaña.
+                        {t.http.request.scratchNote}
                     </span>
                     <button
                         onClick={() => void openSaveDialog()}
-                        title="Guardarla en una colección para conservarla"
+                        title={t.http.request.saveIntoTitle}
                         className="shrink-0 rounded border border-outline-variant px-2 py-0.5 hover:bg-surface-variant"
                     >
-                        Guardar en…
+                        {t.http.request.saveInto}
                     </button>
                 </div>
             )}
@@ -737,25 +737,24 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         className="w-96 max-w-full rounded-lg border border-outline-variant bg-surface-container p-4 shadow-xl"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <p className="mb-3 text-sm font-medium text-on-surface">Guardar la petición</p>
+                        <p className="mb-3 text-sm font-medium text-on-surface">{t.http.request.saveDialogTitle}</p>
                         {saveTo.collections.length === 0 ? (
                             <p className="text-ui-11 leading-relaxed text-on-surface-variant">
-                                Todavía no hay ninguna colección. Creá una desde la barra lateral y volvé a intentarlo — la petición sigue acá mientras
-                                tanto.
+                                {t.http.request.noCollections}
                             </p>
                         ) : (
                             <>
-                                <label className="mb-1 block text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Colección</label>
+                                <label className="mb-1 block text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">{t.http.request.collection}</label>
                                 <Select
                                     value={saveTo.collectionId}
                                     options={saveTo.collections.map((c) => ({value: c.id, label: c.name, icon: <Icon name="folder" size={14} />}))}
                                     onChange={(v) => setSaveTo({...saveTo, collectionId: v})}
                                     size="sm"
-                                    ariaLabel="Colección donde guardar"
-                                    title="En qué colección se guarda la petición. Las variables y la autenticación de esa colección pasan a aplicarle."
+                                    ariaLabel={t.http.request.collectionAria}
+                                    title={t.http.request.collectionTitle}
                                     className="mb-3 w-full"
                                 />
-                                <label className="mb-1 block text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Nombre</label>
+                                <label className="mb-1 block text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">{t.http.request.name}</label>
                                 <input
                                     autoFocus
                                     value={saveTo.name}
@@ -769,14 +768,14 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         )}
                         <div className="mt-4 flex justify-end gap-2">
                             <button onClick={() => setSaveTo(null)} className="rounded px-3 py-1 text-xs text-on-surface-variant hover:bg-surface-variant">
-                                Cancelar
+                                {t.common.cancel}
                             </button>
                             <button
                                 onClick={() => void saveInto(saveTo.collectionId, saveTo.name.trim())}
                                 disabled={saving || !saveTo.collectionId || !saveTo.name.trim()}
                                 className="rounded bg-primary px-3 py-1 text-xs text-on-primary hover:opacity-90 disabled:opacity-40"
                             >
-                                Guardar
+                                {t.common.save}
                             </button>
                         </div>
                     </div>
@@ -786,12 +785,10 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
             {authPreview && !authPreview.executable && (
                 <div
                     className="flex shrink-0 items-start gap-2 border-b border-outline-variant px-2 py-1 text-ui-11 text-tertiary"
-                    title="Esta autenticación se guarda y se exporta intacta, pero esta versión todavía no la firma: la petición va a salir sin autenticar."
+                    title={t.http.request.authNotSignedTitle}
                 >
                     <Icon name="warning" size={14} className="mt-0.5 shrink-0" />
-                    <span>
-                        La autenticación <span className="font-mono">{authPreview.type}</span> todavía no se firma: la petición sale sin autenticar.
-                    </span>
+                    <span>{rich(t.http.request.authNotSigned({type: authPreview.type}))}</span>
                 </div>
             )}
 
@@ -809,7 +806,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
             {computedErrors.length > 0 && (
                 <div
                     className="flex shrink-0 items-start gap-2 border-b border-outline-variant bg-error-container px-2 py-1 text-ui-11 text-on-error-container"
-                    title="Una variable calculada no se pudo derivar, así que lo que dependa de ella va a salir con las llaves sin resolver."
+                    title={t.http.request.computedErrorsTitle}
                 >
                     <Icon name="functions" size={14} className="mt-0.5 shrink-0" />
                     <span className="min-w-0 flex-1 break-words">{computedErrors.join(' · ')}</span>
@@ -819,11 +816,11 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
             {missing.length > 0 && (
                 <div
                     className="flex shrink-0 items-start gap-2 border-b border-outline-variant px-2 py-1 text-ui-11 text-tertiary"
-                    title="Estas variables se usan en la petición pero no las define ni el entorno activo ni la colección. Se envían tal cual, con las llaves adentro, así que el servidor va a recibir una URL o un header que no tienen sentido."
+                    title={t.http.request.missingTitle}
                 >
                     <Icon name="warning" size={14} className="mt-0.5 shrink-0" />
                     <span className="min-w-0 flex-1 break-words">
-                        Sin definir: <span className="font-mono">{missing.map((m) => `{{${m}}}`).join('  ')}</span>
+                        {rich(t.http.request.missing({list: missing.map((m) => `{{${m}}}`).join('  ')}))}
                     </span>
                 </div>
             )}
@@ -839,7 +836,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                 <div className="flex shrink-0 items-start gap-2 border-b border-outline-variant bg-error-container px-2 py-1 text-ui-11 text-on-error-container">
                     <Icon name="error" size={14} className="mt-0.5 shrink-0" />
                     <span className="min-w-0 flex-1 break-words">{error}</span>
-                    <button onClick={() => setError(null)} title="Cerrar el aviso" className="shrink-0 rounded p-0.5 hover:bg-error/20">
+                    <button onClick={() => setError(null)} title={t.http.request.dismissError} className="shrink-0 rounded p-0.5 hover:bg-error/20">
                         <Icon name="close" size={12} />
                     </button>
                 </div>
@@ -850,19 +847,20 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                 <div className="flex shrink-0 items-center gap-0.5 border-b border-outline-variant px-2">
                     {(
                         [
-                            ['params', 'Params', params.filter((p) => p.enabled && p.key).length + pathVars.length],
-                            ['auth', 'Auth', authPreview && authPreview.type !== 'none' ? 1 : 0],
-                            ['headers', 'Headers', headers.filter((h) => h.enabled && h.key).length],
-                            ['body', 'Body', bodyCount(body)],
-                            ['scripts', 'Pre-request', computed.filter((c) => c.enabled && c.name).length + (preRequest ? 1 : 0) + (testScript ? 1 : 0)],
-                            ['docs', 'Docs', docs.trim() ? 1 : 0],
-                            ['settings', 'Settings', 0],
+                            ['params', t.http.request.tabs.params, params.filter((p) => p.enabled && p.key).length + pathVars.length],
+                            ['auth', t.http.request.tabs.auth, authPreview && authPreview.type !== 'none' ? 1 : 0],
+                            ['headers', t.http.request.tabs.headers, headers.filter((h) => h.enabled && h.key).length],
+                            ['body', t.http.request.tabs.body, bodyCount(body)],
+                            ['scripts', t.http.request.tabs.scripts, computed.filter((c) => c.enabled && c.name).length + (preRequest ? 1 : 0) + (testScript ? 1 : 0)],
+                            ['docs', t.http.request.tabs.docs, docs.trim() ? 1 : 0],
+                            ['settings', t.http.request.tabs.settings, 0],
                         ] as [EditorSection, string, number][]
                     ).map(([id, label, count]) => (
                         <button
                             key={id}
                             onClick={() => setSection(id)}
-                            title={`Ver ${label} de esta petición`}
+                            title={t.http.request.viewSection({label})}
+                            data-http-section={id}
                             className={`relative px-2.5 py-1.5 text-ui-11 ${
                                 section === id ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
                             }`}
@@ -875,27 +873,27 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                    {section === 'params' && (
+                    {onSection('params') && (
                         <>
-                            <p className="px-2 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Query Params</p>
+                            <p className="px-2 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">{t.http.request.queryParams}</p>
                             <KeyValueTable rows={params} onChange={touch(setParams)} />
-                            <p className="px-2 pt-3 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Path Variables</p>
+                            <p className="px-2 pt-3 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">{t.http.request.pathVariables}</p>
                             <KeyValueTable
                                 rows={pathVars}
                                 onChange={touch(setPathVars)}
                                 lockKeys
-                                emptyHint="Escribí un segmento con dos puntos en la URL (por ejemplo /blocks/:slug) y va a aparecer acá para completar su valor."
+                                emptyHint={t.http.request.pathVarsEmpty}
                             />
                         </>
                     )}
 
-                    {section === 'auth' && (
+                    {onSection('auth') && (
                         <>
-                            {authPreview && auth.type === 'inherit' && (
+                            {authPreview && inheritsAuth && (
                                 <p className="px-3 pt-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
                                     {authPreview.type === 'none'
-                                        ? 'Ni la carpeta ni la colección definen autenticación, así que esta petición sale sin autenticar.'
-                                        : `Heredando: se va a usar ${authPreview.type}${authPreview.executable ? '' : ' (que esta versión todavía no firma)'}.`}
+                                        ? t.http.request.authNone
+                                        : t.http.request.authInherited({type: authPreview.type, executable: authPreview.executable})}
                                 </p>
                             )}
                             <AuthPanel
@@ -912,54 +910,50 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         </>
                     )}
 
-                    {section === 'headers' && <KeyValueTable rows={headers} onChange={touch(setHeaders)} />}
+                    {onSection('headers') && <KeyValueTable rows={headers} onChange={touch(setHeaders)} />}
 
-                    {section === 'body' && (
+                    {onSection('body') && (
                         <div className="flex h-full min-h-0 flex-col">
                             <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-2 py-1.5">
                                 {BODY_MODES.map((m) => (
-                                    <label key={m.id} className="flex items-center gap-1 text-ui-11 text-on-surface-variant" title={m.hint}>
+                                    <label key={m.id} className="flex items-center gap-1 text-ui-11 text-on-surface-variant" title={t.http.request.bodyModes[m.id]}>
                                         <input
                                             type="radio"
                                             checked={body.mode === m.id}
                                             onChange={() => touch(setBody)(new httpclient.Body({...body, mode: m.id}))}
                                             className="accent-primary"
                                         />
-                                        {m.label}
+                                        {m.name}
                                     </label>
                                 ))}
                                 {/* form-data, x-www-form-urlencoded, binary y GraphQL entran
                                     en la fase 3 del plan; no se muestran como opciones
                                     apagadas porque una opción que no hace nada es peor que
                                     una que todavía no está. */}
-                                {body.mode === 'raw' && (
+                                {bodyIs('raw') && (
                                     <>
                                         <Select
                                             value={body.rawLang ?? 'json'}
-                                            options={RAW_LANGS.map((l) => ({value: l.id, label: l.label}))}
+                                            options={RAW_LANGS.map((l) => ({value: l.id, label: l.id === 'text' ? t.http.request.text : l.label}))}
                                             onChange={(v) => touch(setBody)(new httpclient.Body({...body, rawLang: v}))}
                                             size="sm"
                                             variant="ghost"
-                                            ariaLabel="Formato del cuerpo"
-                                            title="Formato del cuerpo. Elige el resaltado y define el Content-Type que se manda si no escribiste uno a mano en Headers."
+                                            ariaLabel={t.http.request.bodyFormatAria}
+                                            title={t.http.request.bodyFormatTitle}
                                             className="w-24"
                                         />
                                         <button
                                             onClick={() => void formatBody()}
                                             disabled={!canFormat || !body.raw}
-                                            title={
-                                                canFormat
-                                                    ? 'Indentar el cuerpo. Si el texto no parsea se deja tal cual, sin borrar nada.'
-                                                    : 'Solo se puede formatear JSON y XML'
-                                            }
+                                            title={canFormat ? t.http.request.formatTitle : t.http.request.formatOnlyJsonXml}
                                             className="rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30"
                                         >
-                                            Formatear
+                                            {t.http.request.format}
                                         </button>
                                     </>
                                 )}
                             </div>
-                            {body.mode === 'raw' && (
+                            {bodyIs('raw') && (
                                 <div className="min-h-0 flex-1 border-t border-outline-variant">
                                     <CodePane
                                         value={body.raw ?? ''}
@@ -968,25 +962,24 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                         editorThemeId={editorThemeId}
                                         appTheme={appTheme}
                                         appearance={appearance}
-                                        placeholder='{ "clave": "valor" }'
+                                        placeholder={t.http.request.rawPlaceholder}
                                     />
                                 </div>
                             )}
 
-                            {body.mode === 'formdata' && (
+                            {bodyIs('formdata') && (
                                 <div className="min-h-0 flex-1 overflow-y-auto border-t border-outline-variant">
                                     <FormDataTable
                                         rows={body.formData ?? []}
                                         onChange={(rows) => touch(setBody)(new httpclient.Body({...body, formData: rows}))}
                                     />
                                     <p className="px-2 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                                        De una fila de archivo se guarda la <strong>ruta</strong>, no el contenido: se lee recién al enviar, en streaming, así
-                                        que subir algo grande no ocupa memoria ni deja una copia congelada en el vault.
+                                        {rich(t.http.request.formDataNote)}
                                     </p>
                                 </div>
                             )}
 
-                            {body.mode === 'urlencoded' && (
+                            {bodyIs('urlencoded') && (
                                 <div className="min-h-0 flex-1 overflow-y-auto border-t border-outline-variant">
                                     <KeyValueTable
                                         rows={body.urlEncoded ?? []}
@@ -995,29 +988,29 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                 </div>
                             )}
 
-                            {body.mode === 'binary' && (
+                            {bodyIs('binary') && (
                                 <div className="min-h-0 flex-1 border-t border-outline-variant p-3">
                                     <button
                                         onClick={() =>
-                                            void HttpPickFile('Elegir el archivo a enviar como cuerpo')
+                                            void HttpPickFile(t.http.request.pickBodyFileDialog)
                                                 .then((path) => {
                                                     if (path) touch(setBody)(new httpclient.Body({...body, binaryPath: path}))
                                                 })
                                                 .catch(() => {})
                                         }
-                                        title="El archivo entero se manda como cuerpo, con su Content-Type deducido de la extensión."
+                                        title={t.http.request.binaryTitle}
                                         className="flex items-center gap-1.5 rounded bg-surface-container px-2 py-1 text-ui-11 text-on-surface hover:bg-surface-variant"
                                     >
                                         <Icon name="attach_file" size={13} />
-                                        {body.binaryPath ? fileBaseName(body.binaryPath) : 'Elegir archivo…'}
+                                        {body.binaryPath ? fileBaseName(body.binaryPath) : t.http.request.pickFile}
                                     </button>
                                     {body.binaryPath && <p className="mt-2 break-all font-mono text-ui-10 text-on-surface-variant/60">{body.binaryPath}</p>}
                                 </div>
                             )}
 
-                            {body.mode === 'graphql' && (
+                            {bodyIs('graphql') && (
                                 <div className="flex min-h-0 flex-1 flex-col border-t border-outline-variant">
-                                    <p className="shrink-0 px-2 pt-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Query</p>
+                                    <p className="shrink-0 px-2 pt-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">{t.http.request.graphqlQuery}</p>
                                     <div className="min-h-0 flex-1">
                                         <CodePane
                                             value={body.graphqlQuery ?? ''}
@@ -1026,11 +1019,11 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                             editorThemeId={editorThemeId}
                                             appTheme={appTheme}
                                             appearance={appearance}
-                                            placeholder="query { me { id } }"
+                                            placeholder={t.http.request.graphqlQueryPlaceholder}
                                         />
                                     </div>
                                     <p className="shrink-0 border-t border-outline-variant px-2 pt-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                                        Variables (JSON)
+                                        {t.http.request.graphqlVariables}
                                     </p>
                                     <div className="h-24 shrink-0">
                                         <CodePane
@@ -1040,34 +1033,32 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                             editorThemeId={editorThemeId}
                                             appTheme={appTheme}
                                             appearance={appearance}
-                                            placeholder='{ "id": 1 }'
+                                            placeholder={t.http.request.graphqlVariablesPlaceholder}
                                         />
                                     </div>
                                 </div>
                             )}
 
-                            {body.mode === 'none' && (
-                                <p className="px-3 py-4 text-ui-11 text-on-surface-variant/70">Esta petición no manda cuerpo.</p>
+                            {bodyIs('none') && (
+                                <p className="px-3 py-4 text-ui-11 text-on-surface-variant/70">{t.http.request.noBody}</p>
                             )}
                         </div>
                     )}
 
-                    {section === 'scripts' && (
+                    {onSection('scripts') && (
                         <div className="flex h-full min-h-0 flex-col">
                             <p className="shrink-0 px-2 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                                Variables calculadas
+                                {t.http.request.computedTitle}
                             </p>
                             <div className="shrink-0">
                                 <ComputedTable rows={computed} onChange={touch(setComputed)} problems={computedErrors} />
                             </div>
 
                             <p className="shrink-0 border-t border-outline-variant bg-surface-container-lowest px-3 py-2 text-ui-10 leading-relaxed text-tertiary">
-                                Los scripts de abajo <strong>se guardan y se exportan intactos, pero NO se ejecutan</strong>. Esta aplicación no incorpora un
-                                motor de JavaScript —sumaba 20 MB al programa—, así que lo que un script hacía para firmar se configura arriba, en las
-                                variables calculadas. Están acá para que una colección importada no los pierda y para poder leerlos y traducirlos.
+                                {rich(t.http.request.scriptsNote)}
                             </p>
                             <p className="shrink-0 px-2 pt-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                                Pre-request (no se ejecuta)
+                                {t.http.request.preRequest}
                             </p>
                             <div className="min-h-0 flex-1">
                                 <CodePane
@@ -1077,11 +1068,11 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                     editorThemeId={editorThemeId}
                                     appTheme={appTheme}
                                     appearance={appearance}
-                                    placeholder="pm.environment.set('sig', ...)"
+                                    placeholder={t.http.request.preRequestPlaceholder}
                                 />
                             </div>
                             <p className="shrink-0 border-t border-outline-variant px-2 pt-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                                Tests (no se ejecutan)
+                                {t.http.request.tests}
                             </p>
                             <div className="h-32 shrink-0">
                                 <CodePane
@@ -1091,18 +1082,16 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                     editorThemeId={editorThemeId}
                                     appTheme={appTheme}
                                     appearance={appearance}
-                                    placeholder="pm.test('ok', () => pm.expect(pm.response.status).to.equal(200))"
+                                    placeholder={t.http.request.testsPlaceholder}
                                 />
                             </div>
                         </div>
                     )}
 
-                    {section === 'docs' && (
+                    {onSection('docs') && (
                         <div className="flex h-full min-h-0 flex-col">
                             <p className="shrink-0 px-3 pt-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                                Para qué sirve esta petición, qué devuelve, cuál hay que llamar antes. Es Markdown, y se publica junto con el resto de la
-                                colección desde «Documentación…» en el menú de la colección. Un <span className="font-mono">[[enlace]]</span> escrito acá
-                                queda enlazado de verdad con esa nota del vault.
+                                {rich(t.http.request.docsNote)}
                             </p>
                             <textarea
                                 value={docs}
@@ -1110,76 +1099,75 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                     setDocs(e.target.value)
                                     setDirty(true)
                                 }}
-                                placeholder={'Devuelve el token de sesión.\n\n- Hay que llamarla antes que el resto.\n- Ver [[Runbook de reservas]].'}
+                                placeholder={t.http.request.docsPlaceholder}
                                 spellCheck={false}
                                 className="min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-ui-11 leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant/40"
                             />
                         </div>
                     )}
 
-                    {section === 'settings' && settings && (
+                    {onSection('settings') && settings && (
                         <div className="divide-y divide-outline-variant/50 px-2 text-ui-11">
                             <SettingRow
-                                label="Verificar el certificado TLS"
-                                hint="Con esto apagado, la app acepta cualquier certificado: sirve para un entorno interno con certificado propio, y es exactamente lo que un atacante en el medio necesita. Apagalo solo si sabés contra qué estás hablando."
+                                label={t.http.request.settings.verifyTls}
+                                hint={t.http.request.settings.verifyTlsHint}
                                 checked={settings.verifyTls}
                                 onChange={(v) => touch(setSettings)(new httpclient.Settings({...settings, verifyTls: v}))}
                                 danger={!settings.verifyTls}
                             />
                             <SettingRow
-                                label="Seguir redirecciones"
-                                hint="Seguir las respuestas 3xx hasta la URL final. Apagado, se ve el 301 o el 302 en crudo — que es lo que se quiere cuando lo que se está probando ES la redirección."
+                                label={t.http.request.settings.followRedirects}
+                                hint={t.http.request.settings.followRedirectsHint}
                                 checked={settings.followRedirects}
                                 onChange={(v) => touch(setSettings)(new httpclient.Settings({...settings, followRedirects: v}))}
                             />
                             <SettingRow
-                                label="Conservar el método al redirigir"
-                                hint="Por defecto un POST redirigido se reintenta como GET, que es lo que manda el estándar para 301/302. Esta opción repite el método original."
+                                label={t.http.request.settings.keepMethod}
+                                hint={t.http.request.settings.keepMethodHint}
                                 checked={settings.keepMethodOnRedirect}
                                 onChange={(v) => touch(setSettings)(new httpclient.Settings({...settings, keepMethodOnRedirect: v}))}
                                 disabled={!settings.followRedirects}
                             />
                             <SettingRow
-                                label="Conservar el header Authorization al cambiar de host"
-                                hint="Normalmente las credenciales NO se reenvían si la redirección lleva a otro servidor, justamente para no filtrarlas. Encendelo solo si confiás en el destino."
+                                label={t.http.request.settings.keepAuth}
+                                hint={t.http.request.settings.keepAuthHint}
                                 checked={settings.keepAuthOnRedirect}
                                 onChange={(v) => touch(setSettings)(new httpclient.Settings({...settings, keepAuthOnRedirect: v}))}
                                 disabled={!settings.followRedirects}
                                 danger={settings.keepAuthOnRedirect}
                             />
                             <SettingRow
-                                label="Quitar el header Referer al redirigir"
-                                hint="Evita contarle al destino desde qué URL venías."
+                                label={t.http.request.settings.removeReferer}
+                                hint={t.http.request.settings.removeRefererHint}
                                 checked={settings.removeRefererOnRedirect}
                                 onChange={(v) => touch(setSettings)(new httpclient.Settings({...settings, removeRefererOnRedirect: v}))}
                                 disabled={!settings.followRedirects}
                             />
                             <div className="flex items-center gap-3 py-2">
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-on-surface">Versión de HTTP</p>
+                                    <p className="text-on-surface">{t.http.request.settings.httpVersion}</p>
                                     <p className="text-ui-10 leading-relaxed text-on-surface-variant/70">
-                                        «Auto» negocia con el servidor y es lo correcto salvo que estés depurando algo que se comporta distinto según la versión.
+                                        {t.http.request.settings.httpVersionHint}
                                     </p>
                                 </div>
                                 <Select
                                     value={settings.httpVersion}
                                     options={[
-                                        {value: 'auto', label: 'Auto'},
-                                        {value: '1.1', label: 'HTTP/1.1'},
-                                        {value: '2', label: 'HTTP/2'},
+                                        {value: 'auto', label: t.http.request.settings.auto},
+                                        ...['1.1', '2'].map((v) => ({value: v, label: `HTTP/${v}`})),
                                     ]}
                                     onChange={(v) => touch(setSettings)(new httpclient.Settings({...settings, httpVersion: v}))}
                                     size="sm"
-                                    ariaLabel="Versión de HTTP"
-                                    title="Versión del protocolo a usar. «Auto» negocia con el servidor y es lo correcto salvo que estés depurando algo que se comporta distinto según la versión."
+                                    ariaLabel={t.http.request.settings.httpVersion}
+                                    title={t.http.request.settings.httpVersionTitle}
                                     className="w-32 shrink-0"
                                 />
                             </div>
                             <div className="flex items-center gap-3 py-2">
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-on-surface">Tiempo límite</p>
+                                    <p className="text-on-surface">{t.http.request.settings.timeout}</p>
                                     <p className="text-ui-10 leading-relaxed text-on-surface-variant/70">
-                                        Segundos a esperar antes de darse por vencido. Sin límite, un servidor que no contesta cuelga la petición para siempre.
+                                        {t.http.request.settings.timeoutHint}
                                     </p>
                                 </div>
                                 <input
@@ -1189,7 +1177,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                     onChange={(e) =>
                                         touch(setSettings)(new httpclient.Settings({...settings, timeoutMs: Math.max(1, Number(e.target.value) || 1) * 1000}))
                                     }
-                                    title="Tiempo límite en segundos"
+                                    title={t.http.request.settings.timeoutTitle}
                                     className="w-20 shrink-0 rounded bg-surface-container px-1.5 py-0.5 text-right font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                 />
                             </div>
@@ -1201,46 +1189,46 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
             {/* Respuesta */}
             <div className="flex min-h-0 shrink-0 flex-col border-t border-outline-variant" style={{height: '45%'}}>
                 <div className="flex shrink-0 flex-wrap items-center gap-2 px-2 py-1">
-                    <span className="text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Respuesta</span>
+                    <span className="text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">{t.http.request.response}</span>
                     {result?.response && (
                         <>
                             <span className={`font-mono text-ui-11 font-semibold ${statusColor(result.response.status)}`}>
                                 {result.response.status} {result.response.statusText}
                             </span>
-                            <span className="font-mono text-ui-11 text-on-surface-variant">{result.response.durationMs} ms</span>
+                            <span className="font-mono text-ui-11 text-on-surface-variant">{t.http.request.ms(result.response.durationMs)}</span>
                             <span className="font-mono text-ui-11 text-on-surface-variant">{humanSize(result.response.sizeBytes)}</span>
                             {result.response.redirects > 0 && (
                                 <span
                                     className="text-ui-10 text-tertiary"
-                                    title={`Se siguieron ${result.response.redirects} redirecciones hasta ${result.response.finalUrl}`}
+                                    title={t.http.request.redirectsTitle({n: result.response.redirects, url: result.response.finalUrl})}
                                 >
-                                    {result.response.redirects} redirección{result.response.redirects > 1 ? 'es' : ''}
+                                    {t.http.request.redirects(result.response.redirects)}
                                 </span>
                             )}
                             {result.response.truncated && (
                                 <span
                                     className="text-ui-10 text-tertiary"
-                                    title="Lo que se muestra está cortado por el tope de tamaño, pero el cuerpo COMPLETO se volcó a disco al recibirlo: «Guardar…» escribe el archivo entero."
+                                    title={t.http.request.truncatedTitle}
                                 >
-                                    vista cortada
+                                    {t.http.request.truncated}
                                 </span>
                             )}
                         </>
                     )}
-                    {sending && <span className="text-ui-11 text-on-surface-variant">Enviando…</span>}
+                    {sending && <span className="text-ui-11 text-on-surface-variant">{t.http.request.sending}</span>}
 
                     <div className="ml-auto flex items-center gap-0.5">
                         {(
                             [
-                                ['body', 'Cuerpo'],
-                                ['headers', 'Headers'],
-                                ['history', 'Historial'],
+                                ['body', t.http.request.respTabs.body],
+                                ['headers', t.http.request.respTabs.headers],
+                                ['history', t.http.request.respTabs.history],
                             ] as [ResponseSection, string][]
                         ).map(([id, label]) => (
                             <button
                                 key={id}
                                 onClick={() => setRespSection(id)}
-                                title={id === 'history' ? 'Últimas ejecuciones de esta petición' : `Ver ${label.toLowerCase()} de la respuesta`}
+                                title={id === 'history' ? t.http.request.historyTitle : t.http.request.viewResponse({label: label.toLowerCase()})}
                                 className={`rounded px-2 py-0.5 text-ui-11 ${
                                     respSection === id ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
                                 }`}
@@ -1248,7 +1236,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                 {label}
                             </button>
                         ))}
-                        {respSection === 'body' && result?.response && (
+                        {onResp('body') && result?.response && (
                             <button
                                 onClick={() =>
                                     void HttpSaveResponseToFile(
@@ -1258,17 +1246,13 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                         result.response?.filename ?? '',
                                     ).catch((e) => setError(String(e)))
                                 }
-                                title={
-                                    result.response.truncated
-                                        ? 'Guardar la respuesta COMPLETA. Lo que se ve está cortado, pero el cuerpo entero se volcó a disco al recibirlo.'
-                                        : 'Guardar el cuerpo de la respuesta en un archivo'
-                                }
+                                title={result.response.truncated ? t.http.request.saveFullTitle : t.http.request.saveBodyTitle}
                                 className="rounded px-2 py-0.5 text-ui-11 text-on-surface-variant hover:text-on-surface"
                             >
-                                Guardar…
+                                {t.http.request.saveFile}
                             </button>
                         )}
-                        {respSection === 'body' && result?.response && item && (
+                        {onResp('body') && result?.response && item && (
                             <button
                                 onClick={() =>
                                     void HttpSaveResponseExample(item.id, request, result.response as httpclient.Response)
@@ -1286,19 +1270,19 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                         })
                                         .catch((e) => setError(String(e)))
                                 }
-                                title="Agregar esta respuesta como ejemplo a la documentación de la petición. Se suma al final: una petición útil tiene el caso que funciona y el error que explica qué valida el servidor."
+                                title={t.http.request.saveExampleTitle}
                                 className="rounded px-2 py-0.5 text-ui-11 text-on-surface-variant hover:text-on-surface"
                             >
-                                Guardar de ejemplo
+                                {t.http.request.saveExample}
                             </button>
                         )}
-                        {respSection === 'body' && result?.response && !result.response.isBinary && (
+                        {onResp('body') && result?.response && !result.response.isBinary && (
                             <button
                                 onClick={() => setPretty((v) => !v)}
-                                title={pretty ? 'Ver el cuerpo tal como llegó, sin indentar' : 'Indentar el cuerpo para poder leerlo'}
+                                title={pretty ? t.http.request.rawTitle : t.http.request.prettyTitle}
                                 className="rounded px-2 py-0.5 text-ui-11 text-on-surface-variant hover:text-on-surface"
                             >
-                                {pretty ? 'Crudo' : 'Formateado'}
+                                {pretty ? t.http.request.raw : t.http.request.pretty}
                             </button>
                         )}
                     </div>
@@ -1313,22 +1297,22 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                 <div className="min-h-0 flex-1 overflow-auto border-t border-outline-variant">
                     {!result && !sending && (
                         <p className="px-3 py-6 text-center text-ui-11 text-on-surface-variant/60">
-                            Todavía no enviaste esta petición. Apretá «Enviar» o Enter en la URL.
+                            {t.http.request.notSent}
                         </p>
                     )}
 
                     {result?.error && (
                         <div className="px-3 py-3 text-ui-11 leading-relaxed text-error">
-                            <p className="font-medium">No se pudo completar la petición</p>
+                            <p className="font-medium">{t.http.request.failed}</p>
                             <p className="mt-1 break-words text-on-surface-variant">{result.error}</p>
                         </div>
                     )}
 
-                    {respSection === 'body' && result?.response && (
+                    {onResp('body') && result?.response && (
                         result.response.isBinary ? (
                             <div className="px-3 py-3">
                                 <p className="text-ui-11 leading-relaxed text-on-surface-variant">
-                                    Respuesta binaria: {result.response.contentType || 'tipo desconocido'}, {humanSize(result.response.sizeBytes)}.
+                                    {t.http.request.binary({type: result.response.contentType || t.http.request.unknownType, size: humanSize(result.response.sizeBytes)})}
                                 </p>
                                 {/* Vista previa solo de imágenes: es el único tipo que el
                                     webview dibuja desde base64 sin ayuda, y prometer una
@@ -1337,7 +1321,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                                 {result.response.contentType.startsWith('image/') && result.response.bodyBase64 && (
                                     <img
                                         src={`data:${result.response.contentType};base64,${result.response.bodyBase64}`}
-                                        alt="Vista previa de la respuesta"
+                                        alt={t.http.request.previewAlt}
                                         className="mt-2 max-h-64 max-w-full rounded border border-outline-variant object-contain"
                                     />
                                 )}
@@ -1354,7 +1338,7 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         )
                     )}
 
-                    {respSection === 'headers' && result?.response && (
+                    {onResp('headers') && result?.response && (
                         <table className="w-full border-collapse text-ui-11">
                             <tbody>
                                 {result.response.headers.map((h, i) => (
@@ -1367,33 +1351,33 @@ export default function HttpRequestTab({itemId, seed, editorThemeId, appTheme, a
                         </table>
                     )}
 
-                    {respSection === 'history' && (
+                    {onResp('history') && (
                         <div>
                             <div className="flex items-center justify-end px-2 py-1">
                                 <button
                                     onClick={() => void HttpClearHistory(itemId ?? '').then(reloadHistory)}
                                     disabled={history.length === 0}
-                                    title="Borrar el historial de ejecuciones de esta petición"
+                                    title={t.http.request.clearHistoryTitle}
                                     className="rounded px-2 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-error disabled:opacity-30"
                                 >
-                                    Limpiar
+                                    {t.http.request.clearHistory}
                                 </button>
                             </div>
                             {history.length === 0 ? (
-                                <p className="px-3 py-4 text-ui-11 text-on-surface-variant/60">Sin ejecuciones todavía.</p>
+                                <p className="px-3 py-4 text-ui-11 text-on-surface-variant/60">{t.http.request.noHistory}</p>
                             ) : (
                                 <table className="w-full border-collapse text-ui-11">
                                     <tbody>
                                         {history.map((h) => (
                                             <tr key={h.id} className="border-b border-outline-variant/40">
                                                 <td className={`w-12 px-2 py-1 font-mono ${statusColor(h.status)}`}>{h.status || '—'}</td>
-                                                <td className="w-16 px-2 py-1 text-right font-mono text-on-surface-variant">{h.durationMs} ms</td>
+                                                <td className="w-16 px-2 py-1 text-right font-mono text-on-surface-variant">{t.http.request.ms(h.durationMs)}</td>
                                                 <td className="w-16 px-2 py-1 text-right font-mono text-on-surface-variant">{humanSize(h.sizeBytes)}</td>
                                                 <td className="truncate px-2 py-1 font-mono text-on-surface-variant/80" title={h.error || h.url}>
                                                     {h.error || h.url}
                                                 </td>
                                                 <td className="w-28 px-2 py-1 text-right text-on-surface-variant/60">
-                                                    {new Date(h.executedAt * 1000).toLocaleString()}
+                                                    {formatDateTime(h.executedAt)}
                                                 </td>
                                             </tr>
                                         ))}
@@ -1460,6 +1444,7 @@ function SettingRow({
     disabled?: boolean
     danger?: boolean
 }) {
+    const t = useT()
     return (
         <div className={`flex items-start gap-3 py-2 ${disabled ? 'opacity-40' : ''}`}>
             <div className="min-w-0 flex-1">
@@ -1471,21 +1456,23 @@ function SettingRow({
                 checked={checked}
                 disabled={disabled}
                 onChange={(e) => onChange(e.target.checked)}
-                title={disabled ? 'No aplica mientras «Seguir redirecciones» esté apagado' : hint}
+                title={disabled ? t.http.request.settings.needsFollow : hint}
                 className="mt-0.5 shrink-0 accent-primary"
             />
         </div>
     )
 }
 
-// Modos de cuerpo ofrecidos, con el porqué de cada uno en el tooltip.
-const BODY_MODES: {id: string; label: string; hint: string}[] = [
-    {id: 'none', label: 'none', hint: 'Sin cuerpo — lo normal en un GET'},
-    {id: 'raw', label: 'raw', hint: 'Texto: JSON, XML, HTML o plano'},
-    {id: 'formdata', label: 'form-data', hint: 'Campos y archivos (multipart), como un formulario con adjuntos'},
-    {id: 'urlencoded', label: 'x-www-form-urlencoded', hint: 'Campos codificados en la línea, como un formulario web clásico'},
-    {id: 'binary', label: 'binary', hint: 'Un archivo del disco como cuerpo entero'},
-    {id: 'graphql', label: 'GraphQL', hint: 'Query y variables, empaquetadas como el JSON que espera un servidor GraphQL'},
+// Modos de cuerpo ofrecidos. `name` es el nombre técnico (igual en todos los
+// idiomas); el porqué de cada uno va en el tooltip, desde el diccionario
+// (t.http.request.bodyModes).
+const BODY_MODES: {id: 'none' | 'raw' | 'formdata' | 'urlencoded' | 'binary' | 'graphql'; name: string}[] = [
+    {id: 'none', name: 'none'},
+    {id: 'raw', name: 'raw'},
+    {id: 'formdata', name: 'form-data'},
+    {id: 'urlencoded', name: 'x-www-form-urlencoded'},
+    {id: 'binary', name: 'binary'},
+    {id: 'graphql', name: 'GraphQL'},
 ]
 
 // Cuántos elementos tiene el cuerpo, para el contador de la pestaña: cada

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"mini-tools/backend/i18n"
 	"strings"
 	"sync"
 	"time"
@@ -86,7 +87,7 @@ func (r *Runner) ClearCommandLog() {
 // record builds an entry. Called by runRaw around every invocation.
 func (r *Runner) record(dir string, args []string, started time.Time, failed bool, output string) {
 	if len(output) > maxLoggedOutput {
-		output = output[:maxLoggedOutput] + "\n… (salida recortada)"
+		output = output[:maxLoggedOutput] + i18n.T(i18n.Msg{ES: "\n… (salida recortada)", EN: "\n… (output truncated)"})
 	}
 	r.log.add(CommandEntry{
 		Command:    "git " + strings.Join(args, " "),

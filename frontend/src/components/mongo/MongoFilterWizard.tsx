@@ -4,6 +4,7 @@ import Icon from '../Icon'
 import MongoConditionRow from './MongoConditionRow'
 import {FieldSampleStatus} from './MongoFieldCombo'
 import {buildFilterObject, type MongoCondition, type MongoLogic} from '../../lib/mongoFilter'
+import {useT} from '../../i18n'
 
 interface MongoFilterWizardProps {
     // Sampled fields of the collection (App.SampleMongoFields), so each row
@@ -23,6 +24,8 @@ interface MongoFilterWizardProps {
 // this is where someone filters by _id and gets zero results without ever
 // being told the value needed to be an ObjectId.
 export default function MongoFilterWizard({fields, sampling, onApply, onClose}: MongoFilterWizardProps) {
+    const t = useT()
+    const w = t.mongo.wizard
     const [conditions, setConditions] = useState<MongoCondition[]>([{field: '', op: '$eq', value: '', valueType: 'auto'}])
     const [logic, setLogic] = useState<MongoLogic>('and')
 
@@ -41,9 +44,9 @@ export default function MongoFilterWizard({fields, sampling, onApply, onClose}: 
             >
                 <div className="flex items-center justify-between border-b border-outline-variant px-4 py-2.5">
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-                        <Icon name="filter_alt" size={16} /> Asistente de filtro
+                        <Icon name="filter_alt" size={16} /> {w.filterTitle}
                     </h2>
-                    <button onClick={onClose} title="Cierra sin aplicar nada" className="text-on-surface-variant hover:text-on-surface">
+                    <button onClick={onClose} title={w.closeNoApply} className="text-on-surface-variant hover:text-on-surface">
                         <Icon name="close" size={18} />
                     </button>
                 </div>
@@ -51,15 +54,15 @@ export default function MongoFilterWizard({fields, sampling, onApply, onClose}: 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4">
                     <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-on-surface">
                         <span className="flex items-center gap-1 font-normal text-on-surface-variant">
-                            coincidir con
+                            {w.matchWith}
                             <select
                                 value={logic}
                                 onChange={(e) => setLogic(e.target.value as MongoLogic)}
-                                title="TODAS exige que se cumplan todas las condiciones (AND, la forma implícita de Mongo). CUALQUIERA alcanza con que se cumpla una ($or)."
+                                title={w.logicHint}
                                 className="rounded border border-outline-variant bg-surface-container-low px-1 py-0.5 text-xs text-on-surface"
                             >
-                                <option value="and">TODAS las condiciones (AND)</option>
-                                <option value="or">CUALQUIER condición (OR)</option>
+                                <option value="and">{w.logicAnd}</option>
+                                <option value="or">{w.logicOr}</option>
                             </select>
                         </span>
                         <FieldSampleStatus loading={sampling} count={fields.length} ready />
@@ -78,30 +81,30 @@ export default function MongoFilterWizard({fields, sampling, onApply, onClose}: 
                         ))}
                         <button
                             onClick={() => setConditions((prev) => [...prev, {field: '', op: '$eq', value: '', valueType: 'auto'}])}
-                            title="Suma otra condición al filtro"
+                            title={w.addConditionHint}
                             className="flex items-center gap-1 text-xs text-primary hover:underline"
                         >
-                            <Icon name="add" size={14} /> Agregar condición
+                            <Icon name="add" size={14} /> {w.addCondition}
                         </button>
                     </div>
                 </div>
 
                 <div className="border-t border-outline-variant p-3">
-                    <span className="mb-1.5 block text-ui-11 font-medium uppercase tracking-wide text-on-surface-variant">Filtro generado</span>
+                    <span className="mb-1.5 block text-ui-11 font-medium uppercase tracking-wide text-on-surface-variant">{w.generatedFilter}</span>
                     <pre className="max-h-28 overflow-auto whitespace-pre-wrap rounded border border-outline-variant bg-surface-container-low p-2 font-mono text-xs text-on-surface">
                         {filter}
                     </pre>
                     <div className="mt-3 flex justify-end gap-2">
-                        <button onClick={onClose} title="Cierra sin aplicar nada" className="rounded px-3 py-1.5 text-xs text-on-surface-variant hover:text-on-surface">
-                            Cancelar
+                        <button onClick={onClose} title={w.closeNoApply} className="rounded px-3 py-1.5 text-xs text-on-surface-variant hover:text-on-surface">
+                            {t.common.cancel}
                         </button>
                         <button
                             disabled={!canApply}
                             onClick={() => onApply(filter)}
-                            title="Pone este filtro en la caja de arriba y recarga los documentos"
+                            title={w.applyFilterHint}
                             className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary disabled:opacity-40"
                         >
-                            Aplicar filtro
+                            {w.applyFilter}
                         </button>
                     </div>
                 </div>

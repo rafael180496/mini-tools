@@ -1,10 +1,10 @@
 package vault
 
 import (
-	"fmt"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 )
 
 // Historial de conversaciones con agentes, por repositorio (migración 31).
@@ -67,7 +67,7 @@ func (s *Store) CreateAgentChat(id, repoID, agentID, title, module, contextID st
 		id, repoID, agentID, enc, nonce, now, now, module, contextID,
 	)
 	if err != nil {
-		return fmt.Errorf("vault: creando el chat: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: creando el chat: %w", EN: "vault: creating the chat: %w"}, err)
 	}
 	return nil
 }
@@ -99,7 +99,7 @@ func (s *Store) ListAllAgentChats() ([]AgentChat, error) {
 func (s *Store) queryAgentChats(query string, args ...any) ([]AgentChat, error) {
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo los chats: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo los chats: %w", EN: "vault: reading the chats: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -133,7 +133,7 @@ func (s *Store) SetAgentChatContext(id, module, contextID string) error {
 		`UPDATE agent_chats SET module = ?, context_id = ?, updated_at = ? WHERE id = ?`,
 		module, contextID, time.Now().Unix(), id,
 	); err != nil {
-		return fmt.Errorf("vault: guardando el contexto del chat: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el contexto del chat: %w", EN: "vault: saving the chat context: %w"}, err)
 	}
 	return nil
 }
@@ -149,7 +149,7 @@ func (s *Store) RenameAgentChat(id, title string) error {
 		enc, nonce, time.Now().Unix(), id,
 	)
 	if err != nil {
-		return fmt.Errorf("vault: renombrando el chat: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: renombrando el chat: %w", EN: "vault: renaming the chat: %w"}, err)
 	}
 	return nil
 }
@@ -170,7 +170,7 @@ func (s *Store) TouchAgentChat(id, conversationID string) error {
 			`UPDATE agent_chats SET conversation_id = ?, updated_at = ? WHERE id = ?`, conversationID, now, id)
 	}
 	if err != nil {
-		return fmt.Errorf("vault: actualizando el chat: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: actualizando el chat: %w", EN: "vault: updating the chat: %w"}, err)
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func (s *Store) SetAgentChatSettings(id, model, effort, mode string) error {
 		model, effort, mode, time.Now().Unix(), id,
 	)
 	if err != nil {
-		return fmt.Errorf("vault: guardando los ajustes del chat: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando los ajustes del chat: %w", EN: "vault: saving the chat settings: %w"}, err)
 	}
 	return nil
 }
@@ -193,7 +193,7 @@ func (s *Store) SetAgentChatSettings(id, model, effort, mode string) error {
 // pierde es el atajo para retomarla desde acá.
 func (s *Store) DeleteAgentChat(id string) error {
 	if _, err := s.db.Exec(`DELETE FROM agent_chats WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando el chat: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando el chat: %w", EN: "vault: deleting the chat: %w"}, err)
 	}
 	return nil
 }
@@ -211,7 +211,7 @@ func (s *Store) encryptOptional(v string) (enc, nonce []byte, err error) {
 	}
 	enc, nonce, err = mtcrypto.Encrypt(key, []byte(v))
 	if err != nil {
-		return nil, nil, fmt.Errorf("vault: cifrando el título del chat: %w", err)
+		return nil, nil, i18n.Errorf(i18n.Msg{ES: "vault: cifrando el título del chat: %w", EN: "vault: encrypting the chat title: %w"}, err)
 	}
 	return enc, nonce, nil
 }

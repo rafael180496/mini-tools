@@ -1,11 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 
 	"mini-tools/backend/agentctx"
 	"mini-tools/backend/httpclient"
+	"mini-tools/backend/i18n"
 )
 
 // IA sobre peticiones HTTP (fase 8 de .claude/specs/http-client.md).
@@ -60,7 +60,7 @@ func (a *App) AgentExplainHTTP(itemID string, req httpclient.Request, resp httpc
 		return "", err
 	}
 	if x.Status == 0 && x.Error == "" {
-		return "", fmt.Errorf("app: todavía no hay una respuesta que explicar — mandá la petición primero")
+		return "", i18n.Errorf(i18n.Msg{ES: "app: todavía no hay una respuesta que explicar — mandá la petición primero", EN: "app: there's no response to explain yet — send the request first"})
 	}
 	return a.AgentAsk(agentctx.HTTPExplainPrompt(x), "http", itemID)
 }
@@ -85,7 +85,7 @@ func (a *App) AgentDiagnoseHTTP(itemID string, req httpclient.Request, resp http
 		return "", err
 	}
 	if x.Status == 0 && x.Error == "" {
-		return "", fmt.Errorf("app: no hay ningún fallo que diagnosticar todavía")
+		return "", i18n.Errorf(i18n.Msg{ES: "app: no hay ningún fallo que diagnosticar todavía", EN: "app: there's no failure to diagnose yet"})
 	}
 	return a.AgentAsk(agentctx.HTTPDiagnosePrompt(x), "http", itemID)
 }
@@ -101,7 +101,7 @@ func (a *App) AgentGenerateHTTP(itemID, description string, current httpclient.R
 		return nil, err
 	}
 	if strings.TrimSpace(description) == "" {
-		return nil, fmt.Errorf("app: el pedido está vacío")
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: el pedido está vacío", EN: "app: the request is empty"})
 	}
 	x, err := a.exchange(itemID, current, httpclient.Response{}, "")
 	if err != nil {
@@ -203,7 +203,7 @@ func (a *App) exchange(itemID string, req httpclient.Request, resp httpclient.Re
 		case resp.IsBinary:
 			// Mandar base64 de una imagen no le dice nada al agente y ocupa la
 			// ventana entera.
-			x.RespBody = fmt.Sprintf("(contenido binario, %s, %d bytes)", resp.ContentType, resp.SizeBytes)
+			x.RespBody = i18n.T(i18n.Msg{ES: "(contenido binario, %s, %d bytes)", EN: "(binary content, %s, %d bytes)"}, resp.ContentType, resp.SizeBytes)
 		default:
 			x.RespBody = clipText(resp.Body, maxAgentBody)
 			if len(resp.Body) > maxAgentBody {
@@ -273,14 +273,14 @@ func bodyText(body httpclient.Body) string {
 				continue
 			}
 			if f.Type == "file" {
-				b.WriteString(f.Key + ": (archivo)\n")
+				b.WriteString(f.Key + ": " + i18n.T(i18n.Msg{ES: "(archivo)", EN: "(file)"}) + "\n")
 				continue
 			}
 			b.WriteString(f.Key + ": " + f.Value + "\n")
 		}
 		return b.String()
 	case "binary":
-		return "(un archivo binario)"
+		return i18n.T(i18n.Msg{ES: "(un archivo binario)", EN: "(a binary file)"})
 	}
 	return ""
 }
@@ -288,19 +288,19 @@ func bodyText(body httpclient.Body) string {
 // describeSettings pone en palabras lo que decide la mitad de los fallos de
 // transporte.
 func describeSettings(s httpclient.Settings) string {
-	verify := "verifica el certificado TLS"
+	verify := i18n.T(i18n.Msg{ES: "verifica el certificado TLS", EN: "verifies the TLS certificate"})
 	if !s.VerifyTLS {
-		verify = "**no** verifica el certificado TLS"
+		verify = i18n.T(i18n.Msg{ES: "**no** verifica el certificado TLS", EN: "does **not** verify the TLS certificate"})
 	}
-	redirects := fmt.Sprintf("sigue hasta %d redirecciones", s.MaxRedirects)
+	redirects := i18n.T(i18n.Msg{ES: "sigue hasta %d redirecciones", EN: "follows up to %d redirects"}, s.MaxRedirects)
 	if !s.FollowRedirects {
-		redirects = "**no** sigue redirecciones"
+		redirects = i18n.T(i18n.Msg{ES: "**no** sigue redirecciones", EN: "does **not** follow redirects"})
 	}
 	version := s.HTTPVersion
 	if version == "" {
-		version = "automática"
+		version = i18n.T(i18n.Msg{ES: "automática", EN: "automatic"})
 	}
-	return fmt.Sprintf("Timeout de %d ms, %s, %s, versión de HTTP %s.", s.TimeoutMs, verify, redirects, version)
+	return i18n.T(i18n.Msg{ES: "Timeout de %d ms, %s, %s, versión de HTTP %s.", EN: "Timeout of %d ms, %s, %s, HTTP version %s."}, s.TimeoutMs, verify, redirects, version)
 }
 
 // variableNames lista los nombres de variables que el agente puede usar. Solo
@@ -339,5 +339,5 @@ func clipText(s string, max int) string {
 	if len(r) <= max {
 		return s
 	}
-	return string(r[:max]) + "\n… (cortado)"
+	return string(r[:max]) + "\n… " + i18n.T(i18n.Msg{ES: "(cortado)", EN: "(cut)"})
 }

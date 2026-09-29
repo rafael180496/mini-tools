@@ -769,6 +769,8 @@ export function SetGitLayout(arg1:string,arg2:number,arg3:string,arg4:boolean,ar
 
 export function SetGitPanelSessions(arg1:Array<vault.GitPanelSession>):Promise<void>;
 
+export function SetLanguage(arg1:string):Promise<void>;
+
 export function SetLocalShell(arg1:string):Promise<void>;
 
 export function SetMCPNotesWrite(arg1:boolean):Promise<void>;

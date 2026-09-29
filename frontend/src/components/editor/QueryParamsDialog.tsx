@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
 import Icon from '../Icon'
 import Select from '../Select'
+import {useT} from '../../i18n'
 import type {query} from '../../../wailsjs/go/models'
 
 // The dialog that asks for the values of a query's bind placeholders,
@@ -42,14 +43,14 @@ interface QueryParamsDialogProps {
     onClose: () => void
 }
 
-const TYPE_OPTIONS = [
-    {value: 'text', label: 'Texto', hint: 'Se envía tal cual como string'},
-    {value: 'number', label: 'Número', hint: 'Se convierte a entero o decimal'},
-    {value: 'boolean', label: 'Booleano', hint: 'true / false'},
-    {value: 'null', label: 'NULL', hint: 'Enlaza NULL, ignorando el valor escrito'},
-]
-
 export default function QueryParamsDialog({params, initial, onRun, onClose}: QueryParamsDialogProps) {
+    const t = useT()
+    const typeOptions = [
+        {value: 'text', label: t.editor.params.types.text, hint: t.editor.params.types.textHint},
+        {value: 'number', label: t.editor.params.types.number, hint: t.editor.params.types.numberHint},
+        {value: 'boolean', label: t.editor.params.types.boolean, hint: t.editor.params.types.booleanHint},
+        {value: 'null', label: 'NULL', hint: t.editor.params.types.nullHint},
+    ]
     const [drafts, setDrafts] = useState<ParamDraftMap>(() => {
         const next: ParamDraftMap = {}
         for (const p of params) {
@@ -92,12 +93,10 @@ export default function QueryParamsDialog({params, initial, onRun, onClose}: Que
             >
                 <h2 className="flex items-center gap-2 text-lg font-semibold">
                     <Icon name="tune" size={18} className="text-primary" />
-                    Parámetros de la consulta
+                    {t.editor.params.title}
                 </h2>
                 <p className="text-xs text-on-surface-variant">
-                    {params.length === 1
-                        ? 'La consulta declara un parámetro. Su valor se envía enlazado, nunca insertado en el texto del SQL.'
-                        : `La consulta declara ${params.length} parámetros. Sus valores se envían enlazados, nunca insertados en el texto del SQL.`}
+                    {t.editor.params.intro(params.length)}
                 </p>
 
                 <div className="-mx-1 flex flex-col gap-2 overflow-y-auto px-1 py-1">
@@ -110,8 +109,8 @@ export default function QueryParamsDialog({params, initial, onRun, onClose}: Que
                                     className="w-32 shrink-0 truncate font-mono text-xs text-primary"
                                     title={
                                         param.positional
-                                            ? `Parámetro posicional ${param.name}: el ${param.name}º "?" de la consulta, contando desde el principio del script`
-                                            : `Parámetro ${param.raw} tal como aparece en la consulta`
+                                            ? t.editor.params.positional({name: param.name})
+                                            : t.editor.params.named({raw: param.raw})
                                     }
                                 >
                                     {param.raw}
@@ -123,22 +122,22 @@ export default function QueryParamsDialog({params, initial, onRun, onClose}: Que
                                     value={isNull ? '' : draft.value}
                                     disabled={isNull}
                                     onChange={(e) => update(param.name, {value: e.target.value})}
-                                    placeholder={isNull ? 'NULL' : 'valor'}
+                                    placeholder={isNull ? 'NULL' : t.editor.params.valuePlaceholder}
                                     title={
                                         isNull
-                                            ? 'Deshabilitado porque el tipo es NULL: se enlaza NULL sin importar lo que se escriba acá'
-                                            : `Valor que se enlaza en ${param.raw} al ejecutar`
+                                            ? t.editor.params.nullDisabled
+                                            : t.editor.params.valueTitle({raw: param.raw})
                                     }
                                     className="min-w-0 flex-1 rounded-lg border border-outline-variant bg-surface px-3 py-1.5 font-mono text-sm text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:border-primary disabled:opacity-40"
                                 />
                                 <Select
                                     value={draft.type}
-                                    options={TYPE_OPTIONS}
+                                    options={typeOptions}
                                     onChange={(value) => update(param.name, {type: value as ParamType})}
                                     size="sm"
                                     className="w-28 shrink-0"
-                                    ariaLabel={`Tipo del parámetro ${param.raw}`}
-                                    title="Cómo se convierte el valor antes de enlazarlo: texto tal cual, número, booleano, o NULL"
+                                    ariaLabel={t.editor.params.typeAria({raw: param.raw})}
+                                    title={t.editor.params.typeTitle}
                                 />
                             </div>
                         )
@@ -149,22 +148,22 @@ export default function QueryParamsDialog({params, initial, onRun, onClose}: Que
                     <button
                         type="button"
                         onClick={onClose}
-                        title="Cierra sin ejecutar la consulta; los valores escritos se descartan"
+                        title={t.editor.params.cancelTitle}
                         className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     <button
                         type="submit"
                         title={
                             allEmpty
-                                ? 'Ejecuta enlazando todos los parámetros vacíos — probablemente quieras escribir algún valor primero'
-                                : 'Ejecuta la consulta enlazando estos valores'
+                                ? t.editor.params.runAllEmpty
+                                : t.editor.params.runTitle
                         }
                         className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90"
                     >
                         <Icon name="play_arrow" size={16} />
-                        Ejecutar
+                        {t.editor.params.run}
                     </button>
                 </div>
             </form>

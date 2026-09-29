@@ -5,6 +5,7 @@ import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 import {methodColor, statusColor} from './httpShared'
 import {formatElapsed} from '../../lib/formatElapsed'
+import {formatDateTime, t as dict, useLang, useT} from '../../i18n'
 
 // Historial de peticiones: todo lo que se mandó desde la aplicación, de lo
 // más nuevo a lo más viejo, agrupado por día.
@@ -43,6 +44,9 @@ interface DayGroup {
 }
 
 export default function HistoryPanel({filter, onOpenItem, onOpenScratch, refreshToken}: HistoryPanelProps) {
+    const t = useT()
+    const th = t.sidebar.http.history
+    const lang = useLang()
     const [entries, setEntries] = useState<vault.HTTPHistoryEntry[]>([])
     const [error, setError] = useState('')
     const [confirmClear, setConfirmClear] = useState(false)
@@ -63,20 +67,23 @@ export default function HistoryPanel({filter, onOpenItem, onOpenScratch, refresh
         void reload()
     }, [reload, refreshToken])
 
-    const groups = useMemo(() => groupByDay(entries), [entries])
+    // `lang` va en las dependencias: los rótulos «Hoy»/«Ayer» y la fecha
+    // salen del idioma activo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const groups = useMemo(() => groupByDay(entries), [entries, lang])
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex items-center gap-1 pb-1 pl-2 pr-1 pt-2">
                 <span className="flex-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                    Historial
+                    {th.title}
                 </span>
                 {entries.length > 0 && (
                     <>
                         <span className="font-mono text-ui-9 tabular-nums text-on-surface-variant/50">{entries.length}</span>
                         <button
                             onClick={() => setConfirmClear(true)}
-                            title="Borrar el historial completo, de todas las peticiones. No se puede deshacer."
+                            title={th.clearTitle}
                             className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name="delete_sweep" size={14} />
@@ -85,7 +92,7 @@ export default function HistoryPanel({filter, onOpenItem, onOpenScratch, refresh
                 )}
                 <button
                     onClick={() => void reload()}
-                    title="Volver a leer el historial"
+                    title={th.reload}
                     className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="refresh" size={14} />
@@ -102,8 +109,8 @@ export default function HistoryPanel({filter, onOpenItem, onOpenScratch, refresh
                 {loaded && entries.length === 0 && (
                     <p className="px-2 py-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
                         {filter.trim()
-                            ? 'Ninguna petición del historial coincide con la búsqueda.'
-                            : 'Todavía no mandaste ninguna petición. Acá van quedando las que envíes, con su status y su duración.'}
+                            ? th.noMatches
+                            : th.empty}
                     </p>
                 )}
 
@@ -134,9 +141,9 @@ export default function HistoryPanel({filter, onOpenItem, onOpenScratch, refresh
 
             {confirmClear && (
                 <ConfirmDialog
-                    title="Borrar el historial"
-                    description="Se borran todas las ejecuciones registradas, de todas las peticiones. Las peticiones guardadas no se tocan."
-                    confirmLabel="Borrar"
+                    title={th.clearConfirmTitle}
+                    description={th.clearConfirmDesc}
+                    confirmLabel={t.common.delete}
                     danger
                     onConfirm={() =>
                         void HttpClearAllHistory()
@@ -162,12 +169,14 @@ function HistoryRow({
     // El nombre de la petición gana sobre la URL cuando existe: es como la
     // llamó quien la guardó. Una rápida no tiene nombre y muestra su URL, que
     // es todo lo que la identifica.
-    const label = entry.itemName || entry.url || '(sin URL)'
+    const t = useT()
+    const th = t.sidebar.http.history
+    const label = entry.itemName || entry.url || th.noUrl
     const failed = !!entry.error
     const detail = [
         entry.collectionName,
         failed ? entry.error : `${entry.status} · ${formatElapsed(entry.durationMs)}`,
-        new Date(entry.executedAt * 1000).toLocaleTimeString(undefined, {hour12: false}),
+        formatDateTime(entry.executedAt, {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false}),
     ]
         .filter(Boolean)
         .join(' · ')
@@ -177,7 +186,7 @@ function HistoryRow({
             <button
                 onClick={onOpen}
                 title={`${entry.method} ${entry.url}\n${detail}\n\n${
-                    entry.itemId ? 'Abre la petición guardada.' : 'Abre una pestaña rápida con este método y esta URL (los headers y el cuerpo no se guardan en el historial).'
+                    entry.itemId ? th.openSaved : th.openScratch
                 }`}
                 className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
             >
@@ -198,7 +207,7 @@ function HistoryRow({
             </button>
             <button
                 onClick={onDelete}
-                title="Borrar esta entrada del historial"
+                title={th.deleteEntry}
                 className="shrink-0 rounded p-0.5 text-on-surface-variant/0 hover:bg-surface-container hover:text-error group-hover:text-on-surface-variant/60"
             >
                 <Icon name="close" size={12} />
@@ -230,11 +239,11 @@ function dayLabel(d: Date): string {
     const today = new Date()
     const sameDay = (a: Date, b: Date) =>
         a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-    if (sameDay(d, today)) return 'Hoy'
+    if (sameDay(d, today)) return dict().sidebar.http.history.today
     const yesterday = new Date(today)
     yesterday.setDate(today.getDate() - 1)
-    if (sameDay(d, yesterday)) return 'Ayer'
-    return d.toLocaleDateString(undefined, {
+    if (sameDay(d, yesterday)) return dict().sidebar.http.history.yesterday
+    return formatDateTime(d, {
         day: 'numeric',
         month: 'long',
         year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric',

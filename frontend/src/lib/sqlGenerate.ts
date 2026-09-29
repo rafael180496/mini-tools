@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 // "Copiar como INSERT" stays frontend-only (pure string formatting +
 // clipboard, no file I/O) rather than a Go binding — see
 // .claude/specs/go-react-contract.md for the deviation from the original
@@ -142,8 +143,7 @@ export function generateUpdateStatement(target: SqlTarget, columns: string[], ro
         .join(',\n    ')
     const whereClause = columns.map((c, i) => formatCondition(c, row[i], kinds[i], engine)).join(' AND ')
     return (
-        `-- Revisá el WHERE antes de ejecutar: por defecto matchea todas las columnas de la fila,\n` +
-        `-- ajustalo a la primary key real de ${table} si la tiene.\n` +
+        t().results.updateReviewComment({table}) +
         `UPDATE ${table}\nSET ${setClause}\nWHERE ${whereClause};`
     )
 }

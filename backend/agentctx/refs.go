@@ -1,6 +1,10 @@
 package agentctx
 
-import "strings"
+import (
+	"strings"
+
+	"mini-tools/backend/i18n"
+)
 
 // Sistema `@` de referenciación unificado: cómo se nombra un recurso de la app
 // dentro de un mensaje al agente.
@@ -86,36 +90,36 @@ func Policies() []Policy {
 	return []Policy{
 		{
 			Kind:      KindFile,
-			Syntax:    "@file:ruta/archivo.go",
-			Injects:   "El contenido del archivo del repositorio abierto.",
-			Never:     "Nada fuera del repositorio: una ruta que se escape se rechaza.",
+			Syntax:    i18n.T(i18n.Msg{ES: "@file:ruta/archivo.go", EN: "@file:path/file.go"}),
+			Injects:   i18n.T(i18n.Msg{ES: "El contenido del archivo del repositorio abierto.", EN: "The contents of the file in the open repository."}),
+			Never:     i18n.T(i18n.Msg{ES: "Nada fuera del repositorio: una ruta que se escape se rechaza.", EN: "Nothing outside the repository: a path that escapes it is rejected."}),
 			Available: true,
 		},
 		{
 			Kind:      KindDB,
-			Syntax:    "@db:Conexión/tabla",
-			Injects:   "Columnas, tipos, clave primaria y claves foráneas de la tabla.",
-			Never:     "Ninguna fila, ningún DSN, ningún usuario ni contraseña.",
+			Syntax:    i18n.T(i18n.Msg{ES: "@db:Conexión/tabla", EN: "@db:Connection/table"}),
+			Injects:   i18n.T(i18n.Msg{ES: "Columnas, tipos, clave primaria y claves foráneas de la tabla.", EN: "Columns, types, primary key and foreign keys of the table."}),
+			Never:     i18n.T(i18n.Msg{ES: "Ninguna fila, ningún DSN, ningún usuario ni contraseña.", EN: "No rows, no DSN, no user and no password."}),
 			Available: true,
 		},
 		{
 			Kind:      KindExplain,
 			Syntax:    "@explain:last",
-			Injects:   "El JSON del último plan de ejecución guardado para esa conexión.",
-			Never:     "Los datos que devolvió la consulta.",
+			Injects:   i18n.T(i18n.Msg{ES: "El JSON del último plan de ejecución guardado para esa conexión.", EN: "The JSON of the last execution plan saved for that connection."}),
+			Never:     i18n.T(i18n.Msg{ES: "Los datos que devolvió la consulta.", EN: "The data the query returned."}),
 			Available: true,
 		},
 		{
 			Kind:      KindGit,
 			Syntax:    "@git:staged",
-			Injects:   "El diff preparado del repositorio abierto (`git diff --staged`).",
+			Injects:   i18n.T(i18n.Msg{ES: "El diff preparado del repositorio abierto (`git diff --staged`).", EN: "The staged diff of the open repository (`git diff --staged`)."}),
 			Available: true,
 		},
 		{
 			Kind:    KindSSH,
 			Syntax:  "@ssh:alias/last_error",
-			Injects: "Las últimas líneas de la terminal SSH activa.",
-			Never:   "La contraseña ni la clave privada de la conexión.",
+			Injects: i18n.T(i18n.Msg{ES: "Las últimas líneas de la terminal SSH activa.", EN: "The last lines of the active SSH terminal."}),
+			Never:   i18n.T(i18n.Msg{ES: "La contraseña ni la clave privada de la conexión.", EN: "Neither the password nor the private key of the connection."}),
 			// Disponible desde la fase 5: cada sesión guarda su cola de salida
 			// (backend/sshconn/scrollback.go) y resolveSSHRef la lee. Seguía
 			// en false con el comentario de antes, y el selector mostraba
@@ -124,9 +128,9 @@ func Policies() []Policy {
 		},
 		{
 			Kind:      KindNote,
-			Syntax:    `@note:"Título de la nota"`,
-			Injects:   "El Markdown de la nota, solo si está marcada como visible para la IA.",
-			Never:     "El contenido de una nota privada, bajo ninguna circunstancia.",
+			Syntax:    i18n.T(i18n.Msg{ES: `@note:"Título de la nota"`, EN: `@note:"Note title"`}),
+			Injects:   i18n.T(i18n.Msg{ES: "El Markdown de la nota, solo si está marcada como visible para la IA.", EN: "The Markdown of the note, only if it is marked as visible to the AI."}),
+			Never:     i18n.T(i18n.Msg{ES: "El contenido de una nota privada, bajo ninguna circunstancia.", EN: "The contents of a private note, under no circumstances."}),
 			Available: true,
 		},
 	}

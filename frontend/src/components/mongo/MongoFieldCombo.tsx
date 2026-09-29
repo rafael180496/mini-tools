@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef, useState} from 'react'
 import {createPortal} from 'react-dom'
 import {db} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface MongoFieldComboProps {
     value: string
@@ -26,6 +27,8 @@ interface MongoFieldComboProps {
 // modal with its own scroll container, and an absolutely-positioned menu
 // inside it gets clipped.
 export default function MongoFieldCombo({value, onChange, fields, placeholder, title, className}: MongoFieldComboProps) {
+    const t = useT()
+    const fc = t.mongo.fieldCombo
     const [open, setOpen] = useState(false)
     const [pos, setPos] = useState({top: 0, left: 0, width: 0})
     const inputRef = useRef<HTMLInputElement>(null)
@@ -80,7 +83,7 @@ export default function MongoFieldCombo({value, onChange, fields, placeholder, t
                     }
                 }}
                 placeholder={placeholder}
-                title={title ?? 'Nombre del campo. Se sugieren los campos reales encontrados al muestrear la colección, incluidos los anidados (usuario.direccion.ciudad).'}
+                title={title ?? fc.inputHint}
                 className={`min-w-0 rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-xs text-on-surface ${className ?? ''}`}
             />
             {open &&
@@ -102,11 +105,11 @@ export default function MongoFieldCombo({value, onChange, fields, placeholder, t
                                         onChange(f.path)
                                         setOpen(false)
                                     }}
-                                    title={`${f.path} — presente en ${Math.round((f.frequency ?? 0) * 100)}% de los documentos muestreados${
-                                        (f.types ?? []).length > 1
-                                            ? `. Ojo: aparece con más de un tipo (${(f.types ?? []).join(', ')}), así que un filtro con un solo tipo no va a alcanzar todos los documentos.`
-                                            : ''
-                                    }`}
+                                    title={fc.optionHint({
+                                        path: f.path,
+                                        pct: Math.round((f.frequency ?? 0) * 100),
+                                        types: (f.types ?? []).length > 1 ? (f.types ?? []).join(', ') : '',
+                                    })}
                                     className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-surface-variant"
                                 >
                                     <span className="min-w-0 flex-1 truncate font-mono text-xs text-on-surface">{f.path}</span>
@@ -135,26 +138,28 @@ export default function MongoFieldCombo({value, onChange, fields, placeholder, t
 // FieldSampleStatus is the one-line summary shown above a group of field
 // inputs: whether the sample is running, what it found, or why it cannot run.
 export function FieldSampleStatus({loading, count, ready}: {loading: boolean; count: number; ready: boolean}) {
+    const t = useT()
+    const fc = t.mongo.fieldCombo
     if (!ready) {
-        return <span className="font-normal text-on-surface-variant/70">elegí una colección para sugerir sus campos</span>
+        return <span className="font-normal text-on-surface-variant/70">{fc.pickCollection}</span>
     }
     if (loading) {
         return (
             <span className="flex items-center gap-1 font-normal text-on-surface-variant/70">
                 <Icon name="progress_activity" size={12} className="animate-spin" />
-                muestreando documentos…
+                {fc.sampling}
             </span>
         )
     }
     if (count === 0) {
-        return <span className="font-normal text-on-surface-variant/70">la muestra no devolvió campos (¿colección vacía?)</span>
+        return <span className="font-normal text-on-surface-variant/70">{fc.noFields}</span>
     }
     return (
         <span
             className="font-normal text-on-surface-variant/70"
-            title="Campos encontrados leyendo una muestra de documentos. MongoDB no tiene esquema que consultar, así que un campo presente solo en documentos viejos podría no aparecer acá."
+            title={fc.fieldsFoundHint}
         >
-            {count} campos detectados en la muestra
+            {fc.fieldsFound(count)}
         </span>
     )
 }

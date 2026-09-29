@@ -1,5 +1,6 @@
 import {Fragment, type ReactNode} from 'react'
 import Icon from './Icon'
+import {t as tr, useT} from '../i18n'
 // El lector de tablas es compartido con el editor en vivo de notas: la misma
 // tabla tiene que verse igual escribiéndola que leyéndola. Ver lib/markdownTable.
 import {isTableStart, parseTable} from '../lib/markdownTable'
@@ -68,7 +69,7 @@ function inline(
             out.push(
                 <span
                     key={key}
-                    title="Etiqueta. Buscá «tag:…» en el buscador de notas para encontrar todas las que la tienen."
+                    title={tr().notes.preview.tagTitle}
                     className="rounded-full bg-primary/15 px-2 py-0.5 text-[0.88em] font-medium text-primary"
                 >
                     {token}
@@ -86,7 +87,7 @@ function inline(
                     <button
                         key={key}
                         onClick={() => onWikiLink(target)}
-                        title={`Abrir la nota «${target}». Si no existe, se ofrece crearla.`}
+                        title={tr().notes.preview.openNote({target})}
                         className="rounded text-primary underline decoration-dotted underline-offset-2 hover:bg-primary/10"
                     >
                         {label}
@@ -95,7 +96,7 @@ function inline(
                     // Sin manejador —por ejemplo en la respuesta de un agente—
                     // se muestra como texto marcado: no hay nada a donde
                     // navegar desde ahí.
-                    <span key={key} className="text-primary" title={`Nota: ${target}`}>
+                    <span key={key} className="text-primary" title={tr().notes.preview.noteRef({target})}>
                         {label}
                     </span>
                 ),
@@ -117,7 +118,7 @@ function inline(
                         title={src}
                         className="inline-block rounded border border-dashed border-outline-variant px-2 py-1 text-ui-11 text-on-surface-variant"
                     >
-                        {alt || 'imagen'}
+                        {alt || tr().notes.image}
                     </span>
                 ),
             )
@@ -186,21 +187,22 @@ export type CodeBlockRenderer = (info: {lang: string; code: string; key: string}
 // imagen remota en un `.md` cualquiera sería una baliza de rastreo.
 export type ImageRenderer = (info: {alt: string; src: string; key: string}) => ReactNode | null
 
+type CalloutKind = 'INFO' | 'TIP' | 'WARNING' | 'SECURITY' | 'DANGER' | 'NOTE'
+
 // CALLOUT_STYLES son las cajas resaltadas al estilo Obsidian (`> [!INFO]`).
 // Se dibujan con los tokens semánticos de MD3, nunca con colores crudos.
-const CALLOUT_STYLES: Record<string, {icon: string; border: string; bg: string; text: string; label: string}> = {
-    INFO: {icon: 'info', border: 'border-l-primary', bg: 'bg-primary/8', text: 'text-primary', label: 'Info'},
-    TIP: {icon: 'lightbulb', border: 'border-l-tertiary', bg: 'bg-tertiary/8', text: 'text-tertiary', label: 'Tip'},
+const CALLOUT_STYLES: Record<CalloutKind, {icon: string; border: string; bg: string; fg: string}> = {
+    INFO: {icon: 'info', border: 'border-l-primary', bg: 'bg-primary/8', fg: 'text-primary'},
+    TIP: {icon: 'lightbulb', border: 'border-l-tertiary', bg: 'bg-tertiary/8', fg: 'text-tertiary'},
     WARNING: {
         icon: 'warning',
         border: 'border-l-tertiary',
         bg: 'bg-tertiary/10',
-        text: 'text-tertiary',
-        label: 'Atención',
+        fg: 'text-tertiary',
     },
-    SECURITY: {icon: 'shield', border: 'border-l-error', bg: 'bg-error-container/25', text: 'text-error', label: 'Seguridad'},
-    DANGER: {icon: 'dangerous', border: 'border-l-error', bg: 'bg-error-container/25', text: 'text-error', label: 'Peligro'},
-    NOTE: {icon: 'sticky_note_2', border: 'border-l-outline-variant', bg: 'bg-surface-container', text: 'text-on-surface-variant', label: 'Nota'},
+    SECURITY: {icon: 'shield', border: 'border-l-error', bg: 'bg-error-container/25', fg: 'text-error'},
+    DANGER: {icon: 'dangerous', border: 'border-l-error', bg: 'bg-error-container/25', fg: 'text-error'},
+    NOTE: {icon: 'sticky_note_2', border: 'border-l-outline-variant', bg: 'bg-surface-container', fg: 'text-on-surface-variant'},
 }
 
 // --- Listas y tablas -------------------------------------------------------
@@ -256,6 +258,9 @@ export default function MarkdownPreview({
     // estas notas tienen que seguir siendo compatibles.
     softBreaks?: boolean
 }) {
+    // Suscribe la vista al idioma: los textos se leen con tr() en los
+    // ayudantes de abajo, y sin esto no se redibujarían al cambiarlo.
+    useT()
     const lines = source.split('\n')
     const blocks: ReactNode[] = []
 
@@ -296,7 +301,7 @@ export default function MarkdownPreview({
                             type="checkbox"
                             checked={item.done}
                             readOnly
-                            title="Se marca escribiendo en el editor: esta es la vista de lectura."
+                            title={tr().notes.preview.checkboxTitle}
                             className="mr-1.5 -ml-4 align-middle accent-primary"
                         />
                     )}
@@ -340,7 +345,7 @@ export default function MarkdownPreview({
             blocks.push(
                 <pre
                     key={`fm-${blocks.length}`}
-                    title="Frontmatter: de estos campos depende que el CLI cargue este archivo"
+                    title={tr().notes.preview.frontmatterTitle}
                     className="my-1 overflow-x-auto rounded border border-outline-variant bg-surface-container px-2 py-1 font-mono text-ui-10 text-on-surface-variant"
                 >
                     {buf.join('\n')}
@@ -379,8 +384,9 @@ export default function MarkdownPreview({
         // `> [!TIPO]`. Va antes de la cita normal, que si no se la comería.
         const callout = /^\s*>\s*\[!([A-Za-zÁÉÍÓÚÑ]+)\]\s*(.*)$/.exec(line)
         if (callout) {
-            const kind = callout[1].toUpperCase()
-            const style = CALLOUT_STYLES[kind] ?? CALLOUT_STYLES.NOTE
+            const kind = callout[1].toUpperCase() as CalloutKind
+            const known = Object.hasOwn(CALLOUT_STYLES, kind)
+            const style = known ? CALLOUT_STYLES[kind] : CALLOUT_STYLES.NOTE
             const buf: string[] = []
             if (callout[2].trim()) buf.push(callout[2])
             i++
@@ -393,9 +399,9 @@ export default function MarkdownPreview({
                     key={`callout-${blocks.length}`}
                     className={`my-1.5 rounded-r border-l-4 px-2 py-1.5 ${style.border} ${style.bg}`}
                 >
-                    <p className={`mb-0.5 flex items-center gap-1 text-ui-11 font-medium ${style.text}`}>
+                    <p className={`mb-0.5 flex items-center gap-1 text-ui-11 font-medium ${style.fg}`}>
                         <Icon name={style.icon} size={13} filled />
-                        {callout[1].toUpperCase() === kind && CALLOUT_STYLES[kind] ? style.label : callout[1]}
+                        {known ? tr().notes.preview.callout[kind] : callout[1]}
                     </p>
                     {/* Mismo criterio que un párrafo normal: las líneas
                         seguidas son UN párrafo, y una línea en blanco los

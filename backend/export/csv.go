@@ -4,6 +4,8 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+
+	"mini-tools/backend/i18n"
 )
 
 // WriteCSV writes columns/rows to destPath as a standard CSV file (comma
@@ -12,13 +14,13 @@ import (
 func WriteCSV(destPath string, columns []string, rows [][]interface{}) error {
 	f, err := os.Create(destPath)
 	if err != nil {
-		return fmt.Errorf("export: creando archivo csv: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "export: creando archivo csv: %w", EN: "export: creating csv file: %w"}, err)
 	}
 	defer f.Close()
 
 	w := csv.NewWriter(f)
 	if err := w.Write(columns); err != nil {
-		return fmt.Errorf("export: escribiendo encabezado csv: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "export: escribiendo encabezado csv: %w", EN: "export: writing csv header: %w"}, err)
 	}
 
 	record := make([]string, len(columns))
@@ -27,13 +29,13 @@ func WriteCSV(destPath string, columns []string, rows [][]interface{}) error {
 			record[i] = cellToString(v)
 		}
 		if err := w.Write(record); err != nil {
-			return fmt.Errorf("export: escribiendo fila csv: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "export: escribiendo fila csv: %w", EN: "export: writing csv row: %w"}, err)
 		}
 	}
 
 	w.Flush()
 	if err := w.Error(); err != nil {
-		return fmt.Errorf("export: finalizando csv: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "export: finalizando csv: %w", EN: "export: finishing csv: %w"}, err)
 	}
 	return nil
 }

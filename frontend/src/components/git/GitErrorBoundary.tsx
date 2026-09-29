@@ -1,5 +1,6 @@
 import {Component, type ErrorInfo, type ReactNode} from 'react'
 import Icon from '../Icon'
+import {t} from '../../i18n'
 
 interface Props {
     children: ReactNode
@@ -44,13 +45,14 @@ export default class GitErrorBoundary extends Component<Props, State> {
 
     render() {
         if (!this.state.error) return this.props.children
+        const te = t().git.errorBoundary
 
         return (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-auto bg-surface p-8">
                 <Icon name="error" size={32} className="text-error" />
-                <p className="text-sm font-medium text-on-surface">El módulo Git falló al renderizar</p>
+                <p className="text-sm font-medium text-on-surface">{te.title}</p>
                 <p className="max-w-lg text-center text-xs text-on-surface-variant">
-                    Esto es un bug de la app, no de tu repositorio ({this.props.label}). El resto de mini-tools sigue funcionando: podés cerrar esta pestaña y seguir trabajando.
+                    {te.body({label: this.props.label})}
                 </p>
                 <pre className="max-h-64 w-full max-w-2xl overflow-auto whitespace-pre-wrap break-words rounded-lg border border-outline-variant bg-surface-container-lowest p-3 font-mono text-ui-10 text-on-surface-variant">
                     {this.state.error.message}
@@ -58,10 +60,10 @@ export default class GitErrorBoundary extends Component<Props, State> {
                 </pre>
                 <button
                     onClick={() => this.setState({error: null, stack: ''})}
-                    title="Volver a intentar renderizar el módulo — sirve si el error fue transitorio"
+                    title={te.retryTitle}
                     className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary hover:opacity-90"
                 >
-                    Reintentar
+                    {te.retry}
                 </button>
             </div>
         )

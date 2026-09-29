@@ -1,9 +1,10 @@
 package db
 
 import (
-	"fmt"
 	"net"
 	"net/url"
+
+	"mini-tools/backend/i18n"
 )
 
 // SSH auth methods — see sshConnector.BuildDSN. Agent Forwarding is a
@@ -28,7 +29,7 @@ func (sshConnector) Type() DBType { return DBTypeSSH }
 func (sshConnector) BuildDSN(params map[string]string) (string, error) {
 	host := params["host"]
 	if host == "" {
-		return "", fmt.Errorf("ssh: falta el parámetro 'host'")
+		return "", i18n.Errorf(i18n.Msg{ES: "ssh: falta el parámetro 'host'", EN: "ssh: missing 'host' parameter"})
 	}
 	port := params["port"]
 	if port == "" {
@@ -36,7 +37,7 @@ func (sshConnector) BuildDSN(params map[string]string) (string, error) {
 	}
 	user := params["user"]
 	if user == "" {
-		return "", fmt.Errorf("ssh: falta el parámetro 'user'")
+		return "", i18n.Errorf(i18n.Msg{ES: "ssh: falta el parámetro 'user'", EN: "ssh: missing 'user' parameter"})
 	}
 	auth := params["auth"]
 	if auth == "" {
@@ -61,14 +62,14 @@ func (sshConnector) BuildDSN(params map[string]string) (string, error) {
 			break
 		}
 		if params["privateKey"] == "" {
-			return "", fmt.Errorf("ssh: falta el parámetro 'privateKey' (o 'keyId') para auth=key")
+			return "", i18n.Errorf(i18n.Msg{ES: "ssh: falta el parámetro 'privateKey' (o 'keyId') para auth=key", EN: "ssh: missing 'privateKey' (or 'keyId') parameter for auth=key"})
 		}
 		q.Set("privateKey", params["privateKey"])
 		if passphrase := params["passphrase"]; passphrase != "" {
 			q.Set("passphrase", passphrase)
 		}
 	default:
-		return "", fmt.Errorf("ssh: método de autenticación desconocido %q (usar 'password' o 'key')", auth)
+		return "", i18n.Errorf(i18n.Msg{ES: "ssh: método de autenticación desconocido %q (usar 'password' o 'key')", EN: "ssh: unknown authentication method %q (use 'password' or 'key')"}, auth)
 	}
 	if params["agentForwarding"] == "1" {
 		q.Set("agentForwarding", "1")
@@ -84,11 +85,11 @@ func (sshConnector) BuildDSN(params map[string]string) (string, error) {
 func (sshConnector) ParseDSN(dsn string) (map[string]string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("ssh: parseando DSN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "ssh: parseando DSN: %w", EN: "ssh: parsing DSN: %w"}, err)
 	}
 	host, port, err := net.SplitHostPort(u.Host)
 	if err != nil {
-		return nil, fmt.Errorf("ssh: parseando host:port del DSN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "ssh: parseando host:port del DSN: %w", EN: "ssh: parsing host:port from the DSN: %w"}, err)
 	}
 
 	q := u.Query()

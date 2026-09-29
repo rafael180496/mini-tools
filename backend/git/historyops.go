@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +34,7 @@ func (r *Runner) Revert(repoPath, commit string, noCommit bool) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("commit", commit); err != nil {
+	if err := checkRefArg(argCommit, commit); err != nil {
 		return err
 	}
 	args := []string{"revert", "--no-edit"}
@@ -57,7 +57,7 @@ func (r *Runner) CherryPick(repoPath, commit string, noCommit bool) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("commit", commit); err != nil {
+	if err := checkRefArg(argCommit, commit); err != nil {
 		return err
 	}
 	args := []string{"cherry-pick"}
@@ -109,7 +109,7 @@ func (r *Runner) Reset(repoPath, commit, mode string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("commit", commit); err != nil {
+	if err := checkRefArg(argCommit, commit); err != nil {
 		return err
 	}
 	var flag string
@@ -121,7 +121,7 @@ func (r *Runner) Reset(repoPath, commit, mode string) error {
 	case "hard":
 		flag = "--hard"
 	default:
-		return fmt.Errorf("modo de reset desconocido: %q (soft, mixed o hard)", mode)
+		return i18n.Errorf(i18n.Msg{ES: "modo de reset desconocido: %q (soft, mixed o hard)", EN: "unknown reset mode: %q (soft, mixed or hard)"}, mode)
 	}
 	_, err = r.runLocal(root, "reset", flag, commit)
 	return err
@@ -135,7 +135,7 @@ func (r *Runner) Merge(repoPath, ref string, noFF bool) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("referencia", ref); err != nil {
+	if err := checkRefArg(argRef, ref); err != nil {
 		return err
 	}
 	args := []string{"merge", "--no-edit"}

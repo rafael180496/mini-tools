@@ -3,11 +3,11 @@ package vault
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 )
 
 // GitCredential is a stored Personal Access Token for one forge host.
@@ -28,7 +28,7 @@ type GitCredential struct {
 // host. It is a normal outcome, not a failure — no stored token means "let git
 // resolve credentials itself" (OS keychain, helper, ssh-agent), which is the
 // correct default.
-var ErrNoGitCredential = errors.New("vault: no hay credencial guardada para ese host")
+var ErrNoGitCredential = i18n.New(i18n.Msg{ES: "vault: no hay credencial guardada para ese host", EN: "vault: no credential saved for that host"})
 
 // SaveGitCredential stores or replaces the token for a host. host is
 // normalised (lowercased, scheme and path stripped) so "https://GitHub.com/x"
@@ -36,10 +36,10 @@ var ErrNoGitCredential = errors.New("vault: no hay credencial guardada para ese 
 func (s *Store) SaveGitCredential(host, username, token string) (*GitCredential, error) {
 	h := NormalizeGitHost(host)
 	if h == "" {
-		return nil, fmt.Errorf("vault: el host no puede estar vacío")
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: el host no puede estar vacío", EN: "vault: the host cannot be empty"})
 	}
 	if strings.TrimSpace(token) == "" {
-		return nil, fmt.Errorf("vault: el token no puede estar vacío")
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: el token no puede estar vacío", EN: "vault: the token cannot be empty"})
 	}
 
 	key, err := s.gate.Key()
@@ -48,7 +48,7 @@ func (s *Store) SaveGitCredential(host, username, token string) (*GitCredential,
 	}
 	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(token))
 	if err != nil {
-		return nil, fmt.Errorf("vault: cifrando token: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: cifrando token: %w", EN: "vault: encrypting token: %w"}, err)
 	}
 
 	// Replacing an existing host keeps its id, so anything already referencing
@@ -61,7 +61,7 @@ func (s *Store) SaveGitCredential(host, username, token string) (*GitCredential,
 			`UPDATE git_credentials SET username = ?, encrypted_token = ?, nonce = ? WHERE id = ?`,
 			username, ciphertext, nonce, id,
 		); err != nil {
-			return nil, fmt.Errorf("vault: actualizando credencial git: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: actualizando credencial git: %w", EN: "vault: updating git credential: %w"}, err)
 		}
 		var createdAt int64
 		_ = s.db.QueryRow(`SELECT created_at FROM git_credentials WHERE id = ?`, id).Scan(&createdAt)
@@ -77,12 +77,12 @@ func (s *Store) SaveGitCredential(host, username, token string) (*GitCredential,
 			`INSERT INTO git_credentials (id, host, username, encrypted_token, nonce, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			id, h, username, ciphertext, nonce, createdAt,
 		); err != nil {
-			return nil, fmt.Errorf("vault: guardando credencial git: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: guardando credencial git: %w", EN: "vault: saving git credential: %w"}, err)
 		}
 		return &GitCredential{ID: id, Host: h, Username: username, CreatedAt: createdAt}, nil
 
 	default:
-		return nil, fmt.Errorf("vault: buscando credencial git: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: buscando credencial git: %w", EN: "vault: looking up git credential: %w"}, err)
 	}
 }
 
@@ -90,7 +90,7 @@ func (s *Store) SaveGitCredential(host, username, token string) (*GitCredential,
 func (s *Store) ListGitCredentials() ([]GitCredential, error) {
 	rows, err := s.db.Query(`SELECT id, host, username, created_at FROM git_credentials ORDER BY host`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando credenciales git: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando credenciales git: %w", EN: "vault: listing git credentials: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -98,7 +98,7 @@ func (s *Store) ListGitCredentials() ([]GitCredential, error) {
 	for rows.Next() {
 		var c GitCredential
 		if err := rows.Scan(&c.ID, &c.Host, &c.Username, &c.CreatedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo credencial git: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo credencial git: %w", EN: "vault: reading git credential: %w"}, err)
 		}
 		creds = append(creds, c)
 	}
@@ -131,12 +131,12 @@ func (s *Store) GitToken(host string) (username, token string, err error) {
 		return "", "", ErrNoGitCredential
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("vault: leyendo credencial git: %w", err)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo credencial git: %w", EN: "vault: reading git credential: %w"}, err)
 	}
 
 	plaintext, err := mtcrypto.Decrypt(key, ciphertext, nonce)
 	if err != nil {
-		return "", "", fmt.Errorf("vault: descifrando token git: %w", err)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: descifrando token git: %w", EN: "vault: decrypting git token: %w"}, err)
 	}
 	return username, string(plaintext), nil
 }
@@ -145,14 +145,14 @@ func (s *Store) GitToken(host string) (username, token string, err error) {
 func (s *Store) DeleteGitCredential(id string) error {
 	res, err := s.db.Exec(`DELETE FROM git_credentials WHERE id = ?`, id)
 	if err != nil {
-		return fmt.Errorf("vault: borrando credencial git: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando credencial git: %w", EN: "vault: deleting git credential: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: borrando credencial git: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando credencial git: %w", EN: "vault: deleting git credential: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: credencial %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: credencial %q no encontrada", EN: "vault: credential %q not found"}, id)
 	}
 	return nil
 }

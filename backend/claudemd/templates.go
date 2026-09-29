@@ -6,30 +6,31 @@ import (
 	"time"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 func renderClaudeMD(info ProjectInfo) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s — contexto de base de datos\n\n", info.ConnectionName)
-	b.WriteString("> Generado automáticamente por [mini-tools](https://github.com/rafael180496/mini-tools) — no editar a mano, se puede regenerar desde la app sin perder cambios manuales porque no los tiene.\n\n")
-	fmt.Fprintf(&b, "Este proyecto trabaja contra la conexión **%s** (%s). El detalle completo del schema está en [.claude/specs/database-schema.md](.claude/specs/database-schema.md).\n\n", info.ConnectionName, info.DBType)
+	b.WriteString(i18n.T(i18n.Msg{ES: "# %s — contexto de base de datos\n\n", EN: "# %s — database context\n\n"}, info.ConnectionName))
+	b.WriteString(i18n.T(i18n.Msg{ES: "> Generado automáticamente por [mini-tools](https://github.com/rafael180496/mini-tools) — no editar a mano, se puede regenerar desde la app sin perder cambios manuales porque no los tiene.\n\n", EN: "> Generated automatically by [mini-tools](https://github.com/rafael180496/mini-tools) — don't edit by hand; it can be regenerated from the app without losing manual changes because it has none.\n\n"}))
+	b.WriteString(i18n.T(i18n.Msg{ES: "Este proyecto trabaja contra la conexión **%s** (%s). El detalle completo del schema está en [.claude/specs/database-schema.md](.claude/specs/database-schema.md).\n\n", EN: "This project works against the connection **%s** (%s). The full schema detail is in [.claude/specs/database-schema.md](.claude/specs/database-schema.md).\n\n"}, info.ConnectionName, info.DBType))
 
 	if info.Schema != "" {
-		fmt.Fprintf(&b, "> **Alcance:** este documento solo cubre el esquema `%s` — el que estaba seleccionado en la app al generarlo. Otros esquemas de la misma conexión no están documentados acá; para incluirlos, seleccioná \"todos\" y regenerá.\n\n", info.Schema)
+		b.WriteString(i18n.T(i18n.Msg{ES: "> **Alcance:** este documento solo cubre el esquema `%s` — el que estaba seleccionado en la app al generarlo. Otros esquemas de la misma conexión no están documentados acá; para incluirlos, seleccioná \"todos\" y regenerá.\n\n", EN: "> **Scope:** this document only covers the schema `%s` — the one selected in the app when it was generated. Other schemas of the same connection aren't documented here; to include them, select \"all\" and regenerate.\n\n"}, info.Schema))
 	}
 
 	if info.Metadata != nil && len(info.Metadata.Tables) > 0 {
-		b.WriteString("## Tablas\n\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "## Tablas\n\n", EN: "## Tables\n\n"}))
 		for _, t := range info.Metadata.Tables {
-			fmt.Fprintf(&b, "- `%s` (%d columnas)\n", qualifiedName(t), len(t.Columns))
+			b.WriteString(i18n.T(i18n.Msg{ES: "- `%s` (%d columnas)\n", EN: "- `%s` (%d columns)\n"}, qualifiedName(t), len(t.Columns)))
 		}
 		b.WriteString("\n")
 	} else {
-		b.WriteString("Sin tablas detectadas en esta conexión todavía.\n\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "Sin tablas detectadas en esta conexión todavía.\n\n", EN: "No tables detected on this connection yet.\n\n"}))
 	}
 
-	b.WriteString("Convenciones de SQL para este motor: ver [.claude/rules/sql-conventions.md](.claude/rules/sql-conventions.md).\n")
-	fmt.Fprintf(&b, "\n_Última generación: %s_\n", time.Now().Format("2006-01-02 15:04"))
+	b.WriteString(i18n.T(i18n.Msg{ES: "Convenciones de SQL para este motor: ver [.claude/rules/sql-conventions.md](.claude/rules/sql-conventions.md).\n", EN: "SQL conventions for this engine: see [.claude/rules/sql-conventions.md](.claude/rules/sql-conventions.md).\n"}))
+	b.WriteString(i18n.T(i18n.Msg{ES: "\n_Última generación: %s_\n", EN: "\n_Last generated: %s_\n"}, time.Now().Format("2006-01-02 15:04")))
 	return b.String()
 }
 
@@ -47,35 +48,35 @@ func renderClaudeMD(info ProjectInfo) string {
 // documentado en CLAUDE.md no le dice absolutamente nada a Codex.
 func renderAgentPointer(file, agentName string, info ProjectInfo) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s — contexto del proyecto\n\n", info.ConnectionName)
-	fmt.Fprintf(&b, "> Generado por [mini-tools](https://github.com/rafael180496/mini-tools) para %s. Este archivo existe porque %s lee `%s` y no `CLAUDE.md`.\n\n", agentName, agentName, file)
-	b.WriteString("**El contexto completo vive en [CLAUDE.md](CLAUDE.md)** — leelo antes de tocar nada. Acá no se duplica a propósito: dos copias del mismo documento se desincronizan en el primer cambio.\n\n")
-	fmt.Fprintf(&b, "En resumen: este proyecto trabaja contra la conexión **%s** (%s).\n\n", info.ConnectionName, info.DBType)
-	b.WriteString("- Schema completo: [.claude/specs/database-schema.md](.claude/specs/database-schema.md)\n")
-	b.WriteString("- Convenciones de SQL del motor: [.claude/rules/sql-conventions.md](.claude/rules/sql-conventions.md)\n")
-	fmt.Fprintf(&b, "\n_Última generación: %s_\n", time.Now().Format("2006-01-02 15:04"))
+	b.WriteString(i18n.T(i18n.Msg{ES: "# %s — contexto del proyecto\n\n", EN: "# %s — project context\n\n"}, info.ConnectionName))
+	b.WriteString(i18n.T(i18n.Msg{ES: "> Generado por [mini-tools](https://github.com/rafael180496/mini-tools) para %s. Este archivo existe porque %s lee `%s` y no `CLAUDE.md`.\n\n", EN: "> Generated by [mini-tools](https://github.com/rafael180496/mini-tools) for %s. This file exists because %s reads `%s` and not `CLAUDE.md`.\n\n"}, agentName, agentName, file))
+	b.WriteString(i18n.T(i18n.Msg{ES: "**El contexto completo vive en [CLAUDE.md](CLAUDE.md)** — leelo antes de tocar nada. Acá no se duplica a propósito: dos copias del mismo documento se desincronizan en el primer cambio.\n\n", EN: "**The full context lives in [CLAUDE.md](CLAUDE.md)** — read it before touching anything. It isn't duplicated here on purpose: two copies of the same document drift apart on the first change.\n\n"}))
+	b.WriteString(i18n.T(i18n.Msg{ES: "En resumen: este proyecto trabaja contra la conexión **%s** (%s).\n\n", EN: "In short: this project works against the connection **%s** (%s).\n\n"}, info.ConnectionName, info.DBType))
+	b.WriteString(i18n.T(i18n.Msg{ES: "- Schema completo: [.claude/specs/database-schema.md](.claude/specs/database-schema.md)\n", EN: "- Full schema: [.claude/specs/database-schema.md](.claude/specs/database-schema.md)\n"}))
+	b.WriteString(i18n.T(i18n.Msg{ES: "- Convenciones de SQL del motor: [.claude/rules/sql-conventions.md](.claude/rules/sql-conventions.md)\n", EN: "- The engine's SQL conventions: [.claude/rules/sql-conventions.md](.claude/rules/sql-conventions.md)\n"}))
+	b.WriteString(i18n.T(i18n.Msg{ES: "\n_Última generación: %s_\n", EN: "\n_Last generated: %s_\n"}, time.Now().Format("2006-01-02 15:04")))
 	return b.String()
 }
 
 func renderSchemaSpec(info ProjectInfo) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Schema de %s (%s)\n\n", info.ConnectionName, info.DBType)
-	b.WriteString("> Generado automáticamente por mini-tools desde la metadata de la conexión (tablas, columnas, nullable, primary keys, foreign keys).\n\n")
+	b.WriteString(i18n.T(i18n.Msg{ES: "# Schema de %s (%s)\n\n", EN: "# Schema of %s (%s)\n\n"}, info.ConnectionName, info.DBType))
+	b.WriteString(i18n.T(i18n.Msg{ES: "> Generado automáticamente por mini-tools desde la metadata de la conexión (tablas, columnas, nullable, primary keys, foreign keys).\n\n", EN: "> Generated automatically by mini-tools from the connection metadata (tables, columns, nullable, primary keys, foreign keys).\n\n"}))
 
 	if info.Schema != "" {
-		fmt.Fprintf(&b, "**Esquema:** `%s` (solo estas tablas — ver nota de alcance en CLAUDE.md).\n\n", info.Schema)
+		b.WriteString(i18n.T(i18n.Msg{ES: "**Esquema:** `%s` (solo estas tablas — ver nota de alcance en CLAUDE.md).\n\n", EN: "**Schema:** `%s` (only these tables — see the scope note in CLAUDE.md).\n\n"}, info.Schema))
 	}
 
 	if info.Metadata == nil || len(info.Metadata.Tables) == 0 {
-		b.WriteString("Sin tablas detectadas.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "Sin tablas detectadas.\n", EN: "No tables detected.\n"}))
 		return b.String()
 	}
 
 	for _, t := range info.Metadata.Tables {
 		fmt.Fprintf(&b, "## %s\n\n", qualifiedName(t))
-		b.WriteString("| Columna | Tipo | Nullable | PK |\n|---|---|---|---|\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "| Columna | Tipo | Nullable | PK |\n|---|---|---|---|\n", EN: "| Column | Type | Nullable | PK |\n|---|---|---|---|\n"}))
 		for _, c := range t.Columns {
-			nullable := "sí"
+			nullable := i18n.T(i18n.Msg{ES: "sí", EN: "yes"})
 			if !c.Nullable {
 				nullable = "no"
 			}
@@ -98,31 +99,31 @@ func renderSchemaSpec(info ProjectInfo) string {
 
 func renderSQLConventions(info ProjectInfo) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Convenciones de SQL — %s\n\n", info.DBType)
+	b.WriteString(i18n.T(i18n.Msg{ES: "# Convenciones de SQL — %s\n\n", EN: "# SQL conventions — %s\n\n"}, info.DBType))
 
 	switch info.DBType {
 	case db.DBTypePostgres:
-		b.WriteString("- Placeholders: `$1`, `$2`, ... (no `?`).\n")
-		b.WriteString("- Identificadores entre comillas dobles si tienen mayúsculas o caracteres especiales: `\"MiColumna\"`.\n")
-		b.WriteString("- Paginación: `LIMIT n OFFSET m`.\n")
-		b.WriteString("- `RETURNING` disponible en INSERT/UPDATE/DELETE.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Placeholders: `$1`, `$2`, ... (no `?`).\n", EN: "- Placeholders: `$1`, `$2`, ... (not `?`).\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Identificadores entre comillas dobles si tienen mayúsculas o caracteres especiales: `\"MiColumna\"`.\n", EN: "- Identifiers in double quotes if they have uppercase or special characters: `\"MyColumn\"`.\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Paginación: `LIMIT n OFFSET m`.\n", EN: "- Pagination: `LIMIT n OFFSET m`.\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- `RETURNING` disponible en INSERT/UPDATE/DELETE.\n", EN: "- `RETURNING` available in INSERT/UPDATE/DELETE.\n"}))
 	case db.DBTypeOracle:
-		b.WriteString("- Placeholders: `:1`, `:2`, ... o `:nombre`.\n")
-		b.WriteString("- Paginación: `WHERE ROWNUM <= n` o `FETCH FIRST n ROWS ONLY` (12c+).\n")
-		b.WriteString("- Bloques PL/SQL empiezan con `DECLARE` o `BEGIN`, terminan con `END;`.\n")
-		b.WriteString("- `DUAL` para SELECTs sin tabla real.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Placeholders: `:1`, `:2`, ... o `:nombre`.\n", EN: "- Placeholders: `:1`, `:2`, ... or `:name`.\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Paginación: `WHERE ROWNUM <= n` o `FETCH FIRST n ROWS ONLY` (12c+).\n", EN: "- Pagination: `WHERE ROWNUM <= n` or `FETCH FIRST n ROWS ONLY` (12c+).\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Bloques PL/SQL empiezan con `DECLARE` o `BEGIN`, terminan con `END;`.\n", EN: "- PL/SQL blocks start with `DECLARE` or `BEGIN` and end with `END;`.\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- `DUAL` para SELECTs sin tabla real.\n", EN: "- `DUAL` for SELECTs without a real table.\n"}))
 	case db.DBTypeSQLite:
 		b.WriteString("- Placeholders: `?`.\n")
-		b.WriteString("- Paginación: `LIMIT n`.\n")
-		b.WriteString("- Tipado dinámico (type affinity) — las columnas no fuerzan estrictamente su tipo declarado.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Paginación: `LIMIT n`.\n", EN: "- Pagination: `LIMIT n`.\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Tipado dinámico (type affinity) — las columnas no fuerzan estrictamente su tipo declarado.\n", EN: "- Dynamic typing (type affinity) — columns don't strictly enforce their declared type.\n"}))
 	case db.DBTypeSQLServer:
-		b.WriteString("- Placeholders: `@p1`, `@p2`, ... o `@nombre`.\n")
-		b.WriteString("- Identificadores entre corchetes si tienen espacios o palabras reservadas: `[Mi Columna]`.\n")
-		b.WriteString("- Paginación: `SELECT TOP n ...` o `OFFSET m ROWS FETCH NEXT n ROWS ONLY` (requiere `ORDER BY`).\n")
-		b.WriteString("- Lotes T-SQL separados por `GO` (separador de sqlcmd/SSMS, no se envía al servidor).\n")
-		b.WriteString("- Bloques con `BEGIN ... END`; transacciones con `BEGIN TRANSACTION` / `COMMIT` / `ROLLBACK`.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Placeholders: `@p1`, `@p2`, ... o `@nombre`.\n", EN: "- Placeholders: `@p1`, `@p2`, ... or `@name`.\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Identificadores entre corchetes si tienen espacios o palabras reservadas: `[Mi Columna]`.\n", EN: "- Identifiers in square brackets if they have spaces or reserved words: `[My Column]`.\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Paginación: `SELECT TOP n ...` o `OFFSET m ROWS FETCH NEXT n ROWS ONLY` (requiere `ORDER BY`).\n", EN: "- Pagination: `SELECT TOP n ...` or `OFFSET m ROWS FETCH NEXT n ROWS ONLY` (requires `ORDER BY`).\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Lotes T-SQL separados por `GO` (separador de sqlcmd/SSMS, no se envía al servidor).\n", EN: "- T-SQL batches separated by `GO` (a sqlcmd/SSMS separator, not sent to the server).\n"}))
+		b.WriteString(i18n.T(i18n.Msg{ES: "- Bloques con `BEGIN ... END`; transacciones con `BEGIN TRANSACTION` / `COMMIT` / `ROLLBACK`.\n", EN: "- Blocks with `BEGIN ... END`; transactions with `BEGIN TRANSACTION` / `COMMIT` / `ROLLBACK`.\n"}))
 	default:
-		b.WriteString("Motor desconocido — sin convenciones documentadas.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "Motor desconocido — sin convenciones documentadas.\n", EN: "Unknown engine — no documented conventions.\n"}))
 	}
 	return b.String()
 }
@@ -130,15 +131,15 @@ func renderSQLConventions(info ProjectInfo) string {
 func renderSkill(info ProjectInfo) string {
 	var b strings.Builder
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "name: mini-tools-database\ndescription: Contexto de la base de datos conectada (%s, motor %s), generado por mini-tools. Consultar antes de escribir queries contra este proyecto.\n", info.ConnectionName, info.DBType)
+	b.WriteString(i18n.T(i18n.Msg{ES: "name: mini-tools-database\ndescription: Contexto de la base de datos conectada (%s, motor %s), generado por mini-tools. Consultar antes de escribir queries contra este proyecto.\n", EN: "name: mini-tools-database\ndescription: Context of the connected database (%s, engine %s), generated by mini-tools. Check it before writing queries against this project.\n"}, info.ConnectionName, info.DBType))
 	b.WriteString("---\n\n")
-	fmt.Fprintf(&b, "Este proyecto trabaja contra la conexión **%s** (%s).\n\n", info.ConnectionName, info.DBType)
+	b.WriteString(i18n.T(i18n.Msg{ES: "Este proyecto trabaja contra la conexión **%s** (%s).\n\n", EN: "This project works against the connection **%s** (%s).\n\n"}, info.ConnectionName, info.DBType))
 	if info.Schema != "" {
-		fmt.Fprintf(&b, "Documentación limitada al esquema `%s`.\n\n", info.Schema)
+		b.WriteString(i18n.T(i18n.Msg{ES: "Documentación limitada al esquema `%s`.\n\n", EN: "Documentation limited to the schema `%s`.\n\n"}, info.Schema))
 	}
-	b.WriteString("- Schema completo: [.claude/specs/database-schema.md](../../specs/database-schema.md)\n")
-	b.WriteString("- Convenciones de SQL del motor: [.claude/rules/sql-conventions.md](../../rules/sql-conventions.md)\n\n")
-	b.WriteString("Antes de escribir una query nueva, revisar las foreign keys documentadas en el schema para armar los JOINs correctos.\n")
+	b.WriteString(i18n.T(i18n.Msg{ES: "- Schema completo: [.claude/specs/database-schema.md](../../specs/database-schema.md)\n", EN: "- Full schema: [.claude/specs/database-schema.md](../../specs/database-schema.md)\n"}))
+	b.WriteString(i18n.T(i18n.Msg{ES: "- Convenciones de SQL del motor: [.claude/rules/sql-conventions.md](../../rules/sql-conventions.md)\n\n", EN: "- The engine's SQL conventions: [.claude/rules/sql-conventions.md](../../rules/sql-conventions.md)\n\n"}))
+	b.WriteString(i18n.T(i18n.Msg{ES: "Antes de escribir una query nueva, revisar las foreign keys documentadas en el schema para armar los JOINs correctos.\n", EN: "Before writing a new query, check the foreign keys documented in the schema to build the right JOINs.\n"}))
 	return b.String()
 }
 

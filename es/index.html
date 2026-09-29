@@ -1,0 +1,2068 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ayuda de mini-tools</title>
+<meta name="description" content="Documentación de mini-tools: cliente de Oracle, PostgreSQL, SQLite, SQL Server, Redis y MongoDB, cliente HTTP con colecciones, terminal SSH/SFTP, cliente Git y tres CLIs de IA integrados. Un binario de 50 MB, sin Electron, sin cuenta y sin telemetría.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234a8eff'/><path d='M8 21V11h3.2l4.8 6 4.8-6H24v10h-3v-5.4l-3.8 4.7h-2.4L11 15.6V21z' fill='%23001a3d'/></svg>">
+<meta property="og:title" content="Ayuda de mini-tools">
+<meta property="og:description" content="Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de 50 MB.">
+<meta property="og:image" content="../docs/screenshots/es/ui-workspace.png">
+<link rel="alternate" hreflang="en" href="https://rafael180496.github.io/mini-tools/">
+<link rel="alternate" hreflang="es" href="https://rafael180496.github.io/mini-tools/es/">
+<link rel="alternate" hreflang="x-default" href="https://rafael180496.github.io/mini-tools/">
+<style>
+/* ==========================================================================
+   Página de AYUDA, no una landing. La forma es la de una documentación de
+   producto —índice jerárquico a la izquierda, un tema por pantalla, «en esta
+   página» a la derecha, buscador, anterior/siguiente— porque es como se lee:
+   nadie recorre una documentación de arriba abajo, entra buscando una cosa.
+
+   Un solo archivo y CERO peticiones externas: ni CDN, ni fuentes remotas, ni
+   analítica. Sería la peor forma de romper la promesa del programa —que no
+   manda nada a ningún lado— justo en su propia documentación.
+
+   Los colores son EXACTAMENTE los de la app (frontend/src/styles/globals.css):
+   un esquema Material Design 3 real, no una paleta inventada para esta página.
+   ========================================================================== */
+:root{
+  --primary:#0058bc; --on-primary:#fff; --primary-container:#2271e0; --on-primary-container:#fefcff;
+  --secondary:#006c49; --secondary-container:#6cf8bb;
+  --tertiary:#9e3d00; --tertiary-container:#c64f00;
+  --error:#ba1a1a;
+  --surface:#faf8ff; --on-surface:#131b2e;
+  --lowest:#fff; --low:#f2f3ff; --container:#eaedff; --high:#e1e7ff; --highest:#dae2fd;
+  --on-surface-variant:#414755; --outline:#717786; --outline-variant:#c1c6d7;
+  --shadow:0 10px 30px rgb(19 27 46 / .10);
+  --topbar:56px;
+}
+:root[data-theme="dark"]{
+  --primary:#adc7ff; --on-primary:#002e68; --primary-container:#4a8eff; --on-primary-container:#00285b;
+  --secondary:#4edea3; --secondary-container:#00a572;
+  --tertiary:#ffb695; --tertiary-container:#ef6719;
+  --error:#ffb4ab;
+  --surface:#0b1326; --on-surface:#dae2fd;
+  --lowest:#060e20; --low:#131b2e; --container:#171f33; --high:#222a3d; --highest:#2d3449;
+  --on-surface-variant:#c1c6d7; --outline:#8b90a0; --outline-variant:#414754;
+  --shadow:0 12px 34px rgb(0 0 0 / .45);
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--surface);color:var(--on-surface);overflow-x:hidden;
+  /* Sin fuentes externas a propósito: la documentación de un programa que
+     presume de no depender de internet no puede pedirle una tipografía a un
+     CDN. */
+  font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased;
+}
+code,kbd,pre{font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace}
+a{color:var(--primary)}
+img{max-width:100%;height:auto;display:block}
+button{font:inherit;color:inherit}
+
+/* ---------------------------------------------------------------- Barra ---- */
+.topbar{
+  position:fixed;inset:0 0 auto 0;height:var(--topbar);z-index:40;
+  display:flex;align-items:center;gap:12px;padding:0 16px;
+  background:var(--lowest);border-bottom:1px solid var(--outline-variant);
+}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.02em;text-decoration:none;color:inherit;font-size:15.5px;white-space:nowrap}
+.mark{width:25px;height:25px;border-radius:7px;background:var(--primary-container);color:var(--on-primary-container);
+  display:grid;place-items:center;font-weight:800;font-size:12px}
+.ver{
+  font-size:11.5px;color:var(--on-surface-variant);border:1px solid var(--outline-variant);
+  border-radius:999px;padding:1px 9px;white-space:nowrap
+}
+.topbar .spacer{flex:1}
+.tlink{text-decoration:none;color:var(--on-surface-variant);font-size:13.5px;padding:5px 9px;border-radius:8px;white-space:nowrap}
+.tlink:hover{background:var(--high);color:var(--on-surface)}
+.iconbtn{
+  border:1px solid var(--outline-variant);background:var(--container);color:var(--on-surface-variant);
+  border-radius:8px;padding:5px 10px;font-size:13px;cursor:pointer;white-space:nowrap
+}
+.iconbtn:hover{color:var(--on-surface)}
+a.iconbtn{text-decoration:none}
+#menubtn{display:none}
+
+/* ------------------------------------------------------------- Buscador ---- */
+.search{position:relative;width:min(340px,38vw);min-width:0}
+.search input{
+  width:100%;background:var(--low);border:1px solid var(--outline-variant);border-radius:9px;
+  color:var(--on-surface);padding:7px 30px 7px 30px;font-size:13.5px;font-family:inherit
+}
+.search input:focus{outline:2px solid var(--primary);outline-offset:-1px;border-color:transparent}
+.search .mag{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--on-surface-variant);font-size:13px;pointer-events:none}
+.search .hint{
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--on-surface-variant);
+  border:1px solid var(--outline-variant);border-radius:5px;padding:0 5px;pointer-events:none
+}
+.search input:focus ~ .hint,.search input:not(:placeholder-shown) ~ .hint{display:none}
+#results{
+  display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;max-height:min(62vh,520px);overflow-y:auto;
+  background:var(--lowest);border:1px solid var(--outline-variant);border-radius:11px;box-shadow:var(--shadow);
+  padding:5px;z-index:50
+}
+#results.open{display:block}
+#results .r{
+  display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:8px;
+  padding:7px 10px;cursor:pointer
+}
+#results .r:hover,#results .r.sel{background:var(--high)}
+#results .r b{display:block;font-size:13.5px;font-weight:600}
+#results .r span{display:block;font-size:11.5px;color:var(--on-surface-variant)}
+#results .none{padding:12px;font-size:13px;color:var(--on-surface-variant);margin:0}
+
+/* --------------------------------------------------------------- Marco ----- */
+.layout{
+  display:grid;grid-template-columns:286px minmax(0,1fr) 232px;
+  padding-top:var(--topbar);align-items:start
+}
+.toc,.onpage{
+  position:sticky;top:var(--topbar);height:calc(100vh - var(--topbar));overflow-y:auto;
+  scrollbar-width:thin
+}
+.toc{border-right:1px solid var(--outline-variant);padding:14px 8px 40px;background:var(--lowest)}
+.onpage{padding:26px 18px 40px}
+main{padding:26px clamp(20px,3.4vw,46px) 70px;min-width:0}
+
+/* ------------------------------------------------------------- Índice ------ */
+.toc .grp{
+  display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;cursor:pointer;
+  padding:7px 10px;border-radius:8px;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--on-surface-variant);margin-top:6px
+}
+.toc .grp:hover{background:var(--high);color:var(--on-surface)}
+.toc .grp .caret{transition:transform .14s ease;font-size:10px;opacity:.75}
+.toc .grp[aria-expanded="false"] .caret{transform:rotate(-90deg)}
+.toc ul{list-style:none;margin:0;padding:0}
+.toc .grp[aria-expanded="false"] + ul{display:none}
+.toc a{
+  display:block;text-decoration:none;color:var(--on-surface-variant);font-size:13.5px;
+  padding:5px 10px 5px 26px;border-radius:8px;border-left:2px solid transparent;line-height:1.4
+}
+.toc a:hover{background:var(--high);color:var(--on-surface)}
+.toc a.active{
+  background:color-mix(in srgb,var(--primary) 15%,transparent);color:var(--primary);font-weight:600;
+  border-left-color:var(--primary)
+}
+
+/* -------------------------------------------------------- En esta página --- */
+.onpage h6{
+  margin:0 0 8px;font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--on-surface-variant)
+}
+.onpage ol{list-style:none;margin:0;padding:0}
+.onpage a{
+  display:block;text-decoration:none;color:var(--on-surface-variant);font-size:12.5px;line-height:1.4;
+  padding:4px 8px;border-left:2px solid var(--outline-variant)
+}
+.onpage a:hover{color:var(--on-surface)}
+.onpage a.here{color:var(--primary);border-left-color:var(--primary);font-weight:600}
+.onpage.empty{visibility:hidden}
+
+/* ---------------------------------------------------------- Contenido ------ */
+/* El fragmento de la URL es el id del <article>, así que el navegador puede
+   desplazarse solo hacia él —al cargar, y otra vez cuando las imágenes
+   terminan y cambia el alto—. Sin este margen lo dejaría debajo de la barra
+   fija, con el título cortado. */
+.topic{display:none;max-width:820px;scroll-margin-top:calc(var(--topbar) + 16px)}
+.topic.active{display:block;animation:in .16s ease}
+@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.crumbs{font-size:12.5px;color:var(--on-surface-variant);margin:0 0 10px}
+.crumbs a{color:inherit;text-decoration:none}
+.crumbs a:hover{color:var(--primary)}
+.crumbs .sep{opacity:.5;margin:0 6px}
+h1{font-size:clamp(25px,3.4vw,34px);line-height:1.18;letter-spacing:-.025em;margin:0 0 12px;text-wrap:balance}
+h2{font-size:21px;letter-spacing:-.015em;margin:34px 0 8px;line-height:1.25;scroll-margin-top:calc(var(--topbar) + 16px)}
+h3{font-size:16.5px;margin:22px 0 6px;letter-spacing:-.01em;scroll-margin-top:calc(var(--topbar) + 16px)}
+h4{font-size:13px;margin:18px 0 6px;color:var(--on-surface-variant);text-transform:uppercase;letter-spacing:.06em}
+.lead{font-size:17px;color:var(--on-surface-variant);margin:0 0 20px;text-wrap:pretty}
+p,ul,ol{max-width:74ch}
+li{margin:5px 0}
+figure{margin:20px 0}
+.shot{border:1px solid var(--outline-variant);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);background:var(--lowest)}
+figcaption{font-size:12.5px;color:var(--on-surface-variant);margin-top:8px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:16px 0;max-width:none}
+.card{background:var(--container);border:1px solid var(--outline-variant);border-radius:12px;padding:15px 17px}
+.card h3{margin:0 0 5px;font-size:15px}
+.card p{font-size:13.5px;color:var(--on-surface-variant);margin:0;max-width:none}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px;padding:0;list-style:none;max-width:none}
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--outline-variant);
+  color:var(--on-surface-variant);background:var(--low);margin:0}
+.cta{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 6px}
+.btn{text-decoration:none;font-weight:600;font-size:14px;padding:9px 18px;border-radius:9px;
+  background:var(--primary);color:var(--on-primary);border:1px solid transparent;display:inline-block}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--on-surface);border-color:var(--outline)}
+.btn.ghost:hover{background:var(--high);filter:none}
+
+/* Bloques de código, con botón de copiar: el gesto que más se hace en una
+   documentación es llevarse un comando. */
+.codewrap{position:relative;margin:12px 0}
+pre{
+  background:var(--lowest);border:1px solid var(--outline-variant);border-radius:10px;
+  padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6;margin:0;max-width:100%
+}
+pre .c{color:var(--on-surface-variant)}
+.copy{
+  position:absolute;top:7px;right:7px;border:1px solid var(--outline-variant);background:var(--container);
+  color:var(--on-surface-variant);border-radius:7px;padding:3px 9px;font-size:11.5px;cursor:pointer;opacity:0;
+  transition:opacity .13s ease
+}
+.codewrap:hover .copy,.copy:focus{opacity:1}
+.copy:hover{color:var(--on-surface)}
+:not(pre)>code{background:var(--high);border:1px solid var(--outline-variant);border-radius:5px;padding:1px 5px;font-size:.88em}
+kbd{background:var(--high);border:1px solid var(--outline);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:.85em}
+
+/* Llamadas. Tres tonos y no uno: una advertencia y un dato de color no se leen
+   igual, y pintarlos igual obliga a leer el texto para saber cuál era. */
+.note{border-left:3px solid var(--primary);background:var(--low);padding:11px 15px;border-radius:0 10px 10px 0;margin:16px 0;max-width:74ch}
+.note.warn{border-left-color:var(--tertiary)}
+.note.tip{border-left-color:var(--secondary)}
+.note p{margin:0;font-size:14px;max-width:none}
+.note .lbl{display:block;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--primary);margin-bottom:3px}
+.note.warn .lbl{color:var(--tertiary)}
+.note.tip .lbl{color:var(--secondary)}
+
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:36px;margin:12px 0}
+.steps li::before{
+  content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;
+  background:var(--primary);color:var(--on-primary);display:grid;place-items:center;font-size:12.5px;font-weight:700
+}
+.tablewrap{overflow-x:auto;margin:14px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border-bottom:1px solid var(--outline-variant);padding:8px 11px;text-align:left;vertical-align:top}
+th{color:var(--on-surface-variant);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+details{border:1px solid var(--outline-variant);border-radius:10px;padding:0 15px;margin:10px 0;background:var(--low);max-width:74ch}
+details[open]{padding-bottom:8px}
+summary{cursor:pointer;padding:12px 0;font-weight:600}
+.two{display:grid;gap:24px;grid-template-columns:1fr 1fr;align-items:start;max-width:none}
+/* Un hijo de grid trae `min-width:auto`: no se encoge por debajo del ancho
+   mínimo de su contenido, así que un <pre> con una línea larga estira la
+   columna y desborda el documento entero. Solo se ve en pantallas angostas. */
+.two>*,.grid>*,.next>*{min-width:0}
+
+/* Tarjetas de navegación, para ofrecer por dónde seguir. */
+.next{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin:18px 0;max-width:none}
+.next a{
+  display:block;text-decoration:none;color:inherit;border:1px solid var(--outline-variant);border-radius:11px;
+  padding:13px 15px;background:var(--low)
+}
+.next a:hover{border-color:var(--primary);background:var(--container)}
+.next a b{display:block;font-size:14.5px;margin-bottom:2px}
+.next a span{font-size:12.5px;color:var(--on-surface-variant)}
+
+/* ------------------------------------------------------- Pie del tema ------ */
+.pagenav{display:flex;gap:12px;justify-content:space-between;margin-top:48px;padding-top:20px;border-top:1px solid var(--outline-variant)}
+.pagenav a{
+  text-decoration:none;color:inherit;border:1px solid var(--outline-variant);border-radius:10px;
+  padding:10px 15px;max-width:48%;background:var(--low)
+}
+.pagenav a:hover{border-color:var(--primary)}
+.pagenav small{display:block;font-size:11px;color:var(--on-surface-variant);text-transform:uppercase;letter-spacing:.06em}
+.pagenav b{font-size:14px;font-weight:600}
+.pagenav .n{margin-left:auto;text-align:right}
+.pagefoot{margin-top:22px;font-size:12.5px;color:var(--on-surface-variant);max-width:none}
+
+/* -------------------------------------------------------- Adaptativo ------- */
+.scrim{display:none}
+@media(max-width:1180px){
+  .layout{grid-template-columns:270px minmax(0,1fr)}
+  .onpage{display:none}
+}
+@media(max-width:900px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  #menubtn{display:inline-block}
+  .search{width:auto;flex:1}
+  .topbar{gap:8px;padding:0 10px}
+  .topbar .ver,.topbar .tlink{display:none}
+  .toc{
+    position:fixed;top:var(--topbar);left:0;bottom:0;width:min(320px,86vw);z-index:35;
+    transform:translateX(-101%);transition:transform .18s ease;box-shadow:var(--shadow)
+  }
+  body.nav-open .toc{transform:none}
+  body.nav-open .scrim{display:block;position:fixed;inset:var(--topbar) 0 0 0;z-index:30;background:rgb(0 0 0 / .45)}
+  .two{grid-template-columns:1fr}
+  main{padding:20px 18px 60px}
+}
+@media(max-width:560px){
+  /* Solo el cuadrado azul: el nombre del programa es lo primero que sobra
+     cuando la barra tiene que elegir entre él y el buscador. */
+  .brand{font-size:0;gap:0}
+  .brand .mark{font-size:12px}
+  .search .hint{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
+  <a class="brand" href="#introduccion"><span class="mark">mt</span> mini-tools</a>
+  <span class="ver" title="Esta documentación describe la versión 2.7.0. Lo que está acá existe en ese binario.">2.7.0 · Ayuda</span>
+  <div class="spacer"></div>
+  <div class="search">
+    <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
+    <span class="mag">⌕</span><span class="hint">/</span>
+    <div id="results" role="listbox"></div>
+  </div>
+  <a class="tlink" href="https://github.com/rafael180496/mini-tools/releases">Descargas</a>
+  <a class="tlink" href="https://github.com/rafael180496/mini-tools">Código</a>
+  <a class="iconbtn" id="langsw" href="../index.html" data-base="../index.html" hreflang="en" lang="en" title="Read this help in English">English</a>
+  <button class="iconbtn" id="tgl" title="Cambiar entre tema claro y oscuro">Tema</button>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<div class="layout">
+
+<nav class="toc" id="toc" aria-label="Índice de la ayuda">
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Empezar</button>
+  <ul>
+    <li><a href="#introduccion">Qué es mini-tools</a></li>
+    <li><a href="#instalacion">Instalar</a></li>
+    <li><a href="#primera-conexion">La primera conexión</a></li>
+    <li><a href="#la-ventana">La ventana: módulos y pestañas</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Bases de datos</button>
+  <ul>
+    <li><a href="#bases-esquema">Explorar el esquema</a></li>
+    <li><a href="#bases-consultas">Escribir y ejecutar consultas</a></li>
+    <li><a href="#bases-parametros">Parámetros</a></li>
+    <li><a href="#bases-editar">Editar filas desde la grilla</a></li>
+    <li><a href="#bases-copiar">Copiar y exportar resultados</a></li>
+    <li><a href="#bases-planes">Planes de ejecución e historial</a></li>
+    <li><a href="#bases-redis-mongo">Redis y MongoDB</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Peticiones HTTP</button>
+  <ul>
+    <li><a href="#http-colecciones">Colecciones y peticiones</a></li>
+    <li><a href="#http-importar">Importar y exportar Postman</a></li>
+    <li><a href="#http-historial">Historial y favoritas</a></li>
+    <li><a href="#http-variables">Variables y entornos</a></li>
+    <li><a href="#http-auth">Autenticación</a></li>
+    <li><a href="#http-firmas">Firmar sin escribir scripts</a></li>
+    <li><a href="#http-runner">Correr toda la colección</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Notas</button>
+  <ul>
+    <li><a href="#notas-escribir">Escribir y enlazar</a></li>
+    <li><a href="#notas-ejecutar">Bloques SQL ejecutables</a></li>
+    <li><a href="#notas-organizar">Carpetas, grafo y búsqueda</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Git</button>
+  <ul>
+    <li><a href="#git-repositorio">El repositorio: grafo y diff</a></li>
+    <li><a href="#git-config">Identidad, remotos y tokens</a></li>
+    <li><a href="#git-reflog">Recuperar con el reflog</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>SSH y SFTP</button>
+  <ul>
+    <li><a href="#ssh-terminal">Terminales SSH y locales</a></li>
+    <li><a href="#ssh-sftp">Explorador SFTP</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Agentes de IA</button>
+  <ul>
+    <li><a href="#ia-chat">El chat, en todos los módulos</a></li>
+    <li><a href="#ia-referencias">El sistema @</a></li>
+    <li><a href="#ia-mcp">Servidor MCP embebido</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Ajustes</button>
+  <ul>
+    <li><a href="#ajustes-apariencia">Apariencia y tamaño de letra</a></li>
+    <li><a href="#ajustes-actualizaciones">Actualizaciones</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Recetas</button>
+  <ul>
+    <li><a href="#receta-endpoint">Probar un endpoint y no perderlo</a></li>
+    <li><a href="#receta-consulta">Una consulta contra un esquema que no conocés</a></li>
+    <li><a href="#receta-incidente">Documentar un incidente mientras lo resolvés</a></li>
+    <li><a href="#receta-commit">Recuperar un commit borrado</a></li>
+  </ul>
+
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Referencia</button>
+  <ul>
+    <li><a href="#atajos">Atajos de teclado</a></li>
+    <li><a href="#seguridad">Seguridad</a></li>
+    <li><a href="#faq">Preguntas frecuentes</a></li>
+  </ul>
+</nav>
+
+<main id="main">
+
+<!-- ------------------------------------------------------------ EMPEZAR -->
+<article class="topic" id="introduccion" data-title="Qué es mini-tools">
+  <h1>Qué es mini-tools</h1>
+  <p class="lead">Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu cliente Git y tus agentes
+  de IA — en un solo binario de 50&nbsp;MB. Sin Electron, sin JVM, sin cuenta y sin telemetría: tus
+  credenciales cifradas en tu máquina y nada saliendo a ningún lado.</p>
+
+  <ul class="chips">
+    <li class="chip">Oracle</li><li class="chip">PostgreSQL</li><li class="chip">SQLite</li>
+    <li class="chip">SQL Server</li><li class="chip">Redis</li><li class="chip">MongoDB</li>
+    <li class="chip">HTTP</li><li class="chip">SSH · SFTP</li><li class="chip">Git</li>
+    <li class="chip">Claude Code</li><li class="chip">Codex</li><li class="chip">Antigravity</li>
+  </ul>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ui-workspace.png" alt="Ventana de mini-tools: barra lateral con el menú de módulos arriba, árbol de conexiones en carpetas, editor SQL al centro con pestañas rotuladas por tipo y el panel de resultados abajo"></div>
+    <figcaption>Un módulo a la vez en la barra lateral, y el que estás usando se queda con toda la altura.</figcaption>
+  </figure>
+
+  <h2 id="introduccion--por-que">Por qué existe</h2>
+  <p>El trabajo real cruza todo el tiempo: mirás un log en el servidor, corrés una consulta, probás el
+  endpoint que la usa, buscás el commit que lo rompió y lo anotás para el que venga. mini-tools pone eso
+  en una sola ventana, con un solo lugar cifrado donde viven las credenciales.</p>
+  <div class="grid">
+    <div class="card"><h3>Un binario, cero instalación</h3><p>Go + Wails: usa el WebView del sistema. No hay Electron, no hay JVM, no hay Node corriendo por detrás.</p></div>
+    <div class="card"><h3>Tus credenciales, tuyas</h3><p>Cada DSN, contraseña SSH y clave privada se cifra con AES-256-GCM. La clave se deriva de tu clave maestra con Argon2id y no se guarda en ningún lado.</p></div>
+    <div class="card"><h3>Sin telemetría, sin cuenta</h3><p>No hay registro, no hay servidor de la app, no se manda nada. Lo único que sale a internet es lo que vos apuntás: tu base, tu servidor, tu API.</p></div>
+    <div class="card"><h3>Tus agentes, adentro</h3><p>Claude Code, Codex y Antigravity con su terminal completa o un chat nativo, con contexto del módulo en el que estás.</p></div>
+    <div class="card"><h3>Producción se avisa</h3><p>Marcá una conexión como producción y cada sentencia destructiva pide confirmación explícita antes de correr.</p></div>
+    <div class="card"><h3>Todo en español</h3><p>Interfaz, mensajes de error y documentación. Los tooltips explican la consecuencia, no repiten el nombre del botón.</p></div>
+  </div>
+
+  <h2 id="introduccion--seguir">Por dónde seguir</h2>
+  <div class="next">
+    <a href="#instalacion"><b>Instalar</b><span>macOS, Windows o compilar desde el código</span></a>
+    <a href="#primera-conexion"><b>La primera conexión</b><span>Pegá tu cadena de conexión y listo</span></a>
+    <a href="#la-ventana"><b>La ventana</b><span>Módulos, pestañas y paneles</span></a>
+    <a href="#receta-endpoint"><b>Recetas</b><span>Cuatro cosas de punta a punta</span></a>
+  </div>
+
+  <div class="cta">
+    <a class="btn" href="https://github.com/rafael180496/mini-tools/releases">Descargar</a>
+    <a class="btn ghost" href="https://github.com/rafael180496/mini-tools">Ver el código</a>
+    <a class="btn ghost" href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a>
+  </div>
+</article>
+
+<article class="topic" id="instalacion" data-title="Instalar">
+  <h1>Instalar</h1>
+  <p class="lead">Un ejecutable único, sin dependencias del sistema. Ninguno de los dos paquetes está
+  firmado, así que la primera vez hay un paso extra — está explicado abajo.</p>
+
+  <h2 id="instalacion--macos">macOS</h2>
+  <ol class="steps">
+    <li><strong>Descargá</strong> el <code>.dmg</code> desde <a href="https://github.com/rafael180496/mini-tools/releases">Releases</a> y arrastrá la app a Aplicaciones.</li>
+    <li>Como no está firmada con una cuenta de desarrollador, la primera vez abrila con <strong>clic derecho → Abrir</strong>, o quitale la cuarentena:
+      <div class="codewrap"><pre><code>xattr -dr com.apple.quarantine /Applications/mini-tools.app</code></pre></div>
+    </li>
+    <li><strong>Elegí tu clave maestra</strong> cuando arranque. Es la que cifra todo lo demás.</li>
+  </ol>
+
+  <h2 id="instalacion--windows">Windows</h2>
+  <ol class="steps">
+    <li>Descargá el <code>.exe</code> portable desde <a href="https://github.com/rafael180496/mini-tools/releases">Releases</a>. No hay instalador: se ejecuta donde lo dejes.</li>
+    <li>SmartScreen puede avisar «Windows protegió su PC» por la misma razón que Gatekeeper: <em>Más información → Ejecutar de todas formas</em>.</li>
+    <li><strong>Elegí tu clave maestra</strong> cuando arranque.</li>
+  </ol>
+
+  <div class="note warn"><span class="lbl">Importante</span><p>La clave maestra <strong>no se guarda en
+  ningún lado</strong>: si la perdés, se pierde el vault y no hay recuperación. Es exactamente lo que hace
+  que un backup robado no sirva de nada. Podés pedirle que la recuerde en esa máquina, y ahí la guarda el
+  llavero del sistema operativo, no la app.</p></div>
+
+  <h2 id="instalacion--compilar">Compilar desde el código</h2>
+  <p>Si preferís compilarlo vos, hace falta Go&nbsp;1.26+, Node&nbsp;20+, pnpm y el CLI de Wails&nbsp;v2:</p>
+  <div class="codewrap"><pre><code>git clone https://github.com/rafael180496/mini-tools
+cd mini-tools
+
+<span class="c"># dependencias del frontend</span>
+cd frontend &amp;&amp; pnpm install &amp;&amp; cd ..
+
+<span class="c"># desarrollo, con recarga en caliente</span>
+wails dev
+
+<span class="c"># binario de producción</span>
+wails build</code></pre></div>
+  <div class="note"><span class="lbl">Nota</span><p><strong>Sin CGO.</strong> Todos los drivers son en Go
+  puro, así que compila y se distribuye como un ejecutable único sin dependencias del sistema.</p></div>
+
+  <div class="note warn"><span class="lbl">pnpm sale de corepack</span><p><strong>No lo instales con
+  <code>npm install -g pnpm</code>.</strong> Los paquetes globales de npm son por versión de Node, así que
+  el próximo <code>nvm install</code> lo deja atrás y el build muere con
+  <code>exec: "pnpm": executable file not found in $PATH</code> — un error que tira wails, porque es él
+  quien corre <code>pnpm install</code>, y que no dice ni la causa ni el remedio. Los scripts de
+  <code>scripts/</code> lo habilitan solos; a mano es <code>corepack enable pnpm</code>.</p></div>
+
+  <h2 id="instalacion--ayuda">Esta ayuda, desde la app</h2>
+  <p>El botón <strong>?</strong> del pie de la barra lateral —y el enlace <em>Documentación</em> del pie de
+  Configuración— abren esta página en tu navegador, así que no hace falta acordarse de la dirección.</p>
+</article>
+
+<article class="topic" id="primera-conexion" data-title="La primera conexión">
+  <h1>La primera conexión</h1>
+  <p class="lead">No hace falta llenar el formulario campo por campo: pegá la cadena que ya tenés y la app
+  deduce el motor y el resto.</p>
+
+  <h2 id="primera-conexion--crear">Crear la conexión</h2>
+  <ol class="steps">
+    <li>Barra lateral → módulo <strong>Conexiones</strong> → <strong>+</strong>.</li>
+    <li>Elegí el motor, o mejor: <strong>pegá la cadena de conexión</strong> que ya tenés en un <code>.env</code> y el formulario se completa solo, detectando el motor.
+      <div class="codewrap"><pre><code>postgres://usuario:clave@host:5432/basedatos
+jdbc:oracle:thin:@//host:1521/SERVICIO
+host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
+/ruta/a/archivo.sqlite</code></pre></div>
+    </li>
+    <li><strong>Probar conexión</strong> si querés, pero no es obligatorio: podés guardar una conexión a un servidor que ahora está apagado.</li>
+    <li>Marcala como <strong>producción</strong> si lo es. Desde ese momento cada <code>UPDATE</code>, <code>DELETE</code> o <code>DROP</code> pide confirmación.</li>
+    <li>Doble clic en la conexión y se abre una pestaña de editor vinculada a ella. <kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> ejecuta.</li>
+  </ol>
+
+  <h2 id="primera-conexion--produccion">Marcar producción</h2>
+  <p>El marcado de entorno no es decorativo: pinta la conexión en el árbol, en la barra del editor y en el
+  <strong>pie de su terminal SSH</strong>, con su nombre y su color —rojo con halo en producción—, y enciende
+  el <strong>Production Guard</strong>: un <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code>
+  no se ejecuta sin una confirmación que dice cuántas filas va a tocar, y en la terminal de un servidor
+  marcado como producción los comandos destructivos también piden confirmación.</p>
+
+  <h2 id="primera-conexion--organizar">Organizar con carpetas</h2>
+  <p>Las conexiones se agrupan en carpetas (Producción, Pruebas, un cliente, un proyecto). Las carpetas son
+  <strong>solo organización</strong>: nunca cambian qué conexión está activa ni contra cuál se ejecuta.</p>
+</article>
+
+<article class="topic" id="la-ventana" data-title="La ventana: módulos y pestañas">
+  <h1>La ventana: módulos y pestañas</h1>
+  <p class="lead">Una barra lateral con cinco módulos —uno a la vez—, pestañas al centro y un panel abajo.
+  Todo lo que arrastres o pliegues se recuerda entre sesiones.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/sidebar-modules.png" alt="Barra lateral con el menú de módulos arriba: el ícono de bases activo, y sobre cada ícono el contador de coincidencias de la búsqueda escrita abajo; el árbol filtrado muestra la carpeta Producción abierta con la única conexión que coincide"></div>
+    <figcaption>Los contadores sobre cada ícono dicen en qué módulo está lo que buscás.</figcaption>
+  </figure>
+
+  <h2 id="la-ventana--modulos">Los cinco módulos</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Módulo</th><th>Para qué</th></tr>
+    <tr><td>Conexiones</td><td>Bases de datos: explorar el esquema y correr consultas</td></tr>
+    <tr><td>SSH</td><td>Servidores remotos: abrir una terminal o transferir archivos</td></tr>
+    <tr><td>Git</td><td>Repositorios: ver cambios, ramas y trabajar con los agentes</td></tr>
+    <tr><td>Notas</td><td>Tu base de conocimiento cifrada: runbooks y apuntes</td></tr>
+    <tr><td>HTTP</td><td>Colecciones de peticiones: probar y guardar endpoints</td></tr>
+  </table></div>
+  <p>Se ve <strong>uno a la vez</strong>, así que el que estás usando se queda con toda la altura en vez de
+  la franja que le dejaban los otros apilados.</p>
+
+  <h2 id="la-ventana--buscar">Una sola búsqueda para todos</h2>
+  <p>La caja de arriba filtra los cinco módulos a la vez, y cada ícono muestra <strong>cuántas
+  coincidencias</strong> tiene. Es lo que evita tener que decidir de antemano en cuál buscar algo que
+  recordás nada más que por el nombre.</p>
+
+  <h2 id="la-ventana--pestanas">Pestañas y paneles</h2>
+  <ul>
+    <li>Las <strong>pestañas</strong> están rotuladas por tipo (SQL, REDIS, HTTP, nota, terminal, repositorio) y cada una de SQL se vincula a una conexión desde su propio selector — nunca como efecto colateral de navegar la barra lateral. Se arrastran para reordenarlas y se cierran con la ✕ o con el <strong>clic central de la rueda</strong>, como en VS Code.</li>
+    <li>El <strong>panel inferior</strong> tiene Resultados y Consola (más DBMS_OUTPUT y el plan de ejecución cuando hay algo que mostrar); se arrastra para cambiarle el alto.</li>
+    <li>La <strong>barra del editor</strong> es una sola fila de íconos: a la izquierda lo que se aprieta (guardar, ejecutar, explicar, refrescar), a la derecha contra qué corre la pestaña (esquema y conexión) y el chat. Lo que hace cada botón —y su atajo— está en su tooltip.</li>
+    <li>La <strong>barra lateral</strong> se arrastra para cambiarle el ancho y se oculta entera dejando una columna de íconos. Ancho, módulo abierto y alto del editor quedan guardados entre sesiones.</li>
+    <li>Los cinco árboles de la barra (conexiones, SSH, Git, notas y HTTP) hablan igual: <strong>ícono por tipo</strong> —carpeta, motor de base, servidor, repositorio, rama, nota, método HTTP—, <strong>líneas guía</strong> por nivel y un botón en la cabecera para <strong>plegar o desplegar todo</strong>. El <strong>clic derecho</strong> en cualquier fila, o en el espacio vacío, abre su menú con todas las acciones (cambiar nombre, duplicar, mover a otra carpeta, copiar, borrar…); el botón <strong>⋯</strong> que aparece al pasar por encima abre el mismo. Se maneja también con el teclado: flechas, Enter y Esc.</li>
+  </ul>
+</article>
+
+<!-- ------------------------------------------------------ BASES DE DATOS -->
+<article class="topic" id="bases-esquema" data-title="Explorar el esquema">
+  <h1>Explorar el esquema</h1>
+  <p class="lead">Seis motores con el mismo árbol, el mismo editor y la misma grilla: Oracle, PostgreSQL,
+  SQLite, SQL Server, Redis y MongoDB.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/schema-tree.png" alt="Árbol de esquema: tablas, procedures, functions, triggers y packages agrupados en categorías plegables, con buscador arriba"></div>
+    <figcaption>El árbol busca también dentro de procedures, functions, triggers y packages — no solo tablas.</figcaption>
+  </figure>
+
+  <h2 id="bases-esquema--categorias">Qué muestra el árbol</h2>
+  <p>Conexión → esquema → categorías. Las tablas van en su propia categoría plegable y siempre ordenadas
+  alfabéticamente (probado contra un esquema real de 342 tablas); al lado están Procedures, Functions,
+  Triggers y Packages, cada una con su contador.</p>
+
+  <h2 id="bases-esquema--buscar">Buscar dentro del esquema</h2>
+  <p>El filtro de arriba del árbol no se limita a los nombres de tabla: encuentra también procedures,
+  functions, triggers y packages. Es la diferencia entre buscar <code>FACTURA</code> y encontrar la tabla,
+  o encontrar además el <code>PR_FACT_ACTUALIZAR</code> que es lo que en realidad buscabas.</p>
+
+  <h2 id="bases-esquema--ddl">Ver y exportar el DDL</h2>
+  <ul>
+    <li>Clic en un procedure, function, trigger o package abre su <strong>DDL</strong> en un visor.</li>
+    <li>Desde el propio árbol se exporta el DDL de <strong>un objeto</strong> o de <strong>un esquema entero</strong>.</li>
+    <li>Doble clic en una tabla inserta una consulta contra ella en el editor activo.</li>
+  </ul>
+  <p>El visor trae el DDL tal como lo devuelve el motor, con el mismo resaltado del editor. Dentro:
+  <strong>Ctrl+F</strong> busca, <strong>Ajustar</strong> alterna entre cortar las líneas largas al ancho del
+  panel o dejarlas correr con scroll horizontal, <strong>Copiar</strong> se lo lleva al portapapeles y
+  <strong>Exportar</strong> lo guarda como <code>.sql</code>. Abajo dice cuántas líneas y cuánto pesa, para
+  saber si lo que se ve es todo. Se cierra con <strong>Esc</strong> o clic afuera.</p>
+
+  <div class="note tip"><span class="lbl">Consejo</span><p>Si el esquema tiene cientos de objetos, restringí
+  qué esquemas escanea la conexión desde su diálogo de configuración: el escaneo completo de un catálogo
+  grande es lo único que tarda de verdad en todo el módulo.</p></div>
+</article>
+
+<article class="topic" id="bases-consultas" data-title="Escribir y ejecutar consultas">
+  <h1>Escribir y ejecutar consultas</h1>
+  <p class="lead">Autocompletado que entiende dónde está el cursor, 46 atajos de expansión y ejecución con
+  streaming statement por statement.</p>
+
+  <h2 id="bases-consultas--autocompletado">Autocompletado con contexto</h2>
+  <p>El autocompletado entiende <em>dónde</em> está el cursor: propone tablas después de <code>FROM</code>,
+  columnas acotadas a las tablas que la consulta realmente referencia después de <code>SELECT</code> o
+  <code>WHERE</code>, y resuelve alias al escribir un punto.</p>
+  <div class="codewrap"><pre><code>SELECT c.<span class="c">▮</span>            <span class="c">-- columnas de CLIENTES, porque c es su alias</span>
+FROM   SGCPRO.CLIENTES c
+JOIN   <span class="c">▮</span>             <span class="c">-- propone el JOIN completo desde la clave foránea</span></code></pre></div>
+  <p><kbd>Ctrl+Espacio</kbd> lo fuerza donde no se abre solo, y <kbd>Tab</kbd> acepta la sugerencia en gris.</p>
+
+  <h2 id="bases-consultas--atajos">Atajos de expansión</h2>
+  <p>Trae <strong>46 atajos comunes</strong> (hasta 64 según el motor). Escribí las tres letras y
+  <kbd>Enter</kbd>:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Atajo</th><th>Qué inserta</th></tr>
+    <tr><td><code>sel</code></td><td><code>SELECT … FROM … WHERE …</code> con los huecos para tabular entre ellos</td></tr>
+    <tr><td><code>in</code> · <code>bet</code> · <code>like</code></td><td>Las condiciones que uno escribe mal justo cuando las necesita</td></tr>
+    <tr><td><code>ljoin</code> · <code>sjoin</code></td><td><code>LEFT JOIN</code>, y el auto-join de una tabla consigo misma para jerarquías</td></tr>
+    <tr><td><code>nulls</code> · <code>minmax</code></td><td>Perfilar una columna que no conocés: cuántos nulos, mínimo, máximo y distintos</td></tr>
+    <tr><td><code>cols</code> · <code>size</code> · <code>act</code></td><td>Catálogo, tamaño de tablas y consultas en curso — con la sintaxis de <em>tu</em> motor</td></tr>
+    <tr><td><code>tx</code></td><td>Transacción con el manejo de error de cada motor</td></tr>
+  </table></div>
+
+  <h2 id="bases-consultas--ejecutar">Ejecutar</h2>
+  <ul>
+    <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> corre <strong>lo seleccionado</strong>, o la sentencia donde está el cursor si no hay selección.</li>
+    <li><strong>Bloque</strong> (<kbd>Ctrl+Shift+↵</kbd>) corre un bloque PL/SQL completo, con <code>DBMS_OUTPUT</code> capturado.</li>
+    <li>Los resultados llegan <strong>en vivo</strong>, statement por statement, y se pueden <strong>cancelar en caliente</strong>. Un script de varias sentencias abre un resultado por cada una, en pestañas que se cierran de a una o todas juntas.</li>
+    <li><strong>Ejecutar no bloquea nada.</strong> Mientras una consulta larga corre podés ejecutar otra: en otra pestaña, contra otra conexión, o <strong>en la misma pestaña</strong> — la corrida nueva agrega sus «Resultado N» detrás de los anteriores en vez de pisarlos. Resultados, consola y cancelación son de la pestaña que los pidió, y la que está trabajando muestra un anillo girando en su solapa, así que se ve desde cualquier otra.</li>
+    <li><strong>Auto-commit</strong> es el ícono del rayo de la barra, encendido cuando está activo: un clic pasa a transacción manual, y ahí aparecen <strong>Commit</strong> y <strong>Rollback</strong> junto al aviso «Transacción abierta». Nunca hay ambigüedad sobre si un cambio quedó confirmado — y no hay botones apagados esperando el 1 % de las veces en que sirven.</li>
+  </ul>
+
+  <div class="note tip"><span class="lbl">Dónde está cada cosa</span><p>Una sola barra sobre el editor.
+  A la izquierda lo que se aprieta —guardar, ejecutar, bloque, cancelar, Explain, Explain Analyze,
+  refrescar— más los interruptores de auto-commit y <code>DBMS_OUTPUT</code>; a la derecha el esquema, la
+  conexión y el chat. Son íconos: el nombre, el atajo y el porqué de cada uno están en su tooltip, y el
+  único que conserva su rótulo es <strong>Ejecutar</strong>. En
+  <strong>Configuración → Apariencia → Barra de acciones</strong> se elige si Ejecutar lleva su nombre
+  («Normal»), si no lo lleva nadie («Compacta») o si la barra directamente no se muestra («Oculta»; los
+  atajos siguen funcionando). El resultado de la última ejecución vive al pie del panel de resultados,
+  pegado a la grilla que describe.</p></div>
+
+  <h2 id="bases-consultas--consola">La consola de ejecución</h2>
+  <p>Pestaña propia junto a Resultados, estilo DataGrip: registra cada sentencia del script con
+  su texto completo y una línea de resultado con hora — <em>N filas obtenidas en 412ms</em>,
+  <em>completado en 1h 9m 26s 452ms</em>, o el error completo sin recortar. La duración se escribe en
+  horas, minutos y segundos en cuanto pasa del segundo; el dato exacto en milisegundos queda en el
+  tooltip. Se activa sola en cualquier script de más
+  de una sentencia, y es un <strong>log corrido de la sesión</strong>: sigue estando lo que corriste hace
+  media hora, hasta que aprietes «Limpiar consola».</p>
+  <p>El SQL se muestra <strong>con los mismos colores del editor</strong> (palabras clave, tipos, literales,
+  comentarios y parámetros bind), y lo que falló se ve sin leer: barra roja al costado de la entrada, el
+  mensaje en un bloque propio con el código del motor —<code>ORA-01843</code>, <code>PLS-00201</code>—
+  destacado, y la cuenta de cuántos hay con error en la cabecera.</p>
+
+  <div class="note"><span class="lbl">Es el único registro</span><p>La consola reemplazó al historial de
+  consultas que había hasta la 2.4.0 en una solapa aparte: decía lo mismo con menos contexto y en otra
+  pantalla. La app ya no guarda en disco las sentencias que ejecutás, y al actualizar <strong>borra las
+  que había guardado antes</strong> — la consola vive en memoria y arranca vacía en cada sesión.</p></div>
+
+  <div class="note warn"><span class="lbl">Production Guard</span><p>En una conexión marcada como
+  producción, un <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code> no se ejecuta sin una
+  confirmación que dice cuántas filas va a tocar.</p></div>
+
+  <div class="note"><span class="lbl">Lo único que espera</span><p>Con una <strong>transacción abierta</strong>
+  (auto-commit apagado) las corridas de esa conexión se hacen de a una. No es una limitación de la interfaz:
+  con auto-commit apagado el motor reserva <em>una sola</em> conexión para esa base, así que dos corridas no
+  irían en paralelo — irían intercaladas en la misma sesión y dentro de la misma transacción, donde un Commit
+  desde cualquier lado confirma el trabajo del otro. La barra de estado lo dice y sugiere la salida: esperar,
+  o hacer Commit/Rollback.</p></div>
+
+  <div class="note warn"><span class="lbl">Paginación y conexión compartida</span><p>El motor guarda
+  <strong>un cursor pausado por conexión</strong>. Si un resultado quedó con «Cargar más» y ejecutás otra
+  consulta <em>en esa misma conexión</em>, ese cursor se cierra: el resultado pasa a decir «paginación
+  cerrada» en vez de ofrecer un botón que ya no funciona. Para seguir leyendo, volvé a ejecutar la consulta —
+  o usá otra conexión para lo que ibas a correr mientras tanto.</p></div>
+
+  <p>Cerrar una pestaña que está ejecutando <strong>cancela</strong> su consulta y se lleva su consola y sus
+  resultados: es la única acción que los deja sin ningún lado donde mostrarse.</p>
+</article>
+
+<article class="topic" id="bases-parametros" data-title="Parámetros">
+  <h1>Parámetros</h1>
+  <p class="lead">Escribí <code>:desde</code> y la app pregunta el valor antes de correr. Nunca entra al
+  texto del SQL: viaja aparte y se enlaza como argumento del driver.</p>
+
+  <h2 id="bases-parametros--usar">Cómo se usan</h2>
+  <div class="codewrap"><pre><code>SELECT * FROM FACTURAS
+ WHERE F_EMISION BETWEEN :desde AND :hasta
+   AND ESTADO = :estado</code></pre></div>
+  <p>Al ejecutar aparece un formulario con un campo por parámetro, con su tipo (texto, número, booleano o
+  <code>NULL</code>). Los valores quedan <strong>recordados por pestaña</strong>, así que reejecutar la
+  misma consulta con los mismos valores es apretar <kbd>⌘↵</kbd> dos veces.</p>
+
+  <h2 id="bases-parametros--sintaxis">Qué reconoce, y qué no</h2>
+  <p>Reconoce <code>:nombre</code> en los cuatro motores SQL, <code>$1</code> en PostgreSQL y <code>?</code>
+  en SQLite/SQL&nbsp;Server. Y —más importante— reconoce lo que <em>no</em> es un parámetro: el
+  <code>:=</code> de PL/SQL, los <code>::</code> de un cast, el <code>:NEW</code>/<code>:OLD</code> de un
+  trigger, y todo lo que esté dentro de un literal, un comentario o un <code>CREATE PROCEDURE</code>.</p>
+
+  <div class="note"><span class="lbl">Por qué importa</span><p>Un parámetro que se concatena es una
+  inyección esperando a que alguien pegue un apóstrofo. Acá el texto del SQL que viaja al motor es siempre
+  el que escribiste, con los valores como argumentos separados.</p></div>
+</article>
+
+<article class="topic" id="bases-editar" data-title="Editar filas desde la grilla">
+  <h1>Editar filas desde la grilla</h1>
+  <p class="lead">Doble clic en una celda y la app escribe el <code>UPDATE</code> con su <code>WHERE</code>
+  por clave primaria. El cambio queda pendiente hasta que lo mandás.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/grid-edit.png" alt="Grilla de resultados con una celda editada: abajo la barra de cambios pendientes con la vista previa del UPDATE que se va a ejecutar"></div>
+    <figcaption>La barra inferior dice cuántos cambios hay sin guardar, y deja ver el SQL antes de mandarlo.</figcaption>
+  </figure>
+
+  <h2 id="bases-editar--flujo">Cómo funciona</h2>
+  <ol class="steps">
+    <li><strong>Doble clic</strong> en la celda y corregís el dato. El editor depende del tipo: selector de fecha y hora para un timestamp, desplegable para un booleano, campo numérico para un número — con <code>NULL</code> como botón aparte, porque «sin dato» y «texto vacío» no son lo mismo.</li>
+    <li>El cambio queda <strong>pendiente y marcado</strong>. Esa demora es a propósito: te deja ver el SQL exacto antes, cambiar de opinión, y mandar varios cambios juntos.</li>
+    <li><strong>Ver el SQL</strong> muestra la vista previa de lo que se va a ejecutar.</li>
+    <li><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> los manda. <strong>Descartar</strong> los tira.</li>
+  </ol>
+
+  <h2 id="bases-editar--regla">La regla que gobierna la función</h2>
+  <p><strong>Nunca escribir una fila que no se pueda identificar sin ninguna duda</strong>, porque un
+  <code>WHERE</code> de más no se deshace con Ctrl+Z. Por eso solo se ofrece editar cuando:</p>
+  <ul>
+    <li>la consulta sale de <strong>una</strong> tabla —sin <code>JOIN</code>, sin <code>GROUP BY</code>, sin subconsultas—;</li>
+    <li>esa tabla tiene <strong>clave primaria</strong>;</li>
+    <li>y la clave completa está en el resultado.</li>
+  </ul>
+  <p>Cuando no se puede, la grilla <strong>te dice por qué</strong> en vez de esconder el botón.</p>
+
+  <h2 id="bases-editar--transaccion">La transacción</h2>
+  <p>Cada <code>UPDATE</code> corre en una transacción y tiene que afectar <strong>exactamente una
+  fila</strong>: si afecta otra cantidad se revierte el lote entero y te lo explica —dos filas con la misma
+  clave significa que la clave no era única, y una promesa rota ahí vale más que el cambio. Los valores
+  viajan como parámetros, nunca concatenados.</p>
+
+  <h2 id="bases-editar--consola">Queda en la consola, con los valores</h2>
+  <p>Guardar deja en la <strong>Consola</strong> de esa pestaña las sentencias <em>exactas</em> que se
+  ejecutaron, con su duración y cuántas filas tocaron, marcadas como <strong>«Edición de la grilla»</strong>
+  para distinguirlas de lo que escribiste vos. Va una sola entrada por guardado, porque el lote entero es
+  una transacción: o entraron todas o no entró ninguna. Si el lote se revirtió, la entrada lo dice con el
+  error del motor.</p>
+  <p>Debajo de cada sentencia van <strong>sus valores</strong>: los <code>UPDATE</code> viajan
+  parametrizados, así que solos dirían qué columna se tocó pero no con qué. Cada bind sale con su número, su
+  columna y su valor, y al final el <strong>valor anterior</strong> — que no está en ninguna sentencia y es
+  lo único que te deja deshacer a mano.</p>
+  <div class="codewrap"><pre><code>UPDATE SGCPRO.FUECICLO SET LECT_ACT = :1 WHERE NIS_RAD = :2 AND SEC_NIS = :3
+  :1 LECT_ACT = '1543'   :2 NIS_RAD = '88213'   :3 SEC_NIS = '1'   (antes '1200')</code></pre></div>
+  <div class="note"><span class="lbl">Por qué importa</span><p>Es la escritura más fácil de hacer sin
+  darse cuenta —un doble clic en una celda— y era la única de la aplicación que no dejaba rastro. Ahora
+  «qué le hice yo a esta tabla hoy» se responde mirando la consola, igual que con cualquier otra
+  ejecución.</p></div>
+</article>
+
+<article class="topic" id="bases-copiar" data-title="Copiar y exportar resultados">
+  <h1>Copiar y exportar resultados</h1>
+  <p class="lead">Seleccionás filas y salen como CSV, <code>INSERT</code> o <code>UPDATE</code> listas para
+  pegar en otro entorno — con la tabla real y las fechas convertidas al motor de destino.</p>
+
+  <h2 id="bases-copiar--anchos">El ancho de las columnas</h2>
+  <p>Cada columna nace <strong>del ancho de lo que trae</strong>: la de un id de siete dígitos es angosta y
+  la de una descripción entra entera, en vez de que todas midan lo mismo y media tabla termine cortada
+  en <code>…</code>.</p>
+  <p>La línea que separa dos columnas es también el agarre: <strong>arrastrala</strong> para cambiar el ancho
+  —se marca al pasar el mouse por encima— y <strong>doble clic</strong> la ajusta a su contenido. Lo que
+  muevas a mano se conserva al reejecutar la consulta o al traer más filas; vuelve al ancho automático
+  cuando el resultado trae otras columnas.</p>
+
+  <h2 id="bases-copiar--seleccion">Seleccionar filas</h2>
+  <p>Como en cualquier explorador, y con los mismos gestos que el panel SFTP: clic simple deja marcada esa
+  fila, <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+clic agrega o quita una suelta sin perder el resto,
+  <kbd>Shift</kbd>+clic marca el <strong>rango</strong> desde la última fila tocada, y
+  <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+clic <em>suma</em> ese rango a lo que ya había.
+  <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>A</kbd> marca todas las filas cargadas y <kbd>Esc</kbd> limpia; un clic
+  simple sobre la única fila marcada también la desmarca.</p>
+  <div class="note"><span class="lbl">Filas, no letras</span><p>Con un modificador apretado la grilla marca
+  <strong>filas</strong>: no deja que el navegador extienda su selección de texto, que era lo que pintaba las
+  letras de azul y tapaba el resaltado. Sin modificadores el texto se sigue pudiendo seleccionar arrastrando
+  dentro de una celda, para copiar un valor suelto a mano.</p></div>
+
+  <h2 id="bases-copiar--sql">Copiar filas como SQL que se puede correr</h2>
+  <p>La <strong>tabla y el esquema son los reales</strong>: la app los lee de dónde salió la consulta, no
+  del nombre de la conexión. Y las <strong>fechas se convierten</strong> con el tipo real de cada columna,
+  que declara el driver para ese resultado:</p>
+  <div class="codewrap"><pre><code>INSERT INTO "SGCPRO"."FACTURAS" ("ID", "FECHA_EMISION", "TOTAL")
+VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00);</code></pre></div>
+  <div class="tablewrap"><table>
+    <tr><th>Motor</th><th>Cómo escribe una fecha</th></tr>
+    <tr><td>Oracle</td><td><code>TO_DATE(…)</code>, o <code>TO_TIMESTAMP(…)</code> si la columna tiene fracción de segundo (que <code>TO_DATE</code> truncaría sin avisar)</td></tr>
+    <tr><td>PostgreSQL</td><td><code>TIMESTAMP '…'</code> / <code>DATE '…'</code></td></tr>
+    <tr><td>SQL Server</td><td><code>CAST(… AS datetime2)</code> / <code>CAST(… AS date)</code></td></tr>
+    <tr><td>SQLite</td><td>El literal de texto: no tiene tipo fecha, guarda el ISO tal cual</td></tr>
+  </table></div>
+  <p>Sin esto la fecha viajaba como texto ISO y Oracle la rechazaba con <code>ORA-01861</code> salvo que el
+  <code>NLS_DATE_FORMAT</code> de quien la corriera coincidiera de casualidad — que es justo lo que una
+  sentencia generada no puede dar por sentado.</p>
+
+  <div class="note"><span class="lbl">Nota</span><p>Cuando la consulta <strong>no</strong> sale de una sola
+  tabla —un <code>JOIN</code>, una vista, una subconsulta— el nombre queda como <code>tabla</code> a
+  propósito: que se vea que hay que completarlo es mejor que un nombre plausible que no existe. Si sale de
+  una sola tabla que el catálogo no conoce —un <strong>sinónimo</strong>, una tabla al otro lado de un
+  <strong>DB link</strong>, o una conexión cuyo catálogo todavía no se leyó— el nombre sale igual, escrito
+  tal cual lo escribiste en el <code>SELECT</code>; lo que no se puede ahí es editar la grilla, porque sin
+  catálogo no hay clave primaria que garantice que el <code>UPDATE</code> toca una sola fila.</p></div>
+
+  <h2 id="bases-copiar--update">Copiar como UPDATE</h2>
+  <p>Sale un <code>UPDATE</code> por fila, con un <code>WHERE</code> que matchea <strong>todas</strong> las
+  columnas como default conservador, y un comentario arriba que te pide ajustarlo a la clave primaria real
+  antes de correrlo.</p>
+
+  <h2 id="bases-copiar--exportar">Exportar a archivo</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Formato</th><th>Qué exporta</th></tr>
+    <tr><td>CSV · JSON · XLSX</td><td>El resultado de la consulta, con diálogo nativo para elegir dónde</td></tr>
+    <tr><td>DDL</td><td>De un objeto puntual o de un esquema completo, desde el árbol</td></tr>
+    <tr><td>Configuración de conexión</td><td>Sin contraseñas: se redactan antes de escribir el archivo</td></tr>
+  </table></div>
+</article>
+
+<article class="topic" id="bases-planes" data-title="Planes de ejecución e historial">
+  <h1>Planes de ejecución e historial</h1>
+  <p class="lead">EXPLAIN sobre lo que estás mirando, y un registro por conexión de todo lo que corriste.</p>
+
+  <h2 id="bases-planes--explain">EXPLAIN y EXPLAIN ANALYZE</h2>
+  <p>Corren sobre <strong>lo seleccionado</strong>, o sobre la sentencia donde está el cursor — no sobre el
+  archivo entero. El plan se dibuja como <strong>árbol visual</strong>, con los escaneos completos de tabla
+  resaltados, que es lo que uno viene a buscar.</p>
+  <div class="note warn"><span class="lbl">Cuidado</span><p><strong>EXPLAIN ANALYZE ejecuta la
+  consulta.</strong> El botón lo dice explícitamente, porque en una sentencia de escritura la diferencia
+  entre EXPLAIN y EXPLAIN ANALYZE es que uno la corre.</p></div>
+
+  <h2 id="bases-planes--linter">Linter</h2>
+  <p>Marca <code>SELECT *</code> como sugerencia visual —no bloquea nada— y pide confirmación antes de un
+  <code>UPDATE</code> o <code>DELETE</code> sin <code>WHERE</code>.</p>
+</article>
+
+<article class="topic" id="bases-redis-mongo" data-title="Redis y MongoDB">
+  <h1>Redis y MongoDB</h1>
+  <p class="lead">No son bases SQL, así que no tienen editor de consultas ni grilla de tabla: tienen su
+  propio explorador, con el mismo árbol y el mismo vault.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ui-redis.png" alt="Redis Browser: lista de claves con su tipo y TTL a la izquierda, y a la derecha el panel de detalle con el valor editable"></div>
+    <figcaption>Redis Browser: lista de claves con tipo y TTL, y detalle editable al costado.</figcaption>
+  </figure>
+
+  <h2 id="bases-redis-mongo--redis">Redis</h2>
+  <ul>
+    <li><strong>Árbol de claves</strong> en la barra lateral con la conexión expandida, y un <strong>Redis Browser</strong> de pestaña completa para trabajar en serio.</li>
+    <li><strong>Edición en línea</strong> de strings, hashes, listas, sets, sorted sets y JSON — <strong>preservando el TTL</strong>, que es el error clásico de editar una clave a mano.</li>
+    <li><strong>Consola de comandos</strong> con autocompletado de claves de esa conexión.</li>
+  </ul>
+
+  <h2 id="bases-redis-mongo--mongo">MongoDB</h2>
+  <ul>
+    <li>Explorador de <strong>bases y colecciones</strong>, con la lista de colecciones cacheada por conexión.</li>
+    <li>Los documentos se ven como <strong>tabla</strong> —con las claves como columnas— o como JSON, y se editan en línea.</li>
+    <li>El contador de documentos de una colección se pide aparte: en una colección grande contar es caro y no tiene por qué demorar la lista.</li>
+  </ul>
+</article>
+
+<!-- --------------------------------------------------------------- HTTP -->
+<article class="topic" id="http-colecciones" data-title="Colecciones y peticiones">
+  <h1>Colecciones y peticiones</h1>
+  <p class="lead">Colecciones estilo Postman, guardadas en el mismo vault cifrado que tus conexiones — no
+  en un archivo de configuración ni en la nube de nadie.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ui-http.png" alt="Módulo HTTP: árbol de colecciones con una carpeta de autenticación y peticiones rotuladas por método, la petición POST con su cuerpo JSON, y abajo la respuesta 201 Created con su tiempo y tamaño"></div>
+    <figcaption>Árbol de colecciones, petición y respuesta en la misma pantalla.</figcaption>
+  </figure>
+
+  <h2 id="http-colecciones--estructura">Colecciones, carpetas y peticiones</h2>
+  <p>El árbol es colección → carpetas → peticiones, y cada petición se rotula con su método. Se reordena
+  arrastrando, y las carpetas anidan tanto como quieras.</p>
+
+  <h2 id="http-colecciones--rapidas">Peticiones rápidas</h2>
+  <p>Para probar un endpoint sin crear ni nombrar ninguna colección. Si al final servía,
+  <strong>Guardar en…</strong> la mueve a la colección que elijas. Todas las peticiones rápidas comparten
+  un mismo hilo de chat con el agente, que es lo correcto para pruebas sueltas que no son «sobre» nada en
+  particular.</p>
+
+  <h2 id="http-colecciones--curl">Pegar un «Copy as cURL»</h2>
+  <p>Menú de una colección → <strong>Pegar un comando cURL…</strong> y queda una petición lista para editar,
+  con método, URL, headers y cuerpo. Es la forma más rápida de traer algo que ya funciona en el navegador.</p>
+  <p>Con una petición ya abierta hay un segundo camino, el de la petición rápida:
+  <strong>✦ → Escribir la petición…</strong>, pegar ahí el comando y <strong>Importar tal cual</strong>. Se
+  traduce con el mismo lector, <strong>sin pasar por el agente</strong>: instantáneo, sin gastar cuota y sin
+  que nadie «mejore» el comando — un <code>curl</code> copiado del navegador hay que reproducirlo exacto o
+  deja de reproducir el problema que estás mirando. El botón de al lado, <strong>Pedirle un cambio</strong>,
+  es para cuando además querés modificarlo: «este mismo cURL pero contra staging y sin el header de
+  traza».</p>
+
+  <h2 id="http-colecciones--codigo">Generar código</h2>
+  <p>Cualquier petición se convierte en cURL, HTTP crudo, Go, JavaScript, Python, Java, C#, PHP, Ruby o
+  PowerShell, con las variables resueltas y <strong>los secretos tapados por defecto</strong>.</p>
+</article>
+
+<article class="topic" id="http-importar" data-title="Importar y exportar Postman">
+  <h1>Importar y exportar Postman</h1>
+  <p class="lead">Formato v2.1, con ida y vuelta: lo que entra vuelve a salir intacto, incluso lo que esta
+  versión todavía no ejecuta.</p>
+
+  <h2 id="http-importar--importar">Importar</h2>
+  <p>El ícono de importar de la cabecera abre un solo diálogo para todo: pegás algo o soltás archivos, y la
+  aplicación <strong>reconoce sola</strong> qué es y te lo dice antes de escribir nada.</p>
+  <ol class="steps">
+    <li><strong>Pegar</strong>: un comando cURL, una petición escrita en texto plano
+      (<code>POST /v1/pedidos HTTP/1.1</code> con sus headers y su cuerpo), una URL suelta, o directamente el
+      JSON de una colección.</li>
+    <li><strong>Soltar archivos o una carpeta</strong>: colecciones de Postman (v2.0 y v2.1), entornos, o el
+      volcado completo de datos de Postman, que trae colecciones y entornos juntos. Una carpeta se recorre
+      entera; lo que no es una colección se saltea sin ruido.</li>
+    <li>Una colección entra completa: peticiones, carpetas, variables, autenticación, descripciones y
+      scripts. Lo que esta versión todavía no ejecuta <strong>se guarda igual</strong>, así que vuelve a
+      salir intacto al exportar.</li>
+    <li>Al terminar te dice <strong>qué entró, uno por uno</strong>, y con qué salvedades — <em>al
+      importar</em>, no cuando la petición falla tres días después.</li>
+  </ol>
+  <div class="note tip"><span class="lbl">También en la barra de URL</span><p>Pegar un
+  <strong>«Copy as cURL»</strong> directamente en la barra de URL de una petición la importa entera —método,
+  headers y cuerpo— en vez de dejar cien caracteres de shell adentro del campo. Lo que no empieza con
+  <code>curl</code> se pega como texto, como siempre.</p></div>
+  <div class="note"><span class="lbl">Lo que no entra</span><p>OpenAPI/Swagger, HAR e Insomnia no se
+  importan. Un archivo que no se reconoce te dice <strong>por qué</strong>: una colección exportada con el
+  formato viejo de Postman (v1), por ejemplo, avisa que hay que volver a exportarla como v2.1.</p></div>
+
+  <h2 id="http-importar--exportar">Exportar</h2>
+  <p>La colección sale en el mismo formato v2.1, así que se puede volver a abrir en Postman o en newman.</p>
+  <div class="note warn"><span class="lbl">Los secretos no viajan</span><p>Una variable marcada como
+  secreta sale <strong>declarada y vacía</strong>, y el token de OAuth&nbsp;2.0 directamente no sale. Un
+  archivo de colección termina en un chat y en un repositorio; el que lo reciba tiene que poner sus propias
+  credenciales.</p></div>
+</article>
+
+<article class="topic" id="http-historial" data-title="Historial y favoritas">
+  <h1>Historial y favoritas</h1>
+  <p class="lead">Todo lo que mandaste, de lo más nuevo a lo más viejo; y las dos colecciones con las que
+  estás trabajando hoy, arriba de las otras veinte.</p>
+
+  <h2 id="http-historial--historial">Historial de peticiones</h2>
+  <p>La barra lateral del módulo tiene dos secciones: <strong>Colecciones</strong> e
+  <strong>Historial</strong>. El historial junta lo que se mandó desde toda la aplicación —guardado o no—
+  agrupado por día, con el método, el status y cuánto tardó. El buscador de arriba lo filtra por URL o por
+  nombre de la petición.</p>
+  <ul>
+    <li>Un clic en una entrada de una petición <strong>guardada</strong> abre esa petición.</li>
+    <li>Un clic en una <strong>petición rápida</strong> abre una pestaña nueva con su método y su URL.</li>
+    <li>La ✕ de la fila borra esa entrada; el ícono de la cabecera vacía el historial entero.</li>
+  </ul>
+  <div class="note warn"><span class="lbl">No guarda headers ni cuerpo</span><p>Y es a propósito: un
+  historial con el <code>Authorization</code> de cada envío es un archivo de tokens que nadie pidió tener.
+  Por eso una petición rápida solo se puede reabrir con su método y su URL — lo demás no está guardado en
+  ningún lado.</p></div>
+
+  <h2 id="http-historial--favoritas">Colecciones favoritas</h2>
+  <p>La estrella de una colección —en la fila, al pasar el mouse, o en su menú contextual— la fija arriba
+  de la lista. Entre varias favoritas manda <strong>la última que marcaste</strong>, que es la que estás
+  usando ahora; no hay que ordenarlas a mano ni deshacer ese orden cuando cambia el proyecto.</p>
+</article>
+
+<article class="topic" id="http-variables" data-title="Variables y entornos">
+  <h1>Variables y entornos</h1>
+  <p class="lead">Marcadores <code>{{así}}</code> en la URL, los headers, el cuerpo y la autenticación, con
+  tres niveles de precedencia.</p>
+
+  <h2 id="http-variables--usar">Cómo se usan</h2>
+  <p>La precedencia es <strong>dinámicas → entorno → colección</strong>, y una variable puede usar otra:</p>
+  <div class="codewrap"><pre><code>protocol = https
+host     = api.ejemplo.com
+baseUrl  = {{protocol}}://{{host}}      <span class="c">-- se resuelve en cadena</span>
+
+GET {{baseUrl}}/clientes/:id?tenant={{tenant}}</code></pre></div>
+  <p>Lo que ningún nivel define <strong>se avisa antes de mandar</strong>, en vez de salir con las llaves
+  adentro y fallar del otro lado.</p>
+
+  <h2 id="http-variables--entornos">Entornos</h2>
+  <p>Un entorno es un juego de variables (desarrollo, staging, producción). Cambiar de entorno cambia contra
+  qué corre la misma petición, sin tocarla. Cada entorno tiene además <strong>su propio frasco de
+  cookies</strong>: el login de una petición vale para las siguientes, y probar producción y desarrollo a la
+  vez no mezcla las sesiones.</p>
+
+  <h2 id="http-variables--secretas">Variables secretas</h2>
+  <p>Marcar una variable como secreta hace tres cosas: se cifra en el vault, se tapa en la interfaz y en el
+  historial, y <strong>no sale en el export</strong> ni en el código generado.</p>
+</article>
+
+<article class="topic" id="http-auth" data-title="Autenticación">
+  <h1>Autenticación</h1>
+  <p class="lead">Petición → carpeta → colección, igual que Postman: lo que no define la petición lo hereda
+  de arriba.</p>
+
+  <h2 id="http-auth--tipos">Tipos soportados</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Tipo</th><th>Detalle</th></tr>
+    <tr><td>Basic</td><td>Usuario y contraseña</td></tr>
+    <tr><td>Bearer</td><td>Token en el header <code>Authorization</code></td></tr>
+    <tr><td>API Key</td><td>En header o en query, a elección</td></tr>
+    <tr><td>JWT</td><td>HS256 / HS384 / HS512, firmado en el momento</td></tr>
+    <tr><td>Digest</td><td>RFC&nbsp;7616</td></tr>
+    <tr><td>AWS Signature v4</td><td>Con región y servicio</td></tr>
+    <tr><td>OAuth&nbsp;2.0</td><td>Incluido el flujo de aplicación nativa (RFC&nbsp;8252)</td></tr>
+  </table></div>
+
+  <h2 id="http-auth--oauth">OAuth 2.0 en una app de escritorio</h2>
+  <p>El flujo usa el <strong>navegador del sistema</strong> —no un WebView incrustado, que es donde el
+  usuario no puede verificar la barra de direcciones—, captura el redirect en un <strong>puerto de
+  loopback</strong> y usa <strong>PKCE&nbsp;S256 siempre</strong>, no solo cuando el proveedor lo exige.</p>
+  <div class="note"><span class="lbl">Nota</span><p>El servidor de loopback vive solo mientras dura el
+  flujo. En Windows puede disparar el aviso del Firewall la primera vez.</p></div>
+</article>
+
+<article class="topic" id="http-firmas" data-title="Firmar sin escribir scripts">
+  <h1>Firmar sin escribir scripts</h1>
+  <p class="lead">Las firmas HMAC se <em>declaran</em> en vez de programarse: no hay motor de JavaScript
+  adentro de la app.</p>
+
+  <h2 id="http-firmas--por-que">Por qué no hay scripts</h2>
+  <p>Incorporar un motor de scripts costaba <strong>+19,8&nbsp;MB</strong> contra un techo de 80 para todo
+  el binario. Lo que la gente realmente escribía en esos scripts era casi siempre lo mismo: un timestamp,
+  un HMAC y un base64. Eso se declara.</p>
+
+  <h2 id="http-firmas--declarar">Declarar la firma</h2>
+  <p>Cada variable calculada tiene una operación, una entrada (con marcadores adentro) y opcionalmente una
+  clave. Se encadenan entre sí:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Nombre</th><th>Operación</th><th>Entrada</th><th>Clave</th></tr>
+    <tr><td><code>sello</code></td><td>texto</td><td><code>{{$timestamp}}</code></td><td>—</td></tr>
+    <tr><td><code>firma</code></td><td>HMAC-SHA256 (hex)</td><td><code>{{método}}{{sello}}{{cuerpo}}</code></td><td><code>{{apiSecret}}</code></td></tr>
+  </table></div>
+  <div class="codewrap"><pre><code>Authorization: HMAC {{apiKey}}:{{firma}}
+X-Timestamp:   {{sello}}</code></pre></div>
+  <p>Están HMAC, SHA, base64 y texto. Lo que sale de una variable calculada queda
+  <strong>marcado como secreto</strong>, así que no aparece en el historial ni en el export.</p>
+</article>
+
+<article class="topic" id="http-runner" data-title="Correr toda la colección">
+  <h1>Correr toda la colección</h1>
+  <p class="lead">Todas las peticiones en orden y de a una, con avance en vivo y resumen de pasa/falla.</p>
+
+  <h2 id="http-runner--orden">En orden y de a una</h2>
+  <p>Una suite casi siempre es una secuencia: login, después lo que usa la sesión, después lo que usa el id
+  que devolvió la anterior. Correrlas en paralelo rompería eso. Hay pausa opcional entre peticiones para
+  las APIs con límite de tasa.</p>
+
+  <h2 id="http-runner--pasar">Qué significa «pasó»</h2>
+  <div class="note warn"><span class="lbl">Importante</span><p>Que la petición <strong>salió</strong> y el
+  servidor contestó con un código <strong>menor a 400</strong>. Los scripts de test <em>se guardan y se
+  exportan</em> pero <strong>no se ejecutan acá</strong> — los corre Postman o newman. Decir «3 tests
+  pasaron» sobre scripts que nadie ejecutó sería una mentira con formato de informe.</p></div>
+
+  <h2 id="http-runner--docs">Documentación de la colección</h2>
+  <p><strong>Documentación… → Publicar como nota</strong> genera un documento en el módulo de Notas con las
+  peticiones, sus parámetros y los ejemplos que hayas guardado. Regenerarla <strong>no pisa</strong> lo que
+  editaste a mano: la nota se busca por su id, no por su título, así que podés renombrarla.</p>
+</article>
+
+<!-- -------------------------------------------------------------- NOTAS -->
+<article class="topic" id="notas-escribir" data-title="Escribir y enlazar">
+  <h1>Escribir y enlazar notas</h1>
+  <p class="lead">Los runbooks, los procedimientos y las notas de incidentes viven adentro del vault,
+  cifrados con la misma clave maestra que tus conexiones.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/notes-editor.png" alt="Editor de notas con el Markdown formateado mientras se escribe: títulos grandes, negritas, enlaces entre notas subrayados y etiquetas como pastillas"></div>
+    <figcaption>El Markdown se ve formateado mientras escribís; las marcas aparecen solo en la línea del cursor.</figcaption>
+  </figure>
+
+  <h2 id="notas-escribir--markdown">Markdown que se ve mientras escribís</h2>
+  <p>Títulos, negritas, listas, tablas, citas y bloques de código se formatean en vivo. Las marcas de
+  Markdown aparecen <strong>solo en la línea donde está el cursor</strong>, así que el documento se lee como
+  documento y se edita como texto.</p>
+
+  <h2 id="notas-escribir--enlaces">Enlaces entre notas</h2>
+  <p>Escribí <code>[[Título de la otra nota]]</code> y queda un enlace. No hace falta que la nota exista
+  todavía: el enlace la crea cuando lo seguís. Los enlaces se resuelven por <strong>hash del título</strong>,
+  así que renombrar una nota no rompe los que apuntan a ella.</p>
+
+  <h2 id="notas-escribir--imagenes">Imágenes</h2>
+  <p>Pegá una captura con <kbd>⌘V</kbd> y queda incrustada, <strong>cifrada igual que el texto</strong> —
+  no en una carpeta del disco al lado del vault.</p>
+
+  <div class="note"><span class="lbl">El candado es contra los agentes, no contra vos</span><p>Marcar una
+  nota como <strong>privada</strong> la esconde de forma absoluta del chat y del servidor MCP —el filtro
+  está en la consulta, no en un <code>if</code>— sin dejar de verla vos ni de aparecer en tu grafo.</p></div>
+</article>
+
+<article class="topic" id="notas-ejecutar" data-title="Bloques SQL ejecutables">
+  <h1>Bloques SQL ejecutables</h1>
+  <p class="lead">Un runbook que se ejecuta: el bloque de SQL con la conexión declarada trae su botón
+  <strong>Ejecutar</strong>.</p>
+
+  <h2 id="notas-ejecutar--como">Cómo se escribe</h2>
+  <p>Un bloque de código con el lenguaje <code>sql</code> y el atributo <code>connection</code>:</p>
+  <div class="codewrap"><pre><code>## Sesiones colgadas
+
+Si el portal no responde, primero mirar quién está bloqueando:
+
+```sql connection="SGCPRO"
+SELECT s.sid, s.serial#, s.username, s.status, s.machine
+  FROM v$session s
+ WHERE s.status = 'ACTIVE'
+ ORDER BY s.logon_time DESC;
+```
+
+Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llamar]].</code></pre></div>
+
+  <h2 id="notas-ejecutar--ejecucion">Qué pasa al ejecutar</h2>
+  <ul>
+    <li>Corre contra <strong>tu conexión de verdad</strong>, con el mismo <strong>Production Guard</strong> del editor.</li>
+    <li>El resultado <strong>no se guarda en la nota</strong>: es una consulta, no documentación. La nota describe el procedimiento; los datos son de este momento.</li>
+    <li>Si la conexión declarada ya no existe, el bloque lo dice en vez de correr contra otra.</li>
+  </ul>
+
+  <div class="note tip"><span class="lbl">Consejo</span><p>Es lo que convierte un runbook en algo que la
+  próxima guardia <em>usa</em> en vez de leer y volver a tipear. Poné la consulta exacta, no una descripción
+  de la consulta.</p></div>
+</article>
+
+<article class="topic" id="notas-organizar" data-title="Carpetas, grafo y búsqueda">
+  <h1>Carpetas, grafo y búsqueda</h1>
+  <p class="lead">Tres formas de volver a encontrar algo: dónde lo guardaste, con qué lo enlazaste, o qué
+  decía.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/notes-folder.png" alt="Carpeta Runbooks abierta como tabla: notas numeradas con su título, fecha de creación y de última modificación, y un buscador propio"></div>
+    <figcaption>Doble clic en una carpeta (o «Abrir como tabla» en su menú) y se abre como tabla; un clic la pliega.</figcaption>
+  </figure>
+
+  <h2 id="notas-organizar--carpetas">Carpetas</h2>
+  <ul>
+    <li><strong>Clic derecho</strong> en una nota, una carpeta o el espacio vacío abre su menú: cambiar nombre, <strong>duplicar</strong> (con sus imágenes y su privacidad), mover a otra carpeta, <strong>fijar arriba</strong>, <strong>fundir con otra nota</strong> (si una de las dos es privada, el resultado también), <strong>exportar como Markdown</strong> con las imágenes incluidas, copiar el enlace <code>[[…]]</code> o su ubicación, hacerla privada o borrarla. El botón <strong>⋯</strong> de cada fila abre el mismo menú.</li>
+    <li>Cada carpeta crea notas y subcarpetas ya adentro desde su menú, y el botón de la cabecera <strong>pliega o despliega todas</strong>.</li>
+    <li><strong>Vista de tabla</strong> por carpeta: fecha de creación, de última modificación, ordenable y con buscador que filtra solo ahí.</li>
+    <li><strong>La lista se queda quieta.</strong> Sin búsqueda el orden es alfabético e insensible a tildes —«Ámbito» cae junto a «ambito»—, así que una nota está siempre en el mismo lugar. Cuando sí estás buscando, manda la relevancia.</li>
+  </ul>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/notes-graph.png" alt="Grafo de notas: nodos conectados por sus enlaces, con la nota activa resaltada y sus vecinas alrededor"></div>
+    <figcaption>El grafo se arma solo con los <code>[[enlaces]]</code> que ya escribiste.</figcaption>
+  </figure>
+
+  <h2 id="notas-organizar--grafo">Grafo y backlinks</h2>
+  <p>El <strong>grafo</strong> dibuja todo lo que enlazaste. Los <strong>backlinks</strong> —los enlaces que
+  <em>entran</em> a la nota que estás mirando— son los que uno no recuerda haber puesto, y suelen ser los
+  útiles.</p>
+
+  <h2 id="notas-organizar--buscar">El buscador</h2>
+  <ul>
+    <li>Encuentra <code>Diagnóstico</code> escribiendo <code>diagnostico</code>: es insensible a tildes y a mayúsculas.</li>
+    <li>Exige <strong>todas</strong> las palabras, en cualquier orden.</li>
+    <li>Entiende <code>tag:</code>, <code>enlaza:</code> y <code>privado:</code> como filtros.</li>
+  </ul>
+</article>
+
+<!-- ---------------------------------------------------------------- GIT -->
+<article class="topic" id="git-repositorio" data-title="El repositorio: grafo y diff">
+  <h1>El repositorio: grafo y diff</h1>
+  <p class="lead">Cliente estilo Sublime Merge sobre el <code>git</code> de tu sistema — así que tus
+  credential helpers, tu <code>ssh-agent</code> y tus hooks siguen funcionando igual.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-commit-graph.png" alt="Pestaña Git: grafo de commits con carriles de colores y badges de rama y tag, un commit seleccionado, y a la derecha su detalle con autor, hash y la lista de archivos con el diff del primero desplegado"></div>
+    <figcaption>Elegís un commit y a la derecha aparece su detalle con los archivos y el diff.</figcaption>
+  </figure>
+
+  <h2 id="git-repositorio--ramas">Ramas y tags</h2>
+  <ul>
+    <li><strong>Carpetas por prefijo</strong>: <code>feature/…</code> se pliega como una sola entrada.</li>
+    <li><strong>Anclado</strong> de las ramas que usás siempre, para que queden arriba.</li>
+    <li>Alta de ramas y tags desde el propio panel.</li>
+  </ul>
+
+  <h2 id="git-repositorio--operaciones">Operaciones</h2>
+  <ul>
+    <li><strong>Push, pull y fetch con todas sus variantes</strong> (<code>--force-with-lease</code>, <code>--ff-only</code>, <code>--rebase --autostash</code>, <code>--prune</code>…). Si la rama no está publicada, cualquiera te ofrece vincularla <em>sin perder los flags</em> que ya elegiste.</li>
+    <li><strong>Resumen del pull</strong>: después de traer cambios ves en una línea cuántos archivos cambiaron, las líneas agregadas y quitadas y el rango de commits (clic para saltar al grafo). La lista de archivos se despliega a pedido, se filtra y cada archivo se abre con un clic.</li>
+    <li><strong>Rebase</strong> de los dos tipos: interactivo para reordenar y combinar, y de una rama sobre otra desde su menú. Los dos se abortan.</li>
+    <li><strong>Stage por bloque</strong>, diff unificado o lado a lado, stashes, worktrees y resolutor de conflictos de tres vías.</li>
+    <li><strong>Submódulos</strong> con el estado que importa: sin inicializar, movido respecto del commit que fija el padre, o en conflicto.</li>
+    <li><strong>Git Flow nativo</strong>, sin instalar nada: escribe las mismas claves de configuración que el comando, y averigua si tu rama de producción es <code>main</code> o <code>master</code> en vez de asumirlo.</li>
+  </ul>
+
+  <h2 id="git-repositorio--log">El log de comandos</h2>
+  <p>Cada acción deja registrado el <strong>comando exacto</strong> que la app ejecutó por debajo, con su
+  salida y cuánto tardó. Sirve para aprender qué hace el botón, y para pegar el comando en un ticket.</p>
+</article>
+
+<article class="topic" id="git-config" data-title="Identidad, remotos y tokens">
+  <h1>Identidad, remotos y tokens</h1>
+  <p class="lead">Con qué nombre firmás, contra qué servidor hablás y con qué credencial — las tres
+  cosas en la misma ventana.</p>
+
+  <p>Se abre con el <strong>engranaje</strong>: el de la fila del repositorio en la barra lateral, o el de
+  la barra de la pestaña abierta. Tiene tres solapas: <strong>Identidad</strong>, <strong>Remotos</strong> y
+  <strong>Tokens</strong>.</p>
+
+  <h2 id="git-config--identidad">Identidad: local o global</h2>
+  <p>Arriba de todo dice <strong>con qué nombre y email se va a firmar el próximo commit</strong>, y de
+  dónde sale ese valor. Es el dato que casi nunca se ve y explica el 90&nbsp;% de los «¿por qué este commit
+  aparece con mi mail viejo?»: un repositorio sin identidad propia hereda la global, en silencio.</p>
+  <ul>
+    <li><strong>Solo este repositorio</strong> escribe en <code>.git/config</code> y pisa lo global.</li>
+    <li><strong>Global (todos)</strong> escribe en <code>~/.gitconfig</code> y alcanza a cada repositorio de la máquina que no tenga el suyo.</li>
+    <li>Vaciar un campo <strong>borra la clave</strong> en vez de guardarla en blanco: así el repositorio vuelve a heredar, que es lo que uno quiere decir al limpiar el casillero.</li>
+  </ul>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-remotes.png" alt="Configuración de Git en la solapa Remotos: origin con su URL completa, y debajo el formulario de edición con nombre, URL de fetch mostrando el token embebido, URL de push vacía y un aviso que ofrece mover el token al vault"></div>
+    <figcaption>La URL se muestra tal cual está configurada, con el token adentro si lo tiene.</figcaption>
+  </figure>
+
+  <h2 id="git-config--remotos">Remotos: cambiar la URL de origin</h2>
+  <p>La solapa <strong>Remotos</strong> lista cada remoto y deja cambiarle el <strong>nombre</strong>, la
+  <strong>URL de fetch</strong> y la <strong>URL de push</strong>. Equivale a
+  <code>git remote set-url</code>: no toca nada en el servidor y no vuelve a bajar el repositorio, solo
+  cambia el destino.</p>
+  <ol class="steps">
+    <li>Abrí la configuración del repositorio y andá a <strong>Remotos</strong>. Atajo: el engranaje de la sección «Remotos» del árbol, o el de la sección «Remotas» del panel de ramas, la abren ya en esa solapa. También está en el click derecho sobre <code>origin</code>, como <strong>Editar remoto…</strong></li>
+    <li>Tocá el <strong>lápiz</strong> del remoto. El formulario se abre con lo que hay configurado, sin recortar.</li>
+    <li>Pegá la URL nueva y <strong>Guardar</strong>. Si cambiaste también el nombre, se renombra el remoto y las ramas de seguimiento que colgaban de él.</li>
+  </ol>
+  <div class="note"><span class="lbl">Dato</span><p>La <strong>URL de push</strong> vacía significa
+  «pushea a la misma de arriba», que es lo normal. Solo se completa cuando se lee de un lado y se escribe
+  en otro (un espejo, un fork). Vaciarla borra el desvío: dejar los dos valores puestos es lo que hace que
+  cambiar la URL de fetch parezca funcionar mientras el push sigue yendo al servidor viejo.</p></div>
+
+  <h2 id="git-config--token-en-la-url">Cuando la URL trae el token adentro</h2>
+  <p>Un remoto configurado como <code>https://&lt;token&gt;@github.com/usuario/repo.git</code> funciona,
+  pero guarda el token <strong>en texto plano</strong> en <code>.git/config</code>: lo ve cualquiera que
+  abra la carpeta o corra <code>git remote -v</code>.</p>
+  <p><strong>La app te lo muestra, no lo tapa.</strong> Ocultarlo en pantalla no lo saca de ningún lado
+  —sigue en el archivo, y ahí lo lee cualquiera— y a cambio esconde lo único que hay que saber: que está,
+  y cuál es. Un remoto que dejó de andar porque el token venció se vería igual que uno sano.</p>
+  <ul>
+    <li><strong>Mover el token al vault</strong> es la salida de verdad: lo guarda cifrado para ese servidor y deja la URL limpia. La app se lo sigue pasando a git igual, sin línea de comandos ni remoto que lo exhiba.</li>
+    <li>Si querés <strong>dejarlo en la URL</strong>, se respeta: lo que escribas es lo que se guarda.</li>
+    <li>Un usuario suelto (<code>https://rafael@github.com/…</code>) no dispara el aviso: ahí no hay ningún secreto que mudar.</li>
+  </ul>
+
+  <h2 id="git-config--tokens">Tokens y contraseñas recordadas</h2>
+  <p>La solapa <strong>Tokens</strong> guarda un <strong>PAT por servidor</strong>, cifrado en el vault, y
+  lo usa sola en fetch, pull y push contra ese host. No se puede volver a leer desde la app: si perdés uno,
+  generá otro en tu forge y reemplazalo.</p>
+  <p>Abajo está el <strong>credential helper de git</strong>, que es otra cosa: es la configuración del
+  propio git (llavero del sistema, «recordar una hora», archivo en texto plano) y es la que usan la
+  terminal y los hooks — o sea, el mismo repositorio cuando lo usás fuera de la app.</p>
+</article>
+
+<article class="topic" id="git-reflog" data-title="Recuperar con el reflog">
+  <h1>Recuperar con el reflog</h1>
+  <p class="lead">La red debajo de <code>reset --hard</code>, del rebase y del <code>push --force</code>.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-reflog.png" alt="Solapa Reflog: los movimientos de HEAD con su selector, el commit, la acción marcada por color, el detalle y la fecha"></div>
+    <figcaption>Los últimos doscientos movimientos de HEAD, con las acciones que reescriben historia marcadas.</figcaption>
+  </figure>
+
+  <h2 id="git-reflog--recuperar">Recuperar un commit perdido</h2>
+  <ol class="steps">
+    <li>Abrí la solapa <strong>Reflog</strong> del panel inferior. Están los últimos movimientos de HEAD, con las acciones que reescriben historia marcadas en rojo.</li>
+    <li>Buscá el commit por su mensaje — el filtro de arriba busca por mensaje, acción o hash.</li>
+    <li><strong>Creá una rama ahí.</strong> Es la acción que se ofrece primero porque no mueve nada, no toca lo que tengas sin commitear, y le da nombre propio al commit perdido.</li>
+    <li>Si de verdad querés volver la rama actual a esa posición, el <code>reset --hard</code> también está — detrás de una confirmación que dice qué se pierde.</li>
+  </ol>
+
+  <div class="note warn"><span class="lbl">Cuidado</span><p>El reflog es <strong>local y temporal</strong>:
+  no se clona, no se empuja, y git lo poda solo (90 días lo alcanzable, 30 lo que no). Sirve para recuperar
+  lo de ayer, no como historial.</p></div>
+</article>
+
+<!-- ---------------------------------------------------------- SSH / SFTP -->
+<article class="topic" id="ssh-terminal" data-title="Terminales SSH y locales">
+  <h1>Terminales SSH y locales</h1>
+  <p class="lead">Terminal real (PTY), no una emulación: <code>top</code>, <code>vi</code> y los colores
+  funcionan.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ssh-terminal.png" alt="Terminal SSH interactiva dentro de una pestaña de la app: salida de systemctl y de un tail con los colores ANSI del servidor, y arriba a la derecha los botones de historial, analizar error, snippets y tema"></div>
+    <figcaption>Una pestaña por sesión —podés tener varias contra el mismo servidor—, con historial, análisis de errores, snippets y tema de colores.</figcaption>
+  </figure>
+
+  <h2 id="ssh-terminal--barra">Arriba las herramientas, abajo el estado</h2>
+  <p>Arriba a la derecha, cuatro íconos y el chat: <strong>historial</strong>, <strong>analizar</strong>,
+  <strong>snippets</strong> y <strong>tema</strong>. Lo que hace cada uno está en su tooltip — sobre una
+  terminal, que es la pantalla donde el contenido manda, el cromo tiene que desaparecer.</p>
+  <p>Abajo a la izquierda, el <strong>pie</strong>: a qué servidor está atada la pestaña, si la sesión sigue
+  viva y con qué <strong>entorno</strong> está marcada la conexión (con su color; rojo con halo si es
+  producción). Va ahí y no arriba porque es donde termina la salida del comando, que es donde ya estás
+  mirando cuando te preguntás si eso seguía conectado.</p>
+
+  <h2 id="ssh-terminal--sesiones">Sesiones</h2>
+  <ul>
+    <li><strong>Terminal interactiva real</strong> (xterm.js), con PTY y resize automático.</li>
+    <li>Cerrar la pestaña <strong>corta la sesión del lado remoto</strong>, no la deja colgada.</li>
+    <li><strong>Terminales locales</strong> (PowerShell, zsh, bash, Git Bash…) en el mismo módulo, con los mismos snippets y su propio historial cifrado.</li>
+  </ul>
+
+  <h2 id="ssh-terminal--clave-vencida">Si la contraseña del servidor está vencida</h2>
+  <p>Cuando la cuenta tiene la contraseña caducada, el servidor no te deja entrar: <strong>pide una
+  nueva</strong>. La terminal lo avisa con todas las letras y abre un cuadro para cambiarla, con el motivo que
+  dio el servidor a la vista (<em>«You are required to change your password immediately»</em>).</p>
+  <ol class="steps">
+    <li>Escribí la contraseña nueva <strong>dos veces</strong>. Es el único lugar de la app donde se pide
+    repetirla, y no es por trámite: acá un error de tecleo no se rechaza, pasa a ser la contraseña real de la
+    cuenta y te deja afuera del servidor.</li>
+    <li><strong>Cambiar y conectar</strong> la cambia contra la máquina. Si el servidor la rechaza por corta o
+    por estar en el diccionario, vas a leer <em>su</em> explicación, no un «no se pudo».</li>
+    <li>Con el visto bueno del servidor, la contraseña nueva <strong>se guarda en la conexión del vault</strong>
+    y la terminal se reconecta sola.</li>
+  </ol>
+  <div class="note"><span class="lbl">Primero el servidor, después el vault</span><p>El orden importa: si se
+  guardara antes de probarla, un rechazo dejaría en el vault una contraseña que la máquina nunca aceptó, y la
+  próxima conexión fallaría como si estuviera mal configurada. Por lo mismo, cancelar el cuadro no toca nada
+  — la contraseña del servidor sigue vencida y la terminal, sin conectar.</p></div>
+  <p>Aplica a las conexiones que autentican <strong>por contraseña</strong>. Una conexión por llave no tiene
+  contraseña de cuenta que caduque. <strong>Test Connection</strong>, en el cuadro de la conexión, también
+  nombra la caducidad en vez del error de autenticación genérico.</p>
+
+  <h2 id="ssh-terminal--varias">Varias terminales contra el mismo servidor</h2>
+  <p>Podés tener <strong>todas las que quieras</strong> contra el mismo host: una compilando, otra mirando un
+  log, otra para husmear. Cada pestaña es una sesión aparte, con su propio buffer, su propio directorio y su
+  propio scrollback.</p>
+  <ol class="steps">
+    <li>Pasá el mouse por la fila del servidor en la barra lateral y apretá <strong>+</strong> (o
+    <strong>Nueva terminal</strong> en su menú <code>⋮</code>). Abre una sesión más, siempre.</li>
+    <li>El <strong>clic en el nombre</strong> hace lo de siempre: abre la terminal, o te lleva a la que ya
+    está abierta. Así navegar el árbol no te deja shells sueltas contra producción.</li>
+    <li>A partir de la segunda, la pestaña se numera: <code>Terminal — PRODMAIN (2)</code>.</li>
+  </ol>
+  <div class="note"><span class="lbl">Una sola conexión</span><p>Las sesiones <strong>no</strong> son varias
+  conexiones SSH: son varios canales sobre la misma. Una autenticación, un socket y una entrada en el log del
+  servidor, aunque tengas cinco pestañas abiertas — igual que la consola y el explorador de archivos, que ya
+  compartían conexión.</p></div>
+  <p>En la barra lateral, el servidor muestra <strong>cuántas sesiones vivas</strong> tiene cuando hay más de
+  una. <strong>Desconectar</strong> las cierra todas; cerrar una pestaña cierra solo la suya.</p>
+  <p>Todo lo que sigue a una terminal sigue a <em>esa</em> terminal: el directorio, el historial de línea y
+  <strong>Analizar error</strong> son de la pestaña desde la que los pediste. Lo que pregunta por la
+  <em>conexión</em> —el <code>@ssh:</code> del chat y la herramienta MCP— lee la terminal en la que tecleaste
+  por última vez.</p>
+
+  <h2 id="ssh-terminal--snippets">Snippets</h2>
+  <p>Comandos guardados y reutilizables en cualquier sesión, con carpetas y buscador.
+  <strong>Ejecutar</strong> corre cada línea; <strong>Pegar</strong> las escribe sin confirmar, para cuando
+  querés revisar antes de apretar Enter.</p>
+  <p>El script se escribe en un editor con <strong>resaltado de shell</strong>: Tab indenta,
+  <strong>Ctrl+Enter</strong> guarda y <strong>Esc</strong> cancela. El mismo formulario elige la carpeta.</p>
+  <p>El panel <strong>se ensancha arrastrando su borde izquierdo</strong> y recuerda el ancho; doble clic en
+  el borde lo devuelve al original. Para ordenar: arrastrá un snippet o una carpeta sobre otra carpeta (o sobre
+  el fondo, para sacarlo a la raíz), doble clic en una carpeta para renombrarla, y el <strong>+</strong> de su
+  fila crea un snippet ya adentro.</p>
+
+  <h2 id="ssh-terminal--historial">Historial cifrado y filtrado</h2>
+  <p>Los comandos quedan guardados por conexión, cifrados. <strong>Las líneas que parecen traer una
+  contraseña no se guardan</strong> — un historial que registra el <code>mysql -p…</code> completo es un
+  archivo de credenciales con otro nombre.</p>
+
+  <h2 id="ssh-terminal--errores">Analizar un error</h2>
+  <p>El botón de la lupa (<strong>Analizar</strong>) le manda al agente la salida de la terminal con el
+  sistema operativo del servidor como contexto — o exactamente lo que tengas seleccionado, si hay una
+  selección. Devuelve texto: no ejecuta nada. El botón del <strong>chat</strong> está al lado, en la misma
+  fila: pasar de «analizame esto» a «preguntale otra cosa» no debería cruzar la ventana entera.</p>
+</article>
+
+<article class="topic" id="ssh-sftp" data-title="Explorador SFTP">
+  <h1>Explorador SFTP</h1>
+  <p class="lead">Dos paneles, y cada uno apunta a donde quieras: tu máquina o cualquiera de tus servidores.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/sftp-dual.png" alt="Explorador SFTP de doble panel: a la izquierda la máquina local, a la derecha un servidor de producción; cada panel con su selector de host, su ruta, su buscador, el contador de elementos y la tabla de archivos con nombre, fecha, tamaño y tipo"></div>
+    <figcaption>Las cuatro combinaciones posibles, incluida servidor ↔ servidor.</figcaption>
+  </figure>
+
+  <p>Se abre desde el árbol SSH y <strong>reusa esa conexión</strong> — no hay que volver a autenticarse.
+  Cada panel elige su host arriba a la izquierda, así que las combinaciones son las cuatro:
+  <strong>local → servidor</strong>, <strong>servidor → local</strong>,
+  <strong>servidor → otro servidor</strong> (pasando por tu máquina en streaming) y local → local.</p>
+
+  <h2 id="ssh-sftp--moverse">Moverse</h2>
+  <ul>
+    <li><strong>Doble clic</strong> en una carpeta entra; en un archivo lo abre en una pestaña del editor.</li>
+    <li>La fila <strong>«..»</strong> sube un nivel, y muestra a dónde: en una ruta profunda saber que subís no alcanza, hay que saber adónde.</li>
+    <li>El <strong>buscador</strong> de cada panel filtra lo que ya está listado —no baja a las subcarpetas ni vuelve a preguntarle al servidor—, así que es instantáneo. <kbd>Esc</kbd> lo limpia.</li>
+    <li>Las <strong>columnas se ordenan y se redimensionan</strong>, y las que no entran se esconden solas: primero <em>Kind</em> —que es la extensión, y ya está en el nombre— y después <em>Permisos</em>. Preferimos esconder lo prescindible antes que cortarlo: una columna que no está se entiende, una a medias parece un error.</li>
+    <li><strong>Seleccionar varios</strong>, como en cualquier explorador: clic simple marca una fila, <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+clic agrega o quita sin perder el resto, <kbd>Shift</kbd>+clic marca el rango desde la última fila tocada, y la <strong>casilla</strong> de cada fila alterna sin sostener ninguna tecla (con <kbd>Shift</kbd> también hace rango). La del encabezado marca todo lo que muestra el filtro y avisa cuándo hay <em>algunos</em> marcados. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>A</kbd> selecciona lo visible, <kbd>Esc</kbd> limpia, y el contador «N seleccionados» también limpia al clickearlo.</li>
+  </ul>
+
+  <h2 id="ssh-sftp--transferir">Transferir</h2>
+  <ol class="steps">
+    <li>Seleccioná con las casillas, con clic y <kbd>Shift</kbd>/<kbd>Ctrl</kbd> (ver arriba), o directamente <strong>arrastrá</strong> de un panel al otro — arrastrar una fila que ya está seleccionada se lleva la selección entera.</li>
+    <li>El botón dice a dónde va: <strong>«Enviar a app-01 · producción»</strong>, no un genérico «Enviar».</li>
+    <li>Si algo ya existe del otro lado, se pregunta <strong>antes de empezar</strong> y por cada archivo: reemplazar, omitir o renombrar.</li>
+    <li>La cola muestra <strong>porcentaje, bytes y archivos en vivo</strong>, y cada transferencia se cancela sola sin tocar las demás. Los lotes grandes van en paralelo.</li>
+  </ol>
+
+  <div class="note"><span class="lbl">Con cientos de archivos hay una espera antes de la copia</span>
+  <p>Comprobar qué existe del otro lado y contar lo que hay dentro de las carpetas son consultas al
+  servidor, y con una selección grande —sobre todo entre dos remotos— tardan unos segundos. <strong>La fila
+  aparece en la cola apenas apretás el botón</strong> diciendo en qué está («Comprobando el destino…»,
+  «Preparando…»), y mientras tanto <em>Enviar</em> queda deshabilitado: no hace falta —ni conviene— volver
+  a apretarlo, porque cada clic sería una transferencia más.</p></div>
+
+  <h2 id="ssh-sftp--permisos">Permisos</h2>
+  <div class="note"><span class="lbl">Sin recordar el octal</span><p>El botón <strong>Permisos</strong> de la
+  barra de acciones —o clic derecho → <strong>Editar permisos</strong>— abre un diálogo con casillas de
+  Lectura/Escritura/Ejecución para Propietario, Grupo y Otros, y muestra el <code>chmod</code> equivalente
+  mientras lo tocás.</p></div>
+  <p>Se aplica a <strong>toda la selección</strong>, no solo a la fila sobre la que hiciste clic derecho —
+  igual que Enviar y Eliminar. Cuando hay varios elegidos con permisos distintos el diálogo lo avisa: el
+  <code>chmod</code> es absoluto, así que al guardar quedan todos con el mismo modo. Si alguno falla (otro
+  dueño, montaje de solo lectura) se dice <strong>cuáles</strong> y el resto se aplica igual.</p>
+  <div class="note"><span class="lbl">No es <code>chmod -R</code></span><p>Sobre una carpeta cambia los
+  permisos de la carpeta, no los de su contenido.</p></div>
+
+  <h2 id="ssh-sftp--macos">La primera vez en macOS</h2>
+  <div class="note warn"><span class="lbl">Permisos del sistema</span><p>Al entrar a Descargas, Escritorio o
+  Documentos desde el panel local, macOS pide permiso una vez. Si no aparece el diálogo, se concede en
+  <em>Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas</em>. Tené en cuenta que una versión
+  recién instalada cuenta como otra aplicación para macOS: el permiso se pide de nuevo.</p></div>
+</article>
+
+<!-- ----------------------------------------------------------------- IA -->
+<article class="topic" id="ia-chat" data-title="El chat, en todos los módulos">
+  <h1>El chat, en todos los módulos</h1>
+  <p class="lead">Claude Code, Codex CLI y Antigravity CLI, detectados solos en el PATH. El mismo chat desde
+  el editor SQL, una terminal SSH, una nota, un repositorio o una petición HTTP.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/chat-db.png" alt="Chat abierto sobre una conexión: la consulta del editor adjunta abajo y la respuesta con bloques SQL, cada uno con su barra de Copiar y Al editor"></div>
+    <figcaption>El chat sabe sobre qué estás trabajando: cambiar de pestaña actualiza el contexto, no reinicia el hilo.</figcaption>
+  </figure>
+
+  <h2 id="ia-chat--abrir">Abrir el chat</h2>
+  <p><kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd> lo abre sobre lo que estés mirando. Hay
+  <strong>una conversación por contexto de trabajo</strong>: el hilo de una conexión sobrevive a irte a otra
+  pestaña y volver, y no se mezcla con el de un repositorio.</p>
+  <p><strong>Irte no lo corta.</strong> Si el agente está respondiendo y te vas a una terminal SSH, a un
+  repositorio o cerrás el panel, ese turno sigue corriendo y la respuesta te espera entera al volver — con
+  lo que hubieras dejado escrito en la caja de mensaje.</p>
+
+  <h2 id="ia-chat--seguir">Seguir en el chat, con el contexto ya adjunto</h2>
+  <p>Los análisis de una tirada —<strong>Analizar error</strong> de la terminal, el análisis de un plan de
+  ejecución, las acciones de IA de una petición HTTP— tienen <strong>Seguir en el chat</strong>. El chat abre
+  con lo analizado <strong>adjunto como fichas</strong>: las líneas exactas de la terminal con el sistema
+  operativo detectado, la petición y su respuesta, y lo que contestó el agente. Así se repregunta sin volver a
+  explicar nada.</p>
+  <p>Cada ficha se despliega para leer exactamente lo que se va a mandar y se quita con la <strong>×</strong>.
+  Viajan con el próximo mensaje, y lo que ya tuvieras escrito en la caja no se pisa. En una petición HTTP,
+  el menú de IA ofrece además <strong>Preguntar en el chat</strong> desde cero, con la petición adjunta y las
+  credenciales tapadas.</p>
+  <p>Los nombres con espacios se referencian entre comillas —<code>@db:"Prod Facturación/CLIENTES"</code>— y el
+  selector de <kbd>@</kbd> ya las pone solo.</p>
+
+  <h2 id="ia-chat--proponer">El agente propone; aplicar es un clic tuyo</h2>
+  <p>Ninguna acción de IA ejecuta lo que acaba de escribir. Devuelven texto y vos decidís:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Módulo</th><th>Qué le podés pedir</th></tr>
+    <tr><td>Bases de datos</td><td>Escribir una consulta desde lenguaje natural, explicar y corregir el error del motor, analizar un plan de ejecución</td></tr>
+    <tr><td>HTTP</td><td>Explicar la respuesta, diagnosticar el fallo, escribir la petición, redactar su documentación o sus tests</td></tr>
+    <tr><td>Git</td><td>Redactar el mensaje del commit desde el diff preparado y el estilo del repositorio</td></tr>
+    <tr><td>SSH y terminal local</td><td>Explicar qué está fallando en la salida de la terminal, con el sistema operativo del servidor como contexto. Un bloque de un solo comando de la respuesta se manda <strong>A la terminal</strong>: queda escrito, sin Enter</td></tr>
+    <tr><td>Notas</td><td>Consultar tu base de conocimiento, y —con permiso explícito— dejar asentado lo que averiguó</td></tr>
+  </table></div>
+
+  <h2 id="ia-chat--historial">El historial de conversaciones</h2>
+  <p>La solapa <strong>Historial</strong> del panel lista todas las conversaciones, agrupadas por módulo o
+  por agente, con un buscador. Al abrir una se <strong>retoma en su propio contexto</strong> —una
+  conversación pertenece al recurso donde nació— y los mensajes se vuelven a dibujar leyendo el transcript
+  del propio CLI.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/chat-usage.png" alt="Panel de consumo: barras por agente con el porcentaje de la ventana usado y el costo estimado"></div>
+    <figcaption>Consumo por agente, leído de lo que cada CLI ya registra — no un número inventado.</figcaption>
+  </figure>
+
+  <h2 id="ia-chat--consumo">Cuánto llevás gastado</h2>
+  <p>La solapa <strong>Consumo</strong> lee lo que cada CLI ya guarda de sus propias sesiones. Es una
+  estimación de <em>ellos</em>, no una cuenta paralela de la app: inventar el número sería peor que no
+  mostrarlo.</p>
+</article>
+
+<article class="topic" id="ia-referencias" data-title="El sistema @">
+  <h1>El sistema <code>@</code>: vos elegís qué cruza</h1>
+  <p class="lead">Escribí <code>@</code> en el chat y referenciá algo concreto. Antes de mandar, cada ficha
+  se despliega y muestra <strong>exactamente</strong> lo que se va a inyectar.</p>
+
+  <h2 id="ia-referencias--tipos">Qué se puede referenciar</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Referencia</th><th>Inyecta</th><th>Nunca</th></tr>
+    <tr><td><code>@db:Prod/clientes</code></td><td>Columnas, tipos, clave primaria y foráneas</td><td>Ninguna fila, ningún DSN, ningún usuario</td></tr>
+    <tr><td><code>@file:backend/git/log.go</code></td><td>El archivo del repositorio abierto</td><td>Nada fuera del repositorio</td></tr>
+    <tr><td><code>@git:staged</code></td><td>El diff preparado</td><td>—</td></tr>
+    <tr><td><code>@explain:last</code></td><td>El último plan de ejecución guardado</td><td>Los datos que devolvió la consulta</td></tr>
+    <tr><td><code>@note:"Runbook"</code></td><td>El Markdown de la nota</td><td>El contenido de una nota privada, bajo ninguna circunstancia</td></tr>
+  </table></div>
+
+  <h2 id="ia-referencias--previsualizar">Se ve antes de mandarse</h2>
+  <div class="note"><span class="lbl">Por qué</span><p>Una referencia que se expande en silencio es
+  indistinguible de una fuga. Cada ficha muestra su contenido resuelto <em>antes</em> de que el mensaje
+  salga, así que lo que llega al modelo es lo que viste.</p></div>
+</article>
+
+<article class="topic" id="ia-mcp" data-title="Servidor MCP embebido">
+  <h1>Servidor MCP embebido</h1>
+  <p class="lead">El agente <em>pide</em>, en vez de que le mandes todo por adelantado.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/mcp-setup.png" alt="Panel de acceso de la IA: el interruptor del servidor MCP encendido con su socket local, el instructivo de tres pasos y la configuración lista para copiar"></div>
+    <figcaption>Se enciende, se copia la configuración y el CLI ya puede preguntar.</figcaption>
+  </figure>
+
+  <h2 id="ia-mcp--que-hace">Qué expone</h2>
+  <p>Encendelo y cualquier CLI compatible puede pedirle a la app el esquema de una tabla, buscar en tus
+  notas o leer las últimas líneas de una terminal — <strong>por un socket local</strong>, no por la red.</p>
+
+  <h2 id="ia-mcp--control">Control de acceso</h2>
+  <ul>
+    <li>Cada herramienta tiene <strong>su propio interruptor</strong>.</li>
+    <li>Crear notas es un interruptor <strong>aparte</strong> de leerlas: encender el servidor comparte lectura, eso además deja escribir.</li>
+    <li>Todo queda en un <strong>registro de accesos</strong>: qué pidió, cuándo y qué se le devolvió.</li>
+    <li>Las <strong>notas privadas quedan fuera de alcance siempre</strong>, sin interruptor que lo cambie.</li>
+  </ul>
+  <div class="note"><span class="lbl">Nota</span><p>El servidor <strong>no se enciende solo al
+  arrancar</strong>. La app recuerda si lo dejaste encendido, pero eso es un recordatorio para la interfaz,
+  no un arranque automático.</p></div>
+</article>
+
+<!-- ------------------------------------------------------------ AJUSTES -->
+<article class="topic" id="ajustes-apariencia" data-title="Apariencia y tamaño de letra">
+  <h1>Apariencia y tamaño de letra</h1>
+  <p class="lead">Configuración → <strong>Apariencia</strong>. Tres cuerpos distintos, porque son tres cosas
+  distintas de leer.</p>
+
+  <h2 id="ajustes-apariencia--interfaz">Tamaño de letra de la interfaz</h2>
+  <p>Del 90&nbsp;% al 150&nbsp;% en cinco pasos, y agranda <strong>todo</strong>: la barra lateral, los
+  menús, las listas, los diálogos, las etiquetas y los íconos, en <em>todos</em> los módulos. Se aplica en
+  el momento y se recuerda entre sesiones.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Paso</th><th>Para qué</th></tr>
+    <tr><td>Compacto · 90 %</td><td>Entra más información en pantalla</td></tr>
+    <tr><td>Normal · 100 %</td><td>El tamaño de siempre</td></tr>
+    <tr><td>Grande · 115 %</td><td>Un poco más de cuerpo, sin cambiar la disposición</td></tr>
+    <tr><td>Más grande · 130 %</td><td>Para leer sin acercarse a la pantalla</td></tr>
+    <tr><td>Máximo · 150 %</td><td>El más grande antes de que las barras dejen de entrar</td></tr>
+  </table></div>
+  <p>Escala la <em>letra</em>, no los espaciados: no es un zoom de la ventana, así que la disposición se
+  mantiene y en pantallas chicas las barras se acomodan en dos filas en vez de desbordar.</p>
+  <div class="note tip"><span class="lbl">También en el desbloqueo</span><p>El tamaño elegido vale
+  <strong>también en la pantalla que pide la clave maestra</strong>. Es deliberado: si el ajuste solo
+  funcionara con el vault abierto, quien no puede leer la app tampoco podría leer el formulario que le pide
+  la clave para arreglarlo.</p></div>
+
+  <h2 id="ajustes-apariencia--editor">El editor de código</h2>
+  <p>Tiene su propia <strong>fuente</strong> y su propio <strong>cuerpo</strong>, más ajuste de línea,
+  numeración y ancho de tabulación. Se elige para leer código, no interfaz, así que no sigue al tamaño de
+  arriba. La muestra en vivo del diálogo dice cómo se ve cada tipografía — incluidas las del sistema, que
+  dependen de que esta máquina las tenga.</p>
+
+  <h2 id="ajustes-apariencia--terminal">Las terminales</h2>
+  <p>La local y las de SSH comparten un mismo cuerpo (son el mismo widget: tener dos tamaños distintos para
+  «la terminal» no significaría nada) y un mismo tema de colores.</p>
+
+  <h2 id="ajustes-apariencia--tema">Tema claro y oscuro</h2>
+  <p>El de la app se cambia con un botón. El del editor y el de la terminal lo siguen por defecto
+  («Automático»), o se fijan a mano a un tema concreto.</p>
+
+  <h2 id="ajustes-apariencia--donde">Dónde están estos botones</h2>
+  <p>En el <strong>pie de la barra lateral</strong>, al lado de la versión: <strong>tema</strong>,
+  <strong>ayuda</strong> y <strong>configuración</strong>. Con la barra oculta quedan apilados en la columna
+  de íconos, arriba del logo.</p>
+  <div class="note"><span class="lbl">Por qué ahí</span><p>Antes vivían arriba a la derecha, en la barra de
+  contexto del editor SQL — que desaparece en una nota, una terminal, una petición HTTP o un repositorio.
+  Dos ajustes que valen para toda la app no pueden depender de qué pestaña tengas abierta: para cambiar el
+  tema había que abrir una consulta primero. El pie de la barra está siempre, en todos los módulos, y ya era
+  donde vivían la versión y la ayuda.</p></div>
+</article>
+
+<article class="topic" id="ajustes-actualizaciones" data-title="Actualizaciones">
+  <h1>Actualizaciones</h1>
+  <p class="lead">Una consulta por sesión, un aviso discreto, y el clic descarga el archivo de tu sistema.</p>
+
+  <h2 id="ajustes-actualizaciones--como">Cómo funciona</h2>
+  <p>Al arrancar, la app le pregunta <strong>una vez</strong> a GitHub si hay un release más nuevo que el
+  binario que estás corriendo. Si lo hay, aparece un aviso en el pie de la barra lateral y el clic
+  <strong>descarga directamente el archivo de tu sistema</strong> —el <code>.dmg</code> en macOS, el
+  <code>.exe</code> en Windows—, sin pasar por buscar cuál era entre los adjuntos del release. El tooltip
+  dice qué archivo va a bajar antes de que lo aprietes.</p>
+
+  <h2 id="ajustes-actualizaciones--fallo">Si no hay red</h2>
+  <div class="note"><span class="lbl">Nunca es un error</span><p>Si la consulta falla —sin red, sin
+  permiso, un servidor que no contesta— <strong>no pasa nada</strong>: no hay aviso, no hay mensaje y la app
+  arranca igual de rápido. Un «hay versión nueva» es un lujo que nunca puede interrumpir ni demorar el uso
+  normal del programa sin conexión.</p></div>
+
+  <h2 id="ajustes-actualizaciones--manual">Actualizar a mano</h2>
+  <p>Bajás el paquete nuevo de <a href="https://github.com/rafael180496/mini-tools/releases">Releases</a> y
+  reemplazás el anterior. <strong>El vault no se toca</strong>: vive en la carpeta de datos de la aplicación,
+  no adentro del binario, y las migraciones de esquema corren solas al abrir.</p>
+</article>
+
+<!-- ------------------------------------------------------------ RECETAS -->
+<article class="topic" id="receta-endpoint" data-title="Probar un endpoint y no perderlo">
+  <h1>Probar un endpoint que te pasaron por chat, y no perderlo</h1>
+  <p class="lead">De un <code>curl</code> pegado a una petición guardada, documentada y buscable.</p>
+  <ol class="steps">
+    <li>En el navegador donde funciona, <em>Copiar como cURL</em>.</li>
+    <li>En mini-tools: módulo HTTP → menú de una colección → <strong>Pegar un comando cURL…</strong>. Queda una petición con método, URL, headers y cuerpo. (Si ya tenés una pestaña abierta: <strong>✦ → Escribir la petición…</strong>, pegar y <strong>Importar tal cual</strong>.)</li>
+    <li>Cambiá el host por <code>{{baseUrl}}</code> y definí la variable en el entorno <em>desarrollo</em>. La misma petición sirve contra los dos ambientes.</li>
+    <li>Mandala. Si algo falla, <strong>✦ → Diagnosticar el fallo</strong>: va con la configuración del cliente delante, que es donde se explica la mitad de los errores de transporte.</li>
+    <li><strong>Guardar de ejemplo</strong> suma la respuesta a la documentación de la petición. Después, <strong>Documentación… → Publicar como nota</strong> y queda en tu base de conocimiento, buscable y enlazable.</li>
+  </ol>
+</article>
+
+<article class="topic" id="receta-consulta" data-title="Una consulta contra un esquema que no conocés">
+  <h1>Una consulta que no sabés escribir, contra un esquema que no conocés</h1>
+  <p class="lead">El agente ve el DDL de las tablas relevantes; nunca una fila.</p>
+  <ol class="steps">
+    <li>Abrí el editor sobre la conexión y apretá <kbd>⌘I</kbd> / <kbd>Ctrl+I</kbd>.</li>
+    <li>Pedila en castellano: «las facturas de agosto con más de tres reclamos, con el nombre del cliente».</li>
+    <li>La app le manda <strong>solo el DDL de las tablas relevantes</strong> —columnas, tipos, claves— y nunca una fila.</li>
+    <li>Mirá la explicación al costado, aplicá al editor, y corré con <kbd>⌘↵</kbd>. Si el motor devuelve un error, <strong>Corregir</strong> le manda el error tal cual: un <code>ORA-00942</code> lleva más información adentro que cualquier parafraseo.</li>
+  </ol>
+</article>
+
+<article class="topic" id="receta-incidente" data-title="Documentar un incidente mientras lo resolvés">
+  <h1>Documentar un incidente mientras lo resolvés</h1>
+  <p class="lead">Que la nota quede usable para la próxima guardia, no solo legible.</p>
+  <ol class="steps">
+    <li>Módulo Notas → carpeta <em>Guardia</em> → el <strong>«+»</strong> de la carpeta: la nota nace adentro.</li>
+    <li>Pegá la captura del tablero con <kbd>⌘V</kbd>: queda cifrada dentro del vault, igual que el texto.</li>
+    <li>Poné la consulta que usaste en un bloque <code>sql connection="…"</code>. La próxima guardia la <strong>ejecuta desde la nota</strong>.</li>
+    <li>Enlazá con <code>[[…]]</code> el runbook que seguiste. El grafo y los backlinks arman el resto solos.</li>
+  </ol>
+</article>
+
+<article class="topic" id="receta-commit" data-title="Recuperar un commit borrado">
+  <h1>Recuperar el commit que borraste hace diez minutos</h1>
+  <p class="lead">Sin tocar nada de lo que tenés ahora.</p>
+  <ol class="steps">
+    <li>Pestaña Git → panel inferior → solapa <strong>Reflog</strong>.</li>
+    <li>El <code>reset</code> aparece marcado en rojo; el commit que estaba antes es el de la fila de abajo.</li>
+    <li><strong>Crear una rama acá.</strong> No mueve nada de lo que tenés ahora.</li>
+    <li>Cambiá a esa rama cuando quieras, o traé solo lo que te falta con un cherry-pick.</li>
+  </ol>
+</article>
+
+<!-- ---------------------------------------------------------- REFERENCIA -->
+<article class="topic" id="atajos" data-title="Atajos de teclado">
+  <h1>Atajos de teclado</h1>
+  <p class="lead">Los que valen en toda la app. Cada módulo agrega los suyos en sus propios tooltips.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Atajo</th><th>Qué hace</th></tr>
+    <tr><td><kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd></td><td>Ejecutar la consulta, o mandar los cambios pendientes de la grilla</td></tr>
+    <tr><td><kbd>Ctrl+Shift+↵</kbd></td><td>Ejecutar el bloque PL/SQL donde está el cursor</td></tr>
+    <tr><td><kbd>⌘I</kbd> / <kbd>Ctrl+I</kbd></td><td>Asistente de consultas: pedir una consulta o corregir la que falló</td></tr>
+    <tr><td><kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd></td><td>Abrir el chat sobre lo que estés mirando</td></tr>
+    <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Guardar la pestaña activa (consulta, nota, archivo, petición)</td></tr>
+    <tr><td><kbd>⌘V</kbd></td><td>Pegar una imagen dentro de una nota o del chat</td></tr>
+    <tr><td><kbd>Ctrl+Espacio</kbd></td><td>Forzar el autocompletado, incluso donde no se abre solo</td></tr>
+    <tr><td><kbd>Tab</kbd></td><td>Aceptar la sugerencia en gris, o saltar al hueco siguiente de un atajo</td></tr>
+    <tr><td><kbd>F5</kbd></td><td>Refrescar el catálogo de la conexión activa</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Cerrar el panel, el menú o el buscador que esté abierto</td></tr>
+    <tr><td>Clic central de la rueda</td><td>Cerrar la pestaña que estés apuntando: las del workspace, las de «Resultado N» y las de los archivos abiertos en el editor de Git</td></tr>
+  </table></div>
+  <div class="note tip"><span class="lbl">En esta página</span><p><kbd>/</kbd> pone el cursor en el buscador
+  de arriba, y las flechas más <kbd>Enter</kbd> abren el resultado.</p></div>
+</article>
+
+<article class="topic" id="seguridad" data-title="Seguridad">
+  <h1>Seguridad</h1>
+  <p class="lead">Qué se cifra, qué nunca sale del backend y qué ve un agente.</p>
+
+  <h2 id="seguridad--cifrado">Cifrado y aislamiento</h2>
+  <div class="grid">
+    <div class="card"><h3>Cifrado por columna</h3><p>Cada DSN, contraseña SSH, clave privada y passphrase se cifra con AES-256-GCM antes de guardarse. La clave se deriva de tu clave maestra con Argon2id y nunca se persiste.</p></div>
+    <div class="card"><h3>Sin bypass</h3><p>Sin la clave maestra correcta la app no arranca — ni siquiera desde las llamadas internas del frontend.</p></div>
+    <div class="card"><h3>El DSN no sale del backend</h3><p>Nunca llega a la interfaz ni a los logs, tampoco en modo depuración. «Exportar configuración» redacta contraseñas y claves antes de escribir el archivo.</p></div>
+    <div class="card"><h3>Backups atados a la clave</h3><p>Generar y restaurar piden tu clave maestra, verificada contra el propio archivo de backup — así que uno que termine en un USB o en la nube no sirve de nada sin ella.</p></div>
+    <div class="card"><h3>Nada se manda a ningún lado</h3><p>No hay servidor de la app ni telemetría. Lo que sale a internet es lo que vos apuntás.</p></div>
+    <div class="card"><h3>La IA solo ve lo que le mostrás</h3><p>Las referencias <code>@</code> se despliegan antes de mandarse, las notas privadas quedan fuera siempre, y ningún secreto de una petición HTTP llega al modelo.</p></div>
+  </div>
+
+  <h2 id="seguridad--backup">Backups del vault</h2>
+  <p>Manual (con nombre y fecha) o <strong>automático</strong> cada N horas a la carpeta que elijas, donde el
+  scheduler reemplaza siempre el mismo archivo. Los dos piden la clave maestra, y restaurar la verifica
+  contra el propio archivo antes de tocar nada.</p>
+  <p>Los dos se manejan desde <strong>Configuración → Vault</strong>, y ahí mismo aparece cómo terminó el
+  último backup manual, con la <strong>ruta completa</strong> del archivo escrito — o el aviso de que
+  cerraste el diálogo del sistema sin elegir dónde guardarlo.</p>
+
+  <h2 id="seguridad--donde">Dónde vive el vault</h2>
+  <p>En la carpeta de datos de la aplicación de tu sistema operativo, no adentro del binario. Por eso
+  reemplazar el ejecutable por una versión nueva no pierde nada, y por eso el backup es un archivo que
+  podés copiar.</p>
+</article>
+
+<article class="topic" id="faq" data-title="Preguntas frecuentes">
+  <h1>Preguntas frecuentes</h1>
+  <details><summary>¿Necesito cuenta o licencia?</summary><p>No. Es MIT, no hay registro y no hay servidor de la app.</p></details>
+  <details><summary>¿Funciona sin internet?</summary><p>Sí. Las tipografías y los íconos van empaquetados y no hay CDN. Solo necesita red para llegar a tu base, tu servidor o tu API — y para los CLIs de IA, que hablan con su proveedor.</p></details>
+  <details><summary>¿Qué pasa si pierdo la clave maestra?</summary><p>Se pierde el vault. No hay recuperación: la clave no se guarda en ningún lado, que es lo que hace que un backup robado no sirva.</p></details>
+  <details><summary>¿Los agentes ven mis credenciales?</summary><p>No. El DSN no sale del backend, las notas privadas están fuera de alcance por consulta, y lo que va a un prompt del módulo HTTP lleva los marcadores sin resolver y las cabeceras de credencial tapadas.</p></details>
+  <details><summary>¿Tengo que instalar Claude Code o Codex?</summary><p>Solo si los querés usar. La app los detecta si están, y no pasa nada si no.</p></details>
+  <details><summary>¿Reemplaza a Postman o a DataGrip?</summary><p>Para el trabajo de soporte del día a día, sí: es lo que estas herramientas hacen, en una ventana y sin cuenta. Para lo muy específico de cada una (colecciones compartidas por equipo, refactors de SQL), no pretende serlo.</p></details>
+  <details><summary>¿Se puede usar en Linux?</summary><p>Compila y corre, pero no se empaqueta ni se prueba ahí: no hay artefacto publicado. Se compila desde el código con <code>wails build</code>.</p></details>
+  <details><summary>¿Y las capturas de esta ayuda?</summary><p>No salen de una instalación real: se generan montando los componentes en un navegador headless con datos inventados (<code>./scripts/uishot.sh</code>). No hay rutas, hosts ni credenciales de nadie — no porque se hayan borrado, sino porque nunca estuvieron ahí.</p></details>
+</article>
+
+<!-- Pie común: el router lo mueve al final del tema activo, para no repetirlo
+     en los treinta y seis temas. -->
+<div id="foot">
+  <div class="pagenav" id="pagenav"></div>
+  <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
+  v2.7.0; esta página no hace una sola petición externa.
+  <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
+  <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
+  <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a></p>
+</div>
+
+</main>
+
+<aside class="onpage" id="onpage" aria-label="En esta página">
+  <h6>En esta página</h6>
+  <ol id="onpage-list"></ol>
+</aside>
+
+</div>
+
+<script>
+/* Textos de la interfaz que arma el script de abajo. Es lo ÚNICO que cambia
+   entre index.html (inglés) y es/index.html: el script siguiente es idéntico
+   en las dos páginas y se mantiene igual en ambas. */
+window.HELP_TEXT = {
+  none: 'Nada coincide con eso.',
+  trail: 'Ruta',
+  home: 'Ayuda de mini-tools',
+  prev: 'Anterior',
+  next: 'Siguiente',
+  copy: 'Copiar',
+  copied: 'Copiado',
+  copyFail: 'No se pudo'
+}
+</script>
+<script>
+(function () {
+  'use strict'
+  var L = window.HELP_TEXT
+
+  /* ---------------------------------------------------------------- Tema --
+     Respeta lo que elige el sistema y recuerda la decisión manual. */
+  var KEY = 'mini-tools-theme'
+  var saved = localStorage.getItem(KEY)
+  var dark = saved ? saved === 'dark' : !window.matchMedia('(prefers-color-scheme: light)').matches
+  function paint() { document.documentElement.dataset.theme = dark ? 'dark' : 'light' }
+  paint()
+  document.getElementById('tgl').addEventListener('click', function () {
+    dark = !dark
+    localStorage.setItem(KEY, dark ? 'dark' : 'light')
+    paint()
+  })
+
+  /* ------------------------------------------------------------- Índice --
+     El orden de los temas —para anterior/siguiente y para el buscador— se lee
+     del propio índice y no de una lista aparte: dos listas que hay que
+     mantener en sincronía terminan divergiendo, y acá el síntoma sería un
+     «siguiente» que lleva a otro lado. */
+  var toc = document.getElementById('toc')
+  var links = [].slice.call(toc.querySelectorAll('a[href^="#"]'))
+  var topics = [].slice.call(document.querySelectorAll('article.topic'))
+  var byId = {}
+  topics.forEach(function (t) { byId[t.id] = t })
+
+  var order = links.map(function (a) {
+    var id = a.getAttribute('href').slice(1)
+    var grp = a.parentNode.parentNode.previousElementSibling
+    return {
+      id: id,
+      link: a,
+      title: (byId[id] && byId[id].getAttribute('data-title')) || a.textContent.trim(),
+      // El nombre del grupo sale del último nodo de texto del botón y no de
+      // su textContent: adentro está también el `span.caret`, y con él las
+      // migas decían «▾Empezar».
+      group: grp ? (grp.lastChild ? grp.lastChild.textContent : grp.textContent).trim() : ''
+    }
+  }).filter(function (e) { return byId[e.id] })
+
+  var index = {}
+  order.forEach(function (e, i) { index[e.id] = i })
+
+  // Grupos plegables.
+  ;[].slice.call(toc.querySelectorAll('.grp')).forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      btn.setAttribute('aria-expanded', btn.getAttribute('aria-expanded') === 'true' ? 'false' : 'true')
+    })
+  })
+
+  /* ------------------------------------------------------------ Buscador --
+     El índice se arma del DOM al cargar: el texto ya está escrito una vez, y
+     mantener una copia a mano sería la segunda que se desactualiza. */
+  function fold(s) {
+    // Insensible a tildes: quien busca «parametros» espera encontrar
+    // «parámetros», y escribir el acento en un buscador es un paso de más.
+    return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  }
+
+  var entries = order.map(function (e) {
+    var art = byId[e.id]
+    var heads = [].slice.call(art.querySelectorAll('h2')).map(function (h) {
+      return { id: h.id, text: h.textContent.trim(), ftext: fold(h.textContent) }
+    })
+    return {
+      id: e.id, title: e.title, group: e.group, heads: heads,
+      ftitle: fold(e.title),
+      fhay: fold(e.title + ' ' + e.group + ' ' + art.textContent)
+    }
+  })
+
+  var q = document.getElementById('q')
+  var results = document.getElementById('results')
+  var sel = -1
+
+  function search(term) {
+    var f = fold(term.trim())
+    if (!f) return []
+    var words = f.split(/\s+/)
+    var out = []
+    entries.forEach(function (e) {
+      // Todas las palabras, en cualquier orden — igual que el buscador de
+      // notas de la app, para que buscar se sienta igual en los dos lados.
+      var all = words.every(function (w) { return e.fhay.indexOf(w) >= 0 })
+      if (!all) return
+      var titleHit = words.every(function (w) { return e.ftitle.indexOf(w) >= 0 })
+      var head = null
+      for (var i = 0; i < e.heads.length && !head; i++) {
+        var h = e.heads[i]
+        if (words.every(function (w) { return h.ftext.indexOf(w) >= 0 })) head = h
+      }
+      var deep = head && !titleHit
+      out.push({
+        hash: deep ? head.id : e.id,
+        title: deep ? head.text : e.title,
+        sub: deep ? e.group + ' › ' + e.title : e.group,
+        score: titleHit ? 0 : (head ? 1 : 2)
+      })
+    })
+    out.sort(function (a, b) { return a.score - b.score })
+    return out.slice(0, 12)
+  }
+
+  function esc(s) {
+    return s.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] })
+  }
+
+  function render(list) {
+    sel = -1
+    results.innerHTML = list.length
+      ? list.map(function (r) {
+          return '<button class="r" type="button" data-hash="' + r.hash + '"><b>' +
+            esc(r.title) + '</b><span>' + esc(r.sub) + '</span></button>'
+        }).join('')
+      : '<p class="none">' + esc(L.none) + '</p>'
+    results.classList.add('open')
+  }
+
+  function closeResults() { results.classList.remove('open'); sel = -1 }
+
+  q.addEventListener('input', function () {
+    if (!q.value.trim()) { closeResults(); return }
+    render(search(q.value))
+  })
+  q.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { q.value = ''; closeResults(); q.blur(); return }
+    var items = [].slice.call(results.querySelectorAll('.r'))
+    if (!items.length) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+      items.forEach(function (el, i) { el.classList.toggle('sel', i === sel) })
+      items[sel].scrollIntoView({ block: 'nearest' })
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      var pick = items[sel >= 0 ? sel : 0]
+      if (pick) { location.hash = pick.getAttribute('data-hash'); closeResults(); q.blur() }
+    }
+  })
+  results.addEventListener('click', function (e) {
+    var btn = e.target.closest('.r')
+    if (!btn) return
+    location.hash = btn.getAttribute('data-hash')
+    closeResults()
+    q.blur()
+  })
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.search')) closeResults()
+  })
+  document.addEventListener('keydown', function (e) {
+    // «/» enfoca el buscador, salvo que ya estés escribiendo en algún campo.
+    if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
+      e.preventDefault(); q.focus(); q.select()
+    }
+  })
+
+  /* ---------------------------------------------------------- Navegación --
+     Un tema por pantalla. El hash puede apuntar al tema (`#git-reflog`) o a un
+     encabezado suyo (`#git-reflog--recuperar`): el id del encabezado empieza
+     con el del tema, así que resolver el tema es cortar por el `--`. */
+  var onpage = document.getElementById('onpage')
+  var onpageList = document.getElementById('onpage-list')
+  var pagenav = document.getElementById('pagenav')
+  var foot = document.getElementById('foot')
+  var current = null
+  var heads = []
+
+  function topicOf(hash) {
+    var h = (hash || '').replace(/^#/, '')
+    if (!h) return null
+    if (byId[h]) return { id: h, anchor: null }
+    var cut = h.indexOf('--')
+    if (cut > 0 && byId[h.slice(0, cut)]) return { id: h.slice(0, cut), anchor: h }
+    return null
+  }
+
+  function crumbs(entry) {
+    return '<nav class="crumbs" aria-label="' + L.trail + '"><a href="#introduccion">' + esc(L.home) + '</a>' +
+      '<span class="sep">/</span>' + esc(entry.group) +
+      '<span class="sep">/</span>' + esc(entry.title) + '</nav>'
+  }
+
+  /* ---------------------------------------------------------- Idioma --
+     Las dos páginas (inglés en la raíz, español en es/) tienen EXACTAMENTE los
+     mismos ids, así que el selector lleva el fragmento actual tal cual: se
+     cambia de idioma sin perder el tema que se estaba leyendo. */
+  var langsw = document.getElementById('langsw')
+  function syncLang() { langsw.href = langsw.getAttribute('data-base') + location.hash }
+
+  function show(hash) {
+    syncLang()
+    var t = topicOf(hash) || { id: order[0].id, anchor: null }
+    var i = index[t.id]
+    var entry = order[i]
+    var art = byId[t.id]
+
+    if (current !== t.id) {
+      topics.forEach(function (a) { a.classList.remove('active') })
+      art.classList.add('active')
+
+      // Las migas se reescriben por tema en vez de vivir en el HTML de cada
+      // uno: son el grupo y el título que YA declara el índice, y duplicarlas en los
+      // treinta y seis es garantizar que alguna quede vieja.
+      var old = art.querySelector('.crumbs')
+      if (old) old.parentNode.removeChild(old)
+      art.insertAdjacentHTML('afterbegin', crumbs(entry))
+      art.appendChild(foot)
+
+      heads = [].slice.call(art.querySelectorAll('h2'))
+      onpageList.innerHTML = heads.map(function (h) {
+        return '<li><a href="#' + h.id + '">' + esc(h.textContent.trim()) + '</a></li>'
+      }).join('')
+      // Con un solo encabezado el índice lateral no informa nada que el título
+      // no diga ya, así que se esconde en vez de repetirse.
+      onpage.classList.toggle('empty', heads.length < 2)
+
+      var prev = order[i - 1], next = order[i + 1]
+      pagenav.innerHTML =
+        (prev ? '<a class="p" href="#' + prev.id + '"><small>' + esc(L.prev) + '</small><b>' + esc(prev.title) + '</b></a>' : '') +
+        (next ? '<a class="n" href="#' + next.id + '"><small>' + esc(L.next) + '</small><b>' + esc(next.title) + '</b></a>' : '')
+
+      links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + t.id) })
+      // Abrir el grupo del tema activo: llegar por el buscador a un tema de un
+      // grupo plegado dejaba el índice sin mostrar dónde estás.
+      var grp = entry.link.parentNode.parentNode.previousElementSibling
+      if (grp) grp.setAttribute('aria-expanded', 'true')
+      entry.link.scrollIntoView({ block: 'nearest' })
+
+      document.title = entry.title + ' — ' + L.home
+      current = t.id
+    }
+
+    document.body.classList.remove('nav-open')
+    if (t.anchor) {
+      var el = document.getElementById(t.anchor)
+      if (el) { el.scrollIntoView(); spy(); return }
+    }
+    window.scrollTo(0, 0)
+    spy()
+  }
+
+  /* Resalte de «en esta página» según lo que se está leyendo. */
+  var bar = 56
+  var ticking = false
+  function spy() {
+    if (!heads.length) return
+    var limit = bar + 30
+    var active = 0
+    for (var i = 0; i < heads.length; i++) {
+      if (heads[i].getBoundingClientRect().top <= limit) active = i
+    }
+    var as = onpageList.querySelectorAll('a')
+    for (var j = 0; j < as.length; j++) as[j].classList.toggle('here', j === active)
+  }
+  window.addEventListener('scroll', function () {
+    if (ticking) return
+    ticking = true
+    requestAnimationFrame(function () { spy(); ticking = false })
+  }, { passive: true })
+
+  window.addEventListener('hashchange', function () { show(location.hash) })
+  show(location.hash)
+
+  // Las imágenes cambian el alto del documento al terminar de cargar, y ahí
+  // el navegador vuelve a saltar al fragmento por su cuenta. Se reafirma la
+  // posición una vez más para que el tema abra por el título y no por la
+  // mitad.
+  window.addEventListener('load', function () {
+    var t = topicOf(location.hash)
+    if (t && t.anchor) {
+      var el = document.getElementById(t.anchor)
+      if (el) { el.scrollIntoView(); spy(); return }
+    }
+    window.scrollTo(0, 0)
+    spy()
+  })
+
+  /* ------------------------------------------------------- Copiar código --
+     El gesto que más se hace en una documentación es llevarse un comando. */
+  ;[].slice.call(document.querySelectorAll('.codewrap')).forEach(function (w) {
+    var b = document.createElement('button')
+    b.className = 'copy'
+    b.type = 'button'
+    b.textContent = L.copy
+    b.addEventListener('click', function () {
+      var code = w.querySelector('code')
+      navigator.clipboard.writeText(code ? code.innerText : '').then(function () {
+        b.textContent = L.copied
+        setTimeout(function () { b.textContent = L.copy }, 1400)
+      }).catch(function () { b.textContent = L.copyFail })
+    })
+    w.appendChild(b)
+  })
+
+  /* ------------------------------------------------------ Índice en móvil */
+  document.getElementById('menubtn').addEventListener('click', function () {
+    document.body.classList.toggle('nav-open')
+  })
+  document.getElementById('scrim').addEventListener('click', function () {
+    document.body.classList.remove('nav-open')
+  })
+})()
+</script>
+</body>
+</html>

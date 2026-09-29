@@ -2,9 +2,10 @@ package mcpconf
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"sort"
+
+	"mini-tools/backend/i18n"
 )
 
 // Lectura de los configs en JSON: Claude Code (.mcp.json del proyecto,
@@ -106,7 +107,7 @@ func readJSONServers(path, agent string, scope Scope) ([]Server, File) {
 		MCPServers map[string]rawServer `json:"mcpServers"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
-		f.Error = fmt.Sprintf("no se pudo leer como JSON: %v", err)
+		f.Error = i18n.T(i18n.Msg{ES: "no se pudo leer como JSON: %v", EN: "couldn't be read as JSON: %v"}, err)
 		return nil, f
 	}
 
@@ -128,7 +129,7 @@ func readClaudeUserFile(path, repoRoot string) ([]Server, File) {
 
 	var doc claudeUserFile
 	if err := json.Unmarshal(data, &doc); err != nil {
-		f.Error = fmt.Sprintf("no se pudo leer como JSON: %v", err)
+		f.Error = i18n.T(i18n.Msg{ES: "no se pudo leer como JSON: %v", EN: "couldn't be read as JSON: %v"}, err)
 		return nil, f
 	}
 

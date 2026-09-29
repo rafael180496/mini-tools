@@ -6,6 +6,8 @@ import {IsVaultInitialized, InitializeVault, UnlockVault, RestoreVaultBackupFirs
 import {updatecheck} from '../wailsjs/go/models'
 import {useTheme} from './hooks/useTheme'
 import {useUIFontScale} from './hooks/useUIFontScale'
+import {loadLanguage} from './hooks/useLanguage'
+import {useT} from './i18n'
 
 function App() {
     const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
@@ -17,12 +19,16 @@ function App() {
     // también en la pantalla de desbloqueo — quien no lee la app tampoco lee
     // el formulario que le pide la clave para poder agrandarla.
     const {uiFontScale, changeUIFontScale} = useUIFontScale()
+    const t = useT()
 
     useEffect(() => {
         // isInitialized is only set once TryAutoUnlock (the "Recordar
         // clave" toggle) has already had its chance to run — otherwise
         // UnlockScreen would flash briefly before auto-unlock resolves.
         async function init() {
+            // El idioma primero: todo lo que se dibuje después ya tiene que
+            // salir en el elegido (ver hooks/useLanguage.ts).
+            await loadLanguage()
             const initialized = await IsVaultInitialized()
             if (initialized) {
                 const autoUnlocked = await TryAutoUnlock()
@@ -59,7 +65,7 @@ function App() {
 
     if (isInitialized === null) {
         return frame(
-            <div className="flex h-full w-full items-center justify-center text-sm text-on-surface-variant">Cargando…</div>,
+            <div className="flex h-full w-full items-center justify-center text-sm text-on-surface-variant">{t.common.loading}</div>,
         )
     }
 

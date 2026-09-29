@@ -16,6 +16,7 @@ import type {DDLObjectType} from '../DDLViewerModal'
 import {likeToRegExp} from '../../lib/likePattern'
 import {buildFolderTree, countConnectionsIn, type FolderNode} from '../../lib/folderTree'
 import {environmentStyle} from '../../lib/environments'
+import {useT} from '../../i18n'
 
 // envStyleOf resolves a connection's environment marking to its colours. See
 // lib/environments.ts — an unmarked connection renders exactly as before.
@@ -142,6 +143,9 @@ export default function ConnectionTree({
     filter,
     onMatchCount,
 }: ConnectionTreeProps) {
+    const t = useT()
+    const tc = t.sidebar.connections
+    const tf = t.sidebar.folders
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
     // Which connection is pending a delete confirmation — a themed
     // ConfirmDialog (never window.confirm), holds the connection so its
@@ -316,78 +320,78 @@ export default function ConnectionTree({
         const sqlEngine = !hasBrowser(c)
         const items: TreeMenuEntry[] = [
             {
-                label: isSelected ? 'Conexión activa' : 'Conectar',
+                label: isSelected ? tc.activeConnection : tc.connect,
                 icon: 'power',
                 disabled: isSelected,
                 title: isSelected
-                    ? 'Ya es la conexión activa del editor'
-                    : 'Se conecta si hace falta y la marca como conexión activa — lo mismo que un clic en la fila',
+                    ? tc.alreadyActive
+                    : tc.connectTitle,
                 onSelect: () => selectConnection(c),
             },
             ...(hasBrowser(c)
                 ? [
                       {
-                          label: c.dbType === 'redis' ? 'Abrir Redis Browser' : 'Abrir MongoDB Browser',
+                          label: c.dbType === 'redis' ? tc.openRedisBrowser : tc.openMongoBrowser,
                           icon: 'open_in_new',
-                          hint: 'doble clic',
+                          hint: tc.doubleClick,
                           title:
                               c.dbType === 'redis'
-                                  ? 'Explorador de keys en una pestaña completa, con edición de valores y exportación masiva'
-                                  : 'Explorador de documentos en una pestaña completa, con filtro, asistente y edición',
+                                  ? tc.redisBrowserTitle
+                                  : tc.mongoBrowserTitle,
                           onSelect: () => openBrowser(c),
                       },
                   ]
                 : []),
             'separator',
-            {label: 'Editar conexión', icon: 'edit', onSelect: () => onEditConnection(c)},
+            {label: tc.editConnection, icon: 'edit', onSelect: () => onEditConnection(c)},
             ...(c.dbType === 'postgres' || c.dbType === 'oracle' || c.dbType === 'sqlserver'
                 ? [
                       {
-                          label: 'Elegir qué esquemas escanear',
+                          label: tc.chooseSchemas,
                           icon: 'schema',
-                          title: 'Limita qué esquemas se cargan en el árbol y en el autocompletado',
+                          title: tc.chooseSchemasTitle,
                           onSelect: () => onConfigureSchemas(c),
                       },
                   ]
                 : []),
-            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFoldersForMenu, c.folderId ?? '', (f) => onMoveConnectionToFolder(c.id, f))},
+            {label: tf.moveTo, icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFoldersForMenu, c.folderId ?? '', (f) => onMoveConnectionToFolder(c.id, f))},
             'separator',
             {
-                label: 'Exportar configuración',
+                label: tc.exportConfig,
                 icon: 'output',
-                title: 'Guarda host, puerto y usuario en un archivo — nunca la contraseña',
+                title: tc.exportConfigTitle,
                 onSelect: () => onExportConnectionConfig(c.id),
             },
             ...(sqlEngine
                 ? [
                       {
-                          label: 'Exportar DDL del esquema',
+                          label: tc.exportDDL,
                           icon: 'code',
                           disabled: !isSelected,
                           title: isSelected
-                              ? 'Exporta a un archivo el DDL (CREATE TABLE, etc.) del esquema activo de esta conexión'
-                              : 'Primero seleccioná la conexión: el DDL que se exporta es el del esquema activo',
+                              ? tc.exportDDLTitle
+                              : tc.exportDDLNeedsSelection,
                           onSelect: () => onExportSchemaDDL(c.id),
                       },
                   ]
                 : []),
-            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(c.name)},
+            {label: tc.copyName, icon: 'content_copy', onSelect: () => copy(c.name)},
             'separator',
             ...(isLive
                 ? [
                       {
-                          label: 'Desconectar',
+                          label: tc.disconnect,
                           icon: 'power_settings_new',
-                          title: 'Cierra la conexión abierta contra este servidor — la conexión guardada queda intacta',
+                          title: tc.disconnectTitle,
                           onSelect: () => onDisconnect(c.id),
                       },
                   ]
                 : []),
             {
-                label: 'Eliminar conexión',
+                label: tc.deleteConnection,
                 icon: 'delete',
                 danger: true,
-                title: 'Las pestañas del editor vinculadas a ella quedan sin conexión, pero su contenido no se toca',
+                title: tc.deleteConnectionTitle,
                 onSelect: () => setConfirmDelete(c),
             },
         ]
@@ -397,19 +401,19 @@ export default function ConnectionTree({
     const folderMenu = (e: ReactMouseEvent, f: vault.Folder) => {
         const open = isFolderExpanded(f.id)
         menu.openAt(e, [
-            {label: 'Subcarpeta nueva', icon: 'create_new_folder', onSelect: () => setFolderPrompt({mode: 'create', parentId: f.id})},
+            {label: tf.newSubfolder, icon: 'create_new_folder', onSelect: () => setFolderPrompt({mode: 'create', parentId: f.id})},
             'separator',
-            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: !!q, onSelect: () => toggleFolder(f.id)},
-            {label: 'Subir', icon: 'arrow_upward', title: 'Mueve la carpeta un lugar hacia arriba entre sus hermanas', onSelect: () => onReorderFolder(f.id, 'up')},
-            {label: 'Bajar', icon: 'arrow_downward', title: 'Mueve la carpeta un lugar hacia abajo entre sus hermanas', onSelect: () => onReorderFolder(f.id, 'down')},
+            {label: open ? t.common.collapse : t.common.expand, icon: open ? 'unfold_less' : 'unfold_more', disabled: !!q, onSelect: () => toggleFolder(f.id)},
+            {label: tf.moveUp, icon: 'arrow_upward', title: tf.moveUpTitle, onSelect: () => onReorderFolder(f.id, 'up')},
+            {label: tf.moveDown, icon: 'arrow_downward', title: tf.moveDownTitle, onSelect: () => onReorderFolder(f.id, 'down')},
             'separator',
-            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => setFolderPrompt({mode: 'rename', folder: f})},
+            {label: tf.rename, icon: 'edit', onSelect: () => setFolderPrompt({mode: 'rename', folder: f})},
             'separator',
             {
-                label: 'Eliminar carpeta',
+                label: tf.deleteFolder,
                 icon: 'delete',
                 danger: true,
-                title: 'Su contenido se mueve a la carpeta contenedora, nunca se borra',
+                title: tf.deleteFolderTitle,
                 onSelect: () => setConfirmDeleteFolder(f),
             },
         ])
@@ -417,55 +421,55 @@ export default function ConnectionTree({
 
     const blankMenu = (e: ReactMouseEvent) =>
         menu.openAt(e, [
-            {label: 'Conexión nueva', icon: 'add', onSelect: onNewConnection},
-            {label: 'Carpeta nueva', icon: 'create_new_folder', onSelect: () => setFolderPrompt({mode: 'create', parentId: ''})},
+            {label: tc.newConnection, icon: 'add', onSelect: onNewConnection},
+            {label: tf.newFolder, icon: 'create_new_folder', onSelect: () => setFolderPrompt({mode: 'create', parentId: ''})},
             'separator',
-            {label: 'Desplegar todo', icon: 'unfold_more', disabled: !!q || dbFolders.length === 0, onSelect: expandAll},
-            {label: 'Plegar todo', icon: 'unfold_less', disabled: !!q, onSelect: collapseAll},
+            {label: tf.expandAll, icon: 'unfold_more', disabled: !!q || dbFolders.length === 0, onSelect: expandAll},
+            {label: tf.collapseAll, icon: 'unfold_less', disabled: !!q, onSelect: collapseAll},
         ])
 
     const schemaMenu = (e: ReactMouseEvent, connId: string, schema: string) => {
         const open = expandedSchemas.has(schema)
         menu.openAt(e, [
-            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', onSelect: () => toggleSchema(schema)},
+            {label: open ? t.common.collapse : t.common.expand, icon: open ? 'unfold_less' : 'unfold_more', onSelect: () => toggleSchema(schema)},
             {
-                label: 'Usar como esquema activo',
+                label: tc.useAsActiveSchema,
                 icon: 'check_circle',
                 checked: schema === activeSchema,
-                title: 'El que usan el autocompletado y el CLAUDE.md del proyecto',
+                title: tc.useAsActiveSchemaTitle,
                 disabled: schema === activeSchema,
                 onSelect: () => onSelectSchema(schema),
             },
             'separator',
             {
-                label: 'Sincronizar esquema',
+                label: tc.syncSchema,
                 icon: 'sync',
                 disabled: syncingSchema === schema,
-                title: `Vuelve a leer solo "${schema}" de la base — no toca los demás esquemas ya cargados`,
+                title: tc.syncSchemaTitle({schema}),
                 onSelect: () => void syncSchema(connId, schema),
             },
-            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(schema)},
+            {label: tc.copyName, icon: 'content_copy', onSelect: () => copy(schema)},
         ])
     }
 
-    const tableMenu = (e: ReactMouseEvent, t: db.Table, connId: string) => {
-        const qualified = t.schema ? `${t.schema}.${t.name}` : t.name
+    const tableMenu = (e: ReactMouseEvent, tb: db.Table, connId: string) => {
+        const qualified = tb.schema ? `${tb.schema}.${tb.name}` : tb.name
         menu.openAt(e, [
-            {label: 'Consultar', icon: 'play_arrow', hint: 'doble clic', title: 'Abre un SELECT * con LIMIT 100 en el editor', onSelect: () => onOpenTable(t.name, t.schema)},
+            {label: tc.query, icon: 'play_arrow', hint: tc.doubleClick, title: tc.queryTitle, onSelect: () => onOpenTable(tb.name, tb.schema)},
             {
-                label: 'Ver CREATE TABLE',
+                label: tc.viewCreateTable,
                 icon: 'code',
-                title: 'Desde el visor se copia entero o se exporta a un .sql',
-                onSelect: () => onOpenObjectDDL(connId, {objectType: 'table', schema: t.schema ?? '', name: t.name, oid: 0}),
+                title: tc.viewCreateTableTitle,
+                onSelect: () => onOpenObjectDDL(connId, {objectType: 'table', schema: tb.schema ?? '', name: tb.name, oid: 0}),
             },
             'separator',
-            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(t.name)},
-            ...(t.schema ? [{label: 'Copiar con esquema', icon: 'content_copy', hint: qualified, onSelect: () => copy(qualified)}] : []),
+            {label: tc.copyName, icon: 'content_copy', onSelect: () => copy(tb.name)},
+            ...(tb.schema ? [{label: tc.objects.copyQualified, icon: 'content_copy', hint: qualified, onSelect: () => copy(qualified)}] : []),
         ])
     }
 
-    function renderTableRow(t: db.Table, connId: string, depth: number, qualify: boolean) {
-        const qualified = t.schema ? `${t.schema}.${t.name}` : t.name
+    function renderTableRow(tb: db.Table, connId: string, depth: number, qualify: boolean) {
+        const qualified = tb.schema ? `${tb.schema}.${tb.name}` : tb.name
         return (
             <TreeRow
                 key={qualified}
@@ -475,11 +479,11 @@ export default function ConnectionTree({
                 // Sin agrupar por esquema (búsqueda o motor sin agrupación) el
                 // esquema va en el nombre: es lo único que distingue dos tablas
                 // iguales. Adentro de su esquema sería repetir la fila de arriba.
-                label={qualify ? qualified : t.name}
+                label={qualify ? qualified : tb.name}
                 labelClass="text-on-surface-variant"
-                title={`${qualified} — doble clic: SELECT * LIMIT 100. Clic derecho: más opciones.`}
-                onDoubleClick={() => onOpenTable(t.name, t.schema)}
-                onContextMenu={(e) => tableMenu(e, t, connId)}
+                title={tc.tableTitle({name: qualified})}
+                onDoubleClick={() => onOpenTable(tb.name, tb.schema)}
+                onContextMenu={(e) => tableMenu(e, tb, connId)}
                 actions={
                     <>
                         {/* Ver el CREATE TABLE, igual que un procedure o un
@@ -490,14 +494,14 @@ export default function ConnectionTree({
                         <button
                             onClick={(e) => {
                                 e.stopPropagation()
-                                onOpenObjectDDL(connId, {objectType: 'table', schema: t.schema ?? '', name: t.name, oid: 0})
+                                onOpenObjectDDL(connId, {objectType: 'table', schema: tb.schema ?? '', name: tb.name, oid: 0})
                             }}
-                            title={`Ver el CREATE TABLE de ${qualified} — desde el visor se copia entero o se exporta a un .sql`}
+                            title={tc.tableDDLTitle({name: qualified})}
                             className="sidebar-icon !p-0.5"
                         >
                             <Icon name="code" size={14} />
                         </button>
-                        <MenuButton onOpen={(e) => tableMenu(e, t, connId)} title="Opciones de la tabla" />
+                        <MenuButton onOpen={(e) => tableMenu(e, tb, connId)} title={tc.tableOptions} />
                     </>
                 }
             />
@@ -517,14 +521,14 @@ export default function ConnectionTree({
                             value={objectFilter}
                             onChange={(e) => setObjectFilter(e.target.value)}
                             onContextMenu={(e) => e.stopPropagation()}
-                            placeholder="Filtrar tablas, procedures… (% _ como LIKE)"
-                            title='Filtra tablas, procedures, functions, triggers y packages de esta conexión por nombre o esquema — escribí texto simple para "contiene", o usá % / _ estilo SQL LIKE (% = cualquier texto, _ = un carácter)'
+                            placeholder={tc.filterPlaceholder}
+                            title={tc.filterTitle}
                             className="my-0.5 ml-5 w-[calc(100%-1.5rem)] rounded border-none bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
                         />
                     </Guided>
                 )}
                 {(() => {
-                    if (totalObjectCount === 0) return <TreeNote depth={inner}>Sin tablas.</TreeNote>
+                    if (totalObjectCount === 0) return <TreeNote depth={inner}>{tc.noTables}</TreeNote>
 
                     const tq = objectFilter.trim()
 
@@ -540,21 +544,21 @@ export default function ConnectionTree({
                         const pattern = tq ? likeToRegExp(tq) : null
                         const matches = (name: string, schema?: string) => !pattern || pattern.test(name) || pattern.test(schema ?? '')
 
-                        const visibleTables = metadata.tables.filter((t) => matches(t.name, t.schema)).sort((a, b) => a.name.localeCompare(b.name))
+                        const visibleTables = metadata.tables.filter((tb) => matches(tb.name, tb.schema)).sort((a, b) => a.name.localeCompare(b.name))
                         const visibleProcedures = (metadata.procedures ?? []).filter((p) => matches(p.name, p.schema))
                         const visibleFunctions = (metadata.functions ?? []).filter((f) => matches(f.name, f.schema))
-                        const visibleTriggers = (metadata.triggers ?? []).filter((t) => matches(t.name, t.schema))
+                        const visibleTriggers = (metadata.triggers ?? []).filter((tr) => matches(tr.name, tr.schema))
                         const visiblePackages = (metadata.packages ?? []).filter((p) => matches(p.name, p.schema))
                         const totalVisible =
                             visibleTables.length + visibleProcedures.length + visibleFunctions.length + visibleTriggers.length + visiblePackages.length
 
                         if (totalVisible === 0) {
-                            return <TreeNote depth={inner}>{tq ? `Sin coincidencias para "${objectFilter}".` : 'Sin tablas.'}</TreeNote>
+                            return <TreeNote depth={inner}>{tq ? tf.noMatchesFor({query: objectFilter}) : tc.noTables}</TreeNote>
                         }
 
                         return (
                             <>
-                                {visibleTables.map((t) => renderTableRow(t, c.id, inner, true))}
+                                {visibleTables.map((tb) => renderTableRow(tb, c.id, inner, true))}
                                 <SchemaObjectsList
                                     procedures={visibleProcedures}
                                     functions={visibleFunctions}
@@ -576,7 +580,7 @@ export default function ConnectionTree({
                         // Always alphabetical regardless of what order the
                         // backend/merge happened to return — a real 342-table
                         // schema is unusable to scan through otherwise.
-                        const schemaTables = metadata.tables.filter((t) => t.schema === schema).sort((a, b) => a.name.localeCompare(b.name))
+                        const schemaTables = metadata.tables.filter((tb) => tb.schema === schema).sort((a, b) => a.name.localeCompare(b.name))
                         const tablesCollapsed = collapsedTableSchemas.has(schema)
                         return (
                             <div key={schema}>
@@ -588,8 +592,8 @@ export default function ConnectionTree({
                                     labelClass={isActive ? 'font-semibold text-primary' : undefined}
                                     title={
                                         isActive
-                                            ? `"${schema}" es el esquema activo (autocompletado / CLAUDE.md)`
-                                            : `Ver tablas de "${schema}" y fijarlo como esquema activo`
+                                            ? tc.schemaActiveTitle({schema})
+                                            : tc.schemaSelectTitle({schema})
                                     }
                                     expanded={schemaExpanded}
                                     onToggle={() => toggleSchema(schema)}
@@ -615,35 +619,35 @@ export default function ConnectionTree({
                                                 disabled={syncing}
                                                 title={
                                                     syncing
-                                                        ? `Sincronizando "${schema}"…`
-                                                        : `Sincroniza solo el esquema "${schema}" contra la base de datos — no toca los demás esquemas ya cargados`
+                                                        ? tc.syncingSchema({schema})
+                                                        : tc.syncOnlyTitle({schema})
                                                 }
                                                 className="sidebar-icon !p-0.5 disabled:opacity-40"
                                             >
                                                 <Icon name="sync" size={14} className={syncing ? 'animate-spin' : ''} />
                                             </button>
-                                            <MenuButton onOpen={(e) => schemaMenu(e, c.id, schema)} title="Opciones del esquema" />
+                                            <MenuButton onOpen={(e) => schemaMenu(e, c.id, schema)} title={tc.schemaOptions} />
                                         </>
                                     }
                                 />
                                 {schemaExpanded && (
                                     <>
                                         {schemaTables.length === 0 ? (
-                                            <TreeNote depth={inner + 1}>Sin tablas.</TreeNote>
+                                            <TreeNote depth={inner + 1}>{tc.noTables}</TreeNote>
                                         ) : (
                                             <>
                                                 <TreeRow
                                                     depth={inner + 1}
                                                     icon="table_chart"
-                                                    label="Tablas"
-                                                    title={`${tablesCollapsed ? 'Ver' : 'Ocultar'} las ${schemaTables.length} tablas de "${schema}"`}
+                                                    label={tc.tables}
+                                                    title={tc.tablesTitle({collapsed: tablesCollapsed, count: schemaTables.length, schema})}
                                                     expanded={!tablesCollapsed}
                                                     onToggle={() => toggleTableCategory(schema)}
                                                     onClick={() => toggleTableCategory(schema)}
                                                     onContextMenu={(e) =>
                                                         menu.openAt(e, [
                                                             {
-                                                                label: tablesCollapsed ? 'Desplegar' : 'Plegar',
+                                                                label: tablesCollapsed ? t.common.expand : t.common.collapse,
                                                                 icon: tablesCollapsed ? 'unfold_more' : 'unfold_less',
                                                                 onSelect: () => toggleTableCategory(schema),
                                                             },
@@ -651,13 +655,13 @@ export default function ConnectionTree({
                                                     }
                                                     trailing={<span className="text-ui-10 tabular-nums text-on-surface-variant/50">{schemaTables.length}</span>}
                                                 />
-                                                {!tablesCollapsed && schemaTables.map((t) => renderTableRow(t, c.id, inner + 2, false))}
+                                                {!tablesCollapsed && schemaTables.map((tb) => renderTableRow(tb, c.id, inner + 2, false))}
                                             </>
                                         )}
                                         <SchemaObjectsList
                                             procedures={(metadata.procedures ?? []).filter((p) => p.schema === schema)}
                                             functions={(metadata.functions ?? []).filter((f) => f.schema === schema)}
-                                            triggers={(metadata.triggers ?? []).filter((t) => t.schema === schema)}
+                                            triggers={(metadata.triggers ?? []).filter((tr) => tr.schema === schema)}
                                             packages={(metadata.packages ?? []).filter((pkg) => pkg.schema === schema)}
                                             depth={inner + 1}
                                             openMenu={menu.openAt}
@@ -679,6 +683,8 @@ export default function ConnectionTree({
         const isExpanded = isSelected && collapsedId !== c.id
         const env = envStyleOf(c)
         const sqlEngine = !hasBrowser(c)
+        const isRedis = c.dbType === 'redis'
+        const isMongo = c.dbType === 'mongodb'
         return (
             <div key={c.id}>
                 <TreeRow
@@ -689,7 +695,7 @@ export default function ConnectionTree({
                     label={
                         <span className="flex min-w-0 items-center gap-1.5">
                             {c.color && (
-                                <span aria-hidden title="Color de esta conexión" className="h-2 w-2 shrink-0 rounded-full" style={{backgroundColor: c.color}} />
+                                <span aria-hidden title={tc.connectionColor} className="h-2 w-2 shrink-0 rounded-full" style={{backgroundColor: c.color}} />
                             )}
                             <span className={`truncate ${isSelected ? 'font-semibold' : ''}`}>{c.name}</span>
                         </span>
@@ -697,11 +703,11 @@ export default function ConnectionTree({
                     labelClass={isSelected ? 'text-on-surface' : 'text-on-surface/90'}
                     title={
                         (c.dbType === 'redis'
-                            ? `Clic: seleccionar "${c.name}" y ver sus keys acá abajo. Doble clic: abrir el Redis Browser en una pestaña completa.`
+                            ? tc.rowTitleRedis({name: c.name})
                             : c.dbType === 'mongodb'
-                              ? `Clic: seleccionar "${c.name}" y ver sus bases/colecciones acá abajo. Doble clic: abrir el MongoDB Browser en una pestaña completa.`
-                              : `${dbTypeLabel(c.dbType)} — clic: conectar y trabajar con "${c.name}" (se conecta si hace falta y la marca como conexión activa)`) +
-                        (env ? ` Entorno: ${env.label}.` : '')
+                              ? tc.rowTitleMongo({name: c.name})
+                              : tc.rowTitleSql({engine: dbTypeLabel(c.dbType), name: c.name})) +
+                        (env ? tc.envSuffix({env: env.label}) : '')
                     }
                     expanded={isExpanded}
                     onToggle={() => toggleExpand(c)}
@@ -716,7 +722,7 @@ export default function ConnectionTree({
                         isLive ? (
                             <span
                                 aria-hidden
-                                title="Hay una conexión abierta contra este servidor"
+                                title={tc.liveDot}
                                 className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
                             />
                         ) : undefined
@@ -731,8 +737,8 @@ export default function ConnectionTree({
                                     }}
                                     title={
                                         c.dbType === 'redis'
-                                            ? 'Abrir en una pestaña — explorador de keys en modo ventana completa, con edición de valores y exportación masiva'
-                                            : 'Abrir el MongoDB Browser en una pestaña — explorador de documentos con filtro, asistente y edición'
+                                            ? tc.openRedisTab
+                                            : tc.openMongoTab
                                     }
                                     className="sidebar-icon !p-0.5"
                                 >
@@ -745,13 +751,13 @@ export default function ConnectionTree({
                                         e.stopPropagation()
                                         onDisconnect(c.id)
                                     }}
-                                    title="Cerrar la conexión abierta contra este servidor — la conexión guardada queda intacta"
+                                    title={tc.disconnectButtonTitle}
                                     className="sidebar-icon !p-0.5 hover:!text-error"
                                 >
                                     <Icon name="power_settings_new" size={14} />
                                 </button>
                             )}
-                            <MenuButton onOpen={(e) => connectionMenu(e, c)} title="Opciones de la conexión" />
+                            <MenuButton onOpen={(e) => connectionMenu(e, c)} title={tc.connectionOptions} />
                         </>
                     }
                     // La franja del entorno (Producción en rojo, etc.) es la
@@ -759,7 +765,7 @@ export default function ConnectionTree({
                     stripe={env?.dot}
                 />
 
-                {isExpanded && c.dbType === 'redis' && (
+                {isExpanded && isRedis && (
                     <Guided depth={depth + 1}>
                         <RedisKeyTree
                             connId={c.id}
@@ -770,7 +776,7 @@ export default function ConnectionTree({
                     </Guided>
                 )}
 
-                {isExpanded && c.dbType === 'mongodb' && (
+                {isExpanded && isMongo && (
                     <Guided depth={depth + 1}>
                         <MongoCollectionTree
                             connId={c.id}
@@ -785,7 +791,7 @@ export default function ConnectionTree({
                 {isExpanded && sqlEngine && metadataLoading && (
                     <TreeNote depth={depth + 1}>
                         <span aria-hidden className="mr-1.5 inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-primary border-t-transparent align-[-1px]" />
-                        Cargando tablas…
+                        {tc.loadingTables}
                     </TreeNote>
                 )}
 
@@ -818,20 +824,20 @@ export default function ConnectionTree({
                     iconFilled={!expanded}
                     label={f.name}
                     labelClass="text-on-surface font-medium"
-                    title={`${f.name} — ${total} ${total === 1 ? 'conexión' : 'conexiones'}. Las carpetas solo organizan: nunca cambian a qué base apunta una conexión. Clic derecho: más opciones.`}
+                    title={tc.folderTitle({name: f.name, count: total})}
                     expanded={expanded}
                     onToggle={() => toggleFolder(f.id)}
                     onClick={() => toggleFolder(f.id)}
                     onContextMenu={(e) => folderMenu(e, f)}
                     trailing={total > 0 ? <span className="text-ui-10 tabular-nums text-on-surface-variant/50">{total}</span> : undefined}
-                    actions={<MenuButton onOpen={(e) => folderMenu(e, f)} title="Opciones de la carpeta" />}
+                    actions={<MenuButton onOpen={(e) => folderMenu(e, f)} title={tf.folderOptions} />}
                 />
                 {expanded && (
                     <>
                         {node.children.map((child) => renderFolderNode(child, depth + 1))}
                         {ownConnections.map((c) => renderConnectionRow(c, depth + 1))}
                         {visibleChildren === 0 && ownConnections.length === 0 && (
-                            <TreeNote depth={depth + 1}>{q ? 'Sin coincidencias.' : 'Carpeta vacía.'}</TreeNote>
+                            <TreeNote depth={depth + 1}>{q ? tf.noMatches : tf.emptyFolder}</TreeNote>
                         )}
                     </>
                 )}
@@ -841,13 +847,13 @@ export default function ConnectionTree({
 
     return (
         <SidebarSection
-            title="Conexiones"
-            count={q ? `${rootConnections.length + visibleFolderNodes.length} de ${dbConnections.length}` : dbConnections.length ? String(dbConnections.length) : null}
+            title={tc.title}
+            count={q ? tf.countOf({shown: rootConnections.length + visibleFolderNodes.length, total: dbConnections.length}) : dbConnections.length ? String(dbConnections.length) : null}
             actions={
                 <>
                     <button
                         onClick={() => setFolderPrompt({mode: 'create', parentId: ''})}
-                        title="Crea una carpeta para agrupar conexiones — las carpetas solo organizan, nunca cambian a qué base apunta una conexión"
+                        title={tc.newFolderTitle}
                         className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="create_new_folder" size={16} />
@@ -857,12 +863,12 @@ export default function ConnectionTree({
                         disabled={!!q || dbFolders.length === 0}
                         title={
                             q
-                                ? 'Con una búsqueda activa las carpetas con coincidencias ya están abiertas'
+                                ? tf.searchKeepsOpen
                                 : dbFolders.length === 0
-                                  ? 'No hay carpetas que desplegar'
+                                  ? tf.noFoldersToExpand
                                   : anyFolderOpen
-                                    ? 'Plegar todas las carpetas (y la lista de tablas de la conexión activa)'
-                                    : 'Desplegar todas las carpetas'
+                                    ? tc.collapseAllTitle
+                                    : tf.expandAllTitle
                         }
                         className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                     >
@@ -870,7 +876,7 @@ export default function ConnectionTree({
                     </button>
                     <button
                         onClick={onNewConnection}
-                        title="Crea una nueva conexión a una base de datos (PostgreSQL, Oracle, SQLite, SQL Server, Redis o MongoDB)"
+                        title={tc.newConnectionTitle}
                         className="rounded p-0.5 text-primary hover:bg-surface-variant"
                     >
                         <Icon name="add" size={16} />
@@ -880,7 +886,7 @@ export default function ConnectionTree({
         >
             <div className="min-h-0 flex-1 pb-6" onContextMenu={blankMenu}>
                 {rootConnections.length === 0 && visibleFolderNodes.length === 0 && (
-                    <p className="p-3 text-xs text-on-surface-variant/60">{q ? `Sin coincidencias para "${filter}".` : 'Sin conexiones todavía.'}</p>
+                    <p className="p-3 text-xs text-on-surface-variant/60">{q ? tf.noMatchesFor({query: filter}) : tc.noConnections}</p>
                 )}
                 {/* Carpetas primero y después las conexiones sueltas, el orden
                     de cualquier explorador de archivos. */}
@@ -892,9 +898,9 @@ export default function ConnectionTree({
 
             {confirmDelete && (
                 <ConfirmDialog
-                    title="Eliminar conexión"
-                    description={`Esto elimina "${confirmDelete.name}" del vault de forma permanente. Las pestañas del editor que estén vinculadas a ella quedan sin conexión (su contenido no se toca). No se puede deshacer.`}
-                    confirmLabel="Eliminar"
+                    title={tc.deleteConnection}
+                    description={tc.deleteConnectionDesc({name: confirmDelete.name})}
+                    confirmLabel={tf.deleteAction}
                     danger
                     onConfirm={() => onDeleteConnection(confirmDelete.id)}
                     onClose={() => setConfirmDelete(null)}
@@ -902,9 +908,9 @@ export default function ConnectionTree({
             )}
             {confirmDeleteFolder && (
                 <ConfirmDialog
-                    title="Eliminar carpeta"
-                    description={`Esto elimina la carpeta "${confirmDeleteFolder.name}". Las conexiones y subcarpetas que tenga adentro se mueven a la carpeta contenedora (o a la raíz) — nunca se borran.`}
-                    confirmLabel="Eliminar"
+                    title={tf.deleteFolder}
+                    description={tc.deleteFolderDesc({name: confirmDeleteFolder.name})}
+                    confirmLabel={tf.deleteAction}
                     danger
                     onConfirm={() => onDeleteFolder(confirmDeleteFolder.id)}
                     onClose={() => setConfirmDeleteFolder(null)}
@@ -912,16 +918,16 @@ export default function ConnectionTree({
             )}
             {folderPrompt && (
                 <PromptDialog
-                    title={folderPrompt.mode === 'rename' ? 'Cambiar el nombre de la carpeta' : folderPrompt.parentId ? 'Subcarpeta nueva' : 'Carpeta nueva'}
-                    label="Nombre"
+                    title={folderPrompt.mode === 'rename' ? tf.renameTitle : folderPrompt.parentId ? tf.newSubfolder : tf.newFolder}
+                    label={tf.nameLabel}
                     initial={folderPrompt.mode === 'rename' ? folderPrompt.folder.name : ''}
-                    placeholder="Nombre de la carpeta…"
-                    confirmLabel={folderPrompt.mode === 'rename' ? 'Guardar' : 'Crear'}
+                    placeholder={tf.namePlaceholder}
+                    confirmLabel={folderPrompt.mode === 'rename' ? t.common.save : tf.create}
                     description={
                         folderPrompt.mode === 'create'
                             ? folderPrompt.parentId
-                                ? `Se crea dentro de "${dbFolders.find((f) => f.id === folderPrompt.parentId)?.name ?? ''}".`
-                                : 'Se crea en la raíz del árbol de conexiones.'
+                                ? tf.createdInside({name: dbFolders.find((f) => f.id === folderPrompt.parentId)?.name ?? ''})
+                                : tc.createdAtRoot
                             : undefined
                     }
                     onSubmit={(value) => {

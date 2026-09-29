@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -9,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/httpclient"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/vault"
 )
 
@@ -124,7 +124,7 @@ func (a *App) runCollection(runID, collectionID, folderID string, delayMs int, e
 		nodes = underFolder(items, nodes, folderID)
 	}
 	if len(nodes) == 0 {
-		return nil, fmt.Errorf("app: no hay peticiones que correr acá")
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: no hay peticiones que correr acá", EN: "app: there are no requests to run here"})
 	}
 
 	summary := &HTTPRunSummary{
@@ -210,7 +210,7 @@ func (a *App) runOne(runID string, node treeNode) HTTPRunResult {
 		return res
 	}
 	if strings.TrimSpace(built.URL) == "" {
-		res.Error = "la petición no tiene URL"
+		res.Error = i18n.T(i18n.Msg{ES: "la petición no tiene URL", EN: "the request has no URL"})
 		return res
 	}
 

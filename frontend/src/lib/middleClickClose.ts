@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 import type {MouseEvent, PointerEvent} from 'react'
 
 // Cerrar una pestaña con el CLIC CENTRAL de la rueda, como en VS Code, los
@@ -38,4 +39,6 @@ export function closeOnMiddleClick(close: () => void) {
 // en un solo lugar para que las tres barras de pestañas digan lo mismo: un
 // atajo que no está escrito en ningún lado es un atajo que solo conoce quien lo
 // programó.
-export const MIDDLE_CLICK_HINT = ' · clic central de la rueda para cerrar'
+export function middleClickHint(): string {
+    return t().common.middleClickClose
+}

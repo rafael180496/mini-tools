@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react'
 import {ResultEditTarget} from '../../../wailsjs/go/main/App'
 import type {SqlTarget} from '../../lib/sqlGenerate'
+import {useT} from '../../i18n'
 
 // De qué tabla salieron estas filas, para las sentencias que genera la app:
 // "copiar como INSERT", "copiar como UPDATE" y el exporte a SQL.
@@ -38,6 +39,7 @@ export function useSqlTarget(
     resultColumns?: string[],
     resultKinds?: string[],
 ): SqlTarget {
+    const t = useT()
     const [resolved, setResolved] = useState<{table: string; kinds: Record<string, string>} | null>(null)
 
     useEffect(() => {
@@ -70,5 +72,5 @@ export function useSqlTarget(
 
     return resolved
         ? {table: resolved.table, qualified: true, engine, kinds}
-        : {table: 'tabla', engine, kinds}
+        : {table: t.results.placeholderTable, engine, kinds}
 }

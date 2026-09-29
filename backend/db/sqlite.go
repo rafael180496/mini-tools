@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	_ "modernc.org/sqlite"
+
+	"mini-tools/backend/i18n"
 )
 
 type sqliteConnector struct{}
@@ -28,12 +30,12 @@ func (sqliteConnector) Type() DBType { return DBTypeSQLite }
 func (sqliteConnector) BuildDSN(params map[string]string) (string, error) {
 	path := params["path"]
 	if path == "" {
-		return "", fmt.Errorf("sqlite: falta el parámetro 'path'")
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlite: falta el parámetro 'path'", EN: "sqlite: missing 'path' parameter"})
 	}
 
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("sqlite: resolviendo path: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlite: resolviendo path: %w", EN: "sqlite: resolving path: %w"}, err)
 	}
 
 	dsn := fmt.Sprintf("file://%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)", abs)
@@ -61,7 +63,7 @@ func (sqliteConnector) ParseDSN(dsn string) (map[string]string, error) {
 		}
 	}
 	if path == "" {
-		return nil, fmt.Errorf("sqlite: no se pudo interpretar el DSN")
+		return nil, i18n.Errorf(i18n.Msg{ES: "sqlite: no se pudo interpretar el DSN", EN: "sqlite: could not parse the DSN"})
 	}
 	out := map[string]string{"path": path}
 	if key != "" {

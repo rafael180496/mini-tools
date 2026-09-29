@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import Icon from '../Icon'
 import {newVariable, type HttpVariable} from './httpShared'
+import {useT} from '../../i18n'
 
 // Tabla de variables de un entorno o de una colección.
 //
@@ -19,6 +20,7 @@ function emptyVar(): HttpVariable {
 }
 
 export default function VariablesTable({rows, onChange}: VariablesTableProps) {
+    const t = useT()
     // Qué secretos están revelados, por índice. Se guarda acá y no en la
     // fila porque es estado de la VISTA: revelar un token para copiarlo no
     // puede persistirse ni viajar en un export.
@@ -48,10 +50,10 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
                 <thead>
                     <tr className="text-left text-ui-10 uppercase tracking-wider text-on-surface-variant/60">
                         <th className="w-8 px-2 py-1 font-medium"></th>
-                        <th className="w-[30%] px-2 py-1 font-medium">Variable</th>
-                        <th className="px-2 py-1 font-medium">Valor</th>
-                        <th className="w-16 px-1 py-1 text-center font-medium" title="Una variable secreta se muestra enmascarada y NO sale en el export de la colección.">
-                            Secreta
+                        <th className="w-[30%] px-2 py-1 font-medium">{t.http.vars.variable}</th>
+                        <th className="px-2 py-1 font-medium">{t.http.vars.value}</th>
+                        <th className="w-16 px-1 py-1 text-center font-medium" title={t.http.vars.secretColumnTitle}>
+                            {t.http.vars.secret}
                         </th>
                         <th className="w-8 px-1 py-1"></th>
                     </tr>
@@ -68,7 +70,7 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
                                             type="checkbox"
                                             checked={row.enabled}
                                             onChange={(e) => update(i, {enabled: e.target.checked})}
-                                            title={row.enabled ? 'Activa: se usa al resolver {{llaves}}' : 'Desactivada: queda guardada pero no resuelve'}
+                                            title={row.enabled ? t.http.vars.enabledTitle : t.http.vars.disabledTitle}
                                             className="accent-primary"
                                         />
                                     )}
@@ -77,8 +79,8 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
                                     <input
                                         value={row.key}
                                         onChange={(e) => update(i, {key: e.target.value, enabled: true})}
-                                        placeholder={ghost ? 'HOST' : ''}
-                                        title="Nombre a usar entre llaves dobles en la petición"
+                                        placeholder={ghost ? t.http.vars.namePlaceholder : ''}
+                                        title={t.http.vars.nameTitle}
                                         className="w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                     />
                                 </td>
@@ -88,14 +90,14 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
                                             value={hidden ? '•'.repeat(Math.min(row.value.length, 24)) : row.value}
                                             readOnly={hidden}
                                             onChange={(e) => update(i, {value: e.target.value, enabled: true})}
-                                            placeholder={ghost ? 'http://localhost:3000' : ''}
-                                            title={hidden ? 'Oculto por ser secreto. Usá el ojo para verlo.' : undefined}
+                                            placeholder={ghost ? t.http.vars.valuePlaceholder : ''}
+                                            title={hidden ? t.http.vars.hiddenTitle : undefined}
                                             className="min-w-0 flex-1 bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                         />
                                         {row.secret && !ghost && (
                                             <button
                                                 onClick={() => toggleReveal(i)}
-                                                title={hidden ? 'Mostrar el valor' : 'Volver a ocultarlo'}
+                                                title={hidden ? t.http.vars.show : t.http.vars.hide}
                                                 className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:text-on-surface"
                                             >
                                                 <Icon name={hidden ? 'visibility' : 'visibility_off'} size={12} />
@@ -109,7 +111,7 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
                                             type="checkbox"
                                             checked={row.secret}
                                             onChange={(e) => update(i, {secret: e.target.checked})}
-                                            title="Marcar como secreta: se muestra enmascarada acá, se tapa en el historial de ejecuciones y no se incluye al exportar la colección."
+                                            title={t.http.vars.secretTitle}
                                             className="accent-primary"
                                         />
                                     )}
@@ -118,7 +120,7 @@ export default function VariablesTable({rows, onChange}: VariablesTableProps) {
                                     {!ghost && (
                                         <button
                                             onClick={() => remove(i)}
-                                            title="Borrar esta variable"
+                                            title={t.http.vars.removeTitle}
                                             className="rounded p-0.5 text-on-surface-variant/40 hover:bg-surface-variant hover:text-error"
                                         >
                                             <Icon name="close" size={12} />

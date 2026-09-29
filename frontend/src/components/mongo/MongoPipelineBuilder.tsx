@@ -1,5 +1,6 @@
 import Icon from '../Icon'
-import {PIPELINE_STAGES, stageDef, validateStages, type PipelineStage} from '../../lib/mongoPipeline'
+import {pipelineStages, stageDef, validateStages, type PipelineStage} from '../../lib/mongoPipeline'
+import {useT} from '../../i18n'
 
 interface MongoPipelineBuilderProps {
     stages: PipelineStage[]
@@ -18,7 +19,10 @@ interface MongoPipelineBuilderProps {
 // a half-written object would fight the cursor. They are validated (with a
 // message per stage) but never rewritten.
 export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBuilderProps) {
+    const t = useT()
+    const pb = t.mongo.pipelineBuilder
     const errors = validateStages(stages)
+    const allStages = pipelineStages()
 
     function update(i: number, patch: Partial<PipelineStage>) {
         onChange(stages.map((s, idx) => (idx === i ? {...s, ...patch} : s)))
@@ -40,10 +44,7 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
         <div className="space-y-2">
             {stages.length === 0 && (
                 <p className="rounded border border-dashed border-outline-variant px-3 py-4 text-center text-xs text-on-surface-variant">
-                    Un pipeline es una secuencia de etapas: cada una recibe lo que produjo la anterior. Empezá con un
-                    <span className="font-mono"> $match </span>
-                    para filtrar y seguí con <span className="font-mono">$group</span> o{' '}
-                    <span className="font-mono">$lookup</span>.
+                    {pb.empty}
                 </p>
             )}
 
@@ -54,7 +55,7 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
                         <div className="mb-1 flex items-center gap-2">
                             <span
                                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-variant font-mono text-ui-10 text-on-surface-variant"
-                                title="Posición en el pipeline: cada etapa recibe la salida de la anterior"
+                                title={pb.positionHint}
                             >
                                 {i + 1}
                             </span>
@@ -64,7 +65,7 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
                                 title={def.hint}
                                 className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container-low px-1.5 py-1 text-xs text-on-surface"
                             >
-                                {PIPELINE_STAGES.map((s) => (
+                                {allStages.map((s) => (
                                     <option key={s.op} value={s.op} title={s.hint}>
                                         {s.label}
                                     </option>
@@ -73,7 +74,7 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
                             <button
                                 onClick={() => move(i, -1)}
                                 disabled={i === 0}
-                                title="Sube esta etapa. El orden importa: filtrar antes de agrupar procesa muchos menos documentos."
+                                title={pb.moveUpHint}
                                 className="shrink-0 text-on-surface-variant hover:text-on-surface disabled:opacity-30"
                             >
                                 <Icon name="arrow_upward" size={15} />
@@ -81,14 +82,14 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
                             <button
                                 onClick={() => move(i, 1)}
                                 disabled={i === stages.length - 1}
-                                title="Baja esta etapa en el pipeline"
+                                title={pb.moveDownHint}
                                 className="shrink-0 text-on-surface-variant hover:text-on-surface disabled:opacity-30"
                             >
                                 <Icon name="arrow_downward" size={15} />
                             </button>
                             <button
                                 onClick={() => onChange(stages.filter((_, idx) => idx !== i))}
-                                title="Elimina esta etapa del pipeline"
+                                title={pb.removeHint}
                                 className="shrink-0 text-on-surface-variant hover:text-error"
                             >
                                 <Icon name="remove_circle_outline" size={16} />
@@ -115,8 +116,8 @@ export default function MongoPipelineBuilder({stages, onChange}: MongoPipelineBu
             })}
 
             <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-on-surface-variant">Agregar etapa:</span>
-                {PIPELINE_STAGES.map((s) => (
+                <span className="text-xs text-on-surface-variant">{pb.addStage}</span>
+                {allStages.map((s) => (
                     <button
                         key={s.op}
                         onClick={() => addStage(s.op)}

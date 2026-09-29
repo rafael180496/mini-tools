@@ -7,6 +7,8 @@
 // thing people forget — which is exactly when the traceability the
 // convention exists for breaks.
 
+import {t} from '../i18n'
+
 export interface CommitTypeDef {
     value: string
     label: string
@@ -15,18 +17,20 @@ export interface CommitTypeDef {
 
 // The Conventional Commits set, with what each one is actually for. Kept
 // short on purpose: a list of twenty types is a list nobody reads.
-export const COMMIT_TYPES: CommitTypeDef[] = [
-    {value: 'feat', label: 'feat — funcionalidad nueva', hint: 'Agrega una capacidad que antes no existía'},
-    {value: 'fix', label: 'fix — corrección', hint: 'Arregla un comportamiento incorrecto'},
-    {value: 'docs', label: 'docs — documentación', hint: 'Solo documentación, sin cambios de código'},
-    {value: 'refactor', label: 'refactor — reestructura', hint: 'Cambia cómo está escrito sin cambiar qué hace'},
-    {value: 'perf', label: 'perf — rendimiento', hint: 'Mejora de performance'},
-    {value: 'test', label: 'test — pruebas', hint: 'Agrega o corrige pruebas'},
-    {value: 'build', label: 'build — build/dependencias', hint: 'Sistema de compilación o dependencias'},
-    {value: 'ci', label: 'ci — integración continua', hint: 'Configuración de pipelines'},
-    {value: 'chore', label: 'chore — mantenimiento', hint: 'Tareas que no tocan código de producción'},
-    {value: 'revert', label: 'revert — revierte', hint: 'Deshace un commit anterior'},
-]
+//
+// label y hint son getters: se resuelven contra el idioma activo en el
+// momento de leerlos, no al cargar el módulo (ver .claude/specs/i18n.md).
+const COMMIT_TYPE_VALUES = ['feat', 'fix', 'docs', 'refactor', 'perf', 'test', 'build', 'ci', 'chore', 'revert'] as const
+
+export const COMMIT_TYPES: CommitTypeDef[] = COMMIT_TYPE_VALUES.map((value) => ({
+    value,
+    get label() {
+        return t().git.commitMsg.types[value].label
+    },
+    get hint() {
+        return t().git.commitMsg.types[value].hint
+    },
+}))
 
 // Ticket patterns, most specific first.
 //

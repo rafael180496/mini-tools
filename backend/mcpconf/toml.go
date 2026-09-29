@@ -2,10 +2,11 @@ package mcpconf
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"sort"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Lectura del config de Codex (~/.codex/config.toml), donde los servidores MCP
@@ -126,7 +127,7 @@ func readCodexTOML(path string) ([]Server, File) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		f.Error = fmt.Sprintf("no se pudo leer el archivo: %v", err)
+		f.Error = i18n.T(i18n.Msg{ES: "no se pudo leer el archivo: %v", EN: "couldn't read the file: %v"}, err)
 		return nil, f
 	}
 

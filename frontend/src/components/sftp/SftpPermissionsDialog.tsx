@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react'
 import {ChmodSftpPath, SftpPathPermissions} from '../../../wailsjs/go/main/App'
 import {sftpx} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface SftpPermissionsDialogProps {
     sessionId: string
@@ -21,15 +22,17 @@ interface SftpPermissionsDialogProps {
 type ClassKey = 'owner' | 'group' | 'other'
 type BitKey = 'read' | 'write' | 'execute'
 
-const CLASSES: {key: ClassKey; label: string; shift: number}[] = [
-    {key: 'owner', label: 'Propietario', shift: 6},
-    {key: 'group', label: 'Grupo', shift: 3},
-    {key: 'other', label: 'Otros', shift: 0},
+// Sin etiquetas: el nombre visible sale del diccionario al dibujar
+// (t.sftp.perms.classes / .bits), no se congela acá.
+const CLASSES: {key: ClassKey; shift: number}[] = [
+    {key: 'owner', shift: 6},
+    {key: 'group', shift: 3},
+    {key: 'other', shift: 0},
 ]
-const BITS: {key: BitKey; label: string; weight: number}[] = [
-    {key: 'read', label: 'Lectura', weight: 4},
-    {key: 'write', label: 'Escritura', weight: 2},
-    {key: 'execute', label: 'Ejecución', weight: 1},
+const BITS: {key: BitKey; weight: number}[] = [
+    {key: 'read', weight: 4},
+    {key: 'write', weight: 2},
+    {key: 'execute', weight: 1},
 ]
 
 type Grid = Record<ClassKey, Record<BitKey, boolean>>
@@ -80,6 +83,7 @@ function sameMode(targets: sftpx.FileEntry[]): boolean {
 }
 
 export default function SftpPermissionsDialog({sessionId, targets, onClose, onSaved, onError}: SftpPermissionsDialogProps) {
+    const t = useT()
     const [info, setInfo] = useState<sftpx.PermInfo | null>(null)
     const [grid, setGrid] = useState<Grid | null>(null)
     const [loading, setLoading] = useState(true)
@@ -137,7 +141,7 @@ export default function SftpPermissionsDialog({sessionId, targets, onClose, onSa
                 const msg =
                     failed.length === targets.length
                         ? failed.join('\n')
-                        : `${failed.length} de ${targets.length} no se pudieron cambiar:\n${failed.join('\n')}`
+                        : t.sftp.perms.partialFailure({failed: failed.length, total: targets.length, details: failed.join('\n')})
                 setError(msg)
                 onError(msg)
             })
@@ -156,8 +160,8 @@ export default function SftpPermissionsDialog({sessionId, targets, onClose, onSa
             >
                 <div className="flex items-center gap-2">
                     <Icon name="lock" size={18} className="text-primary" />
-                    <h2 className="text-lg font-semibold">Editar permisos</h2>
-                    <button onClick={onClose} title="Cerrar" className="ml-auto rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                    <h2 className="text-lg font-semibold">{t.sftp.perms.title}</h2>
+                    <button onClick={onClose} title={t.sftp.perms.close} className="ml-auto rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                         <Icon name="close" size={18} />
                     </button>
                 </div>
@@ -165,20 +169,20 @@ export default function SftpPermissionsDialog({sessionId, targets, onClose, onSa
                     className="truncate text-xs text-on-surface-variant"
                     title={single ? single.path : targets.map((t) => t.path).join('\n')}
                 >
-                    {single ? single.name : `${targets.length} elementos seleccionados`}
+                    {single ? single.name : t.sftp.perms.selectedCount(targets.length)}
                 </p>
 
                 {loading ? (
-                    <div className="py-6 text-center text-xs text-on-surface-variant">Cargando…</div>
+                    <div className="py-6 text-center text-xs text-on-surface-variant">{t.common.loading}</div>
                 ) : grid ? (
                     <>
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="text-xs text-on-surface-variant">
-                                    <th className="py-1 text-left font-medium">Acceso</th>
+                                    <th className="py-1 text-left font-medium">{t.sftp.perms.access}</th>
                                     {BITS.map((b) => (
                                         <th key={b.key} className="py-1 text-center font-medium">
-                                            {b.label}
+                                            {t.sftp.perms.bits[b.key]}
                                         </th>
                                     ))}
                                 </tr>
@@ -186,7 +190,7 @@ export default function SftpPermissionsDialog({sessionId, targets, onClose, onSa
                             <tbody>
                                 {CLASSES.map((c) => (
                                     <tr key={c.key} className="border-t border-outline-variant">
-                                        <td className="py-2 text-on-surface">{c.label}</td>
+                                        <td className="py-2 text-on-surface">{t.sftp.perms.classes[c.key]}</td>
                                         {BITS.map((b) => (
                                             <td key={b.key} className="py-2 text-center">
                                                 <button
@@ -194,7 +198,7 @@ export default function SftpPermissionsDialog({sessionId, targets, onClose, onSa
                                                     role="switch"
                                                     aria-checked={grid[c.key][b.key]}
                                                     onClick={() => toggle(c.key, b.key)}
-                                                    title={`${c.label} · ${b.label}`}
+                                                    title={t.sftp.perms.cellTooltip({who: t.sftp.perms.classes[c.key], bit: t.sftp.perms.bits[b.key]})}
                                                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                                                         grid[c.key][b.key] ? 'bg-primary' : 'bg-surface-container-highest'
                                                     }`}
@@ -217,31 +221,32 @@ export default function SftpPermissionsDialog({sessionId, targets, onClose, onSa
                             <span className="opacity-60">·</span>
                             <span>{symbolic(grid)}</span>
                             {targets.length > 1 && (
-                                <span className="ml-auto font-sans not-italic">→ {targets.length} elementos</span>
+                                <span className="ml-auto font-sans not-italic">{t.sftp.perms.targets(targets.length)}</span>
                             )}
                         </div>
 
                         {mixed && (
                             <p className="text-xs text-on-surface-variant">
-                                Los elementos elegidos <strong className="text-on-surface">no tienen los mismos permisos</strong>.
-                                Se muestra el modo del primero; al guardar, todos quedan con el modo de arriba.
+                                {t.sftp.perms.mixedBefore} <strong className="text-on-surface">{t.sftp.perms.mixedStrong}</strong>
+                                {t.sftp.perms.mixedAfter}
                             </p>
                         )}
                         {someDir && (
                             <p className="text-xs text-on-surface-variant">
-                                Los permisos se aplican a las carpetas elegidas, <strong className="text-on-surface">no a su contenido</strong>.
+                                {t.sftp.perms.dirsBefore} <strong className="text-on-surface">{t.sftp.perms.dirsStrong}</strong>
+                                {t.sftp.perms.dirsAfter}
                             </p>
                         )}
 
                         {single && (
                             <div className="border-t border-outline-variant pt-3 text-xs">
-                                <p className="mb-1 font-medium text-on-surface-variant">Propiedad (solo lectura)</p>
+                                <p className="mb-1 font-medium text-on-surface-variant">{t.sftp.perms.ownership}</p>
                                 <div className="flex justify-between py-0.5">
-                                    <span className="text-on-surface-variant">Usuario</span>
+                                    <span className="text-on-surface-variant">{t.sftp.perms.user}</span>
                                     <span className="text-on-surface">{info?.owner || '—'}</span>
                                 </div>
                                 <div className="flex justify-between py-0.5">
-                                    <span className="text-on-surface-variant">Grupo</span>
+                                    <span className="text-on-surface-variant">{t.sftp.perms.group}</span>
                                     <span className="text-on-surface">{info?.group || '—'}</span>
                                 </div>
                             </div>
@@ -258,7 +263,7 @@ export default function SftpPermissionsDialog({sessionId, targets, onClose, onSa
                         disabled={busy}
                         className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface disabled:opacity-50"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     <button
                         type="button"
@@ -266,12 +271,12 @@ export default function SftpPermissionsDialog({sessionId, targets, onClose, onSa
                         disabled={busy || !grid}
                         title={
                             targets.length > 1
-                                ? `Aplica los permisos (chmod) a los ${targets.length} elementos elegidos`
-                                : 'Aplica los permisos (chmod) al archivo'
+                                ? t.sftp.perms.applyManyTooltip(targets.length)
+                                : t.sftp.perms.applyOneTooltip
                         }
                         className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
-                        {busy ? 'Guardando…' : targets.length > 1 ? `Guardar en ${targets.length}` : 'Guardar'}
+                        {busy ? t.sftp.perms.saving : targets.length > 1 ? t.sftp.perms.saveMany(targets.length) : t.common.save}
                     </button>
                 </div>
             </div>

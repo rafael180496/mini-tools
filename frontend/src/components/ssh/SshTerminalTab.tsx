@@ -18,6 +18,7 @@ import {resolveTerminalTheme, type TerminalThemeId} from '../../xterm/terminalTh
 import ProductionGuardDialog from './ProductionGuardDialog'
 import SshPasswordChangeDialog from './SshPasswordChangeDialog'
 import SshSnippetsPanel from './SshSnippetsPanel'
+import {errorCode, errorText, t as tNow, useT} from '../../i18n'
 import SshErrorAnalysis from './SshErrorAnalysis'
 import SshHistoryPanel from './SshHistoryPanel'
 import SshTerminalThemePicker from './SshTerminalThemePicker'
@@ -91,21 +92,14 @@ interface SshEvent {
     error?: string
 }
 
-// Fragmento estable del error que devuelve sshconn cuando el servidor pide
-// una contraseña nueva (backend/sshconn/password.go, ErrPasswordExpired).
-// Se compara contra el texto porque eso es lo único que cruza un binding de
-// Wails: un error de Go llega a JS como string, sin tipo ni código. Mismo
-// criterio que GitFileEditor.tsx con "cambió en el disco".
-const PASSWORD_EXPIRED = 'cambiar la contraseña vencida'
-
-// El motivo que dio el servidor viaja pegado al error, después de los dos
-// puntos. Se separa para mostrarlo tal cual en el diálogo en vez de repetir
-// ahí el error entero de Go, que empieza hablando de sshconn.
-function expiredReason(message: string): string {
-    const at = message.indexOf(PASSWORD_EXPIRED)
-    if (at < 0) return ''
-    const rest = message.slice(at + PASSWORD_EXPIRED.length)
-    return rest.startsWith(':') ? rest.slice(1).trim() : ''
+// El servidor pide una contraseña nueva: backend/sshconn/password.go devuelve
+// ErrPasswordExpired con el código "password-expired" (ver errorCode), y el
+// motivo que dio el servidor, si dio alguno, en la línea siguiente. Se separa
+// para mostrarlo tal cual en el diálogo en vez de repetir el error entero.
+function expiredReason(e: unknown): string {
+    const text = errorText(e)
+    const nl = text.indexOf('\n')
+    return nl < 0 ? '' : text.slice(nl + 1).trim()
 }
 
 // event.data is base64 — the remote shell can emit non-UTF8 bytes (e.g.
@@ -133,6 +127,7 @@ export default function SshTerminalTab({
     terminalFontSize,
     onConnectedChange,
 }: SshTerminalTabProps) {
+    const t = useT()
     const containerRef = useRef<HTMLDivElement>(null)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const termRef = useRef<Terminal | null>(null)
@@ -290,14 +285,14 @@ export default function SshTerminalTab({
                 // not follow a path from a session that no longer exists.
                 forgetSession(sessionId)
                 setTerminalLive(sessionId, false)
-                term.write('\r\n\x1b[90m[sesión cerrada]\x1b[0m\r\n')
+                term.write(`\r\n\x1b[90m${tNow().ssh.terminal.sessionClosed}\x1b[0m\r\n`)
                 setGhostText('')
                 setGhostPos(null)
                 onConnectedChange(false)
                 setConnected(false)
             } else if (event.type === 'error') {
                 setTerminalLive(sessionId, false)
-                term.write(`\r\n\x1b[31m[error] ${event.error ?? 'desconocido'}\x1b[0m\r\n`)
+                term.write(`\r\n\x1b[31m[error] ${event.error ?? tNow().ssh.terminal.unknownError}\x1b[0m\r\n`)
                 setGhostText('')
                 setGhostPos(null)
                 onConnectedChange(false)
@@ -410,12 +405,12 @@ export default function SshTerminalTab({
                     // Una contraseña vencida es lo único que falla acá y se puede
                     // arreglar sin salir de la app, así que en vez del error crudo
                     // —que ni siquiera nombra la caducidad— se abre el diálogo.
-                    if (message.includes(PASSWORD_EXPIRED)) {
-                        term.write(`\r\n\x1b[33m[aviso] La contraseña está vencida; el servidor pide una nueva.\x1b[0m\r\n`)
+                    if (errorCode(message) === 'password-expired') {
+                        term.write(`\r\n\x1b[33m${tNow().ssh.terminal.passwordExpiredNotice}\x1b[0m\r\n`)
                         setExpiredReasonText(expiredReason(message))
                         return
                     }
-                    term.write(`\r\n\x1b[31m[error] ${message}\x1b[0m\r\n`)
+                    term.write(`\r\n\x1b[31m[error] ${errorText(message)}\x1b[0m\r\n`)
                 })
         }
         reopenRef.current = openTerminal
@@ -491,7 +486,7 @@ export default function SshTerminalTab({
                                 setShowThemePicker(false)
                             }
                         }}
-                        title="Historial: los comandos que ejecutaste en este servidor, buscables y reutilizables. Se guarda cifrado y se puede limpiar o apagar desde el panel"
+                        title={t.ssh.terminal.historyTooltip}
                         className={showHistory ? TERM_ICON_ON : TERM_ICON}
                     >
                         <Icon name="history" size={16} />
@@ -506,8 +501,8 @@ export default function SshTerminalTab({
                         }
                         title={
                             hasSelection
-                                ? 'Analizar la SELECCIÓN: le manda al agente exactamente lo que tenés marcado, junto con el sistema operativo del servidor, y explica qué falló. No ejecuta nada'
-                                : 'Analizar el error: le manda al agente las últimas líneas de esta terminal, junto con el sistema operativo del servidor, y explica qué falló. No ejecuta nada'
+                                ? t.ssh.terminal.analyzeSelectionTooltip
+                                : t.ssh.terminal.analyzeErrorTooltip
                         }
                         className={analysis ? TERM_ICON_ON : TERM_ICON}
                     >
@@ -518,7 +513,7 @@ export default function SshTerminalTab({
                             setShowSnippets((v) => !v)
                             if (!showSnippets) setShowThemePicker(false)
                         }}
-                        title="Snippets: comandos y scripts guardados que podés ejecutar o pegar en esta terminal"
+                        title={t.ssh.terminal.snippetsTooltip}
                         className={showSnippets ? TERM_ICON_ON : TERM_ICON}
                     >
                         <Icon name="data_object" size={16} />
@@ -528,7 +523,7 @@ export default function SshTerminalTab({
                             setShowThemePicker((v) => !v)
                             if (!showThemePicker) setShowSnippets(false)
                         }}
-                        title="Tema: el esquema de colores de esta terminal — se aplica a todas las sesiones SSH abiertas"
+                        title={t.ssh.terminal.themeTooltip}
                         className={showThemePicker ? TERM_ICON_ON : TERM_ICON}
                     >
                         <Icon name="palette" size={16} />
@@ -584,8 +579,8 @@ export default function SshTerminalTab({
                         className="flex min-w-0 items-center gap-1.5 whitespace-nowrap"
                         title={
                             connected
-                                ? `Sesión SSH abierta contra "${connName}" — lo que escribas acá corre en ese servidor`
-                                : `Sin sesión activa contra "${connName}": se cerró o todavía no se conectó, no hay nada escuchando lo que escribas`
+                                ? t.ssh.terminal.connectedTooltip({name: connName})
+                                : t.ssh.terminal.disconnectedTooltip({name: connName})
                         }
                     >
                         <span
@@ -593,7 +588,7 @@ export default function SshTerminalTab({
                             className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? 'bg-secondary' : 'bg-error'}`}
                         />
                         <span className="truncate font-medium text-on-surface">{connName}</span>
-                        <span className="text-on-surface-variant">{connected ? 'conectado' : 'desconectado'}</span>
+                        <span className="text-on-surface-variant">{connected ? t.ssh.terminal.connected : t.ssh.terminal.disconnected}</span>
                     </span>
 
                     {envStyle && (
@@ -601,8 +596,8 @@ export default function SshTerminalTab({
                             className="flex shrink-0 items-center gap-1.5 whitespace-nowrap"
                             title={
                                 envStyle.id === 'prod'
-                                    ? `${envStyle.label} — en este servidor los comandos destructivos piden confirmación antes de ejecutarse`
-                                    : `${envStyle.label} — así está marcada esta conexión`
+                                    ? t.ssh.terminal.envProdTooltip({env: envStyle.label})
+                                    : t.ssh.terminal.envTooltip({env: envStyle.label})
                             }
                         >
                             <span aria-hidden className="h-3 w-px bg-outline-variant" />
@@ -628,7 +623,7 @@ export default function SshTerminalTab({
                     scopeLabel={connName}
                     load={(limit) => ListSshHistory(connId, limit)}
                     clear={() => ClearSshHistory(connId)}
-                    keepsNote="El historial del propio shell en el servidor (~/.bash_history y compañía) no se toca: eso vive allá y se limpia allá."
+                    keepsNote={t.ssh.terminal.historyKeepsNote}
                     onClose={() => setShowHistory(false)}
                     // Pegar deja la línea escrita pero sin ejecutar: reusar un
                     // comando del historial casi siempre es reusarlo con un

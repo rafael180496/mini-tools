@@ -14,6 +14,8 @@
 // deshace. Son preguntas distintas y por eso conviven: en una base de
 // desarrollo un DROP TABLE no pregunta nada, y sigue sin preguntar.
 
+import {t} from '../i18n'
+
 export interface SqlRisk {
     // La sentencia recortada, para que la confirmación muestre qué se va a
     // ejecutar y no solo que "hay algo peligroso".
@@ -24,51 +26,26 @@ export interface SqlRisk {
     detail: string
 }
 
+// El rótulo y el detalle salen del diccionario al inspeccionar (ver `key`),
+// no se guardan acá: una constante de módulo quedaría en el idioma de arranque.
+type RuleKey = 'dropDatabase' | 'drop' | 'truncate' | 'noWhere' | 'alter' | 'grant' | 'write'
+
 interface Rule {
     test: RegExp
-    label: string
-    detail: string
+    key: RuleKey
 }
 
 // Ordenadas de más a menos grave: la primera que coincide es la que se
 // muestra, así una sentencia no aparece etiquetada con la razón menos
 // importante de las que cumple.
 const RULES: Rule[] = [
-    {
-        test: /^\s*DROP\s+(DATABASE|SCHEMA)\b/i,
-        label: 'DROP DATABASE / SCHEMA',
-        detail: 'Elimina la base o el esquema entero con todo lo que contiene. No hay ROLLBACK que lo devuelva.',
-    },
-    {
-        test: /^\s*DROP\s+(TABLE|VIEW|INDEX|SEQUENCE|PROCEDURE|FUNCTION|PACKAGE|TRIGGER|TYPE|SYNONYM)\b/i,
-        label: 'DROP',
-        detail: 'Elimina el objeto y, si es una tabla, sus datos. En Oracle un DDL además hace COMMIT implícito: no se puede deshacer con ROLLBACK.',
-    },
-    {
-        test: /^\s*TRUNCATE\b/i,
-        label: 'TRUNCATE',
-        detail: 'Vacía la tabla entera. Es DDL, así que hace COMMIT implícito y no se puede deshacer con ROLLBACK ni queda en el UNDO.',
-    },
-    {
-        test: /^\s*(DELETE|UPDATE)\b(?![\s\S]*\bWHERE\b)/i,
-        label: 'DELETE / UPDATE sin WHERE',
-        detail: 'Afecta todas las filas de la tabla.',
-    },
-    {
-        test: /^\s*ALTER\s+(TABLE|USER|DATABASE|SYSTEM|SESSION)\b/i,
-        label: 'ALTER',
-        detail: 'Cambia la estructura o la configuración. En Oracle es DDL con COMMIT implícito.',
-    },
-    {
-        test: /^\s*(GRANT|REVOKE)\b/i,
-        label: 'GRANT / REVOKE',
-        detail: 'Cambia permisos de acceso en producción.',
-    },
-    {
-        test: /^\s*(DELETE|UPDATE|INSERT|MERGE)\b/i,
-        label: 'Escritura de datos',
-        detail: 'Modifica datos de producción.',
-    },
+    {test: /^\s*DROP\s+(DATABASE|SCHEMA)\b/i, key: 'dropDatabase'},
+    {test: /^\s*DROP\s+(TABLE|VIEW|INDEX|SEQUENCE|PROCEDURE|FUNCTION|PACKAGE|TRIGGER|TYPE|SYNONYM)\b/i, key: 'drop'},
+    {test: /^\s*TRUNCATE\b/i, key: 'truncate'},
+    {test: /^\s*(DELETE|UPDATE)\b(?![\s\S]*\bWHERE\b)/i, key: 'noWhere'},
+    {test: /^\s*ALTER\s+(TABLE|USER|DATABASE|SYSTEM|SESSION)\b/i, key: 'alter'},
+    {test: /^\s*(GRANT|REVOKE)\b/i, key: 'grant'},
+    {test: /^\s*(DELETE|UPDATE|INSERT|MERGE)\b/i, key: 'write'},
 ]
 
 // stripNoise saca comentarios y literales antes de buscar patrones, para que
@@ -103,8 +80,8 @@ export function inspectSQL(sql: string): SqlRisk[] {
             if (rule.test.test(raw)) {
                 out.push({
                     statement: raw.length > 300 ? `${raw.slice(0, 300)}…` : raw,
-                    label: rule.label,
-                    detail: rule.detail,
+                    label: t().editor.sqlGuard[rule.key].label,
+                    detail: t().editor.sqlGuard[rule.key].detail,
                 })
                 break
             }

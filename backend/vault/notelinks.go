@@ -1,9 +1,10 @@
 package vault
 
 import (
-	"fmt"
 	"strings"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // WikiLinks: el grafo de la base de conocimiento.
@@ -97,12 +98,12 @@ func splitOutsideInlineCode(line string) []string {
 func (s *Store) reindexLinks(noteID, content string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("vault: reindexando enlaces: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: reindexando enlaces: %w", EN: "vault: reindexing links: %w"}, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec(`DELETE FROM vault_note_links WHERE source_note_id = ?`, noteID); err != nil {
-		return fmt.Errorf("vault: limpiando enlaces anteriores: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: limpiando enlaces anteriores: %w", EN: "vault: clearing previous links: %w"}, err)
 	}
 	now := time.Now().Unix()
 	for _, title := range ExtractWikiLinks(content) {
@@ -110,7 +111,7 @@ func (s *Store) reindexLinks(noteID, content string) error {
 			`INSERT INTO vault_note_links (source_note_id, target_title_hash, created_at) VALUES (?, ?, ?)`,
 			noteID, TitleHash(title), now,
 		); err != nil {
-			return fmt.Errorf("vault: guardando un enlace: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: guardando un enlace: %w", EN: "vault: saving a link: %w"}, err)
 		}
 	}
 	return tx.Commit()
@@ -129,7 +130,7 @@ func (s *Store) NoteLinks(noteID string) ([]NoteLink, error) {
 		 LEFT JOIN vault_notes n ON n.title_hash = l.target_title_hash
 		 WHERE l.source_note_id = ?`, noteID)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo los enlaces: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo los enlaces: %w", EN: "vault: reading the links: %w"}, err)
 	}
 	return s.scanLinks(rows)
 }
@@ -146,7 +147,7 @@ func (s *Store) NoteBacklinks(noteID string) ([]NoteLink, error) {
 		 WHERE l.target_title_hash = (SELECT title_hash FROM vault_notes WHERE id = ?)
 		   AND src.id <> ?`, noteID, noteID)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo los backlinks: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo los backlinks: %w", EN: "vault: reading the backlinks: %w"}, err)
 	}
 	return s.scanLinks(rows)
 }
@@ -239,7 +240,7 @@ func (s *Store) NoteGraph() (NoteGraphData, error) {
 
 	rows, err := s.db.Query(`SELECT id, encrypted_title, title_nonce, is_private, title_hash FROM vault_notes`)
 	if err != nil {
-		return out, fmt.Errorf("vault: leyendo el grafo: %w", err)
+		return out, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el grafo: %w", EN: "vault: reading the graph: %w"}, err)
 	}
 	byHash := map[string]string{}
 	degree := map[string]int{}
@@ -266,7 +267,7 @@ func (s *Store) NoteGraph() (NoteGraphData, error) {
 
 	links, err := s.db.Query(`SELECT source_note_id, target_title_hash FROM vault_note_links`)
 	if err != nil {
-		return out, fmt.Errorf("vault: leyendo las aristas: %w", err)
+		return out, i18n.Errorf(i18n.Msg{ES: "vault: leyendo las aristas: %w", EN: "vault: reading the edges: %w"}, err)
 	}
 	defer links.Close()
 	for links.Next() {

@@ -2,12 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"mini-tools/backend/agentctx"
 	"mini-tools/backend/db"
 	"mini-tools/backend/git"
+	"mini-tools/backend/i18n"
+	"mini-tools/backend/vault"
 )
 
 // Resolución del sistema `@` (ver backend/agentctx/refs.go para el parser y la
@@ -93,7 +96,7 @@ func (a *App) resolveRef(r agentctx.Ref, module, contextID string) agentctx.Reso
 	case agentctx.KindNote:
 		return a.resolveNoteRef(res)
 	}
-	res.Err = fmt.Sprintf("tipo de referencia desconocido: %q", r.Kind)
+	res.Err = i18n.T(i18n.Msg{ES: "tipo de referencia desconocido: %q", EN: "unknown reference type: %q"}, r.Kind)
 	return res
 }
 
@@ -105,7 +108,7 @@ func (a *App) resolveRef(r agentctx.Ref, module, contextID string) agentctx.Reso
 // disco", y por eso no se reimplementa acá.
 func (a *App) resolveFileRef(res agentctx.Resolved, module, contextID string) agentctx.Resolved {
 	if module != "git" || contextID == "" {
-		res.Err = "@file solo funciona con un repositorio abierto: es su árbol de trabajo lo que se lee"
+		res.Err = i18n.T(i18n.Msg{ES: "@file solo funciona con un repositorio abierto: es su árbol de trabajo lo que se lee", EN: "@file only works with an open repository: its working tree is what gets read"})
 		return res
 	}
 	f, err := a.GitReadWorkFile(contextID, res.Value)
@@ -114,11 +117,11 @@ func (a *App) resolveFileRef(res agentctx.Resolved, module, contextID string) ag
 		return res
 	}
 	if f.Binary {
-		res.Err = "es un archivo binario"
+		res.Err = i18n.T(i18n.Msg{ES: "es un archivo binario", EN: "it's a binary file"})
 		return res
 	}
 	if f.TooLarge {
-		res.Err = "el archivo supera el tope de lectura"
+		res.Err = i18n.T(i18n.Msg{ES: "el archivo supera el tope de lectura", EN: "the file exceeds the read limit"})
 		return res
 	}
 	res.Title = f.Path
@@ -145,13 +148,13 @@ func (a *App) resolveNoteRef(res agentctx.Resolved) agentctx.Resolved {
 		// Se distingue "está bloqueada" de "no existe" porque la acción del
 		// usuario es distinta: en un caso hay algo que permitir, en el otro
 		// hay un título que corregir.
-		res.Blocked = strings.Contains(err.Error(), "PRIVADA")
+		res.Blocked = errors.Is(err, vault.ErrNotePrivate)
 		return res
 	}
 	res.Title = note.Title
 	body := note.Content
 	if note.Corrupt {
-		body = "(ADVERTENCIA: el checksum de esta nota no coincide con su contenido)\n\n" + body
+		body = i18n.T(i18n.Msg{ES: "(ADVERTENCIA: el checksum de esta nota no coincide con su contenido)", EN: "(WARNING: this note's checksum doesn't match its content)"}) + "\n\n" + body
 	}
 	res.Body = truncateBody(body)
 	return res
@@ -165,7 +168,7 @@ func (a *App) resolveNoteRef(res agentctx.Resolved) agentctx.Resolved {
 func (a *App) resolveDBRef(res agentctx.Resolved) agentctx.Resolved {
 	name, table, ok := strings.Cut(res.Value, "/")
 	if !ok || name == "" || table == "" {
-		res.Err = `se escribe @db:Conexión/tabla`
+		res.Err = i18n.T(i18n.Msg{ES: "se escribe @db:Conexión/tabla", EN: "it's written @db:Connection/table"})
 		return res
 	}
 
@@ -175,7 +178,7 @@ func (a *App) resolveDBRef(res agentctx.Resolved) agentctx.Resolved {
 		return res
 	}
 	if conn.DBType == "ssh" {
-		res.Err = fmt.Sprintf("%q es una conexión SSH, no una base de datos", conn.Name)
+		res.Err = i18n.T(i18n.Msg{ES: "%q es una conexión SSH, no una base de datos", EN: "%q is an SSH connection, not a database"}, conn.Name)
 		return res
 	}
 
@@ -186,7 +189,7 @@ func (a *App) resolveDBRef(res agentctx.Resolved) agentctx.Resolved {
 	}
 	found := findTable(meta, table)
 	if found == nil {
-		res.Err = fmt.Sprintf("no hay ninguna tabla %q en %s", table, conn.Name)
+		res.Err = i18n.T(i18n.Msg{ES: "no hay ninguna tabla %q en %s", EN: "there's no table %q in %s"}, table, conn.Name)
 		return res
 	}
 
@@ -207,7 +210,7 @@ func (a *App) resolveExplainRef(res agentctx.Resolved, module, contextID string)
 		connID = conn.ID
 	}
 	if module != "db" && res.Value == "last" {
-		res.Err = "@explain:last necesita una pestaña de base de datos activa, o escribí @explain:Conexión"
+		res.Err = i18n.T(i18n.Msg{ES: "@explain:last necesita una pestaña de base de datos activa, o escribí @explain:Conexión", EN: "@explain:last needs an active database tab, or write @explain:Connection"})
 		return res
 	}
 
@@ -217,7 +220,7 @@ func (a *App) resolveExplainRef(res agentctx.Resolved, module, contextID string)
 		return res
 	}
 	if len(entries) == 0 {
-		res.Err = "todavía no se corrió ningún EXPLAIN en esta conexión"
+		res.Err = i18n.T(i18n.Msg{ES: "todavía no se corrió ningún EXPLAIN en esta conexión", EN: "no EXPLAIN has been run on this connection yet"})
 		return res
 	}
 	e := entries[0]
@@ -226,10 +229,10 @@ func (a *App) resolveExplainRef(res agentctx.Resolved, module, contextID string)
 		res.Err = err.Error()
 		return res
 	}
-	res.Title = "Último plan de ejecución"
+	res.Title = i18n.T(i18n.Msg{ES: "Último plan de ejecución", EN: "Latest execution plan"})
 	// La consulta va junto al plan: un plan sin su SQL obliga al agente a
 	// deducir qué se ejecutó, y esa deducción es donde se equivoca.
-	res.Body = truncateBody("-- consulta\n" + e.SQLText + "\n\n-- plan\n" + string(planJSON))
+	res.Body = truncateBody(i18n.T(i18n.Msg{ES: "-- consulta", EN: "-- query"}) + "\n" + e.SQLText + "\n\n-- plan\n" + string(planJSON))
 	return res
 }
 
@@ -250,7 +253,7 @@ func (a *App) resolveSSHRef(res agentctx.Resolved) agentctx.Resolved {
 		return res
 	}
 	if conn.DBType != "ssh" {
-		res.Err = fmt.Sprintf("%q no es una conexión SSH", conn.Name)
+		res.Err = i18n.T(i18n.Msg{ES: "%q no es una conexión SSH", EN: "%q is not an SSH connection"}, conn.Name)
 		return res
 	}
 	lines, err := a.SSHTail(conn.ID, 50)
@@ -259,10 +262,10 @@ func (a *App) resolveSSHRef(res agentctx.Resolved) agentctx.Resolved {
 		return res
 	}
 	if len(lines) == 0 {
-		res.Err = fmt.Sprintf("la terminal de %s todavía no imprimió nada", conn.Name)
+		res.Err = i18n.T(i18n.Msg{ES: "la terminal de %s todavía no imprimió nada", EN: "the terminal of %s hasn't printed anything yet"}, conn.Name)
 		return res
 	}
-	res.Title = fmt.Sprintf("%s · últimas %d líneas", conn.Name, len(lines))
+	res.Title = i18n.T(i18n.Msg{ES: "%s · últimas %d líneas", EN: "%s · last %d lines"}, conn.Name, len(lines))
 	res.Body = truncateBody(strings.Join(lines, "\n"))
 	return res
 }
@@ -270,7 +273,7 @@ func (a *App) resolveSSHRef(res agentctx.Resolved) agentctx.Resolved {
 // resolveGitRef inyecta el diff preparado del repositorio abierto.
 func (a *App) resolveGitRef(res agentctx.Resolved, module, contextID string) agentctx.Resolved {
 	if module != "git" || contextID == "" {
-		res.Err = "@git solo funciona con un repositorio abierto"
+		res.Err = i18n.T(i18n.Msg{ES: "@git solo funciona con un repositorio abierto", EN: "@git only works with an open repository"})
 		return res
 	}
 	mode := ""
@@ -280,7 +283,7 @@ func (a *App) resolveGitRef(res agentctx.Resolved, module, contextID string) age
 	case "worktree", "unstaged":
 		mode = "worktree"
 	default:
-		res.Err = `se escribe @git:staged o @git:worktree`
+		res.Err = i18n.T(i18n.Msg{ES: "se escribe @git:staged o @git:worktree", EN: "it's written @git:staged or @git:worktree"})
 		return res
 	}
 
@@ -290,10 +293,18 @@ func (a *App) resolveGitRef(res agentctx.Resolved, module, contextID string) age
 		return res
 	}
 	if d == nil || strings.TrimSpace(d.Patch) == "" {
-		res.Err = "no hay cambios " + map[string]string{"staged": "preparados", "worktree": "sin preparar"}[mode]
+		if mode == "staged" {
+			res.Err = i18n.T(i18n.Msg{ES: "no hay cambios preparados", EN: "there are no staged changes"})
+		} else {
+			res.Err = i18n.T(i18n.Msg{ES: "no hay cambios sin preparar", EN: "there are no unstaged changes"})
+		}
 		return res
 	}
-	res.Title = map[string]string{"staged": "Cambios preparados", "worktree": "Cambios sin preparar"}[mode]
+	if mode == "staged" {
+		res.Title = i18n.T(i18n.Msg{ES: "Cambios preparados", EN: "Staged changes"})
+	} else {
+		res.Title = i18n.T(i18n.Msg{ES: "Cambios sin preparar", EN: "Unstaged changes"})
+	}
 	res.Body = truncateBody(d.Patch)
 	return res
 }
@@ -320,7 +331,7 @@ func (a *App) connByNameOrID(nameOrID string) (*vaultConn, error) {
 			return &vaultConn{ID: c.ID, Name: c.Name, DBType: c.DBType}, nil
 		}
 	}
-	return nil, fmt.Errorf("no hay ninguna conexión guardada que se llame %q", nameOrID)
+	return nil, i18n.Errorf(i18n.Msg{ES: "no hay ninguna conexión guardada que se llame %q", EN: "there's no saved connection named %q"}, nameOrID)
 }
 
 // vaultConn es lo mínimo que necesitan los resolvedores de una conexión. Un
@@ -374,7 +385,7 @@ func renderTableDDL(t db.Table) string {
 			b.WriteString(" NOT NULL")
 		}
 		if c.IsPrimaryKey {
-			b.WriteString(" -- clave primaria")
+			b.WriteString(i18n.T(i18n.Msg{ES: " -- clave primaria", EN: " -- primary key"}))
 		}
 		if i < len(t.Columns)-1 {
 			b.WriteString(",")
@@ -394,5 +405,5 @@ func truncateBody(s string) string {
 	}
 	// Se corta y se DICE que se cortó: un contenido truncado en silencio hace
 	// que el agente razone sobre un archivo que cree completo.
-	return s[:maxRefBody] + "\n\n… (recortado: la referencia superaba el tope de contexto)"
+	return s[:maxRefBody] + "\n\n… " + i18n.T(i18n.Msg{ES: "(recortado: la referencia superaba el tope de contexto)", EN: "(truncated: the reference exceeded the context limit)"})
 }

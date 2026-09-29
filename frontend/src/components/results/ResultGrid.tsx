@@ -6,6 +6,7 @@ import {generateCSV, generateInsertStatements, generateUpdateStatements, type Sq
 import CellEditor from './CellEditor'
 import {useRowEditing} from './useRowEditing'
 import {MIN_COL_WIDTH, measureColumnWidth, measureColumnWidths} from './columnWidths'
+import {useT} from '../../i18n'
 
 interface ResultGridProps {
     columns: string[]
@@ -50,6 +51,7 @@ export default function ResultGrid({
     sqlText,
     onEditsApplied,
 }: ResultGridProps) {
+    const t = useT()
     const parentRef = useRef<HTMLDivElement>(null)
     // Set (not a single index) so ctrl/cmd-click and shift-click can build a
     // multi-row selection — anchorRef tracks the last non-shift click so a
@@ -165,7 +167,7 @@ export default function ResultGrid({
         return (
             <div className="flex flex-1 items-center justify-center gap-2 bg-surface text-xs text-on-surface-variant/60">
                 <Icon name="table_rows" size={16} />
-                Sin resultados todavía.
+                {t.results.grid.empty}
             </div>
         )
     }
@@ -322,7 +324,7 @@ export default function ResultGrid({
                                     >
                                         <button
                                             onClick={() => onSort?.(header.column.id)}
-                                            title="Ordenar por esta columna — click de nuevo para invertir el orden"
+                                            title={t.results.grid.sortTitle}
                                             className="flex w-full items-center gap-1 truncate text-left hover:text-on-surface"
                                         >
                                             <span className="truncate">{flexRender(header.column.columnDef.header, header.getContext())}</span>
@@ -346,7 +348,7 @@ export default function ResultGrid({
                                             onMouseDown={header.getResizeHandler()}
                                             onTouchStart={header.getResizeHandler()}
                                             onDoubleClick={() => fitColumn(header.column.id)}
-                                            title="Arrastrá para cambiar el ancho de la columna — doble clic lo ajusta al contenido"
+                                            title={t.results.grid.resizeTitle}
                                             className="group absolute -right-1 top-0 z-20 flex h-full w-[9px] cursor-col-resize touch-none select-none items-stretch justify-center"
                                         >
                                             <span
@@ -383,7 +385,7 @@ export default function ResultGrid({
                                     key={row.id}
                                     onMouseDown={(e) => rowMouseDown(vi.index, e)}
                                     onClick={() => rowClick(vi.index)}
-                                    title="Click para seleccionar la fila — Ctrl/Cmd+click suma filas sueltas, Shift+click marca un rango (con Ctrl/Cmd lo suma), Ctrl/Cmd+A marca todo y Esc limpia — habilita copiarlas como texto, CSV, INSERT o UPDATE"
+                                    title={t.results.grid.rowTitle}
                                     className={`cursor-pointer ${
                                         isSelected
                                             ? 'bg-primary-container/70 hover:bg-primary-container/90'
@@ -412,7 +414,7 @@ export default function ResultGrid({
                                                 }}
                                                 title={
                                                     editable
-                                                        ? `Doble clic para editar. ${editable.dataType} — el cambio queda pendiente hasta que lo mandes.`
+                                                        ? t.results.grid.editCellTitle({dataType: editable.dataType})
                                                         : undefined
                                                 }
                                                 className={`truncate whitespace-nowrap border-b border-r border-outline-variant/30 px-3 py-1.5 text-on-surface ${
@@ -472,33 +474,33 @@ export default function ResultGrid({
                 <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant bg-primary/10 px-2 py-1 text-ui-11">
                     <Icon name="edit" size={13} className="shrink-0 text-primary" />
                     <span className="text-on-surface">
-                        {editing.pendingCount} {editing.pendingCount === 1 ? 'cambio sin guardar' : 'cambios sin guardar'}
+                        {t.results.grid.pendingCount(editing.pendingCount)}
                     </span>
 
                     <button
                         onClick={() => void editing.preview().then(setPreviewSql).catch((e) => editing.setError(String(e)))}
-                        title="Muestra exactamente el UPDATE que se va a ejecutar, con su WHERE, antes de tocar la base."
+                        title={t.results.grid.previewSqlTitle}
                         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="visibility" size={13} />
-                        Ver el SQL
+                        {t.results.grid.previewSql}
                     </button>
                     <button
                         onClick={() => void editing.apply().catch(() => {})}
                         disabled={editing.busy}
-                        title="Ejecuta los UPDATE en UNA transacción. Cada uno tiene que afectar exactamente una fila: si alguno afecta otra cantidad, se revierte el lote entero. (Cmd/Ctrl + Enter)"
+                        title={t.results.grid.saveTitle}
                         className="flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 text-primary hover:bg-primary/30 disabled:opacity-50"
                     >
                         <Icon name="upload" size={13} />
-                        {editing.busy ? 'Guardando…' : 'Guardar en la base'}
+                        {editing.busy ? t.results.grid.saving : t.results.grid.save}
                     </button>
                     <button
                         onClick={editing.discard}
-                        title="Descarta los cambios pendientes. La base no se tocó, así que no hay nada que deshacer."
+                        title={t.results.grid.discardTitle}
                         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="undo" size={13} />
-                        Descartar
+                        {t.results.grid.discard}
                     </button>
 
                     {editing.error && (
@@ -515,7 +517,7 @@ export default function ResultGrid({
             {editing.reason && editing.pendingCount === 0 && (
                 <div className="flex shrink-0 items-center gap-1.5 border-t border-outline-variant bg-surface-container-low px-2 py-1 text-ui-10 text-on-surface-variant">
                     <Icon name="lock" size={11} className="shrink-0" />
-                    Solo lectura: {editing.reason}
+                    {t.results.grid.readOnly({reason: editing.reason})}
                 </div>
             )}
 
@@ -524,16 +526,16 @@ export default function ResultGrid({
                     <div className="flex max-h-full w-full max-w-2xl flex-col rounded-lg border border-outline-variant bg-surface-container shadow-xl">
                         <p className="flex items-center gap-1.5 border-b border-outline-variant px-3 py-2 text-xs font-medium text-on-surface">
                             <Icon name="code" size={14} className="text-primary" />
-                            Esto es lo que se va a ejecutar
+                            {t.results.grid.previewHeading}
                         </p>
                         <div className="min-h-0 flex-1 overflow-auto p-3">
                             <pre className="whitespace-pre-wrap font-mono text-ui-11 leading-5 text-on-surface">
                                 {previewSql.join('\n')}
                             </pre>
                             <p className="mt-2 text-ui-10 leading-4 text-on-surface-variant">
-                                Los valores se muestran escritos adentro de la sentencia para poder leerla. Al ejecutar
-                                viajan como <strong>parámetros</strong>, aparte del texto — que es lo que hace que un
-                                valor con comillas no pueda cambiar el sentido del UPDATE.
+                                {t.results.grid.previewNoteBefore}
+                                <strong>{t.results.grid.previewNoteParams}</strong>
+                                {t.results.grid.previewNoteAfter}
                             </p>
                         </div>
                         <div className="flex justify-end gap-2 border-t border-outline-variant px-3 py-2">
@@ -541,7 +543,7 @@ export default function ResultGrid({
                                 onClick={() => setPreviewSql(null)}
                                 className="rounded px-3 py-1 text-xs text-on-surface-variant hover:bg-surface-variant"
                             >
-                                Cerrar
+                                {t.common.close}
                             </button>
                             <button
                                 onClick={() => {
@@ -550,7 +552,7 @@ export default function ResultGrid({
                                 }}
                                 className="rounded bg-primary px-3 py-1 text-xs text-on-primary hover:opacity-90"
                             >
-                                Ejecutar
+                                {t.results.grid.execute}
                             </button>
                         </div>
                     </div>
@@ -561,52 +563,52 @@ export default function ResultGrid({
                 <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container-high p-1 shadow-lg">
                     {copyStatus && <span className="px-2 text-xs text-secondary">{copyStatus}</span>}
                     {selectedRows.length > 1 && (
-                        <span className="px-1 text-xs text-on-surface-variant/70">{selectedRows.length} filas</span>
+                        <span className="px-1 text-xs text-on-surface-variant/70">{t.results.grid.selectedRows(selectedRows.length)}</span>
                     )}
                     <button
                         onClick={() =>
                             void copy(
                                 selectedRows.map((r) => r.map((v) => (v === null || v === undefined ? '' : String(v))).join('\t')).join('\n'),
-                                selectedRows.length > 1 ? 'Filas copiadas' : 'Fila copiada'
+                                t.results.grid.rowsCopied(selectedRows.length)
                             )
                         }
-                        title="Copia los valores de la(s) fila(s) separados por tab (una por línea), listos para pegar en una planilla"
+                        title={t.results.grid.copyRowsTitle}
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="content_copy" size={15} />
-                        Copiar fila{selectedRows.length > 1 ? 's' : ''}
+                        {t.results.grid.copyRows(selectedRows.length)}
                     </button>
                     <button
-                        onClick={() => void copy(generateCSV(columns, selectedRows), 'CSV copiado')}
-                        title="Copia la(s) fila(s) seleccionadas como CSV (con encabezado), listo para pegar en Excel/Sheets sin pasar por el diálogo de exportar"
+                        onClick={() => void copy(generateCSV(columns, selectedRows), t.results.grid.csvCopied)}
+                        title={t.results.grid.copyCsvTitle}
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="grid_on" size={15} />
-                        Copiar como CSV
+                        {t.results.grid.copyCsv}
                     </button>
                     <button
                         onClick={() =>
-                            void copy(generateInsertStatements(sqlTarget ?? {table: 'tabla'}, columns, selectedRows), 'INSERT copiado')
+                            void copy(generateInsertStatements(sqlTarget ?? {table: t.results.placeholderTable}, columns, selectedRows), t.results.grid.insertCopied)
                         }
-                        title="Copia la(s) fila(s) seleccionadas como sentencias INSERT listas para pegar en el editor"
+                        title={t.results.grid.copyInsertTitle}
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="add_box" size={15} />
-                        Copiar como INSERT
+                        {t.results.grid.copyInsert}
                     </button>
                     <button
                         onClick={() =>
-                            void copy(generateUpdateStatements(sqlTarget ?? {table: 'tabla'}, columns, selectedRows), 'UPDATE copiado')
+                            void copy(generateUpdateStatements(sqlTarget ?? {table: t.results.placeholderTable}, columns, selectedRows), t.results.grid.updateCopied)
                         }
-                        title="Copia la(s) fila(s) seleccionadas como sentencias UPDATE (con WHERE por todas las columnas — revisalas antes de ejecutar) listas para editar y pegar en el editor"
+                        title={t.results.grid.copyUpdateTitle}
                         className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="edit_note" size={15} />
-                        Copiar como UPDATE
+                        {t.results.grid.copyUpdate}
                     </button>
                     <button
                         onClick={() => setSelectedIndices(new Set())}
-                        title="Deselecciona todas las filas"
+                        title={t.results.grid.deselectTitle}
                         className="rounded p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={15} />

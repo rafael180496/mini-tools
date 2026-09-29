@@ -72,8 +72,14 @@ rm -rf tmp_migrationverify
 > hacía engañosa la sección: leerla daba a entender que agregar una migración
 > era todavía territorio inexplorado.
 
-- **Versión actual: 55.** El slice de `migrations.go` es la lista completa y
+- **Versión actual: 56.** El slice de `migrations.go` es la lista completa y
   autoritativa; cada entrada explica en su comentario por qué existe.
+- **Versión 56**: `settings.language` (idioma de la interfaz), `DEFAULT ''` =
+  sin elegir, que el frontend lee como inglés. `''` y no `'en'` a propósito:
+  quien eligió inglés no debería cambiar si algún día cambia el default.
+  Verificada con `TestLanguageSetting` (vault sin inicializar: se lee y se
+  guarda antes de crear la clave, que es lo que necesita la pantalla de
+  desbloqueo).
 - **Versión 55**: `vault_notes.pinned` (notas fijadas arriba de la barra, el
   «marcador» de Obsidian), `DEFAULT 0`: ninguna nota existente queda fijada.
   Verificada con los tests del store (`TestPinnedReachesBothSearchPaths`), que

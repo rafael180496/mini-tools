@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"strings"
 )
@@ -61,7 +62,7 @@ func authEnv(cfg AuthConfig) ([]string, error) {
 	case "token":
 		return tokenEnv(cfg)
 	default:
-		return nil, fmt.Errorf("modo de autenticación desconocido: %q", cfg.Mode)
+		return nil, i18n.Errorf(i18n.Msg{ES: "modo de autenticación desconocido: %q", EN: "unknown authentication mode: %q"}, cfg.Mode)
 	}
 }
 
@@ -70,7 +71,7 @@ func sshEnv(cfg AuthConfig) ([]string, error) {
 
 	if cfg.SSHKeyPath != "" {
 		if _, err := os.Stat(cfg.SSHKeyPath); err != nil {
-			return nil, fmt.Errorf("no se puede leer la clave SSH %q: %w", cfg.SSHKeyPath, err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "no se puede leer la clave SSH %q: %w", EN: "cannot read SSH key %q: %w"}, cfg.SSHKeyPath, err)
 		}
 		// IdentitiesOnly=yes stops ssh from offering every key the agent
 		// holds before the one that was explicitly chosen. Without it, a
@@ -84,7 +85,7 @@ func sshEnv(cfg AuthConfig) ([]string, error) {
 	if cfg.SSHKeyPassphrase != "" {
 		self, err := os.Executable()
 		if err != nil {
-			return nil, fmt.Errorf("no se pudo resolver el ejecutable para askpass: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "no se pudo resolver el ejecutable para askpass: %w", EN: "could not resolve the executable for askpass: %w"}, err)
 		}
 		// SSH_ASKPASS_REQUIRE=force is what makes this work in a GUI app:
 		// without it ssh only consults SSH_ASKPASS when it has no controlling
@@ -104,11 +105,11 @@ func sshEnv(cfg AuthConfig) ([]string, error) {
 
 func tokenEnv(cfg AuthConfig) ([]string, error) {
 	if cfg.Token == "" {
-		return nil, fmt.Errorf("el modo token requiere un token o password")
+		return nil, i18n.New(i18n.Msg{ES: "el modo token requiere un token o password", EN: "token mode requires a token or password"})
 	}
 	self, err := os.Executable()
 	if err != nil {
-		return nil, fmt.Errorf("no se pudo resolver el ejecutable para askpass: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "no se pudo resolver el ejecutable para askpass: %w", EN: "could not resolve the executable for askpass: %w"}, err)
 	}
 
 	username := cfg.Username

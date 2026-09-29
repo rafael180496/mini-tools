@@ -2,8 +2,8 @@ package sshconn
 
 import (
 	"encoding/base64"
-	"fmt"
 	"io"
+	"mini-tools/backend/i18n"
 	"net"
 	"os"
 	"sync"
@@ -120,7 +120,7 @@ func (m *SessionManager) Open(sessionID, connID, dsn string, cols, rows int) err
 	sshSess, err := client.NewSession()
 	if err != nil {
 		lease.Close()
-		return fmt.Errorf("sshconn: abriendo sesión: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "sshconn: abriendo sesión: %w", EN: "sshconn: opening session: %w"}, err)
 	}
 
 	var agentConn net.Conn
@@ -141,7 +141,7 @@ func (m *SessionManager) Open(sessionID, connID, dsn string, cols, rows int) err
 		closeAgentConn(agentConn)
 		sshSess.Close()
 		lease.Close()
-		return fmt.Errorf("sshconn: solicitando pty: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "sshconn: solicitando pty: %w", EN: "sshconn: requesting pty: %w"}, err)
 	}
 
 	stdin, err := sshSess.StdinPipe()
@@ -149,7 +149,7 @@ func (m *SessionManager) Open(sessionID, connID, dsn string, cols, rows int) err
 		closeAgentConn(agentConn)
 		sshSess.Close()
 		lease.Close()
-		return fmt.Errorf("sshconn: abriendo stdin: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "sshconn: abriendo stdin: %w", EN: "sshconn: opening stdin: %w"}, err)
 	}
 	// With a PTY allocated, the remote shell's controlling terminal already
 	// merges the stdout/stderr of everything running under it — StdoutPipe
@@ -160,14 +160,14 @@ func (m *SessionManager) Open(sessionID, connID, dsn string, cols, rows int) err
 		closeAgentConn(agentConn)
 		sshSess.Close()
 		lease.Close()
-		return fmt.Errorf("sshconn: abriendo stdout: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "sshconn: abriendo stdout: %w", EN: "sshconn: opening stdout: %w"}, err)
 	}
 
 	if err := sshSess.Shell(); err != nil {
 		closeAgentConn(agentConn)
 		sshSess.Close()
 		lease.Close()
-		return fmt.Errorf("sshconn: iniciando shell: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "sshconn: iniciando shell: %w", EN: "sshconn: starting shell: %w"}, err)
 	}
 
 	m.mu.Lock()
@@ -218,7 +218,7 @@ func (m *SessionManager) streamOutput(sessionID string, stdout io.Reader) {
 func (m *SessionManager) Write(sessionID, data string) error {
 	s := m.getAndTouch(sessionID)
 	if s == nil {
-		return fmt.Errorf("sshconn: no hay una sesión abierta para %q", sessionID)
+		return i18n.Errorf(i18n.Msg{ES: "sshconn: no hay una sesión abierta para %q", EN: "sshconn: there is no open session for %q"}, sessionID)
 	}
 	_, err := s.stdin.Write([]byte(data))
 	return err
@@ -229,7 +229,7 @@ func (m *SessionManager) Write(sessionID, data string) error {
 func (m *SessionManager) Resize(sessionID string, cols, rows int) error {
 	s := m.get(sessionID)
 	if s == nil {
-		return fmt.Errorf("sshconn: no hay una sesión abierta para %q", sessionID)
+		return i18n.Errorf(i18n.Msg{ES: "sshconn: no hay una sesión abierta para %q", EN: "sshconn: there is no open session for %q"}, sessionID)
 	}
 	return s.sshSess.WindowChange(rows, cols)
 }
@@ -366,20 +366,20 @@ func closeAgentConn(c net.Conn) {
 func forwardAgent(client *ssh.Client, sess *ssh.Session) (net.Conn, error) {
 	sock := os.Getenv("SSH_AUTH_SOCK")
 	if sock == "" {
-		return nil, fmt.Errorf("sshconn: agent forwarding solicitado pero SSH_AUTH_SOCK no está seteado (no hay un ssh-agent local corriendo)")
+		return nil, i18n.New(i18n.Msg{ES: "sshconn: agent forwarding solicitado pero SSH_AUTH_SOCK no está seteado (no hay un ssh-agent local corriendo)", EN: "sshconn: agent forwarding requested but SSH_AUTH_SOCK is not set (no local ssh-agent is running)"})
 	}
 	conn, err := net.Dial("unix", sock)
 	if err != nil {
-		return nil, fmt.Errorf("sshconn: conectando al ssh-agent local: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "sshconn: conectando al ssh-agent local: %w", EN: "sshconn: connecting to the local ssh-agent: %w"}, err)
 	}
 	ag := agent.NewClient(conn)
 	if err := agent.ForwardToAgent(client, ag); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("sshconn: forwarding del ssh-agent: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "sshconn: forwarding del ssh-agent: %w", EN: "sshconn: ssh-agent forwarding: %w"}, err)
 	}
 	if err := agent.RequestAgentForwarding(sess); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("sshconn: solicitando agent forwarding: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "sshconn: solicitando agent forwarding: %w", EN: "sshconn: requesting agent forwarding: %w"}, err)
 	}
 	return conn, nil
 }

@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
 import type {git} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {formatDateTime, useT} from '../../i18n'
 
 interface CommitGraphProps {
     commits: git.CommitInfo[]
@@ -121,6 +122,7 @@ function assignLanes(commits: git.CommitInfo[]): PlacedCommit[] {
 }
 
 export default function CommitGraph({commits, selectedHash, onSelect, onContextMenu, reveal, loading}: CommitGraphProps) {
+    const t = useT()
     const placed = useMemo(() => assignLanes(commits), [commits])
     const laneCount = useMemo(() => placed.reduce((max, p) => Math.max(max, p.lane + 1, ...p.edges.map((e) => e.to + 1)), 1), [placed])
 
@@ -173,12 +175,12 @@ export default function CommitGraph({commits, selectedHash, onSelect, onContextM
         return (
             <div className="flex items-center gap-2 p-4 text-xs text-primary">
                 <span aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                Cargando historial…
+                {t.git.graph.loading}
             </div>
         )
     }
     if (commits.length === 0) {
-        return <p className="p-4 text-xs text-on-surface-variant/70">Este repositorio todavía no tiene commits.</p>
+        return <p className="p-4 text-xs text-on-surface-variant/70">{t.git.graph.empty}</p>
     }
 
     const contentHeight = placed.length * ROW_HEIGHT
@@ -285,6 +287,7 @@ function CommitRow({
     onSelect: () => void
     onContextMenu: (e: React.MouseEvent) => void
 }) {
+    const t = useT()
     return (
         <button
             onClick={onSelect}
@@ -295,7 +298,7 @@ function CommitRow({
                 onSelect()
                 onContextMenu(e)
             }}
-            title={`Ver los archivos y el diff de este commit — ${commit.shortHash} por ${commit.author}. Click derecho para revert, cherry-pick, crear rama/tag o reset`}
+            title={t.git.graph.rowTitle({hash: commit.shortHash, author: commit.author})}
             style={{height: ROW_HEIGHT}}
             className={`group relative flex w-full items-center gap-3 border-b border-outline-variant/30 pl-3 pr-2 text-left transition-colors ${
                 selected ? 'bg-primary-container/45' : 'hover:bg-surface-variant/40'
@@ -309,7 +312,7 @@ function CommitRow({
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1">
                     {(commit.branches ?? []).map((b) => <RefBadge key={b} label={b} kind={b.includes('/') ? 'remote' : 'local'} />)}
-                    {(commit.tags ?? []).map((t) => <RefBadge key={t} label={t} kind="tag" />)}
+                    {(commit.tags ?? []).map((tag) => <RefBadge key={tag} label={tag} kind="tag" />)}
                     <span className="truncate text-xs text-on-surface">{commit.subject}</span>
                 </div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-ui-10 text-on-surface-variant/70">
@@ -328,6 +331,7 @@ function CommitRow({
 }
 
 function RefBadge({label, kind}: {label: string; kind: 'local' | 'remote' | 'tag'}) {
+    const t = useT()
     const styles = {
         // Active local branch reads as "where you are" — the primary role.
         local: 'bg-primary-container text-on-primary-container',
@@ -338,7 +342,7 @@ function RefBadge({label, kind}: {label: string; kind: 'local' | 'remote' | 'tag
     }[kind]
     return (
         <span
-            title={kind === 'tag' ? `Tag: ${label}` : kind === 'remote' ? `Rama remota: ${label}` : `Rama local: ${label}`}
+            title={kind === 'tag' ? t.git.graph.tag({name: label}) : kind === 'remote' ? t.git.graph.remoteBranch({name: label}) : t.git.graph.localBranch({name: label})}
             // Capped width: names like "origin/feature/TIGOCHAT-9595" are long
             // enough that two of them would push the subject out of the row.
             className={`flex max-w-52 shrink-0 items-center gap-0.5 rounded-full py-px pl-1 pr-1.5 text-ui-9 font-medium ${styles}`}
@@ -355,5 +359,5 @@ function RefBadge({label, kind}: {label: string; kind: 'local' | 'remote' | 'tag
 function formatDate(iso: string): string {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleString(undefined, {year: '2-digit', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})
+    return formatDateTime(d, {year: '2-digit', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})
 }

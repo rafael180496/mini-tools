@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react'
 import {cachedNoteImage, loadNoteImage} from '../../lib/noteImages'
+import {useT} from '../../i18n'
 
 // Una imagen de una nota en la vista de lectura.
 //
@@ -10,6 +11,7 @@ import {cachedNoteImage, loadNoteImage} from '../../lib/noteImages'
 // leer no vuelve a descifrar nada.
 
 export default function NoteImage({assetId, alt}: {assetId: string; alt: string}) {
+    const t = useT()
     // Si ya está en la caché se pinta en el primer render: pasar por el estado
     // de carga teniendo la imagen a mano haría parpadear la nota entera cada
     // vez que se cambia de vista.
@@ -30,7 +32,7 @@ export default function NoteImage({assetId, alt}: {assetId: string; alt: string}
     if (failed) {
         return (
             <span className="inline-block rounded border border-dashed border-error/60 px-2 py-1 text-ui-11 text-error">
-                {alt || 'imagen'} — no se pudo cargar
+                {t.notes.imageFailed({alt: alt || t.notes.image})}
             </span>
         )
     }
@@ -39,7 +41,7 @@ export default function NoteImage({assetId, alt}: {assetId: string; alt: string}
         // salte cuando termina de descifrarse.
         return (
             <span className="inline-block rounded border border-dashed border-outline-variant px-8 py-6 text-ui-11 text-on-surface-variant">
-                {alt || 'imagen'}
+                {alt || t.notes.image}
             </span>
         )
     }

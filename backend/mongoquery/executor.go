@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // defaultFindLimit caps an unbounded find() so a huge collection can't flood
@@ -83,7 +84,7 @@ func (e *Executor) run(connID, queryID, database, commandText string) {
 		return
 	}
 	if strings.TrimSpace(database) == "" {
-		e.emit(queryID, Event{Type: "error", Error: "mongodb: no hay una base de datos seleccionada"})
+		e.emit(queryID, Event{Type: "error", Error: i18n.T(i18n.Msg{ES: "mongodb: no hay una base de datos seleccionada", EN: "mongodb: no database selected"})})
 		return
 	}
 
@@ -93,7 +94,7 @@ func (e *Executor) run(connID, queryID, database, commandText string) {
 		return
 	}
 	if len(cmds) == 0 {
-		e.emit(queryID, Event{Type: "error", Error: "mongodb: no hay ningún comando para ejecutar"})
+		e.emit(queryID, Event{Type: "error", Error: i18n.T(i18n.Msg{ES: "mongodb: no hay ningún comando para ejecutar", EN: "mongodb: there is no command to run"})})
 		return
 	}
 	total := len(cmds)
@@ -179,7 +180,7 @@ func executeCommand(ctx context.Context, database *mongo.Database, cmd command) 
 	case "getIndexes":
 		return runGetIndexes(ctx, coll)
 	default:
-		return nil, "", fmt.Errorf("mongodb: método no soportado: %s()", cmd.method)
+		return nil, "", i18n.Errorf(i18n.Msg{ES: "mongodb: método no soportado: %s()", EN: "mongodb: unsupported method: %s()"}, cmd.method)
 	}
 }
 
@@ -233,7 +234,7 @@ func runFind(ctx context.Context, coll *mongo.Collection, cmd command) ([]string
 			// no-op — results are always returned as an array, pretty-printed
 			// by the frontend's JSON view.
 		default:
-			return nil, "", fmt.Errorf("mongodb: modificador de cursor no soportado: .%s()", ch.method)
+			return nil, "", i18n.Errorf(i18n.Msg{ES: "mongodb: modificador de cursor no soportado: .%s()", EN: "mongodb: unsupported cursor modifier: .%s()"}, ch.method)
 		}
 	}
 	if !hasLimit {
@@ -248,9 +249,9 @@ func runFind(ctx context.Context, coll *mongo.Collection, cmd command) ([]string
 	if err != nil {
 		return nil, "", err
 	}
-	summary := fmt.Sprintf("%d documento(s)", len(docs))
+	summary := i18n.T(i18n.Msg{ES: "%d documento(s)", EN: "%d document(s)"}, len(docs))
 	if !hasLimit && len(docs) == defaultFindLimit {
-		summary += fmt.Sprintf(" (limitado a %d — agregá .limit(n) para más)", defaultFindLimit)
+		summary += i18n.T(i18n.Msg{ES: " (limitado a %d — agregá .limit(n) para más)", EN: " (limited to %d — add .limit(n) for more)"}, defaultFindLimit)
 	}
 	return docs, summary, nil
 }
@@ -269,7 +270,7 @@ func runFindOne(ctx context.Context, coll *mongo.Collection, cmd command) ([]str
 	var raw bson.Raw
 	err = coll.FindOne(ctx, filter, opts).Decode(&raw)
 	if err == mongo.ErrNoDocuments {
-		return nil, "sin resultados (null)", nil
+		return nil, i18n.T(i18n.Msg{ES: "sin resultados (null)", EN: "no results (null)"}), nil
 	}
 	if err != nil {
 		return nil, "", err
@@ -278,7 +279,7 @@ func runFindOne(ctx context.Context, coll *mongo.Collection, cmd command) ([]str
 	if err != nil {
 		return nil, "", err
 	}
-	return []string{string(j)}, "1 documento", nil
+	return []string{string(j)}, i18n.T(i18n.Msg{ES: "1 documento", EN: "1 document"}), nil
 }
 
 func runAggregate(ctx context.Context, coll *mongo.Collection, cmd command) ([]string, string, error) {
@@ -294,7 +295,7 @@ func runAggregate(ctx context.Context, coll *mongo.Collection, cmd command) ([]s
 	if err != nil {
 		return nil, "", err
 	}
-	return docs, fmt.Sprintf("%d documento(s)", len(docs)), nil
+	return docs, i18n.T(i18n.Msg{ES: "%d documento(s)", EN: "%d document(s)"}, len(docs)), nil
 }
 
 func runCount(ctx context.Context, coll *mongo.Collection, cmd command) ([]string, string, error) {
@@ -311,7 +312,7 @@ func runCount(ctx context.Context, coll *mongo.Collection, cmd command) ([]strin
 
 func runDistinct(ctx context.Context, coll *mongo.Collection, cmd command) ([]string, string, error) {
 	if len(cmd.args) == 0 || strings.TrimSpace(cmd.args[0]) == "" {
-		return nil, "", fmt.Errorf("mongodb: distinct requiere el nombre del campo")
+		return nil, "", i18n.Errorf(i18n.Msg{ES: "mongodb: distinct requiere el nombre del campo", EN: "mongodb: distinct requires the field name"})
 	}
 	field := strings.Trim(strings.TrimSpace(cmd.args[0]), `'"`)
 	filter, err := argAsDocOptional(cmd.args, 1)
@@ -329,7 +330,7 @@ func runDistinct(ctx context.Context, coll *mongo.Collection, cmd command) ([]st
 	if err != nil {
 		return nil, "", err
 	}
-	return []string{string(j)}, fmt.Sprintf("%d valor(es) distinto(s)", len(values)), nil
+	return []string{string(j)}, i18n.T(i18n.Msg{ES: "%d valor(es) distinto(s)", EN: "%d distinct value(s)"}, len(values)), nil
 }
 
 func runInsertOne(ctx context.Context, coll *mongo.Collection, cmd command) ([]string, string, error) {
@@ -341,7 +342,7 @@ func runInsertOne(ctx context.Context, coll *mongo.Collection, cmd command) ([]s
 	if err != nil {
 		return nil, "", err
 	}
-	return marshalDoc(bson.D{{Key: "acknowledged", Value: true}, {Key: "insertedId", Value: res.InsertedID}}, "1 documento insertado")
+	return marshalDoc(bson.D{{Key: "acknowledged", Value: true}, {Key: "insertedId", Value: res.InsertedID}}, i18n.T(i18n.Msg{ES: "1 documento insertado", EN: "1 document inserted"}))
 }
 
 func runInsertMany(ctx context.Context, coll *mongo.Collection, cmd command) ([]string, string, error) {
@@ -355,7 +356,7 @@ func runInsertMany(ctx context.Context, coll *mongo.Collection, cmd command) ([]
 	}
 	return marshalDoc(
 		bson.D{{Key: "insertedCount", Value: len(res.InsertedIDs)}, {Key: "insertedIds", Value: res.InsertedIDs}},
-		fmt.Sprintf("%d documento(s) insertado(s)", len(res.InsertedIDs)),
+		i18n.T(i18n.Msg{ES: "%d documento(s) insertado(s)", EN: "%d document(s) inserted"}, len(res.InsertedIDs)),
 	)
 }
 
@@ -410,7 +411,7 @@ func runDelete(ctx context.Context, coll *mongo.Collection, cmd command, many bo
 	if err != nil {
 		return nil, "", err
 	}
-	return marshalDoc(bson.D{{Key: "deletedCount", Value: res.DeletedCount}}, fmt.Sprintf("%d documento(s) eliminado(s)", res.DeletedCount))
+	return marshalDoc(bson.D{{Key: "deletedCount", Value: res.DeletedCount}}, i18n.T(i18n.Msg{ES: "%d documento(s) eliminado(s)", EN: "%d document(s) deleted"}, res.DeletedCount))
 }
 
 func runCreateIndex(ctx context.Context, coll *mongo.Collection, cmd command) ([]string, string, error) {
@@ -445,18 +446,18 @@ func runCreateIndex(ctx context.Context, coll *mongo.Collection, cmd command) ([
 	if err != nil {
 		return nil, "", err
 	}
-	return marshalDoc(bson.D{{Key: "createdIndex", Value: name}}, "índice creado: "+name)
+	return marshalDoc(bson.D{{Key: "createdIndex", Value: name}}, i18n.T(i18n.Msg{ES: "índice creado: %s", EN: "index created: %s"}, name))
 }
 
 func runDropIndex(ctx context.Context, coll *mongo.Collection, cmd command) ([]string, string, error) {
 	if len(cmd.args) == 0 || strings.TrimSpace(cmd.args[0]) == "" {
-		return nil, "", fmt.Errorf("mongodb: dropIndex requiere el nombre del índice")
+		return nil, "", i18n.Errorf(i18n.Msg{ES: "mongodb: dropIndex requiere el nombre del índice", EN: "mongodb: dropIndex requires the index name"})
 	}
 	name := strings.Trim(strings.TrimSpace(cmd.args[0]), `'"`)
 	if err := coll.Indexes().DropOne(ctx, name); err != nil {
 		return nil, "", err
 	}
-	return marshalDoc(bson.D{{Key: "droppedIndex", Value: name}}, "índice eliminado: "+name)
+	return marshalDoc(bson.D{{Key: "droppedIndex", Value: name}}, i18n.T(i18n.Msg{ES: "índice eliminado: %s", EN: "index dropped: %s"}, name))
 }
 
 func runGetIndexes(ctx context.Context, coll *mongo.Collection) ([]string, string, error) {
@@ -468,7 +469,7 @@ func runGetIndexes(ctx context.Context, coll *mongo.Collection) ([]string, strin
 	if err != nil {
 		return nil, "", err
 	}
-	return docs, fmt.Sprintf("%d índice(s)", len(docs)), nil
+	return docs, i18n.T(i18n.Msg{ES: "%d índice(s)", EN: "%d index(es)"}, len(docs)), nil
 }
 
 // --- argument / result helpers ---
@@ -494,7 +495,7 @@ func argAsDocOptional(args []string, idx int) (bson.D, error) {
 	}
 	var d bson.D
 	if err := bson.UnmarshalExtJSON([]byte(ej), false, &d); err != nil {
-		return nil, fmt.Errorf("mongodb: argumento inválido: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "mongodb: argumento inválido: %w", EN: "mongodb: invalid argument: %w"}, err)
 	}
 	return d, nil
 }
@@ -509,7 +510,7 @@ func argAsArray(args []string, idx int) (bson.A, error) {
 	}
 	var a bson.A
 	if err := bson.UnmarshalExtJSON([]byte(ej), false, &a); err != nil {
-		return nil, fmt.Errorf("mongodb: se esperaba un array: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "mongodb: se esperaba un array: %w", EN: "mongodb: expected an array: %w"}, err)
 	}
 	return a, nil
 }
@@ -518,7 +519,7 @@ func argAsArray(args []string, idx int) (bson.A, error) {
 // bson.D for object-shaped args.
 func argAsAny(args []string, idx int) (interface{}, error) {
 	if idx >= len(args) || strings.TrimSpace(args[idx]) == "" {
-		return nil, fmt.Errorf("mongodb: falta el argumento %d", idx+1)
+		return nil, i18n.Errorf(i18n.Msg{ES: "mongodb: falta el argumento %d", EN: "mongodb: missing argument %d"}, idx+1)
 	}
 	ej, err := toExtJSON(args[idx])
 	if err != nil {
@@ -527,24 +528,24 @@ func argAsAny(args []string, idx int) (interface{}, error) {
 	if strings.HasPrefix(strings.TrimSpace(ej), "[") {
 		var a bson.A
 		if err := bson.UnmarshalExtJSON([]byte(ej), false, &a); err != nil {
-			return nil, fmt.Errorf("mongodb: argumento inválido: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "mongodb: argumento inválido: %w", EN: "mongodb: invalid argument: %w"}, err)
 		}
 		return a, nil
 	}
 	var d bson.D
 	if err := bson.UnmarshalExtJSON([]byte(ej), false, &d); err != nil {
-		return nil, fmt.Errorf("mongodb: argumento inválido: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "mongodb: argumento inválido: %w", EN: "mongodb: invalid argument: %w"}, err)
 	}
 	return d, nil
 }
 
 func argAsInt(args []string, idx int) (int64, error) {
 	if idx >= len(args) || strings.TrimSpace(args[idx]) == "" {
-		return 0, fmt.Errorf("mongodb: se esperaba un número")
+		return 0, i18n.Errorf(i18n.Msg{ES: "mongodb: se esperaba un número", EN: "mongodb: expected a number"})
 	}
 	n, err := strconv.ParseInt(strings.TrimSpace(args[idx]), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("mongodb: número inválido %q", args[idx])
+		return 0, i18n.Errorf(i18n.Msg{ES: "mongodb: número inválido %q", EN: "mongodb: invalid number %q"}, args[idx])
 	}
 	return n, nil
 }
@@ -582,7 +583,7 @@ func updateResultDoc(res *mongo.UpdateResult) ([]string, string, error) {
 			{Key: "upsertedCount", Value: res.UpsertedCount},
 			{Key: "upsertedId", Value: res.UpsertedID},
 		},
-		fmt.Sprintf("%d encontrado(s), %d modificado(s)", res.MatchedCount, res.ModifiedCount),
+		i18n.T(i18n.Msg{ES: "%d encontrado(s), %d modificado(s)", EN: "%d matched, %d modified"}, res.MatchedCount, res.ModifiedCount),
 	)
 }
 

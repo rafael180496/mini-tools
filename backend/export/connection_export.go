@@ -1,8 +1,9 @@
 package export
 
 import (
-	"fmt"
 	"net/url"
+
+	"mini-tools/backend/i18n"
 )
 
 // RedactDSN parses dsn — every engine builds a URL-shaped DSN (see
@@ -13,7 +14,7 @@ import (
 func RedactDSN(dsn string) (string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return "", fmt.Errorf("export: parseando dsn: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: parseando dsn: %w", EN: "export: parsing dsn: %w"}, err)
 	}
 
 	if u.User != nil {

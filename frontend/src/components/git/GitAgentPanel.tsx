@@ -14,6 +14,7 @@ import {agentctx, agentlimits, agentplan, agents as agentsNs, agentusage, mcpcon
 import AgentLimitBars from '../agent/AgentLimitBars'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
+import {formatNumber, useT} from '../../i18n'
 
 // Solapa "Agentes" del panel de la pestaña Git: qué le ofrece ESTE
 // repositorio a un CLI agéntico.
@@ -45,6 +46,7 @@ interface GitAgentPanelProps {
 }
 
 export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAgent, onSetDefaultAgent}: GitAgentPanelProps) {
+    const t = useT()
     const [ctx, setCtx] = useState<agentctx.Context | null>(null)
     const [mcp, setMcp] = useState<mcpconf.Config | null>(null)
     const [usage, setUsage] = useState<agentusage.Usage | null>(null)
@@ -89,7 +91,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
     const agentLabel = (id: string) => installed.find((a) => a.id === id)?.label ?? id
 
     if (error) return <p className="p-3 text-xs text-error">{error}</p>
-    if (loading && !ctx) return <p className="p-3 text-xs text-on-surface-variant">Leyendo la configuración agéntica del repositorio…</p>
+    if (loading && !ctx) return <p className="p-3 text-xs text-on-surface-variant">{t.git.agent.loading}</p>
     if (!ctx) return null
 
     const nothing = ctx.skills.length === 0 && ctx.agents.length === 0 && ctx.commands.length === 0
@@ -99,10 +101,10 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
         <div className="h-full overflow-y-auto p-2 text-xs">
             <div className="mb-2 flex items-center gap-2">
                 <Icon name="smart_toy" size={14} className="shrink-0 text-primary" />
-                <span className="font-semibold text-on-surface">Lo que este repositorio le ofrece a un agente</span>
+                <span className="font-semibold text-on-surface">{t.git.agent.heading}</span>
                 <button
                     onClick={reload}
-                    title="Vuelve a leer .claude/ y los archivos de instrucciones — útil después de crear un skill o un CLAUDE.md"
+                    title={t.git.agent.reloadTitle}
                     className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="refresh" size={14} />
@@ -113,14 +115,14 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
                 default correcto: elegir por el usuario un asistente que
                 consume su cuota no es algo que nadie haya pedido. */}
             <label className="mb-2 flex items-center gap-2 px-1.5 text-ui-11 text-on-surface-variant">
-                Agente por defecto
+                {t.git.agent.defaultAgent}
                 <select
                     value={defaultAgent}
                     onChange={(e) => onSetDefaultAgent(e.target.value)}
-                    title="Con qué asistente se abren las sesiones desde este repositorio cuando usás Preguntar. Sin elegir, se pregunta cada vez."
+                    title={t.git.agent.defaultAgentTitle}
                     className="rounded border border-outline-variant bg-surface px-1 py-0.5 text-ui-11 text-on-surface outline-none focus:border-primary"
                 >
-                    <option value="">Preguntar cada vez</option>
+                    <option value="">{t.git.agent.askEachTime}</option>
                     {installed
                         .filter((a) => a.available)
                         .map((a) => (
@@ -132,17 +134,15 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             </label>
 
             {/* Instrucciones: lo primero, porque es lo que más seguido falta */}
-            <Section title="Instrucciones del proyecto" count={ctx.instructions.filter((i) => i.present).length}>
+            <Section title={t.git.agent.instructions.title} count={ctx.instructions.filter((i) => i.present).length}>
                 {ctx.instructions.map((i) => (
                     <button
                         key={i.file}
                         onClick={() => onOpenFile(i.path)}
                         title={
                             i.present
-                                ? `Abre ${i.file} en el editor. Lo lee ${i.agents.map(agentLabel).join(', ')}.`
-                                : `${i.file} no existe en este repositorio, así que ${i.agents
-                                      .map(agentLabel)
-                                      .join(', ')} abre acá sin ninguna instrucción del proyecto. Al abrirlo se crea vacío y podés escribirlo.`
+                                ? t.git.agent.instructions.openTitle({file: i.file, agents: i.agents.map(agentLabel).join(', ')})
+                                : t.git.agent.instructions.missingTitle({file: i.file, agents: i.agents.map(agentLabel).join(', ')})
                         }
                         className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-surface-container-high"
                     >
@@ -154,7 +154,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
                         <span className={i.present ? 'text-on-surface' : 'text-on-surface-variant/70'}>{i.file}</span>
                         <span className="ml-auto shrink-0 text-ui-10 text-on-surface-variant">
                             {i.agents.map(agentLabel).join(' · ')}
-                            {!i.present && ' — falta'}
+                            {i.present ? null : t.git.agent.instructions.missingTag}
                         </span>
                     </button>
                 ))}
@@ -163,16 +163,21 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             {missing.length > 0 && (
                 <p className="mb-2 px-1.5 text-ui-11 text-on-surface-variant">
                     {missing.length === ctx.instructions.length
-                        ? 'Este repositorio no tiene ningún archivo de instrucciones: cualquier agente que abras acá arranca sin contexto del proyecto.'
-                        : `Falta${missing.length > 1 ? 'n' : ''} ${missing.map((i) => i.file).join(', ')} — ${missing
-                              .flatMap((i) => i.agents)
-                              .map(agentLabel)
-                              .join(', ')} no lee${missing.flatMap((i) => i.agents).length > 1 ? 'n' : ''} los archivos de los otros.`}
+                        ? t.git.agent.instructions.noneAtAll
+                        : t.git.agent.instructions.someMissing({
+                              files: missing.map((i) => i.file).join(', '),
+                              fileCount: missing.length,
+                              agents: missing
+                                  .flatMap((i) => i.agents)
+                                  .map(agentLabel)
+                                  .join(', '),
+                              agentCount: missing.flatMap((i) => i.agents).length,
+                          })}
                 </p>
             )}
 
             {ctx.skills.length > 0 && (
-                <Section title="Skills" count={ctx.skills.length}>
+                <Section title={t.git.agent.skills} count={ctx.skills.length}>
                     {ctx.skills.map((s) => (
                         <EntryRow
                             key={`${s.scope}:${s.path}`}
@@ -184,14 +189,14 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
                             // vez de pegarle el contenido del SKILL.md: el
                             // agente ya sabe cargarlo, y pegarlo gastaría
                             // contexto duplicando lo que va a leer igual.
-                            onAsk={() => onAskAgent(`Usá el skill "${s.name}" para `, `skill ${s.name}`)}
+                            onAsk={() => onAskAgent(t.git.agent.askSkillPrompt({name: s.name}), `skill ${s.name}`)}
                         />
                     ))}
                 </Section>
             )}
 
             {ctx.agents.length > 0 && (
-                <Section title="Subagentes" count={ctx.agents.length}>
+                <Section title={t.git.agent.subagents} count={ctx.agents.length}>
                     {ctx.agents.map((a) => (
                         <EntryRow key={`${a.scope}:${a.path}`} entry={a} onOpen={onOpenFile} icon="account_tree" />
                     ))}
@@ -199,7 +204,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
             )}
 
             {ctx.commands.length > 0 && (
-                <Section title="Comandos" count={ctx.commands.length} defaultOpen={false}>
+                <Section title={t.git.agent.commands} count={ctx.commands.length} defaultOpen={false}>
                     {ctx.commands.map((c) => (
                         <EntryRow key={`${c.scope}:${c.path}`} entry={c} onOpen={onOpenFile} icon="terminal" />
                     ))}
@@ -229,7 +234,7 @@ export default function GitAgentPanel({repoId, onOpenFile, onAskAgent, defaultAg
 
             {nothing && (
                 <p className="px-1.5 py-2 text-ui-11 text-on-surface-variant">
-                    No hay skills, subagentes ni comandos definidos — ni en este repositorio ni en tu carpeta personal.
+                    {t.git.agent.nothing}
                 </p>
             )}
         </div>
@@ -274,8 +279,9 @@ function UsageSection({
     querying: string
     queryErrors: Record<string, string>
 }) {
+    const t = useT()
     return (
-        <Section title={`Consumo de tokens · ${usage.days} días`} count={usage.agents.filter((a) => a.available).length}>
+        <Section title={t.git.agent.usage.title({days: usage.days})} count={usage.agents.filter((a) => a.available).length}>
             {usage.agents.map((a) => (
                 <div key={a.agent} className="mb-1.5 rounded border border-outline-variant px-2 py-1.5">
                     <div className="flex items-center gap-1.5">
@@ -298,13 +304,13 @@ function UsageSection({
                                     title={plan.note}
                                     className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant"
                                 >
-                                    {plan.detail || 'plan desconocido'}
+                                    {plan.detail || t.git.agent.usage.unknownPlan}
                                 </span>
                             )
                         })()}
                         {a.available && (
-                            <span className="ml-auto shrink-0 text-ui-11 text-on-surface-variant" title={`${a.all.total.toLocaleString('es')} tokens en ${a.all.messages.toLocaleString('es')} respuestas`}>
-                                {compact(a.all.total)} tokens
+                            <span className="ml-auto shrink-0 text-ui-11 text-on-surface-variant" title={t.git.agent.usage.tokensDetail({total: formatNumber(a.all.total), messages: formatNumber(a.all.messages)})}>
+                                {t.git.agent.usage.tokens({n: compact(a.all.total)})}
                             </span>
                         )}
                     </div>
@@ -331,34 +337,34 @@ function UsageSection({
                                 dato. */}
                             {a.activity && (
                                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-ui-11 text-on-surface-variant">
-                                    <span title="Conversaciones registradas por el CLI en esta máquina">
-                                        Conversaciones: <span className="text-on-surface">{a.activity.conversations}</span>
+                                    <span title={t.git.agent.usage.conversationsTitle}>
+                                        {t.git.agent.usage.conversations} <span className="text-on-surface">{a.activity.conversations}</span>
                                     </span>
-                                    <span title="Pasos (turnos de trabajo del agente) sumados de todas las conversaciones">
-                                        Pasos: <span className="text-on-surface">{a.activity.steps}</span>
+                                    <span title={t.git.agent.usage.stepsTitle}>
+                                        {t.git.agent.usage.steps} <span className="text-on-surface">{a.activity.steps}</span>
                                     </span>
-                                    <span title="Conversaciones cuyo workspace incluye este repositorio">
-                                        Este repo:{' '}
+                                    <span title={t.git.agent.usage.repoConversationsTitle}>
+                                        {t.git.agent.usage.thisRepo}{' '}
                                         <span className="text-on-surface">
-                                            {a.activity.repoConversations} conv · {a.activity.repoSteps} pasos
+                                            {t.git.agent.usage.repoActivity({conversations: a.activity.repoConversations, steps: a.activity.repoSteps})}
                                         </span>
                                     </span>
-                                    {a.activity.lastUsed && <span>último uso: {a.activity.lastUsed}</span>}
+                                    {a.activity.lastUsed ? <span>{t.git.agent.usage.lastUsed({when: a.activity.lastUsed})}</span> : null}
                                 </div>
                             )}
                         </>
                     ) : (
                         <>
                             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-ui-11 text-on-surface-variant">
-                                <span title={`${a.repo.total.toLocaleString('es')} tokens en ${a.repo.messages.toLocaleString('es')} respuestas sobre este repositorio`}>
-                                    Este repo: <span className="text-on-surface">{compact(a.repo.total)}</span>
+                                <span title={t.git.agent.usage.repoTokensDetail({total: formatNumber(a.repo.total), messages: formatNumber(a.repo.messages)})}>
+                                    {t.git.agent.usage.thisRepo} <span className="text-on-surface">{compact(a.repo.total)}</span>
                                     {a.all.total > 0 && ` (${Math.round((a.repo.total / a.all.total) * 100)}%)`}
                                 </span>
-                                <span title="Qué parte de los tokens de ENTRADA salió del caché en vez de reprocesarse. Es el único número de acá sobre el que se puede actuar: cuanto más alto, más barata la sesión larga.">
-                                    Caché: <span className="text-on-surface">{a.cacheHitPercent}%</span>
+                                <span title={t.git.agent.usage.cacheTitle}>
+                                    {t.git.agent.usage.cache} <span className="text-on-surface">{a.cacheHitPercent}%</span>
                                 </span>
-                                <span title="Los tokens que generó el modelo. Son los más caros de las cuatro clases.">
-                                    Salida: <span className="text-on-surface">{compact(a.all.output)}</span>
+                                <span title={t.git.agent.usage.outputTitle}>
+                                    {t.git.agent.usage.output} <span className="text-on-surface">{compact(a.all.output)}</span>
                                 </span>
                                 <span>
                                     {a.firstDay} → {a.lastDay}
@@ -366,7 +372,7 @@ function UsageSection({
                             </div>
 
                             {a.byModel.map((m) => (
-                                <div key={m.key} className="mt-0.5 flex items-center gap-1.5" title={`${m.total.toLocaleString('es')} tokens en ${m.messages.toLocaleString('es')} respuestas`}>
+                                <div key={m.key} className="mt-0.5 flex items-center gap-1.5" title={t.git.agent.usage.tokensDetail({total: formatNumber(m.total), messages: formatNumber(m.messages)})}>
                                     <span className="w-32 shrink-0 truncate text-ui-11 text-on-surface-variant">{m.key}</span>
                                     <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-variant">
                                         <span className="block h-full rounded-full bg-primary" style={{width: `${m.percent}%`}} />
@@ -379,9 +385,7 @@ function UsageSection({
                 </div>
             ))}
             <p className="px-1.5 text-ui-10 leading-4 text-on-surface-variant/70">
-                Las barras de límite son el porcentaje que calculó el servidor de cada proveedor y que su CLI dejó
-                cacheado en esta máquina: se leen tal cual, con la hora en que se midieron — no son en vivo. Los
-                porcentajes de consumo (por modelo, caché, este repo) son proporciones de lo gastado, no de un tope.
+                {t.git.agent.usage.footnote}
             </p>
         </Section>
     )
@@ -403,6 +407,7 @@ function McpSection({
     agentLabel: (id: string) => string
     onChanged: () => void
 }) {
+    const t = useT()
     const [removing, setRemoving] = useState<mcpconf.Server | null>(null)
     const [error, setError] = useState('')
     // Formulario para agregar un servidor. `null` = cerrado; el string es el
@@ -424,17 +429,16 @@ function McpSection({
 
     if (cfg.servers.length === 0 && broken.length === 0) {
         return (
-            <Section title="Servidores MCP" count={0}>
+            <Section title={t.git.agent.mcp.title} count={0}>
                 <p className="px-1.5 text-ui-11 text-on-surface-variant">
-                    Ningún agente tiene servidores MCP configurados para este repositorio. Se miraron{' '}
-                    {cfg.files.length} ubicaciones ({cfg.files.filter((f) => f.present).length} existen).
+                    {t.git.agent.mcp.none({looked: cfg.files.length, present: cfg.files.filter((f) => f.present).length})}
                 </p>
             </Section>
         )
     }
 
     return (
-        <Section title="Servidores MCP" count={cfg.servers.length}>
+        <Section title={t.git.agent.mcp.title} count={cfg.servers.length}>
             {error && <p className="px-1.5 py-0.5 text-ui-11 text-error">{error}</p>}
 
             {/* Agregar. Solo aparece si hay al menos un archivo escribible: en
@@ -445,18 +449,18 @@ function McpSection({
                     {addingTo === null ? (
                         <button
                             onClick={() => setAddingTo([...writableFiles][0])}
-                            title="Agrega un servidor MCP a uno de los archivos de configuración que la app puede escribir"
+                            title={t.git.agent.mcp.addTitle}
                             className="flex items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:text-on-surface"
                         >
                             <Icon name="add" size={12} />
-                            Agregar servidor
+                            {t.git.agent.mcp.add}
                         </button>
                     ) : (
                         <div className="flex flex-col gap-1 rounded border border-outline-variant bg-surface-container p-1.5 text-ui-11">
                             <select
                                 value={addingTo}
                                 onChange={(e) => setAddingTo(e.target.value)}
-                                title="En qué archivo se escribe. Los que no aparecen no se editan desde la app."
+                                title={t.git.agent.mcp.fileTitle}
                                 className="rounded border border-outline-variant bg-surface px-1 py-0.5 text-on-surface outline-none focus:border-primary"
                             >
                                 {[...writableFiles].map((f) => (
@@ -468,30 +472,30 @@ function McpSection({
                             <input
                                 value={draft.name}
                                 onChange={(e) => setDraft((d) => ({...d, name: e.target.value}))}
-                                placeholder="nombre (ej. github)"
+                                placeholder={t.git.agent.mcp.namePlaceholder}
                                 className="rounded border border-outline-variant bg-surface px-1 py-0.5 font-mono text-on-surface outline-none focus:border-primary"
                             />
                             <input
                                 value={draft.command}
                                 onChange={(e) => setDraft((d) => ({...d, command: e.target.value}))}
-                                placeholder="comando (ej. npx)"
+                                placeholder={t.git.agent.mcp.commandPlaceholder}
                                 className="rounded border border-outline-variant bg-surface px-1 py-0.5 font-mono text-on-surface outline-none focus:border-primary"
                             />
                             <input
                                 value={draft.args}
                                 onChange={(e) => setDraft((d) => ({...d, args: e.target.value}))}
-                                placeholder="argumentos separados por espacios"
+                                placeholder={t.git.agent.mcp.argsPlaceholder}
                                 className="rounded border border-outline-variant bg-surface px-1 py-0.5 font-mono text-on-surface outline-none focus:border-primary"
                             />
                             <input
                                 value={draft.env}
                                 onChange={(e) => setDraft((d) => ({...d, env: e.target.value}))}
-                                placeholder="env: CLAVE=valor, OTRA=valor"
+                                placeholder={t.git.agent.mcp.envPlaceholder}
                                 // Se dice dónde termina el valor porque es lo que
                                 // suele ser un token: va al archivo del usuario en
                                 // texto plano, que es como esos configs funcionan,
                                 // y NO al vault de esta app.
-                                title="Variables de entorno del servidor. Se escriben en TU archivo de configuración en texto plano, que es como lo lee el CLI — mini-tools no las guarda ni las administra."
+                                title={t.git.agent.mcp.envTitle}
                                 className="rounded border border-outline-variant bg-surface px-1 py-0.5 font-mono text-on-surface outline-none focus:border-primary"
                             />
                             <div className="flex items-center gap-1">
@@ -520,13 +524,13 @@ function McpSection({
                                     disabled={!draft.name.trim() || !draft.command.trim()}
                                     className="rounded bg-primary px-2 py-0.5 text-on-primary disabled:opacity-40"
                                 >
-                                    Guardar
+                                    {t.common.save}
                                 </button>
                                 <button
                                     onClick={() => setAddingTo(null)}
                                     className="rounded px-2 py-0.5 text-on-surface-variant hover:text-on-surface"
                                 >
-                                    Cancelar
+                                    {t.common.cancel}
                                 </button>
                             </div>
                         </div>
@@ -545,9 +549,12 @@ function McpSection({
                     // encima: borrar algo del config de otro programa no
                     // debería estar a un clic accidental de distancia.
                     style={undefined}
-                    title={`${s.transport === 'stdio' ? `${s.command} ${s.args.join(' ')}`.trim() : s.url}\n\nLo lee ${agentLabel(
-                        s.agent,
-                    )} · ${s.scope === 'project' ? 'solo en este repositorio' : 'en cualquier repositorio de esta máquina'}\nDefinido en ${s.source}`}
+                    title={t.git.agent.mcp.serverTitle({
+                        target: s.transport === 'stdio' ? `${s.command} ${s.args.join(' ')}`.trim() : s.url,
+                        agent: agentLabel(s.agent),
+                        project: s.scope === 'project',
+                        source: s.source,
+                    })}
                     className="flex items-start gap-2 rounded px-1.5 py-1"
                 >
                     <Icon
@@ -559,19 +566,19 @@ function McpSection({
                         <span className="flex items-center gap-1.5">
                             <span className="truncate font-medium text-on-surface">{s.name}</span>
                             <span className="shrink-0 text-ui-10 text-on-surface-variant">{agentLabel(s.agent)}</span>
-                            {s.scope === 'user' && (
+                            {s.scope === 'user' ? (
                                 <span className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant">
-                                    personal
+                                    {t.git.agent.personal}
                                 </span>
-                            )}
+                            ) : null}
                             {/* Un servidor remoto manda contexto del repositorio
                                 fuera de la máquina; que se note sin abrir el
                                 tooltip es justamente el punto. */}
-                            {s.transport !== 'stdio' && (
+                            {s.transport !== 'stdio' ? (
                                 <span className="shrink-0 rounded-full bg-tertiary-container px-1.5 text-ui-10 text-on-tertiary-container">
-                                    remoto
+                                    {t.git.agent.mcp.remote}
                                 </span>
-                            )}
+                            ) : null}
                         </span>
                         <span className="block truncate text-ui-11 text-on-surface-variant">
                             {s.transport === 'stdio' ? `${s.command} ${s.args.join(' ')}`.trim() : s.url}
@@ -579,9 +586,9 @@ function McpSection({
                         {s.envKeys.length > 0 && (
                             <span
                                 className="block truncate text-ui-10 text-on-surface-variant/70"
-                                title="Nombres de las variables de entorno que este servidor recibe. Sus valores no salen del backend."
+                                title={t.git.agent.mcp.envKeysTitle}
                             >
-                                env: {s.envKeys.join(', ')}
+                                {t.git.agent.mcp.envKeys({keys: s.envKeys.join(', ')})}
                             </span>
                         )}
                     </span>
@@ -592,7 +599,7 @@ function McpSection({
                     {writableFiles.has(s.source) && (
                         <button
                             onClick={() => setRemoving(s)}
-                            title={`Quita "${s.name}" de ${s.source}. Se deja una copia .mini-tools.bak al lado antes de tocar el archivo.`}
+                            title={t.git.agent.mcp.removeTitle({name: s.name, source: s.source})}
                             className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-error-container/40 hover:text-error"
                         >
                             <Icon name="delete" size={13} />
@@ -603,9 +610,9 @@ function McpSection({
 
             {removing && (
                 <ConfirmDialog
-                    title={`Quitar "${removing.name}"`}
-                    description={`Se va a sacar de ${removing.source}. El agente deja de tener esa herramienta. Antes de escribir se deja una copia .mini-tools.bak al lado, y el resto del archivo no se toca.`}
-                    confirmLabel="Quitar"
+                    title={t.git.agent.mcp.removeConfirmTitle({name: removing.name})}
+                    description={t.git.agent.mcp.removeConfirm({source: removing.source})}
+                    confirmLabel={t.git.agent.mcp.removeLabel}
                     danger
                     onConfirm={() => {
                         const target = removing
@@ -638,12 +645,13 @@ function Section({
     // casi nunca es lo que se viene a buscar acá.
     defaultOpen?: boolean
 }) {
+    const t = useT()
     const [open, setOpen] = useState(defaultOpen)
     return (
         <div className="mb-2">
             <button
                 onClick={() => setOpen((v) => !v)}
-                title={open ? 'Plegar esta sección' : `Desplegar — tiene ${count}`}
+                title={open ? t.git.agent.collapseSection : t.git.agent.expandSection({count})}
                 className="mb-0.5 flex w-full items-center gap-1 rounded px-1.5 text-left text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant hover:bg-surface-container-high"
             >
                 <Icon name={open ? 'expand_more' : 'chevron_right'} size={12} className="shrink-0 opacity-70" />
@@ -666,6 +674,7 @@ function EntryRow({
     icon: string
     onAsk?: () => void
 }) {
+    const t = useT()
     // Las entradas del home son de esta máquina y no del repositorio: no se
     // pueden abrir en el editor, que trabaja contra el árbol del repo. Se
     // muestran igual porque explican por qué a un compañero "no le anda
@@ -678,7 +687,7 @@ function EntryRow({
                 <span className="flex items-center gap-1.5">
                     <span className="truncate font-medium text-on-surface">{entry.name}</span>
                     {!isRepo && (
-                        <span className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant">personal</span>
+                        <span className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant">{t.git.agent.personal}</span>
                     )}
                 </span>
                 {entry.description && <span className="block truncate text-ui-11 text-on-surface-variant">{entry.description}</span>}
@@ -692,7 +701,7 @@ function EntryRow({
     const ask = onAsk && (
         <button
             onClick={onAsk}
-            title={`Le pide al agente que use "${entry.name}" y deja el prompt escrito para que lo completes`}
+            title={t.git.agent.entry.askTitle({name: entry.name})}
             className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
         >
             <Icon name="smart_toy" size={13} />
@@ -702,7 +711,7 @@ function EntryRow({
     if (!isRepo) {
         return (
             <div
-                title={`${entry.path} — está en tu carpeta personal, no en el repositorio: la ven tus agentes en esta máquina, no el resto del equipo`}
+                title={t.git.agent.entry.personalTitle({path: entry.path})}
                 className="flex w-full items-start gap-2 rounded px-1.5 py-1 text-left"
             >
                 <span className="flex min-w-0 flex-1 items-start gap-2 opacity-70">{body}</span>
@@ -714,7 +723,7 @@ function EntryRow({
         <div className="flex w-full items-start gap-2 rounded px-1.5 py-1 hover:bg-surface-container-high">
             <button
                 onClick={() => onOpen(entry.path)}
-                title={`${entry.path} — click para abrirlo en el editor`}
+                title={t.git.agent.entry.openTitle({path: entry.path})}
                 className="flex min-w-0 flex-1 items-start gap-2 text-left"
             >
                 {body}

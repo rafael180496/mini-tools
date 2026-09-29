@@ -4,13 +4,11 @@ import {db} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import {formatBytes} from '../../lib/formatBytes'
 import {formatDuration} from '../../lib/redisFormat'
+import {formatNumber, useT} from '../../i18n'
 
-const REFRESH_OPTIONS = [
-    {value: 0, label: 'manual'},
-    {value: 5, label: '5 s'},
-    {value: 15, label: '15 s'},
-    {value: 60, label: '1 min'},
-]
+// Refresh intervals in seconds; 0 = manual. Their labels come from the
+// dictionary at render.
+const REFRESH_OPTIONS = [0, 5, 15, 60]
 
 interface RedisMetricsPanelProps {
     connId: string
@@ -25,6 +23,8 @@ interface RedisMetricsPanelProps {
 // moment it opens is the kind of thing that gets a tool banned from
 // production. The interval is opt-in and visible.
 export default function RedisMetricsPanel({connId, onClose}: RedisMetricsPanelProps) {
+    const t = useT()
+    const m = t.redis.metrics
     const [info, setInfo] = useState<db.RedisServerInfo | null>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
@@ -66,34 +66,34 @@ export default function RedisMetricsPanel({connId, onClose}: RedisMetricsPanelPr
         <div className="flex h-full flex-col overflow-hidden">
             <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-xs">
                 <Icon name="monitoring" size={15} className="shrink-0 text-primary" />
-                <span className="font-semibold text-on-surface">Estado del servidor</span>
+                <span className="font-semibold text-on-surface">{t.redis.browser.serverStatus}</span>
                 {info?.version && (
-                    <span className="font-mono text-on-surface-variant" title="Versión, modo de despliegue y rol de esta instancia">
+                    <span className="font-mono text-on-surface-variant" title={m.versionHint}>
                         Redis {info.version}
                         {info.mode ? ` · ${info.mode}` : ''}
                         {info.role ? ` · ${info.role}` : ''}
                     </span>
                 )}
                 {!!info?.nodes && info.nodes > 1 && (
-                    <span className="rounded bg-surface-variant px-1.5 py-0.5 text-ui-10 text-on-surface-variant" title="Los contadores están sumados sobre los masters del cluster">
-                        {info.nodes} nodos
+                    <span className="rounded bg-surface-variant px-1.5 py-0.5 text-ui-10 text-on-surface-variant" title={m.nodesHint}>
+                        {m.nodes(info.nodes)}
                     </span>
                 )}
 
                 <div className="ml-auto flex items-center gap-2">
                     <label
                         className="flex items-center gap-1 text-on-surface-variant"
-                        title="Con qué frecuencia volver a pedir INFO. Cada refresco es un comando contra el servidor, así que arranca en manual a propósito."
+                        title={m.refreshEveryHint}
                     >
-                        Refresco
+                        {m.refreshEvery}
                         <select
                             value={intervalSec}
                             onChange={(e) => setIntervalSec(Number(e.target.value))}
                             className="rounded border border-outline-variant bg-surface-container-low px-1 py-0.5 text-xs text-on-surface"
                         >
-                            {REFRESH_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>
-                                    {o.label}
+                            {REFRESH_OPTIONS.map((sec) => (
+                                <option key={sec} value={sec}>
+                                    {m.interval(sec)}
                                 </option>
                             ))}
                         </select>
@@ -101,12 +101,12 @@ export default function RedisMetricsPanel({connId, onClose}: RedisMetricsPanelPr
                     <button
                         onClick={() => void refresh()}
                         disabled={loading}
-                        title="Vuelve a pedir INFO al servidor ahora"
+                        title={m.refreshNowHint}
                         className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                     >
                         <Icon name={loading ? 'progress_activity' : 'refresh'} size={15} className={loading ? 'animate-spin' : ''} />
                     </button>
-                    <button onClick={onClose} title="Cierra el panel de estado" className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
+                    <button onClick={onClose} title={m.closeHint} className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
                         <Icon name="close" size={16} />
                     </button>
                 </div>
@@ -119,79 +119,75 @@ export default function RedisMetricsPanel({connId, onClose}: RedisMetricsPanelPr
                     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                         <Card
                             icon="memory"
-                            label="Memoria"
+                            label={m.memory}
                             value={formatBytes(info.usedMemoryBytes)}
                             detail={
                                 info.maxMemoryBytes > 0
-                                    ? `de ${formatBytes(info.maxMemoryBytes)} · pico ${formatBytes(info.peakMemoryBytes)}`
-                                    : `sin límite configurado · pico ${formatBytes(info.peakMemoryBytes)}`
+                                    ? m.memoryOf({max: formatBytes(info.maxMemoryBytes), peak: formatBytes(info.peakMemoryBytes)})
+                                    : m.memoryNoLimit({peak: formatBytes(info.peakMemoryBytes)})
                             }
-                            hint={
-                                info.maxMemoryBytes > 0
-                                    ? `Política de desalojo: ${info.maxMemoryPolicy || 'desconocida'}. Al llegar al límite Redis aplica esa política.`
-                                    : 'Sin maxmemory configurado, Redis crece hasta agotar la RAM del sistema — no hay política de desalojo que lo frene.'
-                            }
+                            hint={info.maxMemoryBytes > 0 ? m.evictionPolicy({policy: info.maxMemoryPolicy || m.unknownPolicy}) : m.noMaxMemory}
                             bar={memoryPct}
                             tone={memoryPct !== null && memoryPct > 90 ? 'danger' : memoryPct !== null && memoryPct > 75 ? 'warn' : 'ok'}
                         />
 
                         <Card
                             icon="target"
-                            label="Aciertos de caché"
-                            value={`${info.hitRatePct.toFixed(1)}%`}
-                            detail={`${info.keyspaceHits.toLocaleString('es')} aciertos · ${info.keyspaceMisses.toLocaleString('es')} fallos`}
-                            hint="Acumulado desde que arrancó el servidor, no una tasa instantánea: una caché que estuvo fría una semana sigue arrastrando ese número mucho después de calentarse."
+                            label={m.hitRate}
+                            value={`${formatNumber(info.hitRatePct, {minimumFractionDigits: 1, maximumFractionDigits: 1})}%`}
+                            detail={m.hitsMisses({hits: formatNumber(info.keyspaceHits), misses: formatNumber(info.keyspaceMisses)})}
+                            hint={m.hitRateHint}
                             bar={info.hitRatePct}
                             tone={info.hitRatePct < 50 ? 'danger' : info.hitRatePct < 80 ? 'warn' : 'ok'}
                         />
 
                         <Card
                             icon="bolt"
-                            label="Operaciones por segundo"
-                            value={info.opsPerSecond.toLocaleString('es')}
-                            detail={`${info.totalCommandsProcessed.toLocaleString('es')} comandos en total`}
-                            hint="Medición instantánea que reporta el propio Redis (instantaneous_ops_per_sec), no un promedio."
+                            label={m.opsPerSec}
+                            value={formatNumber(info.opsPerSecond)}
+                            detail={m.totalCommands({count: formatNumber(info.totalCommandsProcessed)})}
+                            hint={m.opsPerSecHint}
                         />
 
                         <Card
                             icon="group"
-                            label="Clientes conectados"
-                            value={info.connectedClients.toLocaleString('es')}
+                            label={m.clients}
+                            value={formatNumber(info.connectedClients)}
                             detail={
                                 (info.maxClients ?? 0) > 0
-                                    ? `de ${(info.maxClients ?? 0).toLocaleString('es')} · ${info.blockedClients} bloqueados`
-                                    : `${info.blockedClients} bloqueados`
+                                    ? m.clientsOf({max: formatNumber(info.maxClients ?? 0), blocked: info.blockedClients})
+                                    : m.blocked({blocked: info.blockedClients})
                             }
-                            hint="Bloqueados son los que esperan en un BLPOP/BRPOP/WAIT. Si hay conexiones rechazadas, se llegó al tope de maxclients."
+                            hint={m.clientsHint}
                             bar={(info.maxClients ?? 0) > 0 ? (info.connectedClients / (info.maxClients ?? 1)) * 100 : null}
                             tone={info.rejectedConnections > 0 ? 'danger' : 'ok'}
                         />
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs lg:grid-cols-3">
-                        <Row label="Tiempo encendido" value={formatDuration(info.uptimeSeconds)} hint="Los contadores acumulados de arriba se miden desde este momento." />
+                        <Row label={m.uptime} value={formatDuration(info.uptimeSeconds)} hint={m.uptimeHint} />
                         <Row
-                            label="Fragmentación"
-                            value={info.fragmentationRatio ? info.fragmentationRatio.toFixed(2) : '—'}
-                            hint="used_memory_rss / used_memory. Bastante por encima de 1 significa que el asignador retiene memoria que el dataset ya no usa; por debajo de 1 significa que parte del dataset está en swap, que es mucho peor."
+                            label={m.fragmentation}
+                            value={info.fragmentationRatio ? formatNumber(info.fragmentationRatio, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—'}
+                            hint={m.fragmentationHint}
                         />
-                        <Row label="Claves vencidas" value={info.expiredKeys.toLocaleString('es')} hint="Claves eliminadas por haber llegado a su TTL." />
+                        <Row label={m.expiredKeys} value={formatNumber(info.expiredKeys)} hint={m.expiredKeysHint} />
                         <Row
-                            label="Claves desalojadas"
-                            value={info.evictedKeys.toLocaleString('es')}
-                            hint="Claves que Redis tuvo que borrar por falta de memoria, aunque no hubieran vencido. Un número que crece es señal de que maxmemory quedó chico."
+                            label={m.evictedKeys}
+                            value={formatNumber(info.evictedKeys)}
+                            hint={m.evictedKeysHint}
                             tone={info.evictedKeys > 0 ? 'warn' : undefined}
                         />
                         <Row
-                            label="Conexiones rechazadas"
-                            value={info.rejectedConnections.toLocaleString('es')}
-                            hint="Intentos de conexión que Redis rechazó por haber alcanzado maxclients."
+                            label={m.rejected}
+                            value={formatNumber(info.rejectedConnections)}
+                            hint={m.rejectedHint}
                             tone={info.rejectedConnections > 0 ? 'danger' : undefined}
                         />
                         <Row
-                            label="CPU (sistema / usuario)"
+                            label={m.cpu}
                             value={`${info.usedCpuSys?.toFixed(1) ?? '—'}s / ${info.usedCpuUser?.toFixed(1) ?? '—'}s`}
-                            hint="Segundos de CPU consumidos desde el arranque, no un porcentaje instantáneo."
+                            hint={m.cpuHint}
                         />
                     </div>
                 </div>

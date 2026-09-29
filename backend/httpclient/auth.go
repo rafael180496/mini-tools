@@ -9,9 +9,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hash"
+	"mini-tools/backend/i18n"
 	"net/http"
 	"net/url"
 	"sort"
@@ -145,14 +145,14 @@ func applyAuth(hreq *http.Request, a Auth, bodyForSigning []byte) error {
 
 	case AuthBearer:
 		if strings.TrimSpace(a.Token) == "" {
-			return errors.New("falta el token del Bearer")
+			return i18n.New(i18n.Msg{ES: "falta el token del Bearer", EN: "the Bearer token is missing"})
 		}
 		hreq.Header.Set("Authorization", "Bearer "+a.Token)
 		return nil
 
 	case AuthAPIKey:
 		if a.Key == "" {
-			return errors.New("falta el nombre de la API key")
+			return i18n.New(i18n.Msg{ES: "falta el nombre de la API key", EN: "the API key name is missing"})
 		}
 		if strings.EqualFold(a.In, "query") {
 			q := hreq.URL.Query()
@@ -190,13 +190,13 @@ func applyAuth(hreq *http.Request, a Auth, bodyForSigning []byte) error {
 
 	case AuthOAuth2:
 		if strings.TrimSpace(a.AccessToken) == "" {
-			return errors.New("no hay un token de OAuth 2.0 todavía: pedí uno desde la pestaña Authorization")
+			return i18n.New(i18n.Msg{ES: "no hay un token de OAuth 2.0 todavía: pedí uno desde la pestaña Authorization", EN: "there is no OAuth 2.0 token yet: request one from the Authorization tab"})
 		}
 		hreq.Header.Set("Authorization", "Bearer "+a.AccessToken)
 		return nil
 
 	default:
-		return fmt.Errorf("la autenticación %q se guarda y se exporta, pero esta versión todavía no la firma", a.Type)
+		return i18n.Errorf(i18n.Msg{ES: "la autenticación %q se guarda y se exporta, pero esta versión todavía no la firma", EN: "the %q authentication is saved and exported, but this version does not sign it yet"}, a.Type)
 	}
 }
 
@@ -266,7 +266,7 @@ func signJWT(a Auth) (string, error) {
 	case "HS512":
 		newHash = sha512.New
 	default:
-		return "", fmt.Errorf("algoritmo de JWT no soportado: %s (esta versión firma HS256, HS384 y HS512)", alg)
+		return "", i18n.Errorf(i18n.Msg{ES: "algoritmo de JWT no soportado: %s (esta versión firma HS256, HS384 y HS512)", EN: "unsupported JWT algorithm: %s (this version signs HS256, HS384 and HS512)"}, alg)
 	}
 
 	payload := strings.TrimSpace(a.Payload)
@@ -274,14 +274,14 @@ func signJWT(a Auth) (string, error) {
 		payload = "{}"
 	}
 	if !json.Valid([]byte(payload)) {
-		return "", errors.New("el payload del JWT no es JSON válido")
+		return "", i18n.New(i18n.Msg{ES: "el payload del JWT no es JSON válido", EN: "the JWT payload is not valid JSON"})
 	}
 
 	secret := []byte(a.Secret)
 	if a.SecretBase64 {
 		decoded, err := base64.StdEncoding.DecodeString(a.Secret)
 		if err != nil {
-			return "", fmt.Errorf("el secreto del JWT no es base64 válido: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "el secreto del JWT no es base64 válido: %w", EN: "the JWT secret is not valid base64: %w"}, err)
 		}
 		secret = decoded
 	}
@@ -307,7 +307,7 @@ func b64url(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 // que escribirlo igual, se use el SDK o no.
 func signAWSv4(hreq *http.Request, a Auth, body []byte) error {
 	if a.AccessKey == "" || a.SecretKey == "" {
-		return errors.New("faltan la Access Key y la Secret Key de AWS")
+		return i18n.New(i18n.Msg{ES: "faltan la Access Key y la Secret Key de AWS", EN: "the AWS Access Key and Secret Key are missing"})
 	}
 	region := a.Region
 	if region == "" {
@@ -320,7 +320,7 @@ func signAWSv4(hreq *http.Request, a Auth, body []byte) error {
 		service = serviceFromHost(hreq.URL.Host)
 	}
 	if service == "" {
-		return errors.New("no se pudo deducir el servicio de AWS: escribilo en la configuración de la autenticación")
+		return i18n.New(i18n.Msg{ES: "no se pudo deducir el servicio de AWS: escribilo en la configuración de la autenticación", EN: "could not infer the AWS service: enter it in the authentication settings"})
 	}
 
 	now := time.Now().UTC()

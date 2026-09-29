@@ -7,6 +7,7 @@ import {formatBytes} from '../../lib/formatBytes'
 import {redisTypeStyle, REDIS_TYPES} from '../../lib/redisTypeStyle'
 import Icon from '../Icon'
 import Select from '../Select'
+import {formatNumber, useT} from '../../i18n'
 
 interface RedisKeyTreeProps {
     connId: string
@@ -62,6 +63,8 @@ export default function RedisKeyTree({
     onSelectMany,
     externalPattern,
 }: RedisKeyTreeProps) {
+    const t = useT()
+    const k18 = t.redis.keyTree
     const [keys, setKeys] = useState<db.RedisKeyEntry[]>([])
     const [cursor, setCursor] = useState('')
     const [match, setMatch] = useState('')
@@ -180,21 +183,21 @@ export default function RedisKeyTree({
         <div className="pb-1 pl-2 pr-2">
             <div className="mb-1 flex items-center gap-2 px-1 text-ui-11 text-on-surface-variant">
                 {statsLoading ? (
-                    <span>Cargando stats…</span>
+                    <span>{k18.loadingStats}</span>
                 ) : stats ? (
                     <>
-                        <span title="Total de keys en la base lógica de esta conexión (DBSIZE)">{stats.totalKeys.toLocaleString()} keys</span>
-                        <span title="Memoria usada por TODO el servidor Redis (INFO memory) — no es por-base, Redis no la trackea así">
+                        <span title={k18.totalKeysHint}>{k18.keysCount({count: formatNumber(stats.totalKeys)})}</span>
+                        <span title={k18.memoryHint}>
                             {formatBytes(stats.usedMemoryBytes)}
                         </span>
                     </>
                 ) : (
-                    <span>Sin stats</span>
+                    <span>{k18.noStats}</span>
                 )}
                 <div className="flex-1" />
                 <button
                     onClick={() => void loadStats()}
-                    title="Actualiza el conteo de keys y la memoria usada"
+                    title={k18.refreshStatsHint}
                     className="rounded p-0.5 opacity-70 hover:opacity-100"
                 >
                     <Icon name="refresh" size={13} className={statsLoading ? 'animate-spin' : ''} />
@@ -205,13 +208,13 @@ export default function RedisKeyTree({
                 <Select
                     value={typeFilter}
                     options={[
-                        {value: '', label: 'Todos los tipos'},
-                        ...REDIS_TYPES.map((t) => ({value: t, label: redisTypeStyle(t).label})),
+                        {value: '', label: k18.allTypes},
+                        ...REDIS_TYPES.map((ty) => ({value: ty, label: redisTypeStyle(ty).name})),
                     ]}
                     onChange={changeTypeFilter}
                     size="sm"
-                    title="Filtra las keys por tipo — usa el propio filtro TYPE de SCAN, del lado del servidor"
-                    ariaLabel="Filtrar por tipo"
+                    title={k18.typeFilterHint}
+                    ariaLabel={k18.typeFilterAria}
                     className="shrink-0"
                 />
                 <input
@@ -220,13 +223,13 @@ export default function RedisKeyTree({
                     onKeyDown={(e) => {
                         if (e.key === 'Enter') void loadFirstPage(match, typeFilter)
                     }}
-                    placeholder="Buscar (ej. user:1, o user:* / user:%)"
-                    title='Filtra las keys — texto simple busca "contiene", o usá un patrón explícito con * ? (glob de SCAN) o % _ (estilo SQL LIKE, ej. "user:%") — Enter para buscar'
+                    placeholder={k18.searchPlaceholder}
+                    title={k18.searchHint}
                     className="w-full min-w-0 rounded border-none bg-surface-container-highest px-2 py-1 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
                 />
                 <button
                     onClick={() => void loadFirstPage(match, typeFilter)}
-                    title="Busca keys que matcheen el patrón"
+                    title={k18.searchButtonHint}
                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant"
                 >
                     <Icon name="search" size={14} />
@@ -235,7 +238,7 @@ export default function RedisKeyTree({
 
             {error && <p className="px-1 py-1 text-xs text-error">{error}</p>}
 
-            {keys.length === 0 && !loading && !error && <p className="px-1 py-1 text-xs text-on-surface-variant/60">Sin keys.</p>}
+            {keys.length === 0 && !loading && !error && <p className="px-1 py-1 text-xs text-on-surface-variant/60">{k18.noKeys}</p>}
 
             <div className="mb-1 flex items-center gap-1.5 px-1">
                 <div className="relative min-w-0 flex-1">
@@ -243,14 +246,14 @@ export default function RedisKeyTree({
                     <input
                         value={quick}
                         onChange={(e) => setQuick(e.target.value)}
-                        placeholder="filtrar lo ya cargado"
-                        title="Filtra al instante las claves YA cargadas, sin consultar Redis. Para buscar en todo el keyspace usá el patrón de arriba, que vuelve a correr el SCAN en el servidor."
+                        placeholder={k18.quickPlaceholder}
+                        title={k18.quickHint}
                         className="w-full rounded border border-outline-variant bg-surface-container-low py-0.5 pl-6 pr-5 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary"
                     />
                     {quick && (
                         <button
                             onClick={() => setQuick('')}
-                            title="Limpia el filtro rápido"
+                            title={k18.clearQuickHint}
                             className="absolute right-1 top-1 text-on-surface-variant hover:text-on-surface"
                         >
                             <Icon name="close" size={12} />
@@ -264,21 +267,21 @@ export default function RedisKeyTree({
                             const allSelected = ids.every((id) => selectedKeys?.has(id))
                             onSelectMany?.(ids, !allSelected)
                         }}
-                        title="Selecciona (o deselecciona) todas las claves visibles en la lista — solo las cargadas y que pasan el filtro rápido, nunca el keyspace entero"
+                        title={k18.selectAllHint}
                         className="shrink-0 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
-                        Todas
+                        {k18.selectAll}
                     </button>
                 )}
-                <label className="flex shrink-0 items-center gap-1 text-ui-11 text-on-surface-variant" title="Carga la página siguiente sola al llegar al final de la lista. Desactivalo si preferís controlar cada lote a mano.">
+                <label className="flex shrink-0 items-center gap-1 text-ui-11 text-on-surface-variant" title={k18.autoLoadHint}>
                     <input type="checkbox" checked={autoLoad} onChange={(e) => setAutoLoad(e.target.checked)} className="accent-primary" />
-                    auto
+                    {k18.autoLoad}
                 </label>
             </div>
 
             {quick && (
                 <p className="px-1 pb-1 text-ui-10 text-on-surface-variant/70">
-                    {visible.length} de {keys.length} cargadas coinciden — el filtro rápido no consulta Redis
+                    {k18.quickMatches({shown: visible.length, loaded: keys.length})}
                 </p>
             )}
 
@@ -290,9 +293,7 @@ export default function RedisKeyTree({
                         onClick={() => (selectable ? onOpenKey(k.key) : undefined)}
                         onDoubleClick={() => onOpenKey(k.key)}
                         title={
-                            selectable
-                                ? `Click: ver el valor de "${k.key}" (tipo ${k.type})`
-                                : `Doble click: inspeccionar el valor de "${k.key}" (tipo ${k.type})`
+                            selectable ? k18.clickKeyHint({key: k.key, type: k.type}) : k18.dblClickKeyHint({key: k.key, type: k.type})
                         }
                         className="flex items-center gap-2 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
@@ -315,7 +316,7 @@ export default function RedisKeyTree({
                         <span className="flex-1 truncate">{quick ? highlightMatch(k.key, quick) : k.key}</span>
                         <span className={`shrink-0 flex items-center gap-1 rounded px-1 py-0.5 text-ui-10 uppercase ${style.badgeClass}`}>
                             <Icon name={style.icon} size={10} />
-                            {style.label}
+                            {style.name}
                         </span>
                     </div>
                 )
@@ -324,7 +325,7 @@ export default function RedisKeyTree({
             {loading && (
                 <div className="flex items-center gap-2 px-2 py-2 text-xs text-on-surface-variant">
                     <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                    Cargando…
+                    {t.common.loading}
                 </div>
             )}
 
@@ -333,10 +334,10 @@ export default function RedisKeyTree({
             {!loading && cursor && (
                 <button
                     onClick={() => void loadMore()}
-                    title="Carga la siguiente página de keys (SCAN paginado — nunca trae todo el keyspace de una sola vez)"
+                    title={k18.loadMoreHint}
                     className="mt-1 w-full rounded px-2 py-1 text-center text-xs text-primary hover:bg-surface-variant"
                 >
-                    Cargar más
+                    {t.redis.detail.loadMore}
                 </button>
             )}
         </div>

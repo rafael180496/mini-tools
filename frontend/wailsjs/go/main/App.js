@@ -1494,6 +1494,10 @@ export function SetGitPanelSessions(arg1) {
   return window['go']['main']['App']['SetGitPanelSessions'](arg1);
 }
 
+export function SetLanguage(arg1) {
+  return window['go']['main']['App']['SetLanguage'](arg1);
+}
+
 export function SetLocalShell(arg1) {
   return window['go']['main']['App']['SetLocalShell'](arg1);
 }

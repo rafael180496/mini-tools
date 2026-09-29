@@ -1,5 +1,6 @@
 import Icon from '../Icon'
-import {closeOnMiddleClick, MIDDLE_CLICK_HINT} from '../../lib/middleClickClose'
+import {useT} from '../../i18n'
+import {closeOnMiddleClick, middleClickHint} from '../../lib/middleClickClose'
 
 interface ResultTabsProps {
     count: number
@@ -10,10 +11,18 @@ interface ResultTabsProps {
     statuses: string[]
 }
 
+// Ícono del desenlace de un statement en su pestaña: nada si terminó bien.
+function statusIcon(status: string | undefined) {
+    if (status === 'error') return <Icon name="error" size={14} className="text-error" filled />
+    if (status === 'cancelled') return <Icon name="block" size={14} className="text-tertiary" />
+    return null
+}
+
 // Shown only when a script has more than one statement — one tab per
 // result set, per spec's "múltiples result-tabs si un bloque PL/SQL
 // devuelve varios cursores" / multi-statement scripts.
 export default function ResultTabs({count, active, onSelect, onClose, onCloseAll, statuses}: ResultTabsProps) {
+    const t = useT()
     if (count <= 1) return null
 
     return (
@@ -33,19 +42,18 @@ export default function ResultTabs({count, active, onSelect, onClose, onCloseAll
                     >
                         <button
                             onClick={() => onSelect(i)}
-                            title={`Ver el resultado del statement ${i + 1} de ${count} — cada statement de un bloque tiene su propia pestaña de resultados${MIDDLE_CLICK_HINT}`}
+                            title={t.results.tabs.selectTitle({n: i + 1, count, hint: middleClickHint()})}
                             className="flex items-center gap-1.5"
                         >
-                            Resultado {i + 1}
-                            {statuses[i] === 'error' && <Icon name="error" size={14} className="text-error" filled />}
-                            {statuses[i] === 'cancelled' && <Icon name="block" size={14} className="text-tertiary" />}
+                            {t.results.tabs.label(i + 1)}
+                            {statusIcon(statuses[i])}
                         </button>
                         <button
                             onClick={(e) => {
                                 e.stopPropagation()
                                 onClose(i)
                             }}
-                            title={`Cerrar la pestaña "Resultado ${i + 1}" — solo oculta este resultado, no cancela ni reejecuta nada`}
+                            title={t.results.tabs.closeTitle(i + 1)}
                             className="rounded p-0.5 text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name="close" size={12} />
@@ -55,10 +63,10 @@ export default function ResultTabs({count, active, onSelect, onClose, onCloseAll
             </div>
             <button
                 onClick={onCloseAll}
-                title="Cerrar todas las pestañas de resultados de este script"
+                title={t.results.tabs.closeAllTitle}
                 className="shrink-0 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
             >
-                Cerrar todos
+                {t.results.tabs.closeAll}
             </button>
         </div>
     )

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // PostgresTableDDL reconstructs a CREATE TABLE statement from
@@ -22,7 +24,7 @@ func PostgresTableDDL(ctx context.Context, pool *sql.DB, schema, table string) (
 		ORDER BY ordinal_position
 	`, schema, table)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo columnas de %q: %w", table, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo columnas de %q: %w", EN: "export: reading columns of %q: %w"}, table, err)
 	}
 
 	type colInfo struct {
@@ -36,7 +38,7 @@ func PostgresTableDDL(ctx context.Context, pool *sql.DB, schema, table string) (
 		var c colInfo
 		if err := rows.Scan(&c.name, &c.dtype, &c.nullable, &c.def, &c.charLen, &c.numPrec, &c.numScale); err != nil {
 			rows.Close()
-			return "", fmt.Errorf("export: escaneando columna: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando columna: %w", EN: "export: scanning column: %w"}, err)
 		}
 		cols = append(cols, c)
 	}
@@ -45,7 +47,7 @@ func PostgresTableDDL(ctx context.Context, pool *sql.DB, schema, table string) (
 		return "", err
 	}
 	if len(cols) == 0 {
-		return "", fmt.Errorf("export: tabla %q no encontrada en schema %q", table, schema)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: tabla %q no encontrada en schema %q", EN: "export: table %q not found in schema %q"}, table, schema)
 	}
 
 	var pk []string
@@ -58,13 +60,13 @@ func PostgresTableDDL(ctx context.Context, pool *sql.DB, schema, table string) (
 		ORDER BY kcu.ordinal_position
 	`, schema, table)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo primary key de %q: %w", table, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo primary key de %q: %w", EN: "export: reading primary key of %q: %w"}, table, err)
 	}
 	for pkRows.Next() {
 		var c string
 		if err := pkRows.Scan(&c); err != nil {
 			pkRows.Close()
-			return "", fmt.Errorf("export: escaneando primary key: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando primary key: %w", EN: "export: scanning primary key: %w"}, err)
 		}
 		pk = append(pk, c)
 	}
@@ -87,13 +89,13 @@ func PostgresTableDDL(ctx context.Context, pool *sql.DB, schema, table string) (
 		WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1 AND tc.table_name = $2
 	`, schema, table)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo foreign keys de %q: %w", table, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo foreign keys de %q: %w", EN: "export: reading foreign keys of %q: %w"}, table, err)
 	}
 	for fkRows.Next() {
 		var f fkInfo
 		if err := fkRows.Scan(&f.column, &f.refTable, &f.refColumn); err != nil {
 			fkRows.Close()
-			return "", fmt.Errorf("export: escaneando foreign key: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando foreign key: %w", EN: "export: scanning foreign key: %w"}, err)
 		}
 		fks = append(fks, f)
 	}
@@ -145,14 +147,14 @@ func PostgresSchemaDDL(ctx context.Context, pool *sql.DB, schema string) (string
 		ORDER BY table_name
 	`, schema)
 	if err != nil {
-		return "", fmt.Errorf("export: listando tablas del schema: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: listando tablas del schema: %w", EN: "export: listing schema tables: %w"}, err)
 	}
 	var names []string
 	for rows.Next() {
 		var n string
 		if err := rows.Scan(&n); err != nil {
 			rows.Close()
-			return "", fmt.Errorf("export: escaneando nombre de tabla: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando nombre de tabla: %w", EN: "export: scanning table name: %w"}, err)
 		}
 		names = append(names, n)
 	}
@@ -183,7 +185,7 @@ func PostgresFunctionDDL(ctx context.Context, pool *sql.DB, oid int64) (string, 
 	var ddl string
 	err := pool.QueryRowContext(ctx, `SELECT pg_get_functiondef($1)`, oid).Scan(&ddl)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo DDL de la función/procedure: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo DDL de la función/procedure: %w", EN: "export: reading function/procedure DDL: %w"}, err)
 	}
 	return ddl + ";\n", nil
 }
@@ -196,7 +198,7 @@ func PostgresTriggerDDL(ctx context.Context, pool *sql.DB, oid int64) (string, e
 	var ddl string
 	err := pool.QueryRowContext(ctx, `SELECT pg_get_triggerdef($1, true)`, oid).Scan(&ddl)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo DDL del trigger: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo DDL del trigger: %w", EN: "export: reading trigger DDL: %w"}, err)
 	}
 	return ddl + ";\n", nil
 }

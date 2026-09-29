@@ -1,6 +1,7 @@
 import {FormEvent, useState} from 'react'
 import {PickVaultBackupFile, RestoreVaultBackupFromFile} from '../../wailsjs/go/main/App'
 import Icon from './Icon'
+import {useT} from '../i18n'
 
 interface RestoreVaultDialogProps {
     onRestored: () => void
@@ -23,6 +24,8 @@ function fileName(path: string) {
 type Step = {kind: 'current'} | {kind: 'backup'; path: string; currentPassword: string}
 
 export default function RestoreVaultDialog({onRestored, onClose}: RestoreVaultDialogProps) {
+    const t = useT()
+    const r = t.settings.restoreVault
     const [step, setStep] = useState<Step>({kind: 'current'})
     const [currentPassword, setCurrentPassword] = useState('')
     const [backupPassword, setBackupPassword] = useState('')
@@ -92,24 +95,22 @@ export default function RestoreVaultDialog({onRestored, onClose}: RestoreVaultDi
             >
                 <h2 className="flex items-center gap-2 text-lg font-semibold">
                     <Icon name="restore" size={18} className="text-error" />
-                    Restaurar backup
+                    {r.title}
                 </h2>
                 <p className="flex items-start gap-2 rounded-lg bg-error-container p-2 text-xs text-on-error-container">
                     <Icon name="warning" size={16} className="mt-0.5 shrink-0" filled />
-                    Esto reemplaza TODO lo que hay ahora en el vault (conexiones, snippets, historial) con el contenido del
-                    backup elegido — no se puede deshacer. Después de restaurar, la app te va a pedir desbloquear de nuevo
-                    con la clave que tenía el vault cuando se hizo ESE backup.
+                    {r.warning}
                 </p>
 
                 {step.kind === 'current' ? (
                     <label className="flex flex-col gap-1 text-xs text-on-surface-variant">
-                        Clave maestra actual (confirma que podés hacer esto)
+                        {r.currentLabel}
                         <input
                             type="password"
                             autoFocus
                             value={currentPassword}
                             onChange={(e) => setCurrentPassword(e.target.value)}
-                            placeholder="Clave maestra actual"
+                            placeholder={r.currentPlaceholder}
                             className="rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                         />
                     </label>
@@ -124,21 +125,21 @@ export default function RestoreVaultDialog({onRestored, onClose}: RestoreVaultDi
                                 type="button"
                                 onClick={() => void pickDifferentFile()}
                                 disabled={busy}
-                                title="Elegir un archivo de backup distinto"
+                                title={t.lock.restore.changeFileTitle}
                                 className="shrink-0 text-primary hover:underline disabled:opacity-50"
                             >
-                                Cambiar
+                                {t.lock.restore.changeFile}
                             </button>
                         </div>
                         <label className="flex flex-col gap-1 text-xs text-on-surface-variant">
-                            Clave con la que se hizo este backup
+                            {r.backupLabel}
                             <input
                                 type="password"
                                 autoFocus
                                 value={backupPassword}
                                 onChange={(e) => setBackupPassword(e.target.value)}
-                                placeholder="Clave original de este backup"
-                                title="La clave maestra que estaba vigente cuando se generó ESTE archivo — casi seguro distinta de la actual"
+                                placeholder={r.backupPlaceholder}
+                                title={r.backupTitle}
                                 className="rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                             />
                         </label>
@@ -152,28 +153,28 @@ export default function RestoreVaultDialog({onRestored, onClose}: RestoreVaultDi
                         type="button"
                         onClick={onClose}
                         disabled={busy}
-                        title="Cierra sin hacer nada"
+                        title={t.common.closeWithoutChanges}
                         className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface disabled:opacity-50"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     {step.kind === 'current' ? (
                         <button
                             type="submit"
                             disabled={busy || !currentPassword}
-                            title="Confirma tu clave actual y abre el selector de archivo .mtbackup"
+                            title={r.pickTitle}
                             className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                         >
-                            {busy ? 'Verificando…' : 'Elegir archivo…'}
+                            {busy ? r.verifying : r.pick}
                         </button>
                     ) : (
                         <button
                             type="submit"
                             disabled={busy || !backupPassword}
-                            title="Reemplaza el vault actual con el contenido de este backup"
+                            title={r.submitTitle}
                             className="rounded-lg bg-error-container px-3 py-1.5 text-sm font-medium text-on-error-container hover:opacity-90 disabled:opacity-50"
                         >
-                            {busy ? 'Restaurando…' : 'Restaurar'}
+                            {busy ? t.lock.restore.submitting : t.lock.restore.submit}
                         </button>
                     )}
                 </div>

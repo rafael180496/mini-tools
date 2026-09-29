@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react'
 import {GetConnectionForEdit, ListSchemas, SetConnectionSchemas} from '../../../wailsjs/go/main/App'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface SchemaPickerDialogProps {
     connId: string
@@ -15,6 +16,8 @@ interface SchemaPickerDialogProps {
 // Postgres and Oracle: ListSchemas returns an empty list for SQLite, and
 // this dialog is only ever opened from a context that already knows that.
 export default function SchemaPickerDialog({connId, currentSchemas, onClose, onSaved}: SchemaPickerDialogProps) {
+    const t = useT()
+    const tr = t.db.schemaPicker
     const [allSchemas, setAllSchemas] = useState<string[] | null>(null)
     const [selected, setSelected] = useState<Set<string>>(new Set(currentSchemas))
     const [search, setSearch] = useState('')
@@ -113,14 +116,14 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                         <Icon name="schema" size={20} />
                     </span>
                     <div className="min-w-0 flex-1">
-                        <h2 className="text-base font-semibold leading-tight">Esquemas a escanear</h2>
-                        <p className="text-xs text-on-surface-variant">Restringí el autocompletado y el árbol de tablas</p>
+                        <h2 className="text-base font-semibold leading-tight">{tr.title}</h2>
+                        <p className="text-xs text-on-surface-variant">{tr.subtitle}</p>
                     </div>
                     <button
                         type="button"
                         onClick={() => void syncSchemas()}
                         disabled={syncing}
-                        title="Vuelve a listar los esquemas contra la base de datos — usalo si acaban de crear uno nuevo que no aparece abajo"
+                        title={tr.syncHint}
                         className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                     >
                         <Icon name="sync" size={18} className={syncing ? 'animate-spin' : ''} />
@@ -128,7 +131,7 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                     <button
                         type="button"
                         onClick={onClose}
-                        title="Cerrar sin cambiar qué esquemas se escanean"
+                        title={tr.closeHint}
                         className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={20} />
@@ -142,16 +145,16 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                         <input
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Buscar esquema…"
-                            title="Filtra la lista de esquemas por nombre"
+                            placeholder={tr.searchPlaceholder}
+                            title={tr.searchHint}
                             className="min-w-0 flex-1 bg-transparent text-sm text-on-surface outline-none placeholder:text-on-surface-variant/60"
                         />
                     </div>
                     {allSchemas && allSchemas.length > 0 && (
                         <div className="flex items-center gap-2 text-xs text-on-surface-variant">
                             <span>
-                                <span className="font-medium text-on-surface">{selected.size}</span> de {allSchemas.length}{' '}
-                                seleccionado{selected.size === 1 ? '' : 's'}
+                                <span className="font-medium text-on-surface">{selected.size}</span>{' '}
+                                {tr.ofTotalSelected({selected: selected.size, total: allSchemas.length})}
                             </span>
                             <div className="flex-1" />
                             <button
@@ -159,14 +162,14 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                                 onClick={() => setSelected(new Set(allSchemas))}
                                 className="rounded px-2 py-0.5 hover:bg-surface-variant hover:text-on-surface"
                             >
-                                Todos
+                                {tr.all}
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setSelected(new Set())}
                                 className="rounded px-2 py-0.5 hover:bg-surface-variant hover:text-on-surface"
                             >
-                                Ninguno
+                                {tr.none}
                             </button>
                         </div>
                     )}
@@ -175,14 +178,14 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                 {/* List */}
                 <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
                     {allSchemas === null && !error && (
-                        <p className="px-2 py-4 text-center text-xs text-on-surface-variant">Cargando esquemas…</p>
+                        <p className="px-2 py-4 text-center text-xs text-on-surface-variant">{tr.loading}</p>
                     )}
                     {error && <p className="px-2 py-4 text-center text-xs text-error">{error}</p>}
                     {allSchemas && allSchemas.length === 0 && (
-                        <p className="px-2 py-4 text-center text-xs text-on-surface-variant">Sin esquemas.</p>
+                        <p className="px-2 py-4 text-center text-xs text-on-surface-variant">{tr.empty}</p>
                     )}
                     {allSchemas && allSchemas.length > 0 && filtered.length === 0 && (
-                        <p className="px-2 py-4 text-center text-xs text-on-surface-variant">Ningún esquema coincide con la búsqueda.</p>
+                        <p className="px-2 py-4 text-center text-xs text-on-surface-variant">{tr.noMatch}</p>
                     )}
                     <div className="flex flex-col gap-0.5">
                         {filtered.map((s) => {
@@ -215,19 +218,19 @@ export default function SchemaPickerDialog({connId, currentSchemas, onClose, onS
                     <button
                         type="button"
                         onClick={onClose}
-                        title="Cierra sin cambiar qué esquemas se escanean"
+                        title={tr.cancelHint}
                         className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     <button
                         type="button"
                         onClick={() => void save()}
                         disabled={!allSchemas || busy}
-                        title="Guarda la selección — solo los esquemas marcados se escanean para autocompletado y el árbol de tablas"
+                        title={tr.saveHint}
                         className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
-                        {busy ? 'Guardando…' : 'Guardar'}
+                        {busy ? tr.saving : t.common.save}
                     </button>
                 </div>
             </div>

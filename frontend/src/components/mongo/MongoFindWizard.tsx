@@ -8,6 +8,7 @@ import {buildPipelineCommand, type PipelineStage} from '../../lib/mongoPipeline'
 import MongoConditionRow from './MongoConditionRow'
 import MongoFieldCombo, {FieldSampleStatus} from './MongoFieldCombo'
 import MongoPipelineBuilder from './MongoPipelineBuilder'
+import {t as tNow, useT} from '../../i18n'
 
 type Mode = 'find' | 'aggregate'
 
@@ -33,6 +34,8 @@ interface MongoFindWizardProps {
 // (backend/mongoquery/extjson.go), so ObjectId("…")/ISODate("…") helpers and
 // unquoted keys are all valid output.
 export default function MongoFindWizard({onGenerate, onClose, initialCollection, connId, database}: MongoFindWizardProps) {
+    const t = useT()
+    const w = t.mongo.wizard
     const [mode, setMode] = useState<Mode>('find')
     const [collection, setCollection] = useState(initialCollection ?? '')
 
@@ -91,6 +94,8 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
         : buildPipelineCommand(collection, stages)
 
     const query = rawOverride ?? generated
+    const isFind = mode === 'find'
+    const isAggregate = mode === 'aggregate'
     const canGenerate = collection.trim() !== ''
 
     function updateCondition(i: number, patch: Partial<MongoCondition>) {
@@ -105,30 +110,30 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
             >
                 <div className="flex items-center justify-between border-b border-outline-variant px-4 py-2.5">
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-                        <Icon name="search" size={16} /> Asistente de consulta MongoDB
+                        <Icon name="search" size={16} /> {w.queryTitle}
                     </h2>
                     <div className="flex items-center gap-2">
                         <div className="flex rounded-md border border-outline-variant p-0.5">
                             <button
                                 onClick={() => setMode('find')}
-                                title="find(): buscar documentos con un filtro, proyección, orden y paginado"
+                                title={w.findHint}
                                 className={`rounded px-2.5 py-0.5 text-ui-11 ${
-                                    mode === 'find' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                                    isFind ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                                 }`}
                             >
-                                Find
+                                {w.find}
                             </button>
                             <button
                                 onClick={() => setMode('aggregate')}
-                                title="aggregate(): pipeline de etapas para agrupar, unir con otra colección ($lookup) o reformar documentos — lo que find() no puede hacer"
+                                title={w.aggregateHint}
                                 className={`rounded px-2.5 py-0.5 text-ui-11 ${
-                                    mode === 'aggregate' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
+                                    isAggregate ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                                 }`}
                             >
-                                Aggregate
+                                {w.aggregate}
                             </button>
                         </div>
-                        <button onClick={onClose} title="Cierra el asistente sin generar nada" className="text-on-surface-variant hover:text-on-surface">
+                        <button onClick={onClose} title={w.closeWizardHint} className="text-on-surface-variant hover:text-on-surface">
                             <Icon name="close" size={18} />
                         </button>
                     </div>
@@ -136,13 +141,13 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4">
                     <label className="mb-3 block text-xs text-on-surface-variant">
-                        Colección
+                        {w.collection}
                         <input
                             list="mongo-wizard-collections"
                             value={collection}
                             onChange={(e) => setCollection(e.target.value)}
-                            placeholder="nombre de la colección"
-                            title="Colección sobre la que corre la consulta. Si abriste el asistente parado sobre una colección, viene preseleccionada."
+                            placeholder={w.collectionPlaceholder}
+                            title={w.collectionHint}
                             className="mt-0.5 w-full rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-on-surface"
                         />
                         <datalist id="mongo-wizard-collections">
@@ -152,24 +157,24 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                         </datalist>
                     </label>
 
-                    {mode === 'find' ? (
+                    {isFind ? (
                         <>
                             <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-on-surface">
-                                Condiciones (filtro)
+                                {w.conditions}
                                 {/* Mongo combines an object's keys with AND
                                     implicitly; OR has no implicit form at all,
                                     so without this switch the builder simply
                                     could not express it. */}
                                 <span className="flex items-center gap-1 font-normal text-on-surface-variant">
-                                    coincidir con
+                                    {w.matchWith}
                                     <select
                                         value={logic}
                                         onChange={(e) => setLogic(e.target.value as MongoLogic)}
-                                        title="TODAS exige que se cumplan todas las condiciones (AND, la forma implícita de Mongo). CUALQUIERA alcanza con que se cumpla una ($or)."
+                                        title={w.logicHint}
                                         className="rounded border border-outline-variant bg-surface-container-low px-1 py-0.5 text-xs text-on-surface"
                                     >
-                                        <option value="and">TODAS las condiciones (AND)</option>
-                                        <option value="or">CUALQUIER condición (OR)</option>
+                                        <option value="and">{w.logicAnd}</option>
+                                        <option value="or">{w.logicOr}</option>
                                     </select>
                                 </span>
                                 <FieldSampleStatus loading={sampling} count={fields.length} ready={!!connId && !!database && collection.trim() !== ''} />
@@ -188,68 +193,68 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                                 ))}
                                 <button
                                     onClick={() => setConditions((prev) => [...prev, {field: '', op: '$eq', value: '', valueType: 'auto'}])}
-                                    title="Suma otra condición al filtro"
+                                    title={w.addConditionHint}
                                     className="flex items-center gap-1 text-xs text-primary hover:underline"
                                 >
-                                    <Icon name="add" size={14} /> Agregar condición
+                                    <Icon name="add" size={14} /> {w.addCondition}
                                 </button>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2">
                                 <label className="block text-xs text-on-surface-variant">
-                                    Campos a devolver (proyección, opcional)
+                                    {w.projection}
                                     <input
                                         value={projection}
                                         onChange={(e) => setProjection(e.target.value)}
-                                        placeholder="name, age"
-                                        title="Lista separada por comas. Traer solo lo necesario reduce lo que viaja desde el servidor; vacío devuelve el documento completo."
+                                        placeholder={w.projectionPlaceholder}
+                                        title={w.projectionHint}
                                         className="mt-0.5 w-full rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-xs text-on-surface"
                                     />
                                 </label>
                                 <div className="grid grid-cols-2 gap-2">
                                     <label className="block text-xs text-on-surface-variant">
-                                        Límite
+                                        {w.limit}
                                         <input
                                             value={limit}
                                             onChange={(e) => setLimit(e.target.value)}
-                                            title="Máximo de documentos a devolver"
+                                            title={w.limitHint}
                                             className="mt-0.5 w-full rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-xs text-on-surface"
                                         />
                                     </label>
                                     <label className="block text-xs text-on-surface-variant">
-                                        Saltar (skip)
+                                        {w.skip}
                                         <input
                                             value={skip}
                                             onChange={(e) => setSkip(e.target.value)}
                                             placeholder="0"
-                                            title="Documentos a descartar antes de empezar a devolver. Con el límite arma la paginación: página 3 de 20 en 20 es skip 40."
+                                            title={w.skipHint}
                                             className="mt-0.5 w-full rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-xs text-on-surface"
                                         />
                                     </label>
                                 </div>
                                 <label className="block text-xs text-on-surface-variant">
-                                    Ordenar por (opcional)
+                                    {w.sortBy}
                                     <div className="mt-0.5 flex">
                                         <MongoFieldCombo
                                             value={sortField}
                                             onChange={setSortField}
                                             fields={fields}
-                                            placeholder="campo"
-                                            title="Campo por el que ordenar. Ordenar por un campo sin índice obliga a Mongo a ordenar en memoria."
+                                            placeholder={t.mongo.condition.field}
+                                            title={w.sortFieldHint}
                                             className="w-full"
                                         />
                                     </div>
                                 </label>
                                 <label className="block text-xs text-on-surface-variant">
-                                    Dirección
+                                    {w.direction}
                                     <select
                                         value={sortDir}
                                         onChange={(e) => setSortDir(e.target.value as 'asc' | 'desc')}
-                                        title="Ascendente (1) o descendente (-1)"
+                                        title={w.directionHint}
                                         className="mt-0.5 w-full rounded border border-outline-variant bg-surface-container-low px-2 py-1 font-mono text-xs text-on-surface"
                                     >
-                                        <option value="asc">Ascendente (1)</option>
-                                        <option value="desc">Descendente (-1)</option>
+                                        <option value="asc">{w.asc}</option>
+                                        <option value="desc">{w.desc}</option>
                                     </select>
                                 </label>
                             </div>
@@ -257,7 +262,7 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                     ) : (
                         <>
                             <div className="mb-2 flex flex-wrap items-center gap-x-3 text-xs font-medium text-on-surface">
-                                Etapas del pipeline
+                                {w.stages}
                                 <FieldSampleStatus loading={sampling} count={fields.length} ready={!!connId && !!database && collection.trim() !== ''} />
                             </div>
                             <MongoPipelineBuilder stages={stages} onChange={setStages} />
@@ -268,23 +273,23 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                 <div className="border-t border-outline-variant p-3">
                     <div className="mb-1.5 flex items-center justify-between">
                         <span className="text-ui-11 font-medium uppercase tracking-wide text-on-surface-variant">
-                            {rawOverride === null ? 'Vista previa' : 'Edición manual'}
+                            {rawOverride === null ? w.preview : w.manualEdit}
                         </span>
                         {rawOverride === null ? (
                             <button
                                 onClick={() => setRawOverride(generated)}
-                                title="Editá la consulta a mano. Al hacerlo, los controles de arriba dejan de sobrescribirla — nada de perder lo que escribiste porque tocaste un campo."
+                                title={w.editByHandHint}
                                 className="flex items-center gap-1 text-ui-11 text-primary hover:underline"
                             >
-                                <Icon name="edit" size={13} /> Editar a mano
+                                <Icon name="edit" size={13} /> {w.editByHand}
                             </button>
                         ) : (
                             <button
                                 onClick={() => setRawOverride(null)}
-                                title="Vuelve a generar la consulta desde los controles. Descarta lo que hayas editado a mano."
+                                title={w.backToVisualHint}
                                 className="flex items-center gap-1 text-ui-11 text-on-surface-variant hover:text-on-surface"
                             >
-                                <Icon name="undo" size={13} /> Volver al modo visual
+                                <Icon name="undo" size={13} /> {w.backToVisual}
                             </button>
                         )}
                     </div>
@@ -292,7 +297,7 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                     {rawOverride === null ? (
                         <pre
                             onClick={() => setRawOverride(generated)}
-                            title="Click para editar la consulta a mano"
+                            title={w.clickToEdit}
                             className="max-h-40 cursor-text overflow-auto whitespace-pre rounded border border-outline-variant bg-surface-container-low p-2 font-mono text-xs text-on-surface"
                         >
                             {generated}
@@ -308,24 +313,24 @@ export default function MongoFindWizard({onGenerate, onClose, initialCollection,
                     )}
 
                     <div className="mt-3 flex justify-end gap-2">
-                        <button onClick={onClose} title="Cierra sin generar nada" className="rounded px-3 py-1.5 text-xs text-on-surface-variant hover:text-on-surface">
-                            Cancelar
+                        <button onClick={onClose} title={w.closeNoGenerate} className="rounded px-3 py-1.5 text-xs text-on-surface-variant hover:text-on-surface">
+                            {t.common.cancel}
                         </button>
                         <button
                             disabled={!canGenerate}
                             onClick={() => onGenerate(query, false)}
-                            title="Pega la consulta en el editor sin ejecutarla, para revisarla o ajustarla antes"
+                            title={w.insertHint}
                             className="rounded border border-outline-variant px-3 py-1.5 text-xs text-on-surface hover:bg-surface-container-high disabled:opacity-40"
                         >
-                            Insertar en el editor
+                            {w.insert}
                         </button>
                         <button
                             disabled={!canGenerate}
                             onClick={() => onGenerate(query, true)}
-                            title="Pega la consulta en el editor y la corre de inmediato"
+                            title={w.insertRunHint}
                             className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary disabled:opacity-40"
                         >
-                            Insertar y ejecutar
+                            {w.insertRun}
                         </button>
                     </div>
                 </div>
@@ -348,7 +353,7 @@ function buildFindCommand(
     limit: string,
     skip: string,
 ): string {
-    const coll = collection.trim() || 'colección'
+    const coll = collection.trim() || tNow().mongo.pipeline.collectionPlaceholder
     const filter = buildFilterObject(conditions, logic)
 
     const projFields = projection.split(',').map((p) => p.trim()).filter(Boolean)

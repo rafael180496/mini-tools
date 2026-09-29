@@ -3,9 +3,10 @@ package vaultgate
 import (
 	"encoding/base64"
 	"errors"
-	"fmt"
 
 	"github.com/zalando/go-keyring"
+
+	"mini-tools/backend/i18n"
 )
 
 // keyringService/keyringAccount identify this app's single entry in the OS
@@ -22,13 +23,13 @@ const (
 // ErrNoRememberedKey means the keychain has nothing saved under this app's
 // entry — a normal, expected state (never remembered, or already forgotten),
 // not a failure.
-var ErrNoRememberedKey = errors.New("vaultgate: no remembered key in the OS keychain")
+var ErrNoRememberedKey = i18n.New(i18n.Msg{ES: "vaultgate: no hay ninguna clave recordada en el keychain del sistema", EN: "vaultgate: no remembered key in the OS keychain"})
 
 // SaveRememberedKey stores key in the OS keychain, base64-encoded (keyring
 // entries are strings, key is raw bytes).
 func SaveRememberedKey(key []byte) error {
 	if err := keyring.Set(keyringService, keyringAccount, base64.StdEncoding.EncodeToString(key)); err != nil {
-		return fmt.Errorf("vaultgate: guardando clave en el keychain: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vaultgate: guardando clave en el keychain: %w", EN: "vaultgate: saving key to the keychain: %w"}, err)
 	}
 	return nil
 }
@@ -41,12 +42,12 @@ func LoadRememberedKey() ([]byte, error) {
 		return nil, ErrNoRememberedKey
 	}
 	if err != nil {
-		return nil, fmt.Errorf("vaultgate: leyendo clave del keychain: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vaultgate: leyendo clave del keychain: %w", EN: "vaultgate: reading key from the keychain: %w"}, err)
 	}
 
 	key, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return nil, fmt.Errorf("vaultgate: decodificando clave del keychain: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vaultgate: decodificando clave del keychain: %w", EN: "vaultgate: decoding key from the keychain: %w"}, err)
 	}
 	return key, nil
 }
@@ -56,7 +57,7 @@ func LoadRememberedKey() ([]byte, error) {
 // already forgotten (or never saved in the first place).
 func ForgetRememberedKey() error {
 	if err := keyring.Delete(keyringService, keyringAccount); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		return fmt.Errorf("vaultgate: borrando clave del keychain: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vaultgate: borrando clave del keychain: %w", EN: "vaultgate: deleting key from the keychain: %w"}, err)
 	}
 	return nil
 }

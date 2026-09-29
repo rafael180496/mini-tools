@@ -4,10 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // currentScannerVersion bumps whenever db.SchemaMetadata's shape changes in
@@ -27,7 +27,7 @@ const currentScannerVersion = 1
 func (s *Store) SaveSchemaMetadataCache(connID string, meta *db.SchemaMetadata) error {
 	tablesJSON, err := json.Marshal(meta)
 	if err != nil {
-		return fmt.Errorf("vault: serializando metadata de esquema: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: serializando metadata de esquema: %w", EN: "vault: serializing schema metadata: %w"}, err)
 	}
 
 	_, err = s.db.Exec(
@@ -36,7 +36,7 @@ func (s *Store) SaveSchemaMetadataCache(connID string, meta *db.SchemaMetadata) 
 		connID, string(tablesJSON), time.Now().Unix(), currentScannerVersion,
 	)
 	if err != nil {
-		return fmt.Errorf("vault: guardando cache de metadata: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando cache de metadata: %w", EN: "vault: saving metadata cache: %w"}, err)
 	}
 	return nil
 }
@@ -56,7 +56,7 @@ func (s *Store) GetSchemaMetadataCache(connID string) (meta *db.SchemaMetadata, 
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("vault: leyendo cache de metadata: %w", err)
+		return nil, false, i18n.Errorf(i18n.Msg{ES: "vault: leyendo cache de metadata: %w", EN: "vault: reading metadata cache: %w"}, err)
 	}
 	if scannerVersion < currentScannerVersion {
 		return nil, false, nil
@@ -64,7 +64,7 @@ func (s *Store) GetSchemaMetadataCache(connID string) (meta *db.SchemaMetadata, 
 
 	var out db.SchemaMetadata
 	if err := json.Unmarshal([]byte(tablesJSON), &out); err != nil {
-		return nil, false, fmt.Errorf("vault: parseando cache de metadata: %w", err)
+		return nil, false, i18n.Errorf(i18n.Msg{ES: "vault: parseando cache de metadata: %w", EN: "vault: parsing metadata cache: %w"}, err)
 	}
 	return &out, true, nil
 }
@@ -75,7 +75,7 @@ func (s *Store) GetSchemaMetadataCache(connID string) (meta *db.SchemaMetadata, 
 // deleted. A no-op, not an error, if there was nothing cached.
 func (s *Store) DeleteSchemaMetadataCache(connID string) error {
 	if _, err := s.db.Exec(`DELETE FROM schema_metadata_cache WHERE connection_id = ?`, connID); err != nil {
-		return fmt.Errorf("vault: borrando cache de metadata: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando cache de metadata: %w", EN: "vault: deleting metadata cache: %w"}, err)
 	}
 	return nil
 }

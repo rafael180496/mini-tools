@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"mini-tools/backend/agentchat"
 	"mini-tools/backend/agents"
 	"mini-tools/backend/appdata"
+	"mini-tools/backend/i18n"
 )
 
 // Bindings del agente de código a nivel APLICACIÓN.
@@ -138,7 +138,7 @@ func (a *App) agentByID(agentID string) (agents.Agent, error) {
 			return cand, nil
 		}
 	}
-	return agents.Agent{}, fmt.Errorf("app: agente desconocido %q", agentID)
+	return agents.Agent{}, i18n.Errorf(i18n.Msg{ES: "app: agente desconocido %q", EN: "app: unknown agent %q"}, agentID)
 }
 
 // agentEnv arma el entorno del subproceso: el del proceso entero más la API
@@ -187,7 +187,7 @@ func (a *App) agentCwd(module, contextID string) (string, error) {
 	}
 	scratch := filepath.Join(dir, "consultas")
 	if err := os.MkdirAll(scratch, 0o700); err != nil {
-		return "", fmt.Errorf("app: preparando el directorio de consultas: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: preparando el directorio de consultas: %w", EN: "app: preparing the queries directory: %w"}, err)
 	}
 	return scratch, nil
 }
@@ -263,7 +263,7 @@ func (a *App) AgentAskWith(agentID, prompt, module, contextID string) (string, e
 		return "", err
 	}
 	if prompt == "" {
-		return "", fmt.Errorf("app: la consulta al agente está vacía")
+		return "", i18n.Errorf(i18n.Msg{ES: "app: la consulta al agente está vacía", EN: "app: the question for the agent is empty"})
 	}
 
 	// Modelo y esfuerzo son los del agente ACTIVO, y solo se pasan si se está
@@ -277,7 +277,7 @@ func (a *App) AgentAskWith(agentID, prompt, module, contextID string) (string, e
 			return "", err
 		}
 		if active.ID == "" {
-			return "", fmt.Errorf("app: no hay ningún agente elegido — elegí uno en la barra de agente")
+			return "", i18n.Errorf(i18n.Msg{ES: "app: no hay ningún agente elegido — elegí uno en la barra de agente", EN: "app: no agent selected — pick one in the agent bar"})
 		}
 		agentID, model, effort = active.ID, active.Model, active.Effort
 	}
@@ -286,7 +286,7 @@ func (a *App) AgentAskWith(agentID, prompt, module, contextID string) (string, e
 		return "", err
 	}
 	if !agent.Available {
-		return "", fmt.Errorf("app: %s no está instalado en esta máquina", agent.Label)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: %s no está instalado en esta máquina", EN: "app: %s is not installed on this machine"}, agent.Label)
 	}
 
 	env, err := a.agentEnv(agent)

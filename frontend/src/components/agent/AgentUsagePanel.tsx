@@ -3,6 +3,8 @@ import {AgentPlans, AgentQueryLimits, AgentUsageAll, AgentUsageLimits} from '../
 import {agentlimits, agentplan, agentusage} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import AgentLimitBars from './AgentLimitBars'
+import {rich} from './rich'
+import {formatNumber, useT} from '../../i18n'
 
 // Cuánto llevás gastado, desde el chat.
 //
@@ -39,6 +41,7 @@ interface Props {
 }
 
 export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
+    const t = useT()
     const [usage, setUsage] = useState<agentusage.Usage | null>(null)
     const [plans, setPlans] = useState<agentplan.Plan[]>([])
     // Límites por proveedor: el porcentaje del TOPE, que es otra pregunta y
@@ -73,10 +76,10 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
         <div className="flex h-full min-h-0 flex-col bg-surface-container-low">
             <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant px-2 py-1 text-ui-11">
                 <Icon name="monitoring" size={13} className="shrink-0 text-primary" />
-                <span className="font-medium text-on-surface">Consumo{usage ? ` · ${usage.days} días` : ''}</span>
+                <span className="font-medium text-on-surface">{t.agent.usage.title({days: usage ? usage.days : null})}</span>
                 <button
                     onClick={onClose}
-                    title="Vuelve a la conversación, que siguió corriendo detrás"
+                    title={t.agent.usage.backToChat}
                     className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="close" size={13} />
@@ -90,19 +93,19 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                     <div className="mb-1.5 rounded border border-primary/40 bg-primary/10 px-2 py-1.5">
                         <p className="flex items-center gap-1.5">
                             <Icon name="forum" size={12} className="shrink-0 text-primary" />
-                            <span className="font-medium text-on-surface">Esta conversación</span>
+                            <span className="font-medium text-on-surface">{t.agent.usage.thisConversation}</span>
                             <span className="ml-auto text-on-surface-variant">
-                                {session.total.toLocaleString('es')} tokens
+                                {t.agent.usage.tokens({n: formatNumber(session.total)})}
                             </span>
                         </p>
                         <p className="mt-0.5 text-on-surface-variant">
-                            {session.output.toLocaleString('es')} de salida
-                            {session.cost > 0 && ` · US$${session.cost.toFixed(4)}`}
+                            {t.agent.usage.output({n: formatNumber(session.output)})}
+                            {session.cost > 0 && t.agent.chat.cost({usd: session.cost.toFixed(4)})}
                         </p>
                     </div>
                 )}
 
-                {!usage && !error && <p className="px-1 text-on-surface-variant">Leyendo lo que dejó cada CLI…</p>}
+                {!usage && !error && <p className="px-1 text-on-surface-variant">{t.agent.usage.reading}</p>}
 
                 {usage?.agents.map((a) => {
                     const plan = plans.find((p) => p.agent === a.agent)
@@ -128,16 +131,16 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                                             title={plan.note}
                                             className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 text-on-surface-variant"
                                         >
-                                            {plan.detail || 'plan desconocido'}
+                                            {plan.detail || t.agent.usage.unknownPlan}
                                         </span>
                                     ))}
 
                                 {a.available && (
                                     <span
                                         className="ml-auto shrink-0 text-on-surface-variant"
-                                        title={`${a.all.total.toLocaleString('es')} tokens en ${a.all.messages.toLocaleString('es')} respuestas`}
+                                        title={t.agent.usage.tokensTitle({total: formatNumber(a.all.total), messages: formatNumber(a.all.messages)})}
                                     >
-                                        {compact(a.all.total)} tokens
+                                        {t.agent.usage.tokens({n: compact(a.all.total)})}
                                     </span>
                                 )}
                             </div>
@@ -164,25 +167,25 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                                         no decir nada teniendo el dato. */}
                                     {a.activity && (
                                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-on-surface-variant">
-                                            <span title="Conversaciones registradas por el CLI en esta máquina">
-                                                Conversaciones:{' '}
+                                            <span title={t.agent.usage.conversationsTitle}>
+                                                {t.agent.usage.conversations}{' '}
                                                 <span className="text-on-surface">{a.activity.conversations}</span>
                                             </span>
-                                            <span title="Pasos (turnos de trabajo del agente) sumados de todas las conversaciones">
-                                                Pasos: <span className="text-on-surface">{a.activity.steps}</span>
+                                            <span title={t.agent.usage.stepsTitle}>
+                                                {t.agent.usage.steps} <span className="text-on-surface">{a.activity.steps}</span>
                                             </span>
-                                            {a.activity.lastUsed && <span>último uso: {a.activity.lastUsed}</span>}
+                                            {a.activity.lastUsed && <span>{t.agent.usage.lastUsed({date: a.activity.lastUsed})}</span>}
                                         </div>
                                     )}
                                 </>
                             ) : (
                                 <>
                                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-on-surface-variant">
-                                        <span title="Qué parte de los tokens de ENTRADA salió del caché en vez de reprocesarse. Es el único número de acá sobre el que se puede actuar: cuanto más alto, más barata la sesión larga.">
-                                            Caché: <span className="text-on-surface">{a.cacheHitPercent}%</span>
+                                        <span title={t.agent.usage.cacheTitle}>
+                                            {t.agent.usage.cache} <span className="text-on-surface">{a.cacheHitPercent}%</span>
                                         </span>
-                                        <span title="Los tokens que generó el modelo. Son los más caros de las cuatro clases.">
-                                            Salida: <span className="text-on-surface">{compact(a.all.output)}</span>
+                                        <span title={t.agent.usage.outputTitle}>
+                                            {t.agent.usage.outputLabel} <span className="text-on-surface">{compact(a.all.output)}</span>
                                         </span>
                                         <span>
                                             {a.firstDay} → {a.lastDay}
@@ -193,7 +196,7 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                                         <div
                                             key={m.key}
                                             className="mt-0.5 flex items-center gap-1.5"
-                                            title={`${m.total.toLocaleString('es')} tokens en ${m.messages.toLocaleString('es')} respuestas`}
+                                            title={t.agent.usage.tokensTitle({total: formatNumber(m.total), messages: formatNumber(m.messages)})}
                                         >
                                             <span className="w-28 shrink-0 truncate text-on-surface-variant">{m.key}</span>
                                             <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-variant">
@@ -214,11 +217,7 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                 })}
 
                 <p className="px-1 text-ui-10 leading-4 text-on-surface-variant/70">
-                    Las <strong>barras de límite</strong> son el porcentaje que calculó el servidor de cada proveedor y
-                    que su CLI dejó cacheado en esta máquina: se leen tal cual, con la hora en que se midieron — no son
-                    en vivo. Los porcentajes de <strong>consumo</strong> (modelo, caché) son proporciones de lo gastado,
-                    no de un tope. Para el dato del momento, cada CLI lo contesta con su propio comando
-                    (<span className="font-mono">/status</span>, <span className="font-mono">/usage</span>).
+                    {rich(t.agent.usage.footer)}
                 </p>
             </div>
         </div>

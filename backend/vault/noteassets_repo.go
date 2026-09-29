@@ -3,10 +3,10 @@ package vault
 import (
 	"database/sql"
 	"encoding/base64"
-	"fmt"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/imageopt"
 )
 
@@ -48,16 +48,16 @@ type NoteAsset struct {
 // —volver a codificarlo pierde calidad siempre—. Ver backend/imageopt.
 func (s *Store) SaveNoteAsset(id, noteID, _ string, data []byte) error {
 	if len(data) == 0 {
-		return fmt.Errorf("vault: la imagen está vacía")
+		return i18n.Errorf(i18n.Msg{ES: "vault: la imagen está vacía", EN: "vault: the image is empty"})
 	}
 	if len(data) > MaxNoteAssetBytes {
-		return fmt.Errorf("vault: la imagen pesa %d MB y el tope es %d MB",
+		return i18n.Errorf(i18n.Msg{ES: "vault: la imagen pesa %d MB y el tope es %d MB", EN: "vault: the image is %d MB and the limit is %d MB"},
 			len(data)/(1<<20), MaxNoteAssetBytes/(1<<20))
 	}
 
 	opt, err := imageopt.Prepare(data)
 	if err != nil {
-		return fmt.Errorf("vault: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: %w", EN: "vault: %w"}, err)
 	}
 	data = opt.Data
 	mime := opt.Mime
@@ -75,7 +75,7 @@ func (s *Store) SaveNoteAsset(id, noteID, _ string, data []byte) error {
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, noteID, mime, enc, nonce, int64(len(data)), time.Now().Unix(),
 	); err != nil {
-		return fmt.Errorf("vault: guardando la imagen: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando la imagen: %w", EN: "vault: saving the image: %w"}, err)
 	}
 	return nil
 }
@@ -88,10 +88,10 @@ func (s *Store) GetNoteAsset(id string) (NoteAsset, error) {
 		`SELECT id, mime, encrypted_data, data_nonce, size_bytes FROM vault_note_assets WHERE id = ?`, id,
 	).Scan(&a.ID, &a.Mime, &enc, &nonce, &a.Size)
 	if err == sql.ErrNoRows {
-		return NoteAsset{}, fmt.Errorf("vault: no existe esa imagen")
+		return NoteAsset{}, i18n.Errorf(i18n.Msg{ES: "vault: no existe esa imagen", EN: "vault: that image does not exist"})
 	}
 	if err != nil {
-		return NoteAsset{}, fmt.Errorf("vault: leyendo la imagen: %w", err)
+		return NoteAsset{}, i18n.Errorf(i18n.Msg{ES: "vault: leyendo la imagen: %w", EN: "vault: reading the image: %w"}, err)
 	}
 
 	key, err := s.gate.Key()
@@ -100,7 +100,7 @@ func (s *Store) GetNoteAsset(id string) (NoteAsset, error) {
 	}
 	plain, err := mtcrypto.Decrypt(key, enc, nonce)
 	if err != nil {
-		return NoteAsset{}, fmt.Errorf("vault: descifrando la imagen: %w", err)
+		return NoteAsset{}, i18n.Errorf(i18n.Msg{ES: "vault: descifrando la imagen: %w", EN: "vault: decrypting the image: %w"}, err)
 	}
 	a.Data = base64.StdEncoding.EncodeToString(plain)
 	return a, nil
@@ -110,7 +110,7 @@ func (s *Store) GetNoteAsset(id string) (NoteAsset, error) {
 // dejarlas sería basura cifrada que nadie puede ver ni borrar desde la interfaz.
 func (s *Store) DeleteNoteAssets(noteID string) error {
 	if _, err := s.db.Exec(`DELETE FROM vault_note_assets WHERE note_id = ?`, noteID); err != nil {
-		return fmt.Errorf("vault: borrando las imágenes de la nota: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando las imágenes de la nota: %w", EN: "vault: deleting the note's images: %w"}, err)
 	}
 	return nil
 }
@@ -119,7 +119,7 @@ func (s *Store) DeleteNoteAssets(noteID string) error {
 func (s *Store) NoteAssetIDs(noteID string) ([]string, error) {
 	rows, err := s.db.Query(`SELECT id FROM vault_note_assets WHERE note_id = ?`, noteID)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando las imágenes de la nota: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando las imágenes de la nota: %w", EN: "vault: listing the note's images: %w"}, err)
 	}
 	defer rows.Close()
 	var ids []string

@@ -1,9 +1,15 @@
 import Icon from '../Icon'
+import {useT, type Dict} from '../../i18n'
 import ExportMenu from './ExportMenu'
 import {redisResultToTable} from '../../lib/redisResultToTable'
 import {parseFTSearchResult, type FTResultTable} from '../../lib/redisSearchResult'
 import {tryPrettyPrintJSON} from '../../lib/prettyPrintJSON'
 import {looksBinary} from '../../lib/binaryPreview'
+import {formatElapsed} from '../../lib/formatElapsed'
+
+// Así escribe redis-cli la respuesta nula: es un literal del protocolo, no
+// texto a traducir.
+const NIL = '(nil)'
 
 export interface RedisCommandResult {
     commandText: string
@@ -26,30 +32,30 @@ function commandNameOf(commandText: string): string {
 // Sidekiq-style lock, etc. — see lib/binaryPreview.ts) renders as a
 // confusing "tofu" box otherwise, since it already went through lossy
 // UTF-8 replacement on the backend before ever reaching this component.
-function renderScalarValue(v: unknown) {
+function renderScalarValue(v: unknown, t: Dict) {
     const s = String(v)
     if (looksBinary(s)) {
-        return <span className="italic text-on-surface-variant">contenido binario / no imprimible ({s.length} caracteres)</span>
+        return <span className="italic text-on-surface-variant">{t.results.redis.binary(s.length)}</span>
     }
     return <>{s}</>
 }
 
-function renderResultBody(r: RedisCommandResult, columns: string[], rows: unknown[][], cmdName: string) {
+function renderResultBody(r: RedisCommandResult, columns: string[], rows: unknown[][], cmdName: string, t: Dict) {
     if (r.status === 'error') return <span className="text-error">{r.error}</span>
-    if (r.status === 'cancelled') return <span className="text-tertiary">Cancelado</span>
-    if (r.status === 'running') return <span className="text-on-surface-variant">Ejecutando…</span>
+    if (r.status === 'cancelled') return <span className="text-tertiary">{t.results.redis.cancelled}</span>
+    if (r.status === 'running') return <span className="text-on-surface-variant">{t.results.redis.running}</span>
 
-    if (r.resultKind === 'nil') return <span className="italic text-on-surface-variant">(nil)</span>
+    if (r.resultKind === 'nil') return <span className="italic text-on-surface-variant">{NIL}</span>
 
     if (r.resultKind === 'array') {
-        if (rows.length === 0) return <span className="text-on-surface-variant">(vacío)</span>
+        if (rows.length === 0) return <span className="text-on-surface-variant">{t.results.redis.emptyArray}</span>
         return (
             <table className="w-full text-left">
                 <tbody>
                     {rows.map((row, i) => (
                         <tr key={i} className="align-top">
                             <td className="w-10 pr-2 text-on-surface-variant">{String(row[0])}</td>
-                            <td className="break-all">{renderScalarValue(row[1])}</td>
+                            <td className="break-all">{renderScalarValue(row[1], t)}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -64,20 +70,20 @@ function renderResultBody(r: RedisCommandResult, columns: string[], rows: unknow
         return <pre className="whitespace-pre-wrap break-all">{tryPrettyPrintJSON(String(r.result))}</pre>
     }
 
-    return <span className="break-all">{renderScalarValue(r.result)}</span>
+    return <span className="break-all">{renderScalarValue(r.result, t)}</span>
 }
 
 // Dynamic-column table for FT.SEARCH/FT.AGGREGATE — only ever called with a
 // non-null table, i.e. r.status === 'done' and parseFTSearchResult
 // recognized the shape (see the call site below); anything else falls back
 // to the generic renderResultBody.
-function renderFTTable(table: FTResultTable) {
+function renderFTTable(table: FTResultTable, t: Dict) {
     if (table.rows.length === 0) {
-        return <span className="text-on-surface-variant">Matched: {table.total} (sin resultados en esta página)</span>
+        return <span className="text-on-surface-variant">{t.results.redis.matchedNoRows(table.total)}</span>
     }
     return (
         <div>
-            <p className="mb-1 text-on-surface-variant">Matched: {table.total}</p>
+            <p className="mb-1 text-on-surface-variant">{t.results.redis.matched(table.total)}</p>
             <table className="w-full text-left">
                 <thead>
                     <tr className="text-on-surface-variant">
@@ -93,7 +99,7 @@ function renderFTTable(table: FTResultTable) {
                         <tr key={i} className="align-top">
                             {table.columns.map((c) => (
                                 <td key={c} className="break-all pr-2">
-                                    {renderScalarValue(row[c])}
+                                    {renderScalarValue(row[c], t)}
                                 </td>
                             ))}
                         </tr>
@@ -118,8 +124,9 @@ function renderFTTable(table: FTResultTable) {
 // generic index/value pair, so exporting actually reflects what's on
 // screen.
 export default function RedisResultView({results}: RedisResultViewProps) {
+    const t = useT()
     if (results.length === 0) {
-        return <p className="p-3 text-xs text-on-surface-variant/60">Sin resultados todavía — ejecutá un comando.</p>
+        return <p className="p-3 text-xs text-on-surface-variant/60">{t.results.redis.empty}</p>
     }
 
     return (
@@ -131,6 +138,7 @@ export default function RedisResultView({results}: RedisResultViewProps) {
 
                 const generic = redisResultToTable(r.resultKind, r.result)
                 const exportColumns = ftTable ? ftTable.columns : generic.columns
+                const done = r.status === 'done'
                 const exportRows = ftTable ? ftTable.rows.map((row) => ftTable.columns.map((c) => row[c])) : generic.rows
 
                 return (
@@ -144,11 +152,11 @@ export default function RedisResultView({results}: RedisResultViewProps) {
                             <span className="flex-1 truncate font-mono text-on-surface" title={r.commandText}>
                                 {r.commandText}
                             </span>
-                            {r.status === 'done' && <span className="shrink-0 text-on-surface-variant">{r.durationMs}ms</span>}
-                            {r.status === 'done' && exportColumns.length > 0 && <ExportMenu columns={exportColumns} rows={exportRows} />}
+                            {done && <span className="shrink-0 text-on-surface-variant">{formatElapsed(r.durationMs)}</span>}
+                            {done && exportColumns.length > 0 && <ExportMenu columns={exportColumns} rows={exportRows} />}
                         </div>
                         <div className="font-mono text-xs">
-                            {ftTable ? renderFTTable(ftTable) : renderResultBody(r, generic.columns, generic.rows, cmdName)}
+                            {ftTable ? renderFTTable(ftTable, t) : renderResultBody(r, generic.columns, generic.rows, cmdName, t)}
                         </div>
                     </div>
                 )

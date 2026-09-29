@@ -6,7 +6,16 @@ import (
 	"os"
 	"runtime"
 	"testing"
+
+	"mini-tools/backend/i18n"
 )
+
+// Las aserciones comparan contra el texto en español: se fija ese idioma para
+// todo el paquete (el default del proceso es inglés).
+func TestMain(m *testing.M) {
+	i18n.SetLang("es")
+	os.Exit(m.Run())
+}
 
 func startTestChannel(t *testing.T, ask AskFunc) *Channel {
 	t.Helper()

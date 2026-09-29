@@ -1,5 +1,6 @@
 import type {Extension} from '@codemirror/state'
 import {StreamLanguage} from '@codemirror/language'
+import {t} from '../i18n'
 
 // Resolución de lenguaje por nombre de archivo, para el editor de archivos del
 // módulo Git.
@@ -60,7 +61,9 @@ export type LanguageId =
 
 interface LanguageDef {
     id: LanguageId
-    label: string
+    // Nombre del lenguaje: es una marca, se escribe igual en todos los idiomas.
+    // La excepción es 'plaintext', que se rotula desde el diccionario.
+    name: string
     // Extensiones sin punto y en minúsculas.
     extensions: string[]
     // Nombres de archivo completos, en minúsculas — Dockerfile, Makefile y
@@ -72,90 +75,90 @@ interface LanguageDef {
 
 // El orden importa solo para el selector manual; la resolución es por mapa.
 const DEFS: LanguageDef[] = [
-    {id: 'plaintext', label: 'Texto plano', extensions: ['txt', 'log', 'text']},
+    {id: 'plaintext', name: '', extensions: ['txt', 'log', 'text']},
 
     {
         id: 'javascript',
-        label: 'JavaScript',
+        name: 'JavaScript',
         extensions: ['js', 'mjs', 'cjs'],
         load: async () => (await import('@codemirror/lang-javascript')).javascript(),
     },
     {
         id: 'jsx',
-        label: 'JavaScript (JSX)',
+        name: 'JavaScript (JSX)',
         extensions: ['jsx'],
         load: async () => (await import('@codemirror/lang-javascript')).javascript({jsx: true}),
     },
     {
         id: 'typescript',
-        label: 'TypeScript',
+        name: 'TypeScript',
         extensions: ['ts', 'mts', 'cts'],
         load: async () => (await import('@codemirror/lang-javascript')).javascript({typescript: true}),
     },
     {
         id: 'tsx',
-        label: 'TypeScript (TSX)',
+        name: 'TypeScript (TSX)',
         extensions: ['tsx'],
         load: async () => (await import('@codemirror/lang-javascript')).javascript({typescript: true, jsx: true}),
     },
     {
         id: 'json',
-        label: 'JSON',
+        name: 'JSON',
         extensions: ['json', 'jsonc', 'json5', 'webmanifest'],
         filenames: ['.eslintrc', '.babelrc', '.prettierrc'],
         load: async () => (await import('@codemirror/lang-json')).json(),
     },
     {
         id: 'python',
-        label: 'Python',
+        name: 'Python',
         extensions: ['py', 'pyi', 'pyw'],
         load: async () => (await import('@codemirror/lang-python')).python(),
     },
     {
         id: 'go',
-        label: 'Go',
+        name: 'Go',
         extensions: ['go'],
         load: async () => (await import('@codemirror/lang-go')).go(),
     },
     {
         id: 'rust',
-        label: 'Rust',
+        name: 'Rust',
         extensions: ['rs'],
         load: async () => (await import('@codemirror/lang-rust')).rust(),
     },
     {
         id: 'java',
-        label: 'Java',
+        name: 'Java',
         extensions: ['java'],
         load: async () => (await import('@codemirror/lang-java')).java(),
     },
     {
         id: 'cpp',
-        label: 'C / C++',
+        name: 'C / C++',
         extensions: ['c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'hh', 'hxx', 'ino'],
         load: async () => (await import('@codemirror/lang-cpp')).cpp(),
     },
     {
         id: 'php',
-        label: 'PHP',
+        name: 'PHP',
         extensions: ['php', 'phtml'],
         load: async () => (await import('@codemirror/lang-php')).php(),
     },
     {
         id: 'html',
-        label: 'HTML',
+        name: 'HTML',
         extensions: ['html', 'htm', 'xhtml'],
         load: async () => (await import('@codemirror/lang-html')).html(),
     },
     {
         id: 'vue',
-        label: 'Vue',
+        name: 'Vue',
         extensions: ['vue'],
         load: async () => (await import('@codemirror/lang-vue')).vue(),
     },
     {
         id: 'css',
-        label: 'CSS',
+        name: 'CSS',
         // scss/less/sass entran por acá a propósito: son supersets de CSS y el
         // parser de CSS los resalta de forma razonable. Un modo dedicado por
         // cada preprocesador sería más peso del que justifica la diferencia.
@@ -164,25 +167,25 @@ const DEFS: LanguageDef[] = [
     },
     {
         id: 'xml',
-        label: 'XML',
+        name: 'XML',
         extensions: ['xml', 'xsd', 'xsl', 'xslt', 'svg', 'plist', 'csproj', 'pom'],
         load: async () => (await import('@codemirror/lang-xml')).xml(),
     },
     {
         id: 'markdown',
-        label: 'Markdown',
+        name: 'Markdown',
         extensions: ['md', 'markdown', 'mdx', 'mdown'],
         load: async () => (await import('@codemirror/lang-markdown')).markdown(),
     },
     {
         id: 'yaml',
-        label: 'YAML',
+        name: 'YAML',
         extensions: ['yaml', 'yml'],
         load: async () => (await import('@codemirror/lang-yaml')).yaml(),
     },
     {
         id: 'sql',
-        label: 'SQL',
+        name: 'SQL',
         extensions: ['sql', 'ddl', 'pks', 'pkb', 'prc', 'fnc'],
         // Dialecto estándar y sin esquema, a diferencia de las pestañas del
         // workspace: un .sql del repositorio es un archivo, no una consulta
@@ -199,108 +202,108 @@ const DEFS: LanguageDef[] = [
     // hace falta, y la alternativa es texto plano.
     {
         id: 'shell',
-        label: 'Shell',
+        name: 'Shell',
         extensions: ['sh', 'bash', 'zsh', 'ksh', 'fish', 'bashrc', 'zshrc'],
         filenames: ['.bashrc', '.zshrc', '.bash_profile', '.profile', '.zprofile'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/shell')).shell),
     },
     {
         id: 'dockerfile',
-        label: 'Dockerfile',
+        name: 'Dockerfile',
         extensions: ['dockerfile'],
         filenames: ['dockerfile', 'containerfile'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/dockerfile')).dockerFile),
     },
     {
         id: 'toml',
-        label: 'TOML',
+        name: 'TOML',
         extensions: ['toml'],
         filenames: ['cargo.lock'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/toml')).toml),
     },
     {
         id: 'ini',
-        label: 'INI / Properties',
+        name: 'INI / Properties',
         extensions: ['ini', 'cfg', 'conf', 'properties', 'editorconfig', 'env'],
         filenames: ['.editorconfig', '.env', '.gitconfig', '.npmrc'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/properties')).properties),
     },
     {
         id: 'powershell',
-        label: 'PowerShell',
+        name: 'PowerShell',
         extensions: ['ps1', 'psm1', 'psd1'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/powershell')).powerShell),
     },
     {
         id: 'ruby',
-        label: 'Ruby',
+        name: 'Ruby',
         extensions: ['rb', 'rake', 'gemspec'],
         filenames: ['gemfile', 'rakefile'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/ruby')).ruby),
     },
     {
         id: 'perl',
-        label: 'Perl',
+        name: 'Perl',
         extensions: ['pl', 'pm'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/perl')).perl),
     },
     {
         id: 'lua',
-        label: 'Lua',
+        name: 'Lua',
         extensions: ['lua'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/lua')).lua),
     },
     {
         id: 'r',
-        label: 'R',
+        name: 'R',
         extensions: ['r'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/r')).r),
     },
     {
         id: 'swift',
-        label: 'Swift',
+        name: 'Swift',
         extensions: ['swift'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/swift')).swift),
     },
     {
         id: 'csharp',
-        label: 'C#',
+        name: 'C#',
         extensions: ['cs'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/clike')).csharp),
     },
     {
         id: 'kotlin',
-        label: 'Kotlin',
+        name: 'Kotlin',
         extensions: ['kt', 'kts'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/clike')).kotlin),
     },
     {
         id: 'scala',
-        label: 'Scala',
+        name: 'Scala',
         extensions: ['scala', 'sc'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/clike')).scala),
     },
     {
         id: 'objectivec',
-        label: 'Objective-C',
+        name: 'Objective-C',
         extensions: ['m', 'mm'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/clike')).objectiveC),
     },
     {
         id: 'dart',
-        label: 'Dart',
+        name: 'Dart',
         extensions: ['dart'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/clike')).dart),
     },
     {
         id: 'groovy',
-        label: 'Groovy',
+        name: 'Groovy',
         extensions: ['groovy', 'gradle'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/groovy')).groovy),
     },
     {
         id: 'diff',
-        label: 'Diff / Patch',
+        name: 'Diff / Patch',
         extensions: ['diff', 'patch'],
         load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/diff')).diff),
     },
@@ -323,15 +326,21 @@ for (const def of DEFS) {
 
 // Opciones para el selector manual de lenguaje de la barra del editor,
 // alfabéticas y con "Texto plano" primero por ser el fallback.
-export const LANGUAGE_OPTIONS: {id: LanguageId; label: string}[] = [
-    {id: 'plaintext', label: 'Texto plano'},
+export const LANGUAGE_OPTIONS: {id: LanguageId; readonly label: string}[] = [
+    {
+        id: 'plaintext',
+        get label() {
+            return t().editor.languages.plainText
+        },
+    },
     ...DEFS.filter((d) => d.id !== 'plaintext')
-        .map((d) => ({id: d.id, label: d.label}))
+        .map((d) => ({id: d.id, label: d.name}))
         .sort((a, b) => a.label.localeCompare(b.label, 'es')),
 ]
 
 export function languageLabel(id: LanguageId): string {
-    return BY_ID.get(id)?.label ?? 'Texto plano'
+    const def = BY_ID.get(id)
+    return def && def.id !== 'plaintext' ? def.name : t().editor.languages.plainText
 }
 
 // languageForPath resuelve el lenguaje de una ruta del repositorio.
@@ -389,7 +398,7 @@ export async function loadLanguage(id: LanguageId): Promise<Extension | null> {
             return ext
         })
         .catch((e) => {
-            console.error(`No se pudo cargar el resaltado de ${def.label}:`, e)
+            console.error(`No se pudo cargar el resaltado de ${def.name}:`, e)
             return null
         })
         .finally(() => {

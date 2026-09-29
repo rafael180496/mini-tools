@@ -14,6 +14,7 @@ import (
 	"mini-tools/backend/agentapprove"
 	"mini-tools/backend/appdata"
 	"mini-tools/backend/git"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/mcpserver"
 )
 
@@ -32,6 +33,9 @@ func main() {
 	// be handled before anything else here opens a window, touches the vault,
 	// or writes to appdata.
 	if git.IsAskpassInvocation() {
+		// Lo lanza git, heredando MINI_TOOLS_LANG de la app: sus mensajes
+		// salen en el idioma de la interfaz.
+		i18n.SetLang(os.Getenv(langEnv))
 		git.AskpassMain()
 		return
 	}
@@ -41,6 +45,9 @@ func main() {
 	// as argv[1], and uses whatever is left there. It must write and exit
 	// before anything else here opens a window or touches the vault.
 	if git.IsSequenceEditorInvocation() {
+		// Lo lanza git, heredando MINI_TOOLS_LANG de la app: sus mensajes
+		// salen en el idioma de la interfaz.
+		i18n.SetLang(os.Getenv(langEnv))
 		git.SequenceEditorMain()
 		return
 	}
@@ -51,6 +58,7 @@ func main() {
 	// socket, así que tampoco es un arranque de la app y va antes de todo lo
 	// demás (ver backend/agentapprove/hook.go).
 	if agentapprove.IsHookInvocation() {
+		i18n.SetLang(os.Getenv(langEnv))
 		agentapprove.HookMain()
 		return
 	}
@@ -64,6 +72,7 @@ func main() {
 	// encendido, este proceso no obtiene datos**: contesta explicando qué falta.
 	// No hay una segunda ruta al vault.
 	if len(os.Args) > 1 && os.Args[1] == "--mcp" {
+		i18n.SetLang(os.Getenv(langEnv))
 		dir, err := appdata.Dir()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "mini-tools: no se pudo resolver el directorio de datos:", err)

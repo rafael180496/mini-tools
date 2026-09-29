@@ -1,6 +1,7 @@
 import {sftpx} from '../../../wailsjs/go/models'
 import {formatBytes} from '../../lib/formatBytes'
 import Icon from '../Icon'
+import {formatDateTime, useT} from '../../i18n'
 
 // ConflictPolicy values must match the constants in backend/sftpx/conflict.go.
 export type ConflictPolicy = 'overwrite' | 'newer' | 'skip' | 'rename'
@@ -14,7 +15,7 @@ interface SftpConflictDialogProps {
 
 function fmtTime(unix: number): string {
     if (!unix) return '—'
-    return new Date(unix * 1000).toLocaleString()
+    return formatDateTime(unix)
 }
 
 // Asked once, before a transfer starts, when destination names already exist.
@@ -24,13 +25,14 @@ function fmtTime(unix: number): string {
 // "yes to all" without reading. The table below shows which side is newer so
 // the single decision can be made with the facts in view.
 export default function SftpConflictDialog({conflicts, destLabel, onChoose, onCancel}: SftpConflictDialogProps) {
+    const t = useT()
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface-container shadow-xl">
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-4 py-3">
                     <Icon name="warning" size={18} className="text-tertiary" />
                     <h2 className="text-sm font-medium text-on-surface">
-                        {conflicts.length === 1 ? 'Ya existe 1 archivo en el destino' : `Ya existen ${conflicts.length} archivos en el destino`}
+                        {t.sftp.conflict.title(conflicts.length)}
                     </h2>
                     <span className="ml-auto truncate text-ui-11 text-on-surface-variant" title={destLabel}>
                         {destLabel}
@@ -41,10 +43,10 @@ export default function SftpConflictDialog({conflicts, destLabel, onChoose, onCa
                     <table className="w-full text-xs">
                         <thead className="sticky top-0 bg-surface-container-low text-ui-11 text-on-surface-variant">
                             <tr>
-                                <th className="px-3 py-1.5 text-left font-medium">Nombre</th>
-                                <th className="px-3 py-1.5 text-right font-medium">Origen</th>
-                                <th className="px-3 py-1.5 text-right font-medium">Destino</th>
-                                <th className="px-3 py-1.5 text-left font-medium">Más reciente</th>
+                                <th className="px-3 py-1.5 text-left font-medium">{t.sftp.conflict.name}</th>
+                                <th className="px-3 py-1.5 text-right font-medium">{t.sftp.conflict.source}</th>
+                                <th className="px-3 py-1.5 text-right font-medium">{t.sftp.conflict.destination}</th>
+                                <th className="px-3 py-1.5 text-left font-medium">{t.sftp.conflict.newer}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -70,10 +72,10 @@ export default function SftpConflictDialog({conflicts, destLabel, onChoose, onCa
                                         </td>
                                         <td className="px-3 py-1.5 whitespace-nowrap">
                                             {c.srcModTime === c.dstModTime ? (
-                                                <span className="text-on-surface-variant">iguales</span>
+                                                <span className="text-on-surface-variant">{t.sftp.conflict.same}</span>
                                             ) : (
                                                 <span className={srcNewer ? 'text-secondary' : 'text-tertiary'}>
-                                                    {srcNewer ? 'el origen' : 'el destino'}
+                                                    {srcNewer ? t.sftp.conflict.sourceNewer : t.sftp.conflict.destNewer}
                                                 </span>
                                             )}
                                         </td>
@@ -87,37 +89,37 @@ export default function SftpConflictDialog({conflicts, destLabel, onChoose, onCa
                 <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant px-4 py-3">
                     <button
                         onClick={() => onChoose('newer')}
-                        title="Copia solo los archivos cuyo origen es más reciente que el destino. Los demás se dejan como están."
+                        title={t.sftp.conflict.newerTooltip}
                         className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90"
                     >
-                        Sobrescribir si es más reciente
+                        {t.sftp.conflict.newerButton}
                     </button>
                     <button
                         onClick={() => onChoose('rename')}
-                        title="Conserva ambos: al archivo entrante se le agrega (1), (2)… y nada del destino se pierde."
+                        title={t.sftp.conflict.renameTooltip}
                         className="rounded border border-outline px-3 py-1.5 text-xs text-on-surface hover:bg-surface-variant"
                     >
-                        Renombrar
+                        {t.sftp.conflict.rename}
                     </button>
                     <button
                         onClick={() => onChoose('skip')}
-                        title="No toca ningún archivo que ya exista; solo transfiere los que faltan."
+                        title={t.sftp.conflict.skipTooltip}
                         className="rounded border border-outline px-3 py-1.5 text-xs text-on-surface hover:bg-surface-variant"
                     >
-                        Omitir
+                        {t.sftp.conflict.skip}
                     </button>
                     <button
                         onClick={() => onChoose('overwrite')}
-                        title="Reemplaza los archivos del destino. No hay papelera en SFTP: lo sobrescrito no se recupera."
+                        title={t.sftp.conflict.overwriteTooltip}
                         className="rounded border border-error/60 px-3 py-1.5 text-xs text-error hover:bg-error-container/30"
                     >
-                        Sobrescribir
+                        {t.sftp.conflict.overwrite}
                     </button>
                     <button
                         onClick={onCancel}
                         className="ml-auto rounded px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                 </div>
             </div>

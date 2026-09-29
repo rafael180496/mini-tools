@@ -2,7 +2,7 @@ package git
 
 import (
 	"context"
-	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,23 +31,23 @@ func (r *Runner) runNetwork(root string, auth AuthConfig, args ...string) (strin
 // named after the URL would put the repo somewhere the user did not choose.
 func (r *Runner) Clone(url, targetPath string, auth AuthConfig) (string, error) {
 	if strings.TrimSpace(url) == "" {
-		return "", fmt.Errorf("la URL del repositorio no puede estar vacía")
+		return "", i18n.New(i18n.Msg{ES: "la URL del repositorio no puede estar vacía", EN: "the repository URL cannot be empty"})
 	}
 	if strings.HasPrefix(url, "-") {
-		return "", fmt.Errorf("URL inválida: %q no puede empezar con '-'", url)
+		return "", i18n.Errorf(i18n.Msg{ES: "URL inválida: %q no puede empezar con '-'", EN: "invalid URL: %q cannot start with '-'"}, url)
 	}
 	if strings.TrimSpace(targetPath) == "" {
-		return "", fmt.Errorf("la carpeta de destino no puede estar vacía")
+		return "", i18n.New(i18n.Msg{ES: "la carpeta de destino no puede estar vacía", EN: "the destination folder cannot be empty"})
 	}
 
 	abs, err := filepath.Abs(targetPath)
 	if err != nil {
-		return "", fmt.Errorf("carpeta de destino inválida %q: %w", targetPath, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "carpeta de destino inválida %q: %w", EN: "invalid destination folder %q: %w"}, targetPath, err)
 	}
 	// Refusing a non-empty destination up front turns a confusing git error
 	// into a clear one, and rules out cloning on top of existing work.
 	if entries, err := os.ReadDir(abs); err == nil && len(entries) > 0 {
-		return "", fmt.Errorf("la carpeta %q no está vacía", abs)
+		return "", i18n.Errorf(i18n.Msg{ES: "la carpeta %q no está vacía", EN: "the folder %q is not empty"}, abs)
 	}
 
 	// Clone runs with no repoPath — there is no repository yet.
@@ -66,17 +66,17 @@ func (r *Runner) Clone(url, targetPath string, auth AuthConfig) (string, error) 
 // leave the user thinking they made a fresh one.
 func (r *Runner) Init(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
-		return "", fmt.Errorf("la carpeta del repositorio no puede estar vacía")
+		return "", i18n.New(i18n.Msg{ES: "la carpeta del repositorio no puede estar vacía", EN: "the repository folder cannot be empty"})
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("carpeta inválida %q: %w", path, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "carpeta inválida %q: %w", EN: "invalid folder %q: %w"}, path, err)
 	}
 	if err := os.MkdirAll(abs, 0o755); err != nil {
-		return "", fmt.Errorf("no se pudo crear la carpeta %q: %w", abs, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "no se pudo crear la carpeta %q: %w", EN: "could not create the folder %q: %w"}, abs, err)
 	}
 	if r.IsRepository(abs) {
-		return "", fmt.Errorf("%q ya es un repositorio git", abs)
+		return "", i18n.Errorf(i18n.Msg{ES: "%q ya es un repositorio git", EN: "%q is already a git repository"}, abs)
 	}
 
 	// git init runs against the target directory via -C rather than by setting
@@ -107,7 +107,7 @@ func (r *Runner) Fetch(repoPath string, opts FetchOptions, auth AuthConfig) (str
 		// it is the more explicit user choice from the menu.
 		args = append(args, "--all")
 	} else if opts.Remote != "" {
-		if err := checkRefArg("remoto", opts.Remote); err != nil {
+		if err := checkRefArg(argRemote, opts.Remote); err != nil {
 			return "", err
 		}
 		args = append(args, opts.Remote)
@@ -135,12 +135,12 @@ func (r *Runner) Pull(repoPath string, opts PullOptions, auth AuthConfig) (strin
 	}
 
 	if opts.Remote != "" {
-		if err := checkRefArg("remoto", opts.Remote); err != nil {
+		if err := checkRefArg(argRemote, opts.Remote); err != nil {
 			return "", err
 		}
 		args = append(args, opts.Remote)
 		if opts.Branch != "" {
-			if err := checkRefArg("rama", opts.Branch); err != nil {
+			if err := checkRefArg(argBranch, opts.Branch); err != nil {
 				return "", err
 			}
 			args = append(args, opts.Branch)
@@ -178,12 +178,12 @@ func (r *Runner) Push(repoPath string, opts PushOptions, auth AuthConfig) (strin
 	}
 
 	if opts.Remote != "" {
-		if err := checkRefArg("remoto", opts.Remote); err != nil {
+		if err := checkRefArg(argRemote, opts.Remote); err != nil {
 			return "", err
 		}
 		args = append(args, opts.Remote)
 		if opts.Branch != "" {
-			if err := checkRefArg("rama", opts.Branch); err != nil {
+			if err := checkRefArg(argBranch, opts.Branch); err != nil {
 				return "", err
 			}
 			args = append(args, opts.Branch)
@@ -216,7 +216,7 @@ func (r *Runner) CheckoutBranch(repoPath, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("rama", name); err != nil {
+	if err := checkRefArg(argBranch, name); err != nil {
 		return err
 	}
 
@@ -283,7 +283,7 @@ func (r *Runner) CreateBranch(repoPath, name, startPoint string, checkout bool) 
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("rama", name); err != nil {
+	if err := checkRefArg(argBranch, name); err != nil {
 		return err
 	}
 
@@ -292,7 +292,7 @@ func (r *Runner) CreateBranch(repoPath, name, startPoint string, checkout bool) 
 		args = []string{"checkout", "-b", name}
 	}
 	if startPoint != "" {
-		if err := checkRefArg("punto de partida", startPoint); err != nil {
+		if err := checkRefArg(argStartPoint, startPoint); err != nil {
 			return err
 		}
 		args = append(args, startPoint)
@@ -309,7 +309,7 @@ func (r *Runner) DeleteBranch(repoPath, name string, force bool) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("rama", name); err != nil {
+	if err := checkRefArg(argBranch, name); err != nil {
 		return err
 	}
 	flag := "-d"
@@ -328,11 +328,11 @@ func (r *Runner) AddRemote(repoPath, name, url string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("remoto", name); err != nil {
+	if err := checkRefArg(argRemote, name); err != nil {
 		return err
 	}
 	if strings.TrimSpace(url) == "" || strings.HasPrefix(url, "-") {
-		return fmt.Errorf("URL de remoto inválida: %q", url)
+		return i18n.Errorf(i18n.Msg{ES: "URL de remoto inválida: %q", EN: "invalid remote URL: %q"}, url)
 	}
 	_, err = r.runLocal(root, "remote", "add", name, url)
 	return err
@@ -344,10 +344,10 @@ func (r *Runner) RenameRemote(repoPath, oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("remoto", oldName); err != nil {
+	if err := checkRefArg(argRemote, oldName); err != nil {
 		return err
 	}
-	if err := checkRefArg("nuevo nombre de remoto", newName); err != nil {
+	if err := checkRefArg(argNewRemoteName, newName); err != nil {
 		return err
 	}
 	_, err = r.runLocal(root, "remote", "rename", oldName, newName)
@@ -360,11 +360,11 @@ func (r *Runner) SetRemoteURL(repoPath, name, url string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("remoto", name); err != nil {
+	if err := checkRefArg(argRemote, name); err != nil {
 		return err
 	}
 	if strings.TrimSpace(url) == "" || strings.HasPrefix(url, "-") {
-		return fmt.Errorf("URL de remoto inválida: %q", url)
+		return i18n.Errorf(i18n.Msg{ES: "URL de remoto inválida: %q", EN: "invalid remote URL: %q"}, url)
 	}
 	_, err = r.runLocal(root, "remote", "set-url", name, url)
 	return err
@@ -391,7 +391,7 @@ func (r *Runner) SetRemoteURLs(repoPath, name, fetchURL, pushURL string) error {
 	push := strings.TrimSpace(pushURL)
 	if push != "" && push != strings.TrimSpace(fetchURL) {
 		if strings.HasPrefix(push, "-") {
-			return fmt.Errorf("URL de push inválida: %q", push)
+			return i18n.Errorf(i18n.Msg{ES: "URL de push inválida: %q", EN: "invalid push URL: %q"}, push)
 		}
 		_, err = r.runLocal(root, "remote", "set-url", "--push", name, push)
 		return err
@@ -404,7 +404,7 @@ func (r *Runner) SetRemoteURLs(repoPath, name, fetchURL, pushURL string) error {
 		return nil
 	}
 	if _, err := r.runLocal(root, "config", "--local", "--unset-all", "remote."+name+".pushurl"); err != nil {
-		return fmt.Errorf("no se pudo quitar la URL de push de %q: %w", name, err)
+		return i18n.Errorf(i18n.Msg{ES: "no se pudo quitar la URL de push de %q: %w", EN: "could not remove the push URL of %q: %w"}, name, err)
 	}
 	return nil
 }
@@ -415,7 +415,7 @@ func (r *Runner) RemoveRemote(repoPath, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("remoto", name); err != nil {
+	if err := checkRefArg(argRemote, name); err != nil {
 		return err
 	}
 	_, err = r.runLocal(root, "remote", "remove", name)
@@ -434,7 +434,7 @@ func (r *Runner) StageFiles(repoPath string, paths []string) error {
 		return err
 	}
 	if len(paths) == 0 {
-		return fmt.Errorf("no se indicó ningún archivo para stagear")
+		return i18n.New(i18n.Msg{ES: "no se indicó ningún archivo para stagear", EN: "no file was given to stage"})
 	}
 	args := append([]string{"add", "--"}, paths...)
 	_, err = r.runLocal(root, args...)
@@ -459,7 +459,7 @@ func (r *Runner) UnstageFiles(repoPath string, paths []string) error {
 		return err
 	}
 	if len(paths) == 0 {
-		return fmt.Errorf("no se indicó ningún archivo para quitar del stage")
+		return i18n.New(i18n.Msg{ES: "no se indicó ningún archivo para quitar del stage", EN: "no file was given to unstage"})
 	}
 	// `restore --staged` rather than `reset HEAD --`: it behaves correctly in
 	// a repository with no commits yet, where HEAD does not resolve.
@@ -477,7 +477,7 @@ func (r *Runner) DiscardChanges(repoPath string, paths []string) error {
 		return err
 	}
 	if len(paths) == 0 {
-		return fmt.Errorf("no se indicó ningún archivo para descartar")
+		return i18n.New(i18n.Msg{ES: "no se indicó ningún archivo para descartar", EN: "no file was given to discard"})
 	}
 	args := append([]string{"restore", "--worktree", "--"}, paths...)
 	_, err = r.runLocal(root, args...)
@@ -496,7 +496,7 @@ func (r *Runner) ApplyPatch(repoPath, patch string, cached, reverse bool) error 
 		return err
 	}
 	if strings.TrimSpace(patch) == "" {
-		return fmt.Errorf("el patch está vacío")
+		return i18n.New(i18n.Msg{ES: "el patch está vacío", EN: "the patch is empty"})
 	}
 
 	args := []string{"apply", "--whitespace=nowarn"}
@@ -530,9 +530,9 @@ func (r *Runner) runWithStdin(root, stdin string, args ...string) error {
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return fmt.Errorf("git %s: %s", args[0], msg)
+			return i18n.Errorf(i18n.Msg{ES: "git %s: %s", EN: "git %s: %s"}, args[0], msg)
 		}
-		return fmt.Errorf("git %s: %w", args[0], err)
+		return i18n.Errorf(i18n.Msg{ES: "git %s: %w", EN: "git %s: %w"}, args[0], err)
 	}
 	return nil
 }
@@ -545,7 +545,7 @@ func (r *Runner) Commit(repoPath, message string, amend bool) error {
 		return err
 	}
 	if strings.TrimSpace(message) == "" {
-		return fmt.Errorf("el mensaje del commit no puede estar vacío")
+		return i18n.New(i18n.Msg{ES: "el mensaje del commit no puede estar vacío", EN: "the commit message cannot be empty"})
 	}
 
 	// --file=- feeds the message over stdin. Passing it as -m would be fine
@@ -584,7 +584,7 @@ func (r *Runner) StashApply(repoPath, ref string, drop bool) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("stash", ref); err != nil {
+	if err := checkRefArg(argStash, ref); err != nil {
 		return err
 	}
 	action := "apply"
@@ -601,7 +601,7 @@ func (r *Runner) StashDrop(repoPath, ref string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("stash", ref); err != nil {
+	if err := checkRefArg(argStash, ref); err != nil {
 		return err
 	}
 	_, err = r.runLocal(root, "stash", "drop", ref)
@@ -662,9 +662,9 @@ func (r *Runner) StashDiff(repoPath, ref string, includeUntracked bool) (string,
 		return "", err
 	}
 	if strings.TrimSpace(ref) == "" {
-		return "", fmt.Errorf("falta la referencia del stash")
+		return "", i18n.New(i18n.Msg{ES: "falta la referencia del stash", EN: "the stash reference is missing"})
 	}
-	if err := checkRefArg("stash", ref); err != nil {
+	if err := checkRefArg(argStash, ref); err != nil {
 		return "", err
 	}
 

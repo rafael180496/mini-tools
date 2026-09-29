@@ -1,7 +1,7 @@
 package httpclient
 
 import (
-	"errors"
+	"mini-tools/backend/i18n"
 	"strings"
 )
 
@@ -23,7 +23,7 @@ func ParseCurl(command string) (Request, error) {
 		return Request{}, err
 	}
 	if len(tokens) == 0 {
-		return Request{}, errors.New("no hay nada que importar")
+		return Request{}, i18n.New(msgNothingToImport)
 	}
 	if strings.ToLower(tokens[0]) == "curl" {
 		tokens = tokens[1:]
@@ -112,7 +112,7 @@ func ParseCurl(command string) (Request, error) {
 	}
 
 	if req.URL == "" {
-		return Request{}, errors.New("el comando no trae una URL reconocible")
+		return Request{}, i18n.New(i18n.Msg{ES: "el comando no trae una URL reconocible", EN: "the command has no recognizable URL"})
 	}
 
 	switch {
@@ -238,7 +238,7 @@ func tokenizeShell(input string) ([]string, error) {
 		}
 	}
 	if quote != 0 {
-		return nil, errors.New("el comando tiene una comilla sin cerrar")
+		return nil, i18n.New(i18n.Msg{ES: "el comando tiene una comilla sin cerrar", EN: "the command has an unclosed quote"})
 	}
 	if started {
 		tokens = append(tokens, cur.String())

@@ -2,10 +2,11 @@ package redisquery
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/redis/go-redis/v9"
+
+	"mini-tools/backend/i18n"
 )
 
 // Interactive MULTI/EXEC.
@@ -58,18 +59,18 @@ func NewTxManager() *TxManager {
 // keys land on different shards is worse than saying no.
 func (t *TxManager) Begin(ctx context.Context, connID string, client redis.UniversalClient) error {
 	if _, isCluster := client.(*redis.ClusterClient); isCluster {
-		return fmt.Errorf("redisquery: en Redis Cluster una transacción solo puede tocar claves del mismo hash slot, así que no se ofrece desde acá")
+		return i18n.Errorf(i18n.Msg{ES: "redisquery: en Redis Cluster una transacción solo puede tocar claves del mismo hash slot, así que no se ofrece desde acá", EN: "redisquery: in Redis Cluster a transaction can only touch keys in the same hash slot, so it isn't offered here"})
 	}
 
 	base, ok := client.(*redis.Client)
 	if !ok {
-		return fmt.Errorf("redisquery: este tipo de conexión no soporta transacciones interactivas")
+		return i18n.Errorf(i18n.Msg{ES: "redisquery: este tipo de conexión no soporta transacciones interactivas", EN: "redisquery: this connection type doesn't support interactive transactions"})
 	}
 
 	t.mu.Lock()
 	if _, exists := t.txs[connID]; exists {
 		t.mu.Unlock()
-		return fmt.Errorf("redisquery: ya hay una transacción abierta en esta conexión")
+		return i18n.Errorf(i18n.Msg{ES: "redisquery: ya hay una transacción abierta en esta conexión", EN: "redisquery: there is already an open transaction on this connection"})
 	}
 	// Reserve before releasing the lock so two concurrent Begins cannot
 	// both think they won.
@@ -82,7 +83,7 @@ func (t *TxManager) Begin(ctx context.Context, connID string, client redis.Unive
 		t.mu.Lock()
 		delete(t.txs, connID)
 		t.mu.Unlock()
-		return fmt.Errorf("redisquery: abriendo la transacción: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "redisquery: abriendo la transacción: %w", EN: "redisquery: opening the transaction: %w"}, err)
 	}
 
 	t.mu.Lock()
@@ -107,9 +108,9 @@ func (t *TxManager) Exec(ctx context.Context, connID string) (interface{}, error
 			// transaction was aborted and NOTHING ran. Saying so is the
 			// whole point — an empty result read as "it worked" is how
 			// data silently goes missing.
-			return nil, fmt.Errorf("redisquery: la transacción se abortó porque cambió una clave vigilada con WATCH; no se aplicó ningún comando")
+			return nil, i18n.Errorf(i18n.Msg{ES: "redisquery: la transacción se abortó porque cambió una clave vigilada con WATCH; no se aplicó ningún comando", EN: "redisquery: the transaction was aborted because a key watched with WATCH changed; no command was applied"})
 		}
-		return nil, fmt.Errorf("redisquery: aplicando la transacción: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "redisquery: aplicando la transacción: %w", EN: "redisquery: applying the transaction: %w"}, err)
 	}
 	return res, nil
 }
@@ -124,7 +125,7 @@ func (t *TxManager) Discard(ctx context.Context, connID string) error {
 	defer func() { _ = state.conn.Close() }()
 
 	if err := state.conn.Do(ctx, "DISCARD").Err(); err != nil {
-		return fmt.Errorf("redisquery: descartando la transacción: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "redisquery: descartando la transacción: %w", EN: "redisquery: discarding the transaction: %w"}, err)
 	}
 	return nil
 }
@@ -202,7 +203,7 @@ func (t *TxManager) take(connID string) (*txState, error) {
 	defer t.mu.Unlock()
 	state, ok := t.txs[connID]
 	if !ok || state == nil {
-		return nil, fmt.Errorf("redisquery: no hay ninguna transacción abierta en esta conexión")
+		return nil, i18n.Errorf(i18n.Msg{ES: "redisquery: no hay ninguna transacción abierta en esta conexión", EN: "redisquery: there is no open transaction on this connection"})
 	}
 	delete(t.txs, connID)
 	return state, nil

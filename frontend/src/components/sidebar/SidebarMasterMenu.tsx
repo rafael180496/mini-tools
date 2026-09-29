@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // El menú master: la fila de íconos que elige QUÉ módulo se ve en la barra.
 //
@@ -51,6 +52,7 @@ interface SidebarMasterMenuProps {
 }
 
 export default function SidebarMasterMenu({modules, active, onSelect, orientation = 'horizontal', trailing}: SidebarMasterMenuProps) {
+    const t = useT()
     const vertical = orientation === 'vertical'
     return (
         <div
@@ -69,10 +71,10 @@ export default function SidebarMasterMenu({modules, active, onSelect, orientatio
                         onClick={() => onSelect(m.id)}
                         title={
                             isActive
-                                ? `${m.label} — ${m.hint} (es el módulo que estás viendo)`
+                                ? t.shell.masterMenu.activeTitle({label: m.label, hint: m.hint})
                                 : m.matchCount != null
-                                  ? `${m.label} — ${m.hint}. ${m.matchCount === 0 ? 'Sin coincidencias con la búsqueda actual' : `${m.matchCount} ${m.matchCount === 1 ? 'coincidencia' : 'coincidencias'} con la búsqueda actual`}`
-                                  : `${m.label} — ${m.hint}`
+                                  ? t.shell.masterMenu.matchesTitle({label: m.label, hint: m.hint, count: m.matchCount})
+                                  : t.shell.masterMenu.title({label: m.label, hint: m.hint})
                         }
                         className={`relative flex h-8 items-center justify-center rounded-lg transition-colors ${vertical ? 'w-8' : 'flex-1'} ${
                             isActive

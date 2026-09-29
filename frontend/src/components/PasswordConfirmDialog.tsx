@@ -1,6 +1,7 @@
 import {FormEvent, useState} from 'react'
 import {createPortal} from 'react-dom'
 import Icon from './Icon'
+import {useT} from '../i18n'
 
 interface PasswordConfirmDialogProps {
     title: string
@@ -26,6 +27,7 @@ interface PasswordConfirmDialogProps {
 // árbol DOM del contenedor; el stopPropagation de submit() se encarga de la
 // otra mitad, la del árbol de React.
 export default function PasswordConfirmDialog({title, description, confirmLabel, onConfirm, onClose}: PasswordConfirmDialogProps) {
+    const t = useT()
     const [password, setPassword] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
@@ -67,7 +69,7 @@ export default function PasswordConfirmDialog({title, description, confirmLabel,
                     autoFocus
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Clave maestra"
+                    placeholder={t.lock.passwordPlaceholder}
                     className="rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
                 />
                 {error && <p className="text-xs text-error">{error}</p>}
@@ -76,17 +78,17 @@ export default function PasswordConfirmDialog({title, description, confirmLabel,
                         type="button"
                         onClick={onClose}
                         disabled={busy}
-                        title="Cierra sin hacer nada"
+                        title={t.common.closeWithoutChanges}
                         className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface disabled:opacity-50"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     <button
                         type="submit"
                         disabled={busy || !password}
                         className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
-                        {busy ? 'Verificando…' : confirmLabel}
+                        {busy ? t.settings.restoreVault.verifying : confirmLabel}
                     </button>
                 </div>
             </form>

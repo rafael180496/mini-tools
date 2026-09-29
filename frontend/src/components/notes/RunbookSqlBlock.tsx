@@ -5,6 +5,7 @@ import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 import {inspectSQL} from '../../lib/sqlProductionGuard'
+import {t as tr, useT} from '../../i18n'
 
 // Bloque SQL ejecutable de un runbook: ```sql connection="Prod_Analytics".
 //
@@ -42,6 +43,7 @@ interface Props {
 }
 
 export default function RunbookSqlBlock({connectionName, sql}: Props) {
+    const t = useT()
     const [running, setRunning] = useState(false)
     const [error, setError] = useState('')
     const [columns, setColumns] = useState<string[]>([])
@@ -76,17 +78,17 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
                         setRows((prev) => [...prev, ...(ev.rows ?? [])])
                         break
                     case 'done':
-                        setSummary(`${ev.rowsAffected ?? 0} filas · ${ev.durationMs ?? 0} ms`)
+                        setSummary(tr().notes.runbook.rowsSummary({rows: ev.rowsAffected ?? 0, ms: ev.durationMs ?? 0}))
                         setRunning(false)
                         off()
                         break
                     case 'cancelled':
-                        setSummary('Cancelada')
+                        setSummary(tr().notes.runbook.cancelled)
                         setRunning(false)
                         off()
                         break
                     case 'error':
-                        setError(ev.error ?? 'error desconocido')
+                        setError(ev.error ?? tr().notes.runbook.unknownError)
                         setRunning(false)
                         off()
                         break
@@ -121,11 +123,11 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
                     // Un alias que ya no existe se dice con su nombre: un
                     // runbook viejo apunta a conexiones que se renombraron, y
                     // "error al ejecutar" no ayudaría a arreglarlo.
-                    setError(`La conexión «${connectionName}» ya no está guardada en este equipo.`)
+                    setError(tr().notes.runbook.connectionGone({name: connectionName}))
                     return
                 }
                 if (conn.dbType === 'ssh') {
-                    setError(`«${conn.name}» es una conexión SSH: este bloque es SQL.`)
+                    setError(tr().notes.runbook.sshConnection({name: conn.name}))
                     return
                 }
                 if (conn.environment === 'prod') {
@@ -135,7 +137,7 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
                             .slice(0, 5)
                             .map((r) => `• ${r.label}: ${r.detail}\n  ${r.statement.split('\n')[0]}`)
                             .join('\n\n')
-                        const extra = risks.length > 5 ? `\n\n…y ${risks.length - 5} sentencia(s) más.` : ''
+                        const extra = risks.length > 5 ? `\n\n${tr().notes.runbook.moreStatements(risks.length - 5)}` : ''
                         setConfirmProd({conn, detail: detail + extra})
                         return
                     }
@@ -150,27 +152,27 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
             <div className="flex items-center gap-2 bg-surface-container px-2 py-1 text-ui-10">
                 <Icon name="database" size={12} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">{connectionName}</span>
-                <span className="text-on-surface-variant">bloque ejecutable</span>
+                <span className="text-on-surface-variant">{t.notes.runbook.executable}</span>
 
                 {running ? (
                     <button
                         onClick={() => {
                             void CancelQuery(queryIdRef.current)
                         }}
-                        title="Corta la ejecución en curso"
+                        title={t.notes.runbook.cancelTitle}
                         className="ml-auto flex shrink-0 items-center gap-1 rounded bg-error px-2 py-0.5 text-on-error"
                     >
                         <Icon name="stop" size={11} />
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                 ) : (
                     <button
                         onClick={start}
-                        title={`Ejecuta SOLO este bloque contra «${connectionName}». Si esa conexión está marcada como producción y la sentencia modifica datos o estructura, se pide la misma confirmación que en el editor SQL.`}
+                        title={t.notes.runbook.runTitle({name: connectionName})}
                         className="ml-auto flex shrink-0 items-center gap-1 rounded bg-primary px-2 py-0.5 text-on-primary"
                     >
                         <Icon name="play_arrow" size={12} filled />
-                        Ejecutar
+                        {t.notes.runbook.run}
                     </button>
                 )}
             </div>
@@ -215,19 +217,19 @@ export default function RunbookSqlBlock({connectionName, sql}: Props) {
                     )}
                     <p
                         className="px-2 py-0.5 text-ui-10 text-on-surface-variant"
-                        title="El resultado no se guarda dentro de la nota: se muestra acá y se va al cerrar. Una nota con las filas de la última corrida pegadas adentro es documentación que envejece sola."
+                        title={t.notes.runbook.resultTitle}
                     >
                         {summary}
-                        {rows.length > 200 && ` · mostrando 200 de ${rows.length}`}
+                        {rows.length > 200 && t.notes.runbook.showing({total: rows.length})}
                     </p>
                 </div>
             )}
 
             {confirmProd && (
                 <ConfirmDialog
-                    title={`Estás en PRODUCCIÓN — ${confirmProd.conn.name}`}
-                    description={`Este bloque del runbook modifica datos o estructura en una conexión marcada como Producción:\n\n${confirmProd.detail}`}
-                    confirmLabel="Ejecutar igual"
+                    title={t.notes.runbook.prodTitle({name: confirmProd.conn.name})}
+                    description={t.notes.runbook.prodDescription({detail: confirmProd.detail})}
+                    confirmLabel={t.notes.runbook.runAnyway}
                     danger
                     onConfirm={() => {
                         const conn = confirmProd.conn

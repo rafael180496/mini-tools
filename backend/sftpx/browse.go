@@ -1,7 +1,7 @@
 package sftpx
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/sshconn"
 	"os"
 	"sync"
@@ -43,7 +43,7 @@ func NewBrowseManager(pool *sshconn.ClientPool) *BrowseManager {
 // vault or a persisted DSN.
 func (m *BrowseManager) Open(sessionID, connID, dsn string) (string, error) {
 	if sessionID == LocalSession {
-		return "", fmt.Errorf("sftpx: %q está reservado para la máquina local", LocalSession)
+		return "", i18n.Errorf(i18n.Msg{ES: "sftpx: %q está reservado para la máquina local", EN: "sftpx: %q is reserved for the local machine"}, LocalSession)
 	}
 	fs, err := dialRemote(m.pool, connID, dsn)
 	if err != nil {
@@ -76,7 +76,7 @@ func (m *BrowseManager) fsFor(sessionID string) (fileSystem, error) {
 	fs := m.sessions[sessionID]
 	m.mu.Unlock()
 	if fs == nil {
-		return nil, fmt.Errorf("sftpx: no hay una sesión abierta para %q", sessionID)
+		return nil, i18n.Errorf(i18n.Msg{ES: "sftpx: no hay una sesión abierta para %q", EN: "sftpx: there is no open session for %q"}, sessionID)
 	}
 	return fs, nil
 }

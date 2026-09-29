@@ -19,6 +19,7 @@ import Select from '../Select'
 import PasswordField from './PasswordField'
 import SshKeyVaultDialog from './SshKeyVaultDialog'
 import Toggle from '../Toggle'
+import {useT} from '../../i18n'
 
 interface ConnectionDialogProps {
     // null = creating a new connection; a connection id = editing that one.
@@ -97,6 +98,8 @@ function normalizeNodeList(raw: string): string {
 }
 
 export default function ConnectionDialog({editingId, onClose, onSaved, initialDbType}: ConnectionDialogProps) {
+    const t = useT()
+    const tr = t.db.connectionDialog
     const [name, setName] = useState('')
     const [color, setColor] = useState('#60a5fa')
     // Environment marking. '' = unmarked, which is the default on purpose:
@@ -254,7 +257,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
         }
         const parsed = parseConnectionString(value)
         if (!parsed) {
-            setPasteHint('No se pudo detectar el formato — completá los campos a mano.')
+            setPasteHint(tr.pasteUnrecognized)
             return
         }
         setDbType(parsed.dbType)
@@ -263,7 +266,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
         if (parsed.mongoMode) setMongoMode(parsed.mongoMode)
         setParams(parsed.params)
         setPingStatus('idle')
-        setPasteHint(`Detectado: ${parsed.dbType === 'oracle' ? `Oracle (${parsed.oracleMode})` : parsed.dbType}`)
+        setPasteHint(tr.pasteDetected({type: parsed.dbType === 'oracle' ? `Oracle (${parsed.oracleMode})` : parsed.dbType}))
     }
 
     function cfg(): main.ConnectionInput {
@@ -416,6 +419,31 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
         'rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface outline-none focus:border-primary'
     const labelClass = 'flex flex-col gap-1 text-xs text-on-surface-variant'
 
+    // Fuera del JSX: el chequeo de i18n toma los literales de una comparación
+    // dentro de {…} como si fueran texto de interfaz.
+    const isSqlite = dbType === 'sqlite'
+    const isPostgres = dbType === 'postgres'
+    const isSqlServer = dbType === 'sqlserver'
+    const isOracle = dbType === 'oracle'
+    const isMongo = dbType === 'mongodb'
+    const isRedis = dbType === 'redis'
+    const isSsh = dbType === 'ssh'
+    const sqlcipherOn = params.sqlcipher_on === 'true'
+    const oracleServiceMode = oracleMode === 'service_name' || oracleMode === 'easy_connect'
+    const oracleSidMode = oracleMode === 'sid'
+    const oracleTnsMode = oracleMode === 'tns'
+    const mongoStandard = mongoMode === 'standard'
+    const redisStandalone = redisMode === 'standalone'
+    const redisCluster = redisMode === 'cluster'
+    const redisSentinel = redisMode === 'sentinel'
+    const sshPasswordAuth = sshAuthMethod === 'password'
+    const sshKeyAuth = sshAuthMethod === 'key'
+    const sshStoredKey = sshKeyAuth && sshKeySource === 'stored'
+    const sshInlineKey = sshKeyAuth && sshKeySource === 'inline'
+    const pingOk = pingStatus === 'ok'
+    const pingFailed = pingStatus === 'failed'
+    const pingIdle = pingStatus === 'idle'
+
     return (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
             <form
@@ -430,20 +458,20 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                     </span>
                     <div className="min-w-0 flex-1">
                         <h2 className="text-base font-semibold leading-tight">
-                            {editingId ? 'Editar conexión' : typeLocked ? `Nueva conexión ${dbTypeLabel(dbType)}` : 'Nueva conexión'}
+                            {editingId ? tr.titleEdit : typeLocked ? tr.titleNewTyped({engine: dbTypeLabel(dbType)}) : tr.titleNew}
                         </h2>
                         <p className="text-xs text-on-surface-variant">
-                            {dbType === 'ssh'
-                                ? 'Terminal interactiva y transferencia de archivos por SSH'
+                            {isSsh
+                                ? tr.subtitleSsh
                                 : editingId
-                                  ? 'Los cambios se guardan cifrados en el vault'
-                                  : 'Completá los datos — se guarda cifrada en el vault'}
+                                  ? tr.subtitleEdit
+                                  : tr.subtitleNew}
                         </p>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        title="Cerrar sin guardar"
+                        title={tr.closeHint}
                         className="rounded-full p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={20} />
@@ -452,43 +480,43 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
 
                 {/* Body (scrolleable) */}
                 <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
-                {loadingEdit && <p className="text-xs text-on-surface-variant">Cargando conexión…</p>}
+                {loadingEdit && <p className="text-xs text-on-surface-variant">{tr.loading}</p>}
 
                 <div className="flex gap-2">
                     <label className={`${labelClass} flex-1`}>
-                        Nombre
+                        {tr.name}
                         <input
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="mi base"
+                            placeholder={tr.namePlaceholder}
                             className={inputClass}
                         />
                     </label>
                     <label className={labelClass} style={{width: '3.25rem'}}>
-                        Color
+                        {tr.color}
                         <input
                             type="color"
                             value={color}
                             onChange={(e) => setColor(e.target.value)}
-                            title="Color para identificar esta conexión en la lista de conexiones — solo visual, no afecta la conexión"
+                            title={tr.colorHint}
                             className="h-9 w-full cursor-pointer rounded-lg border border-outline bg-surface p-1"
                         />
                     </label>
                 </div>
 
                 <div className={labelClass}>
-                    Entorno
+                    {tr.environment}
                     <Select
                         value={environment}
                         options={[
-                            {value: '', label: 'Sin marcar'},
-                            {value: 'prod', label: 'Producción'},
-                            {value: 'staging', label: 'Staging / QA'},
-                            {value: 'dev', label: 'Desarrollo'},
+                            {value: '', label: tr.envNone},
+                            {value: 'prod', label: tr.envProd},
+                            {value: 'staging', label: tr.envStaging},
+                            {value: 'dev', label: tr.envDev},
                         ]}
                         onChange={setEnvironment}
-                        title="Tiñe la conexión en la lista según el entorno y, marcada como Producción, pide confirmación antes de algo irreversible: en SSH ante comandos destructivos (rm -rf, mkfs, dd, systemctl stop…) y en una base de datos ante DROP, TRUNCATE, GRANT o un DELETE/UPDATE que toque datos."
-                        ariaLabel="Entorno"
+                        title={tr.environmentHint}
+                        ariaLabel={tr.environment}
                         className="w-full"
                     />
                     {environment !== '' && (
@@ -501,11 +529,11 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
 
                 {!typeLocked && (
                     <label className={labelClass}>
-                        Pegar connection string (opcional)
+                        {tr.paste}
                         <textarea
                             value={pasteInput}
                             onChange={(e) => handlePasteChange(e.target.value)}
-                            placeholder="postgres://user:pass@host:5432/db?sslmode=require, user/pass@host:1521/service, jdbc:oracle:thin:..., o una ruta .db — copiado directo de un .env"
+                            placeholder={tr.pastePlaceholder}
                             rows={2}
                             className={`${inputClass} font-mono text-xs`}
                         />
@@ -516,11 +544,11 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                 {typeLocked ? (
                     <div className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-highest px-3 py-2 text-xs text-on-surface-variant">
                         <DbTypeIcon dbType={dbType} size={18} />
-                        Motor: {dbTypeLabel(dbType)}
+                        {tr.engineLocked({engine: dbTypeLabel(dbType)})}
                     </div>
                 ) : (
                     <div className={labelClass}>
-                        Tipo
+                        {tr.type}
                         {/* A responsive grid, not a single flex row — with 6
                             engines a fixed row overflowed the modal and clipped
                             the last chip (Redis). 3 columns = 2 tidy rows that
@@ -533,75 +561,75 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             from here would never show up in "Conexiones" (see
                             ConnectionTree.tsx's dbConnections filter). */}
                         <div className="grid grid-cols-3 gap-2">
-                            {DB_TYPES.filter((t) => t !== 'ssh').map((t) => (
+                            {DB_TYPES.filter((ty) => ty !== 'ssh').map((ty) => (
                                 <button
-                                    key={t}
+                                    key={ty}
                                     type="button"
-                                    onClick={() => changeDbType(t)}
+                                    onClick={() => changeDbType(ty)}
                                     disabled={!!editingId}
                                     title={
                                         editingId
-                                            ? 'No se puede cambiar el motor de una conexión existente — creá una nueva'
-                                            : `Usar ${dbTypeLabel(t)}`
+                                            ? tr.typeLockedHint
+                                            : tr.useEngine({engine: dbTypeLabel(ty)})
                                     }
                                     className={`flex min-w-0 flex-col items-center gap-1.5 rounded-lg border px-1 py-2.5 text-xs transition-colors disabled:opacity-50 disabled:hover:bg-transparent ${
-                                        dbType === t
+                                        dbType === ty
                                             ? 'border-primary bg-primary-container text-on-primary-container'
                                             : 'border-outline text-on-surface-variant hover:bg-surface-variant'
                                     }`}
                                 >
-                                    <DbTypeIcon dbType={t} size={22} />
-                                    <span className="w-full truncate text-center">{dbTypeLabel(t)}</span>
+                                    <DbTypeIcon dbType={ty} size={22} />
+                                    <span className="w-full truncate text-center">{dbTypeLabel(ty)}</span>
                                 </button>
                             ))}
                         </div>
                     </div>
                 )}
 
-                {dbType === 'sqlite' && (
+                {isSqlite && (
                     <>
                         <label className={labelClass}>
-                            Archivo (.db / .sqlite)
+                            {tr.sqlite.file}
                             <div className="flex gap-2">
                                 <input
                                     value={params.path ?? ''}
                                     onChange={(e) => setParam('path', e.target.value)}
                                     onBlur={redetectOnBlur}
-                                    placeholder="/ruta/a/archivo.db"
+                                    placeholder={tr.sqlite.filePlaceholder}
                                     className={`${inputClass} min-w-0 flex-1`}
                                 />
                                 <button
                                     type="button"
                                     onClick={pickSqliteFile}
-                                    title="Elegir el archivo con el explorador — detecta solo si está cifrado con SQLCipher"
+                                    title={tr.sqlite.pickFileHint}
                                     className="shrink-0 rounded bg-surface-variant px-3 text-xs text-on-surface-variant hover:bg-surface-container-highest"
                                 >
-                                    Elegir…
+                                    {tr.sqlite.pickFile}
                                 </button>
                             </div>
                         </label>
                         <div
                             className="flex items-center gap-2.5 text-xs text-on-surface-variant"
-                            title="Activá esto si el archivo está cifrado con SQLCipher — se descifra a una copia temporal de solo lectura para abrirlo (los datos cifrados no se modifican). Detecta SQLCipher 3 y 4 automáticamente."
+                            title={tr.sqlite.encryptedHint}
                         >
                             <Toggle
-                                checked={params.sqlcipher_on === 'true'}
+                                checked={sqlcipherOn}
                                 onChange={(c) => {
                                     setParam('sqlcipher_on', c ? 'true' : '')
                                     if (!c) setParam('sqlcipher_key', '')
                                 }}
-                                ariaLabel="Base cifrada con SQLCipher"
+                                ariaLabel={tr.sqlite.encryptedAria}
                             />
-                            Base cifrada (SQLCipher)
+                            {tr.sqlite.encrypted}
                         </div>
-                        {params.sqlcipher_on === 'true' && (
+                        {sqlcipherOn && (
                             <label className={labelClass}>
-                                Clave / passphrase de SQLCipher
+                                {tr.sqlite.key}
                                 <input
                                     type="password"
                                     value={params.sqlcipher_key ?? ''}
                                     onChange={(e) => setParam('sqlcipher_key', e.target.value)}
-                                    placeholder={params.sqlcipher_encrypted === '1' ? 'Dejá en blanco para conservar la actual' : "passphrase, o clave raw x'…'"}
+                                    placeholder={params.sqlcipher_encrypted === '1' ? tr.sqlite.keyKeep : tr.sqlite.keyPlaceholder}
                                     className={inputClass}
                                 />
                             </label>
@@ -609,20 +637,20 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                     </>
                 )}
 
-                {dbType === 'postgres' && (
+                {isPostgres && (
                     <>
                         <div className="flex gap-2">
                             <label className={`${labelClass} flex-1`}>
-                                Host
+                                {tr.host}
                                 <input
                                     value={params.host ?? ''}
                                     onChange={(e) => setParam('host', e.target.value)}
-                                    placeholder="localhost"
+                                    placeholder={tr.ph.localhost}
                                     className={inputClass}
                                 />
                             </label>
                             <label className={labelClass} style={{width: '5rem'}}>
-                                Puerto
+                                {tr.port}
                                 <input
                                     value={params.port ?? ''}
                                     onChange={(e) => setParam('port', e.target.value)}
@@ -632,7 +660,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             </label>
                         </div>
                         <label className={labelClass}>
-                            Usuario
+                            {tr.user}
                             <input
                                 value={params.user ?? ''}
                                 onChange={(e) => setParam('user', e.target.value)}
@@ -647,7 +675,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             labelClass={labelClass}
                         />
                         <label className={labelClass}>
-                            Base de datos
+                            {tr.database}
                             <input
                                 value={params.dbname ?? ''}
                                 onChange={(e) => setParam('dbname', e.target.value)}
@@ -655,53 +683,53 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             />
                         </label>
                         <div className={labelClass}>
-                            SSL mode
+                            {tr.sslMode}
                             <Select
                                 value={params.sslmode ?? 'prefer'}
                                 options={SSL_MODES.map((m) => ({value: m, label: m}))}
                                 onChange={(v) => setParam('sslmode', v)}
-                                ariaLabel="SSL mode"
+                                ariaLabel={tr.sslMode}
                                 className="w-full"
                             />
                         </div>
                     </>
                 )}
 
-                {dbType === 'sqlserver' && (
+                {isSqlServer && (
                     <>
                         <div className="flex gap-2">
                             <label className={`${labelClass} flex-1`}>
-                                Host
+                                {tr.host}
                                 <input
                                     value={params.host ?? ''}
                                     onChange={(e) => setParam('host', e.target.value)}
-                                    placeholder="localhost"
+                                    placeholder={tr.ph.localhost}
                                     className={inputClass}
                                 />
                             </label>
                             <label className={labelClass} style={{width: '5rem'}}>
-                                Puerto
+                                {tr.port}
                                 <input
                                     value={params.port ?? ''}
                                     onChange={(e) => setParam('port', e.target.value)}
                                     placeholder="1433"
-                                    title="Puerto TCP (por defecto 1433). Se ignora si indicás una instancia con nombre."
+                                    title={tr.sqlserver.portHint}
                                     className={inputClass}
                                 />
                             </label>
                         </div>
                         <label className={labelClass}>
-                            Instancia (opcional)
+                            {tr.sqlserver.instance}
                             <input
                                 value={params.instance ?? ''}
                                 onChange={(e) => setParam('instance', e.target.value)}
-                                placeholder="SQLEXPRESS"
-                                title="Nombre de instancia con nombre. Si se indica, el puerto lo resuelve el SQL Server Browser y el campo Puerto se ignora."
+                                placeholder={tr.ph.sqlExpress}
+                                title={tr.sqlserver.instanceHint}
                                 className={inputClass}
                             />
                         </label>
                         <label className={labelClass}>
-                            Usuario
+                            {tr.user}
                             <input
                                 value={params.user ?? ''}
                                 onChange={(e) => setParam('user', e.target.value)}
@@ -716,7 +744,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             labelClass={labelClass}
                         />
                         <label className={labelClass}>
-                            Base de datos
+                            {tr.database}
                             <input
                                 value={params.dbname ?? ''}
                                 onChange={(e) => setParam('dbname', e.target.value)}
@@ -724,12 +752,12 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             />
                         </label>
                         <div className={labelClass}>
-                            Encriptación
+                            {tr.sqlserver.encryption}
                             <Select
                                 value={params.encrypt ?? 'disable'}
                                 options={['disable', 'false', 'true', 'strict'].map((m) => ({value: m, label: m}))}
                                 onChange={(v) => setParam('encrypt', v)}
-                                ariaLabel="Modo de encriptación"
+                                ariaLabel={tr.sqlserver.encryptionAria}
                                 className="w-full"
                             />
                         </div>
@@ -738,27 +766,27 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 type="checkbox"
                                 checked={(params.trustServerCertificate ?? '') === 'true'}
                                 onChange={(e) => setParam('trustServerCertificate', e.target.checked ? 'true' : '')}
-                                title="Confiar en el certificado del servidor sin validarlo (útil con certificados autofirmados en redes internas). No recomendado fuera de una red controlada."
+                                title={tr.sqlserver.trustCertHint}
                             />
-                            Confiar en el certificado del servidor
+                            {tr.sqlserver.trustCert}
                         </label>
                     </>
                 )}
 
-                {dbType === 'oracle' && (
+                {isOracle && (
                     <>
                         <div className="flex gap-2">
                             <label className={`${labelClass} flex-1`}>
-                                Host
+                                {tr.host}
                                 <input
                                     value={params.host ?? ''}
                                     onChange={(e) => setParam('host', e.target.value)}
-                                    placeholder="localhost"
+                                    placeholder={tr.ph.localhost}
                                     className={inputClass}
                                 />
                             </label>
                             <label className={labelClass} style={{width: '5rem'}}>
-                                Puerto
+                                {tr.port}
                                 <input
                                     value={params.port ?? ''}
                                     onChange={(e) => setParam('port', e.target.value)}
@@ -768,7 +796,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             </label>
                         </div>
                         <label className={labelClass}>
-                            Usuario
+                            {tr.user}
                             <input
                                 value={params.user ?? ''}
                                 onChange={(e) => setParam('user', e.target.value)}
@@ -783,50 +811,50 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             labelClass={labelClass}
                         />
                         <div className={labelClass}>
-                            Modo de conexión
+                            {tr.connectMode}
                             <Select
                                 value={oracleMode}
                                 options={[
-                                    {value: 'service_name', label: 'Service Name'},
-                                    {value: 'easy_connect', label: 'Easy Connect'},
-                                    {value: 'sid', label: 'SID'},
-                                    {value: 'tns', label: 'TNS (descriptor completo)'},
+                                    {value: 'service_name', label: tr.oracle.modeServiceName},
+                                    {value: 'easy_connect', label: tr.oracle.modeEasyConnect},
+                                    {value: 'sid', label: tr.oracle.modeSid},
+                                    {value: 'tns', label: tr.oracle.modeTns},
                                 ]}
                                 onChange={(v) => setOracleMode(v as OracleMode)}
-                                ariaLabel="Modo de conexión Oracle"
+                                ariaLabel={tr.oracle.modeAria}
                                 className="w-full"
                             />
                         </div>
 
-                        {(oracleMode === 'service_name' || oracleMode === 'easy_connect') && (
+                        {oracleServiceMode && (
                             <label className={labelClass}>
-                                Service name
+                                {tr.oracle.serviceName}
                                 <input
                                     value={params.service ?? ''}
                                     onChange={(e) => setParam('service', e.target.value)}
-                                    placeholder="ORCLPDB1"
+                                    placeholder={tr.ph.orclPdb}
                                     className={inputClass}
                                 />
                             </label>
                         )}
-                        {oracleMode === 'sid' && (
+                        {oracleSidMode && (
                             <label className={labelClass}>
-                                SID
+                                {tr.oracle.sid}
                                 <input
                                     value={params.sid ?? ''}
                                     onChange={(e) => setParam('sid', e.target.value)}
-                                    placeholder="ORCL"
+                                    placeholder={tr.ph.orcl}
                                     className={inputClass}
                                 />
                             </label>
                         )}
-                        {oracleMode === 'tns' && (
+                        {oracleTnsMode && (
                             <label className={labelClass}>
-                                Connect descriptor (tnsnames.ora)
+                                {tr.oracle.descriptor}
                                 <textarea
                                     value={params.connectDescriptor ?? ''}
                                     onChange={(e) => setParam('connectDescriptor', e.target.value)}
-                                    placeholder="(DESCRIPTION=(ADDRESS=(HOST=...)(PORT=...))(CONNECT_DATA=(SERVICE_NAME=...)))"
+                                    placeholder={tr.ph.tnsDescriptor}
                                     rows={3}
                                     className={`${inputClass} font-mono text-xs`}
                                 />
@@ -835,73 +863,73 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                     </>
                 )}
 
-                {dbType === 'mongodb' && (
+                {isMongo && (
                     <>
                         <div className={labelClass}>
-                            Modo
+                            {tr.mongo.mode}
                             <Select
                                 value={mongoMode}
                                 options={[
-                                    {value: 'standard', label: 'Standard (mongodb://)'},
-                                    {value: 'srv', label: 'SRV / Atlas (mongodb+srv://)'},
+                                    {value: 'standard', label: tr.mongo.modeStandard},
+                                    {value: 'srv', label: tr.mongo.modeSrv},
                                 ]}
                                 onChange={(v) => setMongoMode(v as MongoMode)}
-                                ariaLabel="Modo de conexión MongoDB"
+                                ariaLabel={tr.mongo.modeAria}
                                 className="w-full"
                             />
                         </div>
                         <div className="flex gap-2">
                             <label className={`${labelClass} flex-1`}>
-                                Host
-                                <input value={params.host ?? ''} onChange={(e) => setParam('host', e.target.value)} placeholder="localhost" className={inputClass} />
+                                {tr.host}
+                                <input value={params.host ?? ''} onChange={(e) => setParam('host', e.target.value)} placeholder={tr.ph.localhost} className={inputClass} />
                             </label>
-                            {mongoMode === 'standard' && (
+                            {mongoStandard && (
                                 <label className={labelClass} style={{width: '5rem'}}>
-                                    Puerto
+                                    {tr.port}
                                     <input value={params.port ?? ''} onChange={(e) => setParam('port', e.target.value)} placeholder="27017" className={inputClass} />
                                 </label>
                             )}
                         </div>
-                        {mongoMode === 'standard' && (
+                        {mongoStandard && (
                             <label className={labelClass}>
-                                Hosts (replica set, opcional)
+                                {tr.mongo.hosts}
                                 <input
                                     value={params.hosts ?? ''}
                                     onChange={(e) => setParam('hosts', e.target.value)}
-                                    placeholder="h1:27017,h2:27017"
-                                    title="Lista separada por comas para un replica set / mongos. Si se completa, reemplaza Host/Puerto."
+                                    placeholder={tr.ph.mongoHosts}
+                                    title={tr.mongo.hostsHint}
                                     className={inputClass}
                                 />
                             </label>
                         )}
                         <label className={labelClass}>
-                            Usuario (opcional)
+                            {tr.mongo.userOptional}
                             <input value={params.user ?? ''} onChange={(e) => setParam('user', e.target.value)} className={inputClass} />
                         </label>
                         <PasswordField
                             value={params.password ?? ''}
                             onChange={(v) => setParam('password', v)}
                             editingId={editingId}
-                            label="Password (opcional)"
+                            label={tr.mongo.passwordOptional}
                             inputClass={inputClass}
                             labelClass={labelClass}
                         />
                         <label className={labelClass}>
-                            Base de datos (opcional)
+                            {tr.mongo.databaseOptional}
                             <input
                                 value={params.database ?? ''}
                                 onChange={(e) => setParam('database', e.target.value)}
-                                title="Base por defecto. El árbol lateral navega todas las bases igual."
+                                title={tr.mongo.databaseHint}
                                 className={inputClass}
                             />
                         </label>
                         <label className={labelClass}>
-                            authSource (opcional)
-                            <input value={params.authSource ?? ''} onChange={(e) => setParam('authSource', e.target.value)} placeholder="admin" className={inputClass} />
+                            {tr.mongo.authSource}
+                            <input value={params.authSource ?? ''} onChange={(e) => setParam('authSource', e.target.value)} placeholder={tr.ph.authSource} className={inputClass} />
                         </label>
-                        {mongoMode === 'standard' && (
+                        {mongoStandard && (
                             <label className={labelClass}>
-                                replicaSet (opcional)
+                                {tr.mongo.replicaSet}
                                 <input value={params.replicaSet ?? ''} onChange={(e) => setParam('replicaSet', e.target.value)} className={inputClass} />
                             </label>
                         )}
@@ -910,44 +938,44 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 type="checkbox"
                                 checked={(params.tls ?? '') === 'true'}
                                 onChange={(e) => setParam('tls', e.target.checked ? 'true' : '')}
-                                title="Conectar con TLS/SSL."
+                                title={tr.mongo.tlsHint}
                             />
                             TLS
                         </label>
                     </>
                 )}
 
-                {dbType === 'redis' && (
+                {isRedis && (
                     <>
                         <div className={labelClass}>
-                            Modo de conexión
+                            {tr.connectMode}
                             <Select
                                 value={redisMode}
                                 options={[
-                                    {value: 'standalone', label: 'Standalone'},
-                                    {value: 'cluster', label: 'Cluster'},
-                                    {value: 'sentinel', label: 'Sentinel'},
+                                    {value: 'standalone', label: tr.redis.modeStandalone},
+                                    {value: 'cluster', label: tr.redis.modeCluster},
+                                    {value: 'sentinel', label: tr.redis.modeSentinel},
                                 ]}
                                 onChange={(v) => setRedisMode(v as RedisMode)}
-                                title="Standalone: un solo servidor Redis. Cluster: varios nodos con sharding automático (sin índice de DB — Redis Cluster no soporta SELECT). Sentinel: alta disponibilidad con failover automático de un master/réplica."
-                                ariaLabel="Modo de conexión Redis"
+                                title={tr.redis.modeHint}
+                                ariaLabel={tr.redis.modeAria}
                                 className="w-full"
                             />
                         </div>
 
-                        {redisMode === 'standalone' && (
+                        {redisStandalone && (
                             <div className="flex gap-2">
                                 <label className={`${labelClass} flex-1`}>
-                                    Host
+                                    {tr.host}
                                     <input
                                         value={params.host ?? ''}
                                         onChange={(e) => setParam('host', e.target.value)}
-                                        placeholder="localhost"
+                                        placeholder={tr.ph.localhost}
                                         className={inputClass}
                                     />
                                 </label>
                                 <label className={labelClass} style={{width: '5rem'}}>
-                                    Puerto
+                                    {tr.port}
                                     <input
                                         value={params.port ?? ''}
                                         onChange={(e) => setParam('port', e.target.value)}
@@ -958,40 +986,40 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             </div>
                         )}
 
-                        {redisMode === 'cluster' && (
+                        {redisCluster && (
                             <label className={labelClass}>
-                                Nodos del cluster
+                                {tr.redis.clusterNodes}
                                 <textarea
                                     value={params.nodes ?? ''}
                                     onChange={(e) => setParam('nodes', e.target.value)}
-                                    placeholder={'host1:6379\nhost2:6379\nhost3:6379'}
-                                    title="Lista de nodos semilla del cluster (host:puerto), uno por línea o separados por coma — no hace falta listar todos los nodos, con 1-2 nodos vivos el cliente descubre el resto"
+                                    placeholder={tr.ph.clusterNodes}
+                                    title={tr.redis.clusterNodesHint}
                                     rows={3}
                                     className={`${inputClass} font-mono text-xs`}
                                 />
                             </label>
                         )}
 
-                        {redisMode === 'sentinel' && (
+                        {redisSentinel && (
                             <>
                                 <label className={labelClass}>
-                                    Nodos Sentinel
+                                    {tr.redis.sentinelNodes}
                                     <textarea
                                         value={params.sentinels ?? ''}
                                         onChange={(e) => setParam('sentinels', e.target.value)}
-                                        placeholder={'sentinel1:26379\nsentinel2:26379\nsentinel3:26379'}
-                                        title="Direcciones de los procesos Sentinel (NO del servidor Redis en sí) — uno por línea o separados por coma"
+                                        placeholder={tr.ph.sentinelNodes}
+                                        title={tr.redis.sentinelNodesHint}
                                         rows={3}
                                         className={`${inputClass} font-mono text-xs`}
                                     />
                                 </label>
                                 <label className={labelClass}>
-                                    Master name
+                                    {tr.redis.masterName}
                                     <input
                                         value={params.master ?? ''}
                                         onChange={(e) => setParam('master', e.target.value)}
-                                        placeholder="mymaster"
-                                        title="Nombre lógico del master configurado en los Sentinel (sentinel monitor <nombre> ...) — no es un host ni una IP"
+                                        placeholder={tr.ph.masterName}
+                                        title={tr.redis.masterNameHint}
                                         className={inputClass}
                                     />
                                 </label>
@@ -999,12 +1027,12 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                         )}
 
                         <label className={labelClass}>
-                            Usuario ACL (opcional)
+                            {tr.redis.aclUser}
                             <input
                                 value={params.user ?? ''}
                                 onChange={(e) => setParam('user', e.target.value)}
-                                placeholder="default"
-                                title="Usuario ACL de Redis 6+ — dejar en blanco si el servidor no tiene ACLs configuradas"
+                                placeholder={tr.ph.aclUser}
+                                title={tr.redis.aclUserHint}
                                 className={inputClass}
                             />
                         </label>
@@ -1015,21 +1043,21 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             inputClass={inputClass}
                             labelClass={labelClass}
                         />
-                        {redisMode !== 'cluster' && (
+                        {!redisCluster && (
                             <label className={labelClass}>
-                                Índice de DB (0-15)
+                                {tr.redis.dbIndex}
                                 <input
                                     value={params.db ?? ''}
                                     onChange={(e) => setParam('db', e.target.value)}
                                     placeholder="0"
-                                    title="Base lógica de Redis a usar (0-15, default 0) — no aplica en modo Cluster, que siempre usa una única base"
+                                    title={tr.redis.dbIndexHint}
                                     className={inputClass}
                                 />
                             </label>
                         )}
                         <div
                             className="flex items-center gap-2.5 text-xs text-on-surface-variant"
-                            title="Usar TLS (esquema rediss://) para conectar — activalo si el servidor requiere conexión cifrada"
+                            title={tr.redis.tlsHint}
                         >
                             <Toggle
                                 checked={params.tls === 'true'}
@@ -1041,11 +1069,11 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                     </>
                 )}
 
-                {dbType === 'ssh' && (
+                {isSsh && (
                     <>
                         <div className="flex gap-2">
                             <label className={`${labelClass} flex-1`}>
-                                Host
+                                {tr.host}
                                 <input
                                     value={params.host ?? ''}
                                     onChange={(e) => setParam('host', e.target.value)}
@@ -1054,7 +1082,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 />
                             </label>
                             <label className={labelClass} style={{width: '5rem'}}>
-                                Puerto
+                                {tr.port}
                                 <input
                                     value={params.port ?? ''}
                                     onChange={(e) => setParam('port', e.target.value)}
@@ -1064,7 +1092,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             </label>
                         </div>
                         <label className={labelClass}>
-                            Usuario
+                            {tr.user}
                             <input
                                 value={params.user ?? ''}
                                 onChange={(e) => setParam('user', e.target.value)}
@@ -1072,21 +1100,21 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             />
                         </label>
                         <div className={labelClass}>
-                            Método de autenticación
+                            {tr.ssh.authMethod}
                             <Select
                                 value={sshAuthMethod}
                                 options={[
-                                    {value: 'password', label: 'Password'},
-                                    {value: 'key', label: 'Private key'},
+                                    {value: 'password', label: tr.ssh.authPassword},
+                                    {value: 'key', label: tr.ssh.authKey},
                                 ]}
                                 onChange={(v) => setSshAuthMethod(v as SSHAuthMethod)}
-                                title="Password: autenticación con usuario y contraseña. Private key: autenticación con una clave privada (RSA/Ed25519/etc.), opcionalmente protegida por passphrase."
-                                ariaLabel="Método de autenticación"
+                                title={tr.ssh.authMethodHint}
+                                ariaLabel={tr.ssh.authMethod}
                                 className="w-full"
                             />
                         </div>
 
-                        {sshAuthMethod === 'password' && (
+                        {sshPasswordAuth && (
                             <PasswordField
                                 value={params.password ?? ''}
                                 onChange={(v) => setParam('password', v)}
@@ -1096,45 +1124,45 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             />
                         )}
 
-                        {sshAuthMethod === 'key' && (
+                        {sshKeyAuth && (
                             <div className={labelClass}>
-                                Origen de la llave
+                                {tr.ssh.keySource}
                                 <Select
                                     value={sshKeySource}
                                     options={[
-                                        {value: 'stored', label: 'Llave guardada en el vault'},
-                                        {value: 'inline', label: 'Pegar la llave acá'},
+                                        {value: 'stored', label: tr.ssh.keySourceStored},
+                                        {value: 'inline', label: tr.ssh.keySourceInline},
                                     ]}
                                     onChange={(v) => setSshKeySource(v as 'inline' | 'stored')}
-                                    title="Guardada: la llave vive una sola vez en el gestor de llaves y esta conexión la referencia — rotarla no obliga a editar cada conexión que la use. Pegada: la llave queda dentro de esta conexión, como hasta ahora."
-                                    ariaLabel="Origen de la llave"
+                                    title={tr.ssh.keySourceHint}
+                                    ariaLabel={tr.ssh.keySource}
                                     className="w-full"
                                 />
                             </div>
                         )}
 
-                        {sshAuthMethod === 'key' && sshKeySource === 'stored' && (
+                        {sshStoredKey && (
                             <div className={labelClass}>
-                                Llave
+                                {tr.ssh.key}
                                 <div className="flex items-center gap-2">
                                     <Select
                                         value={params.keyId ?? ''}
                                         options={[
-                                            {value: '', label: sshKeys.length ? 'Elegir llave…' : 'No hay llaves guardadas'},
+                                            {value: '', label: sshKeys.length ? tr.ssh.pickKey : tr.ssh.noKeys},
                                             ...sshKeys.map((k) => ({value: k.id, label: `${k.name} · ${k.keyType}`})),
                                         ]}
                                         onChange={(v) => setParam('keyId', v)}
-                                        ariaLabel="Llave guardada"
+                                        ariaLabel={tr.ssh.storedKeyAria}
                                         className="min-w-0 flex-1"
                                     />
                                     <button
                                         type="button"
                                         onClick={() => setShowKeyVault(true)}
-                                        title="Agregar, renombrar o eliminar llaves guardadas"
+                                        title={tr.ssh.manageKeysHint}
                                         className="flex shrink-0 items-center gap-1 rounded-lg border border-outline px-2.5 py-1.5 text-xs text-on-surface hover:bg-surface-variant"
                                     >
                                         <Icon name="key" size={14} />
-                                        Gestionar
+                                        {tr.ssh.manageKeys}
                                     </button>
                                 </div>
                                 {params.keyId && (
@@ -1145,31 +1173,31 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             </div>
                         )}
 
-                        {sshAuthMethod === 'key' && sshKeySource === 'inline' && (
+                        {sshInlineKey && (
                             <>
                                 <label className={labelClass}>
-                                    Private key
+                                    {tr.ssh.privateKey}
                                     <textarea
                                         value={params.privateKey ?? ''}
                                         onChange={(e) => setParam('privateKey', e.target.value)}
                                         placeholder={
                                             editingId
-                                                ? 'Dejar en blanco para mantener la actual'
-                                                : '-----BEGIN OPENSSH PRIVATE KEY-----\n...'
+                                                ? tr.ssh.keepCurrent
+                                                : tr.ph.privateKey
                                         }
-                                        title="Contenido completo del archivo de clave privada (ej. ~/.ssh/id_ed25519) — nunca la ruta del archivo, se guarda cifrada en el vault"
+                                        title={tr.ssh.privateKeyHint}
                                         rows={4}
                                         className={`${inputClass} font-mono text-xs`}
                                     />
                                 </label>
                                 <label className={labelClass}>
-                                    Passphrase (opcional)
+                                    {tr.ssh.passphraseOptional}
                                     <input
                                         type="password"
                                         value={params.passphrase ?? ''}
                                         onChange={(e) => setParam('passphrase', e.target.value)}
-                                        placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
-                                        title="Passphrase que protege la private key, si tiene una — dejar en blanco si la key no está protegida"
+                                        placeholder={editingId ? tr.ssh.keepCurrent : undefined}
+                                        title={tr.ssh.passphraseHint}
                                         className={inputClass}
                                     />
                                 </label>
@@ -1178,14 +1206,14 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
 
                         <div
                             className="flex items-center gap-2.5 text-xs text-on-surface-variant"
-                            title="Reenvía tu ssh-agent local al host remoto para que comandos corridos ahí (git clone, otro ssh) puedan usarlo para autenticarse en un siguiente salto — requiere un ssh-agent corriendo localmente (SSH_AUTH_SOCK). No es un método de autenticación en sí, es independiente de Password/Private key de arriba."
+                            title={tr.ssh.agentForwardingHint}
                         >
                             <Toggle
                                 checked={params.agentForwarding === '1'}
                                 onChange={(c) => setParam('agentForwarding', c ? '1' : '')}
-                                ariaLabel="Agent Forwarding"
+                                ariaLabel={tr.ssh.agentForwarding}
                             />
-                            Agent Forwarding
+                            {tr.ssh.agentForwarding}
                         </div>
                     </>
                 )}
@@ -1197,28 +1225,28 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                         disabled={missing.length > 0 || pingStatus === 'testing' || passwordUnknownWhileEditing}
                         title={
                             passwordUnknownWhileEditing
-                                ? 'Ingresá el password para probar — o guardá directo, Guardar no requiere probar la conexión primero'
-                                : 'Intenta conectar con estos datos ahora mismo, sin guardar la conexión — para confirmar que host/usuario/password son correctos'
+                                ? tr.testNeedPasswordHint
+                                : tr.testHint
                         }
                         className="flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-highest px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:border-primary/50 hover:text-on-surface disabled:opacity-50"
                     >
                         <Icon name="network_check" size={15} />
-                        Test Connection
+                        {tr.test}
                     </button>
-                    {pingStatus === 'ok' && (
+                    {pingOk && (
                         <span className="flex items-center gap-1 text-xs text-secondary">
                             <Icon name="check_circle" size={14} filled />
-                            conexión ok
+                            {tr.testOk}
                         </span>
                     )}
-                    {pingStatus === 'failed' && (
+                    {pingFailed && (
                         <span className="flex items-center gap-1 text-xs text-error">
                             <Icon name="error" size={14} filled />
-                            falló
+                            {tr.testFailed}
                         </span>
                     )}
-                    {passwordUnknownWhileEditing && pingStatus === 'idle' && (
-                        <span className="text-xs text-on-surface-variant">Password sin cambios — se mantiene el actual al guardar</span>
+                    {passwordUnknownWhileEditing && pingIdle && (
+                        <span className="text-xs text-on-surface-variant">{tr.passwordUnchanged}</span>
                     )}
                 </div>
 
@@ -1228,7 +1256,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                             aria-hidden
                             className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
                         />
-                        Buscando esquemas…
+                        {tr.searchingSchemas}
                     </p>
                 )}
 
@@ -1236,14 +1264,14 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                     <div className={labelClass}>
                         <span className="flex items-center gap-1.5">
                             <Icon name="schema" size={14} />
-                            Esquemas a escanear ({selectedSchemas.size}/{availableSchemas.length})
+                            {tr.schemasToScan({selected: selectedSchemas.size, total: availableSchemas.length})}
                         </span>
                         {availableSchemas.length > 4 && (
                             <input
                                 value={schemaSearch}
                                 onChange={(e) => setSchemaSearch(e.target.value)}
-                                placeholder="Buscar esquema..."
-                                title="Filtra la lista de esquemas por nombre"
+                                placeholder={tr.searchSchema}
+                                title={tr.searchSchemaHint}
                                 className={`${inputClass} text-xs`}
                             />
                         )}
@@ -1274,9 +1302,7 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                                 })}
                         </div>
                         <span className="text-ui-11 text-on-surface-variant">
-                            Por default queda marcado solo el esquema propio de la conexión — tildá los que además te interesan
-                            o desmarcá todo para no escanear ninguno. Se puede cambiar después desde el ícono "esq" en la lista
-                            de conexiones.
+                            {tr.schemasNote}
                         </span>
                     </div>
                 )}
@@ -1289,22 +1315,22 @@ export default function ConnectionDialog({editingId, onClose, onSaved, initialDb
                     <button
                         type="button"
                         onClick={onClose}
-                        title="Cierra este formulario sin guardar cambios"
+                        title={tr.cancelHint}
                         className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     <button
                         type="submit"
                         disabled={!canSubmit}
                         title={
                             editingId
-                                ? 'Guarda los cambios de esta conexión — no hace falta que Test Connection haya sido exitoso'
-                                : 'Guarda esta conexión nueva en el vault cifrado — no hace falta probarla antes, podés guardarla aunque no responda ahora mismo'
+                                ? tr.saveEditHint
+                                : tr.saveNewHint
                         }
                         className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
-                        {editingId ? 'Guardar cambios' : 'Guardar'}
+                        {editingId ? tr.saveChanges : t.common.save}
                     </button>
                 </div>
             </form>

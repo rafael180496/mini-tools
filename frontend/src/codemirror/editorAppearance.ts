@@ -22,23 +22,16 @@ export type EditorFontId = 'jetbrains' | 'system' | 'menlo' | 'consolas' | 'cour
 // presentarlas como si fueran todas equivalentes: elegir "Consolas" en macOS
 // no falla con un error, cae en silencio a la monoespaciada genérica, y sin
 // el rótulo eso parece un bug de la app.
-export const EDITOR_FONTS: {id: EditorFontId; label: string; hint: string; stack: string}[] = [
-    {
-        id: 'jetbrains',
-        label: 'JetBrains Mono',
-        hint: 'incluida',
-        stack: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace",
-    },
-    {id: 'system', label: 'Monoespaciada del sistema', hint: 'la que use tu SO', stack: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'},
-    {id: 'menlo', label: 'Menlo', hint: 'macOS', stack: "Menlo, ui-monospace, monospace"},
-    {id: 'consolas', label: 'Consolas', hint: 'Windows', stack: "Consolas, ui-monospace, monospace"},
-    {id: 'courier', label: 'Courier New', hint: 'todos', stack: "'Courier New', Courier, monospace"},
-    {
-        id: 'sans',
-        label: 'Hanken Grotesk',
-        hint: 'incluida · no monoespaciada',
-        stack: "'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif",
-    },
+// El rótulo y la pista de cada una salen del diccionario
+// (`settings.appearance.fonts.<id>`), no de acá: esta lista se carga una vez y
+// un texto guardado en ella quedaría en el idioma del arranque.
+export const EDITOR_FONTS: {id: EditorFontId; stack: string}[] = [
+    {id: 'jetbrains', stack: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace"},
+    {id: 'system', stack: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'},
+    {id: 'menlo', stack: "Menlo, ui-monospace, monospace"},
+    {id: 'consolas', stack: "Consolas, ui-monospace, monospace"},
+    {id: 'courier', stack: "'Courier New', Courier, monospace"},
+    {id: 'sans', stack: "'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif"},
 ]
 
 export const EDITOR_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24]
@@ -51,11 +44,8 @@ export const EDITOR_TAB_SIZES = [2, 4, 8]
 // desactiva nada, porque todo lo que hay ahí tiene atajo de teclado; es para
 // quien ya los sabe y quiere la pantalla entera para el texto.
 export type EditorToolbarMode = 'normal' | 'compact' | 'hidden'
-export const EDITOR_TOOLBAR_MODES: {id: EditorToolbarMode; label: string; hint: string}[] = [
-    {id: 'normal', label: 'Normal', hint: 'Ejecutar con su nombre, el resto solo íconos'},
-    {id: 'compact', label: 'Compacta', hint: 'todo solo íconos'},
-    {id: 'hidden', label: 'Oculta', hint: 'los atajos siguen funcionando'},
-]
+// Rótulos en `settings.appearance.toolbarModes.<id>`.
+export const EDITOR_TOOLBAR_MODES: {id: EditorToolbarMode}[] = [{id: 'normal'}, {id: 'compact'}, {id: 'hidden'}]
 
 // EditorAppearance es el espejo TS de vault.EditorAppearance, con los
 // valores ya resueltos: el backend guarda ceros y cadenas vacías para "no

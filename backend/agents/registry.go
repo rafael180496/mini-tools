@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Agent es una entrada del catálogo, ya resuelta contra esta máquina y contra
@@ -76,8 +78,8 @@ type catalogEntry struct {
 	altBins []string
 	command string
 	keyEnv  string
-	login   string
-	note    string
+	login   i18n.Msg
+	note    i18n.Msg
 	docs    string
 	// extraPaths son ubicaciones habituales fuera del PATH heredado. Una app
 	// abierta desde el Dock no ve ~/.local/bin ni los binarios de npm/bun, que
@@ -93,8 +95,14 @@ var catalog = []catalogEntry{
 		bin:     "claude",
 		command: "claude",
 		keyEnv:  "ANTHROPIC_API_KEY",
-		login:   "Se autentica con su propio login: abrí una sesión y usá el comando /login dentro de Claude Code. Como alternativa acepta una API key por la variable ANTHROPIC_API_KEY.",
-		note:    "Asistente de Anthropic. Trabaja sobre el repositorio abierto: lee archivos, propone cambios y los aplica pidiendo confirmación.",
+		login: i18n.Msg{
+			ES: "Se autentica con su propio login: abrí una sesión y usá el comando /login dentro de Claude Code. Como alternativa acepta una API key por la variable ANTHROPIC_API_KEY.",
+			EN: "It authenticates with its own login: open a session and use the /login command inside Claude Code. Alternatively it accepts an API key through the ANTHROPIC_API_KEY variable.",
+		},
+		note: i18n.Msg{
+			ES: "Asistente de Anthropic. Trabaja sobre el repositorio abierto: lee archivos, propone cambios y los aplica pidiendo confirmación.",
+			EN: "Anthropic's assistant. It works on the open repository: it reads files, proposes changes and applies them after asking for confirmation.",
+		},
 		docs:    "https://claude.com/claude-code",
 	},
 	{
@@ -104,8 +112,14 @@ var catalog = []catalogEntry{
 		bin:     "codex",
 		command: "codex",
 		keyEnv:  "OPENAI_API_KEY",
-		login:   "Se autentica con su propio login (o con una API key en la variable OPENAI_API_KEY). Abrí una sesión y seguí lo que indique el CLI.",
-		note:    "Asistente de OpenAI por línea de comandos, sobre el repositorio abierto.",
+		login: i18n.Msg{
+			ES: "Se autentica con su propio login (o con una API key en la variable OPENAI_API_KEY). Abrí una sesión y seguí lo que indique el CLI.",
+			EN: "It authenticates with its own login (or with an API key in the OPENAI_API_KEY variable). Open a session and follow what the CLI says.",
+		},
+		note: i18n.Msg{
+			ES: "Asistente de OpenAI por línea de comandos, sobre el repositorio abierto.",
+			EN: "OpenAI's command-line assistant, on the open repository.",
+		},
 		docs:    "https://developers.openai.com/codex/cli",
 	},
 	{
@@ -128,8 +142,14 @@ var catalog = []catalogEntry{
 		// entorno. Inventar acá un nombre de variable haría aparecer un campo
 		// que no sirve para nada.
 		keyEnv: "",
-		login:  "Se autentica con su propio login de Google: abrí una sesión y seguí lo que indique el CLI. El consumo y el límite restante se ven con /usage dentro de la sesión.",
-		note:   "Asistente de Google por línea de comandos (binario `agy`), sobre el repositorio abierto. Trae sus propios skills y modos de ejecución.",
+		login: i18n.Msg{
+			ES: "Se autentica con su propio login de Google: abrí una sesión y seguí lo que indique el CLI. El consumo y el límite restante se ven con /usage dentro de la sesión.",
+			EN: "It authenticates with its own Google login: open a session and follow what the CLI says. Usage and the remaining limit are shown with /usage inside the session.",
+		},
+		note: i18n.Msg{
+			ES: "Asistente de Google por línea de comandos (binario `agy`), sobre el repositorio abierto. Trae sus propios skills y modos de ejecución.",
+			EN: "Google's command-line assistant (`agy` binary), on the open repository. It brings its own skills and execution modes.",
+		},
 		docs:   "https://antigravity.google/",
 	},
 }
@@ -291,8 +311,8 @@ func List(overrides map[string]Override) []Agent {
 			Available:      path != "",
 			KeyEnv:         c.keyEnv,
 			HasKey:         ov.HasKey,
-			LoginHint:      c.login,
-			Note:           c.note,
+			LoginHint:      i18n.T(c.login),
+			Note:           i18n.T(c.note),
 			DocsURL:        c.docs,
 		})
 	}

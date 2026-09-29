@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Hook PreToolUse: el mecanismo por el que el agente pregunta antes de CADA
@@ -63,13 +65,13 @@ func HookMain() {
 
 	raw, err := io.ReadAll(io.LimitReader(os.Stdin, 16<<20))
 	if err != nil {
-		emitDecision(false, "no se pudo leer la acción propuesta")
+		emitDecision(false, i18n.T(i18n.Msg{ES: "no se pudo leer la acción propuesta", EN: "couldn't read the proposed action"}))
 		return
 	}
 
 	var in hookInput
 	if err := json.Unmarshal(raw, &in); err != nil {
-		emitDecision(false, "no se entendió la acción propuesta")
+		emitDecision(false, i18n.T(i18n.Msg{ES: "no se entendió la acción propuesta", EN: "couldn't understand the proposed action"}))
 		return
 	}
 
@@ -85,7 +87,7 @@ func HookMain() {
 
 	reason := d.Reason
 	if !d.Allow && reason == "" {
-		reason = "el usuario no autorizó esta acción"
+		reason = i18n.T(i18n.Msg{ES: "el usuario no autorizó esta acción", EN: "the user didn't authorize this action"})
 	}
 	emitDecision(d.Allow, reason)
 }
@@ -154,7 +156,7 @@ func Describe(raw string) (summary, detail string) {
 
 	if p := str("file_path", "filePath", "path", "notebook_path"); p != "" {
 		if content := str("content", "new_string", "newString", "new_str"); content != "" {
-			return p, fmt.Sprintf("%d líneas", strings.Count(content, "\n")+1)
+			return p, i18n.T(i18n.Msg{ES: "%d líneas", EN: "%d lines"}, strings.Count(content, "\n")+1)
 		}
 		return p, ""
 	}

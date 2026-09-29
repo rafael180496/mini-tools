@@ -1,6 +1,7 @@
 import Icon from '../Icon'
 import Select from '../Select'
-import {newComputed, type HttpComputed} from './httpShared'
+import {newComputed, rich, type HttpComputed} from './httpShared'
+import {useT} from '../../i18n'
 
 // Variables calculadas: la firma declarativa que reemplaza a los scripts.
 //
@@ -19,24 +20,29 @@ interface ComputedTableProps {
     problems?: string[]
 }
 
-const OPS: {id: string; label: string; needsKey: boolean; hashed: boolean}[] = [
-    {id: 'text', label: 'Texto (solo sustituir)', needsKey: false, hashed: false},
-    {id: 'hmac-sha256', label: 'HMAC-SHA256', needsKey: true, hashed: true},
-    {id: 'hmac-sha1', label: 'HMAC-SHA1', needsKey: true, hashed: true},
-    {id: 'hmac-sha512', label: 'HMAC-SHA512', needsKey: true, hashed: true},
-    {id: 'sha256', label: 'SHA-256', needsKey: false, hashed: true},
-    {id: 'sha1', label: 'SHA-1', needsKey: false, hashed: true},
-    {id: 'sha512', label: 'SHA-512', needsKey: false, hashed: true},
-    {id: 'md5', label: 'MD5', needsKey: false, hashed: true},
-    {id: 'base64', label: 'Base64', needsKey: false, hashed: false},
-    {id: 'base64url', label: 'Base64 URL-safe', needsKey: false, hashed: false},
+// `algo` es el nombre técnico del algoritmo, igual en todos los idiomas.
+const OPS: {id: string; algo: string; needsKey: boolean; hashed: boolean}[] = [
+    // El rótulo de «text» es texto de la interfaz: se resuelve al dibujar.
+    {id: 'text', algo: '', needsKey: false, hashed: false},
+    {id: 'hmac-sha256', algo: 'HMAC-SHA256', needsKey: true, hashed: true},
+    {id: 'hmac-sha1', algo: 'HMAC-SHA1', needsKey: true, hashed: true},
+    {id: 'hmac-sha512', algo: 'HMAC-SHA512', needsKey: true, hashed: true},
+    {id: 'sha256', algo: 'SHA-256', needsKey: false, hashed: true},
+    {id: 'sha1', algo: 'SHA-1', needsKey: false, hashed: true},
+    {id: 'sha512', algo: 'SHA-512', needsKey: false, hashed: true},
+    {id: 'md5', algo: 'MD5', needsKey: false, hashed: true},
+    {id: 'base64', algo: 'Base64', needsKey: false, hashed: false},
+    {id: 'base64url', algo: 'Base64 URL-safe', needsKey: false, hashed: false},
 ]
+
+const ENCODINGS = ['hex', 'base64', 'base64url']
 
 function emptyRow(): HttpComputed {
     return newComputed()
 }
 
 export default function ComputedTable({rows, onChange, problems}: ComputedTableProps) {
+    const t = useT()
     const display = [...rows, emptyRow()]
 
     function update(i: number, patch: Partial<HttpComputed>) {
@@ -47,9 +53,7 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
     return (
         <div className="px-2 pb-2">
             <p className="py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                Cada fila calcula una variable antes de enviar, y las de abajo pueden usar las de arriba. Sirven para firmar: en la entrada podés usar{' '}
-                <span className="font-mono">{'{{$timestamp}}'}</span>, <span className="font-mono">{'{{$randomUUID}}'}</span> y cualquier variable del entorno.
-                El resultado se usa como <span className="font-mono">{'{{nombre}}'}</span> en la URL, los headers o el cuerpo.
+                {rich(t.http.computed.intro)}
             </p>
 
             {display.map((row, i) => {
@@ -67,45 +71,41 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
                                     type="checkbox"
                                     checked={row.enabled}
                                     onChange={(e) => update(i, {enabled: e.target.checked})}
-                                    title={row.enabled ? 'Se calcula antes de cada envío' : 'Queda guardada pero no se calcula'}
+                                    title={row.enabled ? t.http.computed.enabledTitle : t.http.computed.disabledTitle}
                                     className="shrink-0 accent-primary"
                                 />
                             )}
                             <input
                                 value={row.name}
                                 onChange={(e) => update(i, {name: e.target.value, enabled: true})}
-                                placeholder={ghost ? 'nombre de la variable' : ''}
-                                title="Cómo se llama el resultado. Se usa entre llaves dobles en el resto de la petición."
+                                placeholder={ghost ? t.http.computed.namePlaceholder : ''}
+                                title={t.http.computed.nameTitle}
                                 className="w-40 shrink-0 rounded bg-surface-container-highest px-1.5 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                             />
                             <Select
                                 value={row.op}
-                                options={OPS.map((o) => ({value: o.id, label: o.label}))}
+                                options={OPS.map((o) => ({value: o.id, label: o.id === 'text' ? t.http.computed.opText : o.algo}))}
                                 onChange={(v) => update(i, {op: v, enabled: true})}
                                 size="sm"
-                                ariaLabel="Operación de la variable calculada"
-                                title="Qué se le hace a la entrada"
+                                ariaLabel={t.http.computed.opAria}
+                                title={t.http.computed.opTitle}
                                 className="w-48 shrink-0"
                             />
                             {op.hashed && (
                                 <Select
                                     value={row.encoding || 'hex'}
-                                    options={[
-                                        {value: 'hex', label: 'hex'},
-                                        {value: 'base64', label: 'base64'},
-                                        {value: 'base64url', label: 'base64url'},
-                                    ]}
+                                    options={ENCODINGS.map((e) => ({value: e, label: e}))}
                                     onChange={(v) => update(i, {encoding: v})}
                                     size="sm"
-                                    ariaLabel="Codificación del resultado"
-                                    title="Cómo se representan los bytes del resultado. La mayoría de las APIs esperan hexadecimal."
+                                    ariaLabel={t.http.computed.encodingAria}
+                                    title={t.http.computed.encodingTitle}
                                     className="w-28 shrink-0"
                                 />
                             )}
                             {!ghost && (
                                 <button
                                     onClick={() => onChange(display.filter((_, k) => k !== i).filter((r) => r.name.trim() !== '' || r.input.trim() !== ''))}
-                                    title="Borrar esta variable calculada"
+                                    title={t.http.computed.removeTitle}
                                     className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant/40 hover:bg-surface-variant hover:text-error"
                                 >
                                     <Icon name="close" size={12} />
@@ -117,16 +117,16 @@ export default function ComputedTable({rows, onChange, problems}: ComputedTableP
                             <input
                                 value={row.input}
                                 onChange={(e) => update(i, {input: e.target.value, enabled: true})}
-                                placeholder="{{$timestamp}}/dev/blocks"
-                                title="Lo que se va a procesar. Admite variables entre llaves dobles, incluidas las de otras filas de esta misma tabla."
+                                placeholder={t.http.computed.inputPlaceholder}
+                                title={t.http.computed.inputTitle}
                                 className="w-full rounded bg-surface-container-highest px-1.5 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                             />
                             {op.needsKey && (
                                 <input
                                     value={row.key ?? ''}
                                     onChange={(e) => update(i, {key: e.target.value, enabled: true})}
-                                    placeholder="{{secreto}}"
-                                    title="Clave del HMAC. Ponela como variable secreta del entorno en vez de escribirla acá: así queda cifrada y fuera del export."
+                                    placeholder={t.http.computed.keyPlaceholder}
+                                    title={t.http.computed.keyTitle}
                                     className="w-full rounded bg-surface-container-highest px-1.5 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                 />
                             )}

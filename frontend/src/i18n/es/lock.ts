@@ -1,0 +1,32 @@
+// Textos del área «lock» (pantalla de desbloqueo / creación del vault).
+// Ver .claude/specs/i18n.md.
+export default {
+    switchLanguage: 'Cambiar el idioma de la interfaz — queda guardado',
+    toggleTheme: 'Cambiar tema',
+    themeLight: 'Claro',
+    themeDark: 'Oscuro',
+    passwordsDontMatch: 'Las contraseñas no coinciden',
+    wrongPassword: 'Clave maestra incorrecta',
+    unlockTitle: 'Desbloquear vault',
+    createTitle: 'Crear clave maestra',
+    unlockHint: 'Ingresa tu clave maestra para acceder a tus conexiones.',
+    createHint: 'Esta clave cifra tus conexiones guardadas. Si la pierdes, pierdes el vault — no hay recuperación.',
+    passwordPlaceholder: 'Clave maestra',
+    confirmPlaceholder: 'Confirmar clave',
+    unlockSubmit: 'Desbloquear',
+    unlockSubmitTitle: 'Descifra tus conexiones guardadas con esta clave maestra',
+    createSubmit: 'Crear vault',
+    createSubmitTitle: 'Crea el vault cifrado donde se guardarán tus conexiones — esta clave no se guarda en ningún lado, solo vos la sabés',
+    restore: {
+        start: 'Restaurar desde backup…',
+        startTitle: 'Elegí el archivo .mtbackup; después te pedimos la clave con la que se generó ese backup',
+        title: 'Restaurar desde backup',
+        changeFile: 'Cambiar',
+        changeFileTitle: 'Elegir un archivo de backup distinto',
+        hint: 'Ingresá la clave maestra con la que se generó este backup — casi seguro distinta de cualquier otra.',
+        passwordPlaceholder: 'Clave del backup',
+        submit: 'Restaurar',
+        submitting: 'Restaurando…',
+        submitTitle: 'Verifica la clave contra el backup y restaura el vault',
+    },
+}

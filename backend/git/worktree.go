@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"strings"
 )
 
@@ -99,16 +99,16 @@ func (r *Runner) AddWorktree(repoPath, path, branch string, createBranch bool) e
 		return err
 	}
 	if strings.TrimSpace(path) == "" {
-		return fmt.Errorf("falta la carpeta donde crear el worktree")
+		return i18n.New(i18n.Msg{ES: "falta la carpeta donde crear el worktree", EN: "the folder to create the worktree in is missing"})
 	}
 	if strings.TrimSpace(branch) == "" {
-		return fmt.Errorf("falta la rama del worktree")
+		return i18n.New(i18n.Msg{ES: "falta la rama del worktree", EN: "the worktree branch is missing"})
 	}
-	if err := checkRefArg("rama", branch); err != nil {
+	if err := checkRefArg(argBranch, branch); err != nil {
 		return err
 	}
 	if strings.HasPrefix(path, "-") {
-		return fmt.Errorf("la ruta no puede empezar con «-»")
+		return i18n.New(i18n.Msg{ES: "la ruta no puede empezar con «-»", EN: "the path cannot start with «-»"})
 	}
 
 	args := []string{"worktree", "add"}
@@ -133,7 +133,7 @@ func (r *Runner) RemoveWorktree(repoPath, path string, force bool) error {
 		return err
 	}
 	if strings.TrimSpace(path) == "" || strings.HasPrefix(path, "-") {
-		return fmt.Errorf("ruta de worktree inválida")
+		return i18n.New(i18n.Msg{ES: "ruta de worktree inválida", EN: "invalid worktree path"})
 	}
 
 	args := []string{"worktree", "remove"}

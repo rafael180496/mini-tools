@@ -24,6 +24,7 @@ import MergeNoteDialog from './MergeNoteDialog'
 import PromptDialog from '../git/PromptDialog'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
 import {buildNoteLinkTree, childrenIndex, type NoteTreeRow} from '../../lib/noteLinkTree'
+import {useT} from '../../i18n'
 
 // Módulo "Notas" del sidebar: el buscador y la lista de la base de
 // conocimiento.
@@ -90,6 +91,9 @@ export default function NotesTree({
     onDeleteFolder,
     onChanged,
 }: Props) {
+    const t = useT()
+    const tn = t.sidebar.notes
+    const tf = t.sidebar.folders
     const query = filter
     const [hits, setHits] = useState<vault.NoteHit[]>([])
     const [loading, setLoading] = useState(false)
@@ -114,8 +118,8 @@ export default function NotesTree({
     const [notice, setNotice] = useState('')
     useEffect(() => {
         if (!notice) return
-        const t = setTimeout(() => setNotice(''), 4000)
-        return () => clearTimeout(t)
+        const timer = setTimeout(() => setNotice(''), 4000)
+        return () => clearTimeout(timer)
     }, [notice])
     const menu = useTreeMenu()
 
@@ -124,7 +128,7 @@ export default function NotesTree({
     // descifraría todas por cada letra.
     useEffect(() => {
         let cancelled = false
-        const t = setTimeout(() => {
+        const timer = setTimeout(() => {
             setLoading(true)
             // Sin búsqueda se piden TODAS (hasta 500): la lista está agrupada
             // por carpeta y ordenada alfabéticamente, así que un tope de 60
@@ -138,14 +142,14 @@ export default function NotesTree({
         }, query ? 180 : 0)
         return () => {
             cancelled = true
-            clearTimeout(t)
+            clearTimeout(timer)
         }
     }, [query, reloadToken])
 
     const createNote = useCallback(() => {
         // El título sale de lo que se venía buscando: quien busca "Runbook
         // SGC", no lo encuentra y aprieta "+", quiere crear justamente esa.
-        const title = query.trim() || 'Nota sin título'
+        const title = query.trim() || t.sidebar.notes.untitledNote
         CreateNote(title, '')
             .then((id) => {
                 // Limpiar la búsqueda es parte de crear: el texto acaba de
@@ -155,7 +159,7 @@ export default function NotesTree({
                 onCreated(id)
             })
             .catch((e) => setError(String(e)))
-    }, [query, onCreated, onClearFilter])
+    }, [query, onCreated, onClearFilter, t])
 
     const searching = query.trim().length > 0
     const pinnedHits = useMemo(() => hits.filter((h) => h.pinned), [hits])
@@ -238,7 +242,7 @@ export default function NotesTree({
     // Crea una nota YA adentro de la carpeta, en una sola llamada: crear y
     // después mover la dibujaría un instante en la raíz.
     const createNoteIn = (folderId: string) => {
-        const title = query.trim() || 'Nota sin título'
+        const title = query.trim() || tn.untitledNote
         void CreateNoteInFolder(title, folderId)
             .then((id) => {
                 onClearFilter()
@@ -292,28 +296,28 @@ export default function NotesTree({
             parts.unshift(f.name)
             f = f.parentId ? byId.get(f.parentId) : undefined
         }
-        return [...parts, hit.title || 'Sin título'].join(' / ')
+        return [...parts, hit.title || tn.untitled].join(' / ')
     }
 
     const noteMenu = (e: ReactMouseEvent, hit: vault.NoteHit) => {
-        const title = hit.title || 'Sin título'
+        const title = hit.title || tn.untitled
         const items: TreeMenuEntry[] = [
-            {label: 'Abrir en una pestaña', icon: 'open_in_new', hint: 'clic', onSelect: () => onOpenNote(hit.id)},
+            {label: tn.openInTab, icon: 'open_in_new', hint: t.sidebar.ssh.click, onSelect: () => onOpenNote(hit.id)},
             {
-                label: hit.pinned ? 'Quitar de fijadas' : 'Fijar arriba',
+                label: hit.pinned ? tn.unpin : tn.pin,
                 icon: hit.pinned ? 'keep_off' : 'keep',
-                title: 'Las fijadas aparecen primero en la barra, en su propia sección',
+                title: tn.pinTitle,
                 onSelect: () =>
                     void SetNotePinned(hit.id, !hit.pinned)
                         .then(onChanged)
                         .catch((err) => setError(String(err))),
             },
             'separator',
-            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => setRenamingNote(hit)},
+            {label: tf.rename, icon: 'edit', onSelect: () => setRenamingNote(hit)},
             {
-                label: 'Duplicar',
+                label: tn.duplicate,
                 icon: 'content_copy',
-                title: 'Copia la nota con sus etiquetas, carpeta, privacidad e imágenes',
+                title: tn.duplicateTitle,
                 onSelect: () =>
                     void DuplicateNote(hit.id)
                         .then((id) => {
@@ -322,41 +326,41 @@ export default function NotesTree({
                         })
                         .catch((err) => setError(String(err))),
             },
-            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFolders, hit.folderId ?? '', (f) => moveNote(hit.id, f))},
+            {label: tf.moveTo, icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFolders, hit.folderId ?? '', (f) => moveNote(hit.id, f))},
             {
-                label: 'Fundir con otra nota…',
+                label: tn.merge,
                 icon: 'call_merge',
-                title: 'Agrega su texto al final de otra nota y la borra',
+                title: tn.mergeTitle,
                 onSelect: () => setMerging(hit),
             },
             'separator',
-            {label: 'Copiar enlace', icon: 'link', hint: '[[…]]', title: `Copia [[${title}]] para pegarlo en otra nota`, onSelect: () => copy(`[[${title}]]`)},
-            {label: 'Copiar título', icon: 'title', onSelect: () => copy(title)},
-            {label: 'Copiar ubicación', icon: 'account_tree', title: locationOf(hit), onSelect: () => copy(locationOf(hit))},
-            {label: 'Ver en el grafo', icon: 'hub', onSelect: onOpenGraph},
+            {label: tn.copyLink, icon: 'link', hint: '[[…]]', title: tn.copyLinkTitle({title}), onSelect: () => copy(`[[${title}]]`)},
+            {label: tn.copyTitle, icon: 'title', onSelect: () => copy(title)},
+            {label: tn.copyLocation, icon: 'account_tree', title: locationOf(hit), onSelect: () => copy(locationOf(hit))},
+            {label: tn.showInGraph, icon: 'hub', onSelect: onOpenGraph},
             'separator',
             {
-                label: 'Exportar como Markdown…',
+                label: tn.exportMarkdown,
                 icon: 'download',
-                title: 'Guarda un .md con las imágenes incluidas, que se abre en Obsidian o en cualquier editor. Queda en claro en el disco: la nota deja de estar cifrada en ese archivo.',
+                title: tn.exportMarkdownTitle,
                 onSelect: () =>
                     void ExportNoteMarkdown(hit.id)
-                        .then((path) => path && setNotice(`Exportada en ${path}`))
+                        .then((path) => path && setNotice(tn.exported({path})))
                         .catch((err) => setError(String(err))),
             },
             hit.isPrivate
-                ? {label: 'Hacer visible para agentes', icon: 'lock_open', onSelect: () => setPublishing(hit)}
+                ? {label: tn.makeVisible, icon: 'lock_open', onSelect: () => setPublishing(hit)}
                 : {
-                      label: 'Hacer privada',
+                      label: tn.makePrivate,
                       icon: 'lock',
-                      title: 'Ningún agente (chat, @note, MCP) va a poder leerla',
+                      title: tn.makePrivateTitle,
                       onSelect: () =>
                           void SetNotePrivacy(hit.id, true)
                               .then(onChanged)
                               .catch((err) => setError(String(err))),
                   },
             'separator',
-            {label: 'Borrar', icon: 'delete', danger: true, onSelect: () => setDeleting(hit)},
+            {label: t.common.delete, icon: 'delete', danger: true, onSelect: () => setDeleting(hit)},
         ]
         menu.openAt(e, items)
     }
@@ -365,26 +369,26 @@ export default function NotesTree({
         const f = node.folder
         const open = foldersOpen(f.id)
         menu.openAt(e, [
-            {label: 'Nota nueva aquí', icon: 'note_add', onSelect: () => createNoteIn(f.id)},
+            {label: tn.newNoteHere, icon: 'note_add', onSelect: () => createNoteIn(f.id)},
             {
-                label: 'Subcarpeta nueva',
+                label: tf.newSubfolder,
                 icon: 'create_new_folder',
                 onSelect: () => {
                     setOpenFolders((prev) => new Set([...prev, f.id]))
-                    onCreateFolder('Nueva carpeta', f.id)
+                    onCreateFolder(tn.defaultFolderName, f.id)
                 },
             },
             'separator',
-            {label: 'Abrir como tabla', icon: 'table_rows', hint: `${total}`, title: 'Sus notas con fechas y un buscador propio', onSelect: () => setOpenedFolder(f)},
-            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: searching, onSelect: () => toggleFolder(f.id)},
+            {label: tn.openAsTable, icon: 'table_rows', hint: `${total}`, title: tn.openAsTableTitle, onSelect: () => setOpenedFolder(f)},
+            {label: open ? t.common.collapse : t.common.expand, icon: open ? 'unfold_less' : 'unfold_more', disabled: searching, onSelect: () => toggleFolder(f.id)},
             'separator',
-            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => setRenamingFolder(f)},
+            {label: tf.rename, icon: 'edit', onSelect: () => setRenamingFolder(f)},
             'separator',
             {
-                label: 'Borrar carpeta',
+                label: t.sidebar.git.deleteFolder,
                 icon: 'delete',
                 danger: true,
-                title: 'Las notas que tenía NO se borran: quedan en la raíz',
+                title: tn.deleteFolderTitle,
                 onSelect: () => onDeleteFolder(f.id),
             },
         ])
@@ -392,32 +396,32 @@ export default function NotesTree({
 
     const blankMenu = (e: ReactMouseEvent) =>
         menu.openAt(e, [
-            {label: 'Nota nueva', icon: 'note_add', onSelect: createNote},
+            {label: tn.newNote, icon: 'note_add', onSelect: createNote},
             {
-                label: 'Carpeta nueva',
+                label: tf.newFolder,
                 icon: 'create_new_folder',
-                onSelect: () => onCreateFolder('Nueva carpeta', ''),
+                onSelect: () => onCreateFolder(tn.defaultFolderName, ''),
             },
             'separator',
-            {label: 'Desplegar todo', icon: 'unfold_more', disabled: searching, onSelect: expandAll},
-            {label: 'Plegar todo', icon: 'unfold_less', disabled: searching, onSelect: collapseAll},
+            {label: tf.expandAll, icon: 'unfold_more', disabled: searching, onSelect: expandAll},
+            {label: tf.collapseAll, icon: 'unfold_less', disabled: searching, onSelect: collapseAll},
             'separator',
-            {label: 'Grafo de conocimiento', icon: 'hub', onSelect: onOpenGraph},
+            {label: tn.graph, icon: 'hub', onSelect: onOpenGraph},
         ])
 
     return (
         <SidebarSection
-            title="Notas"
-            count={searching ? `${hits.length} ${hits.length === 1 ? 'resultado' : 'resultados'}` : hits.length ? String(hits.length) : null}
+            title={tn.title}
+            count={searching ? tn.resultCount({count: hits.length}) : hits.length ? String(hits.length) : null}
             actions={
                 <>
                 <button
                     onClick={() => {
-                        const name = query.trim() || 'Nueva carpeta'
+                        const name = query.trim() || tn.defaultFolderName
                         onClearFilter()
                         onCreateFolder(name, '')
                     }}
-                    title="Crea una carpeta en la raíz. Si hay algo escrito en el buscador, lo usa como nombre."
+                    title={tn.newFolderTitle}
                     className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="create_new_folder" size={16} />
@@ -425,14 +429,14 @@ export default function NotesTree({
                 <button
                     onClick={() => (openFolders.size > 0 ? collapseAll() : expandAll())}
                     disabled={searching || noteFolders.length === 0}
-                    title={openFolders.size > 0 ? 'Plegar todas las carpetas' : 'Desplegar todas las carpetas'}
+                    title={openFolders.size > 0 ? t.sidebar.ssh.collapseAllTitle : tf.expandAllTitle}
                     className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                 >
                     <Icon name={openFolders.size > 0 ? 'unfold_less' : 'unfold_more'} size={16} />
                 </button>
                 <button
                     onClick={onOpenGraph}
-                    title="Abre el grafo de conocimiento: qué notas hay y cuáles enlazan a cuáles. Las privadas también aparecen — el candado es contra los agentes, no contra vos."
+                    title={tn.graphTitle}
                     className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="hub" size={16} />
@@ -441,8 +445,8 @@ export default function NotesTree({
                     onClick={createNote}
                     title={
                         searching
-                            ? `Crea una nota titulada «${query.trim()}» — el título es lo que la hace enlazable con [[…]]`
-                            : 'Crea una nota nueva. Nace VISIBLE para los agentes; el candado de su barra la esconde cuando haga falta.'
+                            ? tn.newNoteNamedTitle({title: query.trim()})
+                            : tn.newNoteTitle
                     }
                     className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
@@ -461,35 +465,21 @@ export default function NotesTree({
             <div className="flex items-center justify-end px-2 pb-1">
                 <button
                     onClick={() => setShowHelp((v) => !v)}
-                    title={showHelp ? 'Ocultar la ayuda de búsqueda' : 'Qué más se puede escribir en el buscador para filtrar notas: etiquetas, frases exactas, enlaces entre notas'}
+                    title={showHelp ? tn.hideSearchHelp : tn.searchHelpTitle}
                     className={`flex items-center gap-1 rounded px-1 text-ui-10 ${showHelp ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
                 >
                     <Icon name="help" size={12} />
-                    Sintaxis de búsqueda
+                    {tn.searchSyntax}
                 </button>
             </div>
             <div className="px-2">
                 {showHelp && (
                     <div className="rounded border border-outline-variant bg-surface-container-low p-1.5 text-ui-10 leading-4 text-on-surface-variant">
-                        <p>
-                            <span className="font-mono text-on-surface">oracle tablespace</span> — las dos palabras,
-                            en cualquier orden
-                        </p>
-                        <p>
-                            <span className="font-mono text-on-surface">"plan de contingencia"</span> — frase exacta
-                        </p>
-                        <p>
-                            <span className="font-mono text-on-surface">tag:produccion</span> — por etiqueta del
-                            frontmatter
-                        </p>
-                        <p>
-                            <span className="font-mono text-on-surface">enlaza:Runbook SGC</span> — las que apuntan a
-                            esa nota
-                        </p>
-                        <p>
-                            <span className="font-mono text-on-surface">privado:no</span> — solo las que un agente
-                            puede leer
-                        </p>
+                        {tn.searchHelp.map((row) => (
+                            <p key={row.code}>
+                                <span className="font-mono text-on-surface">{row.code}</span> — {row.desc}
+                            </p>
+                        ))}
                     </div>
                 )}
             </div>
@@ -502,12 +492,14 @@ export default function NotesTree({
                     <p className="px-2 py-2 text-ui-11 text-on-surface-variant">
                         {searching ? (
                             <>
-                                Sin resultados para <span className="text-on-surface">{query}</span>. El botón{' '}
-                                <Icon name="note_add" size={11} className="inline align-text-bottom" /> crea una nota con
-                                ese título.
+                                {tn.noResults.before}
+                                <span className="text-on-surface">{query}</span>
+                                {tn.noResults.middle}
+                                <Icon name="note_add" size={11} className="inline align-text-bottom" />
+                                {tn.noResults.after}
                             </>
                         ) : (
-                            'Todavía no hay notas. Acá va tu documentación: runbooks, procedimientos, lo que hoy vive en un archivo suelto.'
+                            tn.empty
                         )}
                     </p>
                 )}
@@ -520,7 +512,7 @@ export default function NotesTree({
                     <div className="mb-1 border-b border-outline-variant/60 pb-1">
                         <p className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70">
                             <Icon name="keep" size={12} />
-                            Fijadas
+                            {tn.pinned}
                         </p>
                         {pinnedHits.map((h) => (
                             <NoteRow
@@ -579,9 +571,9 @@ export default function NotesTree({
 
             {deleting && (
                 <ConfirmDialog
-                    title="Borrar la nota"
-                    description={`«${deleting.title || 'Sin título'}» se borra del vault, con sus imágenes. Las notas que la enlazaban van a mostrar el enlace como roto, con la opción de volver a crearla. Esto no se puede deshacer.`}
-                    confirmLabel="Borrar"
+                    title={tn.deleteNote}
+                    description={tn.deleteNoteDesc({title: deleting.title || tn.untitled})}
+                    confirmLabel={t.common.delete}
                     danger
                     onConfirm={() => {
                         void DeleteNote(deleting.id)
@@ -607,11 +599,11 @@ export default function NotesTree({
 
             {renamingNote && (
                 <PromptDialog
-                    title="Cambiar el nombre de la nota"
-                    label="Título"
+                    title={tn.renameNote}
+                    label={tn.titleLabel}
                     initial={renamingNote.title}
-                    confirmLabel="Guardar"
-                    description={`Las notas que la enlazan con [[${renamingNote.title}]] no se actualizan solas: van a mostrar el enlace como roto hasta que lo corrijas.`}
+                    confirmLabel={t.common.save}
+                    description={tn.renameNoteDesc({title: renamingNote.title})}
                     onSubmit={(value) => {
                         const id = renamingNote.id
                         setRenamingNote(null)
@@ -641,9 +633,9 @@ export default function NotesTree({
 
             {publishing && (
                 <ConfirmDialog
-                    title="Hacer visible para los agentes"
-                    description={`«${publishing.title || 'Sin título'}» va a poder leerse desde el chat, con @note y por el servidor MCP. Si tiene credenciales o datos sensibles, dejala privada.`}
-                    confirmLabel="Hacer visible"
+                    title={tn.makeVisibleTitle}
+                    description={tn.makeVisibleDesc({title: publishing.title || tn.untitled})}
+                    confirmLabel={tn.makeVisibleConfirm}
                     onConfirm={() => {
                         void SetNotePrivacy(publishing.id, false)
                             .then(onChanged)
@@ -655,10 +647,10 @@ export default function NotesTree({
 
             {renamingFolder && (
                 <PromptDialog
-                    title="Cambiar el nombre de la carpeta"
-                    label="Nombre"
+                    title={tf.renameTitle}
+                    label={tf.nameLabel}
                     initial={renamingFolder.name}
-                    confirmLabel="Guardar"
+                    confirmLabel={t.common.save}
                     onSubmit={(value) => {
                         const id = renamingFolder.id
                         setRenamingFolder(null)
@@ -697,6 +689,7 @@ function FolderRow({
     // enlaces necesita el conjunto para saber cuáles son raíz.
     renderNotes: (notes: vault.NoteHit[], depth: number) => ReactNode
 }) {
+    const t = useT()
     const notes = byFolder[node.folder.id] ?? []
     const open = isOpen(node.folder.id)
     // El contador incluye las subcarpetas: una carpeta plegada que dice "0"
@@ -712,14 +705,14 @@ function FolderRow({
                 iconFilled={!open}
                 label={node.folder.name}
                 labelClass="text-on-surface font-medium"
-                title={`${node.folder.name} — ${total} ${total === 1 ? 'nota' : 'notas'}. Doble clic: abrirla como tabla. Clic derecho: más opciones.`}
+                title={t.sidebar.notes.folderTitle({name: node.folder.name, count: total})}
                 expanded={open}
                 onToggle={() => onToggle(node.folder.id)}
                 onClick={() => onToggle(node.folder.id)}
                 onDoubleClick={() => onOpenFolder(node.folder)}
                 onContextMenu={(e) => onMenu(e, node, total)}
                 trailing={<span className="text-ui-10 tabular-nums text-on-surface-variant/50">{total}</span>}
-                actions={<MenuButton onOpen={(e) => onMenu(e, node, total)} title="Opciones de la carpeta" />}
+                actions={<MenuButton onOpen={(e) => onMenu(e, node, total)} title={t.sidebar.folders.folderOptions} />}
             />
 
             {open && (
@@ -768,6 +761,8 @@ function NoteRow({
     onOpen: (id: string) => void
     onMenu: (e: ReactMouseEvent, hit: vault.NoteHit) => void
 }) {
+    const t = useT()
+    const tn = t.sidebar.notes
     const {hit, depth} = row
     const parent = row.children > 0
     return (
@@ -775,11 +770,10 @@ function NoteRow({
             depth={depth}
             icon={parent ? 'library_books' : 'description'}
             iconClass={active ? 'text-primary' : undefined}
-            label={hit.title || 'Sin título'}
+            label={hit.title || tn.untitled}
             labelClass={`${active ? 'text-on-surface' : 'text-on-surface/90'} ${hit.matchedTitle ? 'font-medium' : ''}`}
             title={
-                (hit.isPrivate ? `${hit.title} — privada: ningún agente puede leerla` : `${hit.title} — visible para los agentes`) +
-                (parent ? `. Enlaza ${row.children} ${row.children === 1 ? 'nota' : 'notas'}.` : '')
+                tn.noteTitle({title: hit.title, isPrivate: hit.isPrivate, links: parent ? row.children : 0})
             }
             expanded={parent ? !collapsed : undefined}
             onToggle={() => onToggleBranch(row.path)}
@@ -796,7 +790,7 @@ function NoteRow({
                     </>
                 ) : undefined
             }
-            actions={<MenuButton onOpen={(e) => onMenu(e, hit)} title="Opciones de la nota" />}
+            actions={<MenuButton onOpen={(e) => onMenu(e, hit)} title={tn.noteOptions} />}
             below={
                 // El fragmento es lo que evita abrir cinco notas para ver cuál
                 // era. El resaltado viene marcado con «…» desde el backend y se

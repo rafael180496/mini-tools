@@ -18,9 +18,9 @@ package sftpx
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
+	"mini-tools/backend/i18n"
 	"os"
 	"path"
 	"path/filepath"
@@ -348,9 +348,16 @@ func explainLocalDenial(dir string, err error) error {
 	if runtime.GOOS != "darwin" || !errors.Is(err, fs.ErrPermission) {
 		return err
 	}
-	return fmt.Errorf("macOS no le dio permiso a la aplicación para leer %q.\n\n"+
-		"Si no apareció ningún diálogo, concedelo a mano en Ajustes del Sistema → "+
-		"Privacidad y seguridad → Archivos y carpetas (o Acceso total al disco) y "+
-		"volvé a abrir la app. Una versión recién compilada cuenta como una "+
-		"aplicación distinta para macOS, así que el permiso hay que darlo otra vez.", dir)
+	return i18n.Errorf(i18n.Msg{
+		ES: "macOS no le dio permiso a la aplicación para leer %q.\n\n" +
+			"Si no apareció ningún diálogo, concedelo a mano en Ajustes del Sistema → " +
+			"Privacidad y seguridad → Archivos y carpetas (o Acceso total al disco) y " +
+			"volvé a abrir la app. Una versión recién compilada cuenta como una " +
+			"aplicación distinta para macOS, así que el permiso hay que darlo otra vez.",
+		EN: "macOS did not give the app permission to read %q.\n\n" +
+			"If no dialog showed up, grant it by hand in System Settings → " +
+			"Privacy & Security → Files and Folders (or Full Disk Access) and " +
+			"reopen the app. A freshly built version counts as a different " +
+			"application for macOS, so the permission has to be granted again.",
+	}, dir)
 }

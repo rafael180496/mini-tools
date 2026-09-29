@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"mini-tools/backend/i18n"
 )
 
 // toExtJSON converts a lenient mongosh-style value into strict MongoDB
@@ -24,7 +26,7 @@ func toExtJSON(src string) (string, error) {
 	}
 	p.ws()
 	if p.i < len(p.s) {
-		return "", fmt.Errorf("texto sobrante después del valor: %q", strings.TrimSpace(string(p.s[p.i:])))
+		return "", i18n.Errorf(i18n.Msg{ES: "texto sobrante después del valor: %q", EN: "leftover text after the value: %q"}, strings.TrimSpace(string(p.s[p.i:])))
 	}
 	return p.out.String(), nil
 }
@@ -68,7 +70,7 @@ func (p *extjsonParser) ws() {
 func (p *extjsonParser) value() error {
 	p.ws()
 	if p.i >= len(p.s) {
-		return fmt.Errorf("se esperaba un valor pero se llegó al final")
+		return i18n.Errorf(i18n.Msg{ES: "se esperaba un valor pero se llegó al final", EN: "expected a value but reached the end"})
 	}
 	c := p.s[p.i]
 	switch {
@@ -88,7 +90,7 @@ func (p *extjsonParser) value() error {
 	case isIdentStart(c):
 		return p.identLike()
 	default:
-		return fmt.Errorf("carácter inesperado %q", string(c))
+		return i18n.Errorf(i18n.Msg{ES: "carácter inesperado %q", EN: "unexpected character %q"}, string(c))
 	}
 }
 
@@ -114,13 +116,13 @@ func (p *extjsonParser) object() error {
 		} else if isIdentStart(c) {
 			key = p.readIdent()
 		} else {
-			return fmt.Errorf("se esperaba una clave, se encontró %q", string(c))
+			return i18n.Errorf(i18n.Msg{ES: "se esperaba una clave, se encontró %q", EN: "expected a key, found %q"}, string(c))
 		}
 		p.out.WriteString(encodeJSONString(key))
 
 		p.ws()
 		if p.peek() != ':' {
-			return fmt.Errorf("se esperaba ':' después de la clave %q", key)
+			return i18n.Errorf(i18n.Msg{ES: "se esperaba ':' después de la clave %q", EN: "expected ':' after key %q"}, key)
 		}
 		p.i++
 		p.out.WriteByte(':')
@@ -145,7 +147,7 @@ func (p *extjsonParser) object() error {
 			p.out.WriteByte('}')
 			return nil
 		default:
-			return fmt.Errorf("se esperaba ',' o '}' en el objeto")
+			return i18n.Errorf(i18n.Msg{ES: "se esperaba ',' o '}' en el objeto", EN: "expected ',' or '}' in the object"})
 		}
 	}
 }
@@ -179,7 +181,7 @@ func (p *extjsonParser) array() error {
 			p.out.WriteByte(']')
 			return nil
 		default:
-			return fmt.Errorf("se esperaba ',' o ']' en el array")
+			return i18n.Errorf(i18n.Msg{ES: "se esperaba ',' o ']' en el array", EN: "expected ',' or ']' in the array"})
 		}
 	}
 }
@@ -199,7 +201,7 @@ func (p *extjsonParser) number() error {
 	}
 	lit := string(p.s[start:p.i])
 	if _, err := strconv.ParseFloat(lit, 64); err != nil {
-		return fmt.Errorf("número inválido %q", lit)
+		return i18n.Errorf(i18n.Msg{ES: "número inválido %q", EN: "invalid number %q"}, lit)
 	}
 	p.out.WriteString(lit)
 	return nil
@@ -216,14 +218,14 @@ func (p *extjsonParser) identLike() error {
 	case "new":
 		p.ws()
 		if !isIdentStart(p.peek()) {
-			return fmt.Errorf("se esperaba un constructor después de 'new'")
+			return i18n.Errorf(i18n.Msg{ES: "se esperaba un constructor después de 'new'", EN: "expected a constructor after 'new'"})
 		}
 		name = p.readIdent()
 	}
 	// Must be a helper call: name(...)
 	p.ws()
 	if p.peek() != '(' {
-		return fmt.Errorf("identificador inesperado %q (¿faltan comillas?)", name)
+		return i18n.Errorf(i18n.Msg{ES: "identificador inesperado %q (¿faltan comillas?)", EN: "unexpected identifier %q (missing quotes?)"}, name)
 	}
 	arg, isString, hadArg, err := p.helperArg()
 	if err != nil {
@@ -263,7 +265,7 @@ func (p *extjsonParser) helperArg() (arg string, isString, hadArg bool, err erro
 	}
 	p.ws()
 	if p.peek() != ')' {
-		return "", false, false, fmt.Errorf("se esperaba ')' cerrando el argumento")
+		return "", false, false, i18n.Errorf(i18n.Msg{ES: "se esperaba ')' cerrando el argumento", EN: "expected ')' closing the argument"})
 	}
 	p.i++
 	return arg, isString, true, nil
@@ -273,12 +275,12 @@ func (p *extjsonParser) emitHelper(name, arg string, isString, hadArg bool) erro
 	switch name {
 	case "ObjectId":
 		if !hadArg {
-			return fmt.Errorf("ObjectId() requiere un argumento")
+			return i18n.Errorf(i18n.Msg{ES: "ObjectId() requiere un argumento", EN: "ObjectId() requires an argument"})
 		}
 		p.out.WriteString(`{"$oid":` + encodeJSONString(arg) + `}`)
 	case "ISODate", "Date":
 		if !hadArg {
-			return fmt.Errorf("%s() requiere un argumento (fecha ISO)", name)
+			return i18n.Errorf(i18n.Msg{ES: "%s() requiere un argumento (fecha ISO)", EN: "%s() requires an argument (ISO date)"}, name)
 		}
 		if isString {
 			p.out.WriteString(`{"$date":` + encodeJSONString(arg) + `}`)
@@ -287,17 +289,17 @@ func (p *extjsonParser) emitHelper(name, arg string, isString, hadArg bool) erro
 		}
 	case "NumberLong":
 		if !hadArg {
-			return fmt.Errorf("NumberLong() requiere un argumento")
+			return i18n.Errorf(i18n.Msg{ES: "NumberLong() requiere un argumento", EN: "NumberLong() requires an argument"})
 		}
 		p.out.WriteString(`{"$numberLong":` + encodeJSONString(arg) + `}`)
 	case "NumberDecimal":
 		if !hadArg {
-			return fmt.Errorf("NumberDecimal() requiere un argumento")
+			return i18n.Errorf(i18n.Msg{ES: "NumberDecimal() requiere un argumento", EN: "NumberDecimal() requires an argument"})
 		}
 		p.out.WriteString(`{"$numberDecimal":` + encodeJSONString(arg) + `}`)
 	case "NumberInt":
 		if !hadArg {
-			return fmt.Errorf("NumberInt() requiere un argumento")
+			return i18n.Errorf(i18n.Msg{ES: "NumberInt() requiere un argumento", EN: "NumberInt() requires an argument"})
 		}
 		if isString {
 			p.out.WriteString(arg) // caller wrote digits in quotes; emit bare
@@ -306,11 +308,11 @@ func (p *extjsonParser) emitHelper(name, arg string, isString, hadArg bool) erro
 		}
 	case "UUID":
 		if !hadArg {
-			return fmt.Errorf("UUID() requiere un argumento")
+			return i18n.Errorf(i18n.Msg{ES: "UUID() requiere un argumento", EN: "UUID() requires an argument"})
 		}
 		p.out.WriteString(`{"$uuid":` + encodeJSONString(arg) + `}`)
 	default:
-		return fmt.Errorf("constructor no soportado %q()", name)
+		return i18n.Errorf(i18n.Msg{ES: "constructor no soportado %q()", EN: "unsupported constructor %q()"}, name)
 	}
 	return nil
 }
@@ -360,7 +362,7 @@ func (p *extjsonParser) stringLit() (string, error) {
 		b.WriteRune(c)
 		p.i++
 	}
-	return "", fmt.Errorf("string sin cerrar")
+	return "", i18n.Errorf(i18n.Msg{ES: "string sin cerrar", EN: "unclosed string"})
 }
 
 func (p *extjsonParser) readIdent() string {

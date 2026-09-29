@@ -11,6 +11,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"mini-tools/backend/i18n"
 	"net/http"
 	"net/url"
 	"os"
@@ -133,7 +134,7 @@ func (r *Runner) send(execID, envID string, req Request) (*Response, error) {
 	if needsReplay && body != nil {
 		signingBody, err = io.ReadAll(body)
 		if err != nil {
-			return nil, fmt.Errorf("leyendo el cuerpo para firmarlo: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "leyendo el cuerpo para firmarlo: %w", EN: "reading the body to sign it: %w"}, err)
 		}
 		body = bytes.NewReader(signingBody)
 		size = int64(len(signingBody))
@@ -142,7 +143,7 @@ func (r *Runner) send(execID, envID string, req Request) (*Response, error) {
 	newRequest := func(reader io.Reader) (*http.Request, error) {
 		hreq, err := http.NewRequestWithContext(ctx, method, target, reader)
 		if err != nil {
-			return nil, fmt.Errorf("no se pudo armar la petición: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "no se pudo armar la petición: %w", EN: "could not build the request: %w"}, err)
 		}
 		// Content-Type derivado del modo del cuerpo primero, para que un
 		// header escrito a mano lo pise: si alguien puso
@@ -271,7 +272,7 @@ func PreviewURL(req Request) (string, error) { return buildURL(req) }
 func buildURL(req Request) (string, error) {
 	raw := strings.TrimSpace(req.URL)
 	if raw == "" {
-		return "", errors.New("la URL no puede estar vacía")
+		return "", i18n.New(i18n.Msg{ES: "la URL no puede estar vacía", EN: "the URL cannot be empty"})
 	}
 	// Sin esquema, http:// — es lo que la gente escribe cuando prueba contra
 	// localhost, y fallar con "unsupported protocol scheme" ahí es hostil.
@@ -281,7 +282,7 @@ func buildURL(req Request) (string, error) {
 
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("URL inválida: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "URL inválida: %w", EN: "invalid URL: %w"}, err)
 	}
 
 	if len(req.PathVars) > 0 {
@@ -316,7 +317,7 @@ func buildURL(req Request) (string, error) {
 			// Solo puede pasar con un `%` mal formado en la URL original, que
 			// ya venía roto: se deja la ruta como estaba en vez de romperla
 			// más.
-			return "", fmt.Errorf("URL inválida: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "URL inválida: %w", EN: "invalid URL: %w"}, err)
 		}
 		u.Path, u.RawPath = decoded, joined
 	}
@@ -414,7 +415,7 @@ func buildBody(b Body) (body io.Reader, contentType string, size int64, closers 
 		if strings.TrimSpace(b.GraphQLVariables) != "" {
 			var vars any
 			if err := json.Unmarshal([]byte(b.GraphQLVariables), &vars); err != nil {
-				return nil, "", 0, nil, fmt.Errorf("las variables de GraphQL no son JSON válido: %w", err)
+				return nil, "", 0, nil, i18n.Errorf(i18n.Msg{ES: "las variables de GraphQL no son JSON válido: %w", EN: "the GraphQL variables are not valid JSON: %w"}, err)
 			}
 			payload["variables"] = vars
 		}
@@ -437,16 +438,16 @@ func buildBody(b Body) (body io.Reader, contentType string, size int64, closers 
 
 	case BodyBinary:
 		if strings.TrimSpace(b.BinaryPath) == "" {
-			return nil, "", 0, nil, errors.New("elegí un archivo para mandar como cuerpo")
+			return nil, "", 0, nil, i18n.New(i18n.Msg{ES: "elegí un archivo para mandar como cuerpo", EN: "choose a file to send as the body"})
 		}
 		f, err := os.Open(b.BinaryPath)
 		if err != nil {
-			return nil, "", 0, nil, fmt.Errorf("no se pudo abrir %q: %w", b.BinaryPath, err)
+			return nil, "", 0, nil, i18n.Errorf(i18n.Msg{ES: "no se pudo abrir %q: %w", EN: "could not open %q: %w"}, b.BinaryPath, err)
 		}
 		info, err := f.Stat()
 		if err != nil {
 			f.Close()
-			return nil, "", 0, nil, fmt.Errorf("no se pudo leer %q: %w", b.BinaryPath, err)
+			return nil, "", 0, nil, i18n.Errorf(i18n.Msg{ES: "no se pudo leer %q: %w", EN: "could not read %q: %w"}, b.BinaryPath, err)
 		}
 		// Tipo por extensión; si no se reconoce, el genérico. No se olfatea
 		// el contenido: leer los primeros bytes para adivinar obligaría a
@@ -462,7 +463,7 @@ func buildBody(b Body) (body io.Reader, contentType string, size int64, closers 
 		return buildMultipart(b.FormData)
 
 	default:
-		return nil, "", 0, nil, fmt.Errorf("tipo de cuerpo desconocido: %q", b.Mode)
+		return nil, "", 0, nil, i18n.Errorf(i18n.Msg{ES: "tipo de cuerpo desconocido: %q", EN: "unknown body type: %q"}, b.Mode)
 	}
 }
 
@@ -490,7 +491,7 @@ func buildMultipart(fields []FormField) (io.Reader, string, int64, []io.Closer, 
 			for _, c := range closers {
 				c.Close()
 			}
-			return nil, "", 0, nil, fmt.Errorf("no se pudo abrir %q: %w", f.Value, err)
+			return nil, "", 0, nil, i18n.Errorf(i18n.Msg{ES: "no se pudo abrir %q: %w", EN: "could not open %q: %w"}, f.Value, err)
 		}
 		opened[i] = file
 		closers = append(closers, file)
@@ -608,7 +609,7 @@ func buildClient(s Settings) (*http.Client, *int) {
 				return http.ErrUseLastResponse
 			}
 			if len(via) >= s.MaxRedirects {
-				return fmt.Errorf("se superaron las %d redirecciones permitidas", s.MaxRedirects)
+				return i18n.Errorf(i18n.Msg{ES: "se superaron las %d redirecciones permitidas", EN: "exceeded the %d allowed redirects"}, s.MaxRedirects)
 			}
 			redirects = len(via)
 
@@ -646,14 +647,14 @@ func buildClient(s Settings) (*http.Client, *int) {
 // necesita justo en ese momento.
 func describeSendError(err error, ctx context.Context, timeout time.Duration) error {
 	if ctx.Err() == context.DeadlineExceeded {
-		return fmt.Errorf("la petición superó el tiempo límite de %s (se cambia en Settings)", timeout)
+		return i18n.Errorf(i18n.Msg{ES: "la petición superó el tiempo límite de %s (se cambia en Settings)", EN: "the request exceeded the %s timeout (change it in Settings)"}, timeout)
 	}
 	if ctx.Err() == context.Canceled {
-		return errors.New("petición cancelada")
+		return i18n.New(i18n.Msg{ES: "petición cancelada", EN: "request cancelled"})
 	}
 	var certErr *tls.CertificateVerificationError
 	if errors.As(err, &certErr) {
-		return fmt.Errorf("el certificado del servidor no se pudo verificar: %w — si es un entorno interno con certificado propio, apagá la verificación TLS en Settings", err)
+		return i18n.Errorf(i18n.Msg{ES: "el certificado del servidor no se pudo verificar: %w — si es un entorno interno con certificado propio, apagá la verificación TLS en Settings", EN: "the server certificate could not be verified: %w — if this is an internal environment with its own certificate, turn off TLS verification in Settings"}, err)
 	}
 	return err
 }
@@ -699,7 +700,7 @@ func readResponse(hresp *http.Response, s Settings) (*Response, error) {
 	limited := io.LimitReader(hresp.Body, s.MaxBodyBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
-		return nil, fmt.Errorf("leyendo la respuesta: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "leyendo la respuesta: %w", EN: "reading the response: %w"}, err)
 	}
 
 	truncated := int64(len(data)) > s.MaxBodyBytes
@@ -752,19 +753,19 @@ func readResponse(hresp *http.Response, s Settings) (*Response, error) {
 func spillToFile(head []byte, rest io.Reader) (string, int64, error) {
 	f, err := os.CreateTemp("", "mini-tools-http-*.bin")
 	if err != nil {
-		return "", 0, fmt.Errorf("no se pudo crear el archivo temporal para la respuesta: %w", err)
+		return "", 0, i18n.Errorf(i18n.Msg{ES: "no se pudo crear el archivo temporal para la respuesta: %w", EN: "could not create the temporary file for the response: %w"}, err)
 	}
 	defer f.Close()
 
 	n, err := f.Write(head)
 	if err != nil {
 		os.Remove(f.Name())
-		return "", 0, fmt.Errorf("escribiendo la respuesta: %w", err)
+		return "", 0, i18n.Errorf(i18n.Msg{ES: "escribiendo la respuesta: %w", EN: "writing the response: %w"}, err)
 	}
 	copied, err := io.Copy(f, rest)
 	if err != nil {
 		os.Remove(f.Name())
-		return "", 0, fmt.Errorf("escribiendo la respuesta: %w", err)
+		return "", 0, i18n.Errorf(i18n.Msg{ES: "escribiendo la respuesta: %w", EN: "writing the response: %w"}, err)
 	}
 	return f.Name(), int64(n) + copied, nil
 }

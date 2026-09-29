@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // claudeLimits lee el caché de utilización que deja Claude Code en
@@ -26,7 +28,7 @@ func claudeLimits(home string) AgentLimits {
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		l.Note = "No hay una sesión de Claude Code iniciada en esta máquina."
+		l.Note = i18n.T(i18n.Msg{ES: "No hay una sesión de Claude Code iniciada en esta máquina.", EN: "There's no Claude Code session signed in on this machine."})
 		return l
 	}
 
@@ -41,12 +43,12 @@ func claudeLimits(home string) AgentLimits {
 		} `json:"cachedUsageUtilization"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		l.Note = "No se pudo leer la configuración de Claude Code."
+		l.Note = i18n.T(i18n.Msg{ES: "No se pudo leer la configuración de Claude Code.", EN: "Couldn't read the Claude Code configuration."})
 		return l
 	}
 
 	if doc.Cached.FetchedAtMs == 0 {
-		l.Note = "Claude Code todavía no guardó tu uso: se llena la primera vez que abrís una sesión con esta versión del CLI."
+		l.Note = i18n.T(i18n.Msg{ES: "Claude Code todavía no guardó tu uso: se llena la primera vez que abrís una sesión con esta versión del CLI.", EN: "Claude Code hasn't saved your usage yet: it fills in the first time you open a session with this CLI version."})
 		return l
 	}
 	l.MeasuredAt = time.UnixMilli(doc.Cached.FetchedAtMs).Format(time.RFC3339)
@@ -75,15 +77,15 @@ func claudeLimits(home string) AgentLimits {
 	// Respaldo para un CLI que todavía no escribe `limits`.
 	if len(l.Windows) == 0 {
 		if b := u.FiveHour; b != nil && b.Utilization != nil {
-			l.Windows = append(l.Windows, Window{Kind: "session", Label: "Sesión · 5 h", Percent: *b.Utilization, ResetsAt: strOrEmpty(b.ResetsAt)})
+			l.Windows = append(l.Windows, Window{Kind: "session", Label: i18n.T(i18n.Msg{ES: "Sesión · 5 h", EN: "Session · 5 h"}), Percent: *b.Utilization, ResetsAt: strOrEmpty(b.ResetsAt)})
 		}
 		if b := u.SevenDay; b != nil && b.Utilization != nil {
-			l.Windows = append(l.Windows, Window{Kind: "weekly", Label: "Semana · todos los modelos", Percent: *b.Utilization, ResetsAt: strOrEmpty(b.ResetsAt)})
+			l.Windows = append(l.Windows, Window{Kind: "weekly", Label: i18n.T(i18n.Msg{ES: "Semana · todos los modelos", EN: "Week · all models"}), Percent: *b.Utilization, ResetsAt: strOrEmpty(b.ResetsAt)})
 		}
 	}
 
 	if len(l.Windows) == 0 {
-		l.Note = "El caché de uso de Claude Code está vacío."
+		l.Note = i18n.T(i18n.Msg{ES: "El caché de uso de Claude Code está vacío.", EN: "The Claude Code usage cache is empty."})
 		return l
 	}
 	l.Known = true
@@ -136,14 +138,14 @@ func claudeLabel(w claudeLimitEntry) string {
 	}
 	switch w.Kind {
 	case "session":
-		return "Sesión · 5 h"
+		return i18n.T(i18n.Msg{ES: "Sesión · 5 h", EN: "Session · 5 h"})
 	case "weekly_all":
-		return "Semana · todos los modelos"
+		return i18n.T(i18n.Msg{ES: "Semana · todos los modelos", EN: "Week · all models"})
 	case "weekly_scoped":
 		if model != "" {
-			return "Semana · " + model
+			return i18n.T(i18n.Msg{ES: "Semana · %s", EN: "Week · %s"}, model)
 		}
-		return "Semana · un modelo"
+		return i18n.T(i18n.Msg{ES: "Semana · un modelo", EN: "Week · one model"})
 	}
 	if model != "" {
 		return w.Kind + " · " + model

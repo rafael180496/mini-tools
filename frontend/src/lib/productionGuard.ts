@@ -14,6 +14,8 @@
 // The detection is a pure function over a string, with nothing to gain from
 // the backend.
 
+import {t} from '../i18n'
+
 export interface Risk {
     // What matched, for the dialog's title.
     label: string
@@ -23,10 +25,14 @@ export interface Risk {
     detail: string
 }
 
+// El texto de cada regla vive en el diccionario (t().ssh.guard.rules) y se
+// resuelve en inspect(), al usarlo: guardarlo acá lo congelaría en el idioma
+// con el que arrancó la app.
+type RuleKey = keyof ReturnType<typeof t>['ssh']['guard']['rules']
+
 interface Rule {
     test: RegExp
-    label: string
-    detail: string
+    key: RuleKey
 }
 
 // Each pattern is anchored on a command boundary (start of line, or after a
@@ -37,63 +43,51 @@ const CMD = String.raw`(?:^|[;&|]\s*|\)\s*)`
 const RULES: Rule[] = [
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?rm\s+(?:-[a-zA-Z]*\s+)*-[a-zA-Z]*[rR][a-zA-Z]*f|` + CMD + String.raw`(?:sudo\s+)?rm\s+(?:-[a-zA-Z]*\s+)*-[a-zA-Z]*f[a-zA-Z]*[rR]`),
-        label: 'rm -rf',
-        detail: 'Borra recursivamente y sin preguntar. No hay papelera: lo que se borra en el servidor no se recupera.',
+        key: 'rmRf',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?mkfs(\.\w+)?\b`),
-        label: 'mkfs',
-        detail: 'Formatea un sistema de archivos. Todo lo que haya en ese dispositivo deja de existir.',
+        key: 'mkfs',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?dd\s+.*\bof=`),
-        label: 'dd of=',
-        detail: 'Escribe directamente sobre un dispositivo o archivo. Un destino equivocado destruye un disco entero sin confirmación.',
+        key: 'dd',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?systemctl\s+(stop|disable|mask)\b`),
-        label: 'systemctl stop/disable',
-        detail: 'Detiene o deshabilita un servicio. En producción esto es una caída, y `disable` además sobrevive al próximo reinicio.',
+        key: 'systemctl',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?(shutdown|reboot|halt|poweroff)\b`),
-        label: 'apagado o reinicio',
-        detail: 'Apaga o reinicia el servidor. Si no tenés acceso físico o consola fuera de banda, puede no volver.',
+        key: 'shutdown',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?(kill|pkill|killall)\s+(-9|-KILL)\b`),
-        label: 'kill -9',
-        detail: 'Mata el proceso sin darle oportunidad de cerrar: transacciones a medias, archivos sin flushear y sockets colgados.',
+        key: 'kill9',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?(chmod|chown)\s+(-[a-zA-Z]*R[a-zA-Z]*\s+)`),
-        label: 'chmod/chown recursivo',
-        detail: 'Cambia permisos o dueño de todo un árbol. Aplicado sobre / o sobre el directorio equivocado deja el sistema inutilizable.',
+        key: 'chmodR',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?(iptables|nft)\s+.*(-F|--flush)\b`),
-        label: 'iptables -F',
-        detail: 'Vacía las reglas de firewall. Si tu propio acceso SSH depende de una de ellas, la sesión se corta y no vuelve a entrar.',
+        key: 'iptables',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?(userdel|groupdel)\b`),
-        label: 'userdel',
-        detail: 'Elimina una cuenta del sistema. Los procesos y cron de ese usuario dejan de funcionar.',
+        key: 'userdel',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?(drop\s+database|truncate\s+table)`, 'i'),
-        label: 'DROP/TRUNCATE',
-        detail: 'Destruye datos de una base entera. Sin un backup verificado, es irreversible.',
+        key: 'drop',
     },
     {
         test: />\s*\/dev\/(sd|nvme|vd|hd)/,
-        label: 'escritura a /dev/…',
-        detail: 'Redirige salida directamente a un disco. Sobrescribe la tabla de particiones o el sistema de archivos que haya ahí.',
+        key: 'devWrite',
     },
     {
         test: new RegExp(CMD + String.raw`(?:sudo\s+)?git\s+push\s+.*(--force\b|(?:^|\s)-f(?:\s|$))`),
-        label: 'git push --force',
-        detail: 'Reescribe la historia de la rama remota. El trabajo que otro haya subido en el medio se pierde.',
+        key: 'forcePush',
     },
 ]
 
@@ -114,7 +108,7 @@ export function inspect(command: string): Risk[] {
 
     const out: Risk[] = []
     for (const rule of RULES) {
-        if (rule.test.test(cmd)) out.push({label: rule.label, detail: rule.detail})
+        if (rule.test.test(cmd)) out.push({...t().ssh.guard.rules[rule.key]})
     }
     return out
 }

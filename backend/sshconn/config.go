@@ -8,7 +8,7 @@
 package sshconn
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"net"
 	"time"
 
@@ -92,7 +92,7 @@ func clientConfig(cp *connParams, answerer *promptAnswerer) (*ssh.ClientConfig, 
 		}
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
 	default:
-		return nil, fmt.Errorf("sshconn: método de autenticación desconocido %q", cp.auth)
+		return nil, i18n.Errorf(i18n.Msg{ES: "sshconn: método de autenticación desconocido %q", EN: "sshconn: unknown authentication method %q"}, cp.auth)
 	}
 
 	return &ssh.ClientConfig{
@@ -107,13 +107,13 @@ func parsePrivateKey(pemKey, passphrase string) (ssh.Signer, error) {
 	if passphrase != "" {
 		signer, err := ssh.ParsePrivateKeyWithPassphrase([]byte(pemKey), []byte(passphrase))
 		if err != nil {
-			return nil, fmt.Errorf("sshconn: parseando private key (con passphrase): %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "sshconn: parseando private key (con passphrase): %w", EN: "sshconn: parsing private key (with passphrase): %w"}, err)
 		}
 		return signer, nil
 	}
 	signer, err := ssh.ParsePrivateKey([]byte(pemKey))
 	if err != nil {
-		return nil, fmt.Errorf("sshconn: parseando private key: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "sshconn: parseando private key: %w", EN: "sshconn: parsing private key: %w"}, err)
 	}
 	return signer, nil
 }

@@ -1,3 +1,5 @@
+import {t} from '../../i18n'
+
 // Contexto de trabajo del chat unificado: sobre QUÉ se está preguntando.
 //
 // Hasta 1.3.x el chat era del módulo Git y recibía un `repoId` obligatorio. El
@@ -41,15 +43,12 @@ export const CONTEXT_ICONS: Record<WorkContextKind, string> = {
     none: 'smart_toy',
 }
 
-// CONTEXT_NOUNS es cómo se nombra el recurso en una frase ("sobre este
-// repositorio"). Se usa en el estado vacío del chat y en los tooltips.
-export const CONTEXT_NOUNS: Record<WorkContextKind, string> = {
-    git: 'repositorio',
-    db: 'conexión',
-    ssh: 'servidor',
-    note: 'nota',
-    http: 'petición',
-    none: '',
+// contextNoun es cómo se nombra el recurso en una frase ("sobre este
+// repositorio"). Se usa en el estado vacío del chat y en los tooltips. Es una
+// función y no una tabla de módulo: el texto sale del diccionario en el
+// momento de usarlo, en el idioma activo.
+export function contextNoun(kind: WorkContextKind): string {
+    return kind === 'none' ? '' : t().agent.context.nouns[kind]
 }
 
 // repoIdOf devuelve el id SOLO cuando el contexto es un repositorio.
@@ -70,12 +69,12 @@ export function describeContext(context: WorkContext): string {
         context.kind === 'git'
             ? 'Git'
             : context.kind === 'db'
-              ? 'Base'
+              ? t().agent.context.prefixDb
               : context.kind === 'ssh'
                 ? 'SSH'
                 : context.kind === 'http'
                   ? 'HTTP'
-                  : 'Nota'
+                  : t().agent.context.prefixNote
     return `${prefix} · ${context.label}`
 }
 

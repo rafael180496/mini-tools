@@ -3,6 +3,7 @@ package agentchat
 import (
 	"encoding/json"
 	"fmt"
+	"mini-tools/backend/i18n"
 	"strings"
 
 	"mini-tools/backend/agentapprove"
@@ -118,7 +119,7 @@ func claudeAdapter(line []byte) []Event {
 		}
 		u.Total = u.Input + u.Output + u.CacheRead
 		if l.IsError {
-			return []Event{{Kind: KindError, Error: firstNonEmpty(l.Result, "el agente terminó con error"), Usage: &u, ConversationID: l.SessionID}}
+			return []Event{{Kind: KindError, Error: firstNonEmpty(l.Result, i18n.T(msgAgentFailed)), Usage: &u, ConversationID: l.SessionID}}
 		}
 		return []Event{{Kind: KindDone, Usage: &u, ConversationID: l.SessionID}}
 	}
@@ -210,7 +211,7 @@ func antigravityAdapter(line []byte) []Event {
 	case l.Result != nil:
 		u := l.Result.Usage.common()
 		if l.Result.Status != "" && l.Result.Status != "SUCCESS" {
-			return []Event{{Kind: KindError, Error: fmt.Sprintf("el agente terminó con estado %s", l.Result.Status), Usage: u, ConversationID: l.Result.ConversationID}}
+			return []Event{{Kind: KindError, Error: i18n.T(i18n.Msg{ES: "el agente terminó con estado %s", EN: "the agent finished with status %s"}, l.Result.Status), Usage: u, ConversationID: l.Result.ConversationID}}
 		}
 		return []Event{{Kind: KindDone, Usage: u, ConversationID: l.Result.ConversationID}}
 	}
@@ -313,7 +314,7 @@ func codexAdapter(line []byte) []Event {
 		return []Event{{Kind: KindDone, Usage: &u}}
 
 	case "turn.failed", "error":
-		msg := "el agente terminó con error"
+		msg := i18n.T(msgAgentFailed)
 		if l.Error != nil && l.Error.Message != "" {
 			msg = l.Error.Message
 		}
@@ -321,6 +322,8 @@ func codexAdapter(line []byte) []Event {
 	}
 	return nil
 }
+
+var msgAgentFailed = i18n.Msg{ES: "el agente terminó con error", EN: "the agent finished with an error"}
 
 // --- Registro -------------------------------------------------------------
 

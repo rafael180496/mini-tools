@@ -18,11 +18,12 @@
 package osopen
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"mini-tools/backend/i18n"
 )
 
 // Editor es un editor externo detectado en esta máquina.
@@ -95,12 +96,12 @@ func OpenInEditor(editorID, path string) error {
 		// ese tiempo.
 		cmd := exec.Command(e.Path, dir)
 		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("no se pudo abrir %s: %w", e.Label, err)
+			return i18n.Errorf(i18n.Msg{ES: "no se pudo abrir %s: %w", EN: "couldn't open %s: %w"}, e.Label, err)
 		}
 		go func() { _ = cmd.Wait() }() // Evita dejar un proceso zombi.
 		return nil
 	}
-	return fmt.Errorf("%q no está instalado en esta máquina", editorID)
+	return i18n.Errorf(i18n.Msg{ES: "%q no está instalado en esta máquina", EN: "%q is not installed on this machine"}, editorID)
 }
 
 // Reveal abre la carpeta en el explorador de archivos del sistema.
@@ -125,7 +126,7 @@ func Reveal(path string) error {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("no se pudo abrir el explorador de archivos: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "no se pudo abrir el explorador de archivos: %w", EN: "couldn't open the file manager: %w"}, err)
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
@@ -139,7 +140,7 @@ func Reveal(path string) error {
 // ruta, y el usuario termina sin saber qué buscar.
 func checkDir(path string) (string, error) {
 	if path == "" {
-		return "", fmt.Errorf("no hay ninguna carpeta que abrir")
+		return "", i18n.Errorf(i18n.Msg{ES: "no hay ninguna carpeta que abrir", EN: "there's no folder to open"})
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -147,7 +148,7 @@ func checkDir(path string) (string, error) {
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		return "", fmt.Errorf("no se encontró la carpeta %q — ¿se movió o se borró?", abs)
+		return "", i18n.Errorf(i18n.Msg{ES: "no se encontró la carpeta %q — ¿se movió o se borró?", EN: "folder %q wasn't found — was it moved or deleted?"}, abs)
 	}
 	if !info.IsDir() {
 		// Un archivo se abre mostrando su carpeta: es lo que uno espera de

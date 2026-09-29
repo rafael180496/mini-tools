@@ -2,12 +2,13 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"mini-tools/backend/i18n"
 )
 
 // parseMongoFilter parses a relaxed/Extended-JSON filter string into an ordered
@@ -23,7 +24,7 @@ func parseMongoFilter(filterJSON string) (bson.D, error) {
 		return filter, nil
 	}
 	if err := bson.UnmarshalExtJSON([]byte(trimmed), false, &filter); err != nil {
-		return nil, fmt.Errorf("db: filtro Mongo inválido: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: filtro Mongo inválido: %w", EN: "db: invalid Mongo filter: %w"}, err)
 	}
 	return filter, nil
 }
@@ -51,7 +52,7 @@ func ListMongoDocuments(ctx context.Context, client *mongo.Client, dbName, collN
 	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "_id", Value: 1}})
 	cursor, err := client.Database(dbName).Collection(collName).Find(ctx, filter, opts)
 	if err != nil {
-		return nil, fmt.Errorf("db: buscando documentos Mongo en %q.%q: %w", dbName, collName, err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: buscando documentos Mongo en %q.%q: %w", EN: "db: finding Mongo documents in %q.%q: %w"}, dbName, collName, err)
 	}
 	defer cursor.Close(ctx)
 
@@ -59,7 +60,7 @@ func ListMongoDocuments(ctx context.Context, client *mongo.Client, dbName, collN
 	for cursor.Next(ctx) {
 		j, err := bson.MarshalExtJSON(cursor.Current, false, false)
 		if err != nil {
-			return nil, fmt.Errorf("db: serializando documento Mongo: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: serializando documento Mongo: %w", EN: "db: serializing Mongo document: %w"}, err)
 		}
 		out = append(out, string(j))
 	}
@@ -75,7 +76,7 @@ func CountMongoDocuments(ctx context.Context, client *mongo.Client, dbName, coll
 	}
 	count, err := client.Database(dbName).Collection(collName).CountDocuments(ctx, filter)
 	if err != nil {
-		return 0, fmt.Errorf("db: contando documentos Mongo en %q.%q: %w", dbName, collName, err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "db: contando documentos Mongo en %q.%q: %w", EN: "db: counting Mongo documents in %q.%q: %w"}, dbName, collName, err)
 	}
 	return count, nil
 }
@@ -86,16 +87,16 @@ func CountMongoDocuments(ctx context.Context, client *mongo.Client, dbName, coll
 func ReplaceMongoDocument(ctx context.Context, client *mongo.Client, dbName, collName, docJSON string) error {
 	var doc bson.D
 	if err := bson.UnmarshalExtJSON([]byte(docJSON), false, &doc); err != nil {
-		return fmt.Errorf("db: documento Mongo inválido: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: documento Mongo inválido: %w", EN: "db: invalid Mongo document: %w"}, err)
 	}
 	id, ok := docID(doc)
 	if !ok {
-		return fmt.Errorf("db: el documento no tiene campo _id, no se puede reemplazar")
+		return i18n.Errorf(i18n.Msg{ES: "db: el documento no tiene campo _id, no se puede reemplazar", EN: "db: the document has no _id field, it can't be replaced"})
 	}
 	_, err := client.Database(dbName).Collection(collName).
 		ReplaceOne(ctx, bson.D{{Key: "_id", Value: id}}, doc)
 	if err != nil {
-		return fmt.Errorf("db: reemplazando documento Mongo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: reemplazando documento Mongo: %w", EN: "db: replacing Mongo document: %w"}, err)
 	}
 	return nil
 }
@@ -105,16 +106,16 @@ func ReplaceMongoDocument(ctx context.Context, client *mongo.Client, dbName, col
 func DeleteMongoDocument(ctx context.Context, client *mongo.Client, dbName, collName, docJSON string) error {
 	var doc bson.D
 	if err := bson.UnmarshalExtJSON([]byte(docJSON), false, &doc); err != nil {
-		return fmt.Errorf("db: documento Mongo inválido: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: documento Mongo inválido: %w", EN: "db: invalid Mongo document: %w"}, err)
 	}
 	id, ok := docID(doc)
 	if !ok {
-		return fmt.Errorf("db: el documento no tiene campo _id, no se puede eliminar")
+		return i18n.Errorf(i18n.Msg{ES: "db: el documento no tiene campo _id, no se puede eliminar", EN: "db: the document has no _id field, it can't be deleted"})
 	}
 	_, err := client.Database(dbName).Collection(collName).
 		DeleteOne(ctx, bson.D{{Key: "_id", Value: id}})
 	if err != nil {
-		return fmt.Errorf("db: eliminando documento Mongo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: eliminando documento Mongo: %w", EN: "db: deleting Mongo document: %w"}, err)
 	}
 	return nil
 }

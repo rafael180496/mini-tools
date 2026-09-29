@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 )
 
 // Central store for SSH private keys, so one key can be linked to many
@@ -52,10 +52,10 @@ type SSHKeySummary struct {
 func (s *Store) SaveSSHKey(name, privateKey, passphrase string) (*SSHKeySummary, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return nil, fmt.Errorf("vault: la llave necesita un nombre")
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: la llave necesita un nombre", EN: "vault: the key needs a name"})
 	}
 	if strings.TrimSpace(privateKey) == "" {
-		return nil, fmt.Errorf("vault: la llave está vacía")
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: la llave está vacía", EN: "vault: the key is empty"})
 	}
 
 	keyType, fingerprint, err := describeKey(privateKey, passphrase)
@@ -70,7 +70,7 @@ func (s *Store) SaveSSHKey(name, privateKey, passphrase string) (*SSHKeySummary,
 
 	encKey, keyNonce, err := mtcrypto.Encrypt(key, []byte(privateKey))
 	if err != nil {
-		return nil, fmt.Errorf("vault: cifrando la llave: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: cifrando la llave: %w", EN: "vault: encrypting the key: %w"}, err)
 	}
 
 	// A passphrase-less key stores SQL NULL rather than the encryption of an
@@ -79,7 +79,7 @@ func (s *Store) SaveSSHKey(name, privateKey, passphrase string) (*SSHKeySummary,
 	if passphrase != "" {
 		c, n, err := mtcrypto.Encrypt(key, []byte(passphrase))
 		if err != nil {
-			return nil, fmt.Errorf("vault: cifrando la passphrase: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: cifrando la passphrase: %w", EN: "vault: encrypting the passphrase: %w"}, err)
 		}
 		encPass, passNonce = c, n
 	}
@@ -96,9 +96,9 @@ func (s *Store) SaveSSHKey(name, privateKey, passphrase string) (*SSHKeySummary,
 		id, name, keyType, fingerprint, encKey, keyNonce, encPass, passNonce, createdAt,
 	); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			return nil, fmt.Errorf("vault: ya existe una llave llamada %q", name)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: ya existe una llave llamada %q", EN: "vault: a key named %q already exists"}, name)
 		}
-		return nil, fmt.Errorf("vault: guardando la llave: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: guardando la llave: %w", EN: "vault: saving the key: %w"}, err)
 	}
 
 	return &SSHKeySummary{
@@ -123,9 +123,9 @@ func describeKey(privateKey, passphrase string) (string, string, error) {
 		// which reads like the key is broken.
 		var passErr *ssh.PassphraseMissingError
 		if errors.As(err, &passErr) {
-			return "", "", fmt.Errorf("vault: la llave está protegida por passphrase — hay que indicarla para guardarla")
+			return "", "", i18n.Errorf(i18n.Msg{ES: "vault: la llave está protegida por passphrase — hay que indicarla para guardarla", EN: "vault: the key is protected by a passphrase — enter it to save the key"})
 		}
-		return "", "", fmt.Errorf("vault: la llave no se pudo leer: %w", err)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: la llave no se pudo leer: %w", EN: "vault: the key could not be read: %w"}, err)
 	}
 
 	pub := signer.PublicKey()
@@ -138,7 +138,7 @@ func (s *Store) ListSSHKeys() ([]SSHKeySummary, error) {
 	rows, err := s.db.Query(
 		`SELECT id, name, key_type, fingerprint, encrypted_passphrase IS NOT NULL, created_at FROM ssh_keys ORDER BY name`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando llaves: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando llaves: %w", EN: "vault: listing keys: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -146,7 +146,7 @@ func (s *Store) ListSSHKeys() ([]SSHKeySummary, error) {
 	for rows.Next() {
 		var k SSHKeySummary
 		if err := rows.Scan(&k.ID, &k.Name, &k.KeyType, &k.Fingerprint, &k.HasPassphrase, &k.CreatedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo llave: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo llave: %w", EN: "vault: reading key: %w"}, err)
 		}
 		out = append(out, k)
 	}
@@ -157,18 +157,18 @@ func (s *Store) ListSSHKeys() ([]SSHKeySummary, error) {
 func (s *Store) RenameSSHKey(id, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return fmt.Errorf("vault: la llave necesita un nombre")
+		return i18n.Errorf(i18n.Msg{ES: "vault: la llave necesita un nombre", EN: "vault: the key needs a name"})
 	}
 	res, err := s.db.Exec(`UPDATE ssh_keys SET name = ? WHERE id = ?`, name, id)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			return fmt.Errorf("vault: ya existe una llave llamada %q", name)
+			return i18n.Errorf(i18n.Msg{ES: "vault: ya existe una llave llamada %q", EN: "vault: a key named %q already exists"}, name)
 		}
-		return fmt.Errorf("vault: renombrando la llave: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: renombrando la llave: %w", EN: "vault: renaming the key: %w"}, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("vault: llave %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: llave %q no encontrada", EN: "vault: key %q not found"}, id)
 	}
 	return nil
 }
@@ -179,11 +179,11 @@ func (s *Store) RenameSSHKey(id, name string) error {
 func (s *Store) DeleteSSHKey(id string) error {
 	res, err := s.db.Exec(`DELETE FROM ssh_keys WHERE id = ?`, id)
 	if err != nil {
-		return fmt.Errorf("vault: borrando la llave: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando la llave: %w", EN: "vault: deleting the key: %w"}, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("vault: llave %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: llave %q no encontrada", EN: "vault: key %q not found"}, id)
 	}
 	return nil
 }
@@ -203,22 +203,22 @@ func (s *Store) SSHKeyMaterial(id string) (string, string, error) {
 		`SELECT encrypted_key, key_nonce, encrypted_passphrase, passphrase_nonce FROM ssh_keys WHERE id = ?`, id).
 		Scan(&encKey, &keyNonce, &encPass, &passNonce)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", fmt.Errorf("vault: la llave vinculada a esta conexión ya no existe")
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: la llave vinculada a esta conexión ya no existe", EN: "vault: the key linked to this connection no longer exists"})
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("vault: leyendo la llave: %w", err)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo la llave: %w", EN: "vault: reading the key: %w"}, err)
 	}
 
 	plain, err := mtcrypto.Decrypt(key, encKey, keyNonce)
 	if err != nil {
-		return "", "", fmt.Errorf("vault: descifrando la llave: %w", err)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: descifrando la llave: %w", EN: "vault: decrypting the key: %w"}, err)
 	}
 
 	passphrase := ""
 	if len(encPass) > 0 {
 		p, err := mtcrypto.Decrypt(key, encPass, passNonce)
 		if err != nil {
-			return "", "", fmt.Errorf("vault: descifrando la passphrase: %w", err)
+			return "", "", i18n.Errorf(i18n.Msg{ES: "vault: descifrando la passphrase: %w", EN: "vault: decrypting the passphrase: %w"}, err)
 		}
 		passphrase = string(p)
 	}

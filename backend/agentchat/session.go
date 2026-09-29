@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"mini-tools/backend/i18n"
 	"os/exec"
 	"strings"
 	"sync"
@@ -161,22 +162,22 @@ type Turn struct {
 // query.Executor y localterm.
 func (m *Manager) Send(t Turn) error {
 	if t.SessionID == "" {
-		return fmt.Errorf("agentchat: falta el id de sesión")
+		return i18n.Errorf(i18n.Msg{ES: "agentchat: falta el id de sesión", EN: "agentchat: the session id is missing"})
 	}
 	if strings.TrimSpace(t.Prompt) == "" {
-		return fmt.Errorf("agentchat: el mensaje está vacío")
+		return i18n.Errorf(i18n.Msg{ES: "agentchat: el mensaje está vacío", EN: "agentchat: the message is empty"})
 	}
 	adapt, ok := adapters[t.AgentID]
 	if !ok {
 		// Se falla claro en vez de correr el CLI y mostrar un chat mudo: sin
 		// adaptador verificado no se puede leer nada de lo que conteste.
-		return fmt.Errorf("agentchat: el chat todavía no está verificado para %q; usá la terminal para ese agente", t.AgentID)
+		return i18n.Errorf(i18n.Msg{ES: "agentchat: el chat todavía no está verificado para %q; usá la terminal para ese agente", EN: "agentchat: chat is not verified yet for %q; use the terminal for that agent"}, t.AgentID)
 	}
 
 	m.mu.Lock()
 	if _, busy := m.cancels[t.SessionID]; busy {
 		m.mu.Unlock()
-		return fmt.Errorf("agentchat: esa sesión todavía está contestando")
+		return i18n.Errorf(i18n.Msg{ES: "agentchat: esa sesión todavía está contestando", EN: "agentchat: that session is still replying"})
 	}
 	convo := m.convos[t.SessionID]
 	ctx, cancel := context.WithCancel(context.Background())
@@ -209,13 +210,13 @@ func (m *Manager) Send(t Turn) error {
 func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 	adapt, ok := adapters[t.AgentID]
 	if !ok {
-		return "", fmt.Errorf("agentchat: no hay modo headless verificado para %q", t.AgentID)
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: no hay modo headless verificado para %q", EN: "agentchat: there is no verified headless mode for %q"}, t.AgentID)
 	}
 	if t.Mode == ModeEdit || t.Mode == ModeAuto {
-		return "", fmt.Errorf("agentchat: una acción de un botón no corre en modo de edición")
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: una acción de un botón no corre en modo de edición", EN: "agentchat: a button action does not run in edit mode"})
 	}
 	if strings.TrimSpace(t.Prompt) == "" {
-		return "", fmt.Errorf("agentchat: el mensaje está vacío")
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: el mensaje está vacío", EN: "agentchat: the message is empty"})
 	}
 
 	args, err := buildArgs(t, "")
@@ -235,7 +236,7 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("no se pudo ejecutar %q: %w", args[0], err)
+		return "", i18n.Errorf(i18n.Msg{ES: "no se pudo ejecutar %q: %w", EN: "could not run %q: %w"}, args[0], err)
 	}
 
 	var text strings.Builder
@@ -266,7 +267,7 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 	// respuesta truncada se devolvería como si estuviera completa — y acá esa
 	// respuesta va a parar a un mensaje de commit.
 	if err := sc.Err(); err != nil {
-		return "", fmt.Errorf("se cortó la lectura de la respuesta: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "se cortó la lectura de la respuesta: %w", EN: "reading the response was interrupted: %w"}, err)
 	}
 	if waitErr := cmd.Wait(); waitErr != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
@@ -278,7 +279,7 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 		return "", fmt.Errorf("%s", failure)
 	}
 	if strings.TrimSpace(text.String()) == "" {
-		return "", fmt.Errorf("el agente no devolvió texto")
+		return "", i18n.Errorf(i18n.Msg{ES: "el agente no devolvió texto", EN: "the agent returned no text"})
 	}
 	return strings.TrimSpace(text.String()), nil
 }
@@ -328,7 +329,7 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 	defer m.finish(t.SessionID)
 
 	if len(args) == 0 {
-		m.emit(t.SessionID, Event{Kind: KindError, Error: "no se pudo armar el comando del agente"})
+		m.emit(t.SessionID, Event{Kind: KindError, Error: i18n.T(i18n.Msg{ES: "no se pudo armar el comando del agente", EN: "could not build the agent command"})})
 		return
 	}
 
@@ -352,7 +353,7 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 	cmd.Stderr = &stderr
 
 	if err := cmd.Start(); err != nil {
-		m.emit(t.SessionID, Event{Kind: KindError, Error: fmt.Sprintf("no se pudo ejecutar %q: %v", args[0], err)})
+		m.emit(t.SessionID, Event{Kind: KindError, Error: i18n.T(i18n.Msg{ES: "no se pudo ejecutar %q: %v", EN: "could not run %q: %v"}, args[0], err)})
 		return
 	}
 
@@ -401,12 +402,12 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 	// Igual que en Ask: un scanner que se corta dejaría la respuesta a medias
 	// sin que nada lo diga.
 	if err := sc.Err(); err != nil {
-		m.emit(t.SessionID, Event{Kind: KindError, Error: fmt.Sprintf("se cortó la lectura de la respuesta: %v", err)})
+		m.emit(t.SessionID, Event{Kind: KindError, Error: i18n.T(i18n.Msg{ES: "se cortó la lectura de la respuesta: %v", EN: "reading the response was interrupted: %v"}, err)})
 	}
 
 	waitErr := cmd.Wait()
 	if ctx.Err() != nil {
-		m.emit(t.SessionID, Event{Kind: KindError, Error: "turno cancelado"})
+		m.emit(t.SessionID, Event{Kind: KindError, Error: i18n.T(i18n.Msg{ES: "turno cancelado", EN: "turn cancelled"})})
 		return
 	}
 	if waitErr != nil {
@@ -426,7 +427,7 @@ func withImagePaths(prompt string, images []string) string {
 	}
 	var b strings.Builder
 	b.WriteString(prompt)
-	b.WriteString("\n\nImágenes adjuntas (abrilas para verlas):")
+	b.WriteString("\n\n" + i18n.T(i18n.Msg{ES: "Imágenes adjuntas (abrilas para verlas):", EN: "Attached images (open them to see them):"}))
 	for _, img := range images {
 		b.WriteString("\n- ")
 		b.WriteString(img)
@@ -459,10 +460,16 @@ func withExec(t Turn, args []string) []string {
 	return append(append([]string{}, t.Exec...), args[1:]...)
 }
 
+// replyLanguage le pide al agente que conteste en el idioma de la interfaz.
+var replyLanguage = i18n.Msg{
+	ES: "Respondé siempre en español, salvo que el usuario te escriba en otro idioma.",
+	EN: "Always reply in English, unless the user writes to you in another language.",
+}
+
 func buildArgs(t Turn, conversation string) ([]string, error) {
 	base := strings.Fields(strings.TrimSpace(t.Command))
 	if len(base) == 0 {
-		return nil, fmt.Errorf("agentchat: el comando de %q está vacío", t.AgentID)
+		return nil, i18n.Errorf(i18n.Msg{ES: "agentchat: el comando de %q está vacío", EN: "agentchat: the command for %q is empty"}, t.AgentID)
 	}
 
 	switch t.AgentID {
@@ -484,7 +491,7 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 			// por su cuenta, en headless no habría quién se la dé y todo
 			// quedaría bloqueado. Quien autoriza es la ventana, vía el hook.
 			if t.ApproveSettings == "" {
-				return nil, fmt.Errorf("agentchat: la aprobación por acción no está disponible en este equipo")
+				return nil, i18n.Errorf(i18n.Msg{ES: "agentchat: la aprobación por acción no está disponible en este equipo", EN: "agentchat: per-action approval is not available on this machine"})
 			}
 			args = append(args, "--permission-mode", "acceptEdits", "--settings", t.ApproveSettings)
 		case ModeAuto:
@@ -498,6 +505,13 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 		if t.Model != "" {
 			args = append(args, "--model", t.Model)
 		}
+		// Que conteste en el idioma de la interfaz. Va como system prompt
+		// AGREGADO y no dentro del mensaje: el mensaje queda en el historial
+		// (y es el título de la conversación), y --append-system-prompt no
+		// pisa ninguna instrucción propia del usuario. Codex no tiene un
+		// equivalente que no reemplace su `developer_instructions`, así que
+		// ahí manda el idioma de los prompts que arma la app.
+		args = append(args, "--append-system-prompt", i18n.T(replyLanguage))
 		return args, nil
 
 	case "codex":
@@ -555,5 +569,5 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 		}
 		return args, nil
 	}
-	return nil, fmt.Errorf("agentchat: no hay modo headless verificado para %q", t.AgentID)
+	return nil, i18n.Errorf(i18n.Msg{ES: "agentchat: no hay modo headless verificado para %q", EN: "agentchat: there is no verified headless mode for %q"}, t.AgentID)
 }

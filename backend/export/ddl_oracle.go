@@ -3,8 +3,9 @@ package export
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // OracleTableDDL uses Oracle's built-in DBMS_METADATA.GET_DDL — the
@@ -53,13 +54,16 @@ func describeDDLError(err error, objectType, name, owner string) error {
 		full = owner + "." + name
 	}
 	if strings.Contains(err.Error(), "ORA-31603") {
-		return fmt.Errorf(
-			"Oracle no deja leer el DDL de %s (%s): o el objeto no existe con ese nombre, "+
-				"o el usuario con el que estás conectado no tiene privilegio para leer la metadata de otro esquema "+
+		return i18n.Errorf(i18n.Msg{
+			ES: "Oracle no deja leer el DDL de %s (%s): o el objeto no existe con ese nombre, " +
+				"o el usuario con el que estás conectado no tiene privilegio para leer la metadata de otro esquema " +
 				"(hace falta SELECT_CATALOG_ROLE o SELECT ANY DICTIONARY — tener SELECT sobre la tabla no alcanza)",
-			full, objectType)
+			EN: "Oracle won't let you read the DDL of %s (%s): either the object doesn't exist with that name, " +
+				"or the user you're connected as lacks the privilege to read another schema's metadata " +
+				"(it needs SELECT_CATALOG_ROLE or SELECT ANY DICTIONARY — having SELECT on the table isn't enough)",
+		}, full, objectType)
 	}
-	return fmt.Errorf("export: leyendo DDL de %q: %w", full, err)
+	return i18n.Errorf(i18n.Msg{ES: "export: leyendo DDL de %q: %w", EN: "export: reading DDL of %q: %w"}, full, err)
 }
 
 // OracleSchemaDDL concatena el GET_DDL de todas las tablas de un esquema.
@@ -78,14 +82,14 @@ func OracleSchemaDDL(ctx context.Context, pool *sql.DB, owner string) (string, e
 	}
 	rows, err := pool.QueryContext(ctx, query, args...)
 	if err != nil {
-		return "", fmt.Errorf("export: listando tablas: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: listando tablas: %w", EN: "export: listing tables: %w"}, err)
 	}
 	var names []string
 	for rows.Next() {
 		var n string
 		if err := rows.Scan(&n); err != nil {
 			rows.Close()
-			return "", fmt.Errorf("export: escaneando nombre de tabla: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando nombre de tabla: %w", EN: "export: scanning table name: %w"}, err)
 		}
 		names = append(names, n)
 	}

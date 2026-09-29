@@ -6,6 +6,7 @@ import (
 
 	"mini-tools/backend/agentctx"
 	"mini-tools/backend/git"
+	"mini-tools/backend/i18n"
 )
 
 // IA agéntica sobre el módulo Git: por ahora, redactar el mensaje del commit
@@ -83,12 +84,12 @@ func (a *App) AgentDraftCommit(repoID, agentID string) (CommitDraft, error) {
 		}
 		line := fmt.Sprintf("%s%s  %s", f.IndexStatus, f.WorkStatus, f.Path)
 		if f.OrigPath != "" {
-			line += " (antes " + f.OrigPath + ")"
+			line += " " + i18n.T(i18n.Msg{ES: "(antes %s)", EN: "(was %s)"}, f.OrigPath)
 		}
 		files = append(files, line)
 	}
 	if len(files) == 0 {
-		return CommitDraft{}, fmt.Errorf("app: no hay nada preparado — agregá archivos al stage y el mensaje se redacta sobre eso")
+		return CommitDraft{}, i18n.Errorf(i18n.Msg{ES: "app: no hay nada preparado — agregá archivos al stage y el mensaje se redacta sobre eso", EN: "app: nothing is staged — stage some files and the message is written from that"})
 	}
 
 	diff, err := a.gitRunner.GetDiff(path, git.DiffTarget{Mode: "staged"})
@@ -129,7 +130,7 @@ func (a *App) AgentDraftCommit(repoID, agentID string) (CommitDraft, error) {
 
 	message := agentctx.CleanCommitMessage(answer)
 	if message == "" {
-		return CommitDraft{}, fmt.Errorf("app: %s no devolvió ningún mensaje", label)
+		return CommitDraft{}, i18n.Errorf(i18n.Msg{ES: "app: %s no devolvió ningún mensaje", EN: "app: %s returned no message"}, label)
 	}
 
 	return CommitDraft{
@@ -162,7 +163,7 @@ func (a *App) commitDraftAgent(repoID, agentID string) (string, string, error) {
 		} else if ws, werr := a.vault.GitRepoWorkspaceFor(repoID); werr == nil && ws.DefaultAgent != "" {
 			agentID = ws.DefaultAgent
 		} else {
-			return "", "", fmt.Errorf("app: no hay ningún agente elegido — elegí uno en la barra de agente")
+			return "", "", i18n.Errorf(i18n.Msg{ES: "app: no hay ningún agente elegido — elegí uno en la barra de agente", EN: "app: no agent selected — pick one in the agent bar"})
 		}
 	}
 	agent, err := a.agentByID(agentID)

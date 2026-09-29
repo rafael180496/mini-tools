@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react'
 import {ChangeSSHPassword} from '../../../wailsjs/go/main/App'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface SshPasswordChangeDialogProps {
     connId: string
@@ -31,6 +32,7 @@ export default function SshPasswordChangeDialog({
     onDone,
     onCancel,
 }: SshPasswordChangeDialogProps) {
+    const t = useT()
     const [password, setPassword] = useState('')
     const [confirm, setConfirm] = useState('')
     const [error, setError] = useState('')
@@ -74,14 +76,13 @@ export default function SshPasswordChangeDialog({
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-4 py-3">
                     <Icon name="key" size={20} className="text-primary" />
                     <h2 className="text-sm font-semibold text-on-surface">
-                        La contraseña de {connName} está vencida
+                        {t.ssh.password.title({name: connName})}
                     </h2>
                 </div>
 
                 <div className="space-y-3 px-4 py-3">
                     <p className="text-xs text-on-surface-variant">
-                        El servidor no deja entrar hasta cambiarla. Se cambia ahí y, si la acepta, se
-                        guarda en el vault para que la próxima conexión use la nueva.
+                        {t.ssh.password.intro}
                     </p>
                     {reason !== '' && (
                         <p className="rounded bg-surface-container-highest px-3 py-2 font-mono text-ui-11 whitespace-pre-wrap text-on-surface-variant">
@@ -90,26 +91,26 @@ export default function SshPasswordChangeDialog({
                     )}
 
                     <label className="block">
-                        <span className="text-ui-11 text-on-surface-variant">Contraseña nueva</span>
+                        <span className="text-ui-11 text-on-surface-variant">{t.ssh.password.newLabel}</span>
                         <input
                             ref={firstRef}
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && submit()}
-                            title="La contraseña nueva de la cuenta en el servidor. Tiene que cumplir las reglas del servidor (largo mínimo, complejidad); si no, la rechaza y el motivo aparece abajo."
+                            title={t.ssh.password.newTooltip}
                             className="mt-1 w-full rounded border border-outline-variant bg-surface px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary"
                         />
                     </label>
 
                     <label className="block">
-                        <span className="text-ui-11 text-on-surface-variant">Repetila</span>
+                        <span className="text-ui-11 text-on-surface-variant">{t.ssh.password.repeatLabel}</span>
                         <input
                             type="password"
                             value={confirm}
                             onChange={(e) => setConfirm(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && submit()}
-                            title="La misma contraseña otra vez. Se pide dos veces porque un error de tecleo acá no se rechaza: queda como la contraseña real de la cuenta y te deja afuera del servidor."
+                            title={t.ssh.password.repeatTooltip}
                             className={`mt-1 w-full rounded border bg-surface px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary ${
                                 mismatch ? 'border-red-500 dark:border-red-400' : 'border-outline-variant'
                             }`}
@@ -117,7 +118,7 @@ export default function SshPasswordChangeDialog({
                     </label>
 
                     {mismatch && (
-                        <p className="text-ui-11 text-red-600 dark:text-red-400">Las dos no coinciden.</p>
+                        <p className="text-ui-11 text-red-600 dark:text-red-400">{t.ssh.password.mismatch}</p>
                     )}
                     {error !== '' && (
                         <p className="rounded bg-red-50 px-3 py-2 text-ui-11 whitespace-pre-wrap text-red-700 dark:bg-red-950/50 dark:text-red-300">
@@ -132,22 +133,22 @@ export default function SshPasswordChangeDialog({
                         disabled={!ready}
                         title={
                             ready
-                                ? 'Corre el diálogo de cambio contra el servidor y, si la acepta, guarda la contraseña nueva en el vault y reabre la terminal.'
-                                : 'Escribí la contraseña nueva dos veces, iguales, para poder cambiarla.'
+                                ? t.ssh.password.submitTooltip
+                                : t.ssh.password.submitDisabledTooltip
                         }
                         className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90 disabled:opacity-40"
                     >
-                        {busy ? 'Cambiando…' : 'Cambiar y conectar'}
+                        {busy ? t.ssh.password.changing : t.ssh.password.submit}
                     </button>
                     <button
                         onClick={onCancel}
                         disabled={busy}
-                        title="Cierra el diálogo sin tocar nada. La contraseña del servidor sigue vencida y la terminal sigue sin conectar."
+                        title={t.ssh.password.cancelTooltip}
                         className="rounded border border-outline-variant px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant disabled:opacity-40"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
-                    <span className="ml-auto text-ui-11 text-on-surface-variant">Esc cancela</span>
+                    <span className="ml-auto text-ui-11 text-on-surface-variant">{t.ssh.password.escCancels}</span>
                 </div>
             </div>
         </div>

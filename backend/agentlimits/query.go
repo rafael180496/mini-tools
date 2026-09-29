@@ -3,13 +3,14 @@ package agentlimits
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // Consulta de límites AL PROPIO CLI, para los que no dejan el dato en el disco.
@@ -69,10 +70,10 @@ type QuerySpec struct {
 // Query le pregunta a un CLI por sus límites y cachea el resultado.
 func Query(ctx context.Context, spec QuerySpec) (AgentLimits, error) {
 	if !Queryable(spec.AgentID) {
-		return AgentLimits{}, fmt.Errorf("agentlimits: a %s no se le puede preguntar el límite por línea de comandos", spec.AgentID)
+		return AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "agentlimits: a %s no se le puede preguntar el límite por línea de comandos", EN: "agentlimits: %s can't be asked for its limit from the command line"}, spec.AgentID)
 	}
 	if len(spec.Argv) == 0 {
-		return AgentLimits{}, fmt.Errorf("agentlimits: falta el ejecutable de %s", spec.AgentID)
+		return AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "agentlimits: falta el ejecutable de %s", EN: "agentlimits: the %s executable is missing"}, spec.AgentID)
 	}
 
 	l, err := queryAntigravity(ctx, spec)
@@ -97,9 +98,9 @@ func queryAntigravity(ctx context.Context, spec QuerySpec) (AgentLimits, error) 
 	if err != nil {
 		var ee *exec.ExitError
 		if ok := asExitError(err, &ee); ok && len(ee.Stderr) > 0 {
-			return AgentLimits{}, fmt.Errorf("agentlimits: %s no pudo informar su cuota: %s", spec.AgentID, firstLine(string(ee.Stderr)))
+			return AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "agentlimits: %s no pudo informar su cuota: %s", EN: "agentlimits: %s couldn't report its quota: %s"}, spec.AgentID, firstLine(string(ee.Stderr)))
 		}
-		return AgentLimits{}, fmt.Errorf("agentlimits: no se pudo consultar la cuota de %s: %w", spec.AgentID, err)
+		return AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "agentlimits: no se pudo consultar la cuota de %s: %w", EN: "agentlimits: couldn't query the quota of %s: %w"}, spec.AgentID, err)
 	}
 
 	var doc struct {
@@ -124,12 +125,12 @@ func queryAntigravity(ctx context.Context, spec QuerySpec) (AgentLimits, error) 
 		} `json:"command"`
 	}
 	if err := json.Unmarshal(trimToJSON(out), &doc); err != nil {
-		return AgentLimits{}, fmt.Errorf("agentlimits: no se entendió la respuesta de %s: %w", spec.AgentID, err)
+		return AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "agentlimits: no se entendió la respuesta de %s: %w", EN: "agentlimits: couldn't understand the response from %s: %w"}, spec.AgentID, err)
 	}
 	if doc.Status == "ERROR" || doc.Error != "" {
 		// El error del CLI se pasa tal cual: dice si fue la red, la sesión o la
 		// cuota, y parafrasearlo solo borra la parte accionable.
-		return AgentLimits{}, fmt.Errorf("agentlimits: %s no pudo informar su cuota: %s", spec.AgentID, firstLine(doc.Error))
+		return AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "agentlimits: %s no pudo informar su cuota: %s", EN: "agentlimits: %s couldn't report its quota: %s"}, spec.AgentID, firstLine(doc.Error))
 	}
 
 	l := AgentLimits{
@@ -163,7 +164,7 @@ func queryAntigravity(ctx context.Context, spec QuerySpec) (AgentLimits, error) 
 		l.Windows = parseAntigravityText(doc.Response)
 	}
 	if len(l.Windows) == 0 {
-		return AgentLimits{}, fmt.Errorf("agentlimits: %s no devolvió ninguna ventana de límite", spec.AgentID)
+		return AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "agentlimits: %s no devolvió ninguna ventana de límite", EN: "agentlimits: %s returned no limit window"}, spec.AgentID)
 	}
 
 	// La que manda es la más consumida: es la primera que va a cortar el
@@ -181,7 +182,7 @@ func queryAntigravity(ctx context.Context, spec QuerySpec) (AgentLimits, error) 
 	// modelos, y uno de esos grupos se llama "Claude and GPT models". Sin decir
 	// esto, esa fila adentro de la tarjeta de Antigravity se lee como consumo
 	// de Claude Code o de Codex, que son otras cuentas y otros límites.
-	l.Note = "Son los grupos de modelos que sirve Antigravity con tu plan de Antigravity — no son cuotas de Anthropic ni de OpenAI."
+	l.Note = i18n.T(i18n.Msg{ES: "Son los grupos de modelos que sirve Antigravity con tu plan de Antigravity — no son cuotas de Anthropic ni de OpenAI.", EN: "These are the model groups Antigravity serves with your Antigravity plan — they aren't Anthropic or OpenAI quotas."})
 	return l, nil
 }
 
@@ -225,7 +226,7 @@ func groupLabel(name string) string {
 	for _, suffix := range []string{" models", " Models"} {
 		out = strings.TrimSuffix(out, suffix)
 	}
-	return strings.ReplaceAll(out, " and ", " y ")
+	return strings.ReplaceAll(out, " and ", i18n.T(i18n.Msg{ES: " y ", EN: " and "}))
 }
 
 func antigravityKind(window string) string {
@@ -243,7 +244,7 @@ func antigravityWindowLabel(window string) string {
 	case "5h", "five_hour", "fivehour":
 		return "5 h"
 	case "weekly", "week":
-		return "semana"
+		return i18n.T(i18n.Msg{ES: "semana", EN: "week"})
 	}
 	return window
 }

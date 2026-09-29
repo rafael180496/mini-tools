@@ -3,8 +3,9 @@ package explain
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // SQLitePlan runs EXPLAIN QUERY PLAN and rebuilds SQLite's flat id/parent
@@ -13,7 +14,7 @@ import (
 func SQLitePlan(ctx context.Context, pool *sql.DB, query string) (*Plan, error) {
 	rows, err := pool.QueryContext(ctx, "EXPLAIN QUERY PLAN "+query)
 	if err != nil {
-		return nil, fmt.Errorf("explain: ejecutando EXPLAIN QUERY PLAN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: ejecutando EXPLAIN QUERY PLAN: %w", EN: "explain: running EXPLAIN QUERY PLAN: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -28,7 +29,7 @@ func SQLitePlan(ctx context.Context, pool *sql.DB, query string) (*Plan, error) 
 		var id, parent, notused int
 		var detail string
 		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
-			return nil, fmt.Errorf("explain: escaneando fila: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "explain: escaneando fila: %w", EN: "explain: scanning row: %w"}, err)
 		}
 		parsed = append(parsed, row{id: id, parent: parent, detail: detail})
 		rawLines = append(rawLines, detail)

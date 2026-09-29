@@ -14,8 +14,9 @@ import {LANGUAGE_OPTIONS, languageForPath, languageIfLoaded, languageLabel, load
 import {frontmatterLint, needsFrontmatter} from '../../codemirror/frontmatterLint'
 import MarkdownPreview from '../MarkdownPreview'
 import {ancestorsOf, buildFileTree, flatten} from '../../lib/fileTree'
-import {closeOnMiddleClick, MIDDLE_CLICK_HINT} from '../../lib/middleClickClose'
+import {closeOnMiddleClick, middleClickHint} from '../../lib/middleClickClose'
 import type {Theme} from '../../hooks/useTheme'
+import {errorCode, errorText, t, useT} from '../../i18n'
 
 // Editor de archivos del árbol de trabajo, dentro de la pestaña Git.
 //
@@ -87,16 +88,11 @@ interface GitFileEditorProps {
 const languageCompartment = new Compartment()
 const themeCompartment = new Compartment()
 
-// isNotFound distingue "ese archivo no existe" de cualquier otro fallo.
-//
-// Se mira el texto porque un error que cruza el binding de Wails llega como
-// string, sin el tipo que tenía en Go. Se contemplan las dos formas en que
-// puede venir el mensaje del sistema operativo (`os.ReadFile` no está
-// traducido y depende del idioma/plataforma) además del envoltorio en
-// castellano que agrega backend/git.
+// isNotFound distingue "ese archivo no existe" de cualquier otro fallo, por el
+// código que pone backend/git (ErrWorkFileNotFound, "not-found") y no por el
+// texto, que depende del idioma de la app y del sistema operativo.
 function isNotFound(e: unknown): boolean {
-    const msg = String(e).toLowerCase()
-    return msg.includes('no such file') || msg.includes('cannot find the file') || msg.includes('no existe')
+    return errorCode(e) === 'not-found'
 }
 
 // statusColor y statusTitle traducen el código de git a algo legible.
@@ -121,19 +117,20 @@ function statusColor(code?: string): string {
 }
 
 function statusTitle(code?: string): string {
+    const st = t().git.fileEditor.status
     switch (code) {
         case 'A':
-            return 'Agregado'
+            return st.added
         case '?':
-            return 'Sin rastrear — todavía no está en git'
+            return st.untracked
         case 'M':
-            return 'Modificado'
+            return st.modified
         case 'R':
-            return 'Renombrado'
+            return st.renamed
         case 'D':
-            return 'Borrado'
+            return st.deleted
         case 'U':
-            return 'En conflicto'
+            return st.conflicted
         default:
             return code ?? ''
     }
@@ -158,6 +155,7 @@ export default function GitFileEditor({
     onSaved,
     onClose,
 }: GitFileEditorProps) {
+    const tf = useT().git.fileEditor
     const [tree, setTree] = useState<git.WorkTree | null>(null)
     const [treeError, setTreeError] = useState('')
     const [filter, setFilter] = useState('')
@@ -394,12 +392,11 @@ export default function GitFileEditor({
                 reloadTree()
                 onSaved()
             } catch (e) {
-                const msg = String(e)
-                // El backend distingue este caso con un error propio
-                // (git.ErrWorkFileChanged) justamente para poder ofrecer
-                // "guardar igual" en vez de fallar sin salida.
-                if (msg.includes('cambió en el disco')) setConflict(path)
-                else setError(msg)
+                // El backend distingue este caso con un error con código
+                // (git.ErrWorkFileChanged, "disk-changed") justamente para
+                // poder ofrecer "guardar igual" en vez de fallar sin salida.
+                if (errorCode(e) === 'disk-changed') setConflict(path)
+                else setError(errorText(e))
             } finally {
                 setSaving(false)
             }
@@ -535,21 +532,24 @@ export default function GitFileEditor({
 
     // --- Render -------------------------------------------------------------
 
+    const isMarkdown = active?.language === 'markdown'
+    const showPreview = isMarkdown && mdView !== 'code'
+
     return (
         <div className="flex h-full min-h-0 flex-col">
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-xs">
                 <Icon name="edit_document" size={15} className="shrink-0 text-primary" />
-                <span className="font-semibold text-on-surface">Archivos</span>
+                <span className="font-semibold text-on-surface">{tf.title}</span>
                 {tree && <span className="text-on-surface-variant">{tree.files.length}</span>}
-                {saving && <span className="text-on-surface-variant">Guardando…</span>}
+                {saving && <span className="text-on-surface-variant">{tf.saving}</span>}
                 <button
                     onClick={reloadTree}
-                    title="Vuelve a listar los archivos del repositorio — útil después de que un agente o un checkout cree archivos nuevos"
+                    title={tf.reloadTitle}
                     className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="refresh" size={15} />
                 </button>
-                <button onClick={onClose} title="Cierra el editor de archivos" className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
+                <button onClick={onClose} title={tf.closeTitle} className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
                     <Icon name="close" size={16} />
                 </button>
             </div>
@@ -569,8 +569,8 @@ export default function GitFileEditor({
                             <input
                                 value={filter}
                                 onChange={(e) => setFilter(e.target.value)}
-                                placeholder="Filtrar archivos"
-                                title="Filtra por cualquier parte de la ruta"
+                                placeholder={tf.filterPlaceholder}
+                                title={tf.filterTitle}
                                 className="min-w-0 flex-1 bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
                             />
                         </div>
@@ -579,10 +579,10 @@ export default function GitFileEditor({
                     <div className="min-h-0 flex-1 overflow-y-auto">
                         {treeError && <p className="p-3 text-xs text-error">{treeError}</p>}
                         {!treeError && !searchResults && rows.length === 0 && (
-                            <p className="p-3 text-xs text-on-surface-variant">No hay archivos editables en este repositorio.</p>
+                            <p className="p-3 text-xs text-on-surface-variant">{tf.noFiles}</p>
                         )}
                         {searchResults && searchResults.rows.length === 0 && (
-                            <p className="p-3 text-xs text-on-surface-variant">Ningún archivo coincide con el filtro.</p>
+                            <p className="p-3 text-xs text-on-surface-variant">{tf.noMatch}</p>
                         )}
 
                         {/* Buscando: resultados planos con la ruta, porque lo
@@ -656,7 +656,7 @@ export default function GitFileEditor({
                                         adentro; en un archivo, qué le pasó. */}
                                     {node.dir && fileStatus.dirs.has(node.path) && (
                                         <span
-                                            title={`${fileStatus.dirs.get(node.path)} archivo(s) con cambios acá adentro`}
+                                            title={tf.dirChanges({n: fileStatus.dirs.get(node.path) ?? 0})}
                                             className="shrink-0 rounded-full bg-tertiary/20 px-1 font-mono text-ui-10 text-tertiary"
                                         >
                                             {fileStatus.dirs.get(node.path)}
@@ -675,19 +675,19 @@ export default function GitFileEditor({
                                         </span>
                                     )}
                                     {!node.dir && dirtyPaths.has(node.path) && (
-                                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" title="Sin guardar en el disco" />
+                                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" title={tf.unsaved} />
                                     )}
                                 </button>
                             ))}
 
                         {searchResults && searchResults.total > searchResults.rows.length && (
                             <p className="p-2 text-center text-ui-11 text-on-surface-variant">
-                                {searchResults.total - searchResults.rows.length} archivos más. Refiná el filtro para verlos.
+                                {tf.moreFiles({n: searchResults.total - searchResults.rows.length})}
                             </p>
                         )}
                         {tree?.truncated && (
                             <p className="p-2 text-center text-ui-11 text-on-surface-variant">
-                                El repositorio supera el tope del listado; puede faltar algún archivo.
+                                {tf.truncated}
                             </p>
                         )}
                     </div>
@@ -711,7 +711,7 @@ export default function GitFileEditor({
                                     >
                                         <button
                                             onClick={() => setActivePath(f.path)}
-                                            title={`${f.path}${MIDDLE_CLICK_HINT}`}
+                                            title={`${f.path}${middleClickHint()}`}
                                             className="max-w-40 truncate"
                                         >
                                             {f.path.split('/').pop()}
@@ -719,7 +719,7 @@ export default function GitFileEditor({
                                         </button>
                                         <button
                                             onClick={() => closeFile(f.path)}
-                                            title={dirty ? 'Cerrar (los cambios sin guardar se pierden)' : 'Cerrar'}
+                                            title={dirty ? tf.closeDirty : tf.close}
                                             className="rounded hover:text-on-surface"
                                         >
                                             <Icon name="close" size={12} />
@@ -738,7 +738,7 @@ export default function GitFileEditor({
                             <select
                                 value={active.language}
                                 onChange={(e) => setLanguage(active.path, e.target.value as LanguageId)}
-                                title={`Resaltado de sintaxis. Se eligió ${languageLabel(active.language)} por el nombre del archivo; cambialo si este archivo es otra cosa.`}
+                                title={tf.languageTitle({language: languageLabel(active.language)})}
                                 className="shrink-0 rounded border border-outline-variant bg-surface px-1 py-0.5 text-ui-11 text-on-surface outline-none focus:border-primary"
                             >
                                 {LANGUAGE_OPTIONS.map((o) => (
@@ -747,13 +747,13 @@ export default function GitFileEditor({
                                     </option>
                                 ))}
                             </select>
-                            {active.language === 'markdown' && (
+                            {isMarkdown && (
                                 <span className="flex shrink-0 items-center gap-0.5 rounded border border-outline-variant p-0.5">
                                     {(
                                         [
-                                            ['code', 'code', 'Editar el texto'],
-                                            ['split', 'vertical_split', 'El texto y el resultado, lado a lado'],
-                                            ['preview', 'visibility', 'Solo el documento formateado'],
+                                            ['code', 'code', tf.mdView.code],
+                                            ['split', 'vertical_split', tf.mdView.split],
+                                            ['preview', 'visibility', tf.mdView.preview],
                                         ] as const
                                     ).map(([id, icon, title]) => (
                                         <button
@@ -787,22 +787,22 @@ export default function GitFileEditor({
                                             const to = view.state.doc.lineAt(sel.to).number
                                             about = `${active.path}:${from}${to > from ? `-${to}` : ''}`
                                         }
-                                        onAskAgent(`Mirá ${about} en este repositorio y `, about)
+                                        onAskAgent(tf.askPrompt({about}), about)
                                     }}
-                                    title="Le pasa este archivo (o las líneas seleccionadas) a una sesión de agente y deja el prompt escrito para que lo completes. No lo envía solo: enviar es un gesto tuyo, igual que en el historial de la terminal."
+                                    title={tf.askTitle}
                                     className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-11 text-on-surface hover:bg-surface-container-high"
                                 >
                                     <Icon name="smart_toy" size={12} />
-                                    Preguntar
+                                    {tf.ask}
                                 </button>
                             )}
                             <button
                                 onClick={() => void save(active.path, false)}
                                 disabled={saving || !dirtyPaths.has(active.path) || active.binary || active.tooLarge}
-                                title="Guarda el archivo en el disco (Cmd/Ctrl+S). Si cambió abajo mientras lo editabas, se avisa antes de pisarlo."
+                                title={tf.saveTitle}
                                 className="shrink-0 rounded bg-primary px-2 py-0.5 text-ui-11 text-on-primary disabled:opacity-40"
                             >
-                                Guardar
+                                {tf.save}
                             </button>
                         </div>
                     )}
@@ -810,17 +810,17 @@ export default function GitFileEditor({
                     <div className="min-h-0 flex-1">
                         {!active && (
                             <p className="p-4 text-center text-xs text-on-surface-variant">
-                                Elegí un archivo de la lista para abrirlo y editarlo.
+                                {tf.pickFile}
                             </p>
                         )}
                         {active?.binary && (
                             <p className="p-4 text-center text-xs text-on-surface-variant">
-                                Este archivo es binario y no se puede editar como texto.
+                                {tf.binary}
                             </p>
                         )}
                         {active?.tooLarge && (
                             <p className="p-4 text-center text-xs text-on-surface-variant">
-                                Este archivo supera el tamaño máximo editable (4 MiB).
+                                {tf.tooLarge}
                             </p>
                         )}
                         {/* El contenedor se mantiene montado siempre: destruirlo
@@ -837,10 +837,10 @@ export default function GitFileEditor({
                             <div
                                 ref={containerRef}
                                 className={`h-full min-w-0 flex-1 ${
-                                    active?.language === 'markdown' && mdView === 'preview' ? 'hidden' : ''
+                                    isMarkdown && mdView === 'preview' ? 'hidden' : ''
                                 }`}
                             />
-                            {active?.language === 'markdown' && mdView !== 'code' && (
+                            {showPreview && (
                                 <div
                                     className={`min-w-0 flex-1 ${mdView === 'split' ? 'border-l border-outline-variant' : ''}`}
                                 >
@@ -857,9 +857,9 @@ export default function GitFileEditor({
 
             {conflict && (
                 <ConfirmDialog
-                    title="El archivo cambió en el disco"
-                    description={`"${conflict}" fue modificado por fuera del editor desde que lo abriste — puede haber sido un agente, un checkout u otro programa. Si guardás igual, ese cambio se pierde.`}
-                    confirmLabel="Guardar igual"
+                    title={tf.conflict.title}
+                    description={tf.conflict.description({path: conflict})}
+                    confirmLabel={tf.conflict.confirm}
                     danger
                     onConfirm={() => void save(conflict, true)}
                     onClose={() => setConflict(null)}

@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {GitConflictedFiles, GitReadConflictFile, GitResolveConflictFile} from '../../../wailsjs/go/main/App'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 import {
     conflictCount,
     isFullyResolved,
@@ -51,6 +52,8 @@ export default function GitConflictResolver({
     onClose,
     onAsk,
 }: GitConflictResolverProps) {
+    const t = useT()
+    const tc = t.git.conflicts
     const [files, setFiles] = useState<string[]>([])
     const [path, setPath] = useState<string | null>(null)
     const [blocks, setBlocks] = useState<FileBlock[]>([])
@@ -149,18 +152,20 @@ export default function GitConflictResolver({
     const isRebase = operation === 'rebase'
     // In a rebase the sides are swapped relative to a merge: "ours" is the
     // branch being replayed onto, "theirs" is the commit being replayed.
-    const oursLabel = isRebase ? 'La rama sobre la que estás rebasando' : 'Tu rama (actual)'
-    const theirsLabel = isRebase ? 'El commit que se está reaplicando' : 'La rama que entra'
+    const oursLabel = isRebase ? tc.oursRebase : tc.oursMerge
+    const theirsLabel = isRebase ? tc.theirsRebase : tc.theirsMerge
+    // Merge y Rebase son nombres de git: se muestran igual en los dos idiomas.
+    const opName = operation === 'merge' ? 'Merge' : operation === 'rebase' ? 'Rebase' : operation
 
     return (
         <div className="flex h-full min-h-0 flex-col">
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-error-container/30 px-3 py-1.5 text-xs">
                 <Icon name="merge_type" size={15} className="shrink-0 text-error" />
                 <span className="font-semibold text-on-surface">
-                    {operation === 'merge' ? 'Merge' : operation === 'rebase' ? 'Rebase' : operation} con conflictos
+                    {tc.withConflicts({op: opName})}
                 </span>
                 <span className="text-on-surface-variant">
-                    {files.length} {files.length === 1 ? 'archivo' : 'archivos'} sin resolver
+                    {tc.unresolvedFiles(files.length)}
                 </span>
 
                 <div className="ml-auto flex items-center gap-1.5">
@@ -169,32 +174,32 @@ export default function GitConflictResolver({
                         disabled={busy || files.length > 0}
                         title={
                             files.length > 0
-                                ? `Todavía quedan ${files.length} archivo(s) con conflictos. Resolvelos y marcalos para poder continuar.`
-                                : `Continúa el ${operation} con las resoluciones ya marcadas`
+                                ? tc.continuePending({n: files.length})
+                                : tc.continueTitle({op: operation})
                         }
                         className="rounded bg-primary px-2.5 py-1 text-on-primary disabled:opacity-40"
                     >
-                        Continuar {operation}
+                        {tc.continueOp({op: operation})}
                     </button>
                     {onAsk && path && (
                         <button
                             onClick={() => onAsk(path)}
-                            title="Le pide al agente que explique este conflicto y proponga un criterio para resolverlo. No escribe el archivo: la resolución la elegís y la marcás vos."
+                            title={tc.askTitle}
                             className="flex items-center gap-1 rounded px-2 py-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name="smart_toy" size={14} />
-                            Consultar
+                            {tc.ask}
                         </button>
                     )}
                     <button
                         onClick={onAbort}
                         disabled={busy}
-                        title={`Cancela el ${operation} y deja el repositorio como estaba antes de empezarlo`}
+                        title={tc.abortTitle({op: operation})}
                         className="rounded px-2 py-1 text-error hover:bg-error-container disabled:opacity-40"
                     >
-                        Abortar
+                        {tc.abort}
                     </button>
-                    <button onClick={onClose} title="Cierra el resolutor" className="rounded p-0.5 text-on-surface-variant hover:text-on-surface">
+                    <button onClick={onClose} title={tc.closeTitle} className="rounded p-0.5 text-on-surface-variant hover:text-on-surface">
                         <Icon name="close" size={16} />
                     </button>
                 </div>
@@ -204,7 +209,7 @@ export default function GitConflictResolver({
                 <div className="w-56 shrink-0 overflow-y-auto border-r border-outline-variant">
                     {files.length === 0 ? (
                         <p className="p-3 text-ui-11 text-on-surface-variant">
-                            No quedan archivos con conflictos. Ya podés continuar el {operation}.
+                            {tc.noneLeft({op: operation})}
                         </p>
                     ) : (
                         files.map((f) => (
@@ -229,15 +234,15 @@ export default function GitConflictResolver({
                             <span className="min-w-0 truncate font-mono text-on-surface-variant">{path}</span>
                             <span
                                 className={done === total ? 'text-secondary' : 'text-tertiary'}
-                                title="Bloques de conflicto resueltos sobre el total de este archivo"
+                                title={tc.progressTitle}
                             >
-                                Conflicto {total === 0 ? 0 : Math.min(current + 1, total)} de {total} · {done} resueltos
+                                {tc.progress({current: total === 0 ? 0 : Math.min(current + 1, total), total, done})}
                             </span>
                             <div className="ml-auto flex items-center gap-1">
                                 <button
                                     onClick={() => goTo(current - 1)}
                                     disabled={conflicts.length === 0}
-                                    title="Conflicto anterior (Alt+P)"
+                                    title={tc.prevTitle}
                                     className="rounded p-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-30"
                                 >
                                     <Icon name="arrow_upward" size={14} />
@@ -245,7 +250,7 @@ export default function GitConflictResolver({
                                 <button
                                     onClick={() => goTo(current + 1)}
                                     disabled={conflicts.length === 0}
-                                    title="Conflicto siguiente (Alt+N)"
+                                    title={tc.nextTitle}
                                     className="rounded p-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-30"
                                 >
                                     <Icon name="arrow_downward" size={14} />
@@ -255,19 +260,19 @@ export default function GitConflictResolver({
                                     disabled={busy || !isFullyResolved(blocks)}
                                     title={
                                         isFullyResolved(blocks)
-                                            ? 'Guarda el archivo resuelto y lo marca como resuelto (lo agrega al stage)'
-                                            : 'Todavía quedan bloques sin decidir. Un archivo guardado con marcadores queda roto y git lo sigue viendo como conflictivo.'
+                                            ? tc.markResolvedTitle
+                                            : tc.markResolvedPending
                                     }
                                     className="rounded bg-primary px-2 py-0.5 text-on-primary disabled:opacity-40"
                                 >
-                                    Marcar como resuelto
+                                    {tc.markResolved}
                                 </button>
                             </div>
                         </div>
                     )}
 
                     {error && <p className="px-2 py-1 text-ui-11 text-error">{error}</p>}
-                    {loading && <p className="px-2 py-2 text-xs text-on-surface-variant">Cargando el archivo…</p>}
+                    {loading && <p className="px-2 py-2 text-xs text-on-surface-variant">{tc.loadingFile}</p>}
 
                     <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-ui-11 leading-relaxed">
                         {blocks.map((block, i) =>
@@ -287,33 +292,33 @@ export default function GitConflictResolver({
                                 >
                                     <div className="flex flex-wrap items-center gap-1 border-b border-outline-variant/50 bg-surface-container px-1.5 py-1 font-sans text-ui-10">
                                         <span className={block.resolution === 'unresolved' ? 'text-error' : 'text-secondary'}>
-                                            {block.resolution === 'unresolved' ? 'Sin resolver' : 'Resuelto'}
+                                            {block.resolution === 'unresolved' ? tc.unresolved : tc.resolved}
                                         </span>
                                         <div className="ml-auto flex flex-wrap gap-1">
                                             <ChoiceButton
                                                 active={block.resolution === 'ours'}
                                                 onClick={() => resolve(i, 'ours')}
-                                                label="Quedarme con la mía"
-                                                title={`Aplica solo ${oursLabel.toLowerCase()}`}
+                                                label={tc.keepMine}
+                                                title={tc.applyOnly({side: oursLabel.toLowerCase()})}
                                             />
                                             <ChoiceButton
                                                 active={block.resolution === 'theirs'}
                                                 onClick={() => resolve(i, 'theirs')}
-                                                label="Aceptar la entrante"
-                                                title={`Aplica solo ${theirsLabel.toLowerCase()}`}
+                                                label={tc.acceptIncoming}
+                                                title={tc.applyOnly({side: theirsLabel.toLowerCase()})}
                                             />
                                             <ChoiceButton
                                                 active={block.resolution === 'both'}
                                                 onClick={() => resolve(i, 'both')}
-                                                label="Ambas"
-                                                title="Conserva los dos bloques, primero el tuyo y después el entrante"
+                                                label={tc.both}
+                                                title={tc.bothTitle}
                                             />
-                                            {block.resolution !== 'unresolved' && (
+                                            {block.resolution === 'unresolved' ? null : (
                                                 <ChoiceButton
                                                     active={false}
                                                     onClick={() => resolve(i, 'unresolved')}
-                                                    label="Deshacer"
-                                                    title="Vuelve a dejar este bloque sin decidir"
+                                                    label={tc.undo}
+                                                    title={tc.undoTitle}
                                                 />
                                             )}
                                         </div>
@@ -338,7 +343,7 @@ export default function GitConflictResolver({
 
                                     {block.base.length > 0 && (
                                         <div className="border-t border-outline-variant/40">
-                                            <Side title="Ancestro común" detail="antes de que las dos ramas lo tocaran" lines={block.base} tone="base" />
+                                            <Side title={tc.base} detail={tc.baseDetail} lines={block.base} tone="base" />
                                         </div>
                                     )}
                                 </div>
@@ -376,6 +381,7 @@ function Side({
     tone: 'ours' | 'theirs' | 'base'
     dimmed?: boolean
 }) {
+    const t = useT()
     const bg = tone === 'ours' ? 'bg-primary/5' : tone === 'theirs' ? 'bg-secondary/5' : 'bg-surface-variant/30'
     return (
         <div className={`${bg} ${dimmed ? 'opacity-40' : ''} p-1.5`}>
@@ -383,7 +389,7 @@ function Side({
                 {title}
                 {detail && <span className="ml-1 opacity-60">({detail})</span>}
             </div>
-            <pre className="whitespace-pre-wrap break-all text-on-surface">{lines.length > 0 ? lines.join('\n') : '(vacío)'}</pre>
+            <pre className="whitespace-pre-wrap break-all text-on-surface">{lines.length > 0 ? lines.join('\n') : t.git.conflicts.empty}</pre>
         </div>
     )
 }

@@ -8,7 +8,7 @@ import DbTypeIcon, {dbTypeLabel} from '../DbTypeIcon'
 import Icon from '../Icon'
 import Select from '../Select'
 import RecentFilesMenu from './RecentFilesMenu'
-import {MIDDLE_CLICK_HINT} from '../../lib/middleClickClose'
+import {t as tr, useT} from '../../i18n'
 
 export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 
@@ -67,26 +67,28 @@ export type TabKind =
 // para lo que es un servidor remoto, tertiary para lo que es un documento.
 // Son tokens semánticos del sistema de diseño, así que siguen el tema claro/
 // oscuro sin una segunda definición.
-const KIND_BADGE: Record<TabKind, {text: string; className: string; hint: string}> = {
-    editor: {text: 'SQL', className: 'text-primary', hint: 'Editor de consultas'},
-    'redis-browser': {text: 'REDIS', className: 'text-error', hint: 'Explorador de claves Redis'},
-    'mongo-browser': {text: 'MONGO', className: 'text-secondary', hint: 'Explorador de colecciones MongoDB'},
-    'ssh-terminal': {text: 'SSH', className: 'text-secondary', hint: 'Terminal remota'},
-    'local-terminal': {text: 'LOCAL', className: 'text-primary', hint: 'Terminal de esta máquina'},
-    sftp: {text: 'SFTP', className: 'text-secondary', hint: 'Transferencia de archivos entre hosts'},
-    'ssh-hybrid': {text: 'SSH+', className: 'text-secondary', hint: 'Terminal remota con explorador de archivos al lado'},
-    'remote-file': {text: 'REMOTO', className: 'text-tertiary', hint: 'Archivo de un servidor, editado en vivo'},
-    'git-repo': {text: 'GIT', className: 'text-tertiary', hint: 'Repositorio'},
-    note: {text: 'NOTA', className: 'text-tertiary', hint: 'Nota de la base de conocimiento'},
-    'http-request': {text: 'HTTP', className: 'text-primary', hint: 'Petición HTTP de una colección'},
+// El texto de ayuda se resuelve al leerlo (getter), no al cargar el módulo:
+// guardado en la constante quedaría en el idioma con el que arrancó la app.
+const KIND_BADGE: Record<TabKind, {text: string; className: string; readonly hint: string}> = {
+    editor: {text: 'SQL', className: 'text-primary', get hint() { return tr().editor.tabs.kindHint.editor }},
+    'redis-browser': {text: 'REDIS', className: 'text-error', get hint() { return tr().editor.tabs.kindHint.redisBrowser }},
+    'mongo-browser': {text: 'MONGO', className: 'text-secondary', get hint() { return tr().editor.tabs.kindHint.mongoBrowser }},
+    'ssh-terminal': {text: 'SSH', className: 'text-secondary', get hint() { return tr().editor.tabs.kindHint.sshTerminal }},
+    'local-terminal': {text: 'LOCAL', className: 'text-primary', get hint() { return tr().editor.tabs.kindHint.localTerminal }},
+    sftp: {text: 'SFTP', className: 'text-secondary', get hint() { return tr().editor.tabs.kindHint.sftp }},
+    'ssh-hybrid': {text: 'SSH+', className: 'text-secondary', get hint() { return tr().editor.tabs.kindHint.sshHybrid }},
+    'remote-file': {get text() { return tr().editor.tabs.badgeRemote }, className: 'text-tertiary', get hint() { return tr().editor.tabs.kindHint.remoteFile }},
+    'git-repo': {text: 'GIT', className: 'text-tertiary', get hint() { return tr().editor.tabs.kindHint.gitRepo }},
+    note: {get text() { return tr().editor.tabs.badgeNote }, className: 'text-tertiary', get hint() { return tr().editor.tabs.kindHint.note }},
+    'http-request': {text: 'HTTP', className: 'text-primary', get hint() { return tr().editor.tabs.kindHint.httpRequest }},
 }
 
 // Para una pestaña de editor el rótulo depende del lenguaje: "SQL" sobre una
 // consola de Redis sería directamente falso.
 function badgeFor(kind: TabKind, language: TabLanguage) {
     if (kind !== 'editor') return KIND_BADGE[kind]
-    if (language === 'redis-cli') return {text: 'REDIS', className: 'text-error', hint: 'Consola de comandos Redis'}
-    if (language === 'mongosh') return {text: 'MONGO', className: 'text-secondary', hint: 'Consola mongosh'}
+    if (language === 'redis-cli') return {text: 'REDIS', className: 'text-error', hint: tr().editor.tabs.kindHint.redisConsole}
+    if (language === 'mongosh') return {text: 'MONGO', className: 'text-secondary', hint: tr().editor.tabs.kindHint.mongoConsole}
     return KIND_BADGE.editor
 }
 
@@ -195,6 +197,7 @@ interface SortableTabProps {
 // desplazamiento) se interprete como intento de drag — así el botón de
 // cerrar y el click de selección siguen funcionando igual que antes.
 function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTabConnection, onChangeTabLanguage, isRunning}: SortableTabProps) {
+    const t = useT()
     const {attributes, listeners, setNodeRef, transform, transition, isDragging} = useSortable({id: tab.id})
     const [menuOpen, setMenuOpen] = useState(false)
     const [menuPos, setMenuPos] = useState({top: 0, left: 0})
@@ -207,8 +210,8 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
 
     const boundConnection = tab.connId ? connections.find((c) => c.id === tab.connId) : undefined
     const bindingTitle = boundConnection
-        ? `Vinculada a "${boundConnection.name}" (${dbTypeLabel(boundConnection.dbType)}) — click para cambiar`
-        : `Sin conexión vinculada (lenguaje: ${tab.language === 'redis-cli' ? 'Redis' : tab.language === 'mongosh' ? 'MongoDB' : 'SQL'}) — click para vincular una conexión o cambiar el lenguaje. La conexión vinculada se muestra arriba, en la barra de herramientas.`
+        ? t.editor.tabs.boundTo({name: boundConnection.name, engine: dbTypeLabel(boundConnection.dbType)})
+        : t.editor.tabs.unbound({language: tab.language === 'redis-cli' ? 'Redis' : tab.language === 'mongosh' ? 'MongoDB' : 'SQL'})
     const badge = badgeFor(tab.kind, tab.language)
     // Solo el editor puede cambiar de conexión/lenguaje: el resto de las
     // clases nace atado a lo suyo y no hay menú que ofrecer.
@@ -258,7 +261,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
             className={`flex max-w-52 cursor-pointer items-center gap-1.5 rounded-t-xs px-3 py-1 font-mono text-ui-11 ${
                 isActive ? 'bg-surface text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
             }`}
-            title={`${tab.path ?? 'Pestaña sin guardar'} — arrastrar para reordenar${MIDDLE_CLICK_HINT}`}
+            title={t.editor.tabs.tabTitle({path: tab.path})}
         >
             {/* El tipo, delante del nombre. Para una pestaña vinculada a
                 una conexión el logo real del motor va antes del rótulo: el
@@ -279,6 +282,9 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     onClick={openMenu}
                     onPointerDown={(e) => e.stopPropagation()}
                     title={bindingTitle}
+                    // Lo usa uishot.tsx para abrir este menú sin depender del
+                    // texto del tooltip, que cambia con el idioma.
+                    data-tab-binding={boundConnection ? 'bound' : 'unbound'}
                     className="flex shrink-0 items-center gap-1 rounded px-0.5 hover:bg-surface-variant"
                 >
                     {boundConnection && <DbTypeIcon dbType={boundConnection.dbType} size={12} />}
@@ -286,7 +292,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                 </button>
             ) : (
                 <span
-                    title={`${badge.hint} — no se vincula a una conexión de base de datos, abrí una pestaña nueva para eso`}
+                    title={t.editor.tabs.notBindable({hint: badge.hint})}
                     className="flex shrink-0 items-center gap-1 px-0.5"
                 >
                     {boundConnection && <DbTypeIcon dbType={boundConnection.dbType} size={12} />}
@@ -296,7 +302,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
             {isRunning && (
                 <span
                     aria-hidden
-                    title="Esta pestaña está ejecutando algo ahora mismo"
+                    title={t.editor.tabs.running}
                     className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-secondary"
                 />
             )}
@@ -310,7 +316,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                     onClose(tab.id)
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
-                title={tab.dirty ? 'Cerrar pestaña (hay cambios sin guardar)' : 'Cerrar pestaña'}
+                title={tab.dirty ? t.editor.tabs.closeDirty : t.editor.tabs.close}
                 className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
             >
                 <Icon name="close" size={14} />
@@ -347,12 +353,12 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                 openSshTerminal in Workspace.tsx), so they're excluded here
                                 the same way this dropdown has no case for binding to
                                 something with no queryable surface. */}
-                            <div className="flex flex-col gap-1 text-ui-11 text-on-surface-variant">
-                                Conexión
+                            <div className="flex flex-col gap-1 text-ui-11 text-on-surface-variant" data-tab-connection-select>
+                                {t.editor.tabs.connection}
                                 <Select
                                     value={tab.connId ?? ''}
                                     options={[
-                                        {value: '', label: 'Sin conexión', separatorAfter: true},
+                                        {value: '', label: t.editor.tabs.noConnection, separatorAfter: true},
                                         // The engine logo, not just its name: this
                                         // list mixes SQL, Redis and MongoDB
                                         // connections, and the icon is what makes
@@ -373,12 +379,12 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                         setMenuOpen(false)
                                     }}
                                     size="sm"
-                                    ariaLabel="Conexión de la pestaña"
+                                    ariaLabel={t.editor.tabs.tabConnection}
                                     className="w-full"
                                 />
                             </div>
                             <div className="mt-2 flex flex-col gap-1 text-ui-11 text-on-surface-variant">
-                                Lenguaje
+                                {t.editor.tabs.language}
                                 <Select
                                     value={tab.language}
                                     disabled={!!tab.connId}
@@ -392,7 +398,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onChangeTab
                                         setMenuOpen(false)
                                     }}
                                     size="sm"
-                                    ariaLabel="Lenguaje de la pestaña"
+                                    ariaLabel={t.editor.tabs.tabLanguage}
                                     className="w-full"
                                 />
                             </div>
@@ -423,6 +429,7 @@ export default function EditorTabs({
     onOpenRecentFile,
     runningIds,
 }: EditorTabsProps) {
+    const t = useT()
     const sensors = useSensors(useSensor(PointerSensor, {activationConstraint: {distance: 5}}))
 
     function handleDragEnd(event: DragEndEvent) {
@@ -466,11 +473,11 @@ export default function EditorTabs({
                 so it belongs closer to the tabs than Abrir/Recientes. */}
             <button
                 onClick={onNew}
-                title="Abre una pestaña nueva en blanco para escribir un query sin guardarlo todavía"
+                title={t.editor.tabs.newTitle}
                 className="ml-1 flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface"
             >
                 <Icon name="add" size={16} />
-                Nueva
+                {t.editor.tabs.new}
             </button>
 
             {/* Global file actions — which file to open next doesn't depend
@@ -480,11 +487,11 @@ export default function EditorTabs({
             <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-outline-variant pl-1">
                 <button
                     onClick={onOpenFile}
-                    title="Abre un archivo .sql desde tu disco en una nueva pestaña del editor"
+                    title={t.editor.tabs.openTitle}
                     className="flex items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface"
                 >
                     <Icon name="folder_open" size={16} />
-                    Abrir
+                    {t.editor.tabs.open}
                 </button>
                 <RecentFilesMenu onOpen={onOpenRecentFile} />
             </div>

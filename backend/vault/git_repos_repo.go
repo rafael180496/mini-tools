@@ -2,8 +2,9 @@ package vault
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // GitRepo is a repository the user added to the Git module's sidebar.
@@ -43,7 +44,7 @@ func (s *Store) AddGitRepo(name, path string) (*GitRepo, error) {
 	var existing string
 	err := s.db.QueryRow(`SELECT name FROM git_repos WHERE path = ?`, path).Scan(&existing)
 	if err == nil {
-		return nil, fmt.Errorf("vault: el repositorio %q ya está agregado como %q", path, existing)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: el repositorio %q ya está agregado como %q", EN: "vault: repository %q is already added as %q"}, path, existing)
 	}
 
 	id, err := newID()
@@ -54,14 +55,14 @@ func (s *Store) AddGitRepo(name, path string) (*GitRepo, error) {
 
 	var nextOrder int
 	if err := s.db.QueryRow(`SELECT COALESCE(MAX(sort_order), -1) + 1 FROM git_repos`).Scan(&nextOrder); err != nil {
-		return nil, fmt.Errorf("vault: calculando orden del repositorio: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: calculando orden del repositorio: %w", EN: "vault: computing repository order: %w"}, err)
 	}
 
 	if _, err := s.db.Exec(
 		`INSERT INTO git_repos (id, name, path, sort_order, created_at) VALUES (?, ?, ?, ?, ?)`,
 		id, name, path, nextOrder, createdAt,
 	); err != nil {
-		return nil, fmt.Errorf("vault: agregando repositorio: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: agregando repositorio: %w", EN: "vault: adding repository: %w"}, err)
 	}
 
 	return &GitRepo{ID: id, Name: name, Path: path, SortOrder: nextOrder, CreatedAt: createdAt}, nil
@@ -77,7 +78,7 @@ func (s *Store) ListGitRepos() ([]GitRepo, error) {
 		ORDER BY sort_order, name
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando repositorios: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando repositorios: %w", EN: "vault: listing repositories: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -86,13 +87,13 @@ func (s *Store) ListGitRepos() ([]GitRepo, error) {
 		var r GitRepo
 		var pinned string
 		if err := rows.Scan(&r.ID, &r.Name, &r.Path, &r.FolderID, &r.SortOrder, &r.CreatedAt, &pinned); err != nil {
-			return nil, fmt.Errorf("vault: leyendo repositorio: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo repositorio: %w", EN: "vault: reading repository: %w"}, err)
 		}
 		r.PinnedBranches = decodePinned(pinned)
 		repos = append(repos, r)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("vault: listando repositorios: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando repositorios: %w", EN: "vault: listing repositories: %w"}, err)
 	}
 	return repos, nil
 }
@@ -108,7 +109,7 @@ func (s *Store) GetGitRepo(id string) (*GitRepo, error) {
 		FROM git_repos WHERE id = ?
 	`, id).Scan(&r.ID, &r.Name, &r.Path, &r.FolderID, &r.SortOrder, &r.CreatedAt)
 	if err != nil {
-		return nil, fmt.Errorf("vault: repositorio %q no encontrado: %w", id, err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: repositorio %q no encontrado: %w", EN: "vault: repository %q not found: %w"}, id, err)
 	}
 	return &r, nil
 }
@@ -136,7 +137,7 @@ func (s *Store) GitRepoWorkspaceFor(id string) (GitRepoWorkspace, error) {
 		`SELECT COALESCE(open_files, '[]'), COALESCE(default_agent, '') FROM git_repos WHERE id = ?`, id,
 	).Scan(&rawFiles, &agent)
 	if err != nil {
-		return GitRepoWorkspace{}, fmt.Errorf("vault: repositorio %q no encontrado: %w", id, err)
+		return GitRepoWorkspace{}, i18n.Errorf(i18n.Msg{ES: "vault: repositorio %q no encontrado: %w", EN: "vault: repository %q not found: %w"}, id, err)
 	}
 
 	ws := GitRepoWorkspace{OpenFiles: []string{}, DefaultAgent: agent}
@@ -158,10 +159,10 @@ func (s *Store) SetGitRepoOpenFiles(id string, files []string) error {
 	}
 	encoded, err := json.Marshal(files)
 	if err != nil {
-		return fmt.Errorf("vault: serializando archivos abiertos: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: serializando archivos abiertos: %w", EN: "vault: serializing open files: %w"}, err)
 	}
 	if _, err := s.db.Exec(`UPDATE git_repos SET open_files = ? WHERE id = ?`, string(encoded), id); err != nil {
-		return fmt.Errorf("vault: guardando archivos abiertos: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando archivos abiertos: %w", EN: "vault: saving open files: %w"}, err)
 	}
 	return nil
 }
@@ -170,7 +171,7 @@ func (s *Store) SetGitRepoOpenFiles(id string, files []string) error {
 // repositorio. Vacío vuelve a "preguntar".
 func (s *Store) SetGitRepoDefaultAgent(id, agentID string) error {
 	if _, err := s.db.Exec(`UPDATE git_repos SET default_agent = ? WHERE id = ?`, agentID, id); err != nil {
-		return fmt.Errorf("vault: guardando el agente por defecto: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el agente por defecto: %w", EN: "vault: saving the default agent: %w"}, err)
 	}
 	return nil
 }
@@ -179,14 +180,14 @@ func (s *Store) SetGitRepoDefaultAgent(id, agentID string) error {
 func (s *Store) RenameGitRepo(id, name string) error {
 	res, err := s.db.Exec(`UPDATE git_repos SET name = ? WHERE id = ?`, name, id)
 	if err != nil {
-		return fmt.Errorf("vault: renombrando repositorio: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: renombrando repositorio: %w", EN: "vault: renaming repository: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: renombrando repositorio: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: renombrando repositorio: %w", EN: "vault: renaming repository: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: repositorio %q no encontrado", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: repositorio %q no encontrado", EN: "vault: repository %q not found"}, id)
 	}
 	return nil
 }
@@ -195,14 +196,14 @@ func (s *Store) RenameGitRepo(id, name string) error {
 func (s *Store) MoveGitRepoToFolder(id, folderID string) error {
 	res, err := s.db.Exec(`UPDATE git_repos SET folder_id = ? WHERE id = ?`, nullableString(folderID), id)
 	if err != nil {
-		return fmt.Errorf("vault: moviendo repositorio: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo repositorio: %w", EN: "vault: moving repository: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: moviendo repositorio: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo repositorio: %w", EN: "vault: moving repository: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: repositorio %q no encontrado", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: repositorio %q no encontrado", EN: "vault: repository %q not found"}, id)
 	}
 	return nil
 }
@@ -223,19 +224,19 @@ func (s *Store) RemoveGitRepo(id string) error {
 	// incluidas las que hoy funcionan sin él, y eso merece su propia
 	// verificación en vez de entrar de costado con esta feature.
 	if _, err := s.db.Exec(`DELETE FROM agent_chats WHERE repo_id = ?`, id); err != nil {
-		return fmt.Errorf("vault: quitando los chats del repositorio: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: quitando los chats del repositorio: %w", EN: "vault: removing the repository's chats: %w"}, err)
 	}
 
 	res, err := s.db.Exec(`DELETE FROM git_repos WHERE id = ?`, id)
 	if err != nil {
-		return fmt.Errorf("vault: quitando repositorio: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: quitando repositorio: %w", EN: "vault: removing repository: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: quitando repositorio: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: quitando repositorio: %w", EN: "vault: removing repository: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: repositorio %q no encontrado", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: repositorio %q no encontrado", EN: "vault: repository %q not found"}, id)
 	}
 	return nil
 }
@@ -251,10 +252,10 @@ func (s *Store) SetGitRepoPinnedBranches(id string, branches []string) error {
 	}
 	encoded, err := json.Marshal(branches)
 	if err != nil {
-		return fmt.Errorf("vault: serializando ramas ancladas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: serializando ramas ancladas: %w", EN: "vault: serializing pinned branches: %w"}, err)
 	}
 	if _, err := s.db.Exec(`UPDATE git_repos SET pinned_branches = ? WHERE id = ?`, string(encoded), id); err != nil {
-		return fmt.Errorf("vault: guardando ramas ancladas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando ramas ancladas: %w", EN: "vault: saving pinned branches: %w"}, err)
 	}
 	return nil
 }

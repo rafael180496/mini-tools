@@ -2,9 +2,10 @@ package agentapprove
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
+
+	"mini-tools/backend/i18n"
 )
 
 // El archivo de settings que se le pasa al CLI para instalar el hook.
@@ -50,10 +51,10 @@ func WriteSettings(dataDir, selfPath string) (string, error) {
 	}
 	path := SettingsPath(dataDir)
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return "", fmt.Errorf("agentapprove: preparando el directorio: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "agentapprove: preparando el directorio: %w", EN: "agentapprove: preparing the directory: %w"}, err)
 	}
 	if err := os.WriteFile(path, b, 0o600); err != nil {
-		return "", fmt.Errorf("agentapprove: escribiendo los settings del hook: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "agentapprove: escribiendo los settings del hook: %w", EN: "agentapprove: writing the hook settings: %w"}, err)
 	}
 	return path, nil
 }

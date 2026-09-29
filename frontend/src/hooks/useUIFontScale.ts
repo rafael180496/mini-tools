@@ -23,12 +23,14 @@ import {GetSettings, SetUIFontScale} from '../../wailsjs/go/main/App'
 
 // Presets. Un desplegable de cinco opciones y no un campo numérico: la
 // pregunta que uno se hace es "¿más grande?", no "¿cuántos por ciento?".
+// Rótulo y pista de cada preset en `settings.uiScale.<key>`: se resuelven al
+// dibujar, no acá, para que sigan el idioma activo.
 export const UI_FONT_SCALES = [
-    {value: 90, label: 'Compacto', hint: 'Entra más información en pantalla'},
-    {value: 100, label: 'Normal', hint: 'El tamaño de siempre'},
-    {value: 115, label: 'Grande', hint: 'Un poco más de cuerpo, sin cambiar la disposición'},
-    {value: 130, label: 'Más grande', hint: 'Para leer sin acercarse a la pantalla'},
-    {value: 150, label: 'Máximo', hint: 'El más grande antes de que las barras dejen de entrar'},
+    {value: 90, key: 'compact'},
+    {value: 100, key: 'normal'},
+    {value: 115, key: 'large'},
+    {value: 130, key: 'larger'},
+    {value: 150, key: 'max'},
 ] as const
 
 // 100 = el tamaño de siempre. Es también lo que significa el 0 que trae una

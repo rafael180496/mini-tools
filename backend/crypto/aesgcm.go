@@ -4,7 +4,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"fmt"
+
+	"mini-tools/backend/i18n"
 )
 
 // Encrypt seals plaintext with AES-256-GCM under key, returning the
@@ -17,7 +18,7 @@ func Encrypt(key, plaintext []byte) (ciphertext, nonce []byte, err error) {
 
 	nonce = make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return nil, nil, fmt.Errorf("crypto: generating nonce: %w", err)
+		return nil, nil, i18n.Errorf(i18n.Msg{ES: "crypto: generando el nonce: %w", EN: "crypto: generating nonce: %w"}, err)
 	}
 
 	return gcm.Seal(nil, nonce, plaintext, nil), nonce, nil
@@ -32,7 +33,7 @@ func Decrypt(key, ciphertext, nonce []byte) ([]byte, error) {
 	}
 
 	if len(nonce) != gcm.NonceSize() {
-		return nil, fmt.Errorf("crypto: invalid nonce size %d", len(nonce))
+		return nil, i18n.Errorf(i18n.Msg{ES: "crypto: tamaño de nonce inválido %d", EN: "crypto: invalid nonce size %d"}, len(nonce))
 	}
 
 	return gcm.Open(nil, nonce, ciphertext, nil)
@@ -41,12 +42,12 @@ func Decrypt(key, ciphertext, nonce []byte) ([]byte, error) {
 func newGCM(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("crypto: creating cipher: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "crypto: creando el cifrador: %w", EN: "crypto: creating cipher: %w"}, err)
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("crypto: creating GCM: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "crypto: creando GCM: %w", EN: "crypto: creating GCM: %w"}, err)
 	}
 
 	return gcm, nil

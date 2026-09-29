@@ -3,6 +3,7 @@ package httpclient
 import (
 	"encoding/json"
 	"fmt"
+	"mini-tools/backend/i18n"
 	"strings"
 )
 
@@ -66,7 +67,7 @@ type ImportedCollection struct {
 func ParsePostman(data []byte) (*ImportedCollection, error) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("el archivo no es JSON válido: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "el archivo no es JSON válido: %w", EN: "the file is not valid JSON: %w"}, err)
 	}
 
 	var info struct {
@@ -78,7 +79,7 @@ func ParsePostman(data []byte) (*ImportedCollection, error) {
 		_ = json.Unmarshal(raw, &info)
 	}
 	if info.Name == "" {
-		return nil, fmt.Errorf("no parece una colección de Postman: le falta info.name")
+		return nil, i18n.Errorf(i18n.Msg{ES: "no parece una colección de Postman: le falta info.name", EN: "this does not look like a Postman collection: it has no info.name"})
 	}
 
 	out := &ImportedCollection{Name: info.Name, Description: describe(info.Description)}
@@ -87,7 +88,7 @@ func ParsePostman(data []byte) (*ImportedCollection, error) {
 	// toda la estructura con la v2.1, y negarse a abrirla por un número
 	// sería peor que importarla y decir que puede haber diferencias.
 	if info.Schema != "" && !strings.Contains(info.Schema, "v2.1") && !strings.Contains(info.Schema, "v2.0") {
-		out.Warnings = append(out.Warnings, "el archivo declara un esquema desconocido ("+info.Schema+"); se importó igual")
+		out.Warnings = append(out.Warnings, i18n.T(i18n.Msg{ES: "el archivo declara un esquema desconocido (%s); se importó igual", EN: "the file declares an unknown schema (%s); it was imported anyway"}, info.Schema))
 	}
 
 	// La colección cruda, SIN los ítems: esos llevan su propio raw y
@@ -109,21 +110,21 @@ func ParsePostman(data []byte) (*ImportedCollection, error) {
 	if raw, ok := doc["item"]; ok {
 		var items []json.RawMessage
 		if err := json.Unmarshal(raw, &items); err != nil {
-			return nil, fmt.Errorf("la lista de peticiones no se pudo leer: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "la lista de peticiones no se pudo leer: %w", EN: "the request list could not be read: %w"}, err)
 		}
 		for _, it := range items {
 			parsed, err := parsePostmanItem(it, &out.Warnings)
 			if err != nil {
 				// Un ítem ilegible no puede tumbar la importación entera:
 				// se avisa y se sigue con los otros veintidós.
-				out.Warnings = append(out.Warnings, "se omitió un elemento ilegible: "+err.Error())
+				out.Warnings = append(out.Warnings, i18n.T(i18n.Msg{ES: "se omitió un elemento ilegible: %s", EN: "an unreadable item was skipped: %s"}, err.Error()))
 				continue
 			}
 			out.Items = append(out.Items, parsed)
 		}
 	}
 	if len(out.Items) == 0 {
-		return nil, fmt.Errorf("la colección %q no trae ninguna petición", info.Name)
+		return nil, i18n.Errorf(i18n.Msg{ES: "la colección %q no trae ninguna petición", EN: "the collection %q has no requests"}, info.Name)
 	}
 	return out, nil
 }
@@ -140,7 +141,7 @@ func parsePostmanItem(raw json.RawMessage, warnings *[]string) (ImportedItem, er
 	}
 	item := ImportedItem{Name: name, Raw: string(raw)}
 	if item.Name == "" {
-		item.Name = "Sin nombre"
+		item.Name = i18n.T(msgUntitled)
 	}
 
 	// Una carpeta es un ítem que contiene ítems. Es la única diferencia que
@@ -152,7 +153,7 @@ func parsePostmanItem(raw json.RawMessage, warnings *[]string) (ImportedItem, er
 			for _, c := range children {
 				parsed, err := parsePostmanItem(c, warnings)
 				if err != nil {
-					*warnings = append(*warnings, "se omitió un elemento ilegible dentro de «"+item.Name+"»")
+					*warnings = append(*warnings, i18n.T(i18n.Msg{ES: "se omitió un elemento ilegible dentro de «%s»", EN: "an unreadable item inside «%s» was skipped"}, item.Name))
 					continue
 				}
 				item.Children = append(item.Children, parsed)
@@ -346,7 +347,7 @@ func parsePostmanBody(raw json.RawMessage, warnings *[]string, itemName string) 
 					}
 				}
 				if field.Value == "" {
-					*warnings = append(*warnings, "«"+itemName+"» sube un archivo cuya ruta no vino en el export: hay que elegirlo de nuevo")
+					*warnings = append(*warnings, i18n.T(i18n.Msg{ES: "«%s» sube un archivo cuya ruta no vino en el export: hay que elegirlo de nuevo", EN: "«%s» uploads a file whose path was not in the export: it has to be chosen again"}, itemName))
 				}
 			}
 			out.FormData = append(out.FormData, field)
@@ -362,7 +363,7 @@ func parsePostmanBody(raw json.RawMessage, warnings *[]string, itemName string) 
 
 	case "file":
 		if b.File.Src == "" {
-			*warnings = append(*warnings, "«"+itemName+"» manda un archivo como cuerpo, pero el export no trae la ruta: hay que elegirlo de nuevo")
+			*warnings = append(*warnings, i18n.T(i18n.Msg{ES: "«%s» manda un archivo como cuerpo, pero el export no trae la ruta: hay que elegirlo de nuevo", EN: "«%s» sends a file as the body, but the export has no path: it has to be chosen again"}, itemName))
 		}
 		return Body{Mode: BodyBinary, BinaryPath: b.File.Src}
 
@@ -437,7 +438,7 @@ func parsePostmanAuth(raw json.RawMessage, warnings *[]string) Auth {
 	}
 
 	if !out.Executable() {
-		*warnings = append(*warnings, "la autenticación «"+kind+"» se importó y se va a exportar intacta, pero esta versión no la firma")
+		*warnings = append(*warnings, i18n.T(i18n.Msg{ES: "la autenticación «%s» se importó y se va a exportar intacta, pero esta versión no la firma", EN: "the «%s» authentication was imported and will be exported intact, but this version does not sign it"}, kind))
 	}
 	return out
 }

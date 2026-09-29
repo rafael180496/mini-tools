@@ -1,12 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/git"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/osopen"
 	"mini-tools/backend/vault"
 )
@@ -248,7 +248,7 @@ func (a *App) GitPickRepoFolder() (string, error) {
 		return "", err
 	}
 	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Elegir carpeta del repositorio Git",
+		Title: i18n.T(i18n.Msg{ES: "Elegir carpeta del repositorio Git", EN: "Choose Git repository folder"}),
 	})
 }
 
@@ -261,7 +261,7 @@ func (a *App) GitPickFolder(title string) (string, error) {
 		return "", err
 	}
 	if title == "" {
-		title = "Elegir carpeta"
+		title = i18n.T(i18n.Msg{ES: "Elegir carpeta", EN: "Choose folder"})
 	}
 	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
 }
@@ -739,7 +739,7 @@ func (a *App) GitAbort(repoID, op string) error {
 	case "rebase":
 		return a.gitRunner.RebaseAbort(path)
 	default:
-		return fmt.Errorf("no se puede abortar %q desde acá", op)
+		return i18n.Errorf(i18n.Msg{ES: "no se puede abortar %q desde acá", EN: "%q can't be aborted from here"}, op)
 	}
 }
 
@@ -1154,7 +1154,7 @@ func (a *App) GitOpenInBrowser(target string) error {
 		return err
 	}
 	if !strings.HasPrefix(target, "https://") && !strings.HasPrefix(target, "http://") {
-		return fmt.Errorf("solo se pueden abrir URLs http o https")
+		return i18n.Errorf(i18n.Msg{ES: "solo se pueden abrir URLs http o https", EN: "only http or https URLs can be opened"})
 	}
 	runtime.BrowserOpenURL(a.ctx, target)
 	return nil

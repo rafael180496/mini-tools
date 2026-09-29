@@ -4,12 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/vault"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -81,7 +81,7 @@ func (a *App) createNote(title, content, frontmatter string) (string, error) {
 		return "", err
 	}
 	if strings.TrimSpace(title) == "" {
-		return "", fmt.Errorf("app: la nota necesita un título — es lo que la hace enlazable con [[…]]")
+		return "", i18n.Errorf(i18n.Msg{ES: "app: la nota necesita un título — es lo que la hace enlazable con [[…]]", EN: "app: the note needs a title — it's what makes it linkable with [[…]]"})
 	}
 
 	// Un título duplicado se rechaza: dos notas con el mismo título hacen que
@@ -133,7 +133,7 @@ func (a *App) UpdateNote(id, title, content, frontmatter string) error {
 		return err
 	}
 	if strings.TrimSpace(title) == "" {
-		return fmt.Errorf("app: la nota necesita un título")
+		return i18n.Errorf(i18n.Msg{ES: "app: la nota necesita un título", EN: "app: the note needs a title"})
 	}
 	return a.vault.UpdateNote(id, title, content, vault.WithUserTouch(frontmatter, time.Now()))
 }
@@ -253,7 +253,7 @@ func (a *App) SetNotesLastOpen(noteID string) error {
 func newNoteID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("app: generando el id de la nota: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: generando el id de la nota: %w", EN: "app: generating the note id: %w"}, err)
 	}
 	return hex.EncodeToString(b), nil
 }
@@ -325,21 +325,21 @@ func (a *App) SaveNoteImage(noteID, dataURL string) (string, error) {
 
 	const prefix = "data:"
 	if !strings.HasPrefix(dataURL, prefix) {
-		return "", fmt.Errorf("app: eso no es una imagen")
+		return "", i18n.Errorf(i18n.Msg{ES: "app: eso no es una imagen", EN: "app: that is not an image"})
 	}
 	comma := strings.Index(dataURL, ",")
 	if comma < 0 {
-		return "", fmt.Errorf("app: la imagen llegó incompleta")
+		return "", i18n.Errorf(i18n.Msg{ES: "app: la imagen llegó incompleta", EN: "app: the image arrived incomplete"})
 	}
 	header := dataURL[len(prefix):comma]
 	mime, _, _ := strings.Cut(header, ";")
 	if !strings.HasPrefix(mime, "image/") {
-		return "", fmt.Errorf("app: solo se pueden pegar imágenes en una nota, y esto es %q", mime)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: solo se pueden pegar imágenes en una nota, y esto es %q", EN: "app: only images can be pasted into a note, and this is %q"}, mime)
 	}
 
 	raw, err := base64.StdEncoding.DecodeString(dataURL[comma+1:])
 	if err != nil {
-		return "", fmt.Errorf("app: no se pudo leer la imagen: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: no se pudo leer la imagen: %w", EN: "app: couldn't read the image: %w"}, err)
 	}
 
 	id, err := newNoteID()
@@ -380,7 +380,7 @@ func (a *App) checkNoteTitleFree(title, except string) error {
 	}
 	for _, n := range existing {
 		if n.ID != except && vault.NormalizeTitle(n.Title) == vault.NormalizeTitle(title) {
-			return fmt.Errorf("app: ya existe una nota que se llama %q — los títulos tienen que ser únicos para que [[%s]] apunte a una sola", n.Title, title)
+			return i18n.Errorf(i18n.Msg{ES: "app: ya existe una nota que se llama %q — los títulos tienen que ser únicos para que [[%s]] apunte a una sola", EN: "app: a note named %q already exists — titles must be unique so that [[%s]] points to a single one"}, n.Title, title)
 		}
 	}
 	return nil
@@ -398,7 +398,7 @@ func (a *App) RenameNote(id, title string) error {
 	}
 	title = strings.TrimSpace(title)
 	if title == "" {
-		return fmt.Errorf("app: la nota necesita un título")
+		return i18n.Errorf(i18n.Msg{ES: "app: la nota necesita un título", EN: "app: the note needs a title"})
 	}
 	if err := a.checkNoteTitleFree(title, id); err != nil {
 		return err
@@ -424,13 +424,13 @@ func (a *App) DuplicateNote(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	base := strings.TrimSpace(src.Title) + " (copia)"
+	base := i18n.T(i18n.Msg{ES: "%s (copia)", EN: "%s (copy)"}, strings.TrimSpace(src.Title))
 	title := base
 	for i := 2; a.checkNoteTitleFree(title, "") != nil; i++ {
 		if i > 100 {
-			return "", fmt.Errorf("app: no se encontró un título libre para la copia de %q", src.Title)
+			return "", i18n.Errorf(i18n.Msg{ES: "app: no se encontró un título libre para la copia de %q", EN: "app: couldn't find a free title for the copy of %q"}, src.Title)
 		}
-		title = fmt.Sprintf("%s (copia %d)", strings.TrimSpace(src.Title), i)
+		title = i18n.T(i18n.Msg{ES: "%s (copia %d)", EN: "%s (copy %d)"}, strings.TrimSpace(src.Title), i)
 	}
 	newID, err := newNoteID()
 	if err != nil {
@@ -509,18 +509,18 @@ func (a *App) ExportNoteMarkdown(id string) (string, error) {
 	}
 
 	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Exportar nota como Markdown",
+		Title:           i18n.T(i18n.Msg{ES: "Exportar nota como Markdown", EN: "Export note as Markdown"}),
 		DefaultFilename: safeFilename(n.Title) + ".md",
 		Filters:         []runtime.FileFilter{{DisplayName: "Markdown (*.md)", Pattern: "*.md"}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de guardado: %w", EN: "app: opening save dialog: %w"}, err)
 	}
 	if dest == "" {
 		return "", nil
 	}
 	if err := os.WriteFile(dest, []byte(body), 0o600); err != nil {
-		return "", fmt.Errorf("app: escribiendo la nota: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: escribiendo la nota: %w", EN: "app: writing the note: %w"}, err)
 	}
 	return dest, nil
 }

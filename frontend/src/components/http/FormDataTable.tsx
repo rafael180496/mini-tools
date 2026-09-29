@@ -2,6 +2,7 @@ import {HttpPickFile} from '../../../wailsjs/go/main/App'
 import {httpclient} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import Select from '../Select'
+import {t as tr, useT} from '../../i18n'
 
 // Tabla de form-data: como la de clave/valor, pero cada fila elige si su
 // valor es TEXTO o un ARCHIVO.
@@ -28,6 +29,7 @@ function baseName(path: string): string {
 }
 
 export default function FormDataTable({rows, onChange}: FormDataTableProps) {
+    const t = useT()
     const display = [...rows, emptyField()]
 
     function update(i: number, patch: Partial<httpclient.FormField>) {
@@ -37,7 +39,7 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
 
     async function pick(i: number) {
         try {
-            const path = await HttpPickFile('Elegir el archivo a subir')
+            const path = await HttpPickFile(tr().http.form.pickFileDialog)
             if (path) update(i, {value: path, type: 'file', enabled: true})
         } catch {
             /* cancelar no es un error */
@@ -50,9 +52,9 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                 <thead>
                     <tr className="text-left text-ui-10 uppercase tracking-wider text-on-surface-variant/60">
                         <th className="w-8 px-2 py-1 font-medium"></th>
-                        <th className="w-[28%] px-2 py-1 font-medium">Key</th>
-                        <th className="w-20 px-2 py-1 font-medium">Tipo</th>
-                        <th className="px-2 py-1 font-medium">Value</th>
+                        <th className="w-[28%] px-2 py-1 font-medium">{t.http.form.key}</th>
+                        <th className="w-20 px-2 py-1 font-medium">{t.http.form.type}</th>
+                        <th className="px-2 py-1 font-medium">{t.http.form.value}</th>
                         <th className="w-8 px-1 py-1"></th>
                     </tr>
                 </thead>
@@ -68,7 +70,7 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                             type="checkbox"
                                             checked={row.enabled}
                                             onChange={(e) => update(i, {enabled: e.target.checked})}
-                                            title={row.enabled ? 'Se envía' : 'Queda guardada pero fuera de la petición'}
+                                            title={row.enabled ? t.http.form.enabledTitle : t.http.form.disabledTitle}
                                             className="accent-primary"
                                         />
                                     )}
@@ -77,7 +79,7 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                     <input
                                         value={row.key}
                                         onChange={(e) => update(i, {key: e.target.value, enabled: true})}
-                                        placeholder={ghost ? 'campo' : ''}
+                                        placeholder={ghost ? t.http.form.keyPlaceholder : ''}
                                         className="w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                     />
                                 </td>
@@ -86,14 +88,14 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                         <Select
                                             value={row.type}
                                             options={[
-                                                {value: 'text', label: 'Texto'},
-                                                {value: 'file', label: 'Archivo'},
+                                                {value: 'text', label: t.http.form.text},
+                                                {value: 'file', label: t.http.form.file},
                                             ]}
                                             onChange={(v) => update(i, {type: v, value: ''})}
                                             size="sm"
                                             variant="ghost"
-                                            ariaLabel="Tipo del campo del formulario"
-                                            title="Texto manda el valor tal cual; Archivo sube el contenido del archivo elegido."
+                                            ariaLabel={t.http.form.typeAria}
+                                            title={t.http.form.typeTitle}
                                             className="w-full"
                                         />
                                     )}
@@ -102,17 +104,17 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                     {isFile && !ghost ? (
                                         <button
                                             onClick={() => void pick(i)}
-                                            title={row.value || 'Elegir un archivo del disco. Se guarda la ruta, no el contenido: el archivo se lee recién al enviar.'}
+                                            title={row.value || t.http.form.pickFileTitle}
                                             className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left font-mono text-ui-11 text-on-surface hover:bg-surface-variant"
                                         >
                                             <Icon name="attach_file" size={12} className="shrink-0 opacity-60" />
-                                            <span className="truncate">{row.value ? baseName(row.value) : 'Elegir archivo…'}</span>
+                                            <span className="truncate">{row.value ? baseName(row.value) : t.http.form.pickFile}</span>
                                         </button>
                                     ) : (
                                         <input
                                             value={row.value}
                                             onChange={(e) => update(i, {value: e.target.value, enabled: true})}
-                                            placeholder={ghost ? 'valor' : ''}
+                                            placeholder={ghost ? t.http.form.valuePlaceholder : ''}
                                             className="w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                                         />
                                     )}
@@ -121,7 +123,7 @@ export default function FormDataTable({rows, onChange}: FormDataTableProps) {
                                     {!ghost && (
                                         <button
                                             onClick={() => onChange(display.filter((_, k) => k !== i).filter((r) => r.key.trim() !== '' || r.value.trim() !== ''))}
-                                            title="Borrar esta fila"
+                                            title={t.http.form.removeTitle}
                                             className="rounded p-0.5 text-on-surface-variant/40 hover:bg-surface-variant hover:text-error"
                                         >
                                             <Icon name="close" size={12} />

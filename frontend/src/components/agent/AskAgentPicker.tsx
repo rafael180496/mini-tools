@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react'
 import {AgentAskAgents} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
 import Select from '../Select'
+import {useT} from '../../i18n'
 
 // Con qué proveedor se hace este análisis puntual.
 //
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export default function AskAgentPicker({value, onChange, disabled}: Props) {
+    const t = useT()
     const [agents, setAgents] = useState<main.AskAgent[]>([])
 
     useEffect(() => {
@@ -40,7 +42,7 @@ export default function AskAgentPicker({value, onChange, disabled}: Props) {
             value={value}
             disabled={disabled}
             onChange={onChange}
-            title="Con qué proveedor se hace ESTE análisis. No cambia el agente activo de la aplicación: sirve para pedirle la misma pregunta a otro modelo y comparar."
+            title={t.agent.askPicker.title}
             size="sm"
             leadingIcon="auto_awesome"
             menuMinWidth={200}
@@ -48,8 +50,8 @@ export default function AskAgentPicker({value, onChange, disabled}: Props) {
             options={[
                 {
                     value: '',
-                    label: agents.find((a) => a.active)?.label ?? 'Agente activo',
-                    hint: 'activo',
+                    label: agents.find((a) => a.active)?.label ?? t.agent.askPicker.activeAgent,
+                    hint: t.agent.askPicker.active,
                 },
                 ...agents.filter((a) => !a.active).map((a) => ({value: a.id, label: a.label})),
             ]}

@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"fmt"
+	"mini-tools/backend/i18n"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,7 +80,7 @@ func GenerateCode(req Request, lang string) (string, error) {
 	case "powershell":
 		return genPowerShell(method, url, headers, body), nil
 	default:
-		return "", fmt.Errorf("lenguaje no soportado: %q", lang)
+		return "", i18n.Errorf(i18n.Msg{ES: "lenguaje no soportado: %q", EN: "unsupported language: %q"}, lang)
 	}
 }
 
@@ -158,9 +159,9 @@ func orNull(s string) string {
 func unsupportedNote(b Body, comment string) string {
 	switch b.Mode {
 	case BodyFormData:
-		return comment + " el cuerpo es un formulario con archivos: agregá las partes a mano\n"
+		return comment + i18n.T(i18n.Msg{ES: " el cuerpo es un formulario con archivos: agregá las partes a mano", EN: " the body is a form with files: add the parts by hand"}) + "\n"
 	case BodyBinary:
-		return comment + " el cuerpo es el archivo " + b.BinaryPath + "\n"
+		return comment + i18n.T(i18n.Msg{ES: " el cuerpo es el archivo %s", EN: " the body is the file %s"}, b.BinaryPath) + "\n"
 	}
 	return ""
 }

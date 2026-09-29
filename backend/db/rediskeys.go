@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"mini-tools/backend/i18n"
 )
 
 const defaultRedisPageSize = 100
@@ -59,7 +61,7 @@ func GetRedisStats(ctx context.Context, client redis.UniversalClient) (RedisStat
 func getSingleNodeRedisStats(ctx context.Context, client redis.Cmdable) (RedisStats, error) {
 	total, err := client.DBSize(ctx).Result()
 	if err != nil {
-		return RedisStats{}, fmt.Errorf("db: DBSIZE de Redis: %w", err)
+		return RedisStats{}, i18n.Errorf(i18n.Msg{ES: "db: DBSIZE de Redis: %w", EN: "db: Redis DBSIZE: %w"}, err)
 	}
 	usedMemory, err := usedMemoryOf(ctx, client)
 	if err != nil {
@@ -89,7 +91,7 @@ func getClusterRedisStats(ctx context.Context, cc *redis.ClusterClient) (RedisSt
 		return nil
 	})
 	if err != nil {
-		return RedisStats{}, fmt.Errorf("db: stats de Redis (cluster): %w", err)
+		return RedisStats{}, i18n.Errorf(i18n.Msg{ES: "db: stats de Redis (cluster): %w", EN: "db: Redis stats (cluster): %w"}, err)
 	}
 	return RedisStats{TotalKeys: total, UsedMemoryBytes: usedMemory}, nil
 }
@@ -102,7 +104,7 @@ func getClusterRedisStats(ctx context.Context, cc *redis.ClusterClient) (RedisSt
 func usedMemoryOf(ctx context.Context, client redis.Cmdable) (int64, error) {
 	info, err := client.Info(ctx, "memory").Result()
 	if err != nil {
-		return 0, fmt.Errorf("db: INFO memory de Redis: %w", err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "db: INFO memory de Redis: %w", EN: "db: Redis INFO memory: %w"}, err)
 	}
 	for _, line := range strings.Split(info, "\r\n") {
 		if v, ok := strings.CutPrefix(line, "used_memory:"); ok {
@@ -163,7 +165,7 @@ func scanSingleNodeKeys(ctx context.Context, client redis.Cmdable, cursor, match
 		keys, next, err = client.Scan(ctx, cur, match, count).Result()
 	}
 	if err != nil {
-		return RedisScanPage{}, fmt.Errorf("db: SCAN de Redis: %w", err)
+		return RedisScanPage{}, i18n.Errorf(i18n.Msg{ES: "db: SCAN de Redis: %w", EN: "db: Redis SCAN: %w"}, err)
 	}
 
 	entries, err := entriesWithType(ctx, client, keys, keyType)
@@ -190,7 +192,7 @@ func scanClusterKeys(ctx context.Context, cc *redis.ClusterClient, cursor, match
 		return nil
 	})
 	if err != nil {
-		return RedisScanPage{}, fmt.Errorf("db: listando shards del cluster: %w", err)
+		return RedisScanPage{}, i18n.Errorf(i18n.Msg{ES: "db: listando shards del cluster: %w", EN: "db: listing cluster shards: %w"}, err)
 	}
 	if len(shardsByAddr) == 0 {
 		return RedisScanPage{}, nil
@@ -216,7 +218,7 @@ func scanClusterKeys(ctx context.Context, cc *redis.ClusterClient, cursor, match
 			keys, next, err = shard.Scan(ctx, shardCursor, match, count).Result()
 		}
 		if err != nil {
-			return RedisScanPage{}, fmt.Errorf("db: SCAN de Redis (shard %s): %w", addrs[shardIdx], err)
+			return RedisScanPage{}, i18n.Errorf(i18n.Msg{ES: "db: SCAN de Redis (shard %s): %w", EN: "db: Redis SCAN (shard %s): %w"}, addrs[shardIdx], err)
 		}
 
 		entries, err := entriesWithType(ctx, shard, keys, keyType)
@@ -249,7 +251,7 @@ func entriesWithType(ctx context.Context, client redis.Cmdable, keys []string, k
 		}
 		typ, err := client.Type(ctx, k).Result()
 		if err != nil {
-			return nil, fmt.Errorf("db: TYPE de %q: %w", k, err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: TYPE de %q: %w", EN: "db: TYPE of %q: %w"}, k, err)
 		}
 		entries = append(entries, RedisKeyEntry{Key: k, Type: typ})
 	}
@@ -275,12 +277,12 @@ type RedisKeyInfo struct {
 func GetRedisKeyInfo(ctx context.Context, client redis.UniversalClient, key string) (RedisKeyInfo, error) {
 	typ, err := client.Type(ctx, key).Result()
 	if err != nil {
-		return RedisKeyInfo{}, fmt.Errorf("db: TYPE de %q: %w", key, err)
+		return RedisKeyInfo{}, i18n.Errorf(i18n.Msg{ES: "db: TYPE de %q: %w", EN: "db: TYPE of %q: %w"}, key, err)
 	}
 
 	ttl, err := client.TTL(ctx, key).Result()
 	if err != nil {
-		return RedisKeyInfo{}, fmt.Errorf("db: TTL de %q: %w", key, err)
+		return RedisKeyInfo{}, i18n.Errorf(i18n.Msg{ES: "db: TTL de %q: %w", EN: "db: TTL of %q: %w"}, key, err)
 	}
 
 	var ttlSeconds int64
@@ -354,7 +356,7 @@ func GetRedisValue(ctx context.Context, client redis.UniversalClient, key, typ, 
 	case "string":
 		v, err := client.Get(ctx, key).Result()
 		if err != nil && err != redis.Nil {
-			return RedisValue{}, fmt.Errorf("db: GET de %q: %w", key, err)
+			return RedisValue{}, i18n.Errorf(i18n.Msg{ES: "db: GET de %q: %w", EN: "db: GET of %q: %w"}, key, err)
 		}
 		return RedisValue{Type: typ, StringVal: v}, nil
 
@@ -383,12 +385,12 @@ func GetRedisValue(ctx context.Context, client redis.UniversalClient, key, typ, 
 		// field a plain Redis "string" value already uses.
 		v, err := client.JSONGet(ctx, key).Result()
 		if err != nil {
-			return RedisValue{}, fmt.Errorf("db: JSON.GET de %q: %w", key, err)
+			return RedisValue{}, i18n.Errorf(i18n.Msg{ES: "db: JSON.GET de %q: %w", EN: "db: JSON.GET of %q: %w"}, key, err)
 		}
 		return RedisValue{Type: typ, StringVal: v}, nil
 
 	default:
-		return RedisValue{}, fmt.Errorf("db: tipo de valor Redis no soportado para inspección: %q", typ)
+		return RedisValue{}, i18n.Errorf(i18n.Msg{ES: "db: tipo de valor Redis no soportado para inspección: %q", EN: "db: Redis value type not supported for inspection: %q"}, typ)
 	}
 }
 
@@ -401,7 +403,7 @@ func scanHashValue(ctx context.Context, client redis.UniversalClient, key, curso
 	// ScanCmd type SCAN/SSCAN use.
 	flat, next, err := client.HScan(ctx, key, cur, "", count).Result()
 	if err != nil {
-		return RedisValue{}, fmt.Errorf("db: HSCAN de %q: %w", key, err)
+		return RedisValue{}, i18n.Errorf(i18n.Msg{ES: "db: HSCAN de %q: %w", EN: "db: HSCAN of %q: %w"}, key, err)
 	}
 	pairs := make([]RedisFieldValue, 0, len(flat)/2)
 	for i := 0; i+1 < len(flat); i += 2 {
@@ -421,7 +423,7 @@ func scanSetValue(ctx context.Context, client redis.UniversalClient, key, cursor
 	}
 	members, next, err := client.SScan(ctx, key, cur, "", count).Result()
 	if err != nil {
-		return RedisValue{}, fmt.Errorf("db: SSCAN de %q: %w", key, err)
+		return RedisValue{}, i18n.Errorf(i18n.Msg{ES: "db: SSCAN de %q: %w", EN: "db: SSCAN of %q: %w"}, key, err)
 	}
 	out := RedisValue{Type: "set", SetMembers: members}
 	if next != 0 {
@@ -434,7 +436,7 @@ func rangeZsetValue(ctx context.Context, client redis.UniversalClient, key strin
 	stop := offset + count - 1
 	items, err := client.ZRangeWithScores(ctx, key, offset, stop).Result()
 	if err != nil {
-		return RedisValue{}, fmt.Errorf("db: ZRANGE de %q: %w", key, err)
+		return RedisValue{}, i18n.Errorf(i18n.Msg{ES: "db: ZRANGE de %q: %w", EN: "db: ZRANGE of %q: %w"}, key, err)
 	}
 	members := make([]RedisScoredMember, len(items))
 	for i, z := range items {
@@ -452,7 +454,7 @@ func rangeListValue(ctx context.Context, client redis.UniversalClient, key strin
 	stop := offset + count - 1
 	items, err := client.LRange(ctx, key, offset, stop).Result()
 	if err != nil {
-		return RedisValue{}, fmt.Errorf("db: LRANGE de %q: %w", key, err)
+		return RedisValue{}, i18n.Errorf(i18n.Msg{ES: "db: LRANGE de %q: %w", EN: "db: LRANGE of %q: %w"}, key, err)
 	}
 	out := RedisValue{Type: "list", ListItems: items}
 	if int64(len(items)) == count {
@@ -471,7 +473,7 @@ func rangeStreamValue(ctx context.Context, client redis.UniversalClient, key, cu
 
 	msgs, err := client.XRangeN(ctx, key, start, "+", count).Result()
 	if err != nil {
-		return RedisValue{}, fmt.Errorf("db: XRANGE de %q: %w", key, err)
+		return RedisValue{}, i18n.Errorf(i18n.Msg{ES: "db: XRANGE de %q: %w", EN: "db: XRANGE of %q: %w"}, key, err)
 	}
 
 	entries := make([]RedisStreamEntry, len(msgs))
@@ -498,7 +500,7 @@ func rangeStreamValue(ctx context.Context, client redis.UniversalClient, key, cu
 // row data (see .claude/skills/mini-tools-patterns/SKILL.md).
 func DeleteRedisKey(ctx context.Context, client redis.UniversalClient, key string) error {
 	if err := client.Del(ctx, key).Err(); err != nil {
-		return fmt.Errorf("db: DEL de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: DEL de %q: %w", EN: "db: DEL of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -511,7 +513,7 @@ func DeleteRedisKey(ctx context.Context, client redis.UniversalClient, key strin
 // value inline) never asked for.
 func SetStringValue(ctx context.Context, client redis.UniversalClient, key, value string) error {
 	if err := client.Set(ctx, key, value, redis.KeepTTL).Err(); err != nil {
-		return fmt.Errorf("db: SET de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: SET de %q: %w", EN: "db: SET of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -522,7 +524,7 @@ func SetStringValue(ctx context.Context, client redis.UniversalClient, key, valu
 // needed here.
 func SetJSONValue(ctx context.Context, client redis.UniversalClient, key, value string) error {
 	if err := client.JSONSet(ctx, key, "$", value).Err(); err != nil {
-		return fmt.Errorf("db: JSON.SET de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: JSON.SET de %q: %w", EN: "db: JSON.SET of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -530,7 +532,7 @@ func SetJSONValue(ctx context.Context, client redis.UniversalClient, key, value 
 // SetHashField creates or overwrites one field of a hash.
 func SetHashField(ctx context.Context, client redis.UniversalClient, key, field, value string) error {
 	if err := client.HSet(ctx, key, field, value).Err(); err != nil {
-		return fmt.Errorf("db: HSET de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: HSET de %q: %w", EN: "db: HSET of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -538,7 +540,7 @@ func SetHashField(ctx context.Context, client redis.UniversalClient, key, field,
 // DeleteHashField removes one field from a hash.
 func DeleteHashField(ctx context.Context, client redis.UniversalClient, key, field string) error {
 	if err := client.HDel(ctx, key, field).Err(); err != nil {
-		return fmt.Errorf("db: HDEL de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: HDEL de %q: %w", EN: "db: HDEL of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -546,7 +548,7 @@ func DeleteHashField(ctx context.Context, client redis.UniversalClient, key, fie
 // SetListIndex overwrites the element at index.
 func SetListIndex(ctx context.Context, client redis.UniversalClient, key string, index int64, value string) error {
 	if err := client.LSet(ctx, key, index, value).Err(); err != nil {
-		return fmt.Errorf("db: LSET de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: LSET de %q: %w", EN: "db: LSET of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -554,7 +556,7 @@ func SetListIndex(ctx context.Context, client redis.UniversalClient, key string,
 // PushListValue appends value to the end of a list.
 func PushListValue(ctx context.Context, client redis.UniversalClient, key, value string) error {
 	if err := client.RPush(ctx, key, value).Err(); err != nil {
-		return fmt.Errorf("db: RPUSH de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: RPUSH de %q: %w", EN: "db: RPUSH of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -575,7 +577,7 @@ func RemoveListIndex(ctx context.Context, client redis.UniversalClient, key stri
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("db: eliminando índice %d de %q: %w", index, key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: eliminando índice %d de %q: %w", EN: "db: deleting index %d of %q: %w"}, index, key, err)
 	}
 	return nil
 }
@@ -583,7 +585,7 @@ func RemoveListIndex(ctx context.Context, client redis.UniversalClient, key stri
 // AddSetMember adds member to a set.
 func AddSetMember(ctx context.Context, client redis.UniversalClient, key, member string) error {
 	if err := client.SAdd(ctx, key, member).Err(); err != nil {
-		return fmt.Errorf("db: SADD de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: SADD de %q: %w", EN: "db: SADD of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -591,7 +593,7 @@ func AddSetMember(ctx context.Context, client redis.UniversalClient, key, member
 // RemoveSetMember removes member from a set.
 func RemoveSetMember(ctx context.Context, client redis.UniversalClient, key, member string) error {
 	if err := client.SRem(ctx, key, member).Err(); err != nil {
-		return fmt.Errorf("db: SREM de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: SREM de %q: %w", EN: "db: SREM of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -599,7 +601,7 @@ func RemoveSetMember(ctx context.Context, client redis.UniversalClient, key, mem
 // AddZSetMember adds (or updates the score of) member in a sorted set.
 func AddZSetMember(ctx context.Context, client redis.UniversalClient, key, member string, score float64) error {
 	if err := client.ZAdd(ctx, key, redis.Z{Member: member, Score: score}).Err(); err != nil {
-		return fmt.Errorf("db: ZADD de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: ZADD de %q: %w", EN: "db: ZADD of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -607,7 +609,7 @@ func AddZSetMember(ctx context.Context, client redis.UniversalClient, key, membe
 // RemoveZSetMember removes member from a sorted set.
 func RemoveZSetMember(ctx context.Context, client redis.UniversalClient, key, member string) error {
 	if err := client.ZRem(ctx, key, member).Err(); err != nil {
-		return fmt.Errorf("db: ZREM de %q: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "db: ZREM de %q: %w", EN: "db: ZREM of %q: %w"}, key, err)
 	}
 	return nil
 }
@@ -737,7 +739,7 @@ func fullRedisValue(ctx context.Context, client redis.UniversalClient, key, typ 
 		}
 
 	default:
-		return nil, fmt.Errorf("db: tipo de valor Redis no soportado para exportación: %q", typ)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: tipo de valor Redis no soportado para exportación: %q", EN: "db: Redis value type not supported for export: %q"}, typ)
 	}
 }
 
@@ -747,7 +749,7 @@ func parseCursorUint(cursor string) (uint64, error) {
 	}
 	n, err := strconv.ParseUint(cursor, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("db: cursor de Redis inválido: %w", err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "db: cursor de Redis inválido: %w", EN: "db: invalid Redis cursor: %w"}, err)
 	}
 	return n, nil
 }
@@ -758,15 +760,15 @@ func parseClusterCursor(cursor string) (shardIdx int, shardCursor uint64, err er
 	}
 	parts := strings.SplitN(cursor, ":", 2)
 	if len(parts) != 2 {
-		return 0, 0, fmt.Errorf("db: cursor de cluster Redis inválido: %q", cursor)
+		return 0, 0, i18n.Errorf(i18n.Msg{ES: "db: cursor de cluster Redis inválido: %q", EN: "db: invalid Redis cluster cursor: %q"}, cursor)
 	}
 	idx, err := strconv.Atoi(parts[0])
 	if err != nil {
-		return 0, 0, fmt.Errorf("db: cursor de cluster Redis inválido: %w", err)
+		return 0, 0, i18n.Errorf(i18n.Msg{ES: "db: cursor de cluster Redis inválido: %w", EN: "db: invalid Redis cluster cursor: %w"}, err)
 	}
 	sc, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("db: cursor de cluster Redis inválido: %w", err)
+		return 0, 0, i18n.Errorf(i18n.Msg{ES: "db: cursor de cluster Redis inválido: %w", EN: "db: invalid Redis cluster cursor: %w"}, err)
 	}
 	return idx, sc, nil
 }

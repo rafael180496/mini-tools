@@ -7,8 +7,8 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"mini-tools/backend/i18n"
 	"net"
 	"net/http"
 	"net/url"
@@ -63,7 +63,7 @@ func TokenExpired(expiresAt int64) bool {
 // FetchOAuth2Token pide un token con los flujos que no necesitan navegador.
 func FetchOAuth2Token(ctx context.Context, a Auth) (*OAuth2Result, error) {
 	if strings.TrimSpace(a.AccessTokenURL) == "" {
-		return nil, errors.New("falta la URL del servidor de tokens")
+		return nil, i18n.New(i18n.Msg{ES: "falta la URL del servidor de tokens", EN: "the token server URL is missing"})
 	}
 
 	form := url.Values{}
@@ -77,17 +77,17 @@ func FetchOAuth2Token(ctx context.Context, a Auth) (*OAuth2Result, error) {
 	case "client_credentials":
 	case "password":
 		if a.Username == "" {
-			return nil, errors.New("el flujo password necesita usuario y contraseña")
+			return nil, i18n.New(i18n.Msg{ES: "el flujo password necesita usuario y contraseña", EN: "the password flow needs a username and password"})
 		}
 		form.Set("username", a.Username)
 		form.Set("password", a.Password)
 	case "refresh_token":
 		if strings.TrimSpace(a.RefreshToken) == "" {
-			return nil, errors.New("no hay refresh token guardado: pedí un token nuevo")
+			return nil, i18n.New(i18n.Msg{ES: "no hay refresh token guardado: pedí un token nuevo", EN: "there is no saved refresh token: request a new token"})
 		}
 		form.Set("refresh_token", a.RefreshToken)
 	default:
-		return nil, fmt.Errorf("flujo de OAuth 2.0 no soportado acá: %q", grant)
+		return nil, i18n.Errorf(i18n.Msg{ES: "flujo de OAuth 2.0 no soportado acá: %q", EN: "OAuth 2.0 flow not supported here: %q"}, grant)
 	}
 
 	if a.Scope != "" {
@@ -112,7 +112,7 @@ func postTokenRequest(ctx context.Context, a Auth, form url.Values) (*OAuth2Resu
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.AccessTokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, fmt.Errorf("no se pudo armar la petición de token: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "no se pudo armar la petición de token: %w", EN: "could not build the token request: %w"}, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -123,7 +123,7 @@ func postTokenRequest(ctx context.Context, a Auth, form url.Values) (*OAuth2Resu
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("no se pudo contactar al servidor de tokens: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "no se pudo contactar al servidor de tokens: %w", EN: "could not reach the token server: %w"}, err)
 	}
 	defer resp.Body.Close()
 
@@ -150,10 +150,10 @@ func postTokenRequest(ctx context.Context, a Auth, form url.Values) (*OAuth2Resu
 		if detail == "" {
 			detail = strings.TrimSpace(string(body))
 		}
-		return nil, fmt.Errorf("el servidor de tokens rechazó la petición (%d): %s", resp.StatusCode, detail)
+		return nil, i18n.Errorf(i18n.Msg{ES: "el servidor de tokens rechazó la petición (%d): %s", EN: "the token server rejected the request (%d): %s"}, resp.StatusCode, detail)
 	}
 	if payload.AccessToken == "" {
-		return nil, errors.New("el servidor contestó sin access_token")
+		return nil, i18n.New(i18n.Msg{ES: "el servidor contestó sin access_token", EN: "the server replied without an access_token"})
 	}
 
 	out := &OAuth2Result{
@@ -190,17 +190,17 @@ func readAllLimited(r interface{ Read([]byte) (int, error) }, max int64) ([]byte
 // sin abrir un navegador de verdad.
 func AuthorizeOAuth2(ctx context.Context, a Auth, openBrowser func(string) error) (*OAuth2Result, error) {
 	if strings.TrimSpace(a.AuthURL) == "" {
-		return nil, errors.New("falta la URL de autorización")
+		return nil, i18n.New(i18n.Msg{ES: "falta la URL de autorización", EN: "the authorization URL is missing"})
 	}
 	if strings.TrimSpace(a.ClientID) == "" {
-		return nil, errors.New("falta el Client ID")
+		return nil, i18n.New(i18n.Msg{ES: "falta el Client ID", EN: "the Client ID is missing"})
 	}
 
 	// Puerto efímero de loopback: el sistema elige uno libre, que es lo que
 	// evita chocar con otro proceso y lo que la RFC 8252 recomienda.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, fmt.Errorf("no se pudo abrir el receptor local de la redirección: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "no se pudo abrir el receptor local de la redirección: %w", EN: "could not open the local redirect listener: %w"}, err)
 	}
 	defer listener.Close()
 
@@ -221,7 +221,7 @@ func AuthorizeOAuth2(ctx context.Context, a Auth, openBrowser func(string) error
 
 	authURL, err := url.Parse(a.AuthURL)
 	if err != nil {
-		return nil, fmt.Errorf("la URL de autorización es inválida: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "la URL de autorización es inválida: %w", EN: "the authorization URL is invalid: %w"}, err)
 	}
 	q := authURL.Query()
 	q.Set("response_type", "code")
@@ -250,32 +250,32 @@ func AuthorizeOAuth2(ctx context.Context, a Auth, openBrowser func(string) error
 			if detail == "" {
 				detail = e
 			}
-			fmt.Fprintf(w, callbackPage, "No se pudo autorizar", detail)
-			results <- callback{err: fmt.Errorf("el servidor de autorización devolvió un error: %s", detail)}
+			fmt.Fprintf(w, callbackPage, i18n.T(i18n.Msg{ES: "No se pudo autorizar", EN: "Could not authorize"}), detail, i18n.Lang())
+			results <- callback{err: i18n.Errorf(i18n.Msg{ES: "el servidor de autorización devolvió un error: %s", EN: "the authorization server returned an error: %s"}, detail)}
 			return
 		}
 		// El state se compara en tiempo constante y es obligatorio: sin esta
 		// comprobación, otra página abierta en el navegador podría inyectar
 		// su propio código en nuestra redirección.
 		if subtle.ConstantTimeCompare([]byte(params.Get("state")), []byte(state)) != 1 {
-			fmt.Fprintf(w, callbackPage, "Respuesta inesperada", "El parámetro de estado no coincide con el que envió la aplicación.")
-			results <- callback{err: errors.New("el parámetro state no coincide: la respuesta no vino de la autorización que iniciamos")}
+			fmt.Fprintf(w, callbackPage, i18n.T(i18n.Msg{ES: "Respuesta inesperada", EN: "Unexpected response"}), i18n.T(i18n.Msg{ES: "El parámetro de estado no coincide con el que envió la aplicación.", EN: "The state parameter does not match the one the application sent."}), i18n.Lang())
+			results <- callback{err: i18n.New(i18n.Msg{ES: "el parámetro state no coincide: la respuesta no vino de la autorización que iniciamos", EN: "the state parameter does not match: the response did not come from the authorization we started"})}
 			return
 		}
 		code := params.Get("code")
 		if code == "" {
-			fmt.Fprintf(w, callbackPage, "Respuesta incompleta", "El servidor no envió ningún código de autorización.")
-			results <- callback{err: errors.New("el servidor no devolvió un código de autorización")}
+			fmt.Fprintf(w, callbackPage, i18n.T(i18n.Msg{ES: "Respuesta incompleta", EN: "Incomplete response"}), i18n.T(i18n.Msg{ES: "El servidor no envió ningún código de autorización.", EN: "The server did not send any authorization code."}), i18n.Lang())
+			results <- callback{err: i18n.New(i18n.Msg{ES: "el servidor no devolvió un código de autorización", EN: "the server did not return an authorization code"})}
 			return
 		}
-		fmt.Fprintf(w, callbackPage, "Listo", "Ya podés volver a mini-tools; esta pestaña se puede cerrar.")
+		fmt.Fprintf(w, callbackPage, i18n.T(i18n.Msg{ES: "Listo", EN: "Done"}), i18n.T(i18n.Msg{ES: "Ya podés volver a mini-tools; esta pestaña se puede cerrar.", EN: "You can go back to mini-tools; this tab can be closed."}), i18n.Lang())
 		results <- callback{code: code}
 	})}
 	go srv.Serve(listener)
 	defer srv.Close()
 
 	if err := openBrowser(authURL.String()); err != nil {
-		return nil, fmt.Errorf("no se pudo abrir el navegador: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "no se pudo abrir el navegador: %w", EN: "could not open the browser: %w"}, err)
 	}
 
 	// El usuario tiene que autenticarse a mano: el tope es generoso, pero
@@ -288,7 +288,7 @@ func AuthorizeOAuth2(ctx context.Context, a Auth, openBrowser func(string) error
 	select {
 	case got = <-results:
 	case <-waitCtx.Done():
-		return nil, errors.New("se agotó la espera de la autorización en el navegador")
+		return nil, i18n.New(i18n.Msg{ES: "se agotó la espera de la autorización en el navegador", EN: "timed out waiting for the authorization in the browser"})
 	}
 	if got.err != nil {
 		return nil, got.err
@@ -305,7 +305,7 @@ func AuthorizeOAuth2(ctx context.Context, a Auth, openBrowser func(string) error
 // callbackPage es lo que ve el usuario en el navegador cuando vuelve. Sin
 // estilos ni recursos externos: es una página servida desde un puerto
 // efímero de loopback que vive dos segundos.
-const callbackPage = `<!doctype html><html lang="es"><meta charset="utf-8">
+const callbackPage = `<!doctype html><html lang="%[3]s"><meta charset="utf-8">
 <title>%[1]s</title>
 <body style="font-family:system-ui,sans-serif;padding:3rem;max-width:32rem;margin:auto">
 <h1 style="font-size:1.25rem">%[1]s</h1><p style="color:#555">%[2]s</p></body></html>`
@@ -313,7 +313,7 @@ const callbackPage = `<!doctype html><html lang="es"><meta charset="utf-8">
 func randomURLSafe(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("no se pudo generar un valor aleatorio: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "no se pudo generar un valor aleatorio: %w", EN: "could not generate a random value: %w"}, err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }

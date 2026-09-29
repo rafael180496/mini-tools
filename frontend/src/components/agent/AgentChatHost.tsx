@@ -29,6 +29,7 @@ import AgentChat, {type ChatContextBlock} from './AgentChat'
 import AgentUsagePanel from './AgentUsagePanel'
 import AgentHistoryPanel from './AgentHistoryPanel'
 import PromptDialog from '../git/PromptDialog'
+import {useT} from '../../i18n'
 import {CONTEXT_ICONS, contextKey, repoIdOf, type WorkContext, type WorkContextKind} from './workContext'
 
 // Anfitrión del chat de nivel APLICACIÓN: una conversación que acompaña al
@@ -193,6 +194,7 @@ export default function AgentChatHost({
     // una conexión sobrevive a irse a otra pestaña y volver.
     const [sessions, setSessions] = useState<Record<string, Session>>({})
     const [seed, setSeed] = useState<{text: string; token: number; attachments?: ChatContextBlock[]} | null>(null)
+    const t = useT()
     const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
     const [active, setActive] = useState<main.ActiveAgent | null>(null)
     const [history, setHistory] = useState<vault.AgentChat[]>([])
@@ -417,7 +419,7 @@ export default function AgentChatHost({
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
                     <Icon name="auto_awesome" size={14} />
                 </span>
-                <span className="shrink-0 font-medium text-on-surface-variant">Agente</span>
+                <span className="shrink-0 font-medium text-on-surface-variant">{t.agent.host.agent}</span>
 
                 {/* Selector del agente activo de la APP. Vive acá y no suelto en
                     el toolbar principal por la regla de configuración de
@@ -428,13 +430,13 @@ export default function AgentChatHost({
                     onChange={chooseAgent}
                     title={
                         available.length === 0
-                            ? 'No hay ningún CLI agéntico instalado en esta máquina. Configuralos en Configuración → Agentes.'
-                            : 'Con qué agente hablás. Cambiarlo empieza una conversación nueva: el historial lo guarda cada CLI por su cuenta, así que otro no puede continuar la anterior.'
+                            ? t.agent.host.noneInstalledTitle
+                            : t.agent.host.pickerTitle
                     }
                     disabled={available.length === 0}
                     size="sm"
                     variant="ghost"
-                    placeholder={available.length === 0 ? 'Ninguno instalado' : 'Elegí un agente'}
+                    placeholder={available.length === 0 ? t.agent.host.noneInstalled : t.agent.host.pickAgent}
                     className="max-w-48 min-w-0 font-medium"
                     menuMinWidth={220}
                     options={available.map((a) => ({
@@ -448,8 +450,8 @@ export default function AgentChatHost({
                     onClick={() => setTab((t) => (t === 'usage' ? 'chat' : 'usage'))}
                     title={
                         usageOpen
-                            ? 'Vuelve a la conversación, que siguió corriendo detrás'
-                            : 'Cuánta cuota llevás usada y cuántos tokens gastaste con cada CLI, con tu plan al lado. Ocupa el panel como una solapa: el chat sigue donde estaba.'
+                            ? t.agent.host.backToChat
+                            : t.agent.host.usageTitle
                     }
                     className={`shrink-0 rounded-md p-1 ${
                         usageOpen ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
@@ -465,8 +467,8 @@ export default function AgentChatHost({
                     }}
                     title={
                         historyOpen
-                            ? 'Vuelve a la conversación, que siguió corriendo detrás'
-                            : 'Conversaciones anteriores de TODOS los módulos, no solo de este. Retomar una la continúa donde había quedado. Ocupa el panel como una solapa.'
+                            ? t.agent.host.backToChat
+                            : t.agent.host.historyTitle
                     }
                     className={`shrink-0 rounded-md p-1 ${
                         historyOpen ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
@@ -482,8 +484,12 @@ export default function AgentChatHost({
                             onClick={() => onLayoutChange(d, size)}
                             title={
                                 d === 'float'
-                                    ? 'Ventana flotante: el chat queda por encima del contenido, sin quitarle ancho'
-                                    : `Anclar el panel a la ${d === 'left' ? 'izquierda' : d === 'right' ? 'derecha' : 'parte de abajo'}`
+                                    ? t.agent.host.dockFloat
+                                    : d === 'left'
+                                      ? t.agent.host.dockLeft
+                                      : d === 'right'
+                                        ? t.agent.host.dockRight
+                                        : t.agent.host.dockBottom
                             }
                             className={`rounded-md p-1 ${
                                 dock === d ? 'bg-primary/20 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'
@@ -505,7 +511,7 @@ export default function AgentChatHost({
                     ))}
                     <button
                         onClick={() => setOpen(false)}
-                        title="Cierra el panel. La conversación queda como está: volver a abrirlo la retoma."
+                        title={t.agent.host.closeTitle}
                         className="rounded-md p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={16} />
@@ -627,14 +633,11 @@ export default function AgentChatHost({
                         <Icon name="smart_toy" size={28} className="opacity-40" />
                         {available.length === 0 ? (
                             <>
-                                <p className="text-on-surface">No hay ningún agente instalado</p>
-                                <p>
-                                    mini-tools usa los CLIs que ya tengas: Claude Code, Codex o Antigravity. Instalá uno y
-                                    aparecerá acá — la autenticación la sigue manejando cada CLI.
-                                </p>
+                                <p className="text-on-surface">{t.agent.host.emptyNoAgent}</p>
+                                <p>{t.agent.host.emptyNoAgentHint}</p>
                             </>
                         ) : (
-                            <p>Elegí un agente arriba para empezar.</p>
+                            <p>{t.agent.host.emptyPick}</p>
                         )}
                     </div>
                 )}
@@ -655,6 +658,9 @@ export default function AgentChatHost({
     // tiene el módulo Git. El tooltip del botón de cerrar ya prometía que
     // "la conversación queda como está"; ahora es cierto.
     const docked = dock !== 'float'
+    const atLeft = docked && dock === 'left'
+    const atBottom = docked && dock === 'bottom'
+    const atRight = docked && dock === 'right'
 
     const onResize = (e: React.MouseEvent) => {
         e.preventDefault()
@@ -677,7 +683,7 @@ export default function AgentChatHost({
     const handle = (
         <div
             onMouseDown={onResize}
-            title="Arrastrar para cambiar el tamaño del panel — queda guardado"
+            title={t.agent.host.resizeTitle}
             className={`group flex shrink-0 items-center justify-center bg-surface-container-low hover:bg-primary/30 ${
                 dock === 'bottom' ? 'h-1.5 w-full cursor-row-resize' : 'h-full w-1.5 cursor-col-resize'
             }`}
@@ -693,7 +699,7 @@ export default function AgentChatHost({
     return (
         <AgentChatContext.Provider value={api}>
             <div className={`flex min-h-0 min-w-0 flex-1 ${dock === 'bottom' ? 'flex-col' : 'flex-row'}`}>
-                {docked && dock === 'left' && (
+                {atLeft && (
                     <>
                         <div className="min-h-0 shrink-0" style={{width: size}} hidden={!open}>
                             {panel}
@@ -704,7 +710,7 @@ export default function AgentChatHost({
 
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
 
-                {docked && dock === 'bottom' && (
+                {atBottom && (
                     <>
                         {open && handle}
                         <div className="min-h-0 shrink-0" style={{height: size}} hidden={!open}>
@@ -712,7 +718,7 @@ export default function AgentChatHost({
                         </div>
                     </>
                 )}
-                {docked && dock === 'right' && (
+                {atRight && (
                     <>
                         {open && handle}
                         <div className="min-h-0 shrink-0" style={{width: size}} hidden={!open}>
@@ -724,11 +730,11 @@ export default function AgentChatHost({
 
             {renaming && (
                 <PromptDialog
-                    title="Cambiar el nombre de la conversación"
-                    label="Nombre"
+                    title={t.agent.host.renameTitle}
+                    label={t.agent.host.renameLabel}
                     initial={renaming.title}
-                    confirmLabel="Guardar"
-                    description="Es solo el nombre con el que la vas a encontrar acá. No toca la conversación que el CLI tiene guardada."
+                    confirmLabel={t.common.save}
+                    description={t.agent.host.renameDescription}
                     onSubmit={(value) => {
                         const id = renaming.id
                         setRenaming(null)
@@ -740,7 +746,7 @@ export default function AgentChatHost({
                 />
             )}
 
-            {dock === 'float' && (
+            {!docked && (
                 <div
                     hidden={!open}
                     className="fixed bottom-4 right-4 z-20 flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-lg"
@@ -760,6 +766,7 @@ export default function AgentChatHost({
 // con las fases que los necesitan (2 y 5), y todos terminan llamando al mismo
 // useAgentChat().open({prompt}).
 export function AgentChatButton({context, compact}: {context?: WorkContext; compact?: boolean}) {
+    const t = useT()
     const chat = useAgentChat()
     // En la pestaña Git no se dibuja: ese módulo ya tiene el agente adentro,
     // con su solapa "Agentes" y su propio objetivo. Un segundo botón arriba
@@ -770,10 +777,11 @@ export function AgentChatButton({context, compact}: {context?: WorkContext; comp
             onClick={() => chat.open(context ? {context} : undefined)}
             title={
                 chat.hasAgent
-                    ? `Abre el chat con ${chat.activeAgentLabel || 'el agente'} (${
-                          navigator.platform.includes('Mac') ? '⌘L' : 'Ctrl+L'
-                      }). Hay una conversación por conexión, servidor o nota: cambiar de módulo cambia de hilo, sin reiniciar ni cortar el que dejás atrás, aunque esté respondiendo.`
-                    : 'No hay ningún CLI agéntico instalado. mini-tools usa Claude Code, Codex o Antigravity — instalá uno para habilitar el chat.'
+                    ? t.agent.host.openChatTitle({
+                          agent: chat.activeAgentLabel || t.agent.host.theAgent,
+                          shortcut: navigator.platform.includes('Mac') ? '⌘L' : 'Ctrl+L',
+                      })
+                    : t.agent.host.noCliTitle
             }
             className={`flex shrink-0 items-center gap-1 rounded text-xs ${
                 // `compact` es el pie de la pestaña (la barra de estado), donde
@@ -788,7 +796,7 @@ export function AgentChatButton({context, compact}: {context?: WorkContext; comp
             }`}
         >
             <Icon name="forum" size={compact ? 15 : 14} />
-            {!compact && 'Agente'}
+            {!compact && t.agent.host.agent}
         </button>
     )
 }

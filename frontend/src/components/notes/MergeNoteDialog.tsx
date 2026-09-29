@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef, useState} from 'react'
 import {ListNotes} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {locale, useT} from '../../i18n'
 
 // Elegir con qué nota fundir otra — el «Merge entire file with…» de Obsidian.
 //
@@ -23,6 +24,9 @@ export default function MergeNoteDialog({
     onMerge: (targetId: string) => void
     onClose: () => void
 }) {
+    const t = useT()
+    const tn = t.sidebar.notes
+    const tm = tn.mergeDialog
     const [notes, setNotes] = useState<vault.NoteSummary[]>([])
     const [query, setQuery] = useState('')
     const [picked, setPicked] = useState<vault.NoteSummary | null>(null)
@@ -39,7 +43,7 @@ export default function MergeNoteDialog({
     const visible = useMemo(() => {
         const q = query.trim().toLowerCase()
         const list = q ? notes.filter((n) => n.title.toLowerCase().includes(q)) : notes
-        return [...list].sort((a, b) => a.title.localeCompare(b.title, 'es', {sensitivity: 'base'})).slice(0, 200)
+        return [...list].sort((a, b) => a.title.localeCompare(b.title, locale(), {sensitivity: 'base'})).slice(0, 200)
     }, [notes, query])
 
     useEffect(() => setFocus(0), [query])
@@ -68,9 +72,11 @@ export default function MergeNoteDialog({
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                     <Icon name="call_merge" size={16} className="text-on-surface-variant" />
                     <p className="min-w-0 flex-1 truncate text-sm text-on-surface">
-                        Fundir <span className="font-medium">«{source.title || 'Sin título'}»</span> con…
+                        {tm.headerBefore}
+                        <span className="font-medium">«{source.title || tn.untitled}»</span>
+                        {tm.headerAfter}
                     </p>
-                    <button onClick={onClose} title="Cerrar" className="sidebar-icon !p-0.5">
+                    <button onClick={onClose} title={t.common.close} className="sidebar-icon !p-0.5">
                         <Icon name="close" size={16} />
                     </button>
                 </div>
@@ -95,7 +101,7 @@ export default function MergeNoteDialog({
                                         setPicked(visible[focus])
                                     }
                                 }}
-                                placeholder="Buscar la nota destino por título…"
+                                placeholder={tm.searchPlaceholder}
                                 className="min-w-0 flex-1 bg-transparent py-0.5 text-ui-12 text-on-surface outline-none placeholder:text-on-surface-variant/70"
                             />
                         </div>
@@ -110,14 +116,14 @@ export default function MergeNoteDialog({
                                         }`}
                                     >
                                         <Icon name="description" size={16} className="shrink-0 text-on-surface-variant" />
-                                        <span className="min-w-0 flex-1 truncate">{n.title || 'Sin título'}</span>
+                                        <span className="min-w-0 flex-1 truncate">{n.title || tn.untitled}</span>
                                         {n.isPrivate && <Icon name="lock" size={12} className="shrink-0 text-on-surface-variant/60" />}
                                     </button>
                                 </li>
                             ))}
                             {visible.length === 0 && (
                                 <li className="px-2 py-3 text-ui-11 text-on-surface-variant">
-                                    {notes.length === 0 ? 'No hay otra nota con la que fundirla.' : 'Ninguna nota coincide.'}
+                                    {notes.length === 0 ? tm.noOtherNotes : tm.noMatches}
                                 </li>
                             )}
                         </ul>
@@ -125,22 +131,23 @@ export default function MergeNoteDialog({
                 ) : (
                     <div className="flex flex-col gap-3 p-4 text-ui-12 text-on-surface-variant">
                         <p>
-                            El texto de <span className="text-on-surface">«{source.title || 'Sin título'}»</span> se agrega al final
-                            de <span className="text-on-surface">«{picked.title || 'Sin título'}»</span>, con su título como
-                            encabezado, junto con sus imágenes. Después la nota de origen se borra: las que la enlazaban van a mostrar
-                            el enlace como roto. No se puede deshacer.
+                            {tm.body.before}
+                            <span className="text-on-surface">«{source.title || tn.untitled}»</span>
+                            {tm.body.middle}
+                            <span className="text-on-surface">«{picked.title || tn.untitled}»</span>
+                            {tm.body.after}
                         </p>
                         {willBePrivate && (
                             <p className="flex items-start gap-2 rounded-md bg-surface-container-high p-2">
                                 <Icon name="lock" size={14} className="mt-px shrink-0" />
                                 {becomesPrivate
-                                    ? `«${picked.title}» pasa a ser PRIVADA: tiene adentro el texto de una nota privada, y ningún agente va a poder leerla.`
-                                    : 'El resultado queda privado: ningún agente va a poder leerlo.'}
+                                    ? tm.becomesPrivate({title: picked.title})
+                                    : tm.staysPrivate}
                             </p>
                         )}
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setPicked(null)} className="rounded-md px-3 py-1.5 hover:bg-surface-variant hover:text-on-surface">
-                                Elegir otra
+                                {tm.pickAnother}
                             </button>
                             <button
                                 autoFocus
@@ -150,7 +157,7 @@ export default function MergeNoteDialog({
                                 }}
                                 className="rounded-md bg-primary px-3 py-1.5 text-on-primary hover:opacity-90"
                             >
-                                Fundir
+                                {tm.merge}
                             </button>
                         </div>
                     </div>

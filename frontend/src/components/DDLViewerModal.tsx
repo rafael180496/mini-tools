@@ -8,6 +8,7 @@ import {sqlLanguageExtension} from '../codemirror/sqlSchema'
 import {resolveEditorTheme} from '../codemirror/themes'
 import type {Theme} from '../hooks/useTheme'
 import Icon from './Icon'
+import {formatNumber, useT} from '../i18n'
 
 export type DDLObjectType = 'table' | 'procedure' | 'function' | 'trigger' | 'package'
 
@@ -40,14 +41,6 @@ const baseTheme = EditorView.theme({
     '.cm-scroller': {fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace", overflow: 'auto'},
 })
 
-const OBJECT_TYPE_LABELS: Record<DDLObjectType, string> = {
-    table: 'Tabla',
-    procedure: 'Procedure',
-    function: 'Function',
-    trigger: 'Trigger',
-    package: 'Package',
-}
-
 const OBJECT_TYPE_ICONS: Record<DDLObjectType, string> = {
     table: 'table_chart',
     procedure: 'terminal',
@@ -79,6 +72,8 @@ function formatSize(text: string): string {
 // franja y no todo). El portal lo saca de ahí y z-50 lo pone sobre las capas
 // flotantes de la app (chat z-20, panel HTTP z-30, menús z-40/z-50).
 export default function DDLViewerModal({connId, objectType, schema, name, oid, dbType, editorThemeId, appTheme, onClose}: DDLViewerModalProps) {
+    const t = useT()
+    const tr = t.db.ddlViewer
     const [ddl, setDdl] = useState('')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -201,7 +196,7 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
             <div
                 role="dialog"
                 aria-modal="true"
-                aria-label={`DDL de ${qualified}`}
+                aria-label={tr.ariaLabel({name: qualified})}
                 className="flex h-[85vh] w-[min(68rem,94vw)] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high text-on-surface shadow-lg"
             >
                 <div className="flex items-center gap-2 border-b border-outline-variant px-4 py-3">
@@ -210,7 +205,7 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
                         {qualified}
                     </h2>
                     <span className="shrink-0 rounded bg-surface-container-highest px-2 py-0.5 text-ui-11 uppercase text-on-surface-variant">
-                        {OBJECT_TYPE_LABELS[objectType]}
+                        {tr.types[objectType]}
                     </span>
 
                     <div className="flex-1" />
@@ -221,31 +216,31 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
                                 onClick={() => setWrap((w) => !w)}
                                 title={
                                     wrap
-                                        ? 'Cortar las líneas largas donde terminan — se recorren con scroll horizontal'
-                                        : 'Ajustar las líneas largas al ancho del panel'
+                                        ? tr.unwrapHint
+                                        : tr.wrapHint
                                 }
                                 className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs hover:bg-surface-variant ${
                                     wrap ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant'
                                 }`}
                             >
                                 <Icon name="wrap_text" size={14} />
-                                Ajustar
+                                {tr.wrap}
                             </button>
                             <button
                                 onClick={() => void copyDDL()}
-                                title="Copia el DDL al portapapeles"
+                                title={tr.copyHint}
                                 className="flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                             >
                                 <Icon name={copyHint ? 'check' : 'content_copy'} size={14} className={copyHint ? 'text-secondary' : ''} />
-                                {copyHint ? 'Copiado' : 'Copiar'}
+                                {copyHint ? tr.copied : tr.copy}
                             </button>
                             <button
                                 onClick={() => void exportDDL()}
-                                title="Guarda este DDL en un archivo .sql"
+                                title={tr.exportHint}
                                 className="flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                             >
                                 <Icon name="download" size={14} />
-                                Exportar
+                                {tr.export}
                             </button>
                             <span className="mx-1 h-4 w-px shrink-0 bg-outline-variant" />
                         </>
@@ -253,7 +248,7 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
 
                     <button
                         onClick={onClose}
-                        title="Cierra este panel (Esc)"
+                        title={tr.closeHint}
                         className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={18} />
@@ -263,7 +258,7 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
                 {loading && (
                     <div className="flex flex-1 items-center justify-center gap-2 text-xs text-on-surface-variant">
                         <span aria-hidden className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                        Cargando DDL…
+                        {tr.loading}
                     </div>
                 )}
 
@@ -273,11 +268,11 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
                         <p className="max-w-xl text-xs text-error">{error}</p>
                         <button
                             onClick={() => setReloadToken((n) => n + 1)}
-                            title="Vuelve a pedirle el DDL al motor"
+                            title={tr.retryHint}
                             className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90"
                         >
                             <Icon name="refresh" size={14} />
-                            Reintentar
+                            {tr.retry}
                         </button>
                     </div>
                 )}
@@ -291,13 +286,13 @@ export default function DDLViewerModal({connId, objectType, schema, name, oid, d
                             <div ref={containerRef} className="h-full w-full" />
                         </div>
                         <div className="flex shrink-0 items-center gap-3 border-t border-outline-variant px-4 py-1.5 text-ui-11 text-on-surface-variant">
-                            <span>{lineCount.toLocaleString('es')} líneas</span>
+                            <span>{tr.lines({count: lineCount, shown: formatNumber(lineCount)})}</span>
                             <span>·</span>
                             <span>{formatSize(ddl)}</span>
                             <div className="flex-1" />
                             <span className="flex items-center gap-1">
                                 <Icon name="search" size={13} />
-                                Ctrl+F busca dentro del DDL
+                                {tr.searchHint}
                             </span>
                         </div>
                     </>

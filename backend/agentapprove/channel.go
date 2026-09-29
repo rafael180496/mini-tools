@@ -38,6 +38,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // approveTimeout es cuánto espera el agente una respuesta antes de darse por
@@ -96,7 +98,7 @@ func Start(dataDir string, ask AskFunc) (*Channel, error) {
 	path := SocketPath(dataDir)
 
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return nil, fmt.Errorf("agentapprove: no se pudo preparar el directorio: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "agentapprove: no se pudo preparar el directorio: %w", EN: "agentapprove: couldn't prepare the directory: %w"}, err)
 	}
 
 	// El transporte depende de la plataforma: socket de dominio Unix, o named
@@ -105,7 +107,7 @@ func Start(dataDir string, ask AskFunc) (*Channel, error) {
 	// pregunta" y "cualquier proceso de la máquina contesta por él".
 	ln, err := listen(path)
 	if err != nil {
-		return nil, fmt.Errorf("agentapprove: no se pudo abrir el canal de aprobación: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "agentapprove: no se pudo abrir el canal de aprobación: %w", EN: "agentapprove: couldn't open the approval channel: %w"}, err)
 	}
 
 	c := &Channel{listener: ln, path: path, ask: ask}
@@ -164,7 +166,7 @@ func (c *Channel) serve(conn net.Conn) {
 		if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
 			// Una petición que no se entiende se DENIEGA, no se ignora: el
 			// agente está esperando y el silencio lo colgaría.
-			writeJSON(conn, Decision{Allow: false, Reason: "petición ilegible"})
+			writeJSON(conn, Decision{Allow: false, Reason: i18n.T(i18n.Msg{ES: "petición ilegible", EN: "unreadable request"})})
 			continue
 		}
 
@@ -182,7 +184,7 @@ func (c *Channel) serve(conn net.Conn) {
 		case d := <-done:
 			writeJSON(conn, d)
 		case <-time.After(approveTimeout):
-			writeJSON(conn, Decision{Allow: false, Reason: "nadie respondió a tiempo"})
+			writeJSON(conn, Decision{Allow: false, Reason: i18n.T(i18n.Msg{ES: "nadie respondió a tiempo", EN: "nobody answered in time"})})
 		}
 	}
 }
@@ -202,7 +204,7 @@ func writeJSON(conn net.Conn, v any) {
 func Ask(socketPath string, req Request) Decision {
 	conn, err := dial(socketPath, 5*time.Second)
 	if err != nil {
-		return Decision{Reason: "no se pudo contactar a mini-tools para pedir la aprobación"}
+		return Decision{Reason: i18n.T(i18n.Msg{ES: "no se pudo contactar a mini-tools para pedir la aprobación", EN: "couldn't reach mini-tools to ask for approval"})}
 	}
 	defer conn.Close()
 
@@ -212,21 +214,21 @@ func Ask(socketPath string, req Request) Decision {
 
 	b, err := json.Marshal(req)
 	if err != nil {
-		return Decision{Reason: "no se pudo serializar la petición"}
+		return Decision{Reason: i18n.T(i18n.Msg{ES: "no se pudo serializar la petición", EN: "couldn't serialize the request"})}
 	}
 	if _, err := conn.Write(append(b, '\n')); err != nil {
-		return Decision{Reason: "no se pudo enviar la petición"}
+		return Decision{Reason: i18n.T(i18n.Msg{ES: "no se pudo enviar la petición", EN: "couldn't send the request"})}
 	}
 
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(make([]byte, 0, 8*1024), 1<<20)
 	if !sc.Scan() {
-		return Decision{Reason: "no llegó respuesta"}
+		return Decision{Reason: i18n.T(i18n.Msg{ES: "no llegó respuesta", EN: "no response arrived"})}
 	}
 
 	var d Decision
 	if err := json.Unmarshal(sc.Bytes(), &d); err != nil {
-		return Decision{Reason: "respuesta ilegible"}
+		return Decision{Reason: i18n.T(i18n.Msg{ES: "respuesta ilegible", EN: "unreadable response"})}
 	}
 	return d
 }

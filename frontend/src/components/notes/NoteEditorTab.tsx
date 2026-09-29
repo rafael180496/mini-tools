@@ -38,6 +38,7 @@ import {notesEnterEscapesMarks} from '../../codemirror/notesKeymap'
 import {notesLivePreview} from '../../codemirror/notesLivePreview'
 import {notesLint} from '../../codemirror/notesLint'
 import type {Theme} from '../../hooks/useTheme'
+import {formatNumber, t as tr, useLang, useT} from '../../i18n'
 
 // Una nota abierta: editor Markdown, control de privacidad y el panel de
 // enlaces.
@@ -88,11 +89,11 @@ async function toStorableImage(file: File): Promise<{dataURL: string; name: stri
         new Promise<string>((resolve, reject) => {
             const r = new FileReader()
             r.onload = () => resolve(String(r.result ?? ''))
-            r.onerror = () => reject(new Error('No se pudo leer la imagen'))
+            r.onerror = () => reject(new Error(tr().notes.editor.imageReadFailed))
             r.readAsDataURL(f)
         })
 
-    const name = file.name || 'captura'
+    const name = file.name || tr().notes.editor.pastedImageName
     if (file.type === 'image/png' || file.type === 'image/jpeg') {
         return {dataURL: await read(file), name}
     }
@@ -104,9 +105,7 @@ async function toStorableImage(file: File): Promise<{dataURL: string; name: stri
             el.onload = () => resolve(el)
             el.onerror = () =>
                 reject(
-                    new Error(
-                        `No se pudo leer una imagen de tipo ${file.type || 'desconocido'}. Las notas guardan PNG y JPG; probá con una captura de pantalla.`,
-                    ),
+                    new Error(tr().notes.editor.imageTypeUnreadable({type: file.type || tr().notes.editor.imageTypeUnknown})),
                 )
             el.src = url
         })
@@ -114,7 +113,7 @@ async function toStorableImage(file: File): Promise<{dataURL: string; name: stri
         canvas.width = img.naturalWidth
         canvas.height = img.naturalHeight
         const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('No se pudo convertir la imagen')
+        if (!ctx) throw new Error(tr().notes.editor.imageConvertFailed)
         ctx.drawImage(img, 0, 0)
         return {dataURL: canvas.toDataURL('image/png'), name: name.replace(/\.[^.]+$/, '') + '.png'}
     } finally {
@@ -139,6 +138,7 @@ export default function NoteEditorTab({
     onViewReady,
     onChanged,
 }: Props) {
+    const t = useT()
     const [note, setNote] = useState<vault.Note | null>(null)
     const [title, setTitle] = useState('')
     const [content, setContent] = useState('')
@@ -166,6 +166,10 @@ export default function NoteEditorTab({
     const fileInputRef = useRef<HTMLInputElement>(null)
     const viewRef = useRef<EditorView | null>(null)
     const langComp = useRef(new Compartment())
+    // El placeholder va en su propio Compartment para cambiarlo cuando cambia
+    // el idioma de la interfaz, sin recrear el editor (y sin perder el cursor).
+    const placeholderComp = useRef(new Compartment())
+    const lang = useLang()
     const contentRef = useRef(content)
     contentRef.current = content
     const titleRef = useRef(title)
@@ -263,7 +267,7 @@ export default function NoteEditorTab({
 
     const save = useCallback(async () => {
         if (!titleRef.current.trim()) {
-            setError('La nota necesita un título: es lo que la hace enlazable con [[…]]')
+            setError(tr().notes.editor.titleRequired)
             return
         }
         setSaving(true)
@@ -345,13 +349,13 @@ export default function NoteEditorTab({
         const typed = m[1].slice(1).toLowerCase()
         const tags = await NoteTags().catch(() => [] as vault.NoteTag[])
         const options = tags
-            .filter((t) => t.tag.slice(1).toLowerCase().includes(typed))
+            .filter((tg) => tg.tag.slice(1).toLowerCase().includes(typed))
             .slice(0, 15)
-            .map((t) => ({
-                label: t.tag,
+            .map((tg) => ({
+                label: tg.tag,
                 type: 'keyword',
-                detail: `${t.count} ${t.count === 1 ? 'nota' : 'notas'}`,
-                apply: t.tag + ' ',
+                detail: tr().notes.editor.tagCount(tg.count),
+                apply: tg.tag + ' ',
             }))
         if (options.length === 0) return null
         return {from: ctx.pos - m[1].length, options}
@@ -372,13 +376,13 @@ export default function NoteEditorTab({
         const titles = await NoteTitles().catch(() => [] as main.NoteTitle[])
         const q = typed.toLowerCase()
         const options = titles
-            .filter((t) => t.title.toLowerCase().includes(q))
+            .filter((nt) => nt.title.toLowerCase().includes(q))
             .slice(0, 20)
-            .map((t) => ({
-                label: t.title,
+            .map((nt) => ({
+                label: nt.title,
                 type: 'text',
-                detail: t.isPrivate ? 'privada' : 'visible para la IA',
-                apply: t.title + ']]',
+                detail: nt.isPrivate ? tr().notes.editor.completionPrivate : tr().notes.editor.completionVisible,
+                apply: nt.title + ']]',
             }))
         if (options.length === 0) return null
         return {from: ctx.pos - typed.length, options}
@@ -402,7 +406,7 @@ export default function NoteEditorTab({
                     drawSelection(),
                     closeBrackets(),
                     EditorView.lineWrapping,
-                    placeholder('Escribí en Markdown. «[[» enlaza otra nota, «/» inserta un bloque.'),
+                    placeholderComp.current.of(placeholder(tr().notes.editor.placeholder)),
                     langComp.current.of([]),
                     // Tipografía de documento: encabezados con peso real,
                     // ancho de lectura acotado, sin gutter. Ver markdownTheme.
@@ -492,7 +496,7 @@ export default function NoteEditorTab({
                     const view = viewRef.current
                     if (!view) return
                     const at = view.state.selection.main.head
-                    const md = `\n![${name || 'imagen'}](nota:${assetId})\n`
+                    const md = `\n![${name || tr().notes.image}](nota:${assetId})\n`
                     view.dispatch({changes: {from: at, insert: md}, selection: {anchor: at + md.length}})
                     view.focus()
                     setDirty(true)
@@ -546,6 +550,11 @@ export default function NoteEditorTab({
     const brokenLinks = useMemo(() => links.filter((l) => !l.targetId), [links])
     const resolvedLinks = useMemo(() => links.filter((l) => l.targetId), [links])
 
+    // Cambio de idioma con la nota abierta: solo se reemplaza el placeholder.
+    useEffect(() => {
+        viewRef.current?.dispatch({effects: placeholderComp.current.reconfigure(placeholder(tr().notes.editor.placeholder))})
+    }, [lang])
+
     if (error && !note) {
         return <p className="p-4 text-xs text-error">{error}</p>
     }
@@ -560,7 +569,7 @@ export default function NoteEditorTab({
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
                 <Icon name="description" size={14} className="shrink-0 text-on-surface-variant" />
                 <span className="min-w-0 flex-1 truncate text-ui-11 text-on-surface-variant" title={title}>
-                    {title || 'Sin título'}
+                    {title || t.notes.untitled}
                 </span>
 
                 {/* Insignia de privacidad: el control más importante de esta
@@ -569,8 +578,8 @@ export default function NoteEditorTab({
                     onClick={togglePrivacy}
                     title={
                         note?.isPrivate
-                            ? 'PRIVADA: ningún agente puede leer esta nota, ni por el chat ni por el servidor MCP. Sigue apareciendo en tu grafo y en tus búsquedas. Hacé clic para volver a compartirla.'
-                            : 'VISIBLE PARA LA IA (el estado por defecto): los agentes pueden leer el contenido de esta nota si la referenciás o la buscan. Hacé clic para esconderla.'
+                            ? t.notes.editor.privateTitle
+                            : t.notes.editor.visibleTitle
                     }
                     className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-ui-11 ${
                         note?.isPrivate
@@ -579,7 +588,7 @@ export default function NoteEditorTab({
                     }`}
                 >
                     <Icon name={note?.isPrivate ? 'lock' : 'lock_open'} size={12} filled={!note?.isPrivate} />
-                    {note?.isPrivate ? 'Privado' : 'Acceso IA permitido'}
+                    {note?.isPrivate ? t.notes.editor.private : t.notes.editor.aiAllowed}
                 </button>
 
                 {/* Chat de IA sobre ESTA nota. Es el mismo componente que el
@@ -602,10 +611,10 @@ export default function NoteEditorTab({
                     disabled={!chat.hasAgent}
                     title={
                         !chat.hasAgent
-                            ? 'No hay ningún CLI agéntico instalado. mini-tools usa Claude Code, Codex o Antigravity.'
+                            ? t.notes.editor.noAgent
                             : note?.isPrivate
-                              ? 'Abre el chat con esta nota como contexto. Como está marcada como PRIVADA, su contenido no se le manda: podés preguntar igual, pero el agente no la lee.'
-                              : 'Abre el chat con el contenido de esta nota ya referenciado, para preguntar sobre ella, ampliarla o revisar un procedimiento.'
+                              ? t.notes.editor.chatPrivate
+                              : t.notes.editor.chatVisible
                     }
                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                 >
@@ -614,7 +623,8 @@ export default function NoteEditorTab({
 
                 <button
                     onClick={() => setPreview((v) => !v)}
-                    title={preview ? 'Volver a editar el Markdown' : 'Ver la nota renderizada, con los enlaces navegables'}
+                    data-note-preview-toggle
+                    title={preview ? t.notes.editor.backToEdit : t.notes.editor.showPreview}
                     className={`shrink-0 rounded p-1 ${
                         preview ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant'
                     }`}
@@ -624,7 +634,7 @@ export default function NoteEditorTab({
 
                 <button
                     onClick={() => setConfirmDelete(true)}
-                    title="Borra esta nota. Los enlaces que le apuntaban desde otras notas quedan visibles como rotos, no se borran en silencio."
+                    title={t.notes.editor.deleteTitle}
                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-on-error-container"
                 >
                     <Icon name="delete" size={15} />
@@ -633,8 +643,7 @@ export default function NoteEditorTab({
 
             {note?.corrupt && (
                 <p className="shrink-0 bg-error-container/40 px-2 py-1 text-ui-11 text-error">
-                    El checksum de esta nota no coincide con su contenido: puede haberse dañado. Se muestra igual para que
-                    puedas rescatar lo que quede — al guardarla, el checksum se recalcula.
+                    {t.notes.editor.corrupt}
                 </p>
             )}
             {error && note && <p className="shrink-0 px-2 py-1 text-ui-11 text-error">{error}</p>}
@@ -652,8 +661,9 @@ export default function NoteEditorTab({
                         const view = viewRef.current
                         if (!view) return
                         const at = view.state.selection.main.head
-                        const md = '\n<details>\n<summary>Ver detalle</summary>\n\n\n\n</details>\n'
-                        view.dispatch({changes: {from: at, insert: md}, selection: {anchor: at + 32}})
+                        const head = `\n<details>\n<summary>${t.notes.editor.foldSummary}</summary>\n\n`
+                        const md = head + '\n\n</details>\n'
+                        view.dispatch({changes: {from: at, insert: md}, selection: {anchor: at + head.length}})
                         view.focus()
                     }}
                 />
@@ -666,21 +676,21 @@ export default function NoteEditorTab({
                 <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-tertiary/10 px-3 py-1.5 text-ui-11 text-on-surface">
                     <Icon name="smart_toy" size={14} className="shrink-0 text-tertiary" />
                     <span className="min-w-0 flex-1">
-                        Un agente reescribió esta nota mientras la editabas. Tus cambios sin guardar siguen acá.
+                        {t.notes.editor.externalChange}
                     </span>
                     <button
                         onClick={reloadFromDisk}
-                        title="Descarta lo que escribiste sin guardar y muestra la versión que dejó el agente"
+                        title={t.notes.editor.viewAgentVersionTitle}
                         className="shrink-0 rounded border border-outline-variant px-2 py-0.5 text-on-surface-variant hover:text-on-surface"
                     >
-                        Ver la del agente
+                        {t.notes.editor.viewAgentVersion}
                     </button>
                     <button
                         onClick={() => setExternalChange(false)}
-                        title="Sigue editando lo tuyo. Al guardar, tu versión reemplaza a la del agente — y la nota pasa a ser tuya: no la va a poder volver a cambiar."
+                        title={t.notes.editor.keepMineTitle}
                         className="shrink-0 rounded border border-outline-variant px-2 py-0.5 text-on-surface-variant hover:text-on-surface"
                     >
-                        Seguir con lo mío
+                        {t.notes.editor.keepMine}
                     </button>
                 </div>
             )}
@@ -744,8 +754,8 @@ export default function NoteEditorTab({
                                 setTitle(e.target.value)
                                 setDirty(true)
                             }}
-                            placeholder="Sin título"
-                            title="El título es lo que otras notas usan para enlazarla con [[…]]. Cambiarlo deja rotos los enlaces que le apuntaban — se ven marcados en la nota que los tiene."
+                            placeholder={t.notes.untitled}
+                            title={t.notes.editor.titleFieldTitle}
                             style={{textAlign: align}}
                             className="w-full border-none bg-transparent text-3xl font-bold leading-tight text-on-surface outline-none placeholder:text-on-surface-variant/40"
                         />
@@ -821,8 +831,8 @@ export default function NoteEditorTab({
                     los que uno no recuerda haber puesto. */}
                 <div className="flex w-56 shrink-0 flex-col gap-2 overflow-y-auto border-l border-outline-variant bg-surface-container-low p-2 text-ui-11">
                     <LinkGroup
-                        title="Enlaces salientes"
-                        hint="Notas que ESTA menciona con [[…]]"
+                        title={t.notes.editor.outgoing}
+                        hint={t.notes.editor.outgoingHint}
                         links={resolvedLinks}
                         onOpen={onOpenNote}
                     />
@@ -831,25 +841,25 @@ export default function NoteEditorTab({
                         <div>
                             <p className="mb-1 flex items-center gap-1 font-medium text-on-surface-variant">
                                 <Icon name="link_off" size={12} />
-                                Sin crear ({brokenLinks.length})
+                                {t.notes.editor.uncreated(brokenLinks.length)}
                             </p>
                             {brokenLinks.map((l) => (
                                 <button
                                     key={l.targetHash}
                                     onClick={() => onCreateNote(l.title || '')}
-                                    title="Esta nota enlaza algo que todavía no existe. Hacé clic para crearla — así es como se va armando el grafo."
+                                    title={t.notes.editor.uncreatedTitle}
                                     className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-on-surface-variant hover:bg-surface-variant"
                                 >
                                     <Icon name="add" size={11} className="shrink-0" />
-                                    <span className="min-w-0 truncate italic">{l.title || 'nota sin título'}</span>
+                                    <span className="min-w-0 truncate italic">{l.title || t.notes.editor.untitledLink}</span>
                                 </button>
                             ))}
                         </div>
                     )}
 
                     <LinkGroup
-                        title="Backlinks"
-                        hint="Notas que apuntan a ESTA"
+                        title={t.notes.editor.backlinks}
+                        hint={t.notes.editor.backlinksHint}
                         links={backlinks}
                         onOpen={onOpenNote}
                     />
@@ -861,32 +871,34 @@ export default function NoteEditorTab({
                 chico, como en cualquier editor de documentos. */}
             <div className="flex shrink-0 items-center gap-3 border-t border-outline-variant px-3 py-0.5 text-ui-10 text-on-surface-variant">
                 <span
-                    title="Cuántas notas apuntan a esta con [[…]]. Cero significa que está aislada del resto de tu base de conocimiento."
+                    title={t.notes.editor.backlinkCountTitle}
                     className="flex items-center gap-1"
                 >
                     <Icon name="link" size={11} />
-                    {stats?.backlinks ?? 0} {stats?.backlinks === 1 ? 'backlink' : 'backlinks'}
+                    {t.notes.editor.backlinkCount({n: stats?.backlinks ?? 0, formatted: formatNumber(stats?.backlinks ?? 0)})}
                 </span>
-                <span title="Palabras del cuerpo de la nota" className="flex items-center gap-1">
+                <span title={t.notes.editor.wordsTitle} className="flex items-center gap-1">
                     <Icon name="menu_book" size={11} />
-                    {(stats?.words ?? 0).toLocaleString('es')} palabras
+                    {t.notes.editor.words({formatted: formatNumber(stats?.words ?? 0)})}
                 </span>
                 <span
-                    title="Líneas y caracteres. El editor de notas no muestra números de línea al costado —un documento no tiene líneas que referenciar— pero el número sigue estando acá cuando hace falta."
+                    title={t.notes.editor.linesTitle}
                     className="flex items-center gap-1"
                 >
                     <Icon name="format_list_numbered" size={11} />
-                    {content.split('\n').length.toLocaleString('es')} líneas ·{' '}
-                    {(stats?.chars ?? 0).toLocaleString('es')} caracteres
+                    {t.notes.editor.linesChars({
+                        lines: formatNumber(content.split('\n').length),
+                        chars: formatNumber(stats?.chars ?? 0),
+                    })}
                 </span>
-                <span className="ml-auto">{saving ? 'Guardando…' : dirty ? 'Sin guardar' : 'Guardado'}</span>
+                <span className="ml-auto">{saving ? t.notes.editor.saving : dirty ? t.notes.editor.unsaved : t.notes.editor.saved}</span>
             </div>
 
             {confirmShare && (
                 <ConfirmDialog
-                    title="Volver a compartir esta nota con los agentes"
-                    description={`El contenido completo de «${title}» va a poder ser leído por Claude Code, Codex o Antigravity cuando la referencies con @note o cuando la busquen. Las credenciales, claves y datos personales que tenga adentro salen con ella. Podés volver a esconderla en cualquier momento.`}
-                    confirmLabel="Compartir"
+                    title={t.notes.editor.shareConfirmTitle}
+                    description={t.notes.editor.shareConfirmDescription({title})}
+                    confirmLabel={t.notes.editor.share}
                     onConfirm={() => {
                         void SetNotePrivacy(noteId, false).then(() => {
                             setNote((n) => (n ? ({...n, isPrivate: false} as vault.Note) : n))
@@ -899,9 +911,9 @@ export default function NoteEditorTab({
 
             {confirmDelete && (
                 <ConfirmDialog
-                    title="Borrar la nota"
-                    description={`«${title}» se borra del vault. Las notas que la enlazaban van a mostrar el enlace como roto, con la opción de volver a crearla. Esto no se puede deshacer.`}
-                    confirmLabel="Borrar"
+                    title={t.notes.editor.deleteConfirmTitle}
+                    description={t.notes.editor.deleteConfirmDescription({title})}
+                    confirmLabel={t.common.delete}
                     danger
                     onConfirm={() => {
                         void DeleteNote(noteId).then(() => {
@@ -927,19 +939,20 @@ function LinkGroup({
     links: vault.NoteLink[]
     onOpen: (id: string) => void
 }) {
+    const t = useT()
     return (
         <div>
             <p className="mb-1 font-medium text-on-surface-variant" title={hint}>
-                {title} ({links.length})
+                {t.notes.editor.linkGroupTitle({title, n: links.length})}
             </p>
             {links.length === 0 ? (
-                <p className="px-1 text-on-surface-variant/60">Ninguno</p>
+                <p className="px-1 text-on-surface-variant/60">{t.notes.editor.none}</p>
             ) : (
                 links.map((l) => (
                     <button
                         key={l.targetId + l.targetHash}
                         onClick={() => onOpen(l.targetId)}
-                        title={l.isPrivate ? `${l.title} — privada` : l.title}
+                        title={l.isPrivate ? t.notes.editor.privateSuffix({title: l.title}) : l.title}
                         className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-surface-variant"
                     >
                         <Icon
@@ -947,7 +960,7 @@ function LinkGroup({
                             size={11}
                             className="shrink-0 text-on-surface-variant"
                         />
-                        <span className="min-w-0 truncate text-on-surface">{l.title || 'Sin título'}</span>
+                        <span className="min-w-0 truncate text-on-surface">{l.title || t.notes.untitled}</span>
                     </button>
                 ))
             )}

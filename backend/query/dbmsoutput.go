@@ -3,10 +3,11 @@ package query
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 
 	go_ora "github.com/sijms/go-ora/v2"
+
+	"mini-tools/backend/i18n"
 )
 
 // maxDBMSOutputLines bounds how many DBMS_OUTPUT lines we'll fetch after a
@@ -47,7 +48,7 @@ func runOraclePLSQLBlock(ctx context.Context, conn *sql.Conn, stmtText string, a
 	}
 
 	if _, err := conn.ExecContext(ctx, `BEGIN DBMS_OUTPUT.ENABLE(NULL); END;`); err != nil {
-		return nil, nil, fmt.Errorf("query: habilitando DBMS_OUTPUT: %w", err)
+		return nil, nil, i18n.Errorf(i18n.Msg{ES: "query: habilitando DBMS_OUTPUT: %w", EN: "query: enabling DBMS_OUTPUT: %w"}, err)
 	}
 
 	result, err := conn.ExecContext(ctx, stmtText, args...)
@@ -88,7 +89,7 @@ func fetchDBMSOutput(ctx context.Context, conn *sql.Conn) ([]string, error) {
 			go_ora.Out{Dest: &line, Size: 32767},
 			go_ora.Out{Dest: &status},
 		); err != nil {
-			return lines, fmt.Errorf("query: leyendo DBMS_OUTPUT: %w", err)
+			return lines, i18n.Errorf(i18n.Msg{ES: "query: leyendo DBMS_OUTPUT: %w", EN: "query: reading DBMS_OUTPUT: %w"}, err)
 		}
 		if status != 0 {
 			break

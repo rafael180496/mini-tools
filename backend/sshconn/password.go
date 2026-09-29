@@ -1,8 +1,8 @@
 package sshconn
 
 import (
-	"errors"
 	"fmt"
+	"mini-tools/backend/i18n"
 	"strings"
 )
 
@@ -28,13 +28,16 @@ import (
 // ninguna que darle. El frontend lo reconoce por el texto (mismo criterio que
 // GitFileEditor.tsx con "cambió en el disco") para abrir el diálogo de cambio
 // en vez de escupir el error crudo en la terminal.
-var ErrPasswordExpired = errors.New("sshconn: el servidor pide cambiar la contraseña vencida")
+var ErrPasswordExpired = i18n.NewCoded("password-expired", i18n.Msg{
+	ES: "el servidor pide cambiar la contraseña vencida",
+	EN: "the server requires changing the expired password",
+})
 
 // ErrNewPasswordRejected es el servidor diciendo que la contraseña nueva no
 // le sirve (corta, en el diccionario, igual a una anterior). Se separa de un
 // fallo de auth porque la acción que sigue es distinta: no hay que revisar
 // credenciales, hay que elegir otra contraseña.
-var ErrNewPasswordRejected = errors.New("sshconn: el servidor rechazó la contraseña nueva")
+var ErrNewPasswordRejected = i18n.New(i18n.Msg{ES: "sshconn: el servidor rechazó la contraseña nueva", EN: "sshconn: the server rejected the new password"})
 
 // ErrInteractiveRefused es el servidor ofreciendo el diálogo
 // keyboard-interactive y cortándolo con un rechazo seco, sin llegar a
@@ -47,7 +50,7 @@ var ErrNewPasswordRejected = errors.New("sshconn: el servidor rechazó la contra
 // contraseña), bloqueada, o sin shell asignado. También sale cuando el sshd
 // anuncia el método pero no tiene con qué atenderlo (UsePAM en no sin ningún
 // otro dispositivo configurado).
-var ErrInteractiveRefused = errors.New("sshconn: el servidor rechazó el diálogo interactivo sin preguntar nada (suele ser la cuenta bloqueada o vencida, no la contraseña)")
+var ErrInteractiveRefused = i18n.New(i18n.Msg{ES: "sshconn: el servidor rechazó el diálogo interactivo sin preguntar nada (suele ser la cuenta bloqueada o vencida, no la contraseña)", EN: "sshconn: the server rejected the interactive dialog without asking anything (usually the account is locked or expired, not the password)"})
 
 // ErrAuthRejected es el caso más común de todos y el que peor se leía: la
 // contraseña guardada ya no es la del servidor.
@@ -58,14 +61,14 @@ var ErrInteractiveRefused = errors.New("sshconn: el servidor rechazó el diálog
 // parece que falta soportar un método —y eso fue exactamente lo que se
 // persiguió durante un buen rato— cuando lo que pasó es que alguien cambió la
 // clave.
-var ErrAuthRejected = errors.New("sshconn: el servidor rechazó la contraseña guardada")
+var ErrAuthRejected = i18n.New(i18n.Msg{ES: "sshconn: el servidor rechazó la contraseña guardada", EN: "sshconn: the server rejected the saved password"})
 
 // errChangeRequired aborta la conversación desde adentro del callback cuando
 // el servidor pide una contraseña nueva y no hay ninguna configurada. Nunca
 // sale de este paquete: dial lo traduce a ErrPasswordExpired mirando el
 // estado del answerer, no el texto del error, porque x/crypto/ssh envuelve lo
 // que devuelve el callback dentro de su propio "handshake failed".
-var errChangeRequired = errors.New("sshconn: hace falta una contraseña nueva")
+var errChangeRequired = i18n.New(i18n.Msg{ES: "sshconn: hace falta una contraseña nueva", EN: "sshconn: a new password is required"})
 
 // promptAnswerer contesta UNA conversación keyboard-interactive.
 //
@@ -206,7 +209,13 @@ func (p *promptAnswerer) describe(err error) error {
 	case p.rejectedChange:
 		return fmt.Errorf("%w%s", ErrNewPasswordRejected, p.reason())
 	case p.expired && p.newPassword == "":
-		return fmt.Errorf("%w%s", ErrPasswordExpired, p.reason())
+		// El motivo del servidor va en su propia línea: la interfaz lo muestra
+		// aparte en el diálogo de cambio, y lo separa por el salto de línea
+		// (el texto de antes depende del idioma).
+		if p.instruction != "" {
+			return fmt.Errorf("%w\n%s", ErrPasswordExpired, p.instruction)
+		}
+		return ErrPasswordExpired
 	case p.passwordAuth && isAuthExhausted(err):
 		return fmt.Errorf("%w%s [%v]", ErrAuthRejected, p.dialogHint(), err)
 	case isInteractiveRefused(err):
@@ -230,7 +239,7 @@ func (p *promptAnswerer) dialogHint() string {
 	if len(p.asked) == 0 {
 		return ""
 	}
-	hint := fmt.Sprintf(" (preguntó %q", strings.Join(p.asked, " / "))
+	hint := i18n.T(i18n.Msg{ES: " (preguntó %q", EN: " (it asked %q"}, strings.Join(p.asked, " / "))
 	if p.instruction != "" {
 		hint += "; " + p.instruction
 	}

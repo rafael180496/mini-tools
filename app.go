@@ -27,6 +27,7 @@ import (
 	"mini-tools/backend/export"
 	"mini-tools/backend/git"
 	"mini-tools/backend/httpclient"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/localterm"
 	"mini-tools/backend/mongoquery"
 	"mini-tools/backend/query"
@@ -205,12 +206,16 @@ func (a *App) startup(ctx context.Context) {
 	if err != nil {
 		// The vault is required for the app to function at all — fail
 		// loudly instead of starting into a broken, silently-degraded state.
-		panic(fmt.Errorf("app: opening vault: %w", err))
+		panic(i18n.Errorf(i18n.Msg{ES: "app: abriendo el vault: %w", EN: "app: opening vault: %w"}, err))
 	}
 	a.vault = store
 
 	a.autoBackup = autobackup.New(a.vault)
 	if settings, err := a.vault.GetSettings(); err == nil {
+		// El idioma antes que cualquier otra cosa que pueda devolver un
+		// mensaje: el primer error del arranque ya tiene que salir en el
+		// idioma elegido (ver backend/i18n).
+		setProcessLang(settings.Language)
 		a.autoBackup.Reconfigure(settings.AutoBackupEnabled, settings.AutoBackupIntervalHours, settings.AutoBackupPath)
 	}
 
@@ -395,6 +400,34 @@ func (a *App) SetTheme(theme string) error {
 	return a.vault.SetTheme(theme)
 }
 
+// SetLanguage persiste el idioma de la interfaz ('en' | 'es').
+//
+// Sin requireUnlocked, igual que SetTheme: el idioma no es sensible, y la
+// pantalla de desbloqueo tiene que poder cambiarse de idioma — quien no
+// entiende el formulario que le pide la clave tampoco puede abrir
+// Configuración para arreglarlo. Ver la regla 5 de technical.md.
+func (a *App) SetLanguage(lang string) error {
+	if err := a.vault.SetLanguage(lang); err != nil {
+		return err
+	}
+	// Los mensajes del backend cambian en el mismo momento que la interfaz.
+	setProcessLang(lang)
+	return nil
+}
+
+// langEnv lleva el idioma a los procesos que esta app lanza y que vuelven a
+// ejecutar este binario: el hook de aprobación y el servidor MCP (ver main.go)
+// los arranca un CLI agéntico que heredó el entorno de la app, y no tienen
+// otra forma de saber el idioma — no abren el vault.
+const langEnv = "MINI_TOOLS_LANG"
+
+// setProcessLang fija el idioma de los mensajes del backend y lo deja en el
+// entorno para los procesos hijos.
+func setProcessLang(lang string) {
+	i18n.SetLang(lang)
+	_ = os.Setenv(langEnv, i18n.Lang())
+}
+
 // AppVersion returns the app's semantic version, stamped at build time via
 // -ldflags "-X main.appVersion=..." (see scripts/build.sh, VERSION is the
 // source of truth). Returns "dev" for an unstamped build (e.g. `wails dev`).
@@ -531,11 +564,11 @@ func (a *App) PickAutoBackupFolder() (string, error) {
 	}
 
 	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:                "Elegir carpeta para el backup automático del vault",
+		Title:                i18n.T(i18n.Msg{ES: "Elegir carpeta para el backup automático del vault", EN: "Choose folder for the vault's automatic backup"}),
 		CanCreateDirectories: true,
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de carpeta: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de carpeta: %w", EN: "app: opening folder dialog: %w"}, err)
 	}
 	if dir == "" {
 		return "", nil
@@ -566,10 +599,10 @@ func (a *App) PickSQLiteFile() (string, error) {
 		return "", err
 	}
 	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Elegir base SQLite",
+		Title: i18n.T(i18n.Msg{ES: "Elegir base SQLite", EN: "Choose SQLite database"}),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "SQLite / SQLCipher (*.db;*.sqlite;*.sqlite3;*.db3)", Pattern: "*.db;*.sqlite;*.sqlite3;*.db3"},
-			{DisplayName: "Todos los archivos", Pattern: "*.*"},
+			{DisplayName: i18n.T(i18n.Msg{ES: "Todos los archivos", EN: "All files"}), Pattern: "*.*"},
 		},
 	})
 }
@@ -682,7 +715,7 @@ func (a *App) SaveConnection(cfg ConnectionInput, force bool) (*vault.Connection
 
 	if !force {
 		if err := pingDSN(dbType, dsn); err != nil {
-			return nil, fmt.Errorf("ping falló (guarda con force=true para omitir): %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "ping falló (guarda con force=true para omitir): %w", EN: "ping failed (save with force=true to skip it): %w"}, err)
 		}
 	}
 
@@ -725,7 +758,7 @@ func (a *App) GetConnectionForEdit(id string) (*ConnectionEditInfo, error) {
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("app: conexión %q no encontrada", id)
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: conexión %q no encontrada", EN: "app: connection %q not found"}, id)
 	}
 
 	dbType, dsn, err := a.vault.ConnectionDSN(id)
@@ -870,7 +903,7 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 
 	if !force {
 		if err := pingDSN(dbType, dsn); err != nil {
-			return nil, fmt.Errorf("ping falló (guarda con force=true para omitir): %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "ping falló (guarda con force=true para omitir): %w", EN: "ping failed (save with force=true to skip it): %w"}, err)
 		}
 	}
 
@@ -923,7 +956,7 @@ func (a *App) UpdateConnection(id string, cfg ConnectionInput, force bool) (*vau
 			return &c, nil
 		}
 	}
-	return nil, fmt.Errorf("app: conexión %q no encontrada después de actualizar", id)
+	return nil, i18n.Errorf(i18n.Msg{ES: "app: conexión %q no encontrada después de actualizar", EN: "app: connection %q not found after updating"}, id)
 }
 
 // ListConnections returns every saved connection, without DSNs, for the
@@ -1571,7 +1604,7 @@ func (a *App) ChangeSSHPassword(connID, newPassword string) error {
 		return err
 	}
 	if dbType != db.DBTypeSSH {
-		return fmt.Errorf("app: la conexión %q no es SSH", connID)
+		return i18n.Errorf(i18n.Msg{ES: "app: la conexión %q no es SSH", EN: "app: connection %q is not SSH"}, connID)
 	}
 	connector, err := db.ConnectorFor(db.DBTypeSSH)
 	if err != nil {
@@ -1585,7 +1618,7 @@ func (a *App) ChangeSSHPassword(connID, newPassword string) error {
 	// vence ahí es otra cosa (la passphrase de la llave, que es local) y el
 	// diálogo del servidor nunca aparece.
 	if params["auth"] != db.SSHAuthPassword {
-		return fmt.Errorf("app: la conexión %q no autentica por contraseña", connID)
+		return i18n.Errorf(i18n.Msg{ES: "app: la conexión %q no autentica por contraseña", EN: "app: connection %q doesn't authenticate with a password"}, connID)
 	}
 
 	if err := sshconn.ChangePassword(storedDSN, newPassword); err != nil {
@@ -1608,7 +1641,7 @@ func (a *App) ChangeSSHPassword(connID, newPassword string) error {
 		}
 		return a.vault.UpdateConnection(connID, c.Name, db.DBTypeSSH, newDSN, c.Color, c.Environment)
 	}
-	return fmt.Errorf("app: conexión %q no encontrada", connID)
+	return i18n.Errorf(i18n.Msg{ES: "app: conexión %q no encontrada", EN: "app: connection %q not found"}, connID)
 }
 
 // ListSshSnippets returns every saved SSH snippet — global, reusable across
@@ -1944,7 +1977,7 @@ func (a *App) sshDSN(connID string) (string, error) {
 func (a *App) resolveSSHKeyRef(dsn string) (string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return "", fmt.Errorf("app: parseando DSN ssh: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: parseando DSN ssh: %w", EN: "app: parsing ssh DSN: %w"}, err)
 	}
 	q := u.Query()
 	keyID := q.Get("keyId")
@@ -2519,14 +2552,14 @@ func (a *App) BackupVault(password string) (string, error) {
 	}
 
 	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Guardar backup del vault",
+		Title:           i18n.T(i18n.Msg{ES: "Guardar backup del vault", EN: "Save vault backup"}),
 		DefaultFilename: fmt.Sprintf("mini-tools-vault-backup-%s.mtbackup", time.Now().Format("2006-01-02")),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "mini-tools backup (*.mtbackup)", Pattern: "*.mtbackup"},
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de guardado: %w", EN: "app: opening save dialog: %w"}, err)
 	}
 	if dest == "" {
 		return "", nil
@@ -2554,17 +2587,17 @@ func (a *App) PickVaultBackupFileFirstRun() (string, error) {
 		return "", err
 	}
 	if initialized {
-		return "", fmt.Errorf("app: ya existe un vault inicializado; restaurá desde Configuración, no desde la pantalla de creación")
+		return "", i18n.Errorf(i18n.Msg{ES: "app: ya existe un vault inicializado; restaurá desde Configuración, no desde la pantalla de creación", EN: "app: a vault is already initialized; restore from Settings, not from the setup screen"})
 	}
 
 	src, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Seleccionar backup del vault",
+		Title: i18n.T(i18n.Msg{ES: "Seleccionar backup del vault", EN: "Select vault backup"}),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "mini-tools backup (*.mtbackup)", Pattern: "*.mtbackup"},
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de selección: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de selección: %w", EN: "app: opening file dialog: %w"}, err)
 	}
 	return src, nil
 }
@@ -2584,14 +2617,14 @@ func (a *App) RestoreVaultBackupFirstRun(path, backupPassword string) error {
 		return err
 	}
 	if initialized {
-		return fmt.Errorf("app: ya existe un vault inicializado; no se puede restaurar encima")
+		return i18n.Errorf(i18n.Msg{ES: "app: ya existe un vault inicializado; no se puede restaurar encima", EN: "app: a vault is already initialized; can't restore over it"})
 	}
 	if err := vault.VerifyBackupPassword(path, backupPassword); err != nil {
 		return err
 	}
 
 	if err := a.vault.Close(); err != nil {
-		return fmt.Errorf("app: cerrando vault actual: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "app: cerrando vault actual: %w", EN: "app: closing current vault: %w"}, err)
 	}
 
 	if err := vault.RestoreBackup(path); err != nil {
@@ -2604,7 +2637,7 @@ func (a *App) RestoreVaultBackupFirstRun(path, backupPassword string) error {
 
 	store, err := vault.Open(a.gate)
 	if err != nil {
-		return fmt.Errorf("app: reabriendo vault restaurado: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "app: reabriendo vault restaurado: %w", EN: "app: reopening restored vault: %w"}, err)
 	}
 	a.vault = store
 	return nil
@@ -2635,13 +2668,13 @@ func (a *App) PickVaultBackupFile(currentPassword string) (string, error) {
 	}
 
 	src, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Seleccionar backup del vault",
+		Title: i18n.T(i18n.Msg{ES: "Seleccionar backup del vault", EN: "Select vault backup"}),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "mini-tools backup (*.mtbackup)", Pattern: "*.mtbackup"},
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de selección: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de selección: %w", EN: "app: opening file dialog: %w"}, err)
 	}
 	return src, nil
 }
@@ -2673,7 +2706,7 @@ func (a *App) RestoreVaultBackupFromFile(path, backupPassword string) error {
 	a.mongoPools.CloseAll()
 
 	if err := a.vault.Close(); err != nil {
-		return fmt.Errorf("app: cerrando vault actual: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "app: cerrando vault actual: %w", EN: "app: closing current vault: %w"}, err)
 	}
 
 	if err := vault.RestoreBackup(path); err != nil {
@@ -2685,7 +2718,7 @@ func (a *App) RestoreVaultBackupFromFile(path, backupPassword string) error {
 
 	store, err := vault.Open(a.gate)
 	if err != nil {
-		return fmt.Errorf("app: reabriendo vault restaurado: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "app: reabriendo vault restaurado: %w", EN: "app: reopening restored vault: %w"}, err)
 	}
 	a.vault = store
 	a.gate.Lock()
@@ -3058,11 +3091,11 @@ func (a *App) OpenSQLFileDialog() (*FileContent, error) {
 	}
 
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:   "Abrir archivo SQL",
+		Title:   i18n.T(i18n.Msg{ES: "Abrir archivo SQL", EN: "Open SQL file"}),
 		Filters: []runtime.FileFilter{{DisplayName: "SQL (*.sql)", Pattern: "*.sql"}},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("app: abriendo diálogo de selección: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de selección: %w", EN: "app: opening file dialog: %w"}, err)
 	}
 	if path == "" {
 		return nil, nil
@@ -3070,7 +3103,7 @@ func (a *App) OpenSQLFileDialog() (*FileContent, error) {
 
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("app: leyendo archivo: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: leyendo archivo: %w", EN: "app: reading file: %w"}, err)
 	}
 
 	if err := a.vault.RecordRecentFile(path); err != nil {
@@ -3089,7 +3122,7 @@ func (a *App) OpenSQLFilePath(path string) (*FileContent, error) {
 
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("app: leyendo archivo: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: leyendo archivo: %w", EN: "app: reading file: %w"}, err)
 	}
 
 	if err := a.vault.RecordRecentFile(path); err != nil {
@@ -3105,7 +3138,7 @@ func (a *App) SaveSQLFile(path, content string) error {
 		return err
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("app: guardando archivo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "app: guardando archivo: %w", EN: "app: saving file: %w"}, err)
 	}
 	return a.vault.RecordRecentFile(path)
 }
@@ -3118,12 +3151,12 @@ func (a *App) SaveSQLFileAs(suggestedName, content string) (string, error) {
 	}
 
 	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Guardar archivo SQL",
+		Title:           i18n.T(i18n.Msg{ES: "Guardar archivo SQL", EN: "Save SQL file"}),
 		DefaultFilename: suggestedName,
 		Filters:         []runtime.FileFilter{{DisplayName: "SQL (*.sql)", Pattern: "*.sql"}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de guardado: %w", EN: "app: opening save dialog: %w"}, err)
 	}
 	if dest == "" {
 		return "", nil
@@ -3170,16 +3203,16 @@ func (a *App) ExportResult(columns []string, rows [][]interface{}, format string
 	case "xlsx":
 		display, pattern, ext = "Excel (*.xlsx)", "*.xlsx", ".xlsx"
 	default:
-		return "", fmt.Errorf("app: formato de export desconocido %q", format)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: formato de export desconocido %q", EN: "app: unknown export format %q"}, format)
 	}
 
 	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Exportar resultados",
-		DefaultFilename: "resultado" + ext,
+		Title:           i18n.T(i18n.Msg{ES: "Exportar resultados", EN: "Export results"}),
+		DefaultFilename: i18n.T(i18n.Msg{ES: "resultado", EN: "result"}) + ext,
 		Filters:         []runtime.FileFilter{{DisplayName: display, Pattern: pattern}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de guardado: %w", EN: "app: opening save dialog: %w"}, err)
 	}
 	if dest == "" {
 		return "", nil
@@ -3223,13 +3256,13 @@ func (a *App) ExportTableDDL(connID, schema, table string) (string, error) {
 	case db.DBTypeSQLServer:
 		ddl, err = export.SQLServerTableDDL(a.ctx, pool, schema, table)
 	default:
-		return "", fmt.Errorf("app: export de DDL no soportado para %q", dbType)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: export de DDL no soportado para %q", EN: "app: DDL export not supported for %q"}, dbType)
 	}
 	if err != nil {
 		return "", err
 	}
 
-	return a.saveSQLTextAs("Exportar DDL de tabla", table+".sql", ddl)
+	return a.saveSQLTextAs(i18n.T(i18n.Msg{ES: "Exportar DDL de tabla", EN: "Export table DDL"}), table+".sql", ddl)
 }
 
 // ExportSchemaDDL writes every table's DDL of `schema` to a user-chosen .sql
@@ -3254,13 +3287,13 @@ func (a *App) ExportSchemaDDL(connID, schema string) (string, error) {
 	case db.DBTypeSQLServer:
 		ddl, err = export.SQLServerSchemaDDL(a.ctx, pool, schema)
 	default:
-		return "", fmt.Errorf("app: export de DDL no soportado para %q", dbType)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: export de DDL no soportado para %q", EN: "app: DDL export not supported for %q"}, dbType)
 	}
 	if err != nil {
 		return "", err
 	}
 
-	return a.saveSQLTextAs("Exportar DDL del schema", "schema.sql", ddl)
+	return a.saveSQLTextAs(i18n.T(i18n.Msg{ES: "Exportar DDL del schema", EN: "Export schema DDL"}), "schema.sql", ddl)
 }
 
 // GetObjectDDL fetches the current DDL for any scanned schema object, for
@@ -3322,7 +3355,7 @@ func (a *App) GetObjectDDL(connID, objectType, schema, name string, oid int64) (
 			return export.SQLServerObjectDDL(a.ctx, pool, schema, name)
 		}
 	}
-	return "", fmt.Errorf("app: GetObjectDDL no soportado para %q/%q", dbType, objectType)
+	return "", i18n.Errorf(i18n.Msg{ES: "app: GetObjectDDL no soportado para %q/%q", EN: "app: GetObjectDDL not supported for %q/%q"}, dbType, objectType)
 }
 
 // SaveDDLToFile prompts for a .sql destination and writes ddl there — the
@@ -3332,7 +3365,7 @@ func (a *App) SaveDDLToFile(defaultFilename, ddl string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
 	}
-	return a.saveSQLTextAs("Exportar DDL", defaultFilename, ddl)
+	return a.saveSQLTextAs(i18n.T(i18n.Msg{ES: "Exportar DDL", EN: "Export DDL"}), defaultFilename, ddl)
 }
 
 // ExportConnectionConfig writes connID's config (name, engine, DSN with the
@@ -3371,22 +3404,22 @@ func (a *App) ExportConnectionConfig(connID string) (string, error) {
 
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("app: serializando config de conexión: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: serializando config de conexión: %w", EN: "app: serializing connection config: %w"}, err)
 	}
 
 	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Exportar configuración de conexión",
+		Title:           i18n.T(i18n.Msg{ES: "Exportar configuración de conexión", EN: "Export connection configuration"}),
 		DefaultFilename: name + ".json",
 		Filters:         []runtime.FileFilter{{DisplayName: "JSON (*.json)", Pattern: "*.json"}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de guardado: %w", EN: "app: opening save dialog: %w"}, err)
 	}
 	if dest == "" {
 		return "", nil
 	}
 	if err := os.WriteFile(dest, data, 0o644); err != nil {
-		return "", fmt.Errorf("app: escribiendo config de conexión: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: escribiendo config de conexión: %w", EN: "app: writing connection config: %w"}, err)
 	}
 	return dest, nil
 }
@@ -3414,13 +3447,13 @@ func (a *App) saveSQLTextAs(title, defaultFilename, text string) (string, error)
 		Filters:         []runtime.FileFilter{{DisplayName: "SQL (*.sql)", Pattern: "*.sql"}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de guardado: %w", EN: "app: opening save dialog: %w"}, err)
 	}
 	if dest == "" {
 		return "", nil
 	}
 	if err := os.WriteFile(dest, []byte(text), 0o644); err != nil {
-		return "", fmt.Errorf("app: escribiendo archivo: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: escribiendo archivo: %w", EN: "app: writing file: %w"}, err)
 	}
 	return dest, nil
 }
@@ -3448,7 +3481,7 @@ func (a *App) ExplainQuery(connID, sqlText string, analyze bool) (*explain.Plan,
 	case db.DBTypeSQLServer:
 		plan, err = explain.SQLServerPlan(a.ctx, pool, sqlText, analyze)
 	default:
-		return nil, fmt.Errorf("app: EXPLAIN no soportado para %q", dbType)
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: EXPLAIN no soportado para %q", EN: "app: EXPLAIN not supported for %q"}, dbType)
 	}
 	if err != nil {
 		return nil, err
@@ -3549,7 +3582,7 @@ func (a *App) buildClaudeMDInfo(connID, schema string) (claudemd.ProjectInfo, er
 		}
 	}
 	if !found {
-		return claudemd.ProjectInfo{}, fmt.Errorf("app: conexión %q no encontrada", connID)
+		return claudemd.ProjectInfo{}, i18n.Errorf(i18n.Msg{ES: "app: conexión %q no encontrada", EN: "app: connection %q not found"}, connID)
 	}
 
 	meta, err := a.GetSchemaMetadata(connID, false)

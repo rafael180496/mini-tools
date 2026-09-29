@@ -3,6 +3,7 @@ import {DeleteSSHKey, ListSSHKeys, RenameSSHKey, SSHKeyUsage, SaveSSHKey} from '
 import {vault} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface SshKeyVaultDialogProps {
     onClose: () => void
@@ -17,6 +18,8 @@ interface SshKeyVaultDialogProps {
 // the same key into six connections: there, rotating it meant editing six,
 // and nothing told you which connections shared a key.
 export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialogProps) {
+    const t = useT()
+    const tr = t.db.sshKeyVault
     const [keys, setKeys] = useState<vault.SSHKeySummary[]>([])
     const [error, setError] = useState<string | null>(null)
     const [adding, setAdding] = useState(false)
@@ -67,8 +70,8 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
             <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface-container shadow-xl">
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-4 py-3">
                     <Icon name="key" size={18} className="text-primary" />
-                    <h2 className="text-sm font-medium text-on-surface">Llaves SSH guardadas</h2>
-                    <button onClick={onClose} title="Cerrar" className="ml-auto rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                    <h2 className="text-sm font-medium text-on-surface">{tr.title}</h2>
+                    <button onClick={onClose} title={t.common.close} className="ml-auto rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                         <Icon name="close" size={16} />
                     </button>
                 </div>
@@ -83,7 +86,7 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
                 <div className="min-h-0 flex-1 overflow-auto">
                     {keys.length === 0 && !adding && (
                         <p className="px-4 py-6 text-center text-xs text-on-surface-variant">
-                            Todavía no hay llaves guardadas. Agregá una para vincularla a varias conexiones sin repetir el archivo.
+                            {tr.empty}
                         </p>
                     )}
                     {keys.map((k) => (
@@ -122,22 +125,22 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
                             </div>
                             {k.hasPassphrase && (
                                 <span
-                                    title="Esta llave está protegida por passphrase, y la passphrase también quedó guardada cifrada — por eso conecta sin pedirla."
+                                    title={tr.passphraseBadgeHint}
                                     className="shrink-0 rounded bg-surface-container-highest px-1.5 py-0.5 text-ui-10 text-on-surface-variant"
                                 >
-                                    passphrase
+                                    {tr.passphraseBadge}
                                 </span>
                             )}
                             <button
                                 onClick={() => setRenaming({id: k.id, name: k.name})}
-                                title="Renombrar"
+                                title={tr.rename}
                                 className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant"
                             >
                                 <Icon name="edit" size={14} />
                             </button>
                             <button
                                 onClick={() => askDelete(k)}
-                                title="Eliminar esta llave"
+                                title={tr.deleteHint}
                                 className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-error-container/40 hover:text-error"
                             >
                                 <Icon name="delete" size={14} />
@@ -148,28 +151,28 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
                     {adding && (
                         <div className="space-y-2 border-t border-outline-variant bg-surface-container-low px-4 py-3">
                             <label className="block text-xs text-on-surface-variant">
-                                Nombre
+                                {tr.name}
                                 <input
                                     autoFocus
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
-                                    placeholder="deploy prod"
+                                    placeholder={tr.namePlaceholder}
                                     className="mt-1 w-full rounded-lg border border-outline bg-surface px-2 py-1.5 text-sm text-on-surface"
                                 />
                             </label>
                             <label className="block text-xs text-on-surface-variant">
-                                Contenido de la llave privada
+                                {tr.material}
                                 <textarea
                                     value={material}
                                     onChange={(e) => setMaterial(e.target.value)}
                                     rows={5}
-                                    placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----\n...'}
-                                    title="El contenido completo del archivo (.pem, id_rsa, id_ed25519), no su ruta: se guarda cifrado acá y el archivo original deja de hacer falta."
+                                    placeholder={tr.materialPlaceholder}
+                                    title={tr.materialHint}
                                     className="mt-1 w-full rounded-lg border border-outline bg-surface px-2 py-1.5 font-mono text-xs text-on-surface"
                                 />
                             </label>
                             <label className="block text-xs text-on-surface-variant">
-                                Passphrase (si la llave tiene)
+                                {tr.passphrase}
                                 <input
                                     type="password"
                                     value={passphrase}
@@ -183,16 +186,16 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
                                     disabled={saving || !name.trim() || !material.trim()}
                                     className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                                 >
-                                    {saving ? 'Guardando…' : 'Guardar llave'}
+                                    {saving ? tr.saving : tr.saveKey}
                                 </button>
                                 <button
                                     onClick={() => setAdding(false)}
                                     className="rounded px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant"
                                 >
-                                    Cancelar
+                                    {t.common.cancel}
                                 </button>
                                 <span className="ml-auto text-ui-11 text-on-surface-variant">
-                                    Se valida antes de guardarla: una llave truncada se rechaza acá y no en medio de una conexión.
+                                    {tr.validateNote}
                                 </span>
                             </div>
                         </div>
@@ -206,26 +209,24 @@ export default function SshKeyVaultDialog({onClose, onChanged}: SshKeyVaultDialo
                             className="flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90"
                         >
                             <Icon name="add" size={14} />
-                            Agregar llave
+                            {tr.addKey}
                         </button>
                     )}
                     <span className="ml-auto text-ui-11 text-on-surface-variant">
-                        Cifradas con la clave maestra del vault, igual que las contraseñas de las conexiones.
+                        {tr.encryptedNote}
                     </span>
                 </div>
             </div>
 
             {pendingDelete && (
                 <ConfirmDialog
-                    title={`Eliminar la llave "${pendingDelete.key.name}"`}
+                    title={tr.deleteTitle({name: pendingDelete.key.name})}
                     description={
                         pendingDelete.usedBy.length > 0
-                            ? `La usan ${pendingDelete.usedBy.length} ${
-                                  pendingDelete.usedBy.length === 1 ? 'conexión' : 'conexiones'
-                              }: ${pendingDelete.usedBy.join(', ')}. Si la borrás, esas conexiones dejan de autenticarse y hay que volver a cargar la llave. No se puede deshacer.`
-                            : 'Ninguna conexión la está usando. Igual, no se puede deshacer: si no tenés el archivo original, la llave se pierde.'
+                            ? tr.deleteUsed({count: pendingDelete.usedBy.length, names: pendingDelete.usedBy.join(', ')})
+                            : tr.deleteUnused
                     }
-                    confirmLabel="Eliminar"
+                    confirmLabel={tr.deleteConfirm}
                     danger
                     onConfirm={() => {
                         const id = pendingDelete.key.id

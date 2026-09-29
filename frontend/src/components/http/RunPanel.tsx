@@ -4,7 +4,8 @@ import {EventsOn} from '../../../wailsjs/runtime'
 import {main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import Select from '../Select'
-import {methodColor, statusColor} from './httpShared'
+import {methodColor, rich, statusColor} from './httpShared'
+import {useT} from '../../i18n'
 
 // Correr una colección (o una carpeta) entera y ver el resultado.
 //
@@ -27,13 +28,11 @@ interface RunPanelProps {
     onClose: () => void
 }
 
-const DELAYS = [
-    {ms: 0, label: 'Sin pausa'},
-    {ms: 250, label: '250 ms'},
-    {ms: 1000, label: '1 s'},
-]
+// Pausas ofrecidas entre peticiones; el rótulo se arma al dibujar.
+const DELAYS = [0, 250, 1000]
 
 export default function RunPanel({collectionId, folderId, title, onClose}: RunPanelProps) {
+    const t = useT()
     const [running, setRunning] = useState(false)
     const [delayMs, setDelayMs] = useState(0)
     const [live, setLive] = useState<main.HTTPRunResult[]>([])
@@ -99,16 +98,16 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
             >
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                     <Icon name="play_circle" size={16} className="text-on-surface-variant" />
-                    <p className="min-w-0 flex-1 truncate text-sm font-medium text-on-surface">Correr «{title}»</p>
+                    <p className="min-w-0 flex-1 truncate text-sm font-medium text-on-surface">{t.http.run.title({name: title})}</p>
 
                     {!running && (
                         <Select
                             value={String(delayMs)}
-                            options={DELAYS.map((d) => ({value: String(d.ms), label: d.label}))}
+                            options={DELAYS.map((ms) => ({value: String(ms), label: ms === 0 ? t.http.run.noDelay : t.http.request.ms(ms)}))}
                             onChange={(v) => setDelayMs(Number(v))}
                             size="sm"
-                            ariaLabel="Pausa entre peticiones"
-                            title="Pausa entre una petición y la siguiente. Treinta peticiones seguidas sin respirar es exactamente lo que un cortafuegos de aplicación corta."
+                            ariaLabel={t.http.run.delayAria}
+                            title={t.http.run.delayTitle}
                             className="w-36 shrink-0"
                         />
                     )}
@@ -116,18 +115,18 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                     {running ? (
                         <button
                             onClick={() => HttpCancelRun(runIdRef.current)}
-                            title="Cortar la corrida. La petición que está en vuelo se deja terminar: ya salió, y cancelarla acá no la deshace del lado del servidor."
+                            title={t.http.run.stopTitle}
                             className="rounded border border-outline-variant px-2 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant"
                         >
-                            Cortar
+                            {t.http.run.stop}
                         </button>
                     ) : (
                         <button
                             onClick={() => void start()}
-                            title="Volver a correr"
+                            title={t.http.run.rerunTitle}
                             className="rounded bg-primary px-3 py-0.5 text-ui-11 text-on-primary hover:opacity-90"
                         >
-                            Correr de nuevo
+                            {t.http.run.rerun}
                         </button>
                     )}
                     <button
@@ -140,7 +139,7 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                             if (running) HttpCancelRun(runIdRef.current)
                             onClose()
                         }}
-                        title={running ? 'Cerrar y cortar la corrida' : 'Cerrar'}
+                        title={running ? t.http.run.closeAndStop : t.common.close}
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-variant"
                     >
                         <Icon name="close" size={16} />
@@ -150,20 +149,20 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                 {error && <p className="shrink-0 bg-error-container px-3 py-1 text-ui-11 text-on-error-container">{error}</p>}
 
                 <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant px-3 py-1.5 text-ui-11">
-                    <span className="text-secondary">{passed} pasaron</span>
-                    <span className={failed > 0 ? 'text-error' : 'text-on-surface-variant/50'}>{failed} fallaron</span>
-                    {(summary?.skipped ?? 0) > 0 && <span className="text-tertiary">{summary?.skipped} salteadas</span>}
+                    <span className="text-secondary">{t.http.run.passed(passed)}</span>
+                    <span className={failed > 0 ? 'text-error' : 'text-on-surface-variant/50'}>{t.http.run.failed(failed)}</span>
+                    {(summary?.skipped ?? 0) > 0 && <span className="text-tertiary">{t.http.run.skipped(summary?.skipped ?? 0)}</span>}
                     <span className="flex-1" />
                     {summary?.environment ? (
-                        <span className="text-on-surface-variant" title="Entorno con el que se corrió: el mismo resumen contra otro entorno significa otra cosa.">
-                            entorno «{summary.environment}»
+                        <span className="text-on-surface-variant" title={t.http.run.environmentTitle}>
+                            {t.http.run.environment({name: summary.environment})}
                         </span>
                     ) : (
-                        <span className="text-on-surface-variant/60" title="Sin entorno activo: las variables de entorno no se resolvieron.">
-                            sin entorno
+                        <span className="text-on-surface-variant/60" title={t.http.run.noEnvironmentTitle}>
+                            {t.http.run.noEnvironment}
                         </span>
                     )}
-                    {summary && <span className="font-mono tabular-nums text-on-surface-variant">{summary.durationMs} ms</span>}
+                    {summary && <span className="font-mono tabular-nums text-on-surface-variant">{t.http.request.ms(summary.durationMs)}</span>}
                     {running && progress && (
                         <span className="font-mono tabular-nums text-on-surface-variant">
                             {progress.done}/{progress.total}
@@ -173,7 +172,7 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
 
                 <div className="min-h-0 flex-1 overflow-y-auto">
                     {rows.length === 0 && (
-                        <p className="px-3 py-4 text-ui-11 text-on-surface-variant">{running ? 'Corriendo…' : 'No hay resultados.'}</p>
+                        <p className="px-3 py-4 text-ui-11 text-on-surface-variant">{running ? t.http.run.running : t.http.run.noResults}</p>
                     )}
                     {rows.map((r, i) => (
                         <div key={`${r.itemId}-${i}`} className="flex items-start gap-2 border-b border-outline-variant/40 px-3 py-1.5 text-ui-11">
@@ -194,19 +193,18 @@ export default function RunPanel({collectionId, folderId, title, onClose}: RunPa
                                 {r.error && <span className="block text-ui-10 leading-relaxed text-error">{r.error}</span>}
                                 {r.missing && r.missing.length > 0 && (
                                     <span className="block text-ui-10 leading-relaxed text-tertiary">
-                                        Sin definir: {r.missing.map((m) => `{{${m}}}`).join(', ')}
+                                        {t.http.run.missing({list: r.missing.map((m) => `{{${m}}}`).join(', ')})}
                                     </span>
                                 )}
                             </span>
                             {r.status > 0 && <span className={`shrink-0 font-mono tabular-nums ${statusColor(r.status)}`}>{r.status}</span>}
-                            {r.durationMs > 0 && <span className="w-16 shrink-0 text-right font-mono tabular-nums text-on-surface-variant/60">{r.durationMs} ms</span>}
+                            {r.durationMs > 0 && <span className="w-16 shrink-0 text-right font-mono tabular-nums text-on-surface-variant/60">{t.http.request.ms(r.durationMs)}</span>}
                         </div>
                     ))}
                 </div>
 
                 <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                    «Pasó» significa que la petición salió y el servidor contestó con un código menor a 400. Los scripts de test **no se ejecutan acá**:
-                    esta aplicación no corre JavaScript — se guardan, viajan en el export y los corre Postman o newman.
+                    {rich(t.http.run.footer)}
                 </p>
             </div>
         </div>

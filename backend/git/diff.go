@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"strconv"
 	"strings"
 )
@@ -132,14 +132,14 @@ func (r *Runner) GetDiff(repoPath string, target DiffTarget) (*FileDiff, error) 
 	case "staged":
 		args = append(args, "--cached")
 	case "commit":
-		if err := checkRefArg("commit", target.Commit); err != nil {
+		if err := checkRefArg(argCommit, target.Commit); err != nil {
 			return nil, err
 		}
 		// show, not diff: it handles a root commit (no parent) correctly,
 		// where `diff <hash>^ <hash>` fails outright.
 		args = []string{"show", "--format=", target.Commit}
 	default:
-		return nil, fmt.Errorf("modo de diff desconocido: %q", target.Mode)
+		return nil, i18n.Errorf(i18n.Msg{ES: "modo de diff desconocido: %q", EN: "unknown diff mode: %q"}, target.Mode)
 	}
 
 	if target.ContextLines > 0 {
@@ -205,7 +205,7 @@ func (r *Runner) GetChangedFiles(repoPath, commit string) ([]FileDiff, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkRefArg("commit", commit); err != nil {
+	if err := checkRefArg(argCommit, commit); err != nil {
 		return nil, err
 	}
 
@@ -251,11 +251,11 @@ func (r *Runner) GetFileAtCommit(repoPath, commit, path string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	if err := checkRefArg("commit", commit); err != nil {
+	if err := checkRefArg(argCommit, commit); err != nil {
 		return "", err
 	}
 	if path == "" {
-		return "", fmt.Errorf("la ruta del archivo no puede estar vacía")
+		return "", i18n.New(i18n.Msg{ES: "la ruta del archivo no puede estar vacía", EN: "the file path cannot be empty"})
 	}
 	// commit:path is git's object syntax; the path is relative to the repo
 	// root, never to the process working directory.

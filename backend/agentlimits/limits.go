@@ -37,6 +37,8 @@ package agentlimits
 import (
 	"fmt"
 	"os"
+
+	"mini-tools/backend/i18n"
 )
 
 // Window es una ventana de límite: cuánto se lleva usado de ella y cuándo
@@ -125,11 +127,11 @@ func All() []AgentLimits {
 func windowLabel(minutes int) string {
 	switch {
 	case minutes <= 0:
-		return "ventana desconocida"
+		return i18n.T(i18n.Msg{ES: "ventana desconocida", EN: "unknown window"})
 	case minutes%1440 == 0 && minutes/1440 == 7:
-		return "semana"
+		return i18n.T(i18n.Msg{ES: "semana", EN: "week"})
 	case minutes%1440 == 0:
-		return fmt.Sprintf("%d días", minutes/1440)
+		return i18n.T(i18n.Msg{ES: "%d días", EN: "%d days"}, minutes/1440)
 	case minutes%60 == 0:
 		return fmt.Sprintf("%d h", minutes/60)
 	default:

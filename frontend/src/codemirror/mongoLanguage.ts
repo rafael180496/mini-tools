@@ -2,6 +2,7 @@ import {StreamLanguage, LanguageSupport, type StreamParser} from '@codemirror/la
 import {snippetCompletion, type CompletionSource, type CompletionResult} from '@codemirror/autocomplete'
 import {hoverTooltip} from '@codemirror/view'
 import {getActiveMongoCollections} from './mongoCollectionsStore'
+import {t} from '../i18n'
 
 // Hand-written mongosh language for the editor — MongoDB has no official
 // CodeMirror language package, so (like redisLanguage.ts for Redis) this
@@ -11,35 +12,43 @@ import {getActiveMongoCollections} from './mongoCollectionsStore'
 // backend parser (backend/mongoquery) accepts, nothing more. See
 // .claude/skills/mini-tools-patterns/SKILL.md's MongoDB section.
 
+// The placeholder words inside each snippet (filter, field…) and the method's
+// description are UI text: they come from the dictionary (t().mongo.editor)
+// and are resolved when the completion list or tooltip is built.
+type Placeholders = ReturnType<typeof t>['mongo']['editor']['placeholders']
+
 interface MongoMethod {
-    label: string
-    detail: string
-    insertText: string
+    name: string
+    snippet: (p: Placeholders) => string
 }
 
 // The collection methods the backend executor dispatches (backend/mongoquery
 // executor.go). Kept in sync with that switch — a method offered here that the
 // backend doesn't handle would just error at run time.
 const MONGO_METHODS: MongoMethod[] = [
-    {label: 'find', detail: 'Busca documentos que matcheen el filtro', insertText: 'find({ ${1:filtro} })'},
-    {label: 'findOne', detail: 'Devuelve el primer documento que matchee', insertText: 'findOne({ ${1:filtro} })'},
-    {label: 'aggregate', detail: 'Pipeline de agregación', insertText: 'aggregate([ ${1:etapas} ])'},
-    {label: 'countDocuments', detail: 'Cuenta documentos que matcheen el filtro', insertText: 'countDocuments({ ${1:filtro} })'},
-    {label: 'estimatedDocumentCount', detail: 'Conteo rápido aproximado de la colección', insertText: 'estimatedDocumentCount()'},
-    {label: 'distinct', detail: 'Valores distintos de un campo', insertText: "distinct('${1:campo}')"},
-    {label: 'insertOne', detail: 'Inserta un documento', insertText: 'insertOne({ ${1:doc} })'},
-    {label: 'insertMany', detail: 'Inserta varios documentos', insertText: 'insertMany([ ${1:docs} ])'},
-    {label: 'updateOne', detail: 'Actualiza un documento', insertText: 'updateOne({ ${1:filtro} }, { $set: { ${2:campo}: ${3:valor} } })'},
-    {label: 'updateMany', detail: 'Actualiza varios documentos', insertText: 'updateMany({ ${1:filtro} }, { $set: { ${2:campo}: ${3:valor} } })'},
-    {label: 'replaceOne', detail: 'Reemplaza un documento completo', insertText: 'replaceOne({ ${1:filtro} }, { ${2:doc} })'},
-    {label: 'deleteOne', detail: 'Elimina un documento', insertText: 'deleteOne({ ${1:filtro} })'},
-    {label: 'deleteMany', detail: 'Elimina varios documentos', insertText: 'deleteMany({ ${1:filtro} })'},
-    {label: 'createIndex', detail: 'Crea un índice', insertText: 'createIndex({ ${1:campo}: 1 })'},
-    {label: 'dropIndex', detail: 'Elimina un índice por nombre', insertText: "dropIndex('${1:nombre}')"},
-    {label: 'getIndexes', detail: 'Lista los índices de la colección', insertText: 'getIndexes()'},
+    {name: 'find', snippet: (p) => `find({ \${1:${p.filter}} })`},
+    {name: 'findOne', snippet: (p) => `findOne({ \${1:${p.filter}} })`},
+    {name: 'aggregate', snippet: (p) => `aggregate([ \${1:${p.stages}} ])`},
+    {name: 'countDocuments', snippet: (p) => `countDocuments({ \${1:${p.filter}} })`},
+    {name: 'estimatedDocumentCount', snippet: () => 'estimatedDocumentCount()'},
+    {name: 'distinct', snippet: (p) => `distinct('\${1:${p.field}}')`},
+    {name: 'insertOne', snippet: () => 'insertOne({ ${1:doc} })'},
+    {name: 'insertMany', snippet: () => 'insertMany([ ${1:docs} ])'},
+    {name: 'updateOne', snippet: (p) => `updateOne({ \${1:${p.filter}} }, { $set: { \${2:${p.field}}: \${3:${p.value}} } })`},
+    {name: 'updateMany', snippet: (p) => `updateMany({ \${1:${p.filter}} }, { $set: { \${2:${p.field}}: \${3:${p.value}} } })`},
+    {name: 'replaceOne', snippet: (p) => `replaceOne({ \${1:${p.filter}} }, { \${2:doc} })`},
+    {name: 'deleteOne', snippet: (p) => `deleteOne({ \${1:${p.filter}} })`},
+    {name: 'deleteMany', snippet: (p) => `deleteMany({ \${1:${p.filter}} })`},
+    {name: 'createIndex', snippet: (p) => `createIndex({ \${1:${p.field}}: 1 })`},
+    {name: 'dropIndex', snippet: (p) => `dropIndex('\${1:${p.name}}')`},
+    {name: 'getIndexes', snippet: () => 'getIndexes()'},
 ]
 
-const METHOD_NAMES = new Set(MONGO_METHODS.map((m) => m.label))
+function methodDetail(name: string): string {
+    return (t().mongo.editor.methods as Record<string, string>)[name] ?? ''
+}
+
+const METHOD_NAMES = new Set(MONGO_METHODS.map((m) => m.name))
 
 // Query/update/aggregation operators, suggested when the token starts with $.
 const MONGO_OPERATORS = [
@@ -88,9 +97,10 @@ const mongoCompletionSource: CompletionSource = (context): CompletionResult | nu
     const methodCtx = context.matchBefore(/db\s*\.\s*[A-Za-z0-9_$]+\s*\.\s*[A-Za-z0-9_]*/)
     if (methodCtx) {
         const word = context.matchBefore(/[A-Za-z0-9_]*/)
+        const placeholders = t().mongo.editor.placeholders
         return {
             from: word ? word.from : context.pos,
-            options: MONGO_METHODS.map((m) => snippetCompletion(m.insertText, {label: m.label, type: 'method', detail: m.detail})),
+            options: MONGO_METHODS.map((m) => snippetCompletion(m.snippet(placeholders), {label: m.name, type: 'method', detail: methodDetail(m.name)})),
             validFor: /^[A-Za-z0-9_]*$/,
         }
     }
@@ -123,7 +133,7 @@ const mongoHover = hoverTooltip((view, pos) => {
     while (end < to && /\w/.test(text[end - from])) end++
     if (start === end) return null
 
-    const method = MONGO_METHODS.find((m) => m.label === text.slice(start - from, end - from))
+    const method = MONGO_METHODS.find((m) => m.name === text.slice(start - from, end - from))
     if (!method) return null
 
     return {
@@ -140,7 +150,8 @@ const mongoHover = hoverTooltip((view, pos) => {
             dom.style.borderRadius = '6px'
             dom.style.maxWidth = '360px'
             dom.style.whiteSpace = 'pre-wrap'
-            dom.textContent = `db.<colección>.${stripPlaceholders(method.insertText)}\n${method.detail}`
+            const ed = t().mongo.editor
+            dom.textContent = `db.<${ed.collection}>.${stripPlaceholders(method.snippet(ed.placeholders))}\n${methodDetail(method.name)}`
             return {dom}
         },
     }

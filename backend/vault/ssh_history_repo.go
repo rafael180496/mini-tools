@@ -1,12 +1,12 @@
 package vault
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 )
 
 // Historial de comandos ejecutados en las terminales SSH.
@@ -91,14 +91,14 @@ func (s *Store) AppendSshHistory(connID, command string) (bool, error) {
 	}
 	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(command))
 	if err != nil {
-		return false, fmt.Errorf("vault: cifrando el comando: %w", err)
+		return false, i18n.Errorf(i18n.Msg{ES: "vault: cifrando el comando: %w", EN: "vault: encrypting the command: %w"}, err)
 	}
 
 	if _, err := s.db.Exec(
 		`INSERT INTO ssh_command_history (conn_id, encrypted_cmd, nonce, ran_at) VALUES (?, ?, ?, ?)`,
 		connID, ciphertext, nonce, time.Now().Unix(),
 	); err != nil {
-		return false, fmt.Errorf("vault: guardando el comando: %w", err)
+		return false, i18n.Errorf(i18n.Msg{ES: "vault: guardando el comando: %w", EN: "vault: saving the command: %w"}, err)
 	}
 	return true, nil
 }
@@ -121,7 +121,7 @@ func (s *Store) ListSshHistory(connID string, limit int) ([]SshHistoryEntry, err
 		connID, limit,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo el historial: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el historial: %w", EN: "vault: reading the history: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -130,7 +130,7 @@ func (s *Store) ListSshHistory(connID string, limit int) ([]SshHistoryEntry, err
 		var e SshHistoryEntry
 		var ciphertext, nonce []byte
 		if err := rows.Scan(&e.ID, &ciphertext, &nonce, &e.RanAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo una fila del historial: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo una fila del historial: %w", EN: "vault: reading a history row: %w"}, err)
 		}
 		plaintext, err := mtcrypto.Decrypt(key, ciphertext, nonce)
 		if err != nil {
@@ -151,7 +151,7 @@ func (s *Store) ListSshHistory(connID string, limit int) ([]SshHistoryEntry, err
 func (s *Store) ClearSshHistory(connID string) (int64, error) {
 	res, err := s.db.Exec(`DELETE FROM ssh_command_history WHERE conn_id = ?`, connID)
 	if err != nil {
-		return 0, fmt.Errorf("vault: limpiando el historial: %w", err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "vault: limpiando el historial: %w", EN: "vault: clearing the history: %w"}, err)
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
@@ -161,7 +161,7 @@ func (s *Store) ClearSshHistory(connID string) (int64, error) {
 func (s *Store) ClearAllSshHistory() (int64, error) {
 	res, err := s.db.Exec(`DELETE FROM ssh_command_history`)
 	if err != nil {
-		return 0, fmt.Errorf("vault: limpiando todo el historial: %w", err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "vault: limpiando todo el historial: %w", EN: "vault: clearing the whole history: %w"}, err)
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
@@ -171,7 +171,7 @@ func (s *Store) ClearAllSshHistory() (int64, error) {
 func (s *Store) SshHistoryEnabled() (bool, error) {
 	var enabled int
 	if err := s.db.QueryRow(`SELECT ssh_history_enabled FROM settings WHERE id = 1`).Scan(&enabled); err != nil {
-		return false, fmt.Errorf("vault: leyendo ssh_history_enabled: %w", err)
+		return false, i18n.Errorf(i18n.Msg{ES: "vault: leyendo ssh_history_enabled: %w", EN: "vault: reading ssh_history_enabled: %w"}, err)
 	}
 	return enabled != 0, nil
 }
@@ -185,7 +185,7 @@ func (s *Store) SetSshHistoryEnabled(enabled bool) error {
 		v = 1
 	}
 	if _, err := s.db.Exec(`UPDATE settings SET ssh_history_enabled = ? WHERE id = 1`, v); err != nil {
-		return fmt.Errorf("vault: guardando ssh_history_enabled: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando ssh_history_enabled: %w", EN: "vault: saving ssh_history_enabled: %w"}, err)
 	}
 	return nil
 }

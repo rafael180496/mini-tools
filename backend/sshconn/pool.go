@@ -1,7 +1,7 @@
 package sshconn
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -189,4 +189,4 @@ func isTransportError(err error) bool {
 }
 
 // ErrNoSession is returned by callers that expect a live connection.
-var ErrNoSession = fmt.Errorf("sshconn: no hay una conexión abierta")
+var ErrNoSession = i18n.New(i18n.Msg{ES: "sshconn: no hay una conexión abierta", EN: "sshconn: there is no open connection"})

@@ -4428,6 +4428,7 @@ export namespace vault {
 	    mcpEnabled: boolean;
 	    mcpNotesWrite: boolean;
 	    uiFontScale: number;
+	    language: string;
 	    snippetsPanelWidth: number;
 	
 	    static createFrom(source: any = {}) {
@@ -4475,6 +4476,7 @@ export namespace vault {
 	        this.mcpEnabled = source["mcpEnabled"];
 	        this.mcpNotesWrite = source["mcpNotesWrite"];
 	        this.uiFontScale = source["uiFontScale"];
+	        this.language = source["language"];
 	        this.snippetsPanelWidth = source["snippetsPanelWidth"];
 	    }
 	

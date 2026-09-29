@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/httpclient"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/vault"
 )
 
@@ -81,7 +82,7 @@ func (a *App) HttpPublishDocs(collectionID string) (*HttpDocsResult, error) {
 		}
 	}
 
-	fm := vault.NewGeneratedFrontmatter(vault.HTTPDocsOriginMark, "colección «"+col.Name+"»", time.Now())
+	fm := vault.NewGeneratedFrontmatter(vault.HTTPDocsOriginMark, i18n.T(i18n.Msg{ES: "colección «%s»", EN: "collection «%s»"}, col.Name), time.Now())
 	id, err := a.createNote(title, md, fm)
 	if err != nil {
 		return nil, err
@@ -124,7 +125,7 @@ func (a *App) buildCollectionDocs(collectionID string) (string, httpclient.DocCo
 		}
 	}
 	if !found {
-		return "", httpclient.DocCollection{}, fmt.Errorf("app: no existe la colección %q", collectionID)
+		return "", httpclient.DocCollection{}, i18n.Errorf(i18n.Msg{ES: "app: no existe la colección %q", EN: "app: collection %q doesn't exist"}, collectionID)
 	}
 
 	items, err := a.vault.ListHTTPItems(collectionID)
@@ -224,9 +225,9 @@ func (a *App) docAuth(it vault.HTTPItem, names map[string]string) (httpclient.Au
 			// petición sería veinte líneas diciendo lo mismo.
 			return httpclient.Auth{}, ""
 		case level.ItemID == it.ID:
-			return auth, "propia"
+			return auth, i18n.T(i18n.Msg{ES: "propia", EN: "own"})
 		default:
-			return auth, "heredada de «" + names[level.ItemID] + "»"
+			return auth, i18n.T(i18n.Msg{ES: "heredada de «%s»", EN: "inherited from «%s»"}, names[level.ItemID])
 		}
 	}
 	return httpclient.Auth{}, ""
@@ -247,10 +248,10 @@ func (a *App) HttpSaveResponseExample(itemID string, req httpclient.Request, res
 		return err
 	}
 	if itemID == "" {
-		return fmt.Errorf("app: guardá la petición en una colección antes de guardarle un ejemplo")
+		return i18n.Errorf(i18n.Msg{ES: "app: guardá la petición en una colección antes de guardarle un ejemplo", EN: "app: save the request in a collection before saving an example for it"})
 	}
 	if resp.Status == 0 {
-		return fmt.Errorf("app: no hay respuesta que guardar")
+		return i18n.Errorf(i18n.Msg{ES: "app: no hay respuesta que guardar", EN: "app: there's no response to save"})
 	}
 	it, err := a.vault.GetHTTPItem(itemID)
 	if err != nil {
@@ -262,12 +263,12 @@ func (a *App) HttpSaveResponseExample(itemID string, req httpclient.Request, res
 		b.WriteString(strings.TrimRight(it.Docs, "\n"))
 		b.WriteString("\n\n")
 	}
-	fmt.Fprintf(&b, "### Ejemplo · %d %s\n\n", resp.Status, resp.StatusText)
+	fmt.Fprintf(&b, "### %s · %d %s\n\n", i18n.T(i18n.Msg{ES: "Ejemplo", EN: "Example"}), resp.Status, resp.StatusText)
 	fmt.Fprintf(&b, "```http\n%s %s\n```\n\n", strings.ToUpper(req.Method), req.URL)
 
 	switch {
 	case resp.IsBinary:
-		fmt.Fprintf(&b, "Respuesta binaria (%s, %d bytes).\n", resp.ContentType, resp.SizeBytes)
+		b.WriteString(i18n.T(i18n.Msg{ES: "Respuesta binaria (%s, %d bytes).", EN: "Binary response (%s, %d bytes)."}, resp.ContentType, resp.SizeBytes) + "\n")
 	case strings.TrimSpace(resp.Body) != "":
 		lang := resp.Lang
 		if lang == "" {
@@ -275,7 +276,7 @@ func (a *App) HttpSaveResponseExample(itemID string, req httpclient.Request, res
 		}
 		fmt.Fprintf(&b, "```%s\n%s\n```\n", lang, clip(strings.TrimRight(resp.Body, "\n"), maxBodyExample))
 	default:
-		b.WriteString("Sin cuerpo.\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "Sin cuerpo.", EN: "No body."}) + "\n")
 	}
 
 	docs := httpclient.RedactCredentials(httpclient.MaskSecrets(b.String(), a.varScopes(it.CollectionID)))
@@ -294,5 +295,5 @@ func clip(s string, max int) string {
 	if len(r) <= max {
 		return s
 	}
-	return strings.TrimSpace(string(r[:max])) + "\n… (recortado)"
+	return strings.TrimSpace(string(r[:max])) + "\n… " + i18n.T(i18n.Msg{ES: "(recortado)", EN: "(truncated)"})
 }

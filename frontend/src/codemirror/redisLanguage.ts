@@ -2,6 +2,7 @@ import {StreamLanguage, LanguageSupport, type StreamParser} from '@codemirror/la
 import {snippetCompletion, type CompletionSource, type CompletionResult} from '@codemirror/autocomplete'
 import {hoverTooltip} from '@codemirror/view'
 import {getActiveRedisKeys} from './redisKeysStore'
+import {t} from '../i18n'
 
 // Direct port of the retired frontend/src/monaco/redisLanguage.ts — same
 // command list, same firstArgIsKey completion logic, same doc comment
@@ -13,10 +14,12 @@ import {getActiveRedisKeys} from './redisKeysStore'
 // place of Monaco's Monarch tokenizer + registerCompletionItemProvider +
 // registerHoverProvider.
 
+// The description of each command lives in the dictionary
+// (t().redis.commands.<NAME>) and is read when the completion list or the
+// tooltip is built, never frozen here: this table is module-level.
 interface RedisCommand {
-    label: string
-    detail: string
-    insertText: string
+    name: string
+    snippet: string
     // True for commands whose FIRST argument is a key name — GET/SET/DEL/
     // etc. Drives the second-token completion branch below. False (or
     // omitted) for commands with no key argument at all (PING, SELECT,
@@ -25,145 +28,64 @@ interface RedisCommand {
 }
 
 const REDIS_COMMANDS: RedisCommand[] = [
-    {label: 'GET', detail: 'Obtiene el valor de una key tipo string', insertText: 'GET ${1:key}', firstArgIsKey: true},
-    {label: 'SET', detail: 'Asigna el valor de una key tipo string', insertText: 'SET ${1:key} ${2:value}', firstArgIsKey: true},
-    {label: 'DEL', detail: 'Elimina una o más keys', insertText: 'DEL ${1:key}', firstArgIsKey: true},
-    {label: 'EXISTS', detail: 'Chequea si una key existe', insertText: 'EXISTS ${1:key}', firstArgIsKey: true},
-    {label: 'EXPIRE', detail: 'Setea un TTL (segundos) sobre una key', insertText: 'EXPIRE ${1:key} ${2:seconds}', firstArgIsKey: true},
-    {
-        label: 'TTL',
-        detail: 'Tiempo de vida restante en segundos (-1 sin expirar, -2 no existe)',
-        insertText: 'TTL ${1:key}',
-        firstArgIsKey: true,
-    },
-    {label: 'PERSIST', detail: 'Quita el TTL de una key (la vuelve permanente)', insertText: 'PERSIST ${1:key}', firstArgIsKey: true},
-    {
-        label: 'TYPE',
-        detail: 'Tipo de dato de una key (string/hash/list/set/zset/stream)',
-        insertText: 'TYPE ${1:key}',
-        firstArgIsKey: true,
-    },
-    {label: 'SCAN', detail: 'Recorre el keyspace de forma incremental (nunca usar KEYS *)', insertText: 'SCAN ${1:0} MATCH ${2:*}'},
-    {label: 'HGET', detail: 'Obtiene un field de un hash', insertText: 'HGET ${1:key} ${2:field}', firstArgIsKey: true},
-    {label: 'HSET', detail: 'Asigna un field de un hash', insertText: 'HSET ${1:key} ${2:field} ${3:value}', firstArgIsKey: true},
-    {label: 'HGETALL', detail: 'Todos los field/value de un hash', insertText: 'HGETALL ${1:key}', firstArgIsKey: true},
-    {label: 'HDEL', detail: 'Elimina un field de un hash', insertText: 'HDEL ${1:key} ${2:field}', firstArgIsKey: true},
-    {label: 'HKEYS', detail: 'Todos los fields de un hash', insertText: 'HKEYS ${1:key}', firstArgIsKey: true},
-    {label: 'HVALS', detail: 'Todos los values de un hash', insertText: 'HVALS ${1:key}', firstArgIsKey: true},
-    {label: 'LPUSH', detail: 'Inserta un valor al principio de una list', insertText: 'LPUSH ${1:key} ${2:value}', firstArgIsKey: true},
-    {label: 'RPUSH', detail: 'Inserta un valor al final de una list', insertText: 'RPUSH ${1:key} ${2:value}', firstArgIsKey: true},
-    {label: 'LPOP', detail: 'Remueve y devuelve el primer elemento de una list', insertText: 'LPOP ${1:key}', firstArgIsKey: true},
-    {label: 'RPOP', detail: 'Remueve y devuelve el último elemento de una list', insertText: 'RPOP ${1:key}', firstArgIsKey: true},
-    {
-        label: 'LRANGE',
-        detail: 'Rango de elementos de una list (0 -1 = todos)',
-        insertText: 'LRANGE ${1:key} ${2:0} ${3:-1}',
-        firstArgIsKey: true,
-    },
-    {label: 'LLEN', detail: 'Cantidad de elementos de una list', insertText: 'LLEN ${1:key}', firstArgIsKey: true},
-    {label: 'SADD', detail: 'Agrega un member a un set', insertText: 'SADD ${1:key} ${2:member}', firstArgIsKey: true},
-    {label: 'SREM', detail: 'Quita un member de un set', insertText: 'SREM ${1:key} ${2:member}', firstArgIsKey: true},
-    {label: 'SMEMBERS', detail: 'Todos los members de un set', insertText: 'SMEMBERS ${1:key}', firstArgIsKey: true},
-    {
-        label: 'SISMEMBER',
-        detail: 'Chequea si un member pertenece a un set',
-        insertText: 'SISMEMBER ${1:key} ${2:member}',
-        firstArgIsKey: true,
-    },
-    {
-        label: 'ZADD',
-        detail: 'Agrega un member con score a un sorted set',
-        insertText: 'ZADD ${1:key} ${2:score} ${3:member}',
-        firstArgIsKey: true,
-    },
-    {
-        label: 'ZRANGE',
-        detail: 'Rango de members de un sorted set por posición',
-        insertText: 'ZRANGE ${1:key} ${2:0} ${3:-1} WITHSCORES',
-        firstArgIsKey: true,
-    },
-    {label: 'ZSCORE', detail: 'Score de un member en un sorted set', insertText: 'ZSCORE ${1:key} ${2:member}', firstArgIsKey: true},
-    {label: 'ZREM', detail: 'Quita un member de un sorted set', insertText: 'ZREM ${1:key} ${2:member}', firstArgIsKey: true},
-    {label: 'INCR', detail: 'Incrementa en 1 una key numérica', insertText: 'INCR ${1:key}', firstArgIsKey: true},
-    {label: 'DECR', detail: 'Decrementa en 1 una key numérica', insertText: 'DECR ${1:key}', firstArgIsKey: true},
-    {label: 'INCRBY', detail: 'Incrementa una key numérica en un monto', insertText: 'INCRBY ${1:key} ${2:amount}', firstArgIsKey: true},
-    {label: 'APPEND', detail: 'Concatena texto al final de una key string', insertText: 'APPEND ${1:key} ${2:value}', firstArgIsKey: true},
-    {label: 'STRLEN', detail: 'Largo del valor de una key string', insertText: 'STRLEN ${1:key}', firstArgIsKey: true},
-    {label: 'RENAME', detail: 'Renombra una key', insertText: 'RENAME ${1:key} ${2:newkey}', firstArgIsKey: true},
-    {label: 'PING', detail: 'Verifica que el servidor responde', insertText: 'PING'},
-    {label: 'SELECT', detail: 'Cambia la base lógica (0-15) de la conexión actual', insertText: 'SELECT ${1:0}'},
-    {
-        label: 'FLUSHDB',
-        detail: 'Destructivo: borra TODAS las keys de la base lógica actual, sin confirmación de Redis',
-        insertText: 'FLUSHDB',
-    },
-    {
-        label: 'FLUSHALL',
-        detail: 'Destructivo: borra TODAS las keys de TODAS las bases lógicas, sin confirmación de Redis',
-        insertText: 'FLUSHALL',
-    },
+    {name: 'GET', snippet: 'GET ${1:key}', firstArgIsKey: true},
+    {name: 'SET', snippet: 'SET ${1:key} ${2:value}', firstArgIsKey: true},
+    {name: 'DEL', snippet: 'DEL ${1:key}', firstArgIsKey: true},
+    {name: 'EXISTS', snippet: 'EXISTS ${1:key}', firstArgIsKey: true},
+    {name: 'EXPIRE', snippet: 'EXPIRE ${1:key} ${2:seconds}', firstArgIsKey: true},
+    {name: 'TTL', snippet: 'TTL ${1:key}', firstArgIsKey: true},
+    {name: 'PERSIST', snippet: 'PERSIST ${1:key}', firstArgIsKey: true},
+    {name: 'TYPE', snippet: 'TYPE ${1:key}', firstArgIsKey: true},
+    {name: 'SCAN', snippet: 'SCAN ${1:0} MATCH ${2:*}'},
+    {name: 'HGET', snippet: 'HGET ${1:key} ${2:field}', firstArgIsKey: true},
+    {name: 'HSET', snippet: 'HSET ${1:key} ${2:field} ${3:value}', firstArgIsKey: true},
+    {name: 'HGETALL', snippet: 'HGETALL ${1:key}', firstArgIsKey: true},
+    {name: 'HDEL', snippet: 'HDEL ${1:key} ${2:field}', firstArgIsKey: true},
+    {name: 'HKEYS', snippet: 'HKEYS ${1:key}', firstArgIsKey: true},
+    {name: 'HVALS', snippet: 'HVALS ${1:key}', firstArgIsKey: true},
+    {name: 'LPUSH', snippet: 'LPUSH ${1:key} ${2:value}', firstArgIsKey: true},
+    {name: 'RPUSH', snippet: 'RPUSH ${1:key} ${2:value}', firstArgIsKey: true},
+    {name: 'LPOP', snippet: 'LPOP ${1:key}', firstArgIsKey: true},
+    {name: 'RPOP', snippet: 'RPOP ${1:key}', firstArgIsKey: true},
+    {name: 'LRANGE', snippet: 'LRANGE ${1:key} ${2:0} ${3:-1}', firstArgIsKey: true},
+    {name: 'LLEN', snippet: 'LLEN ${1:key}', firstArgIsKey: true},
+    {name: 'SADD', snippet: 'SADD ${1:key} ${2:member}', firstArgIsKey: true},
+    {name: 'SREM', snippet: 'SREM ${1:key} ${2:member}', firstArgIsKey: true},
+    {name: 'SMEMBERS', snippet: 'SMEMBERS ${1:key}', firstArgIsKey: true},
+    {name: 'SISMEMBER', snippet: 'SISMEMBER ${1:key} ${2:member}', firstArgIsKey: true},
+    {name: 'ZADD', snippet: 'ZADD ${1:key} ${2:score} ${3:member}', firstArgIsKey: true},
+    {name: 'ZRANGE', snippet: 'ZRANGE ${1:key} ${2:0} ${3:-1} WITHSCORES', firstArgIsKey: true},
+    {name: 'ZSCORE', snippet: 'ZSCORE ${1:key} ${2:member}', firstArgIsKey: true},
+    {name: 'ZREM', snippet: 'ZREM ${1:key} ${2:member}', firstArgIsKey: true},
+    {name: 'INCR', snippet: 'INCR ${1:key}', firstArgIsKey: true},
+    {name: 'DECR', snippet: 'DECR ${1:key}', firstArgIsKey: true},
+    {name: 'INCRBY', snippet: 'INCRBY ${1:key} ${2:amount}', firstArgIsKey: true},
+    {name: 'APPEND', snippet: 'APPEND ${1:key} ${2:value}', firstArgIsKey: true},
+    {name: 'STRLEN', snippet: 'STRLEN ${1:key}', firstArgIsKey: true},
+    {name: 'RENAME', snippet: 'RENAME ${1:key} ${2:newkey}', firstArgIsKey: true},
+    {name: 'PING', snippet: 'PING'},
+    {name: 'SELECT', snippet: 'SELECT ${1:0}'},
+    {name: 'FLUSHDB', snippet: 'FLUSHDB'},
+    {name: 'FLUSHALL', snippet: 'FLUSHALL'},
     // RediSearch — first arg is an index name, not a key (firstArgIsKey
     // omitted on purpose for all of these).
-    {label: 'FT.SEARCH', detail: 'Busca documentos en un índice de RediSearch', insertText: 'FT.SEARCH ${1:index} ${2:query}'},
-    {
-        label: 'FT.AGGREGATE',
-        detail: 'Agrupa/transforma resultados de un índice de RediSearch',
-        insertText: 'FT.AGGREGATE ${1:index} ${2:query}',
-    },
-    {
-        label: 'FT.CREATE',
-        detail: 'Crea un índice de RediSearch',
-        insertText: 'FT.CREATE ${1:index} ON ${2:HASH} PREFIX 1 ${3:prefix:} SCHEMA ${4:field} ${5:TEXT}',
-    },
-    {label: 'FT.INFO', detail: 'Información y estadísticas de un índice', insertText: 'FT.INFO ${1:index}'},
-    {label: 'FT.DROPINDEX', detail: 'Elimina un índice (no borra los documentos, salvo DD)', insertText: 'FT.DROPINDEX ${1:index}'},
+    {name: 'FT.SEARCH', snippet: 'FT.SEARCH ${1:index} ${2:query}'},
+    {name: 'FT.AGGREGATE', snippet: 'FT.AGGREGATE ${1:index} ${2:query}'},
+    {name: 'FT.CREATE', snippet: 'FT.CREATE ${1:index} ON ${2:HASH} PREFIX 1 ${3:prefix:} SCHEMA ${4:field} ${5:TEXT}'},
+    {name: 'FT.INFO', snippet: 'FT.INFO ${1:index}'},
+    {name: 'FT.DROPINDEX', snippet: 'FT.DROPINDEX ${1:index}'},
     // RedisJSON — first arg is a key, like the core data-structure commands.
-    {
-        label: 'JSON.SET',
-        detail: 'Asigna un valor JSON en una key (RedisJSON)',
-        insertText: 'JSON.SET ${1:key} ${2:$} ${3:value}',
-        firstArgIsKey: true,
-    },
-    {label: 'JSON.GET', detail: 'Obtiene el valor JSON de una key', insertText: 'JSON.GET ${1:key}', firstArgIsKey: true},
-    {
-        label: 'JSON.DEL',
-        detail: 'Elimina una key, o un path dentro de un documento JSON',
-        insertText: 'JSON.DEL ${1:key}',
-        firstArgIsKey: true,
-    },
-    {label: 'JSON.TYPE', detail: 'Tipo del valor JSON en un path', insertText: 'JSON.TYPE ${1:key}', firstArgIsKey: true},
-    {
-        label: 'JSON.ARRAPPEND',
-        detail: 'Agrega elementos al final de un array JSON',
-        insertText: 'JSON.ARRAPPEND ${1:key} ${2:$} ${3:value}',
-        firstArgIsKey: true,
-    },
-    {label: 'JSON.ARRLEN', detail: 'Cantidad de elementos de un array JSON', insertText: 'JSON.ARRLEN ${1:key}', firstArgIsKey: true},
-    {label: 'JSON.OBJKEYS', detail: 'Nombres de los campos de un objeto JSON', insertText: 'JSON.OBJKEYS ${1:key}', firstArgIsKey: true},
-    {
-        label: 'JSON.STRLEN',
-        detail: 'Largo de un valor string dentro de un documento JSON',
-        insertText: 'JSON.STRLEN ${1:key}',
-        firstArgIsKey: true,
-    },
-    {
-        label: 'JSON.NUMINCRBY',
-        detail: 'Incrementa un valor numérico dentro de un documento JSON',
-        insertText: 'JSON.NUMINCRBY ${1:key} ${2:$} ${3:amount}',
-        firstArgIsKey: true,
-    },
-    {
-        label: 'JSON.MERGE',
-        detail: 'Combina (RFC 7396 merge patch) un valor dentro de un documento JSON',
-        insertText: 'JSON.MERGE ${1:key} ${2:$} ${3:value}',
-        firstArgIsKey: true,
-    },
-    {
-        label: 'JSON.CLEAR',
-        detail: 'Vacía arrays/objetos, o pone en 0 valores numéricos, en un path',
-        insertText: 'JSON.CLEAR ${1:key}',
-        firstArgIsKey: true,
-    },
+    {name: 'JSON.SET', snippet: 'JSON.SET ${1:key} ${2:$} ${3:value}', firstArgIsKey: true},
+    {name: 'JSON.GET', snippet: 'JSON.GET ${1:key}', firstArgIsKey: true},
+    {name: 'JSON.DEL', snippet: 'JSON.DEL ${1:key}', firstArgIsKey: true},
+    {name: 'JSON.TYPE', snippet: 'JSON.TYPE ${1:key}', firstArgIsKey: true},
+    {name: 'JSON.ARRAPPEND', snippet: 'JSON.ARRAPPEND ${1:key} ${2:$} ${3:value}', firstArgIsKey: true},
+    {name: 'JSON.ARRLEN', snippet: 'JSON.ARRLEN ${1:key}', firstArgIsKey: true},
+    {name: 'JSON.OBJKEYS', snippet: 'JSON.OBJKEYS ${1:key}', firstArgIsKey: true},
+    {name: 'JSON.STRLEN', snippet: 'JSON.STRLEN ${1:key}', firstArgIsKey: true},
+    {name: 'JSON.NUMINCRBY', snippet: 'JSON.NUMINCRBY ${1:key} ${2:$} ${3:amount}', firstArgIsKey: true},
+    {name: 'JSON.MERGE', snippet: 'JSON.MERGE ${1:key} ${2:$} ${3:value}', firstArgIsKey: true},
+    {name: 'JSON.CLEAR', snippet: 'JSON.CLEAR ${1:key}', firstArgIsKey: true},
 ]
 
 // FT.SEARCH/FT.AGGREGATE's query modifier clauses — suggested as plain
@@ -190,7 +112,11 @@ const FT_SEARCH_MODIFIERS = [
     'DESC',
 ]
 
-const COMMAND_NAMES = new Set(REDIS_COMMANDS.map((c) => c.label))
+const COMMAND_NAMES = new Set(REDIS_COMMANDS.map((c) => c.name))
+
+function commandDetail(name: string): string {
+    return (t().redis.commands as Record<string, string>)[name] ?? ''
+}
 
 // "SET ${1:key} ${2:value}" → "SET key value" — a clean one-line syntax
 // reminder for the hover tooltip, reusing the same snippet text instead of
@@ -234,7 +160,7 @@ const redisCompletionSource: CompletionSource = (context): CompletionResult | nu
         const wordMatch = context.matchBefore(/[A-Za-z_][A-Za-z0-9_.]*/)
         return {
             from: wordMatch ? wordMatch.from : context.pos,
-            options: REDIS_COMMANDS.map((c) => snippetCompletion(c.insertText, {label: c.label, type: 'function', detail: c.detail})),
+            options: REDIS_COMMANDS.map((c) => snippetCompletion(c.snippet, {label: c.name, type: 'function', detail: commandDetail(c.name)})),
             validFor: /^[A-Za-z_][A-Za-z0-9_.]*$/,
         }
     }
@@ -264,7 +190,7 @@ const redisCompletionSource: CompletionSource = (context): CompletionResult | nu
 
     if (/\s/.test(restAfterCommand)) return null
 
-    const command = REDIS_COMMANDS.find((c) => c.label === commandName)
+    const command = REDIS_COMMANDS.find((c) => c.name === commandName)
     if (!command?.firstArgIsKey) return null
 
     const typed = restAfterCommand.toLowerCase()
@@ -286,7 +212,7 @@ const redisHover = hoverTooltip((view, pos) => {
     while (end < to && /\w/.test(text[end - from])) end++
     if (start === end) return null
 
-    const command = REDIS_COMMANDS.find((c) => c.label === text.slice(start - from, end - from).toUpperCase())
+    const command = REDIS_COMMANDS.find((c) => c.name === text.slice(start - from, end - from).toUpperCase())
     if (!command) return null
 
     return {
@@ -303,7 +229,7 @@ const redisHover = hoverTooltip((view, pos) => {
             dom.style.borderRadius = '6px'
             dom.style.maxWidth = '360px'
             dom.style.whiteSpace = 'pre-wrap'
-            dom.textContent = `${stripSnippetPlaceholders(command.insertText)}\n${command.detail}`
+            dom.textContent = `${stripSnippetPlaceholders(command.snippet)}\n${commandDetail(command.name)}`
             return {dom}
         },
     }

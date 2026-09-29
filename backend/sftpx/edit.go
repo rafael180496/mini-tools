@@ -2,8 +2,8 @@ package sftpx
 
 import (
 	"bytes"
-	"fmt"
 	"io"
+	"mini-tools/backend/i18n"
 )
 
 // Reading and writing a remote file's contents, for editing it inside the
@@ -73,7 +73,7 @@ func (m *BrowseManager) ReadFileForEdit(sessionID, path string) (RemoteFile, err
 	// being appended to is exactly the case that would hang.
 	data, err := io.ReadAll(io.LimitReader(rc, maxEditableBytes+1))
 	if err != nil {
-		return RemoteFile{}, fmt.Errorf("sftpx: leyendo %q: %w", path, err)
+		return RemoteFile{}, i18n.Errorf(i18n.Msg{ES: "sftpx: leyendo %q: %w", EN: "sftpx: reading %q: %w"}, path, err)
 	}
 	if len(data) > maxEditableBytes {
 		out.TooLarge = true
@@ -92,7 +92,12 @@ func (m *BrowseManager) ReadFileForEdit(sessionID, path string) (RemoteFile, err
 
 // ErrRemoteFileChanged is returned when the file's modification time moved
 // between reading and saving.
-var ErrRemoteFileChanged = fmt.Errorf("el archivo cambió en el servidor desde que lo abriste")
+// Lleva código ("remote-changed"): la interfaz abre el diálogo de conflicto
+// por el código, no por el texto, que cambia con el idioma.
+var ErrRemoteFileChanged = i18n.NewCoded("remote-changed", i18n.Msg{
+	ES: "el archivo cambió en el servidor desde que lo abriste",
+	EN: "the file changed on the server since you opened it",
+})
 
 // WriteFileFromEdit saves content back, refusing when the remote file
 // changed since it was read.
@@ -124,10 +129,10 @@ func (m *BrowseManager) WriteFileFromEdit(sessionID, path, content string, expec
 	}
 	if _, err := io.Copy(w, bytes.NewReader([]byte(content))); err != nil {
 		w.Close()
-		return 0, fmt.Errorf("sftpx: escribiendo %q: %w", path, err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "sftpx: escribiendo %q: %w", EN: "sftpx: writing %q: %w"}, path, err)
 	}
 	if err := w.Close(); err != nil {
-		return 0, fmt.Errorf("sftpx: cerrando %q: %w", path, err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "sftpx: cerrando %q: %w", EN: "sftpx: closing %q: %w"}, path, err)
 	}
 
 	// Return the new mtime so the editor can keep saving without reopening

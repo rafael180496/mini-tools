@@ -2,8 +2,8 @@ package localterm
 
 import (
 	"encoding/base64"
-	"fmt"
 	"io"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,7 +79,7 @@ func (m *SessionManager) OpenWith(sessionID, cwd, shellID string, cols, rows int
 
 	sh, ok := lookupShell(shellID)
 	if !ok {
-		return fmt.Errorf("localterm: no se encontró ningún shell instalado en este sistema")
+		return i18n.New(i18n.Msg{ES: "localterm: no se encontró ningún shell instalado en este sistema", EN: "localterm: no shell was found installed on this system"})
 	}
 
 	// Un cwd que ya no existe (el repo se movió o se borró estando la
@@ -99,7 +99,7 @@ func (m *SessionManager) OpenWith(sessionID, cwd, shellID string, cols, rows int
 
 	p, err := pty.New()
 	if err != nil {
-		return fmt.Errorf("localterm: abriendo pty: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "localterm: abriendo pty: %w", EN: "localterm: opening pty: %w"}, err)
 	}
 
 	if cols > 0 && rows > 0 {
@@ -115,7 +115,7 @@ func (m *SessionManager) OpenWith(sessionID, cwd, shellID string, cols, rows int
 
 	if err := cmd.Start(); err != nil {
 		p.Close()
-		return fmt.Errorf("localterm: iniciando %s: %w", sh.Label, err)
+		return i18n.Errorf(i18n.Msg{ES: "localterm: iniciando %s: %w", EN: "localterm: starting %s: %w"}, sh.Label, err)
 	}
 
 	m.mu.Lock()
@@ -180,7 +180,7 @@ func (m *SessionManager) waitExit(sessionID string, cmd *pty.Cmd) {
 func (m *SessionManager) Write(sessionID, data string) error {
 	s := m.get(sessionID)
 	if s == nil {
-		return fmt.Errorf("localterm: no hay una terminal abierta para %q", sessionID)
+		return i18n.Errorf(i18n.Msg{ES: "localterm: no hay una terminal abierta para %q", EN: "localterm: there is no open terminal for %q"}, sessionID)
 	}
 	_, err := s.pty.Write([]byte(data))
 	return err
@@ -192,7 +192,7 @@ func (m *SessionManager) Write(sessionID, data string) error {
 func (m *SessionManager) Resize(sessionID string, cols, rows int) error {
 	s := m.get(sessionID)
 	if s == nil {
-		return fmt.Errorf("localterm: no hay una terminal abierta para %q", sessionID)
+		return i18n.Errorf(i18n.Msg{ES: "localterm: no hay una terminal abierta para %q", EN: "localterm: there is no open terminal for %q"}, sessionID)
 	}
 	if cols <= 0 || rows <= 0 {
 		return nil

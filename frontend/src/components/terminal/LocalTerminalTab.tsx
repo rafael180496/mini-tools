@@ -7,6 +7,7 @@ import SshHistoryPanel from '../ssh/SshHistoryPanel'
 import SshSnippetsPanel from '../ssh/SshSnippetsPanel'
 import SshTerminalThemePicker from '../ssh/SshTerminalThemePicker'
 import LocalTerminalPanel from './LocalTerminalPanel'
+import {useT} from '../../i18n'
 
 // Una terminal del SISTEMA OPERATIVO como pestaña del módulo SSH.
 //
@@ -52,6 +53,7 @@ export default function LocalTerminalTab({
     terminalFontSize,
     visible,
 }: Props) {
+    const t = useT()
     const [showHistory, setShowHistory] = useState(false)
     const [showSnippets, setShowSnippets] = useState(false)
     const [showThemePicker, setShowThemePicker] = useState(false)
@@ -82,9 +84,9 @@ export default function LocalTerminalTab({
                 <Icon name="terminal" size={13} className="shrink-0 text-primary" />
                 <span
                     className="font-medium text-on-surface"
-                    title="Corre en ESTA máquina, no en un servidor: lo que ejecutes acá pasa en tu equipo, con tus permisos."
+                    title={t.terminal.local.titleTooltip}
                 >
-                    Terminal local
+                    {t.terminal.local.title}
                 </span>
 
                 <span className="ml-auto flex shrink-0 items-center gap-0.5">
@@ -97,7 +99,7 @@ export default function LocalTerminalTab({
                             setShowHistory(false)
                             setShowThemePicker(false)
                         }}
-                        title="Snippets — los MISMOS que usás en las terminales SSH. Ejecutar los manda a esta shell local; Pegar los deja escritos para revisarlos antes."
+                        title={t.terminal.local.snippetsTooltip}
                         className={`rounded p-1 ${showSnippets ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'}`}
                     >
                         <Icon name="code_blocks" size={14} />
@@ -108,7 +110,7 @@ export default function LocalTerminalTab({
                             setShowSnippets(false)
                             setShowThemePicker(false)
                         }}
-                        title={`Comandos que ya ejecutaste en ${shellLabel || 'esta shell'}, guardados cifrados en el vault. Se puede apagar el registro y borrar lo guardado desde el mismo panel.`}
+                        title={t.terminal.local.historyTooltip({shell: shellLabel || t.terminal.local.thisShell})}
                         className={`rounded p-1 ${showHistory ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'}`}
                     >
                         <Icon name="history" size={14} />
@@ -119,7 +121,7 @@ export default function LocalTerminalTab({
                             setShowSnippets(false)
                             setShowHistory(false)
                         }}
-                        title="Colores de la terminal. Es un ajuste de TODAS las terminales de la app, no solo de esta pestaña."
+                        title={t.terminal.local.themeTooltip}
                         className={`rounded p-1 ${showThemePicker ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'}`}
                     >
                         <Icon name="palette" size={14} />
@@ -162,10 +164,10 @@ export default function LocalTerminalTab({
             {showHistory && (
                 <SshHistoryPanel
                     scope={scope}
-                    scopeLabel={shellLabel || 'la terminal local'}
+                    scopeLabel={shellLabel || t.terminal.local.historyScope}
                     load={(limit) => ListLocalHistory(scope, limit)}
                     clear={() => ClearLocalHistory(scope)}
-                    keepsNote="El historial del propio shell de tu máquina (~/.zsh_history, el de PowerShell y compañía) no se toca: eso vive afuera de la app y se limpia afuera."
+                    keepsNote={t.terminal.local.historyKeepsNote}
                     onClose={() => setShowHistory(false)}
                     onPaste={(cmd) => write(cmd)}
                     onRun={(cmd) => write(cmd + '\r')}

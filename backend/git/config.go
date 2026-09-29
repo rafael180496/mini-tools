@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"runtime"
 	"strings"
 )
@@ -111,7 +111,7 @@ func (r *Runner) setOrUnset(root, scope, key, value string) error {
 			}
 			// A missing global config file is likewise not a failure to unset.
 			if scope == "--global" && strings.Contains(strings.ToLower(err.Error()), "could not lock") {
-				return fmt.Errorf("no se pudo escribir ~/.gitconfig: %w", err)
+				return i18n.Errorf(i18n.Msg{ES: "no se pudo escribir ~/.gitconfig: %w", EN: "could not write ~/.gitconfig: %w"}, err)
 			}
 			return nil
 		}
@@ -120,11 +120,11 @@ func (r *Runner) setOrUnset(root, scope, key, value string) error {
 	// Values starting with "-" would be read as flags; `--` is not accepted
 	// by git config, so the check is explicit.
 	if strings.HasPrefix(v, "-") {
-		return fmt.Errorf("valor inválido para %s: no puede empezar con '-'", key)
+		return i18n.Errorf(i18n.Msg{ES: "valor inválido para %s: no puede empezar con '-'", EN: "invalid value for %s: it cannot start with '-'"}, key)
 	}
 	_, err := r.runLocal(root, "config", scope, key, v)
 	if err != nil {
-		return fmt.Errorf("no se pudo escribir %s: %w", key, err)
+		return i18n.Errorf(i18n.Msg{ES: "no se pudo escribir %s: %w", EN: "could not write %s: %w"}, key, err)
 	}
 	return nil
 }
@@ -215,7 +215,7 @@ func (r *Runner) SetCredentialHelper(repoPath, helper string, global bool) error
 		// "-" and there is no shell — but a typo'd helper name turns into
 		// "git: 'credential-xyz' is not a git command" on the next fetch,
 		// far from where it was introduced.
-		return fmt.Errorf("credential helper desconocido: %q", helper)
+		return i18n.Errorf(i18n.Msg{ES: "credential helper desconocido: %q", EN: "unknown credential helper: %q"}, helper)
 	}
 	scope := "--local"
 	if global {
@@ -231,27 +231,27 @@ func credentialHelperOptions() []CredentialHelperOption {
 	switch runtime.GOOS {
 	case "darwin":
 		return []CredentialHelperOption{
-			{Value: "osxkeychain", Label: "Llavero de macOS", Secure: true},
-			{Value: "cache --timeout=3600", Label: "Recordar 1 hora (en memoria)", Secure: true},
-			{Value: "store", Label: "Archivo en texto plano (~/.git-credentials)"},
+			{Value: "osxkeychain", Label: i18n.T(i18n.Msg{ES: "Llavero de macOS", EN: "macOS Keychain"}), Secure: true},
+			{Value: "cache --timeout=3600", Label: i18n.T(i18n.Msg{ES: "Recordar 1 hora (en memoria)", EN: "Remember for 1 hour (in memory)"}), Secure: true},
+			{Value: "store", Label: i18n.T(i18n.Msg{ES: "Archivo en texto plano (~/.git-credentials)", EN: "Plain-text file (~/.git-credentials)"})},
 		}
 	case "windows":
 		return []CredentialHelperOption{
-			{Value: "manager", Label: "Administrador de credenciales de Windows", Secure: true},
-			{Value: "wincred", Label: "Credenciales de Windows (clásico)", Secure: true},
-			{Value: "store", Label: "Archivo en texto plano (~/.git-credentials)"},
+			{Value: "manager", Label: i18n.T(i18n.Msg{ES: "Administrador de credenciales de Windows", EN: "Windows Credential Manager"}), Secure: true},
+			{Value: "wincred", Label: i18n.T(i18n.Msg{ES: "Credenciales de Windows (clásico)", EN: "Windows Credentials (classic)"}), Secure: true},
+			{Value: "store", Label: i18n.T(i18n.Msg{ES: "Archivo en texto plano (~/.git-credentials)", EN: "Plain-text file (~/.git-credentials)"})},
 		}
 	default:
 		return []CredentialHelperOption{
-			{Value: "cache --timeout=3600", Label: "Recordar 1 hora (en memoria)", Secure: true},
+			{Value: "cache --timeout=3600", Label: i18n.T(i18n.Msg{ES: "Recordar 1 hora (en memoria)", EN: "Remember for 1 hour (in memory)"}), Secure: true},
 			// El único de toda la lista que NO viene con git: hay que
 			// instalarlo aparte (o compilarlo, en varias distros) y suele
 			// vivir en /usr/lib/git-core, fuera del PATH, así que sondear
 			// con LookPath daría falsos negativos. Entre un sondeo que se
 			// equivoca la mitad de las veces y una etiqueta honesta, la
 			// etiqueta: el usuario sabe si lo tiene, la app no.
-			{Value: "libsecret", Label: "Llavero del escritorio (requiere git-credential-libsecret)", Secure: true},
-			{Value: "store", Label: "Archivo en texto plano (~/.git-credentials)"},
+			{Value: "libsecret", Label: i18n.T(i18n.Msg{ES: "Llavero del escritorio (requiere git-credential-libsecret)", EN: "Desktop keyring (requires git-credential-libsecret)"}), Secure: true},
+			{Value: "store", Label: i18n.T(i18n.Msg{ES: "Archivo en texto plano (~/.git-credentials)", EN: "Plain-text file (~/.git-credentials)"})},
 		}
 	}
 }

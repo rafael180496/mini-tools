@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/httpclient"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/vault"
 )
 
@@ -147,7 +147,7 @@ func (a *App) HttpImportFiles(paths []string) (*HttpImportBatch, error) {
 		}
 		if info.Size() > httpImportMaxFileBytes {
 			batch.add(HttpImportOutcome{Source: path, Name: filepath.Base(path),
-				Error: fmt.Sprintf("el archivo pesa %d MB; el tope es %d MB", info.Size()>>20, httpImportMaxFileBytes>>20)})
+				Error: i18n.T(i18n.Msg{ES: "el archivo pesa %d MB; el tope es %d MB", EN: "the file is %d MB; the limit is %d MB"}, info.Size()>>20, httpImportMaxFileBytes>>20)})
 			continue
 		}
 		data, err := os.ReadFile(path)
@@ -169,11 +169,11 @@ func (a *App) HttpImportPickFiles() ([]string, error) {
 		return nil, err
 	}
 	paths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:   "Elegir colecciones, entornos o volcados de Postman",
-		Filters: []runtime.FileFilter{{DisplayName: "JSON de Postman (*.json)", Pattern: "*.json"}},
+		Title:   i18n.T(i18n.Msg{ES: "Elegir colecciones, entornos o volcados de Postman", EN: "Choose Postman collections, environments or dumps"}),
+		Filters: []runtime.FileFilter{{DisplayName: i18n.T(i18n.Msg{ES: "JSON de Postman (*.json)", EN: "Postman JSON (*.json)"}), Pattern: "*.json"}},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("app: abriendo el selector: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: abriendo el selector: %w", EN: "app: opening the picker: %w"}, err)
 	}
 	if paths == nil {
 		paths = []string{}
@@ -187,10 +187,10 @@ func (a *App) HttpImportPickFolder() (string, error) {
 		return "", err
 	}
 	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Elegir una carpeta con colecciones de Postman",
+		Title: i18n.T(i18n.Msg{ES: "Elegir una carpeta con colecciones de Postman", EN: "Choose a folder with Postman collections"}),
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo el selector: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo el selector: %w", EN: "app: opening the picker: %w"}, err)
 	}
 	return dir, nil
 }
@@ -249,7 +249,7 @@ func (a *App) importBlob(data []byte, source, collectionID string, batch *HttpIm
 
 	default:
 		if name == "" {
-			name = "lo pegado"
+			name = i18n.T(i18n.Msg{ES: "lo pegado", EN: "pasted text"})
 		}
 		batch.add(HttpImportOutcome{Source: source, Name: name, Error: det.Reason})
 	}
@@ -336,7 +336,7 @@ func (a *App) importPostmanDump(data []byte, source string, batch *HttpImportBat
 // cerrar la pestaña, que es justo lo contrario de importarla.
 func (a *App) saveImportedRequest(req httpclient.Request, name, collectionID, source string) (*HttpImportOutcome, error) {
 	if collectionID == "" {
-		col, err := a.vault.SaveHTTPCollection(vault.HTTPCollection{Name: "Importadas"})
+		col, err := a.vault.SaveHTTPCollection(vault.HTTPCollection{Name: i18n.T(i18n.Msg{ES: "Importadas", EN: "Imported"})})
 		if err != nil {
 			return nil, err
 		}
@@ -380,7 +380,7 @@ func parseSingleRequest(kind httpclient.ImportKind, text string) (httpclient.Req
 		}
 		return req, requestName(req), nil
 	}
-	return httpclient.Request{}, "", fmt.Errorf("no es una petición")
+	return httpclient.Request{}, "", i18n.Errorf(i18n.Msg{ES: "no es una petición", EN: "it's not a request"})
 }
 
 // requestName nombra la petición con el último tramo de la ruta, que es lo
@@ -399,7 +399,7 @@ func requestName(req httpclient.Request) string {
 		}
 	}
 	if raw == "" {
-		return "Petición importada"
+		return i18n.T(i18n.Msg{ES: "Petición importada", EN: "Imported request"})
 	}
 	return raw
 }

@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"fmt"
+	"mini-tools/backend/i18n"
 	"regexp"
 	"sort"
 	"strings"
@@ -64,7 +65,7 @@ type DocCollection struct {
 func DocTitle(collectionName string) string {
 	name := strings.TrimSpace(collectionName)
 	if name == "" {
-		name = "Sin nombre"
+		name = i18n.T(msgUntitled)
 	}
 	return "API · " + name
 }
@@ -80,17 +81,17 @@ func BuildDocs(c DocCollection) string {
 
 	writeVariables(&b, c.Variables)
 	if line := authSummary(c.Auth); line != "" {
-		b.WriteString("## Autenticación de la colección\n\n" + line + "\n\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "## Autenticación de la colección", EN: "## Collection authentication"}) + "\n\n" + line + "\n\n")
 	}
 
 	if len(c.Requests) == 0 {
-		b.WriteString("_La colección todavía no tiene peticiones._\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "_La colección todavía no tiene peticiones._", EN: "_The collection has no requests yet._"}) + "\n")
 		return b.String()
 	}
 
 	writeIndex(&b, c.Requests)
 
-	b.WriteString("## Peticiones\n")
+	b.WriteString(i18n.T(i18n.Msg{ES: "## Peticiones", EN: "## Requests"}) + "\n")
 	for _, r := range c.Requests {
 		writeRequest(&b, r)
 	}
@@ -100,7 +101,7 @@ func BuildDocs(c DocCollection) string {
 // writeIndex arma el índice agrupado por carpeta. Con veinte peticiones, la
 // lista de arriba es lo único que hace la nota navegable.
 func writeIndex(b *strings.Builder, reqs []DocRequest) {
-	b.WriteString("## Índice\n\n")
+	b.WriteString(i18n.T(i18n.Msg{ES: "## Índice", EN: "## Index"}) + "\n\n")
 
 	// Sin carpetas no hay grupos que encabezar: un único título "Raíz" arriba
 	// de la lista entera no dice nada que la lista no diga.
@@ -130,7 +131,7 @@ func writeIndex(b *strings.Builder, reqs []DocRequest) {
 			}
 			lastFolder = r.Folder
 			if r.Folder == "" {
-				b.WriteString("**Raíz**\n\n")
+				b.WriteString(i18n.T(i18n.Msg{ES: "**Raíz**", EN: "**Root**"}) + "\n\n")
 			} else {
 				fmt.Fprintf(b, "**%s**\n\n", r.Folder)
 			}
@@ -143,7 +144,7 @@ func writeIndex(b *strings.Builder, reqs []DocRequest) {
 func writeRequest(b *strings.Builder, r DocRequest) {
 	fmt.Fprintf(b, "\n### %s %s\n\n", r.Method, r.Name)
 	if r.Folder != "" {
-		fmt.Fprintf(b, "_En %s._\n\n", r.Folder)
+		b.WriteString(i18n.T(i18n.Msg{ES: "_En %s._", EN: "_In %s._"}, r.Folder) + "\n\n")
 	}
 	fmt.Fprintf(b, "```http\n%s %s\n```\n\n", r.Method, r.URL)
 
@@ -151,9 +152,9 @@ func writeRequest(b *strings.Builder, r DocRequest) {
 		b.WriteString(d + "\n\n")
 	}
 
-	writeKeyValues(b, "Parámetros de ruta", r.PathVars)
-	writeKeyValues(b, "Parámetros de consulta", r.Params)
-	writeKeyValues(b, "Cabeceras", RedactHeaders(r.Headers))
+	writeKeyValues(b, i18n.T(i18n.Msg{ES: "Parámetros de ruta", EN: "Path parameters"}), r.PathVars)
+	writeKeyValues(b, i18n.T(i18n.Msg{ES: "Parámetros de consulta", EN: "Query parameters"}), r.Params)
+	writeKeyValues(b, i18n.T(i18n.Msg{ES: "Cabeceras", EN: "Headers"}), RedactHeaders(r.Headers))
 	writeBody(b, r.Body)
 
 	if line := authSummary(r.Auth); line != "" {
@@ -161,7 +162,7 @@ func writeRequest(b *strings.Builder, r DocRequest) {
 		if from != "" {
 			from = " (" + from + ")"
 		}
-		fmt.Fprintf(b, "**Autenticación**%s: %s\n\n", from, line)
+		b.WriteString(i18n.T(i18n.Msg{ES: "**Autenticación**%s: %s", EN: "**Authentication**%s: %s"}, from, line) + "\n\n")
 	}
 }
 
@@ -178,7 +179,7 @@ func writeKeyValues(b *strings.Builder, title string, rows []KeyValue) {
 	if len(kept) == 0 {
 		return
 	}
-	fmt.Fprintf(b, "**%s**\n\n| Nombre | Valor | Descripción |\n| --- | --- | --- |\n", title)
+	fmt.Fprintf(b, "**%s**\n\n%s\n| --- | --- | --- |\n", title, i18n.T(i18n.Msg{ES: "| Nombre | Valor | Descripción |", EN: "| Name | Value | Description |"}))
 	for _, r := range kept {
 		fmt.Fprintf(b, "| `%s` | %s | %s |\n", r.Key, cell(r.Value), cell(r.Description))
 	}
@@ -197,16 +198,16 @@ func writeBody(b *strings.Builder, body Body) {
 		if lang == "" {
 			lang = "text"
 		}
-		fmt.Fprintf(b, "**Cuerpo** (%s)\n\n```%s\n%s\n```\n\n", lang, lang, clip(strings.TrimRight(body.Raw, "\n"), maxBodyChars))
+		fmt.Fprintf(b, "%s (%s)\n\n```%s\n%s\n```\n\n", i18n.T(msgDocBody), lang, lang, clip(strings.TrimRight(body.Raw, "\n"), maxBodyChars))
 	case "graphql":
 		if q := strings.TrimSpace(body.GraphQLQuery); q != "" {
-			fmt.Fprintf(b, "**Consulta GraphQL**\n\n```graphql\n%s\n```\n\n", clip(q, maxBodyChars))
+			fmt.Fprintf(b, "%s\n\n```graphql\n%s\n```\n\n", i18n.T(i18n.Msg{ES: "**Consulta GraphQL**", EN: "**GraphQL query**"}), clip(q, maxBodyChars))
 		}
 		if v := strings.TrimSpace(body.GraphQLVariables); v != "" {
-			fmt.Fprintf(b, "**Variables GraphQL**\n\n```json\n%s\n```\n\n", clip(v, maxBodyChars))
+			fmt.Fprintf(b, "%s\n\n```json\n%s\n```\n\n", i18n.T(i18n.Msg{ES: "**Variables GraphQL**", EN: "**GraphQL variables**"}), clip(v, maxBodyChars))
 		}
 	case "urlencoded":
-		writeKeyValues(b, "Cuerpo (formulario)", body.URLEncoded)
+		writeKeyValues(b, i18n.T(i18n.Msg{ES: "Cuerpo (formulario)", EN: "Body (form)"}), body.URLEncoded)
 	case "formdata":
 		var rows []KeyValue
 		for _, f := range body.FormData {
@@ -218,13 +219,13 @@ func writeBody(b *strings.Builder, body Body) {
 				// La ruta del archivo es de la máquina de quien armó la
 				// petición: no documenta nada y sí filtra el nombre de usuario
 				// del sistema.
-				value = "«archivo»"
+				value = i18n.T(i18n.Msg{ES: "«archivo»", EN: "«file»"})
 			}
 			rows = append(rows, KeyValue{Key: f.Key, Value: value, Description: f.Description, Enabled: true})
 		}
-		writeKeyValues(b, "Cuerpo (multipart)", rows)
+		writeKeyValues(b, i18n.T(i18n.Msg{ES: "Cuerpo (multipart)", EN: "Body (multipart)"}), rows)
 	case "binary":
-		b.WriteString("**Cuerpo**: un archivo binario.\n\n")
+		b.WriteString(i18n.T(msgDocBody) + i18n.T(i18n.Msg{ES: ": un archivo binario.", EN: ": a binary file."}) + "\n\n")
 	}
 }
 
@@ -243,16 +244,16 @@ func writeVariables(b *strings.Builder, vars []Variable) {
 	}
 	sort.SliceStable(kept, func(i, j int) bool { return kept[i].Key < kept[j].Key })
 
-	b.WriteString("## Variables\n\n| Variable | Valor |\n| --- | --- |\n")
+	b.WriteString(i18n.T(i18n.Msg{ES: "## Variables\n\n| Variable | Valor |", EN: "## Variables\n\n| Variable | Value |"}) + "\n| --- | --- |\n")
 	for _, v := range kept {
 		value := cell(v.Value)
 		switch {
 		case v.Secret:
-			value = "_secreta_"
+			value = i18n.T(i18n.Msg{ES: "_secreta_", EN: "_secret_"})
 		case !v.Enabled:
-			value = value + " _(deshabilitada)_"
+			value = value + i18n.T(i18n.Msg{ES: " _(deshabilitada)_", EN: " _(disabled)_"})
 		case strings.TrimSpace(v.Value) == "":
-			value = "_sin valor_"
+			value = i18n.T(i18n.Msg{ES: "_sin valor_", EN: "_no value_"})
 		}
 		fmt.Fprintf(b, "| `{{%s}}` | %s |\n", v.Key, value)
 	}
@@ -267,38 +268,38 @@ func authSummary(a Auth) string {
 		return ""
 	case "basic":
 		if a.Username != "" {
-			return fmt.Sprintf("Basic, con el usuario `%s`.", a.Username)
+			return i18n.T(i18n.Msg{ES: "Basic, con el usuario `%s`.", EN: "Basic, with the user `%s`."}, a.Username)
 		}
 		return "Basic."
 	case "digest":
 		if a.Username != "" {
-			return fmt.Sprintf("Digest (RFC 7616), con el usuario `%s`.", a.Username)
+			return i18n.T(i18n.Msg{ES: "Digest (RFC 7616), con el usuario `%s`.", EN: "Digest (RFC 7616), with the user `%s`."}, a.Username)
 		}
 		return "Digest (RFC 7616)."
 	case "bearer":
-		return "Bearer: el token viaja en `Authorization: Bearer …`."
+		return i18n.T(i18n.Msg{ES: "Bearer: el token viaja en `Authorization: Bearer …`.", EN: "Bearer: the token travels in `Authorization: Bearer …`."})
 	case "apikey":
-		where := "la cabecera"
+		where := i18n.T(i18n.Msg{ES: "la cabecera", EN: "the header"})
 		if a.In == "query" {
-			where = "la consulta"
+			where = i18n.T(i18n.Msg{ES: "la consulta", EN: "the query"})
 		}
 		if a.Key != "" {
-			return fmt.Sprintf("Clave de API en %s `%s`.", where, a.Key)
+			return i18n.T(i18n.Msg{ES: "Clave de API en %s `%s`.", EN: "API key in %s `%s`."}, where, a.Key)
 		}
-		return fmt.Sprintf("Clave de API en %s.", where)
+		return i18n.T(i18n.Msg{ES: "Clave de API en %s.", EN: "API key in %s."}, where)
 	case "jwt":
 		alg := a.Algorithm
 		if alg == "" {
 			alg = "HS256"
 		}
-		return fmt.Sprintf("JWT firmado con %s, enviado en `%s`.", alg, jwtDestination(a))
+		return i18n.T(i18n.Msg{ES: "JWT firmado con %s, enviado en `%s`.", EN: "JWT signed with %s, sent in `%s`."}, alg, jwtDestination(a))
 	case "aws":
-		parts := []string{"Firma AWS Signature v4"}
+		parts := []string{i18n.T(i18n.Msg{ES: "Firma AWS Signature v4", EN: "AWS Signature v4 signing"})}
 		if a.Service != "" {
-			parts = append(parts, "servicio `"+a.Service+"`")
+			parts = append(parts, i18n.T(i18n.Msg{ES: "servicio `%s`", EN: "service `%s`"}, a.Service))
 		}
 		if a.Region != "" {
-			parts = append(parts, "región `"+a.Region+"`")
+			parts = append(parts, i18n.T(i18n.Msg{ES: "región `%s`", EN: "region `%s`"}, a.Region))
 		}
 		return strings.Join(parts, ", ") + "."
 	case "oauth2":
@@ -306,19 +307,19 @@ func authSummary(a Auth) string {
 		if grant == "" {
 			grant = "client_credentials"
 		}
-		out := fmt.Sprintf("OAuth 2.0, flujo `%s`", grant)
+		out := i18n.T(i18n.Msg{ES: "OAuth 2.0, flujo `%s`", EN: "OAuth 2.0, `%s` flow"}, grant)
 		if a.AccessTokenURL != "" {
-			out += fmt.Sprintf(", token desde `%s`", a.AccessTokenURL)
+			out += i18n.T(i18n.Msg{ES: ", token desde `%s`", EN: ", token from `%s`"}, a.AccessTokenURL)
 		}
 		if a.Scope != "" {
-			out += fmt.Sprintf(", ámbito `%s`", a.Scope)
+			out += i18n.T(i18n.Msg{ES: ", ámbito `%s`", EN: ", scope `%s`"}, a.Scope)
 		}
 		return out + "."
 	default:
 		// Un tipo que esta versión no ejecuta pero que el import preservó: se
 		// nombra igual, porque saber que la colección usa algo que la
 		// aplicación no firma es justamente lo que hay que documentar.
-		return fmt.Sprintf("`%s` (esta versión no la firma; se conserva tal como vino).", a.Type)
+		return i18n.T(i18n.Msg{ES: "`%s` (esta versión no la firma; se conserva tal como vino).", EN: "`%s` (this version does not sign it; kept as it came)."}, a.Type)
 	}
 }
 
@@ -355,7 +356,7 @@ func clip(s string, max int) string {
 	if len(r) <= max {
 		return s
 	}
-	return strings.TrimSpace(string(r[:max])) + " … (recortado)"
+	return strings.TrimSpace(string(r[:max])) + i18n.T(i18n.Msg{ES: " … (recortado)", EN: " … (truncated)"})
 }
 
 // cell prepara un texto para una celda de tabla Markdown: sin saltos de línea
@@ -398,7 +399,10 @@ var sensitiveHeaders = map[string]bool{
 	"x-amz-security-token": true,
 }
 
-const hidden = "«oculto»"
+// msgHidden es la marca que reemplaza una credencial.
+var msgHidden = i18n.Msg{ES: "«oculto»", EN: "«hidden»"}
+
+var msgDocBody = i18n.Msg{ES: "**Cuerpo**", EN: "**Body**"}
 
 // RedactHeaders devuelve las cabeceras con el valor tapado donde corresponde.
 // La fila se conserva: saber que la petición necesita `Authorization` es
@@ -407,7 +411,7 @@ func RedactHeaders(rows []KeyValue) []KeyValue {
 	out := make([]KeyValue, len(rows))
 	for i, r := range rows {
 		if sensitiveHeaders[strings.ToLower(strings.TrimSpace(r.Key))] {
-			r.Value = hidden
+			r.Value = i18n.T(msgHidden)
 		}
 		out[i] = r
 	}
@@ -445,6 +449,7 @@ var (
 // cookie escrito en las líneas siguientes. Lo comprobamos con la colección real
 // del usuario, donde la sesión completa sobrevivía en trece líneas.
 func RedactCredentials(md string) string {
+	hidden := i18n.T(msgHidden)
 	lines := strings.Split(md, "\n")
 	out := make([]string, 0, len(lines))
 

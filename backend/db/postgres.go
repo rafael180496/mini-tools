@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"mini-tools/backend/i18n"
 )
 
 type postgresConnector struct{}
@@ -19,15 +21,15 @@ func (postgresConnector) Type() DBType { return DBTypePostgres }
 func (postgresConnector) BuildDSN(params map[string]string) (string, error) {
 	host := params["host"]
 	if host == "" {
-		return "", fmt.Errorf("postgres: falta el parámetro 'host'")
+		return "", i18n.Errorf(i18n.Msg{ES: "postgres: falta el parámetro 'host'", EN: "postgres: missing 'host' parameter"})
 	}
 	user := params["user"]
 	if user == "" {
-		return "", fmt.Errorf("postgres: falta el parámetro 'user'")
+		return "", i18n.Errorf(i18n.Msg{ES: "postgres: falta el parámetro 'user'", EN: "postgres: missing 'user' parameter"})
 	}
 	dbname := params["dbname"]
 	if dbname == "" {
-		return "", fmt.Errorf("postgres: falta el parámetro 'dbname'")
+		return "", i18n.Errorf(i18n.Msg{ES: "postgres: falta el parámetro 'dbname'", EN: "postgres: missing 'dbname' parameter"})
 	}
 
 	port := params["port"]
@@ -58,7 +60,7 @@ func (postgresConnector) BuildDSN(params map[string]string) (string, error) {
 func (postgresConnector) ParseDSN(dsn string) (map[string]string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("postgres: parseando DSN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "postgres: parseando DSN: %w", EN: "postgres: parsing DSN: %w"}, err)
 	}
 
 	params := map[string]string{

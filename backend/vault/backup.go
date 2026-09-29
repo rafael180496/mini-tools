@@ -3,13 +3,13 @@ package vault
 import (
 	"archive/zip"
 	"database/sql"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"mini-tools/backend/appdata"
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 )
 
 // Backup creates a self-contained, restorable snapshot of the vault at
@@ -21,13 +21,13 @@ import (
 func (s *Store) Backup(destPath string) error {
 	tmpDir, err := os.MkdirTemp("", "mini-tools-backup-*")
 	if err != nil {
-		return fmt.Errorf("vault: creando directorio temporal: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: creando directorio temporal: %w", EN: "vault: creating temporary directory: %w"}, err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	tmpDBPath := filepath.Join(tmpDir, "vault.db")
 	if _, err := s.db.Exec(`VACUUM INTO ?`, tmpDBPath); err != nil {
-		return fmt.Errorf("vault: generando snapshot de la base: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: generando snapshot de la base: %w", EN: "vault: generating database snapshot: %w"}, err)
 	}
 
 	saltPath, err := appdata.SaltPath()
@@ -38,7 +38,7 @@ func (s *Store) Backup(destPath string) error {
 	// descubrirlo a mitad de la escritura es lo que producía el desastre
 	// descrito abajo.
 	if _, err := os.Stat(saltPath); err != nil {
-		return fmt.Errorf("vault: falta salt.bin (%s), sin el cual un backup no se puede restaurar: %w", saltPath, err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: falta salt.bin (%s), sin el cual un backup no se puede restaurar: %w", EN: "vault: salt.bin is missing (%s), and without it a backup cannot be restored: %w"}, saltPath, err)
 	}
 
 	// # Por qué se escribe a un temporal y se renombra al final
@@ -57,7 +57,7 @@ func (s *Store) Backup(destPath string) error {
 	// intacto al anterior.
 	tmpOut, err := os.CreateTemp(filepath.Dir(destPath), ".mini-tools-backup-*.tmp")
 	if err != nil {
-		return fmt.Errorf("vault: creando archivo de backup: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: creando archivo de backup: %w", EN: "vault: creating backup file: %w"}, err)
 	}
 	tmpOutPath := tmpOut.Name()
 	// Si algo falla, el temporal se borra: no queda basura al lado del
@@ -80,13 +80,13 @@ func (s *Store) Backup(destPath string) error {
 		return err
 	}
 	if err := zw.Close(); err != nil {
-		return fmt.Errorf("vault: finalizando archivo de backup: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: finalizando archivo de backup: %w", EN: "vault: finalizing backup file: %w"}, err)
 	}
 	if err := tmpOut.Sync(); err != nil {
-		return fmt.Errorf("vault: sincronizando el backup a disco: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: sincronizando el backup a disco: %w", EN: "vault: syncing the backup to disk: %w"}, err)
 	}
 	if err := tmpOut.Close(); err != nil {
-		return fmt.Errorf("vault: cerrando el backup: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: cerrando el backup: %w", EN: "vault: closing the backup: %w"}, err)
 	}
 
 	// Se relee lo que se acabó de escribir antes de darlo por bueno. Un
@@ -97,7 +97,7 @@ func (s *Store) Backup(destPath string) error {
 	}
 
 	if err := os.Rename(tmpOutPath, destPath); err != nil {
-		return fmt.Errorf("vault: publicando el backup en %q: %w", destPath, err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: publicando el backup en %q: %w", EN: "vault: publishing the backup to %q: %w"}, destPath, err)
 	}
 	committed = true
 	return nil
@@ -109,7 +109,7 @@ func (s *Store) Backup(destPath string) error {
 func checkBackupComplete(path string) error {
 	r, err := zip.OpenReader(path)
 	if err != nil {
-		return fmt.Errorf("vault: el backup recién creado no se puede abrir: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: el backup recién creado no se puede abrir: %w", EN: "vault: the newly created backup cannot be opened: %w"}, err)
 	}
 	defer r.Close()
 
@@ -123,7 +123,7 @@ func checkBackupComplete(path string) error {
 		}
 	}
 	if !hasDB || !hasSalt {
-		return fmt.Errorf("vault: el backup quedó incompleto (vault.db=%v, salt.bin=%v) y no se publicó", hasDB, hasSalt)
+		return i18n.Errorf(i18n.Msg{ES: "vault: el backup quedó incompleto (vault.db=%v, salt.bin=%v) y no se publicó", EN: "vault: the backup was left incomplete (vault.db=%v, salt.bin=%v) and was not published"}, hasDB, hasSalt)
 	}
 	return nil
 }
@@ -131,16 +131,16 @@ func checkBackupComplete(path string) error {
 func addFileToZip(zw *zip.Writer, name, srcPath string) error {
 	src, err := os.Open(srcPath)
 	if err != nil {
-		return fmt.Errorf("vault: abriendo %s para el backup: %w", name, err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: abriendo %s para el backup: %w", EN: "vault: opening %s for the backup: %w"}, name, err)
 	}
 	defer src.Close()
 
 	w, err := zw.Create(name)
 	if err != nil {
-		return fmt.Errorf("vault: agregando %s al backup: %w", name, err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: agregando %s al backup: %w", EN: "vault: adding %s to the backup: %w"}, name, err)
 	}
 	if _, err := io.Copy(w, src); err != nil {
-		return fmt.Errorf("vault: escribiendo %s en el backup: %w", name, err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: escribiendo %s en el backup: %w", EN: "vault: writing %s to the backup: %w"}, name, err)
 	}
 	return nil
 }
@@ -158,7 +158,7 @@ func addFileToZip(zw *zip.Writer, name, srcPath string) error {
 func VerifyBackupPassword(backupPath, password string) error {
 	r, err := zip.OpenReader(backupPath)
 	if err != nil {
-		return fmt.Errorf("vault: abriendo archivo de backup: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: abriendo archivo de backup: %w", EN: "vault: opening backup file: %w"}, err)
 	}
 	defer r.Close()
 
@@ -172,12 +172,12 @@ func VerifyBackupPassword(backupPath, password string) error {
 		}
 	}
 	if dbFile == nil {
-		return fmt.Errorf("vault: backup inválido: no contiene vault.db")
+		return i18n.Errorf(i18n.Msg{ES: "vault: backup inválido: no contiene vault.db", EN: "vault: invalid backup: it does not contain vault.db"})
 	}
 
 	tmpDir, err := os.MkdirTemp("", "mini-tools-restore-check-*")
 	if err != nil {
-		return fmt.Errorf("vault: creando directorio temporal: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: creando directorio temporal: %w", EN: "vault: creating temporary directory: %w"}, err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -193,13 +193,13 @@ func VerifyBackupPassword(backupPath, password string) error {
 
 	db, err := sql.Open("sqlite", tmpDBPath)
 	if err != nil {
-		return fmt.Errorf("vault: abriendo backup para verificar: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: abriendo backup para verificar: %w", EN: "vault: opening backup to verify: %w"}, err)
 	}
 	defer db.Close()
 
 	var ciphertext, nonce []byte
 	if err := db.QueryRow(`SELECT verifier, verifier_nonce FROM vault_meta WHERE id = 1`).Scan(&ciphertext, &nonce); err != nil {
-		return fmt.Errorf("vault: el backup no tiene un verificador válido: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: el backup no tiene un verificador válido: %w", EN: "vault: the backup has no valid verifier: %w"}, err)
 	}
 
 	passwordBytes := []byte(password)
@@ -236,7 +236,7 @@ func backupSalt(saltFile *zip.File, tmpDir string) ([]byte, error) {
 		}
 		salt, err := os.ReadFile(tmpSaltPath)
 		if err != nil {
-			return nil, fmt.Errorf("vault: leyendo salt del backup: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo salt del backup: %w", EN: "vault: reading salt from the backup: %w"}, err)
 		}
 		return salt, nil
 	}
@@ -247,10 +247,14 @@ func backupSalt(saltFile *zip.File, tmpDir string) ([]byte, error) {
 	}
 	salt, err := os.ReadFile(localPath)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"vault: este backup no incluye salt.bin y esta instalación tampoco tiene uno en %s. "+
-				"Sin el salt no hay forma de derivar la clave: buscá un backup anterior que sí lo traiga "+
-				"y copiale su salt.bin a este archivo", localPath)
+		return nil, i18n.Errorf(i18n.Msg{
+			ES: "vault: este backup no incluye salt.bin y esta instalación tampoco tiene uno en %s. " +
+				"Sin el salt no hay forma de derivar la clave: buscá un backup anterior que sí lo traiga " +
+				"y copiale su salt.bin a este archivo",
+			EN: "vault: this backup does not include salt.bin and this installation does not have one at %s either. " +
+				"Without the salt there is no way to derive the key: look for an older backup that does include it " +
+				"and copy its salt.bin to this file",
+		}, localPath)
 	}
 	return salt, nil
 }
@@ -265,7 +269,7 @@ func backupSalt(saltFile *zip.File, tmpDir string) ([]byte, error) {
 func RestoreBackup(backupPath string) error {
 	r, err := zip.OpenReader(backupPath)
 	if err != nil {
-		return fmt.Errorf("vault: abriendo archivo de backup: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: abriendo archivo de backup: %w", EN: "vault: opening backup file: %w"}, err)
 	}
 	defer r.Close()
 
@@ -279,7 +283,7 @@ func RestoreBackup(backupPath string) error {
 		}
 	}
 	if dbFile == nil {
-		return fmt.Errorf("vault: backup inválido: no contiene vault.db")
+		return i18n.Errorf(i18n.Msg{ES: "vault: backup inválido: no contiene vault.db", EN: "vault: invalid backup: it does not contain vault.db"})
 	}
 
 	dbPath, err := appdata.VaultPath()
@@ -302,9 +306,12 @@ func RestoreBackup(backupPath string) error {
 			return err
 		}
 	} else if _, err := os.Stat(saltPath); err != nil {
-		return fmt.Errorf(
-			"vault: el backup no incluye salt.bin y esta instalación tampoco lo tiene: " +
-				"la base restaurada quedaría ilegible, así que no se restauró nada")
+		return i18n.Errorf(i18n.Msg{
+			ES: "vault: el backup no incluye salt.bin y esta instalación tampoco lo tiene: " +
+				"la base restaurada quedaría ilegible, así que no se restauró nada",
+			EN: "vault: the backup does not include salt.bin and this installation does not have one either: " +
+				"the restored database would be unreadable, so nothing was restored",
+		})
 	}
 
 	// Stale WAL/SHM sidecar files from whatever vault.db was there before
@@ -318,18 +325,18 @@ func RestoreBackup(backupPath string) error {
 func extractZipFile(f *zip.File, destPath string) error {
 	rc, err := f.Open()
 	if err != nil {
-		return fmt.Errorf("vault: leyendo %s del backup: %w", f.Name, err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: leyendo %s del backup: %w", EN: "vault: reading %s from the backup: %w"}, f.Name, err)
 	}
 	defer rc.Close()
 
 	out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
-		return fmt.Errorf("vault: escribiendo %s restaurado: %w", f.Name, err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: escribiendo %s restaurado: %w", EN: "vault: writing restored %s: %w"}, f.Name, err)
 	}
 	defer out.Close()
 
 	if _, err := io.Copy(out, rc); err != nil {
-		return fmt.Errorf("vault: copiando %s restaurado: %w", f.Name, err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: copiando %s restaurado: %w", EN: "vault: copying restored %s: %w"}, f.Name, err)
 	}
 	return nil
 }

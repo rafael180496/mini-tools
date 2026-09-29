@@ -2,7 +2,7 @@ package vault
 
 import (
 	"database/sql"
-	"fmt"
+	"mini-tools/backend/i18n"
 	"strings"
 	"time"
 )
@@ -123,7 +123,7 @@ const httpHistoryGlobalMax = 500
 func (s *Store) SaveHTTPCollection(c HTTPCollection) (*HTTPCollection, error) {
 	name := strings.TrimSpace(c.Name)
 	if name == "" {
-		return nil, fmt.Errorf("vault: la colección necesita un nombre")
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: la colección necesita un nombre", EN: "vault: the collection needs a name"})
 	}
 	c.Name = name
 	now := time.Now().Unix()
@@ -156,7 +156,7 @@ func (s *Store) SaveHTTPCollection(c HTTPCollection) (*HTTPCollection, error) {
 		}
 		var nextOrder int
 		if err := s.db.QueryRow(`SELECT COALESCE(MAX(sort_order), -1) + 1 FROM http_collections`).Scan(&nextOrder); err != nil {
-			return nil, fmt.Errorf("vault: calculando orden de la colección: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: calculando orden de la colección: %w", EN: "vault: computing collection order: %w"}, err)
 		}
 		c.ID, c.SortOrder, c.CreatedAt, c.UpdatedAt = id, nextOrder, now, now
 		if _, err := s.db.Exec(
@@ -168,7 +168,7 @@ func (s *Store) SaveHTTPCollection(c HTTPCollection) (*HTTPCollection, error) {
 			c.ID, c.Name, c.Description, nullable(c.FolderID), c.SortOrder,
 			vars, varsNonce, auth, authNonce, pre, preNonce, test, testNonce, comp, compNonce, now, now,
 		); err != nil {
-			return nil, fmt.Errorf("vault: creando la colección: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: creando la colección: %w", EN: "vault: creating the collection: %w"}, err)
 		}
 		return &c, nil
 	}
@@ -183,7 +183,7 @@ func (s *Store) SaveHTTPCollection(c HTTPCollection) (*HTTPCollection, error) {
 		c.Name, c.Description, nullable(c.FolderID),
 		vars, varsNonce, auth, authNonce, pre, preNonce, test, testNonce, comp, compNonce, now, c.ID,
 	); err != nil {
-		return nil, fmt.Errorf("vault: guardando la colección: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: guardando la colección: %w", EN: "vault: saving the collection: %w"}, err)
 	}
 	return &c, nil
 }
@@ -198,7 +198,7 @@ func (s *Store) ListHTTPCollections() ([]HTTPCollection, error) {
 		FROM http_collections
 		ORDER BY CASE WHEN favorite_at > 0 THEN 0 ELSE 1 END, favorite_at DESC, sort_order, name`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando colecciones: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando colecciones: %w", EN: "vault: listing collections: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -209,7 +209,7 @@ func (s *Store) ListHTTPCollections() ([]HTTPCollection, error) {
 		if err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.FolderID, &c.SortOrder,
 			&vars, &varsNonce, &auth, &authNonce,
 			&pre, &preNonce, &test, &testNonce, &comp, &compNonce, &c.DocsNoteID, &c.FavoriteAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo colección: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo colección: %w", EN: "vault: reading collection: %w"}, err)
 		}
 		c.Variables = s.decryptOptional(vars, varsNonce)
 		c.Auth = s.decryptOptional(auth, authNonce)
@@ -229,20 +229,20 @@ func (s *Store) ListHTTPCollections() ([]HTTPCollection, error) {
 func (s *Store) DeleteHTTPCollection(id string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("vault: borrando colección: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando colección: %w", EN: "vault: deleting collection: %w"}, err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(
 		`DELETE FROM http_history WHERE item_id IN (SELECT id FROM http_items WHERE collection_id = ?)`, id,
 	); err != nil {
-		return fmt.Errorf("vault: borrando historial de la colección: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando historial de la colección: %w", EN: "vault: deleting collection history: %w"}, err)
 	}
 	if _, err := tx.Exec(`DELETE FROM http_items WHERE collection_id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando ítems de la colección: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando ítems de la colección: %w", EN: "vault: deleting collection items: %w"}, err)
 	}
 	if _, err := tx.Exec(`DELETE FROM http_collections WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando la colección: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando la colección: %w", EN: "vault: deleting the collection: %w"}, err)
 	}
 	return tx.Commit()
 }
@@ -252,14 +252,14 @@ func (s *Store) DeleteHTTPCollection(id string) error {
 // SaveHTTPItem crea o actualiza una carpeta o petición. ID vacío = alta.
 func (s *Store) SaveHTTPItem(it HTTPItem) (*HTTPItem, error) {
 	if it.CollectionID == "" {
-		return nil, fmt.Errorf("vault: el ítem necesita una colección")
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: el ítem necesita una colección", EN: "vault: the item needs a collection"})
 	}
 	if it.Kind != "folder" && it.Kind != "request" {
-		return nil, fmt.Errorf("vault: tipo de ítem desconocido: %q", it.Kind)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: tipo de ítem desconocido: %q", EN: "vault: unknown item kind: %q"}, it.Kind)
 	}
 	it.Name = strings.TrimSpace(it.Name)
 	if it.Name == "" {
-		it.Name = "Sin nombre"
+		it.Name = i18n.T(i18n.Msg{ES: "Sin nombre", EN: "Untitled"})
 	}
 	now := time.Now().Unix()
 
@@ -301,7 +301,7 @@ func (s *Store) SaveHTTPItem(it HTTPItem) (*HTTPItem, error) {
 			 WHERE collection_id = ? AND COALESCE(parent_id, '') = ?`,
 			it.CollectionID, it.ParentID,
 		).Scan(&nextOrder); err != nil {
-			return nil, fmt.Errorf("vault: calculando orden del ítem: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: calculando orden del ítem: %w", EN: "vault: computing item order: %w"}, err)
 		}
 		it.ID, it.SortOrder, it.CreatedAt, it.UpdatedAt = id, nextOrder, now, now
 		if _, err := s.db.Exec(
@@ -315,7 +315,7 @@ func (s *Store) SaveHTTPItem(it HTTPItem) (*HTTPItem, error) {
 			it.Method, it.URL, it.Params, it.PathVars, it.Headers, it.Settings,
 			body, bodyNonce, auth, authNonce, docs, docsNonce, pre, preNonce, test, testNonce, comp, compNonce, now, now,
 		); err != nil {
-			return nil, fmt.Errorf("vault: creando el ítem: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: creando el ítem: %w", EN: "vault: creating the item: %w"}, err)
 		}
 		return &it, nil
 	}
@@ -332,7 +332,7 @@ func (s *Store) SaveHTTPItem(it HTTPItem) (*HTTPItem, error) {
 		it.Params, it.PathVars, it.Headers, it.Settings,
 		body, bodyNonce, auth, authNonce, docs, docsNonce, pre, preNonce, test, testNonce, comp, compNonce, now, it.ID,
 	); err != nil {
-		return nil, fmt.Errorf("vault: guardando el ítem: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: guardando el ítem: %w", EN: "vault: saving the item: %w"}, err)
 	}
 	return &it, nil
 }
@@ -348,7 +348,7 @@ func (s *Store) ListHTTPItems(collectionID string) ([]HTTPItem, error) {
 		computed, computed_nonce, created_at, updated_at
 		FROM http_items WHERE collection_id = ? ORDER BY sort_order, name`, collectionID)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando ítems: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando ítems: %w", EN: "vault: listing items: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -361,7 +361,7 @@ func (s *Store) ListHTTPItems(collectionID string) ([]HTTPItem, error) {
 			&body, &bodyNonce, &auth, &authNonce, &docs, &docsNonce,
 			&pre, &preNonce, &test, &testNonce, &comp, &compNonce,
 			&it.CreatedAt, &it.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo ítem: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo ítem: %w", EN: "vault: reading item: %w"}, err)
 		}
 		it.Body = s.decryptOptional(body, bodyNonce)
 		it.Auth = s.decryptOptional(auth, authNonce)
@@ -390,10 +390,10 @@ func (s *Store) GetHTTPItem(id string) (*HTTPItem, error) {
 		&pre, &preNonce, &test, &testNonce, &comp, &compNonce,
 		&it.CreatedAt, &it.UpdatedAt)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("vault: no existe la petición %q", id)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: no existe la petición %q", EN: "vault: request %q does not exist"}, id)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo la petición: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo la petición: %w", EN: "vault: reading the request: %w"}, err)
 	}
 	it.Body = s.decryptOptional(body, bodyNonce)
 	it.Auth = s.decryptOptional(auth, authNonce)
@@ -486,7 +486,7 @@ func (s *Store) SaveHTTPAuthAt(level HTTPAuthLevel, authJSON string) error {
 			enc, nonce, now, level.CollectionID)
 	}
 	if err != nil {
-		return fmt.Errorf("vault: guardando la autenticación: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando la autenticación: %w", EN: "vault: saving the authentication: %w"}, err)
 	}
 	return nil
 }
@@ -505,16 +505,16 @@ func (s *Store) DeleteHTTPItem(id string) error {
 
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("vault: borrando ítem: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando ítem: %w", EN: "vault: deleting item: %w"}, err)
 	}
 	defer tx.Rollback()
 
 	for _, victim := range all {
 		if _, err := tx.Exec(`DELETE FROM http_history WHERE item_id = ?`, victim); err != nil {
-			return fmt.Errorf("vault: borrando historial del ítem: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: borrando historial del ítem: %w", EN: "vault: deleting item history: %w"}, err)
 		}
 		if _, err := tx.Exec(`DELETE FROM http_items WHERE id = ?`, victim); err != nil {
-			return fmt.Errorf("vault: borrando ítem: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: borrando ítem: %w", EN: "vault: deleting item: %w"}, err)
 		}
 	}
 	return tx.Commit()
@@ -525,14 +525,14 @@ func (s *Store) itemParents(id string) ([]string, error) {
 	var collectionID string
 	if err := s.db.QueryRow(`SELECT collection_id FROM http_items WHERE id = ?`, id).Scan(&collectionID); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("vault: no existe el ítem %q", id)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: no existe el ítem %q", EN: "vault: item %q does not exist"}, id)
 		}
-		return nil, fmt.Errorf("vault: leyendo el ítem: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el ítem: %w", EN: "vault: reading the item: %w"}, err)
 	}
 
 	rows, err := s.db.Query(`SELECT id, COALESCE(parent_id, '') FROM http_items WHERE collection_id = ?`, collectionID)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo el árbol: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el árbol: %w", EN: "vault: reading the tree: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -566,7 +566,7 @@ func (s *Store) itemParents(id string) ([]string, error) {
 func (s *Store) MoveHTTPItem(id, newParentID string, order int) error {
 	var collectionID, kind string
 	if err := s.db.QueryRow(`SELECT collection_id, kind FROM http_items WHERE id = ?`, id).Scan(&collectionID, &kind); err != nil {
-		return fmt.Errorf("vault: moviendo ítem: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo ítem: %w", EN: "vault: moving item: %w"}, err)
 	}
 
 	// Una carpeta no puede caer adentro de sí misma ni de su propio
@@ -579,27 +579,27 @@ func (s *Store) MoveHTTPItem(id, newParentID string, order int) error {
 		}
 		for _, d := range descendants {
 			if d == newParentID {
-				return fmt.Errorf("vault: no se puede mover una carpeta adentro de sí misma")
+				return i18n.Errorf(i18n.Msg{ES: "vault: no se puede mover una carpeta adentro de sí misma", EN: "vault: a folder cannot be moved inside itself"})
 			}
 		}
 	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("vault: moviendo ítem: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo ítem: %w", EN: "vault: moving item: %w"}, err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`UPDATE http_items SET parent_id = ?, updated_at = ? WHERE id = ?`,
 		nullable(newParentID), time.Now().Unix(), id); err != nil {
-		return fmt.Errorf("vault: moviendo ítem: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo ítem: %w", EN: "vault: moving item: %w"}, err)
 	}
 
 	rows, err := tx.Query(
 		`SELECT id FROM http_items WHERE collection_id = ? AND COALESCE(parent_id, '') = ? AND id <> ?
 		 ORDER BY sort_order, name`, collectionID, newParentID, id)
 	if err != nil {
-		return fmt.Errorf("vault: reordenando hermanos: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: reordenando hermanos: %w", EN: "vault: reordering siblings: %w"}, err)
 	}
 	siblings := []string{}
 	for rows.Next() {
@@ -624,7 +624,7 @@ func (s *Store) MoveHTTPItem(id, newParentID string, order int) error {
 	ordered := append(append(append([]string{}, siblings[:order]...), id), siblings[order:]...)
 	for i, sib := range ordered {
 		if _, err := tx.Exec(`UPDATE http_items SET sort_order = ? WHERE id = ?`, i, sib); err != nil {
-			return fmt.Errorf("vault: reordenando hermanos: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: reordenando hermanos: %w", EN: "vault: reordering siblings: %w"}, err)
 		}
 	}
 	return tx.Commit()
@@ -655,7 +655,7 @@ func (s *Store) AddHTTPHistory(e HTTPHistoryEntry) error {
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, nullable(e.ItemID), e.Method, e.URL, e.Status, e.DurationMs, e.SizeBytes, e.Error, e.ExecutedAt,
 	); err != nil {
-		return fmt.Errorf("vault: guardando el historial: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el historial: %w", EN: "vault: saving the history: %w"}, err)
 	}
 
 	// El desempate por rowid NO es adorno: `executed_at` está en segundos, y
@@ -668,7 +668,7 @@ func (s *Store) AddHTTPHistory(e HTTPHistoryEntry) error {
 			ORDER BY executed_at DESC, rowid DESC LIMIT ?
 		)`, e.ItemID, e.ItemID, httpHistoryPerItem,
 	); err != nil {
-		return fmt.Errorf("vault: podando el historial: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: podando el historial: %w", EN: "vault: pruning the history: %w"}, err)
 	}
 	return nil
 }
@@ -680,7 +680,7 @@ func (s *Store) ListHTTPHistory(itemID string) ([]HTTPHistoryEntry, error) {
 		 ORDER BY executed_at DESC, rowid DESC LIMIT ?`,
 		itemID, httpHistoryPerItem)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo el historial: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el historial: %w", EN: "vault: reading the history: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -689,7 +689,7 @@ func (s *Store) ListHTTPHistory(itemID string) ([]HTTPHistoryEntry, error) {
 		var e HTTPHistoryEntry
 		if err := rows.Scan(&e.ID, &e.ItemID, &e.Method, &e.URL, &e.Status,
 			&e.DurationMs, &e.SizeBytes, &e.Error, &e.ExecutedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo el historial: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el historial: %w", EN: "vault: reading the history: %w"}, err)
 		}
 		out = append(out, e)
 	}
@@ -724,7 +724,7 @@ func (s *Store) ListHTTPHistoryRecent(limit int, search string) ([]HTTPHistoryEn
 		 ORDER BY h.executed_at DESC, h.rowid DESC LIMIT ?`,
 		needle, like, like, limit)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo el historial: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el historial: %w", EN: "vault: reading the history: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -734,7 +734,7 @@ func (s *Store) ListHTTPHistoryRecent(limit int, search string) ([]HTTPHistoryEn
 		if err := rows.Scan(&e.ID, &e.ItemID, &e.Method, &e.URL, &e.Status,
 			&e.DurationMs, &e.SizeBytes, &e.Error, &e.ExecutedAt,
 			&e.ItemName, &e.CollectionID, &e.CollectionName); err != nil {
-			return nil, fmt.Errorf("vault: leyendo el historial: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el historial: %w", EN: "vault: reading the history: %w"}, err)
 		}
 		out = append(out, e)
 	}
@@ -744,7 +744,7 @@ func (s *Store) ListHTTPHistoryRecent(limit int, search string) ([]HTTPHistoryEn
 // DeleteHTTPHistoryEntry borra una sola ejecución del historial.
 func (s *Store) DeleteHTTPHistoryEntry(id string) error {
 	if _, err := s.db.Exec(`DELETE FROM http_history WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando del historial: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando del historial: %w", EN: "vault: deleting from the history: %w"}, err)
 	}
 	return nil
 }
@@ -752,14 +752,14 @@ func (s *Store) DeleteHTTPHistoryEntry(id string) error {
 // ClearAllHTTPHistory vacía el historial entero, de todas las peticiones.
 func (s *Store) ClearAllHTTPHistory() error {
 	if _, err := s.db.Exec(`DELETE FROM http_history`); err != nil {
-		return fmt.Errorf("vault: limpiando el historial: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: limpiando el historial: %w", EN: "vault: clearing the history: %w"}, err)
 	}
 	return nil
 }
 
 func (s *Store) ClearHTTPHistory(itemID string) error {
 	if _, err := s.db.Exec(`DELETE FROM http_history WHERE COALESCE(item_id, '') = ?`, itemID); err != nil {
-		return fmt.Errorf("vault: limpiando el historial: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: limpiando el historial: %w", EN: "vault: clearing the history: %w"}, err)
 	}
 	return nil
 }
@@ -799,7 +799,7 @@ type HTTPEnvironment struct {
 func (s *Store) SaveHTTPEnvironment(e HTTPEnvironment) (*HTTPEnvironment, error) {
 	name := strings.TrimSpace(e.Name)
 	if name == "" {
-		return nil, fmt.Errorf("vault: el entorno necesita un nombre")
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: el entorno necesita un nombre", EN: "vault: the environment needs a name"})
 	}
 	e.Name = name
 	now := time.Now().Unix()
@@ -828,32 +828,32 @@ func (s *Store) SaveHTTPEnvironment(e HTTPEnvironment) (*HTTPEnvironment, error)
 		}
 		var nextOrder int
 		if err := s.db.QueryRow(`SELECT COALESCE(MAX(sort_order), -1) + 1 FROM http_environments`).Scan(&nextOrder); err != nil {
-			return nil, fmt.Errorf("vault: calculando orden del entorno: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: calculando orden del entorno: %w", EN: "vault: computing environment order: %w"}, err)
 		}
 		e.ID, e.SortOrder, e.CreatedAt, e.UpdatedAt = id, nextOrder, now, now
 		if err := clearPin(s.db.Exec); err != nil {
-			return nil, fmt.Errorf("vault: liberando el anclaje anterior: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: liberando el anclaje anterior: %w", EN: "vault: releasing the previous pin: %w"}, err)
 		}
 		if _, err := s.db.Exec(
 			`INSERT INTO http_environments (id, name, variables, variables_nonce, pinned_collection_id, sort_order, created_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.ID, e.Name, vars, varsNonce, nullable(e.PinnedCollectionID), e.SortOrder, now, now,
 		); err != nil {
-			return nil, fmt.Errorf("vault: creando el entorno: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: creando el entorno: %w", EN: "vault: creating the environment: %w"}, err)
 		}
 		return &e, nil
 	}
 
 	e.UpdatedAt = now
 	if err := clearPin(s.db.Exec); err != nil {
-		return nil, fmt.Errorf("vault: liberando el anclaje anterior: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: liberando el anclaje anterior: %w", EN: "vault: releasing the previous pin: %w"}, err)
 	}
 	if _, err := s.db.Exec(
 		`UPDATE http_environments SET name = ?, variables = ?, variables_nonce = ?,
 			pinned_collection_id = ?, updated_at = ? WHERE id = ?`,
 		e.Name, vars, varsNonce, nullable(e.PinnedCollectionID), now, e.ID,
 	); err != nil {
-		return nil, fmt.Errorf("vault: guardando el entorno: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: guardando el entorno: %w", EN: "vault: saving the environment: %w"}, err)
 	}
 	return &e, nil
 }
@@ -863,7 +863,7 @@ func (s *Store) ListHTTPEnvironments() ([]HTTPEnvironment, error) {
 		COALESCE(pinned_collection_id, ''), sort_order, created_at, updated_at
 		FROM http_environments ORDER BY sort_order, name`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando entornos: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando entornos: %w", EN: "vault: listing environments: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -873,7 +873,7 @@ func (s *Store) ListHTTPEnvironments() ([]HTTPEnvironment, error) {
 		var vars, varsNonce []byte
 		if err := rows.Scan(&e.ID, &e.Name, &vars, &varsNonce,
 			&e.PinnedCollectionID, &e.SortOrder, &e.CreatedAt, &e.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo entorno: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo entorno: %w", EN: "vault: reading environment: %w"}, err)
 		}
 		e.Variables = s.decryptOptional(vars, varsNonce)
 		out = append(out, e)
@@ -887,15 +887,15 @@ func (s *Store) ListHTTPEnvironments() ([]HTTPEnvironment, error) {
 func (s *Store) DeleteHTTPEnvironment(id string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("vault: borrando entorno: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando entorno: %w", EN: "vault: deleting environment: %w"}, err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`DELETE FROM http_environments WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando entorno: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando entorno: %w", EN: "vault: deleting environment: %w"}, err)
 	}
 	if _, err := tx.Exec(`UPDATE settings SET http_active_env = '' WHERE id = 1 AND http_active_env = ?`, id); err != nil {
-		return fmt.Errorf("vault: limpiando el entorno activo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: limpiando el entorno activo: %w", EN: "vault: clearing the active environment: %w"}, err)
 	}
 	return tx.Commit()
 }
@@ -907,14 +907,14 @@ func (s *Store) ActiveHTTPEnvironment() (string, error) {
 		if err == sql.ErrNoRows {
 			return "", nil
 		}
-		return "", fmt.Errorf("vault: leyendo el entorno activo: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo el entorno activo: %w", EN: "vault: reading the active environment: %w"}, err)
 	}
 	return id, nil
 }
 
 func (s *Store) SetActiveHTTPEnvironment(id string) error {
 	if _, err := s.db.Exec(`UPDATE settings SET http_active_env = ? WHERE id = 1`, id); err != nil {
-		return fmt.Errorf("vault: guardando el entorno activo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el entorno activo: %w", EN: "vault: saving the active environment: %w"}, err)
 	}
 	return nil
 }
@@ -935,7 +935,7 @@ func (s *Store) SaveHTTPItemRaw(id, raw string) error {
 		return err
 	}
 	if _, err := s.db.Exec(`UPDATE http_items SET postman_raw = ?, postman_raw_nonce = ? WHERE id = ?`, enc, nonce, id); err != nil {
-		return fmt.Errorf("vault: guardando el original de la petición: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el original de la petición: %w", EN: "vault: saving the request original: %w"}, err)
 	}
 	return nil
 }
@@ -946,7 +946,7 @@ func (s *Store) HTTPItemRaw(id string) (string, error) {
 		if err == sql.ErrNoRows {
 			return "", nil
 		}
-		return "", fmt.Errorf("vault: leyendo el original de la petición: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo el original de la petición: %w", EN: "vault: reading the request original: %w"}, err)
 	}
 	return s.decryptOptional(enc, nonce), nil
 }
@@ -960,7 +960,7 @@ func (s *Store) HTTPItemRaw(id string) (string, error) {
 // desvincularía en silencio.
 func (s *Store) SetHTTPCollectionNote(id, noteID string) error {
 	if _, err := s.db.Exec(`UPDATE http_collections SET docs_note_id = ? WHERE id = ?`, noteID, id); err != nil {
-		return fmt.Errorf("vault: vinculando la nota de documentación: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: vinculando la nota de documentación: %w", EN: "vault: linking the documentation note: %w"}, err)
 	}
 	return nil
 }
@@ -977,7 +977,7 @@ func (s *Store) SetHTTPCollectionFavorite(id string, favorite bool) error {
 		at = time.Now().Unix()
 	}
 	if _, err := s.db.Exec(`UPDATE http_collections SET favorite_at = ? WHERE id = ?`, at, id); err != nil {
-		return fmt.Errorf("vault: marcando la colección como favorita: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: marcando la colección como favorita: %w", EN: "vault: marking the collection as favorite: %w"}, err)
 	}
 	return nil
 }
@@ -988,7 +988,7 @@ func (s *Store) SaveHTTPCollectionRaw(id, raw string) error {
 		return err
 	}
 	if _, err := s.db.Exec(`UPDATE http_collections SET postman_raw = ?, postman_raw_nonce = ? WHERE id = ?`, enc, nonce, id); err != nil {
-		return fmt.Errorf("vault: guardando el original de la colección: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el original de la colección: %w", EN: "vault: saving the collection original: %w"}, err)
 	}
 	return nil
 }
@@ -999,7 +999,7 @@ func (s *Store) HTTPCollectionRaw(id string) (string, error) {
 		if err == sql.ErrNoRows {
 			return "", nil
 		}
-		return "", fmt.Errorf("vault: leyendo el original de la colección: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo el original de la colección: %w", EN: "vault: reading the collection original: %w"}, err)
 	}
 	return s.decryptOptional(enc, nonce), nil
 }

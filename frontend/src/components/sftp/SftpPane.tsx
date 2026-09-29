@@ -16,6 +16,7 @@ import {WriteSSHTerminal} from '../../../wailsjs/go/main/App'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import SftpPermissionsDialog from './SftpPermissionsDialog'
+import {locale, t as tNow, useT} from '../../i18n'
 import {dirname, joinPath, LOCAL_SESSION, type PaneHost, type TransferItem} from './types'
 
 interface SftpPaneProps {
@@ -160,6 +161,7 @@ function ResizableHeader({
     // width from, so a handle there would only ever do nothing.
     last?: boolean
 }) {
+    const t = useT()
     const isActive = active === col
 
     function startResize(ev: React.MouseEvent) {
@@ -192,7 +194,7 @@ function ResizableHeader({
                 type="button"
                 onClick={() => onSort(col)}
                 className={`inline-flex max-w-full items-center gap-0.5 truncate hover:text-on-surface ${isActive ? 'text-on-surface' : ''}`}
-                title={`Ordenar por ${label.toLowerCase()}`}
+                title={t.sftp.pane.sortBy({column: label.toLowerCase()})}
             >
                 <span className="truncate">{label}</span>
                 {isActive && <Icon name={dir === 'asc' ? 'arrow_upward' : 'arrow_downward'} size={13} className="shrink-0" />}
@@ -201,7 +203,7 @@ function ResizableHeader({
                 <div
                     onMouseDown={startResize}
                     onClick={(e) => e.stopPropagation()}
-                    title="Arrastrar para cambiar el ancho de la columna. Doble click restaura el ancho original."
+                    title={t.sftp.pane.resizeColumnTooltip}
                     onDoubleClick={(e) => {
                         e.stopPropagation()
                         onResize(col, NaN, true) // NaN = restaurar el ancho por defecto
@@ -216,9 +218,9 @@ function ResizableHeader({
 // "Kind" column, Finder-style: a folder, or the file's extension (tar, log,
 // sql…), or "archivo" when it has none.
 function kindOf(e: sftpx.FileEntry): string {
-    if (e.isDir) return 'carpeta'
+    if (e.isDir) return tNow().sftp.pane.kindFolder
     const dot = e.name.lastIndexOf('.')
-    return dot > 0 && dot < e.name.length - 1 ? e.name.slice(dot + 1).toLowerCase() : 'archivo'
+    return dot > 0 && dot < e.name.length - 1 ? e.name.slice(dot + 1).toLowerCase() : tNow().sftp.pane.kindFile
 }
 
 // El formateador se construye UNA vez, no por fila.
@@ -229,17 +231,24 @@ function kindOf(e: sftpx.FileEntry): string {
 // decenas de milisegundos de trabajo puro de formateo en CADA render — y esta
 // tabla se vuelve a dibujar con cada click de selección y cada tecla del
 // filtro. Reusar una instancia lo baja a un `format()` por celda.
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-})
+//
+// Uno por idioma de la interfaz: al cambiar de idioma se arma el nuevo una
+// sola vez y se sigue reusando.
+const dateFormats = new Map<string, Intl.DateTimeFormat>()
+
+function dateFormat(): Intl.DateTimeFormat {
+    const loc = locale()
+    let f = dateFormats.get(loc)
+    if (!f) {
+        f = new Intl.DateTimeFormat(loc, {year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit'})
+        dateFormats.set(loc, f)
+    }
+    return f
+}
 
 function formatDate(unixSeconds: number): string {
     if (!unixSeconds) return '—'
-    return dateFormat.format(unixSeconds * 1000)
+    return dateFormat().format(unixSeconds * 1000)
 }
 
 // Comparador de texto reusado por la misma razón que el formateador de fecha:
@@ -306,6 +315,7 @@ export default function SftpPane({
     dragRef,
     onDropFromDesktop,
 }: SftpPaneProps) {
+    const t = useT()
     const [entries, setEntries] = useState<sftpx.FileEntry[]>([])
     const [loading, setLoading] = useState(false)
     const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -835,6 +845,7 @@ export default function SftpPane({
     }
 
     const canAct = host.kind !== 'none'
+    const isRemote = host.kind === 'remote'
     const parent = canAct ? dirname(currentDir) : ''
     const showParent = canAct && parent !== currentDir
 
@@ -844,11 +855,11 @@ export default function SftpPane({
             <div className="relative flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container-low px-2 py-1.5">
                 <button
                     onClick={() => setHostMenuOpen((v) => !v)}
-                    title="Elegir host de este panel"
+                    title={t.sftp.pane.pickHostTooltip}
                     className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-on-surface hover:bg-surface-variant"
                 >
                     <Icon name={host.kind === 'local' ? 'computer' : host.kind === 'remote' ? 'dns' : 'add_link'} size={16} />
-                    {host.kind === 'none' ? 'Elegir host' : host.connName}
+                    {host.kind === 'none' ? t.sftp.pane.pickHost : host.connName}
                     <Icon name="arrow_drop_down" size={16} />
                 </button>
                 {canAct && (
@@ -857,21 +868,21 @@ export default function SftpPane({
                     </span>
                 )}
                 <div className="ml-auto flex items-center gap-0.5">
-                    {host.kind === 'remote' && host.connId && (
+                    {isRemote && host.connId && (
                         <>
                             <button
                                 onClick={() => setFollowTerminal((v) => !v)}
                                 disabled={!shellLive}
                                 title={
                                     !shellLive
-                                        ? 'No hay una consola abierta contra este servidor. Abrí la sesión combinada (o una pestaña de terminal de este host) y el botón se activa.'
+                                        ? t.sftp.pane.noConsole
                                         : !followTerminal
-                                        ? 'Seguir a la terminal: cuando hagas cd en la consola, este panel navega a la misma carpeta. Desactivado, el panel no reacciona a la consola.'
+                                        ? t.sftp.pane.followOffTooltip
                                         : !lastCtx
-                                          ? 'Siguiendo a la terminal — todavía no sabe dónde está parada la consola. Se moverá con el próximo cd que escribas. Si tu shell anuncia la ruta (OSC 7) será exacta; si no, se deduce del cd.'
+                                          ? t.sftp.pane.followWaitingTooltip
                                           : lastCtx.source === 'guess'
-                                            ? 'Siguiendo a la terminal. La ruta se dedujo del cd que escribiste: si usás alias o un script que cambia de carpeta, puede quedar desfasada — usá «Traer ruta de la terminal» para corregirla.'
-                                            : 'Siguiendo a la terminal. La ruta la anuncia el propio shell, así que es exacta.'
+                                            ? t.sftp.pane.followGuessTooltip
+                                            : t.sftp.pane.followShellTooltip
                                 }
                                 className={`relative rounded p-1 disabled:opacity-40 disabled:hover:bg-transparent ${
                                     followTerminal && shellLive
@@ -898,8 +909,8 @@ export default function SftpPane({
                                 disabled={!shellLive}
                                 title={
                                     shellLive
-                                        ? 'Traer la ruta actual de la terminal una sola vez, sin activar el seguimiento. Es la salida cuando la detección automática no acierta (alias, shells no estándar, scripts que cambian de carpeta).'
-                                        : 'No hay una consola abierta contra este servidor. Abrí la sesión combinada (o una pestaña de terminal de este host) y el botón se activa.'
+                                        ? t.sftp.pane.pullCwdTooltip
+                                        : t.sftp.pane.noConsole
                                 }
                                 className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40 disabled:hover:bg-transparent"
                             >
@@ -916,8 +927,8 @@ export default function SftpPane({
                                 disabled={!canAct || !shellLive}
                                 title={
                                     shellLive
-                                        ? 'Manda «cd» a la terminal para que la consola se pare en esta misma carpeta'
-                                        : 'No hay una consola abierta contra este servidor. Abrí la sesión combinada (o una pestaña de terminal de este host) y el botón se activa.'
+                                        ? t.sftp.pane.pushCdTooltip
+                                        : t.sftp.pane.noConsole
                                 }
                                 className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40 disabled:hover:bg-transparent"
                             >
@@ -928,7 +939,7 @@ export default function SftpPane({
                     <button
                         onClick={() => canAct && setCreatingFolder(true)}
                         disabled={!canAct}
-                        title="Nueva carpeta"
+                        title={t.sftp.pane.newFolder}
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                     >
                         <Icon name="create_new_folder" size={16} />
@@ -936,7 +947,7 @@ export default function SftpPane({
                     <button
                         onClick={() => canAct && onRefresh()}
                         disabled={!canAct}
-                        title="Refrescar"
+                        title={t.sftp.pane.refresh}
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                     >
                         <Icon name="refresh" size={16} />
@@ -954,7 +965,7 @@ export default function SftpPane({
                                 }}
                                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-on-surface hover:bg-surface-variant"
                             >
-                                <Icon name="computer" size={16} /> Local (esta máquina)
+                                <Icon name="computer" size={16} /> {t.sftp.pane.localHost}
                             </button>
                             {connections.length > 0 && <div className="my-1 border-t border-outline-variant" />}
                             {connections.map((c) => (
@@ -982,8 +993,8 @@ export default function SftpPane({
                         disabled={selected.size === 0 || transferBusy}
                         title={
                             transferBusy
-                                ? 'Se está preparando otra transferencia: se comprueba qué archivos ya existen en el destino antes de tocar nada. Termina sola en unos segundos.'
-                                : `Transferir la selección a ${otherLabel}`
+                                ? t.sftp.pane.busyTooltip
+                                : t.sftp.pane.transferTooltip({target: otherLabel})
                         }
                         className="flex items-center gap-1 rounded bg-secondary/15 px-2 py-1 text-ui-11 font-medium text-secondary hover:bg-secondary/25 disabled:opacity-40"
                     >
@@ -993,33 +1004,33 @@ export default function SftpPane({
                                     aria-hidden
                                     className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-secondary"
                                 />
-                                Comprobando el destino…
+                                {t.sftp.pane.checkingDest}
                             </>
                         ) : (
                             <>
-                                <Icon name="send" size={14} /> Enviar a {otherLabel}
+                                <Icon name="send" size={14} /> {t.sftp.pane.sendTo({target: otherLabel})}
                             </>
                         )}
                     </button>
                     <button
                         onClick={() => setConfirmDelete(selectedItems())}
                         disabled={selected.size === 0}
-                        title="Eliminar la selección"
+                        title={t.sftp.pane.deleteSelectionTooltip}
                         className="flex items-center gap-1 rounded px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-error-container/40 hover:text-error disabled:opacity-40"
                     >
-                        <Icon name="delete" size={14} /> Eliminar
+                        <Icon name="delete" size={14} /> {t.sftp.pane.delete}
                     </button>
                     <button
                         onClick={() => setPermsFor(selectedEntries())}
                         disabled={selected.size === 0}
                         title={
                             selected.size > 1
-                                ? `Cambiar los permisos (chmod) de los ${selected.size} elementos seleccionados — todos quedan con el mismo modo`
-                                : 'Cambiar los permisos (chmod) de la selección'
+                                ? t.sftp.pane.permsManyTooltip(selected.size)
+                                : t.sftp.pane.permsSelectionTooltip
                         }
                         className="flex items-center gap-1 rounded px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                     >
-                        <Icon name="lock" size={14} /> Permisos
+                        <Icon name="lock" size={14} /> {t.sftp.pane.permissions}
                     </button>
                     <div className="relative ml-auto flex items-center">
                         <Icon name="search" size={13} className="pointer-events-none absolute left-1.5 text-on-surface-variant" />
@@ -1029,14 +1040,14 @@ export default function SftpPane({
                             onKeyDown={(ev) => {
                                 if (ev.key === 'Escape') setFilter('')
                             }}
-                            placeholder="Buscar en esta carpeta"
-                            title="Filtra por nombre lo que ya está listado en esta carpeta. No baja a las subcarpetas ni vuelve a consultar el servidor. Esc limpia."
+                            placeholder={t.sftp.pane.searchPlaceholder}
+                            title={t.sftp.pane.searchTooltip}
                             className="w-36 rounded border border-outline bg-surface py-0.5 pr-5 pl-6 text-ui-11 text-on-surface placeholder:text-on-surface-variant/60 focus:w-48 focus:outline-none"
                         />
                         {filter && (
                             <button
                                 onClick={() => setFilter('')}
-                                title="Limpiar el filtro"
+                                title={t.sftp.pane.clearFilter}
                                 className="absolute right-1 text-on-surface-variant hover:text-on-surface"
                             >
                                 <Icon name="close" size={12} />
@@ -1050,15 +1061,15 @@ export default function SftpPane({
                     {selected.size > 0 ? (
                         <button
                             onClick={() => setSelected(new Set())}
-                            title="Limpiar la selección (Esc)"
+                            title={t.sftp.pane.clearSelection}
                             className="flex shrink-0 items-center gap-1 rounded-full bg-primary/15 py-0.5 pr-1 pl-2 text-ui-11 font-medium text-primary hover:bg-primary/25"
                         >
-                            {selected.size} seleccionado{selected.size === 1 ? '' : 's'}
+                            {t.sftp.pane.selected(selected.size)}
                             <Icon name="close" size={12} />
                         </button>
                     ) : (
                         <span className="shrink-0 text-ui-11 text-on-surface-variant">
-                            {q ? `${visible.length} de ${entries.length}` : `${entries.length} elementos`}
+                            {q ? t.sftp.pane.filteredCount({shown: visible.length, total: entries.length}) : t.sftp.pane.count(entries.length)}
                         </span>
                     )}
                 </div>
@@ -1103,10 +1114,10 @@ export default function SftpPane({
                 {host.kind === 'none' ? (
                     <div className="flex h-full flex-col items-center justify-center gap-2 text-on-surface-variant">
                         <Icon name="folder_open" size={40} className="opacity-40" />
-                        <p className="text-xs">Elegí un host para explorar sus archivos</p>
+                        <p className="text-xs">{t.sftp.pane.pickHostEmpty}</p>
                     </div>
                 ) : loading ? (
-                    <div className="flex h-full items-center justify-center text-xs text-on-surface-variant">Cargando…</div>
+                    <div className="flex h-full items-center justify-center text-xs text-on-surface-variant">{t.common.loading}</div>
                 ) : (
                     <table className="text-xs" style={{width: '100%', minWidth: totalWidth, tableLayout: 'fixed'}}>
                         <colgroup>
@@ -1127,17 +1138,17 @@ export default function SftpPane({
                                         indeterminate={someVisibleSelected}
                                         title={
                                             q
-                                                ? 'Seleccionar o deseleccionar todo lo que muestra el filtro'
-                                                : 'Seleccionar o deseleccionar todo'
+                                                ? t.sftp.pane.selectAllFilteredTooltip
+                                                : t.sftp.pane.selectAllTooltip
                                         }
                                         onToggle={() => toggleAllVisible()}
                                     />
                                 </th>
-                                <ResizableHeader label="Nombre" col="name" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
-                                <ResizableHeader label="Fecha modificación" col="modified" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
-                                <ResizableHeader label="Tamaño" col="size" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-right" />
-                                {showKind && <ResizableHeader label="Kind" col="kind" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />}
-                                {showPerms && <ResizableHeader label="Permisos" col="perms" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" last />}
+                                <ResizableHeader label={t.sftp.pane.colName} col="name" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
+                                <ResizableHeader label={t.sftp.pane.colModified} col="modified" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />
+                                <ResizableHeader label={t.sftp.pane.colSize} col="size" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-right" />
+                                {showKind && <ResizableHeader label={t.sftp.pane.colKind} col="kind" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" />}
+                                {showPerms && <ResizableHeader label={t.sftp.pane.colPerms} col="perms" active={sortCol} dir={sortDir} onSort={sortBy} onResize={resizeColumn} className="text-left" last />}
                             </tr>
                         </thead>
                         <tbody>
@@ -1147,7 +1158,7 @@ export default function SftpPane({
                                     // Alto explícito, igual que las demás: sin él esta fila medía
                                     // distinto que el resto y la lista arrancaba desalineada.
                                     style={{height: ROW_HEIGHT}}
-                                    title={`Subir a ${parent} — doble clic, como para entrar a cualquier carpeta`}
+                                    title={t.sftp.pane.parentTooltip({path: parent})}
                                     className="cursor-pointer select-none border-b border-outline-variant/30 hover:bg-surface-variant"
                                 >
                                     <td />
@@ -1226,7 +1237,7 @@ export default function SftpPane({
                                     >
                                         <SelectCheck
                                             checked={selected.has(e.path)}
-                                            title="Marcar o desmarcar esta fila (Shift para marcar el rango)"
+                                            title={t.sftp.pane.rowCheckTooltip}
                                             onToggle={(ev) => checkClick(e.path, ev)}
                                         />
                                     </td>
@@ -1263,7 +1274,7 @@ export default function SftpPane({
                             {visible.length === 0 && (
                                 <tr>
                                     <td colSpan={colCount} className="px-3 py-6 text-center text-on-surface-variant">
-                                        {q ? `Ningún archivo de esta carpeta coincide con "${filter}"` : 'La carpeta está vacía'}
+                                        {q ? t.sftp.pane.noMatch({filter}) : t.sftp.pane.emptyFolder}
                                     </td>
                                 </tr>
                             )}
@@ -1291,12 +1302,12 @@ export default function SftpPane({
                             disabled={transferBusy}
                             title={
                                 transferBusy
-                                    ? 'Se está preparando otra transferencia: se comprueba qué archivos ya existen en el destino antes de tocar nada.'
-                                    : `Copia esto al panel de ${otherLabel}. Si la fila está dentro de la selección, se envía la selección entera.`
+                                    ? t.sftp.pane.menuBusyTooltip
+                                    : t.sftp.pane.menuSendTooltip({target: otherLabel})
                             }
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant disabled:opacity-40"
                         >
-                            <Icon name="send" size={15} /> Enviar a {otherLabel}
+                            <Icon name="send" size={15} /> {t.sftp.pane.sendTo({target: otherLabel})}
                         </button>
                         <button
                             onClick={() => {
@@ -1306,7 +1317,7 @@ export default function SftpPane({
                             }}
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant"
                         >
-                            <Icon name="edit" size={15} /> Renombrar
+                            <Icon name="edit" size={15} /> {t.sftp.pane.rename}
                         </button>
                         <button
                             onClick={() => {
@@ -1315,7 +1326,7 @@ export default function SftpPane({
                             }}
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-error hover:bg-error-container/40"
                         >
-                            <Icon name="delete" size={15} /> Eliminar
+                            <Icon name="delete" size={15} /> {t.sftp.pane.delete}
                         </button>
                         <div className="my-1 border-t border-outline-variant" />
                         <button
@@ -1325,7 +1336,7 @@ export default function SftpPane({
                             }}
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant"
                         >
-                            <Icon name="refresh" size={15} /> Refrescar
+                            <Icon name="refresh" size={15} /> {t.sftp.pane.refresh}
                         </button>
                         <button
                             onClick={() => {
@@ -1334,7 +1345,7 @@ export default function SftpPane({
                             }}
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant"
                         >
-                            <Icon name="create_new_folder" size={15} /> Nueva carpeta
+                            <Icon name="create_new_folder" size={15} /> {t.sftp.pane.newFolder}
                         </button>
                         <button
                             onClick={() => {
@@ -1343,12 +1354,12 @@ export default function SftpPane({
                             }}
                             title={
                                 menuEntries.length > 1
-                                    ? `Cambia los permisos (chmod) de los ${menuEntries.length} elementos seleccionados`
-                                    : 'Cambia los permisos (chmod) de este elemento'
+                                    ? t.sftp.pane.menuPermsManyTooltip(menuEntries.length)
+                                    : t.sftp.pane.menuPermsOneTooltip
                             }
                             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-variant"
                         >
-                            <Icon name="lock" size={15} /> Editar permisos
+                            <Icon name="lock" size={15} /> {t.sftp.pane.editPerms}
                             {menuEntries.length > 1 && ` (${menuEntries.length})`}
                         </button>
                     </div>
@@ -1372,21 +1383,21 @@ export default function SftpPane({
                         onClick={(e) => e.stopPropagation()}
                         className="flex w-80 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-high p-5 text-on-surface shadow-lg"
                     >
-                        <h3 className="text-sm font-semibold">Nueva carpeta</h3>
+                        <h3 className="text-sm font-semibold">{t.sftp.pane.newFolder}</h3>
                         <input
                             autoFocus
                             value={newFolder}
                             onChange={(e) => setNewFolder(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && createFolder()}
-                            placeholder="Nombre de la carpeta"
+                            placeholder={t.sftp.pane.folderNamePlaceholder}
                             className="rounded border-none bg-surface-container-highest px-2 py-1.5 text-sm text-on-surface outline-none"
                         />
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setCreatingFolder(false)} className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface">
-                                Cancelar
+                                {t.common.cancel}
                             </button>
                             <button onClick={createFolder} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90">
-                                Crear
+                                {t.sftp.pane.create}
                             </button>
                         </div>
                     </div>
@@ -1400,7 +1411,7 @@ export default function SftpPane({
                         onClick={(e) => e.stopPropagation()}
                         className="flex w-80 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-high p-5 text-on-surface shadow-lg"
                     >
-                        <h3 className="text-sm font-semibold">Renombrar</h3>
+                        <h3 className="text-sm font-semibold">{t.sftp.pane.rename}</h3>
                         <input
                             autoFocus
                             value={renameValue}
@@ -1410,10 +1421,10 @@ export default function SftpPane({
                         />
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setRenaming(null)} className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface">
-                                Cancelar
+                                {t.common.cancel}
                             </button>
                             <button onClick={doRename} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90">
-                                Renombrar
+                                {t.sftp.pane.rename}
                             </button>
                         </div>
                     </div>
@@ -1422,9 +1433,9 @@ export default function SftpPane({
 
             {confirmDelete && (
                 <ConfirmDialog
-                    title="Eliminar"
-                    description={`Se eliminará(n) ${confirmDelete.length} elemento(s) de forma permanente. Las carpetas se borran con todo su contenido.`}
-                    confirmLabel="Eliminar"
+                    title={t.sftp.pane.deleteTitle}
+                    description={t.sftp.pane.deleteConfirm(confirmDelete.length)}
+                    confirmLabel={t.sftp.pane.delete}
                     danger
                     onConfirm={() => doDelete(confirmDelete)}
                     onClose={() => setConfirmDelete(null)}

@@ -3,8 +3,9 @@ package export
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // SQLiteTableDDL returns the CREATE TABLE statement for table exactly as
@@ -13,7 +14,7 @@ func SQLiteTableDDL(ctx context.Context, pool *sql.DB, table string) (string, er
 	var ddl string
 	err := pool.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&ddl)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo DDL de %q: %w", table, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo DDL de %q: %w", EN: "export: reading DDL of %q: %w"}, table, err)
 	}
 	return ddl + ";\n", nil
 }
@@ -24,7 +25,7 @@ func SQLiteTriggerDDL(ctx context.Context, pool *sql.DB, trigger string) (string
 	var ddl string
 	err := pool.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?`, trigger).Scan(&ddl)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo DDL de %q: %w", trigger, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo DDL de %q: %w", EN: "export: reading DDL of %q: %w"}, trigger, err)
 	}
 	return ddl + ";\n", nil
 }
@@ -39,7 +40,7 @@ func SQLiteSchemaDDL(ctx context.Context, pool *sql.DB) (string, error) {
 		ORDER BY CASE type WHEN 'table' THEN 1 WHEN 'view' THEN 2 WHEN 'index' THEN 3 ELSE 4 END, name
 	`)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo DDL del schema: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo DDL del schema: %w", EN: "export: reading schema DDL: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -47,7 +48,7 @@ func SQLiteSchemaDDL(ctx context.Context, pool *sql.DB) (string, error) {
 	for rows.Next() {
 		var ddl string
 		if err := rows.Scan(&ddl); err != nil {
-			return "", fmt.Errorf("export: escaneando DDL: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando DDL: %w", EN: "export: scanning DDL: %w"}, err)
 		}
 		b.WriteString(ddl)
 		b.WriteString(";\n\n")

@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from 'react'
 import {EventsOff, EventsOn} from '../../../wailsjs/runtime/runtime'
 import {ReadRedisStream, StopRedisMonitor, SubscribeRedisChannels} from '../../../wailsjs/go/main/App'
 import Icon from '../Icon'
+import {formatDateTime, formatNumber, t as tNow, useT} from '../../i18n'
 
 // Mirrors backend/redisquery.StreamEvent / StreamMessage. Hand-written
 // because Wails only generates TS models for types that appear in a binding
@@ -44,6 +45,8 @@ interface RedisLiveMonitorProps {
 // worse than one that admits it, because the whole point is trusting what
 // you see.
 export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProps) {
+    const t = useT()
+    const lm = t.redis.monitor
     const [mode, setMode] = useState<Mode>('pubsub')
     const [channels, setChannels] = useState('')
     const [patterns, setPatterns] = useState('*')
@@ -96,7 +99,8 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
 
         EventsOn(id, (ev: StreamEvent) => {
             if (ev.type === 'error') {
-                setError(ev.error ?? 'error desconocido')
+                // Registered once: read the dictionary now, not the render's copy.
+                setError(ev.error ?? tNow().redis.monitor.unknownError)
                 setRunning(false)
                 return
             }
@@ -158,32 +162,32 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
         <div className="flex h-full flex-col overflow-hidden">
             <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-xs">
                 <Icon name="sensors" size={15} className="shrink-0 text-primary" />
-                <span className="font-semibold text-on-surface">Monitor en vivo</span>
+                <span className="font-semibold text-on-surface">{t.redis.browser.liveMonitor}</span>
 
                 <div className="flex rounded-md border border-outline-variant p-0.5">
                     <button
                         onClick={() => setMode('pubsub')}
                         disabled={running}
-                        title="Escucha canales de Pub/Sub (SUBSCRIBE / PSUBSCRIBE)"
+                        title={lm.pubsubHint}
                         className={`rounded px-2 py-0.5 text-ui-11 disabled:opacity-50 ${
                             mode === 'pubsub' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                         }`}
                     >
-                        Pub/Sub
+                        {lm.pubsub}
                     </button>
                     <button
                         onClick={() => setMode('stream')}
                         disabled={running}
-                        title="Consume entradas nuevas de un stream (XREAD)"
+                        title={lm.streamHint}
                         className={`rounded px-2 py-0.5 text-ui-11 disabled:opacity-50 ${
                             mode === 'stream' ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface'
                         }`}
                     >
-                        Stream
+                        {lm.streamLabel}
                     </button>
                 </div>
 
-                <button onClick={onClose} title="Cierra el monitor y corta la suscripción" className="ml-auto rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
+                <button onClick={onClose} title={lm.closeHint} className="ml-auto rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
                     <Icon name="close" size={16} />
                 </button>
             </div>
@@ -192,24 +196,24 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
                 {mode === 'pubsub' ? (
                     <>
                         <label className="flex min-w-0 flex-1 items-center gap-1 text-on-surface-variant">
-                            Canales
+                            {lm.channels}
                             <input
                                 value={channels}
                                 onChange={(e) => setChannels(e.target.value)}
                                 disabled={running}
-                                placeholder="noticias, alertas"
-                                title="Canales exactos a escuchar, separados por comas (SUBSCRIBE). Dejalo vacío si solo vas a usar patrones."
+                                placeholder={lm.channelsPlaceholder}
+                                title={lm.channelsHint}
                                 className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container-low px-1.5 py-0.5 font-mono text-on-surface disabled:opacity-50"
                             />
                         </label>
                         <label className="flex min-w-0 flex-1 items-center gap-1 text-on-surface-variant">
-                            Patrones
+                            {lm.patterns}
                             <input
                                 value={patterns}
                                 onChange={(e) => setPatterns(e.target.value)}
                                 disabled={running}
-                                placeholder="eventos:*"
-                                title="Patrones glob a escuchar (PSUBSCRIBE). '*' escucha todo — útil para descubrir qué canales hay, pero en un servidor con tráfico real es una manguera."
+                                placeholder={lm.patternsPlaceholder}
+                                title={lm.patternsHint}
                                 className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container-low px-1.5 py-0.5 font-mono text-on-surface disabled:opacity-50"
                             />
                         </label>
@@ -217,22 +221,22 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
                 ) : (
                     <>
                         <label className="flex min-w-0 flex-1 items-center gap-1 text-on-surface-variant">
-                            Stream
+                            {lm.streamLabel}
                             <input
                                 value={streamKey}
                                 onChange={(e) => setStreamKey(e.target.value)}
                                 disabled={running}
-                                placeholder="nombre del stream"
-                                title="Clave del stream a consumir con XREAD"
+                                placeholder={lm.streamPlaceholder}
+                                title={lm.streamKeyHint}
                                 className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container-low px-1.5 py-0.5 font-mono text-on-surface disabled:opacity-50"
                             />
                         </label>
                         <label
                             className="flex items-center gap-1 text-on-surface-variant"
-                            title="Desactivado, solo trae lo que llegue de ahora en adelante ($). Activado, reproduce el stream desde el principio (0) — puede ser mucho contenido de golpe."
+                            title={lm.fromStartHint}
                         >
                             <input type="checkbox" checked={fromStart} onChange={(e) => setFromStart(e.target.checked)} disabled={running} className="accent-primary" />
-                            desde el principio
+                            {lm.fromStart}
                         </label>
                     </>
                 )}
@@ -242,33 +246,31 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
                         <button
                             onClick={() => setPaused((v) => !v)}
                             title={
-                                paused
-                                    ? 'Reanuda la vista. La suscripción nunca se cortó: los mensajes se siguieron consumiendo, así que no queda un hueco en el medio.'
-                                    : 'Congela la vista para poder leer. La suscripción sigue activa por detrás.'
+                                paused ? lm.resumeHint : lm.pauseHint
                             }
                             className="flex items-center gap-1 rounded border border-outline-variant px-2 py-1 text-on-surface-variant hover:bg-surface-variant"
                         >
                             <Icon name={paused ? 'play_arrow' : 'pause'} size={13} />
-                            {paused ? 'Reanudar' : 'Pausar'}
+                            {paused ? lm.resume : lm.pause}
                         </button>
                         <button
                             onClick={() => void stop()}
-                            title="Corta la suscripción y libera su conexión"
+                            title={lm.stopHint}
                             className="flex items-center gap-1 rounded bg-error/15 px-2 py-1 text-error hover:bg-error/25"
                         >
                             <Icon name="stop" size={13} />
-                            Detener
+                            {lm.stop}
                         </button>
                     </>
                 ) : (
                     <button
                         onClick={() => void start()}
                         disabled={mode === 'stream' && streamKey.trim() === ''}
-                        title="Abre la suscripción. Usa una conexión dedicada mientras esté activa."
+                        title={lm.listenHint}
                         className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-on-primary disabled:opacity-40"
                     >
                         <Icon name="play_arrow" size={13} />
-                        Escuchar
+                        {lm.listen}
                     </button>
                 )}
             </div>
@@ -276,29 +278,29 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
             <div className="flex flex-wrap items-center gap-3 border-b border-outline-variant px-3 py-1 text-ui-11 text-on-surface-variant">
                 <span className={running ? 'flex items-center gap-1 text-primary' : 'flex items-center gap-1'}>
                     <span className={`h-1.5 w-1.5 rounded-full ${running ? (paused ? 'bg-tertiary' : 'animate-pulse bg-primary') : 'bg-outline'}`} />
-                    {running ? (paused ? 'en pausa' : 'escuchando') : 'detenido'}
+                    {running ? (paused ? lm.paused : lm.listening) : lm.stopped}
                 </span>
-                <span title="Mensajes retenidos en el panel">{messages.length.toLocaleString('es')} mensajes</span>
+                <span title={lm.messagesHint}>{lm.messages({count: formatNumber(messages.length)})}</span>
                 {trimmed > 0 && (
-                    <span className="text-on-surface-variant/70" title={`El panel guarda los últimos ${MAX_MESSAGES.toLocaleString('es')} mensajes; los más viejos se descartaron para no crecer sin límite.`}>
-                        {trimmed.toLocaleString('es')} descartados por antigüedad
+                    <span className="text-on-surface-variant/70" title={lm.trimmedHint({max: formatNumber(MAX_MESSAGES)})}>
+                        {lm.trimmed({count: formatNumber(trimmed)})}
                     </span>
                 )}
                 {dropped > 0 && (
-                    <span className="text-tertiary" title="El servidor produjo mensajes más rápido de lo que se pudieron consumir y algunos se perdieron. Se informa en vez de ocultarse.">
-                        {dropped.toLocaleString('es')} perdidos por saturación
+                    <span className="text-tertiary" title={lm.droppedHint}>
+                        {lm.dropped({count: formatNumber(dropped)})}
                     </span>
                 )}
                 <input
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    placeholder="filtrar lo recibido"
-                    title="Filtra los mensajes ya recibidos, en el panel. No cambia la suscripción."
+                    placeholder={lm.filterPlaceholder}
+                    title={lm.filterHint}
                     className="ml-auto w-48 rounded border border-outline-variant bg-surface-container-low px-1.5 py-0.5 text-on-surface"
                 />
-                <label className="flex items-center gap-1" title="Baja solo al último mensaje a medida que llegan">
+                <label className="flex items-center gap-1" title={lm.autoScrollHint}>
                     <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} className="accent-primary" />
-                    auto-scroll
+                    {lm.autoScroll}
                 </label>
             </div>
 
@@ -307,15 +309,15 @@ export default function RedisLiveMonitor({connId, onClose}: RedisLiveMonitorProp
             <div className="flex-1 overflow-y-auto p-2 font-mono text-xs">
                 {visible.length === 0 ? (
                     <p className="text-on-surface-variant">
-                        {running ? 'Esperando mensajes…' : 'Elegí canales o un stream y presioná Escuchar.'}
+                        {running ? lm.waiting : lm.idle}
                     </p>
                 ) : (
                     visible.map((m, i) => (
                         <div key={i} className="flex gap-2 border-b border-outline-variant/30 py-0.5">
                             <span className="w-20 shrink-0 text-on-surface-variant/60" title={new Date(m.receivedAtMs).toISOString()}>
-                                {new Date(m.receivedAtMs).toLocaleTimeString('es')}
+                                {formatDateTime(new Date(m.receivedAtMs), {timeStyle: 'medium'})}
                             </span>
-                            <span className="w-40 shrink-0 truncate text-primary" title={m.pattern ? `${m.channel} (por el patrón ${m.pattern})` : m.channel}>
+                            <span className="w-40 shrink-0 truncate text-primary" title={m.pattern ? lm.viaPattern({channel: m.channel, pattern: m.pattern}) : m.channel}>
                                 {m.channel}
                             </span>
                             {m.id && <span className="w-36 shrink-0 truncate text-on-surface-variant/70">{m.id}</span>}

@@ -11,6 +11,7 @@ import Icon from '../Icon'
 import Select from '../Select'
 import {registerDropZone} from '../../lib/desktopFileDrop'
 import {methodColor} from './httpShared'
+import {useT} from '../../i18n'
 
 // El diálogo de importar del módulo HTTP: una sola puerta para todo lo que
 // viene de afuera.
@@ -33,12 +34,8 @@ interface ImportDialogProps {
     onImported: (batch: main.HttpImportBatch) => void
 }
 
-const PLACEHOLDER = `curl 'https://api.ejemplo.com/pedidos' -H 'Accept: application/json'
-
-…o el JSON de una colección de Postman, una petición en texto plano
-(POST /v1/pedidos HTTP/1.1) o una URL suelta.`
-
 export default function ImportDialog({collections, defaultCollectionId, onClose, onImported}: ImportDialogProps) {
+    const t = useT()
     const [text, setText] = useState('')
     const [detection, setDetection] = useState<httpclient.ImportDetection | null>(null)
     const [target, setTarget] = useState(defaultCollectionId)
@@ -144,10 +141,10 @@ export default function ImportDialog({collections, defaultCollectionId, onClose,
             >
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                     <Icon name="download" size={16} className="text-on-surface-variant" />
-                    <p className="flex-1 text-sm font-medium text-on-surface">Importar</p>
+                    <p className="flex-1 text-sm font-medium text-on-surface">{t.http.import.title}</p>
                     <button
                         onClick={onClose}
-                        title="Cerrar sin importar nada"
+                        title={t.http.import.closeTitle}
                         className="rounded p-1 text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={16} />
@@ -160,7 +157,7 @@ export default function ImportDialog({collections, defaultCollectionId, onClose,
                             value={text}
                             onChange={(e) => setText(e.target.value)}
                             spellCheck={false}
-                            placeholder={PLACEHOLDER}
+                            placeholder={t.http.import.placeholder}
                             className="h-28 w-full resize-none rounded border border-outline-variant bg-surface-container-lowest px-2 py-1.5 font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40 focus:border-primary"
                         />
                         <DetectionLine detection={detection} hasText={text.trim() !== ''} />
@@ -168,14 +165,14 @@ export default function ImportDialog({collections, defaultCollectionId, onClose,
 
                     {isSingleRequest && (
                         <div className="flex items-center gap-2 text-ui-11 text-on-surface-variant">
-                            <span className="shrink-0">Guardar en</span>
+                            <span className="shrink-0">{t.http.import.saveIn}</span>
                             {/* El selector temado y no un <select> nativo: ese
                                 abre el menú del sistema operativo, que ignora
                                 el tema y la tipografía de la app. */}
                             <Select
                                 value={target}
                                 options={[
-                                    {value: '', label: 'Colección nueva', hint: 'Se llama «Importadas»', separatorAfter: collections.length > 0},
+                                    {value: '', label: t.http.import.newCollection, hint: t.http.import.newCollectionHint, separatorAfter: collections.length > 0},
                                     ...collections.map((c) => ({
                                         value: c.id,
                                         label: c.name,
@@ -184,8 +181,8 @@ export default function ImportDialog({collections, defaultCollectionId, onClose,
                                 ]}
                                 onChange={setTarget}
                                 size="sm"
-                                ariaLabel="Colección destino"
-                                title="Colección donde queda la petición importada. Una petición que no queda en ningún lado se pierde al cerrar la pestaña."
+                                ariaLabel={t.http.import.targetAria}
+                                title={t.http.import.targetTitle}
                                 className="min-w-0 flex-1"
                             />
                         </div>
@@ -198,29 +195,29 @@ export default function ImportDialog({collections, defaultCollectionId, onClose,
                         }`}
                     >
                         <Icon name="upload_file" size={20} className="text-on-surface-variant/60" />
-                        <p className="text-ui-11 font-medium text-on-surface">Soltá archivos acá para importarlos</p>
+                        <p className="text-ui-11 font-medium text-on-surface">{t.http.import.dropHere}</p>
                         <p className="text-ui-10 text-on-surface-variant">
-                            o elegí{' '}
+                            {t.http.import.orPickFiles}{' '}
                             <button
                                 onClick={() => void HttpImportPickFiles().then(importFiles)}
-                                title="Elegir uno o varios .json exportados de Postman"
+                                title={t.http.import.filesTitle}
                                 className="text-primary underline underline-offset-2 hover:opacity-80"
                             >
-                                archivos
+                                {t.http.import.files}
                             </button>{' '}
-                            o una{' '}
+                            {t.http.import.orA}{' '}
                             <button
                                 onClick={() =>
                                     void HttpImportPickFolder().then((dir) => dir && importFiles([dir]))
                                 }
-                                title="Elegir una carpeta: se recorre entera buscando colecciones y entornos"
+                                title={t.http.import.folderTitle}
                                 className="text-primary underline underline-offset-2 hover:opacity-80"
                             >
-                                carpeta
+                                {t.http.import.folder}
                             </button>
                         </p>
                         <p className="mt-1 text-ui-9 text-on-surface-variant/60">
-                            Colección de Postman (v2.0/v2.1), entorno o volcado de datos
+                            {t.http.import.formats}
                         </p>
                     </div>
 
@@ -234,22 +231,18 @@ export default function ImportDialog({collections, defaultCollectionId, onClose,
                 <div className="flex shrink-0 items-center justify-end gap-2 border-t border-outline-variant px-3 py-2">
                     <button
                         onClick={onClose}
-                        title="Cerrar el diálogo"
+                        title={t.http.import.closeDialog}
                         className="rounded px-3 py-1 text-xs text-on-surface-variant hover:text-on-surface"
                     >
-                        {batch ? 'Listo' : 'Cancelar'}
+                        {batch ? t.http.import.done : t.common.cancel}
                     </button>
                     <button
                         onClick={() => void run(() => HttpImportText(text, target))}
                         disabled={!canImport}
-                        title={
-                            canImport
-                                ? 'Importar lo que está en la caja'
-                                : 'Pegá algo que se pueda reconocer: un cURL, una URL, una petición en texto o el JSON de una colección'
-                        }
+                        title={canImport ? t.http.import.importTitle : t.http.import.importDisabledTitle}
                         className="rounded bg-primary px-3 py-1 text-xs text-on-primary hover:opacity-90 disabled:opacity-40"
                     >
-                        {busy ? 'Importando…' : 'Importar'}
+                        {busy ? t.http.import.importing : t.http.import.import}
                     </button>
                 </div>
             </div>
@@ -261,14 +254,13 @@ export default function ImportDialog({collections, defaultCollectionId, onClose,
 // el motivo: «no se reconoce» pelado deja a quien pegó algo sin nada que
 // corregir.
 function DetectionLine({detection, hasText}: {detection: httpclient.ImportDetection | null; hasText: boolean}) {
+    const t = useT()
     if (!hasText) {
         return (
-            <p className="mt-1 text-ui-10 text-on-surface-variant/60">
-                También se puede pegar un cURL en la barra de URL de una petición.
-            </p>
+            <p className="mt-1 text-ui-10 text-on-surface-variant/60">{t.http.import.curlTip}</p>
         )
     }
-    if (!detection) return <p className="mt-1 text-ui-10 text-on-surface-variant/60">Reconociendo…</p>
+    if (!detection) return <p className="mt-1 text-ui-10 text-on-surface-variant/60">{t.http.import.detecting}</p>
     if (!detection.kind) {
         return (
             <p className="mt-1 flex items-start gap-1 text-ui-10 text-tertiary">
@@ -278,15 +270,15 @@ function DetectionLine({detection, hasText}: {detection: httpclient.ImportDetect
         )
     }
     const bits: string[] = []
-    if (detection.name) bits.push(`«${detection.name}»`)
-    if (detection.requests) bits.push(`${detection.requests} ${detection.requests === 1 ? 'petición' : 'peticiones'}`)
-    if (detection.folders) bits.push(`${detection.folders} ${detection.folders === 1 ? 'carpeta' : 'carpetas'}`)
-    if (detection.variables) bits.push(`${detection.variables} ${detection.variables === 1 ? 'variable' : 'variables'}`)
-    if (detection.collections) bits.push(`${detection.collections} ${detection.collections === 1 ? 'colección' : 'colecciones'}`)
+    if (detection.name) bits.push(t.http.import.quoted({name: detection.name}))
+    if (detection.requests) bits.push(t.http.import.requests(detection.requests))
+    if (detection.folders) bits.push(t.http.import.folders(detection.folders))
+    if (detection.variables) bits.push(t.http.import.variables(detection.variables))
+    if (detection.collections) bits.push(t.http.import.collections(detection.collections))
     return (
         <p className="mt-1 flex items-center gap-1.5 text-ui-10 text-on-surface-variant">
             <Icon name="check_circle" size={13} className="shrink-0 text-secondary" />
-            <span className="text-on-surface">Se detectó: {detection.label}</span>
+            <span className="text-on-surface">{t.http.import.detected({label: detection.label})}</span>
             {detection.method && (
                 <span className={`font-mono font-semibold ${methodColor(detection.method)}`}>{detection.method}</span>
             )}
@@ -300,10 +292,13 @@ function DetectionLine({detection, hasText}: {detection: httpclient.ImportDetect
 // detalle obliga a ir a contar peticiones al árbol, que es justo lo que no se
 // puede hacer con una colección de cuarenta.
 function BatchSummary({batch}: {batch: main.HttpImportBatch}) {
+    const t = useT()
+    // Si el ítem entró bien y es de esa clase.
+    const ok = (o: main.HttpImportOutcome, kind: string) => !o.error && o.kind === kind
     return (
         <div className="rounded border border-outline-variant bg-surface-container-lowest p-2">
             <p className="mb-1.5 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70">
-                {batch.failed > 0 && batch.items.length === batch.failed ? 'No entró nada' : 'Se importó'}
+                {batch.failed > 0 && batch.items.length === batch.failed ? t.http.import.nothingImported : t.http.import.imported}
             </p>
             <ul className="space-y-1.5">
                 {batch.items.map((o, i) => (
@@ -316,20 +311,19 @@ function BatchSummary({batch}: {batch: main.HttpImportBatch}) {
                             />
                             <span className="min-w-0">
                                 <span className="text-on-surface">{o.name}</span>
-                                {!o.error && o.kind === 'collection' && (
+                                {ok(o, 'collection') && (
                                     <span className="text-on-surface-variant">
                                         {' '}
-                                        · {o.requests} {o.requests === 1 ? 'petición' : 'peticiones'}
-                                        {o.folders > 0 && ` en ${o.folders} ${o.folders === 1 ? 'carpeta' : 'carpetas'}`}
+                                        {t.http.import.collectionSummary({requests: o.requests, folders: o.folders})}
                                     </span>
                                 )}
-                                {!o.error && o.kind === 'environment' && (
+                                {ok(o, 'environment') && (
                                     <span className="text-on-surface-variant">
                                         {' '}
-                                        · entorno con {o.variables} {o.variables === 1 ? 'variable' : 'variables'}
+                                        {t.http.import.environmentSummary(o.variables)}
                                     </span>
                                 )}
-                                {!o.error && o.kind === 'request' && (
+                                {ok(o, 'request') && (
                                     <span className="text-on-surface-variant"> · {o.method} {o.url}</span>
                                 )}
                                 {o.error && <span className="text-error"> — {o.error}</span>}
@@ -347,8 +341,7 @@ function BatchSummary({batch}: {batch: main.HttpImportBatch}) {
             </ul>
             {batch.skipped > 0 && (
                 <p className="mt-1.5 text-ui-9 text-on-surface-variant/70">
-                    {batch.skipped} {batch.skipped === 1 ? 'archivo salteado' : 'archivos salteados'} (no eran JSON, o se
-                    pasó el tope de 200 por carpeta).
+                    {t.http.import.skipped(batch.skipped)}
                 </p>
             )}
         </div>

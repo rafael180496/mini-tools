@@ -1,4 +1,5 @@
 import Icon from './Icon'
+import {useT} from '../i18n'
 
 interface ConfirmDialogProps {
     title: string
@@ -16,6 +17,7 @@ interface ConfirmDialogProps {
 // isn't responding"). Any destructive click-to-confirm action should use
 // this instead of window.confirm().
 export default function ConfirmDialog({title, description, confirmLabel, danger, onConfirm, onClose}: ConfirmDialogProps) {
+    const t = useT()
     return (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
             <div className="flex w-80 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg">
@@ -28,10 +30,10 @@ export default function ConfirmDialog({title, description, confirmLabel, danger,
                     <button
                         type="button"
                         onClick={onClose}
-                        title="Cierra sin hacer nada"
+                        title={t.common.closeWithoutChanges}
                         className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:text-on-surface"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     <button
                         type="button"

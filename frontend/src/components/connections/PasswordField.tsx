@@ -2,6 +2,7 @@ import {useState} from 'react'
 import {RevealConnectionPassword} from '../../../wailsjs/go/main/App'
 import PasswordConfirmDialog from '../PasswordConfirmDialog'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface PasswordFieldProps {
     value: string
@@ -32,7 +33,9 @@ interface PasswordFieldProps {
 // passphrase de una llave privada y la clave de un SQLite cifrado NO pasan por
 // acá — son credenciales distintas, con su propio campo, y el binding no las
 // devuelve.
-export default function PasswordField({value, onChange, editingId, label = 'Password', inputClass, labelClass}: PasswordFieldProps) {
+export default function PasswordField({value, onChange, editingId, label, inputClass, labelClass}: PasswordFieldProps) {
+    const t = useT()
+    const tr = t.db.passwordField
     const [visible, setVisible] = useState(false)
     const [asking, setAsking] = useState(false)
     const [notice, setNotice] = useState('')
@@ -45,7 +48,7 @@ export default function PasswordField({value, onChange, editingId, label = 'Pass
             // Sin error pero sin nada que mostrar: la conexión se guardó sin
             // contraseña. Decirlo evita que un campo que sigue vacío se lea
             // como una falla.
-            setNotice('Esta conexión no tiene una contraseña guardada.')
+            setNotice(tr.noSavedPassword)
             return
         }
         onChange(password)
@@ -63,16 +66,16 @@ export default function PasswordField({value, onChange, editingId, label = 'Pass
     return (
         <div className={labelClass}>
             <div className="flex items-center gap-2">
-                <span className="flex-1">{label}</span>
+                <span className="flex-1">{label ?? tr.label}</span>
                 {editingId && (
                     <button
                         type="button"
                         onClick={() => setAsking(true)}
-                        title="Trae del vault la contraseña que ya está guardada y la deja en el campo, lista para copiar o editar. Pide tu clave maestra: verla en pantalla es una decisión aparte de tener la app abierta."
+                        title={tr.revealHint}
                         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-primary hover:bg-surface-variant"
                     >
                         <Icon name="key" size={13} />
-                        Ver la actual
+                        {tr.revealCurrent}
                     </button>
                 )}
             </div>
@@ -82,7 +85,7 @@ export default function PasswordField({value, onChange, editingId, label = 'Pass
                     type={visible ? 'text' : 'password'}
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
-                    placeholder={editingId ? 'Dejar en blanco para mantener la actual' : undefined}
+                    placeholder={editingId ? tr.keepPlaceholder : undefined}
                     className={inputClass}
                 />
                 <button
@@ -91,10 +94,10 @@ export default function PasswordField({value, onChange, editingId, label = 'Pass
                     disabled={!value}
                     title={
                         !value
-                            ? 'No hay nada escrito para mostrar. Para ver la contraseña ya guardada usá "Ver la actual".'
+                            ? tr.showEmptyHint
                             : visible
-                              ? 'Ocultar lo escrito'
-                              : 'Mostrar lo escrito en el campo'
+                              ? tr.hideTyped
+                              : tr.showTyped
                     }
                     className="shrink-0 rounded p-1.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-30 disabled:hover:bg-transparent"
                 >
@@ -104,7 +107,7 @@ export default function PasswordField({value, onChange, editingId, label = 'Pass
                     type="button"
                     onClick={copy}
                     disabled={!value}
-                    title={!value ? 'No hay nada en el campo para copiar' : 'Copiar al portapapeles lo que hay en el campo'}
+                    title={!value ? tr.copyEmptyHint : tr.copyHint}
                     className={`shrink-0 rounded p-1.5 hover:bg-surface-variant disabled:opacity-30 disabled:hover:bg-transparent ${
                         copied ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
                     }`}
@@ -117,9 +120,9 @@ export default function PasswordField({value, onChange, editingId, label = 'Pass
 
             {asking && (
                 <PasswordConfirmDialog
-                    title="Ver la contraseña guardada"
-                    description="Reingresá tu clave maestra para traer al campo la contraseña de esta conexión."
-                    confirmLabel="Mostrar"
+                    title={tr.dialogTitle}
+                    description={tr.dialogDescription}
+                    confirmLabel={tr.dialogConfirm}
                     onConfirm={reveal}
                     onClose={() => setAsking(false)}
                 />

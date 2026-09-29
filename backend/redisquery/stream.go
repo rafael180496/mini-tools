@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // Live monitoring: Pub/Sub subscriptions and stream consumption.
@@ -107,7 +108,7 @@ func NewStreamManager(parentCtx context.Context, pools *db.RedisPoolManager, emi
 // kind of thing nobody notices until messages are missing.
 func (m *StreamManager) Subscribe(connID, monitorID string, channels, patterns []string) error {
 	if len(channels) == 0 && len(patterns) == 0 {
-		return fmt.Errorf("redisquery: hay que indicar al menos un canal o un patrón")
+		return i18n.Errorf(i18n.Msg{ES: "redisquery: hay que indicar al menos un canal o un patrón", EN: "redisquery: you must specify at least one channel or pattern"})
 	}
 
 	client, err := m.pools.Get(connID)
@@ -162,7 +163,7 @@ func (m *StreamManager) Subscribe(connID, monitorID string, channels, patterns [
 // from the beginning).
 func (m *StreamManager) ReadStream(connID, monitorID, key, fromID string) error {
 	if strings.TrimSpace(key) == "" {
-		return fmt.Errorf("redisquery: hay que indicar el nombre del stream")
+		return i18n.Errorf(i18n.Msg{ES: "redisquery: hay que indicar el nombre del stream", EN: "redisquery: you must specify the stream name"})
 	}
 	if fromID == "" {
 		fromID = "$"
@@ -265,7 +266,7 @@ func (m *StreamManager) register(monitorID string, cancel context.CancelFunc) er
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.monitors[monitorID]; exists {
-		return fmt.Errorf("redisquery: ya hay un monitor corriendo con el id %q", monitorID)
+		return i18n.Errorf(i18n.Msg{ES: "redisquery: ya hay un monitor corriendo con el id %q", EN: "redisquery: a monitor is already running with id %q"}, monitorID)
 	}
 	m.monitors[monitorID] = cancel
 	return nil

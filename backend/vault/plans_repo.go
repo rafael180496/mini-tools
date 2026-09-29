@@ -2,10 +2,10 @@ package vault
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"mini-tools/backend/explain"
+	"mini-tools/backend/i18n"
 )
 
 // ExplainHistoryEntry is one row of explain_history — never encrypted, like
@@ -28,7 +28,7 @@ func (s *Store) RecordExplainPlan(connID, sqlText string, analyze bool, plan *ex
 
 	planJSON, err := json.Marshal(plan)
 	if err != nil {
-		return fmt.Errorf("vault: serializando plan: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: serializando plan: %w", EN: "vault: serializing plan: %w"}, err)
 	}
 
 	_, err = s.db.Exec(
@@ -36,7 +36,7 @@ func (s *Store) RecordExplainPlan(connID, sqlText string, analyze bool, plan *ex
 		id, connID, sqlText, analyze, string(planJSON), time.Now().Unix(),
 	)
 	if err != nil {
-		return fmt.Errorf("vault: guardando historial de explain: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando historial de explain: %w", EN: "vault: saving explain history: %w"}, err)
 	}
 	return nil
 }
@@ -54,7 +54,7 @@ func (s *Store) ListExplainHistory(connID string, limit int) ([]ExplainHistoryEn
 		connID, limit,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando historial de explain: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando historial de explain: %w", EN: "vault: listing explain history: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -64,11 +64,11 @@ func (s *Store) ListExplainHistory(connID string, limit int) ([]ExplainHistoryEn
 		var analyzeInt int
 		var planJSON string
 		if err := rows.Scan(&e.ID, &e.ConnectionID, &e.SQLText, &analyzeInt, &planJSON, &e.CreatedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo historial de explain: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo historial de explain: %w", EN: "vault: reading explain history: %w"}, err)
 		}
 		e.Analyze = analyzeInt != 0
 		if err := json.Unmarshal([]byte(planJSON), &e.Plan); err != nil {
-			return nil, fmt.Errorf("vault: parseando plan guardado: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: parseando plan guardado: %w", EN: "vault: parsing saved plan: %w"}, err)
 		}
 		out = append(out, e)
 	}

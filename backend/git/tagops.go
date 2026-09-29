@@ -1,6 +1,6 @@
 package git
 
-import "fmt"
+import "mini-tools/backend/i18n"
 
 // Tag operations.
 //
@@ -19,7 +19,7 @@ func (r *Runner) CreateTag(repoPath, name, ref, message string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("tag", name); err != nil {
+	if err := checkRefArg(argTag, name); err != nil {
 		return err
 	}
 
@@ -29,7 +29,7 @@ func (r *Runner) CreateTag(repoPath, name, ref, message string) error {
 	}
 	args = append(args, name)
 	if ref != "" {
-		if err := checkRefArg("referencia", ref); err != nil {
+		if err := checkRefArg(argRef, ref); err != nil {
 			return err
 		}
 		args = append(args, ref)
@@ -45,7 +45,7 @@ func (r *Runner) DeleteTag(repoPath, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("tag", name); err != nil {
+	if err := checkRefArg(argTag, name); err != nil {
 		return err
 	}
 	_, err = r.runLocal(root, "tag", "--delete", name)
@@ -61,10 +61,10 @@ func (r *Runner) PushTag(repoPath, remote, name string, auth AuthConfig) (string
 	if remote == "" {
 		remote = "origin"
 	}
-	if err := checkRefArg("remoto", remote); err != nil {
+	if err := checkRefArg(argRemote, remote); err != nil {
 		return "", err
 	}
-	if err := checkRefArg("tag", name); err != nil {
+	if err := checkRefArg(argTag, name); err != nil {
 		return "", err
 	}
 	// refs/tags/<name> rather than bare <name>: if a branch and a tag share a
@@ -86,10 +86,10 @@ func (r *Runner) DeleteRemoteTag(repoPath, remote, name string, auth AuthConfig)
 	if remote == "" {
 		remote = "origin"
 	}
-	if err := checkRefArg("remoto", remote); err != nil {
+	if err := checkRefArg(argRemote, remote); err != nil {
 		return "", err
 	}
-	if err := checkRefArg("tag", name); err != nil {
+	if err := checkRefArg(argTag, name); err != nil {
 		return "", err
 	}
 	return r.runNetwork(root, auth, "push", "--progress", remote, "--delete", "refs/tags/"+name)
@@ -107,10 +107,10 @@ func (r *Runner) SetUpstream(repoPath, branch, upstream string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("rama", branch); err != nil {
+	if err := checkRefArg(argBranch, branch); err != nil {
 		return err
 	}
-	if err := checkRefArg("upstream", upstream); err != nil {
+	if err := checkRefArg(argUpstream, upstream); err != nil {
 		return err
 	}
 	_, err = r.runLocal(root, "branch", "--set-upstream-to="+upstream, branch)
@@ -124,7 +124,7 @@ func (r *Runner) UnsetUpstream(repoPath, branch string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("rama", branch); err != nil {
+	if err := checkRefArg(argBranch, branch); err != nil {
 		return err
 	}
 	_, err = r.runLocal(root, "branch", "--unset-upstream", branch)
@@ -143,16 +143,16 @@ func (r *Runner) DeleteRemoteBranch(repoPath, remoteBranch string, auth AuthConf
 	if err != nil {
 		return "", err
 	}
-	if err := checkRefArg("rama remota", remoteBranch); err != nil {
+	if err := checkRefArg(argRemoteBranch, remoteBranch); err != nil {
 		return "", err
 	}
 
 	remote, branch, ok := splitRemoteRef(remoteBranch)
 	if !ok {
-		return "", fmt.Errorf("%q no parece una rama remota (se esperaba algo como origin/main)", remoteBranch)
+		return "", i18n.Errorf(i18n.Msg{ES: "%q no parece una rama remota (se esperaba algo como origin/main)", EN: "%q does not look like a remote branch (expected something like origin/main)"}, remoteBranch)
 	}
 	if branch == "HEAD" {
-		return "", fmt.Errorf("%q no es una rama: es el puntero simbólico a la rama por defecto del remoto", remoteBranch)
+		return "", i18n.Errorf(i18n.Msg{ES: "%q no es una rama: es el puntero simbólico a la rama por defecto del remoto", EN: "%q is not a branch: it is the symbolic pointer to the remote's default branch"}, remoteBranch)
 	}
 	return r.runNetwork(root, auth, "push", "--progress", remote, "--delete", branch)
 }
@@ -184,10 +184,10 @@ func (r *Runner) RenameBranch(repoPath, oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("rama", oldName); err != nil {
+	if err := checkRefArg(argBranch, oldName); err != nil {
 		return err
 	}
-	if err := checkRefArg("nuevo nombre", newName); err != nil {
+	if err := checkRefArg(argNewName, newName); err != nil {
 		return err
 	}
 	_, err = r.runLocal(root, "branch", "-m", oldName, newName)

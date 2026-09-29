@@ -1,6 +1,7 @@
 import {useEffect, useRef} from 'react'
 import type {Risk} from '../../lib/productionGuard'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface ProductionGuardDialogProps {
     commands: {command: string; risks: Risk[]}[]
@@ -16,6 +17,7 @@ interface ProductionGuardDialogProps {
 // "Ejecutar" would be dismissed with the Enter key that was already on its
 // way down.
 export default function ProductionGuardDialog({commands, onConfirm, onCancel}: ProductionGuardDialogProps) {
+    const t = useT()
     const cancelRef = useRef<HTMLButtonElement>(null)
 
     useEffect(() => {
@@ -37,7 +39,7 @@ export default function ProductionGuardDialog({commands, onConfirm, onCancel}: P
                 <div className="flex shrink-0 items-center gap-2 border-b border-red-500/40 bg-red-50 px-4 py-3 dark:bg-red-950/60">
                     <Icon name="dangerous" size={20} className="text-red-600 dark:text-red-400" />
                     <h2 className="text-sm font-semibold text-red-800 dark:text-red-200">
-                        ¿Seguro que querés ejecutar esto en PRODUCCIÓN?
+                        {t.ssh.guard.title}
                     </h2>
                 </div>
 
@@ -61,7 +63,7 @@ export default function ProductionGuardDialog({commands, onConfirm, onCancel}: P
                     ))}
                     {commands.length > 1 && (
                         <p className="text-ui-11 text-on-surface-variant">
-                            Son {commands.length} comandos: al confirmar se ejecutan todos, uno detrás de otro.
+                            {t.ssh.guard.manyCommands(commands.length)}
                         </p>
                     )}
                 </div>
@@ -70,19 +72,19 @@ export default function ProductionGuardDialog({commands, onConfirm, onCancel}: P
                     <button
                         ref={cancelRef}
                         onClick={onCancel}
-                        title="No se envía nada al servidor. Si lo habías pegado, no se pega ni una parte."
+                        title={t.ssh.guard.cancelTooltip}
                         className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90"
                     >
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     <button
                         onClick={onConfirm}
-                        title="Envía el comando tal cual a la terminal de producción."
+                        title={t.ssh.guard.runTooltip}
                         className="rounded border border-red-500 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-950/50"
                     >
-                        Ejecutar igual
+                        {t.ssh.guard.runAnyway}
                     </button>
-                    <span className="ml-auto text-ui-11 text-on-surface-variant">Esc cancela</span>
+                    <span className="ml-auto text-ui-11 text-on-surface-variant">{t.ssh.guard.escCancels}</span>
                 </div>
             </div>
         </div>

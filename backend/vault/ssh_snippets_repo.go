@@ -2,8 +2,9 @@ package vault
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // SshSnippet is a reusable command/script the user can Run (execute
@@ -40,14 +41,14 @@ func (s *Store) CreateSshSnippet(name, script string) (*SshSnippet, error) {
 
 	var nextOrder int
 	if err := s.db.QueryRow(`SELECT COALESCE(MAX(sort_order), -1) + 1 FROM ssh_snippets`).Scan(&nextOrder); err != nil {
-		return nil, fmt.Errorf("vault: calculando orden del snippet: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: calculando orden del snippet: %w", EN: "vault: computing snippet order: %w"}, err)
 	}
 
 	if _, err := s.db.Exec(
 		`INSERT INTO ssh_snippets (id, name, script, sort_order, created_at) VALUES (?, ?, ?, ?, ?)`,
 		id, name, script, nextOrder, createdAt,
 	); err != nil {
-		return nil, fmt.Errorf("vault: creando snippet: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: creando snippet: %w", EN: "vault: creating snippet: %w"}, err)
 	}
 	return &SshSnippet{ID: id, Name: name, Script: script, CreatedAt: createdAt}, nil
 }
@@ -56,14 +57,14 @@ func (s *Store) CreateSshSnippet(name, script string) (*SshSnippet, error) {
 func (s *Store) UpdateSshSnippet(id, name, script string) error {
 	res, err := s.db.Exec(`UPDATE ssh_snippets SET name = ?, script = ? WHERE id = ?`, name, script, id)
 	if err != nil {
-		return fmt.Errorf("vault: actualizando snippet: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: actualizando snippet: %w", EN: "vault: updating snippet: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: actualizando snippet: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: actualizando snippet: %w", EN: "vault: updating snippet: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: snippet %q no encontrado", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: snippet %q no encontrado", EN: "vault: snippet %q not found"}, id)
 	}
 	return nil
 }
@@ -71,7 +72,7 @@ func (s *Store) UpdateSshSnippet(id, name, script string) error {
 // DeleteSshSnippet removes a snippet permanently.
 func (s *Store) DeleteSshSnippet(id string) error {
 	if _, err := s.db.Exec(`DELETE FROM ssh_snippets WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando snippet: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando snippet: %w", EN: "vault: deleting snippet: %w"}, err)
 	}
 	return nil
 }
@@ -81,14 +82,14 @@ func (s *Store) DeleteSshSnippet(id string) error {
 func (s *Store) MoveSshSnippetToFolder(id, folderID string) error {
 	res, err := s.db.Exec(`UPDATE ssh_snippets SET folder_id = ? WHERE id = ?`, nullableString(folderID), id)
 	if err != nil {
-		return fmt.Errorf("vault: moviendo snippet de carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo snippet de carpeta: %w", EN: "vault: moving snippet to another folder: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: moviendo snippet de carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo snippet de carpeta: %w", EN: "vault: moving snippet to another folder: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: snippet %q no encontrado", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: snippet %q no encontrado", EN: "vault: snippet %q not found"}, id)
 	}
 	return nil
 }
@@ -97,7 +98,7 @@ func (s *Store) MoveSshSnippetToFolder(id, folderID string) error {
 func (s *Store) ListSshSnippets() ([]SshSnippet, error) {
 	rows, err := s.db.Query(`SELECT id, name, script, folder_id, created_at FROM ssh_snippets ORDER BY sort_order, created_at`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando snippets: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando snippets: %w", EN: "vault: listing snippets: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -106,7 +107,7 @@ func (s *Store) ListSshSnippets() ([]SshSnippet, error) {
 		var sn SshSnippet
 		var folderID sql.NullString
 		if err := rows.Scan(&sn.ID, &sn.Name, &sn.Script, &folderID, &sn.CreatedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo snippet: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo snippet: %w", EN: "vault: reading snippet: %w"}, err)
 		}
 		sn.FolderID = folderID.String
 		out = append(out, sn)

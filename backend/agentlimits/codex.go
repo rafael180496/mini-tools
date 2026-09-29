@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // codexSessionFiles es cuántas sesiones recientes se miran hacia atrás
@@ -31,13 +33,13 @@ func codexLimits(home string) AgentLimits {
 	l := AgentLimits{Agent: "codex", Source: root}
 
 	if _, err := os.Stat(root); err != nil {
-		l.Note = "No hay sesiones de Codex en esta máquina."
+		l.Note = i18n.T(i18n.Msg{ES: "No hay sesiones de Codex en esta máquina.", EN: "There are no Codex sessions on this machine."})
 		return l
 	}
 
 	files := recentRollouts(root, codexSessionFiles)
 	if len(files) == 0 {
-		l.Note = "Codex todavía no dejó ninguna sesión con datos de límites."
+		l.Note = i18n.T(i18n.Msg{ES: "Codex todavía no dejó ninguna sesión con datos de límites.", EN: "Codex hasn't left any session with limit data yet."})
 		return l
 	}
 
@@ -52,7 +54,7 @@ func codexLimits(home string) AgentLimits {
 				}
 				win := Window{
 					Kind:    windowKind(w.WindowMinutes),
-					Label:   "Ventana · " + windowLabel(w.WindowMinutes),
+					Label:   i18n.T(i18n.Msg{ES: "Ventana · %s", EN: "Window · %s"}, windowLabel(w.WindowMinutes)),
 					Percent: w.UsedPercent,
 				}
 				if w.ResetsAt > 0 {
@@ -70,7 +72,7 @@ func codexLimits(home string) AgentLimits {
 		}
 	}
 
-	l.Note = "Las sesiones de Codex de esta máquina no traen datos de límites todavía."
+	l.Note = i18n.T(i18n.Msg{ES: "Las sesiones de Codex de esta máquina no traen datos de límites todavía.", EN: "The Codex sessions on this machine don't carry limit data yet."})
 	return l
 }
 
@@ -169,7 +171,7 @@ func recentRollouts(root string, max int) []string {
 func antigravityLimits(home string) AgentLimits {
 	l := AgentLimits{Agent: "antigravity", Source: filepath.Join(home, ".gemini", "antigravity-cli")}
 	if _, err := os.Stat(l.Source); err != nil {
-		l.Note = "No se encontró Antigravity CLI en esta máquina."
+		l.Note = i18n.T(i18n.Msg{ES: "No se encontró Antigravity CLI en esta máquina.", EN: "Antigravity CLI wasn't found on this machine."})
 		return l
 	}
 	// No hay nada en el disco, pero sí se le puede preguntar a él: `agy --print
@@ -177,6 +179,6 @@ func antigravityLimits(home string) AgentLimits {
 	// botón y no se dispara solo — cuesta un subproceso y unos segundos. Ver
 	// query.go.
 	l.Queryable = true
-	l.Note = "Antigravity no guarda su cuota en el disco. Se le puede preguntar a él mismo: tarda unos segundos y no consume cuota."
+	l.Note = i18n.T(i18n.Msg{ES: "Antigravity no guarda su cuota en el disco. Se le puede preguntar a él mismo: tarda unos segundos y no consume cuota.", EN: "Antigravity doesn't store its quota on disk. It can be asked directly: it takes a few seconds and doesn't use quota."})
 	return l
 }

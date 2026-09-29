@@ -2,8 +2,10 @@ package git
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,7 +78,21 @@ type WorkFile struct {
 
 // ErrWorkFileChanged se devuelve cuando el archivo cambió en disco entre la
 // lectura y el guardado.
-var ErrWorkFileChanged = fmt.Errorf("el archivo cambió en el disco desde que lo abriste")
+// Código "disk-changed": GitFileEditor.tsx abre el diálogo de conflicto por
+// el código, no por el texto.
+var ErrWorkFileChanged = i18n.NewCoded("disk-changed", i18n.Msg{
+	ES: "el archivo cambió en el disco desde que lo abriste",
+	EN: "the file changed on disk since you opened it",
+})
+
+// ErrWorkFileNotFound: el archivo no existe (se borró, o nunca estuvo en el
+// árbol de trabajo). Código "not-found" para que el editor lo distinga de
+// cualquier otro fallo sin depender del texto del sistema operativo, que
+// cambia con el idioma y la plataforma.
+var ErrWorkFileNotFound = i18n.NewCoded("not-found", i18n.Msg{
+	ES: "el archivo no existe",
+	EN: "the file does not exist",
+})
 
 // ListWorkTree devuelve los archivos versionados y los no rastreados que NO
 // están ignorados.
@@ -134,10 +150,13 @@ func (r *Runner) ReadWorkFile(repoPath, path string) (WorkFile, error) {
 
 	info, err := os.Stat(full)
 	if err != nil {
-		return WorkFile{}, fmt.Errorf("leyendo %q: %w", path, err)
+		if errors.Is(err, fs.ErrNotExist) {
+			return WorkFile{}, fmt.Errorf("%w: %q", ErrWorkFileNotFound, path)
+		}
+		return WorkFile{}, i18n.Errorf(i18n.Msg{ES: "leyendo %q: %w", EN: "reading %q: %w"}, path, err)
 	}
 	if info.IsDir() {
-		return WorkFile{}, fmt.Errorf("%q es un directorio, no un archivo", path)
+		return WorkFile{}, i18n.Errorf(i18n.Msg{ES: "%q es un directorio, no un archivo", EN: "%q is a directory, not a file"}, path)
 	}
 
 	out := WorkFile{Path: path, Size: info.Size(), ModTimeUnix: info.ModTime().Unix()}
@@ -148,7 +167,7 @@ func (r *Runner) ReadWorkFile(repoPath, path string) (WorkFile, error) {
 
 	data, err := os.ReadFile(full)
 	if err != nil {
-		return WorkFile{}, fmt.Errorf("leyendo %q: %w", path, err)
+		return WorkFile{}, i18n.Errorf(i18n.Msg{ES: "leyendo %q: %w", EN: "reading %q: %w"}, path, err)
 	}
 	// Se vuelve a comprobar contra los bytes leídos y no solo contra el stat:
 	// el archivo puede haber crecido entre una cosa y la otra.
@@ -190,7 +209,7 @@ func (r *Runner) WriteWorkFile(repoPath, path, content string, expectedModTimeUn
 	mode := os.FileMode(0o644)
 	if info, err := os.Stat(full); err == nil {
 		if info.IsDir() {
-			return 0, fmt.Errorf("%q es un directorio, no un archivo", path)
+			return 0, i18n.Errorf(i18n.Msg{ES: "%q es un directorio, no un archivo", EN: "%q is a directory, not a file"}, path)
 		}
 		mode = info.Mode().Perm()
 		if expectedModTimeUnix != 0 && info.ModTime().Unix() != expectedModTimeUnix {
@@ -206,11 +225,11 @@ func (r *Runner) WriteWorkFile(repoPath, path, content string, expectedModTimeUn
 	// de fallar con un error del sistema de archivos que no explica nada.
 	// editablePath ya garantizó que esta ruta cae dentro del repositorio.
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		return 0, fmt.Errorf("creando el directorio de %q: %w", path, err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "creando el directorio de %q: %w", EN: "creating the directory for %q: %w"}, path, err)
 	}
 
 	if err := writeFileAtomic(full, []byte(content), mode); err != nil {
-		return 0, fmt.Errorf("escribiendo %q: %w", path, err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "escribiendo %q: %w", EN: "writing %q: %w"}, path, err)
 	}
 
 	info, err := os.Stat(full)
@@ -250,10 +269,10 @@ func (r *Runner) editablePath(repoPath, path string) (string, error) {
 
 	rel, err := filepath.Rel(root, full)
 	if err != nil {
-		return "", fmt.Errorf("la ruta %q queda fuera del repositorio", path)
+		return "", i18n.Errorf(i18n.Msg{ES: "la ruta %q queda fuera del repositorio", EN: "the path %q is outside the repository"}, path)
 	}
 	if first, _, _ := strings.Cut(filepath.ToSlash(rel), "/"); first == ".git" {
-		return "", fmt.Errorf("los archivos internos de git (.git/) no se editan desde acá")
+		return "", i18n.New(i18n.Msg{ES: "los archivos internos de git (.git/) no se editan desde acá", EN: "git's internal files (.git/) cannot be edited from here"})
 	}
 
 	// El repositorio se canonicaliza también: en macOS /tmp es un symlink a
@@ -261,7 +280,7 @@ func (r *Runner) editablePath(repoPath, path string) (string, error) {
 	// resolver rechazaría archivos perfectamente válidos.
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		return "", fmt.Errorf("no se pudo resolver la raíz del repositorio: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "no se pudo resolver la raíz del repositorio: %w", EN: "could not resolve the repository root: %w"}, err)
 	}
 
 	// Lo que todavía no existe no se puede resolver, así que se sube hasta el
@@ -279,14 +298,14 @@ func (r *Runner) editablePath(repoPath, path string) (string, error) {
 		}
 		parent := filepath.Dir(target)
 		if parent == target {
-			return "", fmt.Errorf("no se pudo resolver la ruta %q", path)
+			return "", i18n.Errorf(i18n.Msg{ES: "no se pudo resolver la ruta %q", EN: "could not resolve the path %q"}, path)
 		}
 		missing = append([]string{filepath.Base(target)}, missing...)
 		target = parent
 	}
 	realTarget, err := filepath.EvalSymlinks(target)
 	if err != nil {
-		return "", fmt.Errorf("no se pudo resolver la ruta %q: %w", path, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "no se pudo resolver la ruta %q: %w", EN: "could not resolve the path %q: %w"}, path, err)
 	}
 	if len(missing) > 0 {
 		realTarget = filepath.Join(append([]string{realTarget}, missing...)...)
@@ -294,7 +313,7 @@ func (r *Runner) editablePath(repoPath, path string) (string, error) {
 
 	if realRel, err := filepath.Rel(realRoot, realTarget); err != nil ||
 		realRel == ".." || strings.HasPrefix(realRel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("la ruta %q apunta fuera del repositorio", path)
+		return "", i18n.Errorf(i18n.Msg{ES: "la ruta %q apunta fuera del repositorio", EN: "the path %q points outside the repository"}, path)
 	}
 	return full, nil
 }

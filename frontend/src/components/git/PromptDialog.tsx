@@ -1,4 +1,5 @@
 import {useState} from 'react'
+import {useT} from '../../i18n'
 
 interface PromptDialogProps {
     title: string
@@ -29,7 +30,7 @@ export default function PromptDialog({
     label,
     initial = '',
     placeholder,
-    confirmLabel = 'Guardar',
+    confirmLabel,
     secondLabel,
     secondPlaceholder,
     secondInitial = '',
@@ -37,6 +38,8 @@ export default function PromptDialog({
     onSubmit,
     onClose,
 }: PromptDialogProps) {
+    const t = useT()
+    const confirm = confirmLabel ?? t.common.save
     const [value, setValue] = useState(initial)
     const [second, setSecond] = useState(secondInitial)
 
@@ -83,16 +86,16 @@ export default function PromptDialog({
                 )}
 
                 <div className="mt-4 flex justify-end gap-2">
-                    <button onClick={onClose} title="Cerrar sin aplicar ningún cambio" className="rounded px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant">
-                        Cancelar
+                    <button onClick={onClose} title={t.common.closeWithoutApplying} className="rounded px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant">
+                        {t.common.cancel}
                     </button>
                     <button
                         onClick={submit}
                         disabled={!value.trim()}
-                        title={value.trim() ? confirmLabel : 'Completá el campo requerido primero'}
+                        title={value.trim() ? confirm : t.common.fillRequiredFirst}
                         className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary hover:opacity-90 disabled:opacity-40"
                     >
-                        {confirmLabel}
+                        {confirm}
                     </button>
                 </div>
             </div>

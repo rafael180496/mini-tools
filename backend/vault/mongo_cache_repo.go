@@ -3,8 +3,9 @@ package vault
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // SaveMongoCollectionCache persists the collection list (already JSON-encoded
@@ -20,7 +21,7 @@ func (s *Store) SaveMongoCollectionCache(connID, database, collectionsJSON strin
 		connID, database, collectionsJSON, time.Now().Unix(),
 	)
 	if err != nil {
-		return fmt.Errorf("vault: guardando cache de colecciones Mongo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando cache de colecciones Mongo: %w", EN: "vault: saving Mongo collections cache: %w"}, err)
 	}
 	return nil
 }
@@ -36,7 +37,7 @@ func (s *Store) GetMongoCollectionCache(connID, database string) (collectionsJSO
 		return "", false, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("vault: leyendo cache de colecciones Mongo: %w", err)
+		return "", false, i18n.Errorf(i18n.Msg{ES: "vault: leyendo cache de colecciones Mongo: %w", EN: "vault: reading Mongo collections cache: %w"}, err)
 	}
 	return collectionsJSON, true, nil
 }
@@ -46,7 +47,7 @@ func (s *Store) GetMongoCollectionCache(connID, database string) (collectionsJSO
 // have entirely different databases and collections).
 func (s *Store) DeleteMongoCollectionCache(connID string) error {
 	if _, err := s.db.Exec(`DELETE FROM mongo_collection_cache WHERE connection_id = ?`, connID); err != nil {
-		return fmt.Errorf("vault: borrando cache de colecciones Mongo: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando cache de colecciones Mongo: %w", EN: "vault: deleting Mongo collections cache: %w"}, err)
 	}
 	return nil
 }

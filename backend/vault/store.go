@@ -3,22 +3,22 @@ package vault
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 
 	_ "modernc.org/sqlite"
 
 	"mini-tools/backend/appdata"
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/vaultgate"
 )
 
 // ErrWrongPassword is returned by Unlock when the derived key fails to open
 // the stored verifier — i.e. the master password was wrong.
-var ErrWrongPassword = errors.New("vault: wrong master password")
+var ErrWrongPassword = i18n.New(i18n.Msg{ES: "vault: contraseña maestra incorrecta", EN: "vault: wrong master password"})
 
 // ErrAlreadyInitialized is returned by Initialize once a master password has
 // already been set for this vault.
-var ErrAlreadyInitialized = errors.New("vault: already initialized")
+var ErrAlreadyInitialized = i18n.New(i18n.Msg{ES: "vault: ya está inicializado", EN: "vault: already initialized"})
 
 // verifierPlaintext has no meaning beyond being a known value we can
 // encrypt at init time and try to decrypt at unlock time: if decryption
@@ -39,16 +39,16 @@ type Store struct {
 func Open(gate *vaultgate.Gate) (*Store, error) {
 	path, err := appdata.VaultPath()
 	if err != nil {
-		return nil, fmt.Errorf("vault: resolving path: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: resolviendo la ruta: %w", EN: "vault: resolving path: %w"}, err)
 	}
 
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return nil, fmt.Errorf("vault: opening db: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: abriendo la base: %w", EN: "vault: opening db: %w"}, err)
 	}
 
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
-		return nil, fmt.Errorf("vault: enabling WAL: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: habilitando WAL: %w", EN: "vault: enabling WAL: %w"}, err)
 	}
 
 	// Best-effort: consolidate any WAL left over from a previous run that
@@ -128,11 +128,11 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 		);
 		INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, strftime('%s','now'));
 	`); err != nil {
-		return nil, fmt.Errorf("vault: creating schema: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: creando el esquema: %w", EN: "vault: creating schema: %w"}, err)
 	}
 
 	if err := applyMigrations(db); err != nil {
-		return nil, fmt.Errorf("vault: applying migrations: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: aplicando las migraciones: %w", EN: "vault: applying migrations: %w"}, err)
 	}
 
 	return &Store{db: db, gate: gate}, nil
@@ -143,7 +143,7 @@ func Open(gate *vaultgate.Gate) (*Store, error) {
 func (s *Store) IsInitialized() (bool, error) {
 	var count int
 	if err := s.db.QueryRow(`SELECT COUNT(1) FROM vault_meta WHERE id = 1`).Scan(&count); err != nil {
-		return false, fmt.Errorf("vault: checking init state: %w", err)
+		return false, i18n.Errorf(i18n.Msg{ES: "vault: verificando si está inicializado: %w", EN: "vault: checking init state: %w"}, err)
 	}
 
 	return count > 0, nil
@@ -171,14 +171,14 @@ func (s *Store) Initialize(password string) error {
 
 	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(verifierPlaintext))
 	if err != nil {
-		return fmt.Errorf("vault: encrypting verifier: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: cifrando el verificador: %w", EN: "vault: encrypting verifier: %w"}, err)
 	}
 
 	if _, err := s.db.Exec(
 		`INSERT INTO vault_meta (id, verifier, verifier_nonce, created_at) VALUES (1, ?, ?, strftime('%s','now'))`,
 		ciphertext, nonce,
 	); err != nil {
-		return fmt.Errorf("vault: storing verifier: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando el verificador: %w", EN: "vault: storing verifier: %w"}, err)
 	}
 
 	s.gate.Set(key)
@@ -209,10 +209,10 @@ func (s *Store) validateAndSetKey(key []byte) error {
 	var ciphertext, nonce []byte
 	err := s.db.QueryRow(`SELECT verifier, verifier_nonce FROM vault_meta WHERE id = 1`).Scan(&ciphertext, &nonce)
 	if errors.Is(err, sql.ErrNoRows) {
-		return errors.New("vault: not initialized")
+		return i18n.New(i18n.Msg{ES: "vault: no está inicializado", EN: "vault: not initialized"})
 	}
 	if err != nil {
-		return fmt.Errorf("vault: reading verifier: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: leyendo el verificador: %w", EN: "vault: reading verifier: %w"}, err)
 	}
 
 	if _, err := mtcrypto.Decrypt(key, ciphertext, nonce); err != nil {
@@ -241,10 +241,10 @@ func (s *Store) VerifyPassword(password string) error {
 	var ciphertext, nonce []byte
 	err = s.db.QueryRow(`SELECT verifier, verifier_nonce FROM vault_meta WHERE id = 1`).Scan(&ciphertext, &nonce)
 	if errors.Is(err, sql.ErrNoRows) {
-		return errors.New("vault: not initialized")
+		return i18n.New(i18n.Msg{ES: "vault: no está inicializado", EN: "vault: not initialized"})
 	}
 	if err != nil {
-		return fmt.Errorf("vault: reading verifier: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: leyendo el verificador: %w", EN: "vault: reading verifier: %w"}, err)
 	}
 
 	passwordBytes := []byte(password)

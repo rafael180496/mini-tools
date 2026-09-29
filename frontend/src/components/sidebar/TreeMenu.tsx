@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react'
 import {createPortal} from 'react-dom'
 import Icon from '../Icon'
+import {t as dict, useT} from '../../i18n'
 
 // Menú contextual de los árboles de la barra lateral (clic derecho o botón
 // «⋯» de una fila). Uno solo para los cinco módulos: el mismo gesto tiene que
@@ -86,6 +87,7 @@ function tidy(entries: TreeMenuEntry[]): TreeMenuEntry[] {
 const WIDTH = 236
 
 function TreeMenu({anchor, items, onClose}: {anchor: Anchor; items: TreeMenuEntry[]; onClose: () => void}) {
+    const t = useT()
     // Pila de niveles: el raíz y, si se entró, el submenú con su título.
     const [stack, setStack] = useState<{title?: string; items: TreeMenuEntry[]}[]>([{items}])
     const level = stack[stack.length - 1]
@@ -184,7 +186,7 @@ function TreeMenu({anchor, items, onClose}: {anchor: Anchor; items: TreeMenuEntr
                         <MenuRow key={`${item.label}-${i}`} item={item} focused={focus === i} onHover={() => setFocus(i)} onChoose={() => choose(item)} />
                     ),
                 )}
-                {entries.length === 0 && <p className="px-2 py-1.5 text-on-surface-variant">Nada para elegir</p>}
+                {entries.length === 0 && <p className="px-2 py-1.5 text-on-surface-variant">{t.common.nothingToPick}</p>}
             </div>
         </>,
         document.body,
@@ -223,7 +225,7 @@ export function moveToFolderSubmenu(
     flatFolders: {folder: {id: string; name: string}; depth: number}[],
     currentId: string,
     onMove: (folderId: string) => void,
-    rootLabel = 'Raíz (sin carpeta)',
+    rootLabel = dict().common.rootNoFolder,
 ): TreeMenuEntry[] {
     return [
         {label: rootLabel, icon: 'home', checked: currentId === '', onSelect: () => onMove('')},
@@ -240,9 +242,10 @@ export function moveToFolderSubmenu(
 
 // MenuButton es el «⋯» de una fila: el mismo menú que el clic derecho, para
 // quien no sabe que existe el clic derecho.
-export function MenuButton({onOpen, title = 'Más opciones'}: {onOpen: (e: ReactMouseEvent) => void; title?: string}): ReactNode {
+export function MenuButton({onOpen, title}: {onOpen: (e: ReactMouseEvent) => void; title?: string}): ReactNode {
+    const t = useT()
     return (
-        <button onClick={onOpen} title={title} className="sidebar-icon !p-0.5">
+        <button onClick={onOpen} title={title ?? t.common.moreOptions} className="sidebar-icon !p-0.5">
             <Icon name="more_horiz" size={14} />
         </button>
     )

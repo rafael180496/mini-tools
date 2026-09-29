@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // ConnectionSummary is what the frontend sees for a saved connection — it
@@ -67,7 +67,7 @@ func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string, color,
 
 	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(dsn))
 	if err != nil {
-		return nil, fmt.Errorf("vault: encrypting dsn: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: cifrando el dsn: %w", EN: "vault: encrypting dsn: %w"}, err)
 	}
 
 	id, err := newID()
@@ -80,7 +80,7 @@ func (s *Store) SaveConnection(name string, dbType db.DBType, dsn string, color,
 		`INSERT INTO connections (id, name, db_type, encrypted_dsn, nonce, created_at, color, environment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, name, string(dbType), ciphertext, nonce, createdAt, nullableString(color), environment,
 	); err != nil {
-		return nil, fmt.Errorf("vault: saving connection: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: guardando la conexión: %w", EN: "vault: saving connection: %w"}, err)
 	}
 
 	return &ConnectionSummary{ID: id, Name: name, DBType: string(dbType), CreatedAt: createdAt, Color: color, Environment: environment}, nil
@@ -107,7 +107,7 @@ func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, 
 
 	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(dsn))
 	if err != nil {
-		return fmt.Errorf("vault: encrypting dsn: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: cifrando el dsn: %w", EN: "vault: encrypting dsn: %w"}, err)
 	}
 
 	res, err := s.db.Exec(
@@ -115,14 +115,14 @@ func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, 
 		name, string(dbType), ciphertext, nonce, nullableString(color), environment, id,
 	)
 	if err != nil {
-		return fmt.Errorf("vault: updating connection: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: actualizando la conexión: %w", EN: "vault: updating connection: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: updating connection: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: actualizando la conexión: %w", EN: "vault: updating connection: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: conexión %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: conexión %q no encontrada", EN: "vault: connection %q not found"}, id)
 	}
 	return nil
 }
@@ -132,7 +132,7 @@ func (s *Store) UpdateConnection(id, name string, dbType db.DBType, dsn string, 
 func (s *Store) ListConnections() ([]ConnectionSummary, error) {
 	rows, err := s.db.Query(`SELECT id, name, db_type, created_at, metadata_schemas, color, folder_id, environment FROM connections ORDER BY name`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listing connections: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando conexiones: %w", EN: "vault: listing connections: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -142,7 +142,7 @@ func (s *Store) ListConnections() ([]ConnectionSummary, error) {
 		var schemas, color, folderID sql.NullString
 		var environment sql.NullString
 		if err := rows.Scan(&c.ID, &c.Name, &c.DBType, &c.CreatedAt, &schemas, &color, &folderID, &environment); err != nil {
-			return nil, fmt.Errorf("vault: scanning connection: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo conexión: %w", EN: "vault: scanning connection: %w"}, err)
 		}
 		c.MetadataSchemas = splitSchemas(schemas)
 		c.Color = color.String
@@ -159,14 +159,14 @@ func (s *Store) ListConnections() ([]ConnectionSummary, error) {
 func (s *Store) MoveConnectionToFolder(id, folderID string) error {
 	res, err := s.db.Exec(`UPDATE connections SET folder_id = ? WHERE id = ?`, nullableString(folderID), id)
 	if err != nil {
-		return fmt.Errorf("vault: moviendo conexión de carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo conexión de carpeta: %w", EN: "vault: moving connection to folder: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: moviendo conexión de carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo conexión de carpeta: %w", EN: "vault: moving connection to folder: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: conexión %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: conexión %q no encontrada", EN: "vault: connection %q not found"}, id)
 	}
 	return nil
 }
@@ -186,14 +186,14 @@ func (s *Store) SetConnectionSchemas(id string, schemas []string) error {
 
 	res, err := s.db.Exec(`UPDATE connections SET metadata_schemas = ? WHERE id = ?`, value, id)
 	if err != nil {
-		return fmt.Errorf("vault: guardando esquemas de conexión: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando esquemas de conexión: %w", EN: "vault: saving connection schemas: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: guardando esquemas de conexión: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando esquemas de conexión: %w", EN: "vault: saving connection schemas: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: conexión %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: conexión %q no encontrada", EN: "vault: connection %q not found"}, id)
 	}
 	return nil
 }
@@ -204,10 +204,10 @@ func (s *Store) ConnectionMetadataSchemas(id string) ([]string, error) {
 	var schemas sql.NullString
 	err := s.db.QueryRow(`SELECT metadata_schemas FROM connections WHERE id = ?`, id).Scan(&schemas)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("vault: conexión %q no encontrada", id)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: conexión %q no encontrada", EN: "vault: connection %q not found"}, id)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo esquemas de conexión: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo esquemas de conexión: %w", EN: "vault: reading connection schemas: %w"}, err)
 	}
 	return splitSchemas(schemas), nil
 }
@@ -219,10 +219,10 @@ func (s *Store) ConnectionEnvironment(id string) (string, error) {
 	var env sql.NullString
 	err := s.db.QueryRow(`SELECT environment FROM connections WHERE id = ?`, id).Scan(&env)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("vault: conexión %q no encontrada", id)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: conexión %q no encontrada", EN: "vault: connection %q not found"}, id)
 	}
 	if err != nil {
-		return "", fmt.Errorf("vault: leyendo entorno de conexión: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo entorno de conexión: %w", EN: "vault: reading connection environment: %w"}, err)
 	}
 	return env.String, nil
 }
@@ -236,10 +236,10 @@ func (s *Store) ConnectionDBType(id string) (db.DBType, error) {
 	var dbType string
 	err := s.db.QueryRow(`SELECT db_type FROM connections WHERE id = ?`, id).Scan(&dbType)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("vault: conexión %q no encontrada", id)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: conexión %q no encontrada", EN: "vault: connection %q not found"}, id)
 	}
 	if err != nil {
-		return "", fmt.Errorf("vault: leyendo motor de conexión: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo motor de conexión: %w", EN: "vault: reading connection engine: %w"}, err)
 	}
 	return db.DBType(dbType), nil
 }
@@ -261,10 +261,10 @@ func (s *Store) DeleteConnection(id string) error {
 	// alteraría el comportamiento de toda tabla con FK declarada; eso merece
 	// su propia verificación en vez de entrar de costado.
 	if _, err := s.db.Exec(`DELETE FROM ssh_command_history WHERE conn_id = ?`, id); err != nil {
-		return fmt.Errorf("vault: deleting connection history: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando el historial de la conexión: %w", EN: "vault: deleting connection history: %w"}, err)
 	}
 	if _, err := s.db.Exec(`DELETE FROM connections WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("vault: deleting connection: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando la conexión: %w", EN: "vault: deleting connection: %w"}, err)
 	}
 	return nil
 }
@@ -289,15 +289,15 @@ func (s *Store) ConnectionDSN(id string) (db.DBType, string, error) {
 	err = s.db.QueryRow(`SELECT db_type, encrypted_dsn, nonce FROM connections WHERE id = ?`, id).
 		Scan(&dbType, &ciphertext, &nonce)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", fmt.Errorf("vault: conexión %q no encontrada", id)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: conexión %q no encontrada", EN: "vault: connection %q not found"}, id)
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("vault: reading connection: %w", err)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo la conexión: %w", EN: "vault: reading connection: %w"}, err)
 	}
 
 	plaintext, err := mtcrypto.Decrypt(key, ciphertext, nonce)
 	if err != nil {
-		return "", "", fmt.Errorf("vault: decrypting dsn: %w", err)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "vault: descifrando el dsn: %w", EN: "vault: decrypting dsn: %w"}, err)
 	}
 
 	return db.DBType(dbType), string(plaintext), nil
@@ -306,7 +306,7 @@ func (s *Store) ConnectionDSN(id string) (db.DBType, string, error) {
 func newID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("vault: generating id: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: generando id: %w", EN: "vault: generating id: %w"}, err)
 	}
 	return hex.EncodeToString(b), nil
 }

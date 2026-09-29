@@ -1,6 +1,6 @@
 package db
 
-import "fmt"
+import "mini-tools/backend/i18n"
 
 // DBType identifies which of the 4 supported engines a connection uses.
 type DBType string
@@ -89,6 +89,6 @@ func ConnectorFor(t DBType) (Connector, error) {
 	case DBTypeSSH:
 		return sshConnector{}, nil
 	default:
-		return nil, fmt.Errorf("db: db_type desconocido %q", t)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: db_type desconocido %q", EN: "db: unknown db_type %q"}, t)
 	}
 }

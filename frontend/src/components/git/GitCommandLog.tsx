@@ -2,6 +2,7 @@ import {useCallback, useEffect, useState} from 'react'
 import {GitClearCommandLog, GitCommandLog} from '../../../wailsjs/go/main/App'
 import {git} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {formatDateTime, useT} from '../../i18n'
 
 interface GitCommandLogProps {
     // reloadToken changes after every mutating action, so the drawer shows
@@ -28,6 +29,7 @@ interface GitCommandLogProps {
 // ahí que este componente ocupe todo lo que le den y no tenga botón de
 // cerrar propio: el título y la X viven en la tira de solapas.
 export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogProps) {
+    const tc = useT().git.commandLog
     const [entries, setEntries] = useState<git.CommandEntry[]>([])
     const [onlyFailed, setOnlyFailed] = useState(false)
     const [copied, setCopied] = useState('')
@@ -55,35 +57,35 @@ export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogP
         <div className="flex h-full min-h-0 flex-col bg-surface-container-lowest">
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-1 text-ui-11">
                 <Icon name="history" size={14} className="shrink-0 text-on-surface-variant" />
-                <span className="text-on-surface-variant" title="Cuántos comandos git ejecutó la app desde que se abrió">
-                    {entries.length} comandos
+                <span className="text-on-surface-variant" title={tc.countTitle}>
+                    {tc.count(entries.length)}
                 </span>
                 {failedCount > 0 && (
-                    <span className="rounded bg-error/15 px-1.5 text-error" title="Comandos que terminaron con error">
-                        {failedCount} con error
+                    <span className="rounded bg-error/15 px-1.5 text-error" title={tc.failedTitle}>
+                        {tc.failed(failedCount)}
                     </span>
                 )}
 
-                <label className="ml-auto flex items-center gap-1 text-on-surface-variant" title="Muestra solo los comandos que fallaron">
+                <label className="ml-auto flex items-center gap-1 text-on-surface-variant" title={tc.onlyFailedTitle}>
                     <input type="checkbox" checked={onlyFailed} onChange={(e) => setOnlyFailed(e.target.checked)} className="accent-primary" />
-                    solo errores
+                    {tc.onlyFailed}
                 </label>
-                <button onClick={load} title="Vuelve a leer el log" className="rounded p-0.5 text-on-surface-variant hover:text-on-surface">
+                <button onClick={load} title={tc.reloadTitle} className="rounded p-0.5 text-on-surface-variant hover:text-on-surface">
                     <Icon name="refresh" size={14} />
                 </button>
                 <button
                     onClick={() => void GitClearCommandLog().then(load)}
-                    title="Vacía el log. No afecta al repositorio."
+                    title={tc.clearTitle}
                     className="rounded px-1.5 py-0.5 text-on-surface-variant hover:text-on-surface"
                 >
-                    Limpiar
+                    {tc.clear}
                 </button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto font-mono text-ui-11">
                 {visible.length === 0 ? (
                     <p className="p-3 text-on-surface-variant">
-                        {onlyFailed ? 'Ningún comando falló.' : 'Todavía no se ejecutó ningún comando en esta sesión.'}
+                        {onlyFailed ? tc.noneFailed : tc.empty}
                     </p>
                 ) : (
                     visible.map((e, i) => (
@@ -94,12 +96,12 @@ export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogP
                                     size={12}
                                     className={`shrink-0 ${e.failed ? 'text-error' : 'text-secondary'}`}
                                 />
-                                <span className="min-w-0 flex-1 truncate text-on-surface" title={`${e.command}\n\nen ${e.dir}`}>
+                                <span className="min-w-0 flex-1 truncate text-on-surface" title={tc.commandTitle({command: e.command, dir: e.dir})}>
                                     {e.command}
                                 </span>
-                                <span className="shrink-0 text-ui-10 text-on-surface-variant/60">{e.durationMs} ms</span>
+                                <span className="shrink-0 text-ui-10 text-on-surface-variant/60">{tc.duration(e.durationMs)}</span>
                                 <span className="shrink-0 text-ui-10 text-on-surface-variant/60">
-                                    {new Date(e.atMs).toLocaleTimeString('es')}
+                                    {formatDateTime(new Date(e.atMs), {timeStyle: 'medium'})}
                                 </span>
                                 {/* Solo en los que fallaron: preguntar por un
                                     comando que salió bien no tiene sentido, y
@@ -108,7 +110,7 @@ export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogP
                                 {e.failed && onAsk && (
                                     <button
                                         onClick={() => onAsk(e.command, e.output ?? '')}
-                                        title="Le pasa este comando y su error al agente, en el chat, para que explique qué pasó y cómo salir"
+                                        title={tc.askTitle}
                                         className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-on-surface"
                                     >
                                         <Icon name="smart_toy" size={12} />
@@ -116,7 +118,7 @@ export default function GitCommandLogDrawer({reloadToken, onAsk}: GitCommandLogP
                                 )}
                                 <button
                                     onClick={() => void copy(e.command)}
-                                    title="Copia el comando para pegarlo en una terminal tal cual se ejecutó"
+                                    title={tc.copyTitle}
                                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-on-surface"
                                 >
                                     <Icon name={copied === e.command ? 'check' : 'content_copy'} size={12} />

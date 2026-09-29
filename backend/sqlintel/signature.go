@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // Signature help: "what am I passing right now?".
@@ -194,9 +195,9 @@ func (r RoutineEntry) ArgSnippet() string {
 func (r RoutineEntry) Info() string {
 	var lines []string
 
-	kind := "Procedimiento almacenado"
+	kind := i18n.T(i18n.Msg{ES: "Procedimiento almacenado", EN: "Stored procedure"})
 	if r.IsFunction {
-		kind = "Función almacenada"
+		kind = i18n.T(i18n.Msg{ES: "Función almacenada", EN: "Stored function"})
 	}
 	if r.Package != "" {
 		kind += " · package " + r.Package
@@ -205,7 +206,7 @@ func (r RoutineEntry) Info() string {
 		kind += " · " + r.Schema
 	}
 	if r.Overload != "" {
-		kind += " · sobrecarga " + r.Overload
+		kind += i18n.T(i18n.Msg{ES: " · sobrecarga %s", EN: " · overload %s"}, r.Overload)
 	}
 	lines = append(lines, kind)
 
@@ -214,20 +215,20 @@ func (r RoutineEntry) Info() string {
 	}
 
 	if len(r.Args) == 0 {
-		lines = append(lines, "", "Sin parámetros.")
+		lines = append(lines, "", i18n.T(i18n.Msg{ES: "Sin parámetros.", EN: "No parameters."}))
 	} else {
-		lines = append(lines, "", "Parámetros:")
+		lines = append(lines, "", i18n.T(i18n.Msg{ES: "Parámetros:", EN: "Parameters:"}))
 		for _, a := range r.Args {
 			line := "  · " + argLabel(a)
 			if a.HasDefault {
-				line += "  (opcional)"
+				line += i18n.T(i18n.Msg{ES: "  (opcional)", EN: "  (optional)"})
 			}
 			lines = append(lines, line)
 		}
 	}
 
 	if r.IsFunction && r.ReturnType != "" {
-		lines = append(lines, "", "Retorna: "+r.ReturnType)
+		lines = append(lines, "", i18n.T(i18n.Msg{ES: "Retorna: %s", EN: "Returns: %s"}, r.ReturnType))
 	}
 
 	return strings.Join(lines, "\n")
@@ -293,7 +294,7 @@ func Signature(idx *SchemaIndex, req SignatureRequest) SignatureResponse {
 			label = f.Name + "(…)"
 		}
 		resp.Signatures = append(resp.Signatures, SignatureInfo{
-			Label: label, Name: f.Name, Doc: f.Doc, Params: nil, Active: -1,
+			Label: label, Name: f.Name, Doc: f.Doc.Text(), Params: nil, Active: -1,
 		})
 		return resp
 	}

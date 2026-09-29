@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react'
 import type {CSSProperties} from 'react'
 import Icon from './Icon'
+import {useT} from '../i18n'
 
 // La barra de título de la ventana, dibujada por la app.
 //
@@ -54,6 +55,7 @@ async function wailsRuntime() {
 }
 
 export default function TitleBar() {
+    const t = useT()
     // "" mientras no se sabe. Los controles solo se dibujan una vez que el
     // sistema está confirmado: dibujarlos por defecto y esconderlos después
     // haría parpadear tres botones en cada arranque de macOS.
@@ -125,16 +127,16 @@ export default function TitleBar() {
                 <div className="flex shrink-0 items-center" style={NO_DRAG}>
                     <button
                         onClick={() => void call('WindowMinimise')}
-                        title="Minimizar la ventana"
-                        aria-label="Minimizar"
+                        title={t.shell.titleBar.minimizeTitle}
+                        aria-label={t.shell.titleBar.minimize}
                         className="flex h-[34px] w-11 items-center justify-center text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="remove" size={16} />
                     </button>
                     <button
                         onClick={() => void call('WindowToggleMaximise')}
-                        title={maximised ? 'Restaurar la ventana a su tamaño anterior' : 'Maximizar la ventana'}
-                        aria-label={maximised ? 'Restaurar' : 'Maximizar'}
+                        title={maximised ? t.shell.titleBar.restoreTitle : t.shell.titleBar.maximizeTitle}
+                        aria-label={maximised ? t.shell.titleBar.restore : t.shell.titleBar.maximize}
                         className="flex h-[34px] w-11 items-center justify-center text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name={maximised ? 'filter_none' : 'crop_square'} size={maximised ? 13 : 15} />
@@ -145,8 +147,8 @@ export default function TitleBar() {
                         donde el mouse aterriza sin apuntar. */}
                     <button
                         onClick={() => void call('Quit')}
-                        title="Cerrar la aplicación"
-                        aria-label="Cerrar"
+                        title={t.shell.titleBar.quitTitle}
+                        aria-label={t.shell.titleBar.quit}
                         className="flex h-[34px] w-11 items-center justify-center text-on-surface-variant transition-colors hover:bg-error hover:text-on-error"
                     >
                         <Icon name="close" size={16} />

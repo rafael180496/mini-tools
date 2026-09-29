@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
 import Icon from '../Icon'
 import {formatValue, looksBinary, type RedisFormat} from '../../lib/redisFormat'
+import {locale, useT, type Dict} from '../../i18n'
 
 // A row of a complex Redis value, normalised so one table can render a
 // hash, a list, a set, a sorted set and a stream.
@@ -17,8 +18,9 @@ export interface RedisRow {
 
 export interface RedisColumn {
     key: string
-    label: string
-    hint: string
+    // i18n names the column's label and hint in the dictionary
+    // (t.redis.table.columns.<i18n>), resolved at render.
+    i18n: keyof Dict['redis']['table']['columns']
     // numeric columns right-align and sort numerically.
     numeric?: boolean
     // formatted columns run through the value formatter (JSON/hex/…).
@@ -77,6 +79,7 @@ export default function RedisValueTable({
     onToggleDelete,
     onExpand,
 }: RedisValueTableProps) {
+    const t = useT()
     const [sortKey, setSortKey] = useState<string | null>(null)
     const [sortDir, setSortDir] = useState<SortDir>('asc')
 
@@ -100,7 +103,7 @@ export default function RedisValueTable({
             const av = a.cells[idx]?.sortValue ?? ''
             const bv = b.cells[idx]?.sortValue ?? ''
             if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor
-            return String(av).localeCompare(String(bv), 'es', {numeric: true}) * factor
+            return String(av).localeCompare(String(bv), locale(), {numeric: true}) * factor
         })
     }, [rows, columns, sortKey, sortDir])
 
@@ -188,7 +191,7 @@ export default function RedisValueTable({
     }
 
     if (rows.length === 0) {
-        return <p className="p-2 text-xs text-on-surface-variant">{emptyLabel ?? 'Sin elementos.'}</p>
+        return <p className="p-2 text-xs text-on-surface-variant">{emptyLabel ?? t.redis.table.empty}</p>
     }
 
     return (
@@ -200,13 +203,13 @@ export default function RedisValueTable({
                             <th
                                 key={c.key}
                                 onClick={() => toggleSort(c.key)}
-                                title={`${c.hint} · Click para ordenar. El orden es sobre la página cargada: Redis no ordena hashes ni sets, y ordenar la clave entera exigiría traerla completa.`}
+                                title={t.redis.table.sortHint({hint: t.redis.table.columns[c.i18n].hint})}
                                 className={`cursor-pointer select-none border-b border-outline-variant px-2 py-1 font-medium text-on-surface-variant hover:text-on-surface ${
                                     c.numeric ? 'text-right' : 'text-left'
                                 }`}
                             >
                                 <span className="inline-flex items-center gap-1">
-                                    {c.label}
+                                    {t.redis.table.columns[c.i18n].label}
                                     {sortKey === c.key && <Icon name={sortDir === 'asc' ? 'arrow_upward' : 'arrow_downward'} size={12} />}
                                 </span>
                             </th>
@@ -260,11 +263,7 @@ export default function RedisValueTable({
                                             onDoubleClick={() => beginEdit(rowIdx, i)}
                                             onKeyDown={(e) => onCellKeyDown(e, rowIdx, i)}
                                             title={
-                                                binary
-                                                    ? 'Valor binario: se muestra reemplazado. Cambiá el formato a Hex para ver los bytes.'
-                                                    : isEditable
-                                                      ? `${shown}\n\nDoble click (o Enter) para editar. Flechas para moverte, Supr para marcar la fila como baja.`
-                                                      : shown
+                                                binary ? t.redis.table.binaryHint : isEditable ? t.redis.table.editableHint({value: shown}) : shown
                                             }
                                             className={`max-w-md truncate px-2 py-1 align-top font-mono outline-none ${
                                                 col?.numeric ? 'text-right' : 'text-left'
@@ -284,7 +283,7 @@ export default function RedisValueTable({
                                             {onExpand && (
                                                 <button
                                                     onClick={() => onExpand(row.id, staged ?? row.cells[Math.max(0, editableIdx)]?.text ?? '')}
-                                                    title="Abre el valor en un panel lateral con editor — para JSON o textos que no entran en una celda"
+                                                    title={t.redis.table.expandHint}
                                                     className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-primary"
                                                 >
                                                     <Icon name="open_in_full" size={13} />
@@ -293,7 +292,7 @@ export default function RedisValueTable({
                                             {staged !== undefined && onRevertEdit && (
                                                 <button
                                                     onClick={() => onRevertEdit(row.id)}
-                                                    title="Descarta el cambio pendiente de esta fila y vuelve al valor de Redis"
+                                                    title={t.redis.table.revertHint}
                                                     className="rounded p-0.5 text-tertiary hover:bg-surface-variant"
                                                 >
                                                     <Icon name="undo" size={13} />
@@ -340,25 +339,25 @@ export function highlightText(text: string, needle: string): React.ReactNode {
 // --- Row builders, one per Redis type --------------------------------------
 
 export const HASH_COLUMNS: RedisColumn[] = [
-    {key: 'field', label: 'Campo', hint: 'Nombre del campo del hash'},
-    {key: 'value', label: 'Valor', hint: 'Contenido del campo', formatted: true},
+    {key: 'field', i18n: 'hashField'},
+    {key: 'value', i18n: 'hashValue', formatted: true},
 ]
 
 export const LIST_COLUMNS: RedisColumn[] = [
-    {key: 'index', label: '#', hint: 'Posición en la lista (LINDEX)', numeric: true},
-    {key: 'value', label: 'Valor', hint: 'Contenido del elemento', formatted: true},
+    {key: 'index', i18n: 'listIndex', numeric: true},
+    {key: 'value', i18n: 'listValue', formatted: true},
 ]
 
-export const SET_COLUMNS: RedisColumn[] = [{key: 'member', label: 'Miembro', hint: 'Elemento del conjunto', formatted: true}]
+export const SET_COLUMNS: RedisColumn[] = [{key: 'member', i18n: 'setMember', formatted: true}]
 
 export const ZSET_COLUMNS: RedisColumn[] = [
-    {key: 'score', label: 'Score', hint: 'Puntaje que define el orden del sorted set', numeric: true},
-    {key: 'member', label: 'Miembro', hint: 'Elemento del sorted set', formatted: true},
+    {key: 'score', i18n: 'zsetScore', numeric: true},
+    {key: 'member', i18n: 'zsetMember', formatted: true},
 ]
 
 export const STREAM_COLUMNS: RedisColumn[] = [
-    {key: 'id', label: 'ID', hint: 'Identificador de la entrada (timestamp-secuencia)'},
-    {key: 'fields', label: 'Campos', hint: 'Pares campo/valor de la entrada', formatted: true},
+    {key: 'id', i18n: 'streamId'},
+    {key: 'fields', i18n: 'streamFields', formatted: true},
 ]
 
 export function hashRows(pairs: {field: string; value: string}[]): RedisRow[] {

@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
+	"mini-tools/backend/i18n"
 	"strconv"
 	"strings"
 	"time"
@@ -80,7 +81,7 @@ func DynamicScope() VarScope {
 		uuid = ""
 	}
 	return VarScope{
-		Label: "dinámicas",
+		Label: i18n.T(i18n.Msg{ES: "dinámicas", EN: "dynamic"}),
 		Vars: []Variable{
 			{Key: "$timestamp", Value: strconv.FormatInt(now.Unix(), 10), Enabled: true},
 			{Key: "$timestampMs", Value: strconv.FormatInt(now.UnixMilli(), 10), Enabled: true},
@@ -98,7 +99,7 @@ func DynamicScope() VarScope {
 // mal configurada no puede impedir que las otras tres funcionen, y la UI
 // necesita poder decir cuál falló.
 func EvaluateComputed(rows []Computed, scopes []VarScope) (VarScope, []string) {
-	out := VarScope{Label: "calculadas"}
+	out := VarScope{Label: i18n.T(i18n.Msg{ES: "calculadas", EN: "computed"})}
 	var problems []string
 
 	for _, row := range rows {
@@ -148,7 +149,7 @@ func computeOne(row Computed, input, key string) (string, error) {
 
 	case OpHMACSHA1, OpHMACSHA256, OpHMACSHA512:
 		if key == "" {
-			return "", fmt.Errorf("%s necesita una clave", row.Op)
+			return "", i18n.Errorf(i18n.Msg{ES: "%s necesita una clave", EN: "%s needs a key"}, row.Op)
 		}
 		var newHash func() hash.Hash
 		switch row.Op {
@@ -164,7 +165,7 @@ func computeOne(row Computed, input, key string) (string, error) {
 		return encodeSum(mac.Sum(nil), row.Encoding), nil
 
 	default:
-		return "", fmt.Errorf("operación desconocida: %q", row.Op)
+		return "", i18n.Errorf(i18n.Msg{ES: "operación desconocida: %q", EN: "unknown operation: %q"}, row.Op)
 	}
 }
 

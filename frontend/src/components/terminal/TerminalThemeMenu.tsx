@@ -1,6 +1,7 @@
 import {useEffect, useLayoutEffect, useRef, useState} from 'react'
 import {createPortal} from 'react-dom'
 import {TERMINAL_THEME_IDS, TERMINAL_THEME_LABELS, resolveTerminalTheme, type TerminalThemeId} from '../../xterm/terminalThemes'
+import {useT} from '../../i18n'
 import type {Theme} from '../../hooks/useTheme'
 import Icon from '../Icon'
 
@@ -35,6 +36,7 @@ function Swatch({id, appTheme}: {id: TerminalThemeId; appTheme: Theme}) {
 // entera. El menú va en un portal a document.body para que no lo recorte el
 // overflow del panel, mismo motivo que el <Select> de la app.
 export default function TerminalThemeMenu({value, appTheme, onChange}: TerminalThemeMenuProps) {
+    const t = useT()
     const [open, setOpen] = useState(false)
     const [pos, setPos] = useState({top: 0, left: 0})
     const btnRef = useRef<HTMLButtonElement>(null)
@@ -70,7 +72,7 @@ export default function TerminalThemeMenu({value, appTheme, onChange}: TerminalT
             <button
                 ref={btnRef}
                 onClick={() => setOpen((v) => !v)}
-                title="Cambiar la paleta de colores de las terminales. Se aplica al instante y a todas las terminales abiertas (local y SSH), y queda guardada."
+                title={t.terminal.theme.menuTooltip}
                 className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${
                     open ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                 }`}
@@ -97,8 +99,8 @@ export default function TerminalThemeMenu({value, appTheme, onChange}: TerminalT
                                     }}
                                     title={
                                         id === 'auto'
-                                            ? 'Sigue el modo claro/oscuro de la app: la terminal se aclara y se oscurece con el resto de la ventana'
-                                            : `Usar la paleta ${TERMINAL_THEME_LABELS[id]} en todas las terminales`
+                                            ? t.terminal.theme.autoTooltip
+                                            : t.terminal.theme.useInAll({name: TERMINAL_THEME_LABELS[id]})
                                     }
                                     className={`flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-ui-11 ${
                                         value === id
@@ -108,7 +110,7 @@ export default function TerminalThemeMenu({value, appTheme, onChange}: TerminalT
                                 >
                                     <Swatch id={id} appTheme={appTheme} />
                                     <span className="min-w-0 flex-1 truncate">
-                                        {id === 'auto' ? 'Automático' : TERMINAL_THEME_LABELS[id]}
+                                        {id === 'auto' ? t.terminal.theme.auto : TERMINAL_THEME_LABELS[id]}
                                     </span>
                                     {value === id && <Icon name="check" size={13} className="shrink-0" />}
                                 </button>

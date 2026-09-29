@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // SQLServerTableDDL reconstructs a CREATE TABLE statement from
@@ -29,7 +31,7 @@ func SQLServerTableDDL(ctx context.Context, pool *sql.DB, schema, table string) 
 		ORDER BY ORDINAL_POSITION
 	`, schema, table)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo columnas de %q: %w", table, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo columnas de %q: %w", EN: "export: reading columns of %q: %w"}, table, err)
 	}
 
 	type colInfo struct {
@@ -43,7 +45,7 @@ func SQLServerTableDDL(ctx context.Context, pool *sql.DB, schema, table string) 
 		var c colInfo
 		if err := rows.Scan(&c.name, &c.dtype, &c.nullable, &c.def, &c.charLen, &c.numPrec, &c.numScale); err != nil {
 			rows.Close()
-			return "", fmt.Errorf("export: escaneando columna: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando columna: %w", EN: "export: scanning column: %w"}, err)
 		}
 		cols = append(cols, c)
 	}
@@ -52,7 +54,7 @@ func SQLServerTableDDL(ctx context.Context, pool *sql.DB, schema, table string) 
 		return "", err
 	}
 	if len(cols) == 0 {
-		return "", fmt.Errorf("export: tabla %q no encontrada en schema %q", table, schema)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: tabla %q no encontrada en schema %q", EN: "export: table %q not found in schema %q"}, table, schema)
 	}
 
 	var pk []string
@@ -65,13 +67,13 @@ func SQLServerTableDDL(ctx context.Context, pool *sql.DB, schema, table string) 
 		ORDER BY kcu.ORDINAL_POSITION
 	`, schema, table)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo primary key de %q: %w", table, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo primary key de %q: %w", EN: "export: reading primary key of %q: %w"}, table, err)
 	}
 	for pkRows.Next() {
 		var c string
 		if err := pkRows.Scan(&c); err != nil {
 			pkRows.Close()
-			return "", fmt.Errorf("export: escaneando primary key: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando primary key: %w", EN: "export: scanning primary key: %w"}, err)
 		}
 		pk = append(pk, c)
 	}
@@ -95,13 +97,13 @@ func SQLServerTableDDL(ctx context.Context, pool *sql.DB, schema, table string) 
 		WHERE sch.name = @p1 AND tp.name = @p2
 	`, schema, table)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo foreign keys de %q: %w", table, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo foreign keys de %q: %w", EN: "export: reading foreign keys of %q: %w"}, table, err)
 	}
 	for fkRows.Next() {
 		var f fkInfo
 		if err := fkRows.Scan(&f.column, &f.refTable, &f.refColumn); err != nil {
 			fkRows.Close()
-			return "", fmt.Errorf("export: escaneando foreign key: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando foreign key: %w", EN: "export: scanning foreign key: %w"}, err)
 		}
 		fks = append(fks, f)
 	}
@@ -159,14 +161,14 @@ func SQLServerSchemaDDL(ctx context.Context, pool *sql.DB, schema string) (strin
 		ORDER BY TABLE_NAME
 	`, schema)
 	if err != nil {
-		return "", fmt.Errorf("export: listando tablas del schema: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: listando tablas del schema: %w", EN: "export: listing schema tables: %w"}, err)
 	}
 	var names []string
 	for rows.Next() {
 		var n string
 		if err := rows.Scan(&n); err != nil {
 			rows.Close()
-			return "", fmt.Errorf("export: escaneando nombre de tabla: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "export: escaneando nombre de tabla: %w", EN: "export: scanning table name: %w"}, err)
 		}
 		names = append(names, n)
 	}
@@ -202,10 +204,10 @@ func SQLServerObjectDDL(ctx context.Context, pool *sql.DB, schema, name string) 
 	var ddl sql.NullString
 	err := pool.QueryRowContext(ctx, `SELECT OBJECT_DEFINITION(OBJECT_ID(@p1))`, qualified).Scan(&ddl)
 	if err != nil {
-		return "", fmt.Errorf("export: leyendo DDL de %q: %w", name, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: leyendo DDL de %q: %w", EN: "export: reading DDL of %q: %w"}, name, err)
 	}
 	if !ddl.Valid {
-		return "", fmt.Errorf("export: no se encontró la definición de %q (¿objeto encriptado o inexistente?)", name)
+		return "", i18n.Errorf(i18n.Msg{ES: "export: no se encontró la definición de %q (¿objeto encriptado o inexistente?)", EN: "export: definition of %q not found (encrypted or nonexistent object?)"}, name)
 	}
 	return ddl.String + "\nGO\n", nil
 }

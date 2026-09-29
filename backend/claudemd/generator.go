@@ -1,11 +1,11 @@
 package claudemd
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // ProjectInfo is what the templates need: which connection the project's
@@ -33,7 +33,7 @@ func Generate(dir string, info ProjectInfo) (wrote bool, err error) {
 	if _, statErr := os.Stat(claudeMDPath); statErr == nil {
 		return false, nil
 	} else if !os.IsNotExist(statErr) {
-		return false, fmt.Errorf("claudemd: comprobando CLAUDE.md existente: %w", statErr)
+		return false, i18n.Errorf(i18n.Msg{ES: "claudemd: comprobando CLAUDE.md existente: %w", EN: "claudemd: checking existing CLAUDE.md: %w"}, statErr)
 	}
 
 	if err := Regenerate(dir, info); err != nil {
@@ -55,15 +55,15 @@ func Regenerate(dir string, info ProjectInfo) error {
 		// Gemini. Estos dos son punteros cortos al mismo documento, no copias
 		// —ver renderAgentPointer para por qué no se duplica el contenido—.
 		filepath.Join(dir, "AGENTS.md"): renderAgentPointer("AGENTS.md", "Codex CLI", info),
-		filepath.Join(dir, "GEMINI.md"): renderAgentPointer("GEMINI.md", "Gemini CLI y Antigravity", info),
+		filepath.Join(dir, "GEMINI.md"): renderAgentPointer("GEMINI.md", i18n.T(i18n.Msg{ES: "Gemini CLI y Antigravity", EN: "Gemini CLI and Antigravity"}), info),
 	}
 
 	for path, content := range files {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return fmt.Errorf("claudemd: creando %s: %w", filepath.Dir(path), err)
+			return i18n.Errorf(i18n.Msg{ES: "claudemd: creando %s: %w", EN: "claudemd: creating %s: %w"}, filepath.Dir(path), err)
 		}
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("claudemd: escribiendo %s: %w", path, err)
+			return i18n.Errorf(i18n.Msg{ES: "claudemd: escribiendo %s: %w", EN: "claudemd: writing %s: %w"}, path, err)
 		}
 	}
 	return nil

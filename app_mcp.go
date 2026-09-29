@@ -13,6 +13,7 @@ import (
 	"mini-tools/backend/appdata"
 	"mini-tools/backend/db"
 	"mini-tools/backend/git"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/mcpserver"
 	"mini-tools/backend/vault"
 )
@@ -153,7 +154,7 @@ func (a *App) ListTools() []mcpserver.ToolInfo {
 // contesta.
 func (a *App) CallTool(name string, args map[string]any) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
-		return "", fmt.Errorf("el vault de mini-tools está bloqueado: desbloquealo en la aplicación para que estas herramientas puedan responder")
+		return "", i18n.Errorf(i18n.Msg{ES: "el vault de mini-tools está bloqueado: desbloquealo en la aplicación para que estas herramientas puedan responder", EN: "the mini-tools vault is locked: unlock it in the app so these tools can answer"})
 	}
 
 	out, resource, err := a.runMCPTool(name, args)
@@ -220,54 +221,48 @@ func (a *App) mcpTools() []mcpserver.ToolInfo {
 
 	tools := []mcpserver.ToolInfo{
 		{
-			Name: "vault_search_notes",
-			Description: "Busca en la base de conocimiento del usuario (runbooks, procedimientos, notas técnicas). " +
-				"Devuelve títulos y fragmentos. SOLO incluye notas que el usuario NO marcó como privadas.",
-			InputSchema: obj(map[string]any{"query": str("Qué buscar. Varias palabras: todas tienen que aparecer.")}, "query"),
+			Name:        "vault_search_notes",
+			Description: i18n.T(i18n.Msg{ES: "Busca en la base de conocimiento del usuario (runbooks, procedimientos, notas técnicas). Devuelve títulos y fragmentos. SOLO incluye notas que el usuario NO marcó como privadas.", EN: "Searches the user's knowledge base (runbooks, procedures, technical notes). Returns titles and snippets. ONLY includes notes the user did NOT mark as private."}),
+			InputSchema: obj(map[string]any{"query": str(i18n.T(i18n.Msg{ES: "Qué buscar. Varias palabras: todas tienen que aparecer.", EN: "What to search for. Several words: all of them must appear."}))}, "query"),
 		},
 		{
-			Name: "vault_read_note",
-			Description: "Devuelve el Markdown completo de una nota, por su título. " +
-				"Si el usuario la marcó como privada, devuelve un error de permiso y NO su contenido.",
-			InputSchema: obj(map[string]any{"title": str("Título exacto de la nota.")}, "title"),
+			Name:        "vault_read_note",
+			Description: i18n.T(i18n.Msg{ES: "Devuelve el Markdown completo de una nota, por su título. Si el usuario la marcó como privada, devuelve un error de permiso y NO su contenido.", EN: "Returns the full Markdown of a note, by its title. If the user marked it as private, returns a permission error and NOT its content."}),
+			InputSchema: obj(map[string]any{"title": str(i18n.T(i18n.Msg{ES: "Título exacto de la nota.", EN: "Exact title of the note."}))}, "title"),
 		},
 		{
-			Name: "db_list_connections",
-			Description: "Lista las bases de datos guardadas: alias, motor y entorno (producción/staging/desarrollo). " +
-				"NUNCA devuelve DSN, host, usuario ni contraseña.",
+			Name:        "db_list_connections",
+			Description: i18n.T(i18n.Msg{ES: "Lista las bases de datos guardadas: alias, motor y entorno (producción/staging/desarrollo). NUNCA devuelve DSN, host, usuario ni contraseña.", EN: "Lists the saved databases: alias, engine and environment (production/staging/development). NEVER returns DSN, host, user or password."}),
 			InputSchema: obj(map[string]any{}),
 		},
 		{
-			Name: "db_get_schema",
-			Description: "Devuelve el DDL de una o varias tablas: columnas, tipos, clave primaria y claves foráneas. " +
-				"NUNCA devuelve filas de datos.",
+			Name:        "db_get_schema",
+			Description: i18n.T(i18n.Msg{ES: "Devuelve el DDL de una o varias tablas: columnas, tipos, clave primaria y claves foráneas. NUNCA devuelve filas de datos.", EN: "Returns the DDL of one or more tables: columns, types, primary key and foreign keys. NEVER returns data rows."}),
 			InputSchema: obj(map[string]any{
-				"connection": str("Alias de la conexión, tal como lo devuelve db_list_connections."),
-				"tables":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Nombres de tabla. Vacío = solo la lista de nombres disponibles."},
+				"connection": str(i18n.T(i18n.Msg{ES: "Alias de la conexión, tal como lo devuelve db_list_connections.", EN: "Connection alias, as returned by db_list_connections."})),
+				"tables":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": i18n.T(i18n.Msg{ES: "Nombres de tabla. Vacío = solo la lista de nombres disponibles.", EN: "Table names. Empty = just the list of available names."})},
 			}, "connection"),
 		},
 		{
-			Name: "db_explain_query",
-			Description: "Devuelve el plan de ejecución de una consulta SELECT, con el diagnóstico que ya calculó la app " +
-				"(escaneos completos, estimaciones erradas, índices sugeridos). NO ejecuta la consulta.",
+			Name:        "db_explain_query",
+			Description: i18n.T(i18n.Msg{ES: "Devuelve el plan de ejecución de una consulta SELECT, con el diagnóstico que ya calculó la app (escaneos completos, estimaciones erradas, índices sugeridos). NO ejecuta la consulta.", EN: "Returns the execution plan of a SELECT query, with the diagnosis the app already computed (full scans, wrong estimates, suggested indexes). Does NOT run the query."}),
 			InputSchema: obj(map[string]any{
-				"connection": str("Alias de la conexión."),
-				"query":      str("La consulta SELECT a analizar."),
+				"connection": str(i18n.T(i18n.Msg{ES: "Alias de la conexión.", EN: "Connection alias."})),
+				"query":      str(i18n.T(i18n.Msg{ES: "La consulta SELECT a analizar.", EN: "The SELECT query to analyze."})),
 			}, "connection", "query"),
 		},
 		{
-			Name: "ssh_get_recent_logs",
-			Description: "Devuelve las últimas líneas de una terminal SSH que el usuario ya tiene abierta. " +
-				"No abre conexiones ni ejecuta comandos.",
+			Name:        "ssh_get_recent_logs",
+			Description: i18n.T(i18n.Msg{ES: "Devuelve las últimas líneas de una terminal SSH que el usuario ya tiene abierta. No abre conexiones ni ejecuta comandos.", EN: "Returns the last lines of an SSH terminal the user already has open. Doesn't open connections or run commands."}),
 			InputSchema: obj(map[string]any{
-				"server": str("Alias de la conexión SSH."),
-				"lines":  map[string]any{"type": "number", "description": "Cuántas líneas (por defecto 50)."},
+				"server": str(i18n.T(i18n.Msg{ES: "Alias de la conexión SSH.", EN: "SSH connection alias."})),
+				"lines":  map[string]any{"type": "number", "description": i18n.T(i18n.Msg{ES: "Cuántas líneas (por defecto 50).", EN: "How many lines (50 by default)."})},
 			}, "server"),
 		},
 		{
 			Name:        "git_status",
-			Description: "Estado de un repositorio abierto en la aplicación: rama, archivos modificados y diff preparado.",
-			InputSchema: obj(map[string]any{"repo": str("Nombre del repositorio tal como aparece en la app.")}, "repo"),
+			Description: i18n.T(i18n.Msg{ES: "Estado de un repositorio abierto en la aplicación: rama, archivos modificados y diff preparado.", EN: "Status of a repository open in the app: branch, modified files and staged diff."}),
+			InputSchema: obj(map[string]any{"repo": str(i18n.T(i18n.Msg{ES: "Nombre del repositorio tal como aparece en la app.", EN: "Repository name as it appears in the app."}))}, "repo"),
 		},
 	}
 
@@ -277,25 +272,19 @@ func (a *App) mcpTools() []mcpserver.ToolInfo {
 	// catálogo es lo único que el agente lee antes de decidir.
 	if a.mcpNotesWrite() {
 		tools = append(tools, mcpserver.ToolInfo{
-			Name: "vault_create_note",
-			Description: "Crea una nota NUEVA en la base de conocimiento del usuario (su 'cerebro'), con título y contenido en Markdown. " +
-				"Sirve para dejar asentado lo que se averiguó: un procedimiento, un diagnóstico, una decisión. " +
-				"NO pisa nada: un título repetido se rechaza, elegí otro. Para corregir una nota que creaste vos, usá vault_update_note. " +
-				"La nota queda marcada como creada por un agente y visible para el usuario en su aplicación.",
+			Name:        "vault_create_note",
+			Description: i18n.T(i18n.Msg{ES: "Crea una nota NUEVA en la base de conocimiento del usuario (su 'cerebro'), con título y contenido en Markdown. Sirve para dejar asentado lo que se averiguó: un procedimiento, un diagnóstico, una decisión. NO pisa nada: un título repetido se rechaza, elegí otro. Para corregir una nota que creaste vos, usá vault_update_note. La nota queda marcada como creada por un agente y visible para el usuario en su aplicación.", EN: "Creates a NEW note in the user's knowledge base (their 'brain'), with a title and Markdown content. Use it to record what was found out: a procedure, a diagnosis, a decision. It does NOT overwrite anything: a repeated title is rejected, pick another. To fix a note you created, use vault_update_note. The note is marked as created by an agent and visible to the user in their app."}),
 			InputSchema: obj(map[string]any{
-				"title":   str("Título de la nota. Único: es lo que la hace enlazable con [[…]] desde otras notas."),
-				"content": str("Contenido en Markdown. Podés enlazar otras notas con [[Título]] y etiquetar con #etiqueta."),
+				"title":   str(i18n.T(i18n.Msg{ES: "Título de la nota. Único: es lo que la hace enlazable con [[…]] desde otras notas.", EN: "Note title. Unique: it's what makes it linkable with [[…]] from other notes."})),
+				"content": str(i18n.T(i18n.Msg{ES: "Contenido en Markdown. Podés enlazar otras notas con [[Título]] y etiquetar con #etiqueta.", EN: "Markdown content. You can link other notes with [[Title]] and tag with #tag."})),
 			}, "title", "content"),
 		})
 		tools = append(tools, mcpserver.ToolInfo{
-			Name: "vault_update_note",
-			Description: "Reescribe el contenido de una nota que VOS creaste antes con vault_create_note — para corregirla o ampliarla. " +
-				"Solo funciona sobre tus propias notas: las que escribió el usuario, y las tuyas que él haya editado después, se rechazan. " +
-				"Tampoco toca ninguna nota marcada como privada. " +
-				"REEMPLAZA el contenido entero: leelo antes con vault_read_note si querés conservar parte.",
+			Name:        "vault_update_note",
+			Description: i18n.T(i18n.Msg{ES: "Reescribe el contenido de una nota que VOS creaste antes con vault_create_note — para corregirla o ampliarla. Solo funciona sobre tus propias notas: las que escribió el usuario, y las tuyas que él haya editado después, se rechazan. Tampoco toca ninguna nota marcada como privada. REEMPLAZA el contenido entero: leelo antes con vault_read_note si querés conservar parte.", EN: "Rewrites the content of a note that YOU created earlier with vault_create_note — to fix or extend it. It only works on your own notes: the ones the user wrote, and yours that they edited afterwards, are rejected. It doesn't touch any note marked as private either. It REPLACES the whole content: read it first with vault_read_note if you want to keep part of it."}),
 			InputSchema: obj(map[string]any{
-				"title":   str("Título exacto de la nota a reescribir. El título no cambia."),
-				"content": str("El contenido completo en Markdown que reemplaza al anterior."),
+				"title":   str(i18n.T(i18n.Msg{ES: "Título exacto de la nota a reescribir. El título no cambia.", EN: "Exact title of the note to rewrite. The title doesn't change."})),
+				"content": str(i18n.T(i18n.Msg{ES: "El contenido completo en Markdown que reemplaza al anterior.", EN: "The full Markdown content that replaces the previous one."})),
 			}, "title", "content"),
 		})
 	}
@@ -318,7 +307,7 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 			return "", q, err
 		}
 		if len(hits) == 0 {
-			return "No hay ninguna nota compartida que coincida. Puede que exista pero esté marcada como privada por el usuario.", q, nil
+			return i18n.T(i18n.Msg{ES: "No hay ninguna nota compartida que coincida. Puede que exista pero esté marcada como privada por el usuario.", EN: "No shared note matches. It may exist but be marked as private by the user."}), q, nil
 		}
 		var b strings.Builder
 		for _, h := range hits {
@@ -343,18 +332,18 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 		// el medio el usuario pudo revocarlo. Un permiso que solo se mira al
 		// listar es un permiso que no se puede revocar.
 		if !a.mcpNotesWrite() {
-			return "", "", fmt.Errorf("el usuario no habilitó que un agente cree notas. Se activa en la aplicación, en Acceso de IA")
+			return "", "", i18n.Errorf(i18n.Msg{ES: "el usuario no habilitó que un agente cree notas. Se activa en la aplicación, en Acceso de IA", EN: "the user hasn't allowed agents to create notes. It's enabled in the app, under AI access"})
 		}
 		title := strings.TrimSpace(mcpserver.StringArg(args, "title"))
 		content := mcpserver.StringArg(args, "content")
 		if title == "" || strings.TrimSpace(content) == "" {
-			return "", title, fmt.Errorf("hacen falta un título y un contenido")
+			return "", title, i18n.Errorf(i18n.Msg{ES: "hacen falta un título y un contenido", EN: "a title and content are required"})
 		}
 		// Tope de tamaño: una nota es algo que una persona va a leer. Sin
 		// límite, una respuesta larga del modelo termina volcada entera en el
 		// vault del usuario.
 		if len(content) > maxMCPNoteBytes {
-			return "", title, fmt.Errorf("la nota es demasiado grande (%d KB, máximo %d KB) — resumila o partila en varias", len(content)/1024, maxMCPNoteBytes/1024)
+			return "", title, i18n.Errorf(i18n.Msg{ES: "la nota es demasiado grande (%d KB, máximo %d KB) — resumila o partila en varias", EN: "the note is too large (%d KB, max %d KB) — summarize it or split it into several"}, len(content)/1024, maxMCPNoteBytes/1024)
 		}
 
 		// El frontmatter es lo que hace que "¿esto lo escribí yo o el agente?"
@@ -370,19 +359,19 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 		// releer lo que acaba de dejar asentado. Esconderla después es un clic
 		// en la aplicación.
 		runtime.EventsEmit(a.ctx, NoteChangedEvent, map[string]string{"id": id, "title": title})
-		return fmt.Sprintf("Nota creada: %q. El usuario ya la ve en su base de conocimiento.", title), title, nil
+		return i18n.T(i18n.Msg{ES: "Nota creada: %q. El usuario ya la ve en su base de conocimiento.", EN: "Note created: %q. The user can already see it in their knowledge base."}, title), title, nil
 
 	case "vault_update_note":
 		if !a.mcpNotesWrite() {
-			return "", "", fmt.Errorf("el usuario no habilitó que un agente escriba notas. Se activa en la aplicación, en Acceso de IA")
+			return "", "", i18n.Errorf(i18n.Msg{ES: "el usuario no habilitó que un agente escriba notas. Se activa en la aplicación, en Acceso de IA", EN: "the user hasn't allowed agents to write notes. It's enabled in the app, under AI access"})
 		}
 		title := strings.TrimSpace(mcpserver.StringArg(args, "title"))
 		content := mcpserver.StringArg(args, "content")
 		if title == "" || strings.TrimSpace(content) == "" {
-			return "", title, fmt.Errorf("hacen falta el título de la nota y el contenido nuevo")
+			return "", title, i18n.Errorf(i18n.Msg{ES: "hacen falta el título de la nota y el contenido nuevo", EN: "the note title and the new content are required"})
 		}
 		if len(content) > maxMCPNoteBytes {
-			return "", title, fmt.Errorf("la nota es demasiado grande (%d KB, máximo %d KB)", len(content)/1024, maxMCPNoteBytes/1024)
+			return "", title, i18n.Errorf(i18n.Msg{ES: "la nota es demasiado grande (%d KB, máximo %d KB)", EN: "the note is too large (%d KB, max %d KB)"}, len(content)/1024, maxMCPNoteBytes/1024)
 		}
 
 		// **La misma puerta que para leer.** NoteForAI ya rechaza las notas
@@ -395,10 +384,14 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 			return "", title, err
 		}
 		if !vault.AgentCanEdit(note.Frontmatter) {
-			return "", title, fmt.Errorf(
-				"la nota %q no la creaste vos: la escribió el usuario, o vos la creaste y él la editó después. "+
-					"Un agente solo puede reescribir sus propias notas intactas. "+
-					"Si hace falta cambiarla, decíselo al usuario o creá una nota nueva que la complemente", title)
+			return "", title, i18n.Errorf(i18n.Msg{
+				ES: "la nota %q no la creaste vos: la escribió el usuario, o vos la creaste y él la editó después. " +
+					"Un agente solo puede reescribir sus propias notas intactas. " +
+					"Si hace falta cambiarla, decíselo al usuario o creá una nota nueva que la complemente",
+				EN: "you didn't create the note %q: the user wrote it, or you created it and they edited it afterwards. " +
+					"An agent can only rewrite its own untouched notes. " +
+					"If it needs changing, tell the user or create a new note that complements it",
+			}, title)
 		}
 
 		// El frontmatter conserva el origen y suma cuándo fue la última
@@ -409,7 +402,7 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 			return "", title, err
 		}
 		runtime.EventsEmit(a.ctx, NoteChangedEvent, map[string]string{"id": note.ID, "title": title})
-		return fmt.Sprintf("Nota %q actualizada.", title), title, nil
+		return i18n.T(i18n.Msg{ES: "Nota %q actualizada.", EN: "Note %q updated."}, title), title, nil
 
 	case "db_list_connections":
 		conns, err := a.vault.ListConnections()
@@ -420,12 +413,12 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 		for _, c := range conns {
 			env := c.Environment
 			if env == "" {
-				env = "sin marcar"
+				env = i18n.T(i18n.Msg{ES: "sin marcar", EN: "unmarked"})
 			}
 			fmt.Fprintf(&b, "- %s (%s, %s)\n", c.Name, c.DBType, env)
 		}
 		if b.Len() == 0 {
-			return "No hay conexiones guardadas.", "", nil
+			return i18n.T(i18n.Msg{ES: "No hay conexiones guardadas.", EN: "There are no saved connections."}), "", nil
 		}
 		return b.String(), "", nil
 
@@ -446,7 +439,7 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 		alias := mcpserver.StringArg(args, "connection")
 		query := mcpserver.StringArg(args, "query")
 		if !isReadOnlyStatement(query) {
-			return "", alias, fmt.Errorf("solo se pueden analizar sentencias de lectura (SELECT / WITH)")
+			return "", alias, i18n.Errorf(i18n.Msg{ES: "solo se pueden analizar sentencias de lectura (SELECT / WITH)", EN: "only read statements (SELECT / WITH) can be analyzed"})
 		}
 		conn, err := a.connByNameOrID(alias)
 		if err != nil {
@@ -491,13 +484,13 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 			d, err := a.GitDiff(r.ID, git.DiffTarget{Mode: "staged"})
 			out, _ := json.Marshal(st)
 			if err == nil && d != nil && d.Patch != "" {
-				return string(out) + "\n\n--- diff preparado ---\n" + d.Patch, repoName, nil
+				return string(out) + "\n\n--- " + i18n.T(i18n.Msg{ES: "diff preparado", EN: "staged diff"}) + " ---\n" + d.Patch, repoName, nil
 			}
 			return string(out), repoName, nil
 		}
-		return "", repoName, fmt.Errorf("no hay ningún repositorio abierto que se llame %q", repoName)
+		return "", repoName, i18n.Errorf(i18n.Msg{ES: "no hay ningún repositorio abierto que se llame %q", EN: "there's no open repository named %q"}, repoName)
 	}
-	return "", "", fmt.Errorf("herramienta desconocida: %s", name)
+	return "", "", i18n.Errorf(i18n.Msg{ES: "herramienta desconocida: %s", EN: "unknown tool: %s"}, name)
 }
 
 // isReadOnlyStatement acepta solo lo que no modifica.
@@ -516,11 +509,11 @@ func isReadOnlyStatement(s string) bool {
 
 func renderSchemaForMCP(meta *db.SchemaMetadata, wanted []string) string {
 	if meta == nil || len(meta.Tables) == 0 {
-		return "No se pudo leer el esquema de esa conexión."
+		return i18n.T(i18n.Msg{ES: "No se pudo leer el esquema de esa conexión.", EN: "Couldn't read that connection's schema."})
 	}
 	var b strings.Builder
 	if len(wanted) == 0 {
-		fmt.Fprintf(&b, "-- %d tablas. Pedí las que necesites en `tables`.\n", len(meta.Tables))
+		b.WriteString("-- " + i18n.T(i18n.Msg{ES: "%d tablas. Pedí las que necesites en `tables`.", EN: "%d tables. Ask for the ones you need in `tables`."}, len(meta.Tables)) + "\n")
 		for i := range meta.Tables {
 			fmt.Fprintf(&b, "%s\n", qualified(meta.Tables[i]))
 		}
@@ -530,7 +523,7 @@ func renderSchemaForMCP(meta *db.SchemaMetadata, wanted []string) string {
 	for _, w := range wanted {
 		t := findTable(meta, w)
 		if t == nil {
-			fmt.Fprintf(&b, "-- no existe ninguna tabla %q\n", w)
+			b.WriteString("-- " + i18n.T(i18n.Msg{ES: "no existe ninguna tabla %q", EN: "there's no table %q"}, w) + "\n")
 			continue
 		}
 		found++
@@ -538,7 +531,7 @@ func renderSchemaForMCP(meta *db.SchemaMetadata, wanted []string) string {
 		b.WriteString("\n")
 	}
 	if found == 0 {
-		b.WriteString("-- ninguna de las tablas pedidas existe en esta conexión\n")
+		b.WriteString("-- " + i18n.T(i18n.Msg{ES: "ninguna de las tablas pedidas existe en esta conexión", EN: "none of the requested tables exist on this connection"}) + "\n")
 	}
 	return b.String()
 }

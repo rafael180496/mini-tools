@@ -2,7 +2,7 @@ package vault
 
 import (
 	"database/sql"
-	"fmt"
+	"mini-tools/backend/i18n"
 	"time"
 )
 
@@ -39,7 +39,7 @@ func (s *Store) CreateFolder(name, parentID, scope string) (*Folder, error) {
 		`INSERT INTO folders (id, name, parent_id, sort_order, created_at, scope) VALUES (?, ?, ?, 0, ?, ?)`,
 		id, name, nullableString(parentID), createdAt, scope,
 	); err != nil {
-		return nil, fmt.Errorf("vault: creando carpeta: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: creando carpeta: %w", EN: "vault: creating folder: %w"}, err)
 	}
 
 	return &Folder{ID: id, Name: name, ParentID: parentID, CreatedAt: createdAt, Scope: scope}, nil
@@ -49,14 +49,14 @@ func (s *Store) CreateFolder(name, parentID, scope string) (*Folder, error) {
 func (s *Store) RenameFolder(id, name string) error {
 	res, err := s.db.Exec(`UPDATE folders SET name = ? WHERE id = ?`, name, id)
 	if err != nil {
-		return fmt.Errorf("vault: renombrando carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: renombrando carpeta: %w", EN: "vault: renaming folder: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: renombrando carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: renombrando carpeta: %w", EN: "vault: renaming folder: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: carpeta %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: carpeta %q no encontrada", EN: "vault: folder %q not found"}, id)
 	}
 	return nil
 }
@@ -65,14 +65,14 @@ func (s *Store) RenameFolder(id, name string) error {
 func (s *Store) MoveFolder(id, newParentID string) error {
 	res, err := s.db.Exec(`UPDATE folders SET parent_id = ? WHERE id = ?`, nullableString(newParentID), id)
 	if err != nil {
-		return fmt.Errorf("vault: moviendo carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo carpeta: %w", EN: "vault: moving folder: %w"}, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("vault: moviendo carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: moviendo carpeta: %w", EN: "vault: moving folder: %w"}, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("vault: carpeta %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: carpeta %q no encontrada", EN: "vault: folder %q not found"}, id)
 	}
 	return nil
 }
@@ -98,28 +98,28 @@ func (s *Store) DeleteFolder(id string) error {
 	var parentID sql.NullString
 	if err := s.db.QueryRow(`SELECT parent_id FROM folders WHERE id = ?`, id).Scan(&parentID); err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("vault: carpeta %q no encontrada", id)
+			return i18n.Errorf(i18n.Msg{ES: "vault: carpeta %q no encontrada", EN: "vault: folder %q not found"}, id)
 		}
-		return fmt.Errorf("vault: leyendo carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: leyendo carpeta: %w", EN: "vault: reading folder: %w"}, err)
 	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("vault: borrando carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando carpeta: %w", EN: "vault: deleting folder: %w"}, err)
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`UPDATE folders SET parent_id = ? WHERE parent_id = ?`, parentID, id); err != nil {
-		return fmt.Errorf("vault: reparentando subcarpetas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: reparentando subcarpetas: %w", EN: "vault: reparenting subfolders: %w"}, err)
 	}
 	if _, err := tx.Exec(`UPDATE connections SET folder_id = ? WHERE folder_id = ?`, parentID, id); err != nil {
-		return fmt.Errorf("vault: reparentando conexiones: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: reparentando conexiones: %w", EN: "vault: reparenting connections: %w"}, err)
 	}
 	if _, err := tx.Exec(`UPDATE ssh_snippets SET folder_id = ? WHERE folder_id = ?`, parentID, id); err != nil {
-		return fmt.Errorf("vault: reparentando snippets: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: reparentando snippets: %w", EN: "vault: reparenting snippets: %w"}, err)
 	}
 	if _, err := tx.Exec(`DELETE FROM folders WHERE id = ?`, id); err != nil {
-		return fmt.Errorf("vault: borrando carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando carpeta: %w", EN: "vault: deleting folder: %w"}, err)
 	}
 
 	return tx.Commit()
@@ -134,16 +134,16 @@ func (s *Store) DeleteFolder(id string) error {
 // that edge of its sibling list.
 func (s *Store) ReorderFolder(id, direction string) error {
 	if direction != "up" && direction != "down" {
-		return fmt.Errorf("vault: dirección de reorden inválida %q", direction)
+		return i18n.Errorf(i18n.Msg{ES: "vault: dirección de reorden inválida %q", EN: "vault: invalid reorder direction %q"}, direction)
 	}
 
 	var parentID sql.NullString
 	var scope string
 	if err := s.db.QueryRow(`SELECT parent_id, scope FROM folders WHERE id = ?`, id).Scan(&parentID, &scope); err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("vault: carpeta %q no encontrada", id)
+			return i18n.Errorf(i18n.Msg{ES: "vault: carpeta %q no encontrada", EN: "vault: folder %q not found"}, id)
 		}
-		return fmt.Errorf("vault: leyendo carpeta: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: leyendo carpeta: %w", EN: "vault: reading folder: %w"}, err)
 	}
 
 	// Siblings means same parent AND same scope — otherwise reordering an
@@ -156,20 +156,20 @@ func (s *Store) ReorderFolder(id, direction string) error {
 		nullableString(parentID.String), scope,
 	)
 	if err != nil {
-		return fmt.Errorf("vault: listando carpetas hermanas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: listando carpetas hermanas: %w", EN: "vault: listing sibling folders: %w"}, err)
 	}
 	var siblingIDs []string
 	for rows.Next() {
 		var sid string
 		if err := rows.Scan(&sid); err != nil {
 			rows.Close()
-			return fmt.Errorf("vault: leyendo carpeta hermana: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: leyendo carpeta hermana: %w", EN: "vault: reading sibling folder: %w"}, err)
 		}
 		siblingIDs = append(siblingIDs, sid)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("vault: listando carpetas hermanas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: listando carpetas hermanas: %w", EN: "vault: listing sibling folders: %w"}, err)
 	}
 
 	idx := -1
@@ -180,7 +180,7 @@ func (s *Store) ReorderFolder(id, direction string) error {
 		}
 	}
 	if idx == -1 {
-		return fmt.Errorf("vault: carpeta %q no encontrada", id)
+		return i18n.Errorf(i18n.Msg{ES: "vault: carpeta %q no encontrada", EN: "vault: folder %q not found"}, id)
 	}
 
 	swapWith := idx - 1
@@ -194,12 +194,12 @@ func (s *Store) ReorderFolder(id, direction string) error {
 
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("vault: reordenando carpetas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: reordenando carpetas: %w", EN: "vault: reordering folders: %w"}, err)
 	}
 	defer tx.Rollback()
 	for i, sid := range siblingIDs {
 		if _, err := tx.Exec(`UPDATE folders SET sort_order = ? WHERE id = ?`, i, sid); err != nil {
-			return fmt.Errorf("vault: reordenando carpetas: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: reordenando carpetas: %w", EN: "vault: reordering folders: %w"}, err)
 		}
 	}
 	return tx.Commit()
@@ -212,7 +212,7 @@ func (s *Store) ReorderFolder(id, direction string) error {
 func (s *Store) ListFolders() ([]Folder, error) {
 	rows, err := s.db.Query(`SELECT id, name, parent_id, sort_order, created_at, scope FROM folders ORDER BY sort_order, name`)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando carpetas: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando carpetas: %w", EN: "vault: listing folders: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -221,7 +221,7 @@ func (s *Store) ListFolders() ([]Folder, error) {
 		var f Folder
 		var parentID sql.NullString
 		if err := rows.Scan(&f.ID, &f.Name, &parentID, &f.SortOrder, &f.CreatedAt, &f.Scope); err != nil {
-			return nil, fmt.Errorf("vault: leyendo carpeta: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo carpeta: %w", EN: "vault: reading folder: %w"}, err)
 		}
 		f.ParentID = parentID.String
 		out = append(out, f)

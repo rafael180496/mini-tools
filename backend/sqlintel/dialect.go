@@ -1,6 +1,10 @@
 package sqlintel
 
-import "strings"
+import (
+	"strings"
+
+	"mini-tools/backend/i18n"
+)
 
 // FunctionDef is one built-in function offered by a dialect.
 type FunctionDef struct {
@@ -9,7 +13,7 @@ type FunctionDef struct {
 	// Signature is what the detail line shows, e.g. "NVL(expr, default)".
 	Signature string
 	// Doc is a one-line explanation, shown in the expanded info panel.
-	Doc string
+	Doc i18n.Msg
 	// Snippet, when set, is what gets inserted instead of the bare name —
 	// "${1:…}" placeholder syntax, which @codemirror/autocomplete's
 	// snippetCompletion consumes verbatim (same syntax the Redis command
@@ -24,7 +28,7 @@ type FunctionDef struct {
 // SnippetDef is a full statement template.
 type SnippetDef struct {
 	Label  string
-	Detail string
+	Detail i18n.Msg
 	Body   string
 }
 
@@ -138,90 +142,90 @@ var commonKeywords = []string{
 // four engines. Anything that differs — even slightly — belongs in a
 // dialect file instead, so a suggestion is never valid-looking but wrong.
 var commonFunctions = []FunctionDef{
-	{Name: "COUNT", Signature: "COUNT(expr)", Doc: "Cantidad de filas.", Snippet: "COUNT(${1:*})", Aggregate: true},
-	{Name: "SUM", Signature: "SUM(expr)", Doc: "Suma de los valores.", Aggregate: true},
-	{Name: "AVG", Signature: "AVG(expr)", Doc: "Promedio de los valores.", Aggregate: true},
-	{Name: "MIN", Signature: "MIN(expr)", Doc: "Valor mínimo.", Aggregate: true},
-	{Name: "MAX", Signature: "MAX(expr)", Doc: "Valor máximo.", Aggregate: true},
-	{Name: "COALESCE", Signature: "COALESCE(expr, ...)", Doc: "Primer argumento no nulo."},
-	{Name: "NULLIF", Signature: "NULLIF(a, b)", Doc: "NULL si a = b, si no a."},
-	{Name: "CAST", Signature: "CAST(expr AS tipo)", Doc: "Convierte un valor a otro tipo.", Snippet: "CAST(${1:expr} AS ${2:tipo})"},
-	{Name: "UPPER", Signature: "UPPER(texto)", Doc: "Pasa el texto a mayúsculas."},
-	{Name: "LOWER", Signature: "LOWER(texto)", Doc: "Pasa el texto a minúsculas."},
-	{Name: "TRIM", Signature: "TRIM(texto)", Doc: "Quita espacios de ambos extremos."},
-	{Name: "LENGTH", Signature: "LENGTH(texto)", Doc: "Cantidad de caracteres."},
-	{Name: "SUBSTR", Signature: "SUBSTR(texto, desde, largo)", Doc: "Subcadena.", Snippet: "SUBSTR(${1:texto}, ${2:1}, ${3:10})"},
-	{Name: "REPLACE", Signature: "REPLACE(texto, buscar, reemplazo)", Doc: "Reemplaza todas las ocurrencias."},
-	{Name: "ABS", Signature: "ABS(n)", Doc: "Valor absoluto."},
-	{Name: "ROUND", Signature: "ROUND(n, decimales)", Doc: "Redondea."},
-	{Name: "ROW_NUMBER", Signature: "ROW_NUMBER() OVER (...)", Doc: "Número de fila dentro de la ventana.", Snippet: "ROW_NUMBER() OVER (PARTITION BY ${1:col} ORDER BY ${2:col})"},
-	{Name: "RANK", Signature: "RANK() OVER (...)", Doc: "Ranking con huecos.", Snippet: "RANK() OVER (ORDER BY ${1:col})"},
-	{Name: "DENSE_RANK", Signature: "DENSE_RANK() OVER (...)", Doc: "Ranking sin huecos.", Snippet: "DENSE_RANK() OVER (ORDER BY ${1:col})"},
+	{Name: "COUNT", Signature: "COUNT(expr)", Doc: i18n.Msg{ES: "Cantidad de filas.", EN: "Number of rows."}, Snippet: "COUNT(${1:*})", Aggregate: true},
+	{Name: "SUM", Signature: "SUM(expr)", Doc: i18n.Msg{ES: "Suma de los valores.", EN: "Sum of the values."}, Aggregate: true},
+	{Name: "AVG", Signature: "AVG(expr)", Doc: i18n.Msg{ES: "Promedio de los valores.", EN: "Average of the values."}, Aggregate: true},
+	{Name: "MIN", Signature: "MIN(expr)", Doc: i18n.Msg{ES: "Valor mínimo.", EN: "Minimum value."}, Aggregate: true},
+	{Name: "MAX", Signature: "MAX(expr)", Doc: i18n.Msg{ES: "Valor máximo.", EN: "Maximum value."}, Aggregate: true},
+	{Name: "COALESCE", Signature: "COALESCE(expr, ...)", Doc: i18n.Msg{ES: "Primer argumento no nulo.", EN: "First non-null argument."}},
+	{Name: "NULLIF", Signature: "NULLIF(a, b)", Doc: i18n.Msg{ES: "NULL si a = b, si no a.", EN: "NULL if a = b, otherwise a."}},
+	{Name: "CAST", Signature: "CAST(expr AS tipo)", Doc: i18n.Msg{ES: "Convierte un valor a otro tipo.", EN: "Converts a value to another type."}, Snippet: "CAST(${1:expr} AS ${2:tipo})"},
+	{Name: "UPPER", Signature: "UPPER(texto)", Doc: i18n.Msg{ES: "Pasa el texto a mayúsculas.", EN: "Converts the text to uppercase."}},
+	{Name: "LOWER", Signature: "LOWER(texto)", Doc: i18n.Msg{ES: "Pasa el texto a minúsculas.", EN: "Converts the text to lowercase."}},
+	{Name: "TRIM", Signature: "TRIM(texto)", Doc: i18n.Msg{ES: "Quita espacios de ambos extremos.", EN: "Removes spaces from both ends."}},
+	{Name: "LENGTH", Signature: "LENGTH(texto)", Doc: i18n.Msg{ES: "Cantidad de caracteres.", EN: "Number of characters."}},
+	{Name: "SUBSTR", Signature: "SUBSTR(texto, desde, largo)", Doc: i18n.Msg{ES: "Subcadena.", EN: "Substring."}, Snippet: "SUBSTR(${1:texto}, ${2:1}, ${3:10})"},
+	{Name: "REPLACE", Signature: "REPLACE(texto, buscar, reemplazo)", Doc: i18n.Msg{ES: "Reemplaza todas las ocurrencias.", EN: "Replaces all occurrences."}},
+	{Name: "ABS", Signature: "ABS(n)", Doc: i18n.Msg{ES: "Valor absoluto.", EN: "Absolute value."}},
+	{Name: "ROUND", Signature: "ROUND(n, decimales)", Doc: i18n.Msg{ES: "Redondea.", EN: "Rounds."}},
+	{Name: "ROW_NUMBER", Signature: "ROW_NUMBER() OVER (...)", Doc: i18n.Msg{ES: "Número de fila dentro de la ventana.", EN: "Row number within the window."}, Snippet: "ROW_NUMBER() OVER (PARTITION BY ${1:col} ORDER BY ${2:col})"},
+	{Name: "RANK", Signature: "RANK() OVER (...)", Doc: i18n.Msg{ES: "Ranking con huecos.", EN: "Ranking with gaps."}, Snippet: "RANK() OVER (ORDER BY ${1:col})"},
+	{Name: "DENSE_RANK", Signature: "DENSE_RANK() OVER (...)", Doc: i18n.Msg{ES: "Ranking sin huecos.", EN: "Ranking without gaps."}, Snippet: "DENSE_RANK() OVER (ORDER BY ${1:col})"},
 }
 
 // commonSnippets are the statement templates whose shape is identical
 // across engines. "upsert" and "limit" are NOT here — both differ per
 // engine and each dialect defines its own.
 var commonSnippets = []SnippetDef{
-	{Label: "sel", Detail: "SELECT … FROM …", Body: "SELECT ${1:*}\nFROM ${2:tabla}\nWHERE ${3:condicion};"},
-	{Label: "selall", Detail: "SELECT * FROM …", Body: "SELECT * FROM ${1:tabla};"},
-	{Label: "ins", Detail: "INSERT INTO … VALUES …", Body: "INSERT INTO ${1:tabla} (${2:columnas})\nVALUES (${3:valores});"},
-	{Label: "upd", Detail: "UPDATE … SET … WHERE …", Body: "UPDATE ${1:tabla}\nSET ${2:columna} = ${3:valor}\nWHERE ${4:condicion};"},
-	{Label: "del", Detail: "DELETE FROM … WHERE …", Body: "DELETE FROM ${1:tabla}\nWHERE ${2:condicion};"},
-	{Label: "join", Detail: "INNER JOIN … ON …", Body: "INNER JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
-	{Label: "ljoin", Detail: "LEFT JOIN … ON …", Body: "LEFT JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
-	{Label: "cte", Detail: "WITH … AS (…)", Body: "WITH ${1:nombre} AS (\n    ${2:SELECT 1}\n)\nSELECT * FROM ${1:nombre};"},
-	{Label: "case", Detail: "CASE WHEN … THEN … END", Body: "CASE WHEN ${1:condicion} THEN ${2:valor} ELSE ${3:otro} END"},
-	{Label: "grp", Detail: "GROUP BY … HAVING …", Body: "GROUP BY ${1:columna}\nHAVING ${2:COUNT(*) > 1}"},
-	{Label: "ct", Detail: "CREATE TABLE …", Body: "CREATE TABLE ${1:tabla} (\n    ${2:id} ${3:INTEGER} NOT NULL,\n    PRIMARY KEY (${2:id})\n);"},
-	{Label: "inssel", Detail: "INSERT INTO … SELECT … (copiar filas)", Body: "INSERT INTO ${1:destino} (${2:columnas})\nSELECT ${2:columnas}\nFROM ${3:origen}\nWHERE ${4:condicion};"},
-	{Label: "exists", Detail: "WHERE EXISTS (subconsulta correlacionada)", Body: "WHERE EXISTS (\n    SELECT 1\n    FROM ${1:otra_tabla} o\n    WHERE o.${2:id} = ${3:t}.${2:id}\n)"},
-	{Label: "cnt", Detail: "Contar por grupo y quedarse con los repetidos", Body: "SELECT ${1:columna}, COUNT(*) AS total\nFROM ${2:tabla}\nGROUP BY ${1:columna}\nHAVING COUNT(*) > 1\nORDER BY total DESC;"},
-	{Label: "win", Detail: "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …)", Body: "ROW_NUMBER() OVER (PARTITION BY ${1:columna} ORDER BY ${2:fecha} DESC)"},
-	{Label: "dedup", Detail: "Quedarse con la última fila de cada grupo", Body: "SELECT *\nFROM (\n    SELECT t.*,\n           ROW_NUMBER() OVER (PARTITION BY ${1:clave} ORDER BY ${2:fecha} DESC) AS rn\n    FROM ${3:tabla} t\n) x\nWHERE rn = 1;"},
-	{Label: "ci", Detail: "CREATE INDEX …", Body: "CREATE INDEX ${1:ix_tabla_columna} ON ${2:tabla} (${3:columna});"},
-	{Label: "cv", Detail: "CREATE VIEW …", Body: "CREATE VIEW ${1:nombre} AS\nSELECT ${2:*}\nFROM ${3:tabla}\nWHERE ${4:condicion};"},
-	{Label: "addcol", Detail: "ALTER TABLE … ADD COLUMN …", Body: "ALTER TABLE ${1:tabla} ADD COLUMN ${2:columna} ${3:VARCHAR(100)};"},
+	{Label: "sel", Detail: i18n.Msg{ES: "SELECT … FROM …", EN: "SELECT … FROM …"}, Body: "SELECT ${1:*}\nFROM ${2:tabla}\nWHERE ${3:condicion};"},
+	{Label: "selall", Detail: i18n.Msg{ES: "SELECT * FROM …", EN: "SELECT * FROM …"}, Body: "SELECT * FROM ${1:tabla};"},
+	{Label: "ins", Detail: i18n.Msg{ES: "INSERT INTO … VALUES …", EN: "INSERT INTO … VALUES …"}, Body: "INSERT INTO ${1:tabla} (${2:columnas})\nVALUES (${3:valores});"},
+	{Label: "upd", Detail: i18n.Msg{ES: "UPDATE … SET … WHERE …", EN: "UPDATE … SET … WHERE …"}, Body: "UPDATE ${1:tabla}\nSET ${2:columna} = ${3:valor}\nWHERE ${4:condicion};"},
+	{Label: "del", Detail: i18n.Msg{ES: "DELETE FROM … WHERE …", EN: "DELETE FROM … WHERE …"}, Body: "DELETE FROM ${1:tabla}\nWHERE ${2:condicion};"},
+	{Label: "join", Detail: i18n.Msg{ES: "INNER JOIN … ON …", EN: "INNER JOIN … ON …"}, Body: "INNER JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
+	{Label: "ljoin", Detail: i18n.Msg{ES: "LEFT JOIN … ON …", EN: "LEFT JOIN … ON …"}, Body: "LEFT JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
+	{Label: "cte", Detail: i18n.Msg{ES: "WITH … AS (…)", EN: "WITH … AS (…)"}, Body: "WITH ${1:nombre} AS (\n    ${2:SELECT 1}\n)\nSELECT * FROM ${1:nombre};"},
+	{Label: "case", Detail: i18n.Msg{ES: "CASE WHEN … THEN … END", EN: "CASE WHEN … THEN … END"}, Body: "CASE WHEN ${1:condicion} THEN ${2:valor} ELSE ${3:otro} END"},
+	{Label: "grp", Detail: i18n.Msg{ES: "GROUP BY … HAVING …", EN: "GROUP BY … HAVING …"}, Body: "GROUP BY ${1:columna}\nHAVING ${2:COUNT(*) > 1}"},
+	{Label: "ct", Detail: i18n.Msg{ES: "CREATE TABLE …", EN: "CREATE TABLE …"}, Body: "CREATE TABLE ${1:tabla} (\n    ${2:id} ${3:INTEGER} NOT NULL,\n    PRIMARY KEY (${2:id})\n);"},
+	{Label: "inssel", Detail: i18n.Msg{ES: "INSERT INTO … SELECT … (copiar filas)", EN: "INSERT INTO … SELECT … (copy rows)"}, Body: "INSERT INTO ${1:destino} (${2:columnas})\nSELECT ${2:columnas}\nFROM ${3:origen}\nWHERE ${4:condicion};"},
+	{Label: "exists", Detail: i18n.Msg{ES: "WHERE EXISTS (subconsulta correlacionada)", EN: "WHERE EXISTS (correlated subquery)"}, Body: "WHERE EXISTS (\n    SELECT 1\n    FROM ${1:otra_tabla} o\n    WHERE o.${2:id} = ${3:t}.${2:id}\n)"},
+	{Label: "cnt", Detail: i18n.Msg{ES: "Contar por grupo y quedarse con los repetidos", EN: "Count per group and keep the duplicates"}, Body: "SELECT ${1:columna}, COUNT(*) AS total\nFROM ${2:tabla}\nGROUP BY ${1:columna}\nHAVING COUNT(*) > 1\nORDER BY total DESC;"},
+	{Label: "win", Detail: i18n.Msg{ES: "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …)", EN: "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …)"}, Body: "ROW_NUMBER() OVER (PARTITION BY ${1:columna} ORDER BY ${2:fecha} DESC)"},
+	{Label: "dedup", Detail: i18n.Msg{ES: "Quedarse con la última fila de cada grupo", EN: "Keep the latest row of each group"}, Body: "SELECT *\nFROM (\n    SELECT t.*,\n           ROW_NUMBER() OVER (PARTITION BY ${1:clave} ORDER BY ${2:fecha} DESC) AS rn\n    FROM ${3:tabla} t\n) x\nWHERE rn = 1;"},
+	{Label: "ci", Detail: i18n.Msg{ES: "CREATE INDEX …", EN: "CREATE INDEX …"}, Body: "CREATE INDEX ${1:ix_tabla_columna} ON ${2:tabla} (${3:columna});"},
+	{Label: "cv", Detail: i18n.Msg{ES: "CREATE VIEW …", EN: "CREATE VIEW …"}, Body: "CREATE VIEW ${1:nombre} AS\nSELECT ${2:*}\nFROM ${3:tabla}\nWHERE ${4:condicion};"},
+	{Label: "addcol", Detail: i18n.Msg{ES: "ALTER TABLE … ADD COLUMN …", EN: "ALTER TABLE … ADD COLUMN …"}, Body: "ALTER TABLE ${1:tabla} ADD COLUMN ${2:columna} ${3:VARCHAR(100)};"},
 
 	// Condiciones de WHERE. Son cortas de escribir a mano, pero son las que
 	// más se repiten en un día de soporte, y tenerlas acá evita el error de
 	// siempre: el IN sin paréntesis, el BETWEEN al revés, el `= NULL`.
-	{Label: "in", Detail: "WHERE … IN (…)", Body: "WHERE ${1:columna} IN (${2:valor1, valor2})"},
-	{Label: "notin", Detail: "WHERE … NOT IN (…)", Body: "WHERE ${1:columna} NOT IN (${2:valor1, valor2})"},
-	{Label: "bet", Detail: "WHERE … BETWEEN … AND …", Body: "WHERE ${1:columna} BETWEEN ${2:desde} AND ${3:hasta}"},
-	{Label: "like", Detail: "WHERE … LIKE '%…%'", Body: "WHERE ${1:columna} LIKE '%${2:texto}%'"},
-	{Label: "null", Detail: "WHERE … IS NULL", Body: "WHERE ${1:columna} IS NULL"},
-	{Label: "notnull", Detail: "WHERE … IS NOT NULL", Body: "WHERE ${1:columna} IS NOT NULL"},
+	{Label: "in", Detail: i18n.Msg{ES: "WHERE … IN (…)", EN: "WHERE … IN (…)"}, Body: "WHERE ${1:columna} IN (${2:valor1, valor2})"},
+	{Label: "notin", Detail: i18n.Msg{ES: "WHERE … NOT IN (…)", EN: "WHERE … NOT IN (…)"}, Body: "WHERE ${1:columna} NOT IN (${2:valor1, valor2})"},
+	{Label: "bet", Detail: i18n.Msg{ES: "WHERE … BETWEEN … AND …", EN: "WHERE … BETWEEN … AND …"}, Body: "WHERE ${1:columna} BETWEEN ${2:desde} AND ${3:hasta}"},
+	{Label: "like", Detail: i18n.Msg{ES: "WHERE … LIKE '%…%'", EN: "WHERE … LIKE '%…%'"}, Body: "WHERE ${1:columna} LIKE '%${2:texto}%'"},
+	{Label: "null", Detail: i18n.Msg{ES: "WHERE … IS NULL", EN: "WHERE … IS NULL"}, Body: "WHERE ${1:columna} IS NULL"},
+	{Label: "notnull", Detail: i18n.Msg{ES: "WHERE … IS NOT NULL", EN: "WHERE … IS NOT NULL"}, Body: "WHERE ${1:columna} IS NOT NULL"},
 
 	// El resto de los JOIN. El INNER y el LEFT ya estaban; estos tres son los
 	// que uno escribe mal justo cuando los necesita.
-	{Label: "rjoin", Detail: "RIGHT JOIN … ON …", Body: "RIGHT JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
-	{Label: "fjoin", Detail: "FULL OUTER JOIN … ON …", Body: "FULL OUTER JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
-	{Label: "cjoin", Detail: "CROSS JOIN (producto cartesiano)", Body: "CROSS JOIN ${1:tabla} ${2:alias}"},
-	{Label: "sjoin", Detail: "Auto-join: la tabla consigo misma (jerarquías)", Body: "SELECT h.${1:nombre} AS hijo, p.${1:nombre} AS padre\nFROM ${2:tabla} h\nLEFT JOIN ${2:tabla} p ON p.${3:id} = h.${4:id_padre};"},
+	{Label: "rjoin", Detail: i18n.Msg{ES: "RIGHT JOIN … ON …", EN: "RIGHT JOIN … ON …"}, Body: "RIGHT JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
+	{Label: "fjoin", Detail: i18n.Msg{ES: "FULL OUTER JOIN … ON …", EN: "FULL OUTER JOIN … ON …"}, Body: "FULL OUTER JOIN ${1:tabla} ${2:alias} ON ${3:condicion}"},
+	{Label: "cjoin", Detail: i18n.Msg{ES: "CROSS JOIN (producto cartesiano)", EN: "CROSS JOIN (cartesian product)"}, Body: "CROSS JOIN ${1:tabla} ${2:alias}"},
+	{Label: "sjoin", Detail: i18n.Msg{ES: "Auto-join: la tabla consigo misma (jerarquías)", EN: "Self-join: the table with itself (hierarchies)"}, Body: "SELECT h.${1:nombre} AS hijo, p.${1:nombre} AS padre\nFROM ${2:tabla} h\nLEFT JOIN ${2:tabla} p ON p.${3:id} = h.${4:id_padre};"},
 
-	{Label: "dist", Detail: "SELECT DISTINCT …", Body: "SELECT DISTINCT ${1:columna}\nFROM ${2:tabla}\nORDER BY ${1:columna};"},
-	{Label: "ord", Detail: "ORDER BY … DESC", Body: "ORDER BY ${1:columna} DESC"},
-	{Label: "union", Detail: "UNION ALL entre dos consultas", Body: "SELECT ${1:columnas} FROM ${2:tabla_a}\nUNION ALL\nSELECT ${1:columnas} FROM ${3:tabla_b};"},
-	{Label: "notex", Detail: "WHERE NOT EXISTS (…) — lo que falta en la otra tabla", Body: "WHERE NOT EXISTS (\n    SELECT 1\n    FROM ${1:otra_tabla} o\n    WHERE o.${2:id} = ${3:t}.${2:id}\n)"},
-	{Label: "sub", Detail: "Subconsulta en el FROM (tabla derivada)", Body: "SELECT x.${1:*}\nFROM (\n    SELECT ${2:columnas}\n    FROM ${3:tabla}\n    WHERE ${4:condicion}\n) x;"},
-	{Label: "delx", Detail: "DELETE de lo que existe en otra tabla", Body: "DELETE FROM ${1:tabla} t\nWHERE EXISTS (\n    SELECT 1 FROM ${2:otra} o WHERE o.${3:id} = t.${3:id}\n);"},
-	{Label: "insmulti", Detail: "INSERT de varias filas de una vez", Body: "INSERT INTO ${1:tabla} (${2:columnas})\nVALUES (${3:fila1}),\n       (${4:fila2});"},
+	{Label: "dist", Detail: i18n.Msg{ES: "SELECT DISTINCT …", EN: "SELECT DISTINCT …"}, Body: "SELECT DISTINCT ${1:columna}\nFROM ${2:tabla}\nORDER BY ${1:columna};"},
+	{Label: "ord", Detail: i18n.Msg{ES: "ORDER BY … DESC", EN: "ORDER BY … DESC"}, Body: "ORDER BY ${1:columna} DESC"},
+	{Label: "union", Detail: i18n.Msg{ES: "UNION ALL entre dos consultas", EN: "UNION ALL between two queries"}, Body: "SELECT ${1:columnas} FROM ${2:tabla_a}\nUNION ALL\nSELECT ${1:columnas} FROM ${3:tabla_b};"},
+	{Label: "notex", Detail: i18n.Msg{ES: "WHERE NOT EXISTS (…) — lo que falta en la otra tabla", EN: "WHERE NOT EXISTS (…) — what's missing in the other table"}, Body: "WHERE NOT EXISTS (\n    SELECT 1\n    FROM ${1:otra_tabla} o\n    WHERE o.${2:id} = ${3:t}.${2:id}\n)"},
+	{Label: "sub", Detail: i18n.Msg{ES: "Subconsulta en el FROM (tabla derivada)", EN: "Subquery in the FROM (derived table)"}, Body: "SELECT x.${1:*}\nFROM (\n    SELECT ${2:columnas}\n    FROM ${3:tabla}\n    WHERE ${4:condicion}\n) x;"},
+	{Label: "delx", Detail: i18n.Msg{ES: "DELETE de lo que existe en otra tabla", EN: "DELETE what exists in another table"}, Body: "DELETE FROM ${1:tabla} t\nWHERE EXISTS (\n    SELECT 1 FROM ${2:otra} o WHERE o.${3:id} = t.${3:id}\n);"},
+	{Label: "insmulti", Detail: i18n.Msg{ES: "INSERT de varias filas de una vez", EN: "INSERT several rows at once"}, Body: "INSERT INTO ${1:tabla} (${2:columnas})\nVALUES (${3:fila1}),\n       (${4:fila2});"},
 
 	// Diagnóstico: las tres consultas con las que uno empieza a mirar una
 	// tabla que no conoce.
-	{Label: "sumif", Detail: "SUM(CASE WHEN …) — contar por condición", Body: "SUM(CASE WHEN ${1:condicion} THEN 1 ELSE 0 END) AS ${2:total}"},
-	{Label: "nulls", Detail: "Cuántos nulos tiene una columna", Body: "SELECT COUNT(*) AS filas,\n       COUNT(${1:columna}) AS con_valor,\n       COUNT(*) - COUNT(${1:columna}) AS nulos\nFROM ${2:tabla};"},
-	{Label: "minmax", Detail: "Perfil rápido de una columna (min, max, distintos)", Body: "SELECT MIN(${1:columna}) AS minimo,\n       MAX(${1:columna}) AS maximo,\n       COUNT(DISTINCT ${1:columna}) AS distintos,\n       COUNT(*) AS filas\nFROM ${2:tabla};"},
+	{Label: "sumif", Detail: i18n.Msg{ES: "SUM(CASE WHEN …) — contar por condición", EN: "SUM(CASE WHEN …) — count by condition"}, Body: "SUM(CASE WHEN ${1:condicion} THEN 1 ELSE 0 END) AS ${2:total}"},
+	{Label: "nulls", Detail: i18n.Msg{ES: "Cuántos nulos tiene una columna", EN: "How many nulls a column has"}, Body: "SELECT COUNT(*) AS filas,\n       COUNT(${1:columna}) AS con_valor,\n       COUNT(*) - COUNT(${1:columna}) AS nulos\nFROM ${2:tabla};"},
+	{Label: "minmax", Detail: i18n.Msg{ES: "Perfil rápido de una columna (min, max, distintos)", EN: "Quick profile of a column (min, max, distinct)"}, Body: "SELECT MIN(${1:columna}) AS minimo,\n       MAX(${1:columna}) AS maximo,\n       COUNT(DISTINCT ${1:columna}) AS distintos,\n       COUNT(*) AS filas\nFROM ${2:tabla};"},
 
 	// DDL de mantenimiento.
-	{Label: "trunc", Detail: "TRUNCATE TABLE … (vaciar sin borrar la tabla)", Body: "TRUNCATE TABLE ${1:tabla};"},
-	{Label: "dt", Detail: "DROP TABLE …", Body: "DROP TABLE ${1:tabla};"},
-	{Label: "dropcol", Detail: "ALTER TABLE … DROP COLUMN …", Body: "ALTER TABLE ${1:tabla} DROP COLUMN ${2:columna};"},
-	{Label: "uix", Detail: "CREATE UNIQUE INDEX …", Body: "CREATE UNIQUE INDEX ${1:ux_tabla_columna} ON ${2:tabla} (${3:columna});"},
-	{Label: "pk", Detail: "ALTER TABLE … ADD CONSTRAINT … PRIMARY KEY", Body: "ALTER TABLE ${1:tabla}\n    ADD CONSTRAINT ${2:pk_tabla} PRIMARY KEY (${3:columna});"},
-	{Label: "fk", Detail: "ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY", Body: "ALTER TABLE ${1:tabla}\n    ADD CONSTRAINT ${2:fk_tabla_otra} FOREIGN KEY (${3:columna})\n    REFERENCES ${4:otra_tabla} (${5:columna});"},
-	{Label: "ren", Detail: "Renombrar una tabla", Body: "ALTER TABLE ${1:tabla} RENAME TO ${2:nombre_nuevo};"},
+	{Label: "trunc", Detail: i18n.Msg{ES: "TRUNCATE TABLE … (vaciar sin borrar la tabla)", EN: "TRUNCATE TABLE … (empty without dropping the table)"}, Body: "TRUNCATE TABLE ${1:tabla};"},
+	{Label: "dt", Detail: i18n.Msg{ES: "DROP TABLE …", EN: "DROP TABLE …"}, Body: "DROP TABLE ${1:tabla};"},
+	{Label: "dropcol", Detail: i18n.Msg{ES: "ALTER TABLE … DROP COLUMN …", EN: "ALTER TABLE … DROP COLUMN …"}, Body: "ALTER TABLE ${1:tabla} DROP COLUMN ${2:columna};"},
+	{Label: "uix", Detail: i18n.Msg{ES: "CREATE UNIQUE INDEX …", EN: "CREATE UNIQUE INDEX …"}, Body: "CREATE UNIQUE INDEX ${1:ux_tabla_columna} ON ${2:tabla} (${3:columna});"},
+	{Label: "pk", Detail: i18n.Msg{ES: "ALTER TABLE … ADD CONSTRAINT … PRIMARY KEY", EN: "ALTER TABLE … ADD CONSTRAINT … PRIMARY KEY"}, Body: "ALTER TABLE ${1:tabla}\n    ADD CONSTRAINT ${2:pk_tabla} PRIMARY KEY (${3:columna});"},
+	{Label: "fk", Detail: i18n.Msg{ES: "ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY", EN: "ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY"}, Body: "ALTER TABLE ${1:tabla}\n    ADD CONSTRAINT ${2:fk_tabla_otra} FOREIGN KEY (${3:columna})\n    REFERENCES ${4:otra_tabla} (${5:columna});"},
+	{Label: "ren", Detail: i18n.Msg{ES: "Renombrar una tabla", EN: "Rename a table"}, Body: "ALTER TABLE ${1:tabla} RENAME TO ${2:nombre_nuevo};"},
 }
 
 // standardDialect backs an editor tab with no connection bound: shared

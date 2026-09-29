@@ -12,6 +12,7 @@ import {
 import type {git} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // Editor de remotos, al estilo del panel de Sublime Merge: la lista completa
 // con su URL, y un formulario que deja cambiarle el nombre, la URL de fetch y
@@ -31,6 +32,12 @@ import Icon from '../Icon'
 // nada —ya está en texto plano en .git/config y `git remote -v` lo imprime— y
 // escondía, en la única pantalla que muestra remotos, el dato sobre el que hay
 // que actuar.
+
+// Fragmentos técnicos que se muestran en monoespaciado dentro de los textos:
+// son iguales en todos los idiomas, así que no pasan por el diccionario.
+const CMD_SET_URL = 'git remote set-url'
+const CMD_REMOTE_V = 'git remote -v'
+const GIT_CONFIG = '.git/config'
 
 interface EmbeddedCredential {
     // Usuario de la URL. Vacío cuando el userinfo es un token suelto
@@ -97,6 +104,8 @@ interface PanelProps {
 }
 
 export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps) {
+    const t = useT()
+    const tr = t.git.remotes
     const [remotes, setRemotes] = useState<git.Remote[]>([])
     const [draft, setDraft] = useState<Draft | null>(null)
     const [busy, setBusy] = useState(false)
@@ -159,7 +168,7 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
                 await GitSetRemoteURLs(repoId, name, fetchUrl, draft.pushUrl.trim())
             }
             setDraft(null)
-            setNote(`Remoto "${name}" guardado.`)
+            setNote(tr.saved({name}))
             await load()
             onChanged()
         } catch (e) {
@@ -183,7 +192,7 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
             await GitSaveCredential(cred.host, cred.username, cred.secret)
             const push = readEmbeddedCredential(draft.pushUrl)
             setDraft({...draft, fetchUrl: cred.clean, pushUrl: push ? push.clean : draft.pushUrl})
-            setNote(`Token guardado en el vault para ${cred.host}. Guardá el remoto para que la URL quede sin el token.`)
+            setNote(tr.tokenSaved({host: cred.host}))
         } catch (e) {
             onError(String(e))
         } finally {
@@ -195,7 +204,7 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
         onError(null)
         try {
             await navigator.clipboard.writeText(await GitRemoteURLForCopy(repoId, remote.name))
-            setNote(`URL de "${remote.name}" copiada.`)
+            setNote(tr.copied({name: remote.name}))
         } catch (e) {
             onError(String(e))
         }
@@ -206,15 +215,16 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
     return (
         <div className="space-y-3">
             <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-3 text-ui-10 leading-relaxed text-on-surface-variant">
-                Un remoto es a dónde apuntan fetch, pull y push. Cambiar la URL acá es lo mismo que{' '}
-                <span className="font-mono">git remote set-url</span>: no toca nada en el servidor y no vuelve a bajar el repositorio, solo cambia el destino.
+                {tr.introBefore}{' '}
+                <span className="font-mono">{CMD_SET_URL}</span>
+                {tr.introAfter}
             </div>
 
             {note && (
                 <div className="flex items-start gap-2 rounded bg-secondary-container/50 p-2 text-ui-11 text-on-secondary-container">
                     <Icon name="check" size={14} className="mt-px shrink-0" />
                     <span className="min-w-0 flex-1 break-words">{note}</span>
-                    <button onClick={() => setNote(null)} title="Cerrar este aviso">
+                    <button onClick={() => setNote(null)} title={tr.closeNote}>
                         <Icon name="close" size={12} />
                     </button>
                 </div>
@@ -222,7 +232,7 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
 
             {remotes.length === 0 && !draft && (
                 <p className="text-ui-11 text-on-surface-variant/60">
-                    Este repositorio no tiene remotos: es local y no hay a dónde hacer push hasta que agregues uno.
+                    {tr.empty}
                 </p>
             )}
 
@@ -233,35 +243,36 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
                         <span className="min-w-0 flex-1 truncate font-mono text-xs text-on-surface">{r.name}</span>
                         <button
                             onClick={() => void edit(r)}
-                            title={`Ver y cambiar la URL de "${r.name}" — se abre con la URL real, token incluido si lo tiene`}
+                            data-remote-edit
+                            title={tr.editTitle({name: r.name})}
                             className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name="edit" size={14} />
                         </button>
                         <button
                             onClick={() => void copy(r)}
-                            title={`Copiar la URL de "${r.name}" al portapapeles, tal cual está configurada`}
+                            title={tr.copyTitle({name: r.name})}
                             className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name="content_copy" size={14} />
                         </button>
                         <button
                             onClick={() => setConfirmDelete(r)}
-                            title={`Quitar el remoto "${r.name}" de este repositorio — no borra nada en el servidor`}
+                            title={tr.removeTitle({name: r.name})}
                             className="shrink-0 rounded p-1 text-error hover:bg-error-container/40"
                         >
                             <Icon name="delete" size={14} />
                         </button>
                     </div>
-                    <p className="mt-1 break-all pl-6 font-mono text-ui-10 text-on-surface-variant" title="URL de fetch, tal cual está en .git/config — con el token a la vista si lo tiene embebido">
+                    <p className="mt-1 break-all pl-6 font-mono text-ui-10 text-on-surface-variant" title={tr.fetchUrlTitle}>
                         {r.fetchUrl}
                     </p>
                     {/* Una URL de push distinta es exactamente el caso que
                         pasa desapercibido: se cambia la de fetch, todo parece
                         andar, y el push sigue yendo al servidor viejo. */}
                     {r.pushUrl && r.pushUrl !== r.fetchUrl && (
-                        <p className="mt-0.5 break-all pl-6 font-mono text-ui-10 text-tertiary" title="Este remoto pushea a una URL distinta de la que usa para fetch">
-                            push → {r.pushUrl}
+                        <p className="mt-0.5 break-all pl-6 font-mono text-ui-10 text-tertiary" title={tr.pushDiffersTitle}>
+                            {tr.pushArrow({url: r.pushUrl})}
                         </p>
                     )}
                 </div>
@@ -270,60 +281,61 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
             {!draft && (
                 <button
                     onClick={startAdd}
-                    title="Agregar otro remoto a este repositorio (un fork, un espejo, un servidor de respaldo)"
+                    title={tr.addTitle}
                     className="flex items-center gap-1.5 rounded bg-surface-container-highest px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant"
                 >
-                    <Icon name="add" size={14} /> Agregar remoto
+                    <Icon name="add" size={14} /> {tr.add}
                 </button>
             )}
 
             {draft && (
                 <div className="space-y-3 rounded-lg border border-primary/40 bg-surface-container-lowest p-3">
                     <p className="text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                        {draft.original ? `Editar "${draft.original}"` : 'Remoto nuevo'}
+                        {draft.original ? tr.editHeading({name: draft.original}) : tr.newHeading}
                     </p>
 
                     <Field
-                        label="Nombre"
+                        label={tr.nameLabel}
                         value={draft.name}
                         onChange={(v) => setDraft({...draft, name: v})}
                         placeholder="origin"
-                        title="Cómo se llama el remoto en los comandos: `git push origin main`. Cambiarlo renombra el remoto y las ramas de seguimiento que cuelgan de él"
+                        title={tr.nameTitle}
                     />
                     <Field
-                        label="URL (fetch)"
+                        label={tr.fetchLabel}
                         value={draft.fetchUrl}
                         onChange={(v) => setDraft({...draft, fetchUrl: v})}
-                        placeholder="https://github.com/usuario/repo.git"
+                        placeholder={tr.fetchPlaceholder}
                         mono
-                        title="A dónde van fetch y pull, y también push si no completás la URL de push. Se muestra tal cual está guardada, con el token adentro si lo tiene"
+                        title={tr.fetchTitle}
                     />
                     <Field
-                        label="URL de push (opcional)"
+                        label={tr.pushLabel}
                         value={draft.pushUrl}
                         onChange={(v) => setDraft({...draft, pushUrl: v})}
-                        placeholder="Vacío = pushea a la misma URL de arriba"
+                        placeholder={tr.pushPlaceholder}
                         mono
-                        title="Solo hace falta cuando se lee de un lado y se escribe en otro (un espejo de solo lectura, un fork). Vaciarla borra el override y el push vuelve a la URL de fetch"
+                        title={tr.pushTitle}
                     />
 
                     {embedded && (
                         <div className="rounded border border-outline-variant bg-surface-container p-2.5 text-ui-10 leading-relaxed text-on-surface-variant">
                             <p className="flex items-center gap-1.5 font-medium text-tertiary">
-                                <Icon name="key" size={13} /> Esta URL lleva un token adentro
+                                <Icon name="key" size={13} /> {tr.tokenHeading}
                             </p>
                             <p className="mt-1">
-                                Funciona, pero queda en texto plano en <span className="font-mono">.git/config</span> y lo ve cualquiera que abra la carpeta o mire{' '}
-                                <span className="font-mono">git remote -v</span>. Podés dejarlo así —se respeta lo que escribas— o moverlo al vault: se guarda cifrado para{' '}
-                                <span className="font-mono">{embedded.host}</span> y la app se lo pasa a git igual, sin que aparezca en ningún lado.
+                                {tr.tokenBody1} <span className="font-mono">{GIT_CONFIG}</span> {tr.tokenBody2}{' '}
+                                <span className="font-mono">{CMD_REMOTE_V}</span>
+                                {tr.tokenBody3}{' '}
+                                <span className="font-mono">{embedded.host}</span> {tr.tokenBody4}
                             </p>
                             <button
                                 onClick={() => void moveTokenToVault()}
                                 disabled={busy}
-                                title={`Guardar el token cifrado en el vault para ${embedded.host} y dejar la URL sin credenciales (después hay que guardar el remoto)`}
+                                title={tr.moveTokenTitle({host: embedded.host})}
                                 className="mt-2 rounded bg-surface-container-highest px-2.5 py-1 text-ui-11 text-on-surface hover:bg-surface-variant disabled:opacity-40"
                             >
-                                Mover el token al vault
+                                {tr.moveToken}
                             </button>
                         </div>
                     )}
@@ -334,24 +346,24 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
                             disabled={busy || !draft.name.trim() || !draft.fetchUrl.trim()}
                             title={
                                 !draft.name.trim() || !draft.fetchUrl.trim()
-                                    ? 'Completá el nombre y la URL de fetch'
+                                    ? tr.fillRequired
                                     : draft.original
-                                      ? 'Guardar los cambios en la configuración local del repositorio'
-                                      : 'Agregar este remoto al repositorio'
+                                      ? tr.saveEditTitle
+                                      : tr.saveNewTitle
                             }
                             className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary hover:opacity-90 disabled:opacity-40"
                         >
-                            {busy ? 'Guardando…' : 'Guardar'}
+                            {busy ? tr.saving : tr.save}
                         </button>
                         <button
                             onClick={() => {
                                 setDraft(null)
                                 onError(null)
                             }}
-                            title="Descartar los cambios de este formulario — no se escribe nada"
+                            title={tr.cancelTitle}
                             className="rounded px-3 py-1.5 text-xs text-on-surface-variant hover:bg-surface-variant"
                         >
-                            Cancelar
+                            {tr.cancel}
                         </button>
                     </div>
                 </div>
@@ -359,9 +371,9 @@ export default function GitRemotesPanel({repoId, onError, onChanged}: PanelProps
 
             {confirmDelete && (
                 <ConfirmDialog
-                    title="Eliminar remoto"
-                    description={`Esto elimina el remoto "${confirmDelete.name}" de la configuración local del repositorio. No borra nada en el servidor, pero las ramas remotas que lo seguían dejan de estar disponibles hasta que lo vuelvas a agregar.`}
-                    confirmLabel="Eliminar"
+                    title={tr.deleteTitle}
+                    description={tr.deleteDescription({name: confirmDelete.name})}
+                    confirmLabel={tr.deleteConfirm}
                     danger
                     onConfirm={async () => {
                         try {

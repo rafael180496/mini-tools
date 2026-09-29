@@ -4,6 +4,7 @@
 // and the browser's filter wizard (MongoFilterWizard).
 
 import {typedLiteral, type BsonType} from './mongoBson'
+import {t} from '../i18n'
 
 export interface MongoCondition {
     field: string
@@ -35,25 +36,34 @@ export interface MongoOperatorDef {
 // The operator set a real query needs. The previous list stopped at $eq/$ne/
 // the comparisons/$in/$regex/$exists, which leaves out negated membership,
 // type checks and array predicates — all ordinary in day-to-day Mongo.
-export const MONGO_OPERATORS: MongoOperatorDef[] = [
-    {value: '$eq', label: '= igual a', hint: 'Igual a', valueKind: 'text'},
-    {value: '$ne', label: '≠ distinto de', hint: 'Distinto de', valueKind: 'text'},
-    {value: '$gt', label: '> mayor que', hint: 'Mayor que', valueKind: 'text'},
-    {value: '$gte', label: '≥ mayor o igual', hint: 'Mayor o igual que', valueKind: 'text'},
-    {value: '$lt', label: '< menor que', hint: 'Menor que', valueKind: 'text'},
-    {value: '$lte', label: '≤ menor o igual', hint: 'Menor o igual que', valueKind: 'text'},
-    {value: '$in', label: 'en la lista', hint: 'Coincide con alguno de la lista (separá con comas)', valueKind: 'list'},
-    {value: '$nin', label: 'no en la lista', hint: 'No coincide con ninguno de la lista (separá con comas)', valueKind: 'list'},
-    {value: '$exists', label: 'existe', hint: 'El campo está presente (true) o ausente (false). Distinto de valer null.', valueKind: 'bool'},
-    {value: '$type', label: 'es de tipo', hint: 'El campo es del tipo BSON indicado — útil cuando una colección guarda el mismo campo con tipos distintos', valueKind: 'type'},
-    {value: '$regex', label: 'coincide (regex)', hint: 'Expresión regular sobre el valor del campo', valueKind: 'text'},
-    {value: '$size', label: 'tamaño del array', hint: 'El array tiene exactamente N elementos', valueKind: 'number'},
-    {value: '$all', label: 'contiene todos', hint: 'El array contiene todos los valores de la lista (separá con comas)', valueKind: 'list'},
+//
+// Only the value and the input kind live here; the label and hint come from
+// the dictionary (t().mongo.operators['$eq']) and are resolved on every call
+// to mongoOperators(), so they follow the active language.
+const OPERATOR_KINDS: [string, MongoOperatorDef['valueKind']][] = [
+    ['$eq', 'text'],
+    ['$ne', 'text'],
+    ['$gt', 'text'],
+    ['$gte', 'text'],
+    ['$lt', 'text'],
+    ['$lte', 'text'],
+    ['$in', 'list'],
+    ['$nin', 'list'],
+    ['$exists', 'bool'],
+    ['$type', 'type'],
+    ['$regex', 'text'],
+    ['$size', 'number'],
+    ['$all', 'list'],
 ]
+
+export function mongoOperators(): MongoOperatorDef[] {
+    const d = t().mongo.operators as Record<string, {label: string; hint: string}>
+    return OPERATOR_KINDS.map(([value, valueKind]) => ({value, valueKind, ...d[value]}))
+}
 
 // Kept as the plain string list for the browser filter wizard, which renders
 // bare operator names.
-export const MONGO_FILTER_OPERATORS = MONGO_OPERATORS.map((o) => o.value)
+export const MONGO_FILTER_OPERATORS = OPERATOR_KINDS.map(([value]) => value)
 
 // BSON type names $type accepts, offered as a dropdown so nobody has to
 // remember whether it is "objectid" or "objectId" (it is the latter).
@@ -69,7 +79,8 @@ export const MONGO_QUERY_OPERATORS = [
 ]
 
 export function operatorDef(op: string): MongoOperatorDef {
-    return MONGO_OPERATORS.find((o) => o.value === op) ?? MONGO_OPERATORS[0]
+    const all = mongoOperators()
+    return all.find((o) => o.value === op) ?? all[0]
 }
 
 // fieldKey quotes a field name only when it isn't a plain identifier (dotted

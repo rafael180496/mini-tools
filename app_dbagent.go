@@ -8,6 +8,7 @@ import (
 	"mini-tools/backend/agentctx"
 	"mini-tools/backend/db"
 	"mini-tools/backend/explain"
+	"mini-tools/backend/i18n"
 )
 
 // IA agéntica sobre bases de datos: escribir una consulta desde lenguaje
@@ -56,7 +57,7 @@ func (a *App) AgentGenerateSQL(connID, request, currentSQL string) (SQLSuggestio
 		return SQLSuggestion{}, err
 	}
 	if strings.TrimSpace(request) == "" {
-		return SQLSuggestion{}, fmt.Errorf("app: el pedido está vacío")
+		return SQLSuggestion{}, i18n.Errorf(i18n.Msg{ES: "app: el pedido está vacío", EN: "app: the request is empty"})
 	}
 
 	dbType, schema, err := a.schemaContextFor(connID, request+"\n"+currentSQL)
@@ -80,7 +81,7 @@ func (a *App) AgentFixSQL(connID, sqlText, errText string) (SQLSuggestion, error
 		return SQLSuggestion{}, err
 	}
 	if strings.TrimSpace(sqlText) == "" || strings.TrimSpace(errText) == "" {
-		return SQLSuggestion{}, fmt.Errorf("app: hace falta la consulta y el error para poder corregirla")
+		return SQLSuggestion{}, i18n.Errorf(i18n.Msg{ES: "app: hace falta la consulta y el error para poder corregirla", EN: "app: the query and the error are needed to fix it"})
 	}
 
 	dbType, schema, err := a.schemaContextFor(connID, sqlText+"\n"+errText)
@@ -120,7 +121,7 @@ func (a *App) AgentAnalyzePlan(connID, agentID string) (string, error) {
 		return "", err
 	}
 	if len(entries) == 0 {
-		return "", fmt.Errorf("app: todavía no se corrió ningún EXPLAIN en esta conexión")
+		return "", i18n.Errorf(i18n.Msg{ES: "app: todavía no se corrió ningún EXPLAIN en esta conexión", EN: "app: no EXPLAIN has been run on this connection yet"})
 	}
 	e := entries[0]
 
@@ -150,7 +151,7 @@ func (a *App) schemaContextFor(connID, hintText string) (db.DBType, agentctx.Sch
 	}
 	dbType := db.DBType(conn.DBType)
 	if dbType == "ssh" {
-		return "", agentctx.SchemaContext{}, fmt.Errorf("app: %q es una conexión SSH, no una base de datos", conn.Name)
+		return "", agentctx.SchemaContext{}, i18n.Errorf(i18n.Msg{ES: "app: %q es una conexión SSH, no una base de datos", EN: "app: %q is an SSH connection, not a database"}, conn.Name)
 	}
 
 	// Mongo y Redis no pasan por `database/sql` y por lo tanto tampoco por el
@@ -181,11 +182,11 @@ func (a *App) schemaContextFor(connID, hintText string) (db.DBType, agentctx.Sch
 func (a *App) mongoContext(connID, hintText string) agentctx.SchemaContext {
 	database, err := a.GetMongoDefaultDatabase(connID)
 	if err != nil {
-		return agentctx.SchemaContext{Text: "// (no se pudo resolver la base Mongo de esta conexión)"}
+		return agentctx.SchemaContext{Text: "// " + i18n.T(i18n.Msg{ES: "(no se pudo resolver la base Mongo de esta conexión)", EN: "(couldn't resolve this connection's Mongo database)"})}
 	}
 	colls, err := a.ListMongoCollections(connID, database, false)
 	if err != nil {
-		return agentctx.SchemaContext{Text: "// (no se pudieron listar las colecciones)"}
+		return agentctx.SchemaContext{Text: "// " + i18n.T(i18n.Msg{ES: "(no se pudieron listar las colecciones)", EN: "(couldn't list the collections)"})}
 	}
 
 	out := make([]agentctx.MongoCollection, 0, len(colls))
@@ -219,7 +220,7 @@ func (a *App) redisContext(connID string) agentctx.SchemaContext {
 	// recorre una base entera para responder una pregunta.
 	page, err := a.ListRedisKeys(connID, "", "*", "", 500)
 	if err != nil {
-		return agentctx.SchemaContext{Text: "# (no se pudieron muestrear las claves de esta conexión)"}
+		return agentctx.SchemaContext{Text: "# " + i18n.T(i18n.Msg{ES: "(no se pudieron muestrear las claves de esta conexión)", EN: "(couldn't sample this connection's keys)"})}
 	}
 	var total int64
 	if stats, err := a.GetRedisStats(connID); err == nil {
@@ -253,14 +254,14 @@ func renderFindings(insights []explain.Insight) string {
 	for _, in := range insights {
 		fmt.Fprintf(&b, "- [%s] %s", in.Severity, in.Title)
 		if in.Node != "" {
-			fmt.Fprintf(&b, " (nodo: %s)", in.Node)
+			b.WriteString(" " + i18n.T(i18n.Msg{ES: "(nodo: %s)", EN: "(node: %s)"}, in.Node))
 		}
 		b.WriteString("\n")
 		if in.Detail != "" {
 			fmt.Fprintf(&b, "  %s\n", in.Detail)
 		}
 		if in.SQL != "" {
-			fmt.Fprintf(&b, "  Sugerencia que ya calculó la app: %s\n", in.SQL)
+			b.WriteString("  " + i18n.T(i18n.Msg{ES: "Sugerencia que ya calculó la app: %s", EN: "Suggestion the app already computed: %s"}, in.SQL) + "\n")
 		}
 	}
 	return b.String()

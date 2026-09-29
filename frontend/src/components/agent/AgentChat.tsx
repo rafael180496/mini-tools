@@ -20,7 +20,9 @@ import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
 import AgentRefPicker from './AgentRefPicker'
 import ChatCodeBlock from './ChatCodeBlock'
-import {CONTEXT_ICONS, CONTEXT_NOUNS, describeContext, repoIdOf, type WorkContext} from './workContext'
+import {CONTEXT_ICONS, contextNoun, describeContext, repoIdOf, type WorkContext} from './workContext'
+import {rich} from './rich'
+import {formatDateTime, formatNumber, useT} from '../../i18n'
 
 // Espeja ChatEvent / ToolCall / Usage (backend/agentchat/types.go).
 //
@@ -109,17 +111,10 @@ const STARTER_ICONS: Record<string, string[]> = {
     none: ['help'],
 }
 
-function formatClock(at?: number): string {
-    return at ? new Date(at).toLocaleTimeString('es', {hour: '2-digit', minute: '2-digit'}) : ''
-}
+const isUserTurn = (turn: Turn) => turn.role === 'user'
 
-const STARTERS: Record<string, string[]> = {
-    db: ['Explicá esta consulta', 'Optimizá esta consulta', '¿Qué tablas tiene esta conexión?'],
-    ssh: ['¿Qué falló acá?', 'Explicá este log', '¿Cómo reviso el uso de disco?'],
-    http: ['Explicá esta respuesta', '¿Por qué falla esta petición?', 'Escribí pruebas para este endpoint'],
-    note: ['Resumí esta nota', '¿Este procedimiento sigue teniendo sentido?', 'Ampliá el último paso'],
-    git: ['¿Qué cambió en esta rama?', 'Revisá los cambios preparados', 'Escribí el mensaje del commit'],
-    none: ['¿Qué podés hacer en mini-tools?'],
+function formatClock(at?: number): string {
+    return at ? formatDateTime(new Date(at), {hour: '2-digit', minute: '2-digit'}) : ''
 }
 
 // Espeja agentapprove.Request: la acción que el agente quiere hacer y sobre la
@@ -141,29 +136,14 @@ const MODE_ICONS: Record<string, string> = {
     edit: 'edit_document',
 }
 
-const MODE_LABELS: Record<string, {label: string; hint: string; danger?: boolean}> = {
-    '': {
-        label: 'Solo consulta',
-        hint: 'Lee, razona y propone. Sin modo explícito, una edición que necesita confirmación no se puede aprobar desde el chat y el agente la salta.',
-    },
-    plan: {
-        label: 'Plan',
-        hint: 'Explora y arma un plan sin tocar ningún archivo. Es el modo honesto para "decime cómo harías esto".',
-    },
-    approve: {
-        label: 'Aprobar cada acción',
-        hint: 'El agente trabaja, pero te pregunta antes de CADA acción y espera tu respuesta. Es el modo con más control: no hace nada que no hayas autorizado, una por una.',
-    },
-    auto: {
-        label: 'Automático',
-        hint: 'El CLI aprueba solo lo que pasa su propio control de seguridad y frena en lo riesgoso. Lo decide él, no esta app.',
-    },
-    edit: {
-        label: 'Aplicar ediciones',
-        hint: 'El agente MODIFICA archivos del repositorio sin preguntar. Los cambios caen en el árbol de trabajo: se ven en Cambios y se descartan desde ahí. Nunca se le da permiso para ejecutar cualquier comando.',
-        danger: true,
-    },
+const MODE_KEYS: Record<string, 'query' | 'plan' | 'approve' | 'auto' | 'edit'> = {
+    '': 'query',
+    plan: 'plan',
+    approve: 'approve',
+    auto: 'auto',
+    edit: 'edit',
 }
+const DANGER_MODES = new Set(['edit'])
 
 
 // Bloque de contexto adjunto al próximo mensaje: lo que un módulo le pasa al
@@ -316,7 +296,16 @@ export default function AgentChat({
     onSessionUsage,
     active = true,
 }: AgentChatProps) {
+    const t = useT()
+    // Etiqueta y explicación de un modo en el idioma activo. Un modo que el
+    // backend agregue y esta tabla no conozca se muestra con su id crudo.
+    const modeLabel = (m: string) => {
+        const key = MODE_KEYS[m]
+        return key ? {...t.agent.chat.modes[key], danger: DANGER_MODES.has(m)} : undefined
+    }
     const [turns, setTurns] = useState<Turn[]>([])
+    // Hay recurso que nombrar en el encabezado y en el estado vacío.
+    const hasContext = context.kind !== 'none' && !!context.label
     // Qué mensaje se acaba de copiar, para confirmarlo en el botón. Sin la
     // confirmación no hay forma de saber si el clic hizo algo: el portapapeles
     // no se ve.
@@ -340,9 +329,9 @@ export default function AgentChat({
     const workingLabel = useMemo(() => {
         const last = turns[turns.length - 1]
         const tool = last && last.role === 'agent' ? last.tools?.[last.tools.length - 1] : undefined
-        if (!tool) return `${agentLabel} está pensando…`
+        if (!tool) return t.agent.chat.thinking({agent: agentLabel})
         return tool.summary ? `${tool.name} · ${tool.summary}` : `${tool.name}…`
-    }, [turns, agentLabel])
+    }, [turns, agentLabel, t])
 
     const sessionUsage = useMemo(
         () =>
@@ -855,10 +844,10 @@ export default function AgentChat({
                     reinicia al cambiar de módulo, así que sin esto no habría
                     forma de saber a qué repositorio o a qué conexión se refiere
                     "acá" en el próximo mensaje. */}
-                {context.kind !== 'none' && context.label && (
+                {hasContext && (
                     <span
                         className="flex min-w-0 shrink items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-medium text-primary"
-                        title={`El agente está trabajando sobre ${CONTEXT_NOUNS[context.kind]} «${context.label}». Cambia solo cuando cambiás de módulo, y no reinicia la conversación.`}
+                        title={t.agent.chat.workingOn({noun: contextNoun(context.kind), label: context.label})}
                     >
                         <Icon name={CONTEXT_ICONS[context.kind]} size={12} className="shrink-0" />
                         <span className="truncate">{describeContext(context)}</span>
@@ -868,9 +857,9 @@ export default function AgentChat({
                 {info && info.mcp.length > 0 && (
                     <span
                         className="truncate text-on-surface-variant"
-                        title={`Servidores MCP que el CLI reporta al arrancar, con su estado real:\n${info.mcp.join('\n')}`}
+                        title={t.agent.chat.mcpTitle({servers: info.mcp.join('\n')})}
                     >
-                        · MCP: {info.mcp.length}
+                        {t.agent.chat.mcpCount({n: info.mcp.length})}
                     </span>
                 )}
                 {/* Segundo agente en paralelo. Cada chat es su propio proceso
@@ -880,16 +869,16 @@ export default function AgentChat({
                 {onValidateWithAnother && (
                     <button
                         onClick={() => onValidateWithAnother(agentId)}
-                        title="Abre un chat con OTRO agente para que revise los cambios sin commitear. Corre en paralelo: este chat sigue como está."
+                        title={t.agent.chat.validateTitle}
                         className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="fact_check" size={12} />
-                        Validar con otro
+                        {t.agent.chat.validate}
                     </button>
                 )}
                 <button
                     onClick={() => setSearch((v) => (v === null ? '' : null))}
-                    title="Buscar en esta conversación. Filtra los mensajes que contienen lo que escribas — útil para volver a un comando o a una explicación de hace media hora."
+                    title={t.agent.chat.searchTitle}
                     className={`shrink-0 rounded p-0.5 ${
                         search !== null ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                     } ${onValidateWithAnother ? '' : 'ml-auto'}`}
@@ -908,7 +897,7 @@ export default function AgentChat({
                         setQueue([])
                         setQueueHeld(false)
                     }}
-                    title="Olvida la conversación: el próximo mensaje arranca de cero en vez de encadenar con lo anterior."
+                    title={t.agent.chat.resetTitle}
                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="restart_alt" size={14} />
@@ -925,18 +914,18 @@ export default function AgentChat({
                         onKeyDown={(e) => {
                             if (e.key === 'Escape') setSearch(null)
                         }}
-                        placeholder="Buscar en esta conversación… (Esc cierra)"
-                        title="Muestra solo los mensajes que contienen este texto. La conversación no se toca: es un filtro de lectura."
+                        placeholder={t.agent.chat.searchPlaceholder}
+                        title={t.agent.chat.searchInputTitle}
                         className="min-w-0 flex-1 bg-transparent text-on-surface outline-none placeholder:text-on-surface-variant/60"
                     />
                     {!!search.trim() && (
                         <span className="shrink-0 tabular-nums text-on-surface-variant">
-                            {visibleTurns.length} de {turns.length}
+                            {t.agent.chat.searchCount({shown: visibleTurns.length, total: turns.length})}
                         </span>
                     )}
                     <button
                         onClick={() => setSearch(null)}
-                        title="Cierra la búsqueda y vuelve a mostrar la conversación entera"
+                        title={t.agent.chat.searchCloseTitle}
                         className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={13} />
@@ -951,77 +940,72 @@ export default function AgentChat({
                             <Icon name="auto_awesome" size={22} />
                         </span>
                         <p>
-                            {context.kind !== 'none' && context.label ? (
-                                <>
-                                    Sobre {CONTEXT_NOUNS[context.kind]}{' '}
-                                    <span className="text-on-surface">«{context.label}»</span>. Empieza en{' '}
-                                    <strong>solo consulta</strong>: lee y propone, no toca nada.
-                                </>
-                            ) : (
-                                <>
-                                    Empieza en <strong>solo consulta</strong>: lee y propone, no toca nada.
-                                </>
-                            )}
+                            {hasContext
+                                ? // El primer resaltado es el nombre del recurso,
+                                  // que va con el color del texto y no en negrita.
+                                  rich(t.agent.chat.emptyWithContext({noun: contextNoun(context.kind), label: context.label}), (s, n) =>
+                                      n === 0 ? <span className="text-on-surface">{s}</span> : <strong>{s}</strong>,
+                                  )
+                                : rich(t.agent.chat.empty)}
                         </p>
                         <p className="opacity-70">
-                            <strong>@</strong> referencia tablas, notas y terminales ·{' '}
-                            {navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'} pega una captura
+                            {rich(t.agent.chat.emptyHint({paste: navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'}))}
                         </p>
                     </div>
                 )}
 
-                {visibleTurns.map(({t, i}) => (
-                    <div key={i} className={`group mb-3 flex flex-col ${t.role === 'user' ? 'items-end' : 'items-stretch'}`}>
+                {visibleTurns.map(({t: turn, i}) => (
+                    <div key={i} className={`group mb-3 flex flex-col ${turn.role === 'user' ? 'items-end' : 'items-stretch'}`}>
                         <div
                             className={`mb-1 flex w-full items-center gap-1.5 text-ui-10 text-on-surface-variant ${
-                                t.role === 'user' ? 'flex-row-reverse' : ''
+                                turn.role === 'user' ? 'flex-row-reverse' : ''
                             }`}
                         >
-                            {t.role === 'user' ? (
-                                <span className="font-semibold uppercase tracking-wider">Vos</span>
+                            {turn.role === 'user' ? (
+                                <span className="font-semibold uppercase tracking-wider">{t.agent.chat.you}</span>
                             ) : (
                                 <>
                                     <Icon name="auto_awesome" size={12} className="shrink-0 text-primary" />
                                     <span className="font-semibold uppercase tracking-wider text-primary">{agentLabel}</span>
                                 </>
                             )}
-                            {t.at && <span className="shrink-0 tabular-nums opacity-60">· {formatClock(t.at)}</span>}
+                            {turn.at && <span className="shrink-0 tabular-nums opacity-60">· {formatClock(turn.at)}</span>}
 
                             {/* Acciones del mensaje. Aparecen al pasar por
                                 encima para no ensuciar la lectura, y las dos
                                 trabajan sobre el TEXTO —no sobre el Markdown
                                 renderizado— que es lo que sirve para pegar o
                                 reescribir. */}
-                            {t.text && (
-                                <span className={`hidden shrink-0 items-center gap-1 group-hover:flex ${t.role === 'user' ? 'mr-auto' : 'ml-auto'}`}>
+                            {turn.text && (
+                                <span className={`hidden shrink-0 items-center gap-1 group-hover:flex ${turn.role === 'user' ? 'mr-auto' : 'ml-auto'}`}>
                                     {/* Volver a mandar algo que ya preguntaste,
                                         casi siempre con un cambio. **No rebobina
                                         la conversación**: el hilo vive en el CLI.
                                         Trae el texto a la caja sin pisar lo que
                                         ya tengas escrito. */}
-                                    {t.role === 'user' && (
+                                    {isUserTurn(turn) && (
                                         <button
                                             onClick={() => {
-                                                setInput((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n${t.text}` : t.text))
+                                                setInput((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n${turn.text}` : turn.text))
                                                 inputRef.current?.focus()
                                             }}
-                                            title="Trae este mensaje a la caja para mandarlo otra vez, corregido si hace falta. No borra lo que ya tengas escrito ni deshace la conversación: la respuesta anterior sigue estando."
+                                            title={t.agent.chat.reuseTitle}
                                             className="flex items-center gap-1 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                         >
                                             <Icon name="reply" size={11} />
-                                            Reusar
+                                            {t.agent.chat.reuse}
                                         </button>
                                     )}
                                     <button
                                         onClick={() => {
-                                            void navigator.clipboard.writeText(t.text)
+                                            void navigator.clipboard.writeText(turn.text)
                                             setCopiedTurn(i)
                                         }}
-                                        title="Copia este mensaje al portapapeles"
+                                        title={t.agent.chat.copyTitle}
                                         className="flex items-center gap-1 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                     >
                                         <Icon name={copiedTurn === i ? 'check' : 'content_copy'} size={11} />
-                                        {copiedTurn === i ? 'Copiado' : 'Copiar'}
+                                        {copiedTurn === i ? t.agent.chat.copied : t.agent.chat.copy}
                                     </button>
                                 </span>
                             )}
@@ -1031,7 +1015,7 @@ export default function AgentChat({
                             qué herramienta, sobre qué, y de qué tamaño. Plegada
                             por defecto: de un vistazo importa la secuencia, no
                             el argumento entero. */}
-                        {t.tools.map((tool, j) => (
+                        {turn.tools.map((tool, j) => (
                             <details key={j} className="group/tool mb-1.5 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low">
                                 <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1 text-ui-11 hover:bg-surface-variant/50">
                                     <Icon name="terminal" size={12} className="shrink-0 text-primary" />
@@ -1058,13 +1042,13 @@ export default function AgentChat({
                             </details>
                         ))}
 
-                        {t.text && (
+                        {turn.text && (
                             // Lo propio es una burbuja a la derecha; lo del
                             // agente, una tarjeta a todo el ancho. Quién habla se
                             // distingue por la forma, sin leer el encabezado.
                             <div
                                 className={`break-words ${
-                                    t.role === 'user'
+                                    turn.role === 'user'
                                         ? 'max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-tr-sm border border-primary/30 bg-primary/15 px-3 py-1.5 text-on-surface'
                                         : 'rounded-xl rounded-tl-sm border border-outline-variant bg-surface-container px-3 py-2'
                                 }`}
@@ -1072,11 +1056,11 @@ export default function AgentChat({
                                 {/* La respuesta del agente viene en Markdown y
                                     se renderiza; el mensaje PROPIO no: tiene que
                                     verse tal cual lo mandaste. */}
-                                {t.role === 'user' ? (
+                                {turn.role === 'user' ? (
                                     <>
-                                        {t.contexts && t.contexts.length > 0 && (
+                                        {turn.contexts && turn.contexts.length > 0 && (
                                             <span className="mb-1 flex flex-wrap justify-end gap-1">
-                                                {t.contexts.map((label, ci) => (
+                                                {turn.contexts.map((label, ci) => (
                                                     <span
                                                         key={ci}
                                                         className="inline-flex items-center gap-0.5 rounded-full bg-primary/15 px-1.5 py-px text-ui-10 text-primary"
@@ -1087,11 +1071,11 @@ export default function AgentChat({
                                                 ))}
                                             </span>
                                         )}
-                                        {t.text}
+                                        {turn.text}
                                     </>
                                 ) : (
                                     <MarkdownPreview
-                                        source={t.text}
+                                        source={turn.text}
                                         // Los bloques de código llevan su
                                         // propia barra: copiar y mandar al
                                         // editor. Ver ChatCodeBlock.
@@ -1110,19 +1094,19 @@ export default function AgentChat({
                             </div>
                         )}
 
-                        {t.error && (
+                        {turn.error && (
                             <p className="mt-1 flex items-start gap-1 rounded-lg border border-error/30 bg-error-container/30 px-2 py-1 text-ui-11 text-error">
                                 <Icon name="error" size={12} className="mt-px shrink-0" />
-                                <span className="min-w-0 flex-1 break-words">{t.error}</span>
+                                <span className="min-w-0 flex-1 break-words">{turn.error}</span>
                             </p>
                         )}
 
-                        {t.usage && (
-                            <p className="mt-1 text-ui-10 text-on-surface-variant/70" title="Tokens de este turno, informados por el propio CLI">
-                                {t.usage.total.toLocaleString('es')} tokens · {t.usage.output.toLocaleString('es')} de salida
+                        {turn.usage && (
+                            <p className="mt-1 text-ui-10 text-on-surface-variant/70" title={t.agent.chat.turnUsageTitle}>
+                                {t.agent.chat.turnUsage({total: formatNumber(turn.usage.total), output: formatNumber(turn.usage.output)})}
                                 {/* Costo solo si el CLI lo informa: cero acá
                                     significa "no lo dice", no "salió gratis". */}
-                                {t.usage.costUsd > 0 && ` · US$${t.usage.costUsd.toFixed(4)}`}
+                                {turn.usage.costUsd > 0 && t.agent.chat.cost({usd: turn.usage.costUsd.toFixed(4)})}
                             </p>
                         )}
                     </div>
@@ -1178,11 +1162,11 @@ export default function AgentChat({
                         <Icon name={contextBlocks[openBlock].icon ?? 'attach_file'} size={12} className="shrink-0 text-primary" />
                         <span className="min-w-0 flex-1 truncate font-medium text-on-surface">{contextBlocks[openBlock].label}</span>
                         <span className="shrink-0 tabular-nums text-on-surface-variant/70">
-                            {contextBlocks[openBlock].text.trim().split('\n').length} líneas · se manda tal cual
+                            {t.agent.chat.blockLines({n: contextBlocks[openBlock].text.trim().split('\n').length})}
                         </span>
                         <button
                             onClick={() => setOpenBlock(null)}
-                            title="Cerrar la vista previa"
+                            title={t.agent.chat.closePreview}
                             className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
                             <Icon name="close" size={12} />
@@ -1213,12 +1197,12 @@ export default function AgentChat({
                             }}
                             title={
                                 attachWorking
-                                    ? 'Se va a adjuntar al próximo mensaje. Hacé clic para NO mandarlo.'
-                                    : 'No se va a adjuntar. Hacé clic para incluirlo.'
+                                    ? t.agent.chat.workingAttachedTitle
+                                    : t.agent.chat.workingDetachedTitle
                             }
                             className="shrink-0 rounded px-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
-                            {attachWorking ? 'adjunto' : 'sin adjuntar'}
+                            {attachWorking ? t.agent.chat.attached : t.agent.chat.notAttached}
                         </button>
                     </summary>
                     <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-ui-10 text-on-surface-variant">
@@ -1254,7 +1238,7 @@ export default function AgentChat({
                                 </span>
                                 {!r.err && (
                                     <span className="shrink-0 rounded bg-surface-variant px-1 text-on-surface-variant">
-                                        {r.body.length.toLocaleString('es')} car.
+                                        {t.agent.chat.chars({n: formatNumber(r.body.length)})}
                                     </span>
                                 )}
                             </summary>
@@ -1282,7 +1266,7 @@ export default function AgentChat({
                             <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{q}</span>
                             <button
                                 onClick={() => setQueue((prev) => prev.filter((_, n) => n !== i))}
-                                title="Sacar de la cola: este mensaje no se manda"
+                                title={t.agent.chat.dequeueTitle}
                                 className="shrink-0 rounded hover:text-on-surface"
                             >
                                 <Icon name="close" size={10} />
@@ -1293,14 +1277,14 @@ export default function AgentChat({
                         <div className="flex items-center gap-1.5 text-ui-10 text-tertiary">
                             <Icon name="warning" size={11} className="shrink-0" />
                             <span className="min-w-0 flex-1">
-                                La cola quedó esperando: el turno anterior falló o lo cortaste.
+                                {t.agent.chat.queueHeld}
                             </span>
                             <button
                                 onClick={() => setQueueHeld(false)}
-                                title="Manda igual lo que quedó en cola, uno por uno"
+                                title={t.agent.chat.sendAnywayTitle}
                                 className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 hover:text-on-surface"
                             >
-                                Mandar igual
+                                {t.agent.chat.sendAnyway}
                             </button>
                         </div>
                     )}
@@ -1317,16 +1301,16 @@ export default function AgentChat({
                         if (PERMISSIVE.has(next)) setPendingMode(next)
                         else setMode(next)
                     }}
-                    title={MODE_LABELS[mode]?.hint}
+                    title={modeLabel(mode)?.hint}
                     size="sm"
                     leadingIcon={MODE_ICONS[mode] ?? 'visibility'}
                     menuMinWidth={280}
-                    className={`rounded-lg ${MODE_LABELS[mode]?.danger ? 'border-error! bg-error-container/30' : ''}`}
+                    className={`rounded-lg ${modeLabel(mode)?.danger ? 'border-error! bg-error-container/30' : ''}`}
                     options={modes.map((m) => ({
                         value: m,
-                        label: MODE_LABELS[m]?.label ?? m,
-                        description: MODE_LABELS[m]?.hint,
-                        danger: MODE_LABELS[m]?.danger,
+                        label: modeLabel(m)?.label ?? m,
+                        description: modeLabel(m)?.hint,
+                        danger: modeLabel(m)?.danger,
                         icon: <Icon name={MODE_ICONS[m] ?? 'visibility'} size={14} />,
                     }))}
                 />
@@ -1335,17 +1319,18 @@ export default function AgentChat({
                     escala se entiende mejor viéndola entera que abriendo un
                     desplegable. El primer punto es "el del CLI". */}
                 {efforts.length > 0 && (
-                    <span className="flex items-center gap-1" title="Esfuerzo de razonamiento para este turno">
+                    <span className="flex items-center gap-1" title={t.agent.chat.effortTitle}>
                         <Icon name="tune" size={12} className="text-on-surface-variant" />
                         <span className="text-on-surface-variant">
-                            Esfuerzo{effort ? ` (${effort})` : ''}
+                            {t.agent.chat.effort}
+                            {effort ? ` (${effort})` : ''}
                         </span>
                         <span className="flex items-center gap-1">
                             {['', ...efforts].map((e) => (
                                 <button
                                     key={e || 'default'}
                                     onClick={() => setEffort(e)}
-                                    title={e === '' ? 'El que tenga configurado el CLI' : e}
+                                    title={e === '' ? t.agent.chat.effortDefault : e}
                                     className={`h-2 w-2 rounded-full ${
                                         effort === e ? 'bg-primary' : 'bg-outline-variant hover:bg-on-surface-variant'
                                     }`}
@@ -1360,11 +1345,11 @@ export default function AgentChat({
                     leerlo igual para escribirlo en el directorio de adjuntos:
                     pedirle la ruta al sistema no ahorraría ese paso. */}
                 <label
-                    title="Adjunta una imagen desde el equipo. También podés pegarla directamente en la caja de texto."
+                    title={t.agent.chat.imageTitle}
                     className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
                 >
                     <Icon name="image" size={14} />
-                    Imagen
+                    {t.agent.chat.image}
                     <input
                         type="file"
                         accept="image/png,image/jpeg,image/gif,image/webp"
@@ -1402,13 +1387,13 @@ export default function AgentChat({
                     onChange={setModel}
                     title={
                         catalog?.models.find((m) => m.id === model)?.description ||
-                        'Modelo para este turno. La lista la informa el propio CLI.'
+                        t.agent.chat.modelTitle
                     }
                     size="sm"
                     leadingIcon="memory"
                     menuMinWidth={260}
                     className="max-w-52 min-w-0 rounded-lg"
-                    options={(catalog?.models ?? [{id: '', label: 'Por defecto', description: '', efforts: []}]).map((m) => ({
+                    options={(catalog?.models ?? [{id: '', label: t.agent.chat.modelDefault, description: '', efforts: []}]).map((m) => ({
                         value: m.id,
                         label: m.label,
                         description: m.description || undefined,
@@ -1419,9 +1404,9 @@ export default function AgentChat({
                     los turnos, no solo al activarlo: una sesión larga hace
                     olvidar en qué modo quedó. */}
                 {PERMISSIVE.has(mode) && (
-                    <span className={`flex items-center gap-1 ${mode === 'edit' ? 'text-error' : 'text-on-surface-variant'}`} title={MODE_LABELS[mode]?.hint}>
+                    <span className={`flex items-center gap-1 ${mode === 'edit' ? 'text-error' : 'text-on-surface-variant'}`} title={modeLabel(mode)?.hint}>
                         <Icon name="warning" size={12} />
-                        {mode === 'edit' ? 'Va a modificar archivos' : 'Actúa sin volver a preguntarte'}
+                        {mode === 'edit' ? t.agent.chat.willEditFiles : t.agent.chat.actsAlone}
                     </span>
                 )}
 
@@ -1434,19 +1419,19 @@ export default function AgentChat({
                     className="ml-auto flex shrink-0 items-center gap-1 text-on-surface-variant"
                     title={
                         sessionUsage.total > 0
-                            ? `Consumo de los turnos de esta ventana, informado por el propio CLI. Una conversación retomada empieza a contar desde acá: los turnos anteriores los corrió el CLI y no informó su consumo al reabrirlos.\n\nNo es cuánto te queda del plan: ese saldo lo sabe el servidor, no un archivo local. Se ve con /status en Claude Code y /usage en Antigravity.`
-                            : 'Acá se acumulan los tokens de esta conversación en cuanto el agente conteste el primer turno.'
+                            ? t.agent.chat.sessionUsageTitle
+                            : t.agent.chat.sessionUsageEmptyTitle
                     }
                 >
                     <Icon name="monitoring" size={12} />
                     {sessionUsage.total > 0 ? (
                         <>
-                            {formatTokens(sessionUsage.total)} en la sesión
-                            <span className="opacity-70">· {formatTokens(sessionUsage.output)} de salida</span>
-                            {sessionUsage.cost > 0 && <span className="opacity-70">· US${sessionUsage.cost.toFixed(4)}</span>}
+                            {t.agent.chat.inSession({n: formatTokens(sessionUsage.total)})}
+                            <span className="opacity-70">{t.agent.chat.outputShort({n: formatTokens(sessionUsage.output)})}</span>
+                            {sessionUsage.cost > 0 && <span className="opacity-70">{t.agent.chat.cost({usd: sessionUsage.cost.toFixed(4)})}</span>}
                         </>
                     ) : (
-                        <span className="opacity-70">sin consumo todavía</span>
+                        <span className="opacity-70">{t.agent.chat.noUsageYet}</span>
                     )}
                 </span>
             </div>
@@ -1458,8 +1443,7 @@ export default function AgentChat({
                 <div className="flex shrink-0 items-center gap-2 border-t border-outline-variant bg-surface-container-high px-2 py-1 text-ui-11">
                     <Icon name="edit_note" size={13} className="shrink-0 text-primary" />
                     <span className="min-w-0 flex-1 truncate text-on-surface-variant">
-                        El agente dejó <span className="text-on-surface">{touched}</span> archivo{touched === 1 ? '' : 's'} modificado
-                        {touched === 1 ? '' : 's'} sin commitear.
+                        {rich(t.agent.chat.touched({n: touched}), (s) => <span className="text-on-surface">{s}</span>)}
                     </span>
                     {onReviewChanges && (
                         <button
@@ -1467,15 +1451,15 @@ export default function AgentChat({
                                 setTouched(null)
                                 onReviewChanges()
                             }}
-                            title="Lleva a Cambios, con el diff de lo que tocó — revisarlo antes de commitear es todo el punto de que trabaje solo sobre un repositorio"
+                            title={t.agent.chat.reviewTitle}
                             className="shrink-0 rounded bg-primary px-2 py-0.5 text-on-primary"
                         >
-                            Revisar
+                            {t.agent.chat.review}
                         </button>
                     )}
                     <button
                         onClick={() => setTouched(null)}
-                        title="Oculta el aviso. Los cambios siguen en el árbol de trabajo."
+                        title={t.agent.chat.dismissTouchedTitle}
                         className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={14} />
@@ -1485,14 +1469,14 @@ export default function AgentChat({
 
             {approval && (
                 <ConfirmDialog
-                    title={`¿Permitir ${approval.tool}?`}
-                    description={
-                        `${agentLabel} quiere ejecutar ${approval.tool}` +
-                        (approval.summary ? ` sobre ${approval.summary}` : '') +
-                        (approval.detail ? ` (${approval.detail})` : '') +
-                        '. El agente está esperando tu respuesta: si cancelás, no lo hace y se le dice por qué.'
-                    }
-                    confirmLabel="Permitir"
+                    title={t.agent.chat.approvalTitle({tool: approval.tool})}
+                    description={t.agent.chat.approvalDescription({
+                        agent: agentLabel,
+                        tool: approval.tool,
+                        summary: approval.summary,
+                        detail: approval.detail,
+                    })}
+                    confirmLabel={t.agent.chat.allow}
                     onConfirm={() => {
                         answeredRef.current = approval.id
                         void RespondAgentApproval(approval.id, true, '')
@@ -1502,7 +1486,7 @@ export default function AgentChat({
                     // hasta que venza el tiempo.
                     onClose={() => {
                         if (answeredRef.current !== approval.id) {
-                            void RespondAgentApproval(approval.id, false, 'el usuario no autorizó esta acción')
+                            void RespondAgentApproval(approval.id, false, t.agent.approvalDeniedReason)
                         }
                         setApproval(null)
                     }}
@@ -1511,13 +1495,13 @@ export default function AgentChat({
 
             {pendingMode && (
                 <ConfirmDialog
-                    title={pendingMode === 'edit' ? 'Permitir que modifique archivos' : 'Permitir que actúe automáticamente'}
+                    title={pendingMode === 'edit' ? t.agent.chat.allowEditsTitle : t.agent.chat.allowAutoTitle}
                     description={
                         pendingMode === 'edit'
-                            ? `${agentLabel} va a editar archivos de este repositorio sin volver a preguntarte, durante toda esta sesión de chat. Los cambios quedan en el árbol de trabajo: los vas a ver en Cambios y los podés descartar desde ahí. Nunca se le da permiso para ejecutar cualquier comando.`
-                            : `${agentLabel} va a aprobar por su cuenta las acciones que pasen su propio control de seguridad, y a frenar solo en lo que considere riesgoso — ese criterio lo aplica el CLI, no esta app. Vale para toda esta sesión de chat.`
+                            ? t.agent.chat.allowEditsDescription({agent: agentLabel})
+                            : t.agent.chat.allowAutoDescription({agent: agentLabel})
                     }
-                    confirmLabel={pendingMode === 'edit' ? 'Permitir ediciones' : 'Permitir'}
+                    confirmLabel={pendingMode === 'edit' ? t.agent.chat.allowEdits : t.agent.chat.allow}
                     danger={pendingMode === 'edit'}
                     onConfirm={() => setMode(pendingMode)}
                     onClose={() => setPendingMode(null)}
@@ -1530,14 +1514,14 @@ export default function AgentChat({
                 párrafo de instrucciones. */}
             {turns.length === 0 && !busy && !input.trim() && (
                 <div className="flex shrink-0 flex-wrap gap-1.5 px-2 pt-1.5">
-                    {(STARTERS[context.kind] ?? STARTERS.none).map((st, si) => (
+                    {(t.agent.chat.starters[context.kind] ?? t.agent.chat.starters.none).map((st, si) => (
                         <button
                             key={st}
                             onClick={() => {
                                 setInput(st)
                                 inputRef.current?.focus()
                             }}
-                            title="Escribe esto en la caja de mensaje. Podés editarlo antes de mandarlo."
+                            title={t.agent.chat.starterTitle}
                             className="flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container px-2 py-1 text-ui-11 text-on-surface-variant hover:border-primary/50 hover:text-on-surface"
                         >
                             <Icon
@@ -1566,7 +1550,7 @@ export default function AgentChat({
                             >
                                 <button
                                     onClick={() => setOpenBlock((v) => (v === bi ? null : bi))}
-                                    title={`${b.label} — ${b.text.trim().split('\n').length} líneas. Clic para leer exactamente lo que se va a mandar.`}
+                                    title={t.agent.chat.blockChipTitle({label: b.label, n: b.text.trim().split('\n').length})}
                                     className="flex min-w-0 items-center gap-1"
                                 >
                                     <Icon name={b.icon ?? 'attach_file'} size={11} className="shrink-0" />
@@ -1577,7 +1561,7 @@ export default function AgentChat({
                                         setContextBlocks((prev) => prev.filter((_, n) => n !== bi))
                                         setOpenBlock(null)
                                     }}
-                                    title="Quitar este contexto — no se va a mandar"
+                                    title={t.agent.chat.removeBlockTitle}
                                     className="shrink-0 rounded hover:text-error"
                                 >
                                     <Icon name="close" size={11} />
@@ -1587,14 +1571,14 @@ export default function AgentChat({
                         {attachments.map((path) => (
                             <span
                                 key={path}
-                                title={`${path} — se le pasa al agente por su ruta; el archivo vive en los datos de la app, no en el repositorio`}
+                                title={t.agent.chat.attachmentTitle({path})}
                                 className="flex max-w-full items-center gap-1 rounded-md border border-outline-variant bg-surface-container px-1.5 py-0.5 text-ui-10 text-on-surface-variant"
                             >
                                 <Icon name="image" size={11} className="shrink-0 text-primary" />
                                 <span className="truncate">{path.split('/').pop()}</span>
                                 <button
                                     onClick={() => setAttachments((prev) => prev.filter((p) => p !== path))}
-                                    title="Quitar del mensaje"
+                                    title={t.agent.chat.removeAttachmentTitle}
                                     className="shrink-0 rounded hover:text-error"
                                 >
                                     <Icon name="close" size={11} />
@@ -1652,8 +1636,8 @@ export default function AgentChat({
                     rows={2}
                     placeholder={
                         busy
-                            ? `${agentLabel} está trabajando — escribí y Enter lo deja en cola para cuando termine`
-                            : `Preguntale a ${agentLabel}… (Enter manda, Shift+Enter salta de línea)`
+                            ? t.agent.chat.busyPlaceholder({agent: agentLabel})
+                            : t.agent.chat.placeholder({agent: agentLabel})
                     }
                     className="max-h-40 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
                 />
@@ -1666,7 +1650,7 @@ export default function AgentChat({
                         <button
                             onClick={send}
                             disabled={!input.trim()}
-                            title="Deja este mensaje en cola: sale solo cuando termine el turno en curso"
+                            title={t.agent.chat.enqueueTitle}
                             className="shrink-0 rounded-lg border border-outline-variant p-1.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
                         >
                             <Icon name="schedule_send" size={14} />
@@ -1681,7 +1665,7 @@ export default function AgentChat({
                                 // Queda con el botón de "Mandar igual".
                                 setQueueHeld(true)
                             }}
-                            title="Corta el turno en curso. Lo que haya en cola no sale solo: queda esperando con un botón para mandarlo."
+                            title={t.agent.chat.stopTitle}
                             className="shrink-0 rounded-lg bg-error p-1.5 text-on-error"
                         >
                             <Icon name="stop" size={14} />
@@ -1691,7 +1675,8 @@ export default function AgentChat({
                     <button
                         onClick={send}
                         disabled={!input.trim()}
-                        title="Manda el mensaje (Enter)"
+                        title={t.agent.chat.sendTitle}
+                        data-chat-send
                         className="shrink-0 rounded-lg bg-primary p-1.5 text-on-primary disabled:opacity-40"
                     >
                         <Icon name="send" size={14} />

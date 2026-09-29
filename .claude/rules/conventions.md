@@ -25,6 +25,53 @@
 - **Configuración general de la app (no de una conexión particular) vive en `SettingsDialog.tsx`, abierto desde el engranaje del PIE de la barra lateral (`components/sidebar/Sidebar.tsx`, junto al tema, la ayuda y la versión) — nunca suelta en el toolbar principal.** El engranaje estaba en la barra del editor (`Workspace.tsx`) y se mudó: esa barra no se muestra en una nota, una terminal local, una petición HTTP ni un repositorio, así que un ajuste de toda la app dejaba de existir según qué pestaña estuviera abierta. Todo control que valga para la aplicación entera —y no para la pestaña activa— va en ese pie. Backup vault y "Recordar clave" se movieron ahí desde la fila de acciones del toolbar por esta regla. Cualquier preferencia nueva de la app (no de una conexión ni de una tabla puntual) se agrega dentro de ese modal, no como botón/checkbox nuevo en el toolbar.
 - **Nunca `window.confirm()`/`window.alert()` nativos — usar `ConfirmDialog.tsx` (genérico) o `PasswordConfirmDialog.tsx` (si hace falta reconfirmar la clave maestra).** Un `window.confirm()` dentro del webview de Wails no se percibe obviamente como un diálogo — ya causó confusión real dos veces: el linter de `SELECT *` ("no me deja ejecutar") y el botón de borrar historial ("no borra", cuando en realidad el usuario nunca confirmaba un diálogo nativo poco visible). Cualquier acción que necesite confirmación usa el modal temado, consistente con el resto de la UI.
 
+## Textos de la interfaz — siempre por i18n (inglés y español)
+
+**Regla dura, sin excepción desde la fase 1 de [.claude/specs/i18n.md](../specs/i18n.md):
+ningún texto que vea el usuario se escribe a mano en un componente.** Todo sale
+del diccionario (`frontend/src/i18n/`), en inglés **y** en español, en el mismo
+cambio. Vale para texto entre etiquetas, `title`, `placeholder`, `aria-label`,
+ítems de menú, mensajes de error y avisos, confirmaciones y los `label`/`hint`
+de las opciones de un `Select`.
+
+- **Cómo se lee:** `const t = useT()` en el componente y `t.<área>.<clave>`.
+  Fuera de un componente (lib/, un callback que no está en render), `t()` en el
+  momento de usarlo — **nunca** guardar un texto en una constante de módulo: se
+  queda en el idioma con el que arrancó. Una lista de opciones con texto
+  (presets, catálogos) se arma dentro del componente, o guarda la clave y no el
+  texto.
+- **Con datos:** el texto es una función en el diccionario
+  (`deleteConfirm: (p: {title: string}) => \`«${p.title}» se borra…\``), no una
+  concatenación en el componente: el orden de las palabras cambia entre
+  idiomas. Los plurales también se resuelven ahí.
+- **Dónde va:** cada área tiene su archivo (`i18n/es/<área>.ts` + su par en
+  `i18n/en/`). `common` solo para lo que significa lo mismo en todas partes
+  (Cancelar, Guardar, Cargando…). El español es la referencia de forma y el
+  inglés se tipa contra él: una clave que falta en inglés no compila.
+- **Qué NO se traduce:** los datos del usuario (nombres de conexiones, notas,
+  resultados), los nombres técnicos y marcas (SQL, Git, Redis, `HEAD`), y las
+  fechas leídas de una base en hora de pared. Fechas y números generados por la
+  app usan `formatDateTime`/`formatNumber` de `i18n`, que respetan el idioma.
+- **Chequeo:** `./scripts/i18n-check.sh` falla si un archivo suma texto escrito
+  a mano respecto de `scripts/i18n-baseline.txt`. Mientras dura la migración,
+  la línea base solo baja (`--update` tras migrar); en la fase 9 queda vacía.
+  Correrlo antes de cerrar cualquier tarea que toque el frontend.
+- **Capturas:** `UISHOT_LANG=es|en ./scripts/uishot.sh …`. Una pantalla nueva se
+  mira en los dos idiomas: un texto en inglés suele ser más corto y uno en
+  español más largo, y es ahí donde un botón se corta.
+- **La ayuda también** (`index.html`): todo tema nuevo o cambiado se escribe en
+  los dos idiomas en el mismo cambio (ver la sección de la ayuda, más abajo, y
+  la fase 8 del plan).
+- **El backend también** (fase 7): todo mensaje que Go pueda devolverle a la
+  interfaz —errores de bindings, rótulos, avisos, prompts a agentes— se escribe
+  con `backend/i18n` (`i18n.Msg{ES, EN}` + `i18n.Errorf`/`i18n.New`/`i18n.T`),
+  nunca con `fmt.Errorf("texto")` a mano. Nunca comparar contra el texto de un
+  error: en Go, `errors.Is` con un sentinel; en el frontend, un código
+  (`i18n.NewCoded` + `errorCode()`).
+- **El idioma por defecto es inglés** mientras el usuario no elija otro; se
+  guarda en `settings.language` y se lee antes de desbloquear el vault
+  (`GetSettings`/`SetLanguage`, excepción de la regla 5 de technical.md).
+
 ## Testing
 
 - **No escribir tests, ni en backend (`_test.go`) ni en frontend**, para ahorrar tokens. Verificar cada fase manualmente: `go build ./...`, `go vet ./...`, `wails build`, y correr la app (`scripts/start.sh` o `wails dev`) para probar el flujo real.
@@ -89,11 +136,37 @@ izquierda, **un tema por pantalla**, «en esta página» a la derecha, buscador 
 anterior/siguiente. No es una landing con secciones apiladas: nadie recorre una
 documentación de arriba abajo, entra buscando una cosa.
 
+### Dos idiomas, dos archivos
+
+Desde la fase 8 de [i18n.md](../specs/i18n.md) la ayuda son **dos páginas**:
+
+| Archivo | Idioma | URL publicada |
+| --- | --- | --- |
+| `index.html` | inglés | `https://rafael180496.github.io/mini-tools/` |
+| `es/index.html` | español | `https://rafael180496.github.io/mini-tools/es/` |
+
+- **Todo tema nuevo o cambiado se escribe en las DOS en el mismo cambio.** Una
+  página que se adelanta a la otra es una ayuda que dice cosas distintas según
+  el idioma, y nadie lo nota hasta que alguien pregunta.
+- **Los `id` son idénticos en las dos** (temas, `<h2>`, enlaces `href="#…"`), y
+  no se traducen. La app abre la ayuda con un enlace profundo (`#tema`) en el
+  idioma activo, y el selector de idioma de la barra (`#langsw`) lleva el
+  `#fragmento` actual a la otra página: un id que difiere rompe las dos cosas.
+  Chequeo rápido: `diff <(grep -o 'id="[^"]*"' index.html | sort) <(grep -o 'id="[^"]*"' es/index.html | sort)` tiene que salir vacío.
+- **Rutas relativas**: `es/index.html` vive un nivel más abajo, así que sus
+  capturas son `../docs/screenshots/…` (en inglés, `docs/screenshots/…`).
+- **El CSS y el script son idénticos** en las dos. Los textos que arma el script
+  (sin resultados, migas, Anterior/Siguiente, Copiar) salen de
+  `window.HELP_TEXT`, un `<script>` chico justo antes del principal: es lo único
+  que cambia entre las dos. Un cambio de comportamiento se copia tal cual a la
+  otra página.
+
 ### Regla dura
 
 **Todo módulo nuevo, y toda funcionalidad que cambie lo que un usuario puede
-hacer, se documenta en `index.html` en la misma tarea** — igual que la entrada
-del CHANGELOG. No "después", no "cuando haya tiempo".
+hacer, se documenta en la ayuda —`index.html` (inglés) y `es/index.html`
+(español)— en la misma tarea** — igual que la entrada del CHANGELOG. No
+"después", no "cuando haya tiempo".
 
 **Qué NO cuenta**: un arreglo interno, un refactor, una optimización, un bug que
 nadie llegó a notar. Si el usuario no puede hacer nada nuevo ni distinto, no va.
@@ -142,6 +215,11 @@ lleva a otro lado.
 
 ### Capturas y peticiones externas
 
+- **Las capturas van por idioma**: inglés en `docs/screenshots/` (la usa
+  `index.html`), español en `docs/screenshots/es/` (la usa `es/index.html`).
+  `./scripts/help-shots.sh [archivo]` las regenera en los dos idiomas a partir
+  de una tabla archivo → vista del banco → tamaño; una captura nueva de la ayuda
+  se agrega a esa tabla, así se puede volver a sacar cuando la pantalla cambie.
 - **Las capturas salen de `./scripts/uishot.sh`**, nunca de una instalación
   real: hay que agregar la vista al banco (`frontend/src/uishot.tsx`) con datos
   inventados. Una captura de la app de verdad mete rutas, hosts y nombres de
@@ -160,7 +238,7 @@ Se revisa entera, no solo lo último que se tocó: es el paso 8 de
 de esa versión hay que preguntarse si cambia lo que el usuario puede hacer; si
 sí, la ayuda tiene que decir **cómo se usa**, no solo que existe. Se actualiza
 también la insignia de versión de la barra (`<span class="ver">`) y la línea del
-pie. Y lo que salió publicado deja de estar en el bloque «En desarrollo» del
+pie, en las dos páginas. Y lo que salió publicado deja de estar en el bloque «En desarrollo» del
 README.
 
 **Por qué es una regla y no una buena costumbre.** El README lo lee quien ya

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/query"
 )
 
@@ -93,7 +94,7 @@ func (a *App) ResultEditTarget(connID, sqlText string) (EditTarget, error) {
 
 	meta, err := a.GetSchemaMetadata(connID, false)
 	if err != nil || meta == nil {
-		return EditTarget{Reason: "todavía no se leyó el catálogo de esta conexión"}, nil
+		return EditTarget{Reason: i18n.T(i18n.Msg{ES: "todavía no se leyó el catálogo de esta conexión", EN: "this connection's catalog hasn't been read yet"})}, nil
 	}
 
 	// Se reusa el buscador de app_refs.go: mismo criterio de mayúsculas y de
@@ -116,7 +117,7 @@ func (a *App) ResultEditTarget(connID, sqlText string) (EditTarget, error) {
 		// que todavía no se leyó.
 		return EditTarget{
 			Table:  src.Raw,
-			Reason: fmt.Sprintf("no se encontró la tabla %q en el catálogo — puede ser una vista, un sinónimo, estar al otro lado de un DB link o en otro esquema", src.Table),
+			Reason: i18n.T(i18n.Msg{ES: "no se encontró la tabla %q en el catálogo — puede ser una vista, un sinónimo, estar al otro lado de un DB link o en otro esquema", EN: "table %q wasn't found in the catalog — it may be a view, a synonym, on the other side of a DB link or in another schema"}, src.Table),
 		}, nil
 	}
 
@@ -139,7 +140,7 @@ func (a *App) ResultEditTarget(connID, sqlText string) (EditTarget, error) {
 	}
 
 	if len(out.KeyCols) == 0 {
-		out.Reason = fmt.Sprintf("la tabla %s no tiene clave primaria: sin ella no hay forma de escribirle a UNA fila y solo a esa", out.Table)
+		out.Reason = i18n.T(i18n.Msg{ES: "la tabla %s no tiene clave primaria: sin ella no hay forma de escribirle a UNA fila y solo a esa", EN: "table %s has no primary key: without one there's no way to write to ONE row and only that one"}, out.Table)
 		return out, nil
 	}
 
@@ -159,7 +160,7 @@ func (a *App) PreviewRowEdits(connID, sqlText string, edits []CellEdit) ([]strin
 		return nil, err
 	}
 	if !target.Editable {
-		return nil, fmt.Errorf("app: este resultado no se puede editar: %s", target.Reason)
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: este resultado no se puede editar: %s", EN: "app: this result can't be edited: %s"}, target.Reason)
 	}
 
 	out := make([]string, 0, len(edits))
@@ -180,10 +181,10 @@ func (a *App) ApplyRowEdits(connID, sqlText string, edits []CellEdit) (EditAppli
 		return EditApplied{}, err
 	}
 	if !target.Editable {
-		return EditApplied{}, fmt.Errorf("app: este resultado no se puede editar: %s", target.Reason)
+		return EditApplied{}, i18n.Errorf(i18n.Msg{ES: "app: este resultado no se puede editar: %s", EN: "app: this result can't be edited: %s"}, target.Reason)
 	}
 	if len(edits) == 0 {
-		return EditApplied{}, fmt.Errorf("app: no hay ningún cambio pendiente")
+		return EditApplied{}, i18n.Errorf(i18n.Msg{ES: "app: no hay ningún cambio pendiente", EN: "app: there are no pending changes"})
 	}
 
 	pool, err := a.pools.Get(connID)
@@ -198,7 +199,7 @@ func (a *App) ApplyRowEdits(connID, sqlText string, edits []CellEdit) (EditAppli
 
 	tx, err := pool.BeginTx(ctx, nil)
 	if err != nil {
-		return EditApplied{}, fmt.Errorf("app: no se pudo abrir la transacción: %w", err)
+		return EditApplied{}, i18n.Errorf(i18n.Msg{ES: "app: no se pudo abrir la transacción: %w", EN: "app: couldn't open the transaction: %w"}, err)
 	}
 	// Rollback siempre en el camino de error: un defer que no se dispara deja
 	// la conexión con una transacción abierta, y esa conexión vuelve al pool.
@@ -217,24 +218,26 @@ func (a *App) ApplyRowEdits(connID, sqlText string, edits []CellEdit) (EditAppli
 		}
 		res, err := tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
-			return EditApplied{}, fmt.Errorf("app: no se pudo guardar %s: %w", e.Column, err)
+			return EditApplied{}, i18n.Errorf(i18n.Msg{ES: "app: no se pudo guardar %s: %w", EN: "app: couldn't save %s: %w"}, e.Column, err)
 		}
 		n, err := res.RowsAffected()
 		if err != nil {
 			// Un driver que no informa filas afectadas no permite comprobar la
 			// promesa de "una y solo una", así que no se sigue.
-			return EditApplied{}, fmt.Errorf("app: el motor no informó cuántas filas cambió, así que no se puede confirmar que fue una sola: %w", err)
+			return EditApplied{}, i18n.Errorf(i18n.Msg{ES: "app: el motor no informó cuántas filas cambió, así que no se puede confirmar que fue una sola: %w", EN: "app: the engine didn't report how many rows changed, so it can't be confirmed it was just one: %w"}, err)
 		}
 		if n != 1 {
-			return EditApplied{}, fmt.Errorf(
-				"app: ese cambio afectaba %d filas y tenía que afectar exactamente una — se revirtió TODO el lote. Sentencia: %s", n, stmt)
+			return EditApplied{}, i18n.Errorf(i18n.Msg{
+				ES: "app: ese cambio afectaba %d filas y tenía que afectar exactamente una — se revirtió TODO el lote. Sentencia: %s",
+				EN: "app: that change affected %d rows and had to affect exactly one — the WHOLE batch was rolled back. Statement: %s",
+			}, n, stmt)
 		}
 		applied.Statements = append(applied.Statements, stmt)
 		applied.Rows += n
 	}
 
 	if err := tx.Commit(); err != nil {
-		return EditApplied{}, fmt.Errorf("app: no se pudo confirmar la transacción: %w", err)
+		return EditApplied{}, i18n.Errorf(i18n.Msg{ES: "app: no se pudo confirmar la transacción: %w", EN: "app: couldn't commit the transaction: %w"}, err)
 	}
 	committed = true
 	return applied, nil
@@ -265,19 +268,19 @@ func literalStyle(int) string { return "\x00" }
 func buildUpdate(target EditTarget, e CellEdit, style bindStyle) (string, []any, error) {
 	col := findColumn(target, e.Column)
 	if col == nil {
-		return "", nil, fmt.Errorf("app: la columna %q no existe en %s", e.Column, target.Table)
+		return "", nil, i18n.Errorf(i18n.Msg{ES: "app: la columna %q no existe en %s", EN: "app: column %q doesn't exist in %s"}, e.Column, target.Table)
 	}
 	if !col.Editable {
-		return "", nil, fmt.Errorf("app: %q es parte de la clave primaria: cambiarla no corrige un dato, mueve la fila", e.Column)
+		return "", nil, i18n.Errorf(i18n.Msg{ES: "app: %q es parte de la clave primaria: cambiarla no corrige un dato, mueve la fila", EN: "app: %q is part of the primary key: changing it doesn't fix a value, it moves the row"}, e.Column)
 	}
 	if e.Value == nil && !col.Nullable {
-		return "", nil, fmt.Errorf("app: %q no admite NULL", e.Column)
+		return "", nil, i18n.Errorf(i18n.Msg{ES: "app: %q no admite NULL", EN: "app: %q doesn't accept NULL"}, e.Column)
 	}
 
 	args := []any{}
 	value, err := convert(e.Value, col.Kind)
 	if err != nil {
-		return "", nil, fmt.Errorf("app: %q: %w", e.Column, err)
+		return "", nil, i18n.Errorf(i18n.Msg{ES: "app: %q: %w", EN: "app: %q: %w"}, e.Column, err)
 	}
 	args = append(args, value)
 
@@ -285,7 +288,7 @@ func buildUpdate(target EditTarget, e CellEdit, style bindStyle) (string, []any,
 	for _, k := range target.KeyCols {
 		raw, ok := e.Key[k]
 		if !ok {
-			return "", nil, fmt.Errorf("app: falta el valor de la clave %q para identificar la fila", k)
+			return "", nil, i18n.Errorf(i18n.Msg{ES: "app: falta el valor de la clave %q para identificar la fila", EN: "app: the value of key %q is missing to identify the row"}, k)
 		}
 		kc := findColumn(target, k)
 		kind := "text"
@@ -294,7 +297,7 @@ func buildUpdate(target EditTarget, e CellEdit, style bindStyle) (string, []any,
 		}
 		v, err := convert(&raw, kind)
 		if err != nil {
-			return "", nil, fmt.Errorf("app: clave %q: %w", k, err)
+			return "", nil, i18n.Errorf(i18n.Msg{ES: "app: clave %q: %w", EN: "app: key %q: %w"}, k, err)
 		}
 		args = append(args, v)
 		where = append(where, fmt.Sprintf("%s = %s", quoteIdent(k), style(len(args))))
@@ -329,14 +332,14 @@ func convert(v *string, kind string) (any, error) {
 	case "number":
 		t := strings.TrimSpace(s)
 		if t == "" {
-			return nil, fmt.Errorf("está vacío y la columna es numérica — para dejarla sin dato, poné NULL")
+			return nil, i18n.Errorf(i18n.Msg{ES: "está vacío y la columna es numérica — para dejarla sin dato, poné NULL", EN: "it's empty and the column is numeric — to leave it without a value, enter NULL"})
 		}
 		if i, err := strconv.ParseInt(t, 10, 64); err == nil {
 			return i, nil
 		}
 		f, err := strconv.ParseFloat(strings.Replace(t, ",", ".", 1), 64)
 		if err != nil {
-			return nil, fmt.Errorf("%q no es un número", s)
+			return nil, i18n.Errorf(i18n.Msg{ES: "%q no es un número", EN: "%q is not a number"}, s)
 		}
 		return f, nil
 	case "bool":
@@ -347,11 +350,11 @@ func convert(v *string, kind string) (any, error) {
 		case "false", "f", "0", "no":
 			return false, nil
 		}
-		return nil, fmt.Errorf("%q no es verdadero ni falso", s)
+		return nil, i18n.Errorf(i18n.Msg{ES: "%q no es verdadero ni falso", EN: "%q is neither true nor false"}, s)
 	case "datetime", "date":
 		t := strings.TrimSpace(s)
 		if t == "" {
-			return nil, fmt.Errorf("está vacío — para dejar la fecha sin dato, poné NULL")
+			return nil, i18n.Errorf(i18n.Msg{ES: "está vacío — para dejar la fecha sin dato, poné NULL", EN: "it's empty — to leave the date without a value, enter NULL"})
 		}
 		for _, layout := range []string{
 			"2006-01-02 15:04:05.999999999",
@@ -365,7 +368,7 @@ func convert(v *string, kind string) (any, error) {
 				return parsed, nil
 			}
 		}
-		return nil, fmt.Errorf("%q no se entiende como fecha (probá 2006-01-02 15:04:05)", s)
+		return nil, i18n.Errorf(i18n.Msg{ES: "%q no se entiende como fecha (probá 2006-01-02 15:04:05)", EN: "%q can't be read as a date (try 2006-01-02 15:04:05)"}, s)
 	default:
 		return s, nil
 	}

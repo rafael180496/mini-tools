@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // This file answers one question the rest of the catalog scan deliberately
@@ -112,7 +114,7 @@ func attachOracleRoutineArgs(ctx context.Context, pool *sql.DB, schemas []string
 
 	rows, err := pool.QueryContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("db: listando argumentos de rutinas oracle: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: listando argumentos de rutinas oracle: %w", EN: "db: listing oracle routine arguments: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -126,7 +128,7 @@ func attachOracleRoutineArgs(ctx context.Context, pool *sql.DB, schemas []string
 		var dataLength, precision, scale sql.NullInt64
 		if err := rows.Scan(&owner, &pkg, &objectName, &overload, &argName, &position,
 			&dataType, &inOut, &defaulted, &dataLength, &precision, &scale); err != nil {
-			return fmt.Errorf("db: escaneando argumento de rutina oracle: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "db: escaneando argumento de rutina oracle: %w", EN: "db: scanning oracle routine argument: %w"}, err)
 		}
 
 		key := newRoutineKey(owner.String, pkg.String, objectName, overload.String)
@@ -218,7 +220,7 @@ func fetchOraclePackageMembers(ctx context.Context, pool *sql.DB, schemas []stri
 
 	rows, err := pool.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("db: listando miembros de packages oracle: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: listando miembros de packages oracle: %w", EN: "db: listing oracle package members: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -227,7 +229,7 @@ func fetchOraclePackageMembers(ctx context.Context, pool *sql.DB, schemas []stri
 		var owner, overload sql.NullString
 		var pkgName, memberName string
 		if err := rows.Scan(&owner, &pkgName, &memberName, &overload); err != nil {
-			return nil, fmt.Errorf("db: escaneando miembro de package oracle: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: escaneando miembro de package oracle: %w", EN: "db: scanning oracle package member: %w"}, err)
 		}
 		key := newRoutineKey(owner.String, "", pkgName, "")
 		out[key] = append(out[key], PackageMember{Name: memberName, Overload: strings.TrimSpace(overload.String)})
@@ -310,7 +312,7 @@ func attachPostgresRoutineArgs(ctx context.Context, pool *sql.DB, schemas []stri
 		ORDER BY p.oid, a.ordinality
 	`, filter), args...)
 	if err != nil {
-		return fmt.Errorf("db: listando argumentos de rutinas postgres: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: listando argumentos de rutinas postgres: %w", EN: "db: listing postgres routine arguments: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -327,7 +329,7 @@ func attachPostgresRoutineArgs(ctx context.Context, pool *sql.DB, schemas []stri
 		var name, typeText, mode, comment string
 		var numDefaults int
 		if err := rows.Scan(&oid, &ordinality, &name, &typeText, &mode, &numDefaults, &comment); err != nil {
-			return fmt.Errorf("db: escaneando argumento de rutina postgres: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "db: escaneando argumento de rutina postgres: %w", EN: "db: scanning postgres routine argument: %w"}, err)
 		}
 		r, ok := byOID[oid]
 		if !ok {
@@ -414,7 +416,7 @@ func attachSQLServerRoutineArgs(ctx context.Context, pool *sql.DB, schemas []str
 		ORDER BY s.name, o.name, p.parameter_id
 	`, filter), args...)
 	if err != nil {
-		return fmt.Errorf("db: listando argumentos de rutinas sqlserver: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: listando argumentos de rutinas sqlserver: %w", EN: "db: listing sqlserver routine arguments: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -428,7 +430,7 @@ func attachSQLServerRoutineArgs(ctx context.Context, pool *sql.DB, schemas []str
 		var isOutput, hasDefault bool
 		if err := rows.Scan(&schema, &object, &name, &typeName, &maxLength,
 			&precision, &scale, &isOutput, &hasDefault, &parameterID); err != nil {
-			return fmt.Errorf("db: escaneando argumento de rutina sqlserver: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "db: escaneando argumento de rutina sqlserver: %w", EN: "db: scanning sqlserver routine argument: %w"}, err)
 		}
 
 		key := newRoutineKey(schema, "", object, "")

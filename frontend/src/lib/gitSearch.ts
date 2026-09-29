@@ -10,6 +10,8 @@
 // Bare words (no prefix) go to the message filter, because that is what
 // people type when they type anything at all.
 
+import {t} from '../i18n'
+
 export interface GitSearch {
     author: string
     grep: string
@@ -24,23 +26,23 @@ export interface GitSearch {
 export const EMPTY_SEARCH: GitSearch = {author: '', grep: '', path: '', since: '', until: '', rev: ''}
 
 // Prefixes accepted, with the Spanish aliases people actually reach for.
-const FIELDS: Record<string, keyof GitSearch> = {
-    author: 'author',
-    autor: 'author',
-    message: 'grep',
-    mensaje: 'grep',
-    msg: 'grep',
-    file: 'path',
-    archivo: 'path',
-    path: 'path',
-    since: 'since',
-    desde: 'since',
-    until: 'until',
-    hasta: 'until',
-    hash: 'rev',
-    commit: 'rev',
-    rev: 'rev',
-}
+const FIELDS: ReadonlyMap<string, keyof GitSearch> = new Map<string, keyof GitSearch>([
+    ['author', 'author'],
+    ['autor', 'author'],
+    ['message', 'grep'],
+    ['mensaje', 'grep'],
+    ['msg', 'grep'],
+    ['file', 'path'],
+    ['archivo', 'path'],
+    ['path', 'path'],
+    ['since', 'since'],
+    ['desde', 'since'],
+    ['until', 'until'],
+    ['hasta', 'until'],
+    ['hash', 'rev'],
+    ['commit', 'rev'],
+    ['rev', 'rev'],
+])
 
 // A bare token of 7-40 hex characters is a commit hash, not a word somebody
 // meant to search messages for. Below 7 it is too likely to be a real word
@@ -57,7 +59,7 @@ export function parseGitSearch(raw: string): GitSearch {
         if (idx > 0) {
             const key = token.slice(0, idx).toLowerCase()
             const value = token.slice(idx + 1).trim()
-            const field = FIELDS[key]
+            const field = FIELDS.get(key)
             if (field && value !== '') {
                 // Repeating a prefix appends rather than replaces, so
                 // "author:ana author:beto" is not silently just "beto" —
@@ -115,21 +117,20 @@ export function isEmptySearch(s: GitSearch): boolean {
 // what the graph is actually filtered by — a search that silently narrows
 // history is how people conclude a commit "disappeared".
 export function describeSearch(s: GitSearch): string {
+    const d = t().git.search.describe
     const parts: string[] = []
-    if (s.author) parts.push(`autor «${s.author}»`)
-    if (s.grep) parts.push(`mensaje «${s.grep}»`)
-    if (s.path) parts.push(`que tocan «${s.path}»`)
-    if (s.rev) parts.push(`desde ${s.rev}`)
-    if (s.since) parts.push(`después de ${s.since}`)
-    if (s.until) parts.push(`antes de ${s.until}`)
+    if (s.author) parts.push(d.author(s.author))
+    if (s.grep) parts.push(d.message(s.grep))
+    if (s.path) parts.push(d.path(s.path))
+    if (s.rev) parts.push(d.rev(s.rev))
+    if (s.since) parts.push(d.since(s.since))
+    if (s.until) parts.push(d.until(s.until))
     return parts.join(' · ')
 }
 
-export const GIT_SEARCH_HELP = [
-    'autor:angelo — commits de ese autor (también author:)',
-    'mensaje:feat — busca en el mensaje (también message:, msg:)',
-    'archivo:AGENTS.md — solo los commits que tocaron ese archivo (también file:)',
-    'desde:2024-01-01 · hasta:"2 weeks ago" — rango de fechas (también since:/until:)',
-    'hash:a1b2c3d — la historia a partir de ese commit',
-    'Sin prefijo busca en el mensaje; un hash suelto de 7+ caracteres se detecta solo.',
-].join('\n')
+// GIT_SEARCH_HELP es función (no constante) para que la ayuda salga en el
+// idioma activo en el momento de mostrarla.
+export function GIT_SEARCH_HELP(): string {
+    const h = t().git.search.help
+    return [h.author, h.message, h.file, h.range, h.hash, h.bare].join('\n')
+}

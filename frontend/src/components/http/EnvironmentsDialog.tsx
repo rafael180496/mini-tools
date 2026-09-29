@@ -10,7 +10,8 @@ import Icon from '../Icon'
 import Select from '../Select'
 import ConfirmDialog from '../ConfirmDialog'
 import VariablesTable from './VariablesTable'
-import {parseVariables, type HttpVariable} from './httpShared'
+import {parseVariables, rich, type HttpVariable} from './httpShared'
+import {useT} from '../../i18n'
 
 // Administrador de entornos: la lista a la izquierda, sus variables a la
 // derecha.
@@ -25,6 +26,7 @@ interface EnvironmentsDialogProps {
 }
 
 export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDialogProps) {
+    const t = useT()
     const [envs, setEnvs] = useState<vault.HTTPEnvironment[]>([])
     const [collections, setCollections] = useState<vault.HTTPCollection[]>([])
     const [selectedId, setSelectedId] = useState<string>('')
@@ -88,7 +90,7 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
     async function create() {
         setError(null)
         try {
-            const saved = await HttpSaveEnvironment(new vault.HTTPEnvironment({name: 'Entorno nuevo'}))
+            const saved = await HttpSaveEnvironment(new vault.HTTPEnvironment({name: t.http.envs.defaultName}))
             const list = await load()
             if (saved) {
                 const fresh = list.find((e) => e.id === saved.id)
@@ -110,8 +112,8 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
             >
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                     <Icon name="layers" size={16} className="text-on-surface-variant" />
-                    <p className="flex-1 text-sm font-medium text-on-surface">Entornos</p>
-                    <button onClick={onClose} title="Cerrar" className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                    <p className="flex-1 text-sm font-medium text-on-surface">{t.http.envs.title}</p>
+                    <button onClick={onClose} title={t.common.close} className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                         <Icon name="close" size={16} />
                     </button>
                 </div>
@@ -128,14 +130,14 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                         <div className="min-h-0 flex-1 overflow-y-auto p-1">
                             {envs.length === 0 && (
                                 <p className="px-2 py-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
-                                    Sin entornos todavía. Un entorno guarda los valores que cambian entre dev, pruebas y producción.
+                                    {t.http.envs.empty}
                                 </p>
                             )}
                             {envs.map((e) => (
                                 <button
                                     key={e.id}
                                     onClick={() => select(e)}
-                                    title={e.pinnedCollectionId ? 'Anclado a una colección: se elige solo al abrir sus peticiones' : e.name}
+                                    title={e.pinnedCollectionId ? t.http.envs.pinnedTitle : e.name}
                                     className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-ui-11 ${
                                         e.id === selectedId ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant'
                                     }`}
@@ -147,10 +149,10 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                         </div>
                         <button
                             onClick={() => void create()}
-                            title="Crear un entorno nuevo"
+                            title={t.http.envs.newTitle}
                             className="flex shrink-0 items-center gap-1 border-t border-outline-variant px-2 py-1.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
-                            <Icon name="add" size={13} /> Nuevo entorno
+                            <Icon name="add" size={13} /> {t.http.envs.new}
                         </button>
                     </div>
 
@@ -164,35 +166,35 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                                         setName(e.target.value)
                                         setDirty(true)
                                     }}
-                                    title="Nombre del entorno, el que se ve en el selector"
+                                    title={t.http.envs.nameTitle}
                                     className="min-w-0 flex-1 rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                                 />
                                 <Select
                                     value={pinned}
                                     options={[
-                                        {value: '', label: 'Sin anclar', separatorAfter: collections.length > 0},
-                                        ...collections.map((c) => ({value: c.id, label: `Anclado a «${c.name}»`})),
+                                        {value: '', label: t.http.envs.unpinned, separatorAfter: collections.length > 0},
+                                        ...collections.map((c) => ({value: c.id, label: t.http.envs.pinnedTo({name: c.name})})),
                                     ]}
                                     onChange={(v) => {
                                         setPinned(v)
                                         setDirty(true)
                                     }}
                                     size="sm"
-                                    ariaLabel="Colección a la que se ancla el entorno"
-                                    title="Anclar este entorno a una colección: al abrir una petición de esa colección se usa este entorno automáticamente, sin importar cuál esté seleccionado. Solo un entorno puede estar anclado a cada colección."
+                                    ariaLabel={t.http.envs.pinAria}
+                                    title={t.http.envs.pinTitle}
                                     className="w-52 shrink-0"
                                 />
                                 <button
                                     onClick={() => void save()}
                                     disabled={!dirty}
-                                    title={dirty ? 'Guardar los cambios del entorno' : 'No hay cambios sin guardar'}
+                                    title={dirty ? t.http.envs.saveTitle : t.http.envs.noChanges}
                                     className="shrink-0 rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                                 >
-                                    Guardar
+                                    {t.common.save}
                                 </button>
                                 <button
                                     onClick={() => setConfirmDelete(selected)}
-                                    title="Borrar este entorno"
+                                    title={t.http.envs.deleteTitle}
                                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-error"
                                 >
                                     <Icon name="delete" size={15} />
@@ -210,13 +212,12 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
                             </div>
 
                             <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                                Estas variables pisan a las de la colección: la colección define el valor por defecto y el entorno lo cambia según dónde estés
-                                probando. Se usan escribiendo <span className="font-mono">{'{{nombre}}'}</span> en la URL, en los headers o en el cuerpo.
+                                {rich(t.http.envs.footer)}
                             </p>
                         </div>
                     ) : (
                         <div className="flex flex-1 items-center justify-center text-ui-11 text-on-surface-variant/60">
-                            Elegí un entorno de la izquierda, o creá uno.
+                            {t.http.envs.pick}
                         </div>
                     )}
                 </div>
@@ -224,9 +225,9 @@ export default function EnvironmentsDialog({onClose, onChanged}: EnvironmentsDia
 
             {confirmDelete && (
                 <ConfirmDialog
-                    title="Borrar el entorno"
-                    description={`Se borra "${confirmDelete.name}" con todas sus variables. Las peticiones que las usen van a quedar con las llaves sin resolver hasta que elijas otro entorno.`}
-                    confirmLabel="Borrar"
+                    title={t.http.envs.deleteConfirmTitle}
+                    description={t.http.envs.deleteConfirm({name: confirmDelete.name})}
+                    confirmLabel={t.common.delete}
                     danger
                     onConfirm={() =>
                         void HttpDeleteEnvironment(confirmDelete.id)

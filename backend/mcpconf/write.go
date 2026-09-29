@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Escritura de configs MCP.
@@ -83,13 +85,13 @@ type ServerInput struct {
 func UpsertServer(path string, in ServerInput) error {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return fmt.Errorf("mcpconf: el nombre del servidor no puede estar vacío")
+		return i18n.Errorf(i18n.Msg{ES: "mcpconf: el nombre del servidor no puede estar vacío", EN: "mcpconf: the server name can't be empty"})
 	}
 	if in.Transport == TransportStdio && strings.TrimSpace(in.Command) == "" {
-		return fmt.Errorf("mcpconf: un servidor local necesita un comando")
+		return i18n.Errorf(i18n.Msg{ES: "mcpconf: un servidor local necesita un comando", EN: "mcpconf: a local server needs a command"})
 	}
 	if in.Transport != TransportStdio && strings.TrimSpace(in.URL) == "" {
-		return fmt.Errorf("mcpconf: un servidor remoto necesita una URL")
+		return i18n.Errorf(i18n.Msg{ES: "mcpconf: un servidor remoto necesita una URL", EN: "mcpconf: a remote server needs a URL"})
 	}
 
 	entry := map[string]any{}
@@ -138,7 +140,7 @@ func editServers(path string, edit func(map[string]json.RawMessage) error) error
 			if err := json.Unmarshal(data, &root); err != nil {
 				// Se corta acá a propósito: reescribir un archivo que no se
 				// pudo entender es la forma más rápida de destruirlo.
-				return fmt.Errorf("mcpconf: %q no se pudo leer como JSON, no se toca: %w", path, err)
+				return i18n.Errorf(i18n.Msg{ES: "mcpconf: %q no se pudo leer como JSON, no se toca: %w", EN: "mcpconf: %q couldn't be read as JSON, leaving it untouched: %w"}, path, err)
 			}
 		}
 		if info, err := os.Stat(path); err == nil {
@@ -151,13 +153,13 @@ func editServers(path string, edit func(map[string]json.RawMessage) error) error
 		// Un archivo que todavía no existe se crea. 0600 por defecto: puede
 		// terminar conteniendo tokens.
 	default:
-		return fmt.Errorf("mcpconf: leyendo %q: %w", path, err)
+		return i18n.Errorf(i18n.Msg{ES: "mcpconf: leyendo %q: %w", EN: "mcpconf: reading %q: %w"}, path, err)
 	}
 
 	servers := map[string]json.RawMessage{}
 	if raw, ok := root["mcpServers"]; ok {
 		if err := json.Unmarshal(raw, &servers); err != nil {
-			return fmt.Errorf("mcpconf: el bloque mcpServers de %q no se pudo leer, no se toca: %w", path, err)
+			return i18n.Errorf(i18n.Msg{ES: "mcpconf: el bloque mcpServers de %q no se pudo leer, no se toca: %w", EN: "mcpconf: the mcpServers block of %q couldn't be read, leaving it untouched: %w"}, path, err)
 		}
 	}
 
@@ -182,7 +184,7 @@ func editServers(path string, edit func(map[string]json.RawMessage) error) error
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("mcpconf: creando el directorio de %q: %w", path, err)
+		return i18n.Errorf(i18n.Msg{ES: "mcpconf: creando el directorio de %q: %w", EN: "mcpconf: creating the directory of %q: %w"}, path, err)
 	}
 	return writeAtomic(path, out, mode)
 }
@@ -234,7 +236,7 @@ func backup(path string, data []byte, mode fs.FileMode) error {
 		return nil
 	}
 	if err := os.WriteFile(path+".mini-tools.bak", data, mode); err != nil {
-		return fmt.Errorf("mcpconf: no se pudo respaldar %q, no se escribe: %w", path, err)
+		return i18n.Errorf(i18n.Msg{ES: "mcpconf: no se pudo respaldar %q, no se escribe: %w", EN: "mcpconf: couldn't back up %q, not writing: %w"}, path, err)
 	}
 	return nil
 }

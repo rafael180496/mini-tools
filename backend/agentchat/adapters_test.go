@@ -6,7 +6,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"mini-tools/backend/i18n"
 )
+
+// Los mensajes de error se afirman en español.
+func TestMain(m *testing.M) {
+	i18n.SetLang("es")
+	os.Exit(m.Run())
+}
 
 // Los fixtures de testdata/ son corridas REALES capturadas de cada CLI
 // (`claude -p --output-format stream-json --verbose` y `agy --print

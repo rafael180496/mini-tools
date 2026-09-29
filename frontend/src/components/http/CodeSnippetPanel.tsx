@@ -9,6 +9,7 @@ import Select from '../Select'
 import Toggle from '../Toggle'
 import CodePane from './CodePane'
 import {methodColor} from './httpShared'
+import {useT} from '../../i18n'
 
 // El panel de "Code snippet": la misma petición escrita en el lenguaje que
 // use quien la va a llevar a producción.
@@ -60,6 +61,7 @@ export default function CodeSnippetPanel({
     appearance,
     onClose,
 }: CodeSnippetPanelProps) {
+    const t = useT()
     const [languages, setLanguages] = useState<httpclient.CodeLanguage[]>([])
     const [lang, setLang] = useState('curl')
     const [withSecrets, setWithSecrets] = useState(false)
@@ -114,17 +116,17 @@ export default function CodeSnippetPanel({
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-4 py-2.5">
                     <Icon name="code" size={18} className="text-primary" />
                     <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium leading-tight text-on-surface">Código</p>
+                        <p className="text-sm font-medium leading-tight text-on-surface">{t.http.snippet.title}</p>
                         <p className="flex items-center gap-1.5 truncate text-ui-10 leading-tight text-on-surface-variant">
                             <span className={`font-mono font-semibold ${methodColor(request.method || 'GET')}`}>
                                 {(request.method || 'GET').toUpperCase()}
                             </span>
-                            <span className="truncate font-mono">{request.url || 'sin URL'}</span>
+                            <span className="truncate font-mono">{request.url || t.http.snippet.noUrl}</span>
                         </p>
                     </div>
                     <button
                         onClick={onClose}
-                        title="Cerrar"
+                        title={t.common.close}
                         className="shrink-0 rounded-lg p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="close" size={16} />
@@ -141,26 +143,26 @@ export default function CodeSnippetPanel({
                         options={options}
                         onChange={setLang}
                         size="sm"
-                        ariaLabel="Lenguaje del snippet"
-                        title="Lenguaje del snippet. La petición se escribe con las variables ya resueltas, lista para pegar."
+                        ariaLabel={t.http.snippet.langAria}
+                        title={t.http.snippet.langTitle}
                         className="w-56"
                     />
 
                     <label
                         className="flex cursor-pointer items-center gap-2 text-ui-11 text-on-surface-variant"
-                        title="Por defecto los valores que vienen de variables secretas salen tapados: un snippet suele terminar pegado en un ticket o un chat. Encendelo solo si el destino es de confianza."
+                        title={t.http.snippet.secretsTitle}
                     >
                         <Toggle
                             checked={withSecrets}
                             onChange={setWithSecrets}
                             size="sm"
-                            ariaLabel="Incluir secretos en el snippet"
+                            ariaLabel={t.http.snippet.secretsAria}
                         />
-                        Incluir secretos
+                        {t.http.snippet.secrets}
                     </label>
 
                     <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums text-on-surface-variant/50">
-                        {lineCount} {lineCount === 1 ? 'línea' : 'líneas'}
+                        {t.http.snippet.lines(lineCount)}
                     </span>
 
                     <button
@@ -170,18 +172,18 @@ export default function CodeSnippetPanel({
                             window.setTimeout(() => setCopied(false), 1500)
                         }}
                         disabled={!code}
-                        title="Copiar el snippet al portapapeles"
+                        title={t.http.snippet.copyTitle}
                         className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                     >
                         <Icon name={copied ? 'check' : 'content_copy'} size={14} />
-                        {copied ? 'Copiado' : 'Copiar'}
+                        {copied ? t.http.snippet.copied : t.http.snippet.copy}
                     </button>
                 </div>
 
                 {withSecrets && (
                     <p className="flex shrink-0 items-center gap-1.5 bg-error-container px-4 py-1.5 text-ui-10 text-on-error-container">
                         <Icon name="warning" size={13} className="shrink-0" />
-                        Este snippet incluye credenciales reales. No lo pegues en un ticket, un chat ni un repositorio.
+                        {t.http.snippet.secretsWarning}
                     </p>
                 )}
                 {error && (
@@ -204,7 +206,7 @@ export default function CodeSnippetPanel({
                         editorThemeId={editorThemeId}
                         appTheme={appTheme}
                         appearance={appearance}
-                        placeholder="Generando…"
+                        placeholder={t.http.snippet.generating}
                     />
                 </div>
             </div>

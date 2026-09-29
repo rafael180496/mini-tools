@@ -2,6 +2,7 @@ import {useCallback, useEffect, useState} from 'react'
 import {HttpClearCookies, HttpCookies} from '../../../wailsjs/go/main/App'
 import {httpclient} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // Las cookies que el cliente guardó, por dominio.
 //
@@ -24,6 +25,7 @@ interface CookiesDialogProps {
 }
 
 export default function CookiesDialog({collectionId, collectionName, onClose}: CookiesDialogProps) {
+    const t = useT()
     const [cookies, setCookies] = useState<httpclient.Cookie[]>([])
     const [revealed, setRevealed] = useState<Set<string>>(new Set())
     const [error, setError] = useState<string | null>(null)
@@ -50,7 +52,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
             >
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                     <Icon name="cookie" size={16} className="text-on-surface-variant" />
-                    <p className="flex-1 text-sm font-medium text-on-surface">Cookies de «{collectionName}»</p>
+                    <p className="flex-1 text-sm font-medium text-on-surface">{t.http.cookies.title({name: collectionName})}</p>
                     {cookies.length > 0 && (
                         <button
                             onClick={() =>
@@ -58,13 +60,13 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                                     .then(load)
                                     .catch((e) => setError(String(e)))
                             }
-                            title="Vaciar el tarro entero de este entorno: equivale a cerrar sesión en todos los dominios."
+                            title={t.http.cookies.clearAllTitle}
                             className="rounded border border-outline-variant px-2 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant"
                         >
-                            Borrar todas
+                            {t.http.cookies.clearAll}
                         </button>
                     )}
-                    <button onClick={onClose} title="Cerrar" className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                    <button onClick={onClose} title={t.common.close} className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                         <Icon name="close" size={16} />
                     </button>
                 </div>
@@ -74,8 +76,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                 <div className="min-h-0 flex-1 overflow-y-auto">
                     {cookies.length === 0 && (
                         <p className="px-3 py-4 text-ui-11 leading-relaxed text-on-surface-variant">
-                            Todavía no hay cookies en este entorno. Aparecen solas cuando un servidor manda una: el login de una petición vale para las
-                            siguientes sin copiar nada a mano.
+                            {t.http.cookies.empty}
                         </p>
                     )}
                     {domains.map((domain) => (
@@ -88,7 +89,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                                             .then(load)
                                             .catch((e) => setError(String(e)))
                                     }
-                                    title={`Borrar las cookies de ${domain}: la próxima petición a ese dominio sale sin sesión.`}
+                                    title={t.http.cookies.clearDomainTitle({domain})}
                                     className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-error"
                                 >
                                     <Icon name="delete" size={14} />
@@ -116,7 +117,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                                                         return next
                                                     })
                                                 }
-                                                title={shown ? 'Volver a ocultar el valor' : 'Ver el valor. Una cookie de sesión es una credencial: por eso viene tapada.'}
+                                                title={shown ? t.http.cookies.hideValue : t.http.cookies.showValue}
                                                 className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant"
                                             >
                                                 <Icon name={shown ? 'visibility_off' : 'visibility'} size={13} />
@@ -129,8 +130,7 @@ export default function CookiesDialog({collectionId, collectionName, onClose}: C
                 </div>
 
                 <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                    Hay un tarro por entorno: probar producción y desarrollo a la vez no mezcla las sesiones. Viven en memoria — al cerrar la aplicación
-                    se pierden, y volver a hacer login es una petición más de la colección.
+                    {t.http.cookies.footer}
                 </p>
             </div>
         </div>

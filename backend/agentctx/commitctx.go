@@ -1,8 +1,9 @@
 package agentctx
 
 import (
-	"fmt"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Prompt del redactor de mensajes de commit (el botón mágico del panel de
@@ -59,31 +60,50 @@ type CommitDraftInput struct {
 // de SQL.
 func CommitPrompt(in CommitDraftInput) string {
 	var b strings.Builder
-	b.WriteString("Escribí el mensaje del commit para los cambios YA PREPARADOS (staged) de este repositorio.\n\n")
+	b.WriteString(i18n.T(i18n.Msg{
+		ES: "Escribí el mensaje del commit para los cambios YA PREPARADOS (staged) de este repositorio.",
+		EN: "Write the commit message for the ALREADY PREPARED (staged) changes of this repository.",
+	}) + "\n\n")
 
 	if in.Branch != "" {
-		fmt.Fprintf(&b, "## Rama\n\n%s\n\n", in.Branch)
+		b.WriteString(i18n.T(i18n.Msg{ES: "## Rama\n\n%s", EN: "## Branch\n\n%s"}, in.Branch) + "\n\n")
 	}
 
-	fmt.Fprintf(&b, "## Archivos preparados (%d, +%d/-%d)\n\n```\n%s\n```\n\n",
-		len(in.Files), in.Insertions, in.Deletions, strings.Join(in.Files, "\n"))
+	b.WriteString(i18n.T(i18n.Msg{
+		ES: "## Archivos preparados (%d, +%d/-%d)\n\n```\n%s\n```",
+		EN: "## Staged files (%d, +%d/-%d)\n\n```\n%s\n```",
+	}, len(in.Files), in.Insertions, in.Deletions, strings.Join(in.Files, "\n")) + "\n\n")
 
 	if len(in.Recent) > 0 {
-		b.WriteString("## Últimos commits de este repositorio\n\n```\n" + strings.Join(in.Recent, "\n") + "\n```\n\n" +
-			"Escribí en ESE estilo e idioma. Si esos mensajes siguen una convención (Conventional Commits, " +
-			"prefijo de ticket, mayúscula inicial), seguila; si no siguen ninguna, usá Conventional Commits.\n\n")
+		b.WriteString(i18n.T(i18n.Msg{ES: "## Últimos commits de este repositorio", EN: "## Latest commits of this repository"}) +
+			"\n\n```\n" + strings.Join(in.Recent, "\n") + "\n```\n\n" +
+			i18n.T(i18n.Msg{
+				ES: "Escribí en ESE estilo e idioma. Si esos mensajes siguen una convención (Conventional Commits, " +
+					"prefijo de ticket, mayúscula inicial), seguila; si no siguen ninguna, usá Conventional Commits.",
+				EN: "Write in THAT style and language. If those messages follow a convention (Conventional Commits, " +
+					"ticket prefix, initial capital), follow it; if they follow none, use Conventional Commits.",
+			}) + "\n\n")
 	} else {
-		b.WriteString("El repositorio no tiene historial todavía: usá Conventional Commits en español.\n\n")
+		b.WriteString(i18n.T(i18n.Msg{
+			ES: "El repositorio no tiene historial todavía: usá Conventional Commits en español.",
+			EN: "The repository has no history yet: use Conventional Commits in English.",
+		}) + "\n\n")
 	}
 
-	b.WriteString("## Diff preparado\n\n```diff\n" + in.Diff + "\n```\n\n")
+	b.WriteString(i18n.T(i18n.Msg{ES: "## Diff preparado", EN: "## Staged diff"}) + "\n\n```diff\n" + in.Diff + "\n```\n\n")
 	if in.DiffTruncated {
-		b.WriteString("**Este parche está recortado**: es el principio de un commit más grande. " +
-			"Escribí el mensaje sobre TODOS los archivos de la lista de arriba, no solo sobre los que se ven acá. " +
-			"Si necesitás ver el resto, leelo con `git diff --staged -- <archivo>` (solo lectura, no cambies nada).\n\n")
+		b.WriteString(i18n.T(i18n.Msg{
+			ES: "**Este parche está recortado**: es el principio de un commit más grande. " +
+				"Escribí el mensaje sobre TODOS los archivos de la lista de arriba, no solo sobre los que se ven acá. " +
+				"Si necesitás ver el resto, leelo con `git diff --staged -- <archivo>` (solo lectura, no cambies nada).",
+			EN: "**This patch is truncated**: it is the beginning of a larger commit. " +
+				"Write the message about ALL the files in the list above, not only the ones shown here. " +
+				"If you need to see the rest, read it with `git diff --staged -- <file>` (read-only, do not change anything).",
+		}) + "\n\n")
 	}
 
-	b.WriteString(`## Qué contestar
+	b.WriteString(i18n.T(i18n.Msg{
+		ES: `## Qué contestar
 
 Respondé **solo con el mensaje del commit**, tal cual va a quedar guardado:
 
@@ -93,7 +113,19 @@ Respondé **solo con el mensaje del commit**, tal cual va a quedar guardado:
 - Nada de markdown, ni comillas alrededor, ni bloques de código, ni "Mensaje:" adelante, ni ninguna
   explicación tuya después: lo que devolvés se escribe tal cual en el campo del mensaje.
 - No lo commitees ni ejecutes nada que modifique el repositorio: el commit lo hace el usuario.
-`)
+`,
+		EN: `## What to answer
+
+Reply **only with the commit message**, exactly as it will be saved:
+
+- First line: an imperative summary, under 72 characters, no trailing period.
+- If the change warrants it: a blank line and a short body explaining THE WHY, not the what —
+  the what is already in the diff. A one-line change needs no body.
+- No markdown, no surrounding quotes, no code blocks, no "Message:" in front, and no
+  explanation of yours afterwards: what you return is written as-is into the message field.
+- Do not commit it or run anything that modifies the repository: the user makes the commit.
+`,
+	}))
 	return b.String()
 }
 

@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"strconv"
 	"strings"
 )
@@ -216,7 +216,7 @@ func (r *Runner) RemoteURLRaw(repoPath, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := checkRefArg("remoto", name); err != nil {
+	if err := checkRefArg(argRemote, name); err != nil {
 		return "", err
 	}
 	out, err := r.runLocal(root, "remote", "get-url", name)
@@ -304,13 +304,13 @@ func (r *Runner) RemoteURLsRaw(repoPath, name string) (Remote, error) {
 	if err != nil {
 		return Remote{}, err
 	}
-	if err := checkRefArg("remoto", name); err != nil {
+	if err := checkRefArg(argRemote, name); err != nil {
 		return Remote{}, err
 	}
 	conf := r.localConfig(root)
 	fetch := strings.TrimSpace(conf["remote."+name+".url"])
 	if fetch == "" {
-		return Remote{}, fmt.Errorf("el remoto %q no existe en este repositorio", name)
+		return Remote{}, i18n.Errorf(i18n.Msg{ES: "el remoto %q no existe en este repositorio", EN: "the remote %q does not exist in this repository"}, name)
 	}
 	return Remote{
 		Name:     name,

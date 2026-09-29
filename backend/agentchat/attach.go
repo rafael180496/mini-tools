@@ -2,7 +2,7 @@ package agentchat
 
 import (
 	"encoding/base64"
-	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,7 +57,7 @@ var allowedExt = map[string]bool{
 func SaveAttachment(dir, name, dataBase64 string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(name))
 	if !allowedExt[ext] {
-		return "", fmt.Errorf("agentchat: solo se adjuntan imágenes (%s no)", ext)
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: solo se adjuntan imágenes (%s no)", EN: "agentchat: only images can be attached (%s cannot)"}, ext)
 	}
 
 	// El base64 puede venir como data URL desde un pegado del navegador.
@@ -66,29 +66,29 @@ func SaveAttachment(dir, name, dataBase64 string) (string, error) {
 	}
 	raw, err := base64.StdEncoding.DecodeString(dataBase64)
 	if err != nil {
-		return "", fmt.Errorf("agentchat: la imagen no se pudo decodificar: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: la imagen no se pudo decodificar: %w", EN: "agentchat: the image could not be decoded: %w"}, err)
 	}
 	if len(raw) == 0 {
-		return "", fmt.Errorf("agentchat: la imagen está vacía")
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: la imagen está vacía", EN: "agentchat: the image is empty"})
 	}
 	if len(raw) > maxAttachBytes {
-		return "", fmt.Errorf("agentchat: la imagen supera el tamaño máximo")
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: la imagen supera el tamaño máximo", EN: "agentchat: the image exceeds the maximum size"})
 	}
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("agentchat: preparando el directorio de adjuntos: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: preparando el directorio de adjuntos: %w", EN: "agentchat: preparing the attachments directory: %w"}, err)
 	}
 	pruneAttachments(dir)
 
 	f, err := os.CreateTemp(dir, "adjunto-*"+ext)
 	if err != nil {
-		return "", fmt.Errorf("agentchat: creando el adjunto: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: creando el adjunto: %w", EN: "agentchat: creating the attachment: %w"}, err)
 	}
 	path := f.Name()
 	if _, err := f.Write(raw); err != nil {
 		f.Close()
 		os.Remove(path)
-		return "", fmt.Errorf("agentchat: escribiendo el adjunto: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: escribiendo el adjunto: %w", EN: "agentchat: writing the attachment: %w"}, err)
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(path)

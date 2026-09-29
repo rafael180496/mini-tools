@@ -2,8 +2,9 @@ package export
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
+
+	"mini-tools/backend/i18n"
 )
 
 // WriteJSON writes columns/rows to destPath as a JSON array of objects
@@ -23,11 +24,11 @@ func WriteJSON(destPath string, columns []string, rows [][]interface{}) error {
 
 	data, err := json.MarshalIndent(objects, "", "  ")
 	if err != nil {
-		return fmt.Errorf("export: serializando json: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "export: serializando json: %w", EN: "export: serializing json: %w"}, err)
 	}
 
 	if err := os.WriteFile(destPath, data, 0o644); err != nil {
-		return fmt.Errorf("export: escribiendo archivo json: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "export: escribiendo archivo json: %w", EN: "export: writing json file: %w"}, err)
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ import {NotesGraph} from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {t as tr, useT} from '../../i18n'
 
 // Grafo de conocimiento: qué notas hay y cuáles apuntan a cuáles.
 //
@@ -41,6 +42,7 @@ const DAMPING = 0.85
 const CENTER_PULL = 0.002
 
 export default function NotesGraphView({onOpenNote, onClose, activeNoteId}: Props) {
+    const t = useT()
     const [data, setData] = useState<vault.NoteGraphData | null>(null)
     const [error, setError] = useState('')
     const [hideOrphans, setHideOrphans] = useState(false)
@@ -239,7 +241,7 @@ export default function NotesGraphView({onOpenNote, onClose, activeNoteId}: Prop
                     ctx.fillStyle = isHovered || isActive ? onSurface : variant
                     ctx.font = `${isHovered || isActive ? 12 : 10}px sans-serif`
                     ctx.textAlign = 'center'
-                    const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title || 'Sin título'
+                    const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title || tr().notes.untitled
                     ctx.fillText(label, n.x, n.y + r + 12)
                 }
             }
@@ -290,24 +292,24 @@ export default function NotesGraphView({onOpenNote, onClose, activeNoteId}: Prop
         <div className="fixed inset-0 z-20 flex flex-col bg-background">
             <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant bg-surface-container px-3 py-1.5 text-ui-11">
                 <Icon name="hub" size={15} className="shrink-0 text-primary" />
-                <span className="font-medium text-on-surface">Grafo de conocimiento</span>
+                <span className="font-medium text-on-surface">{t.notes.graph.title}</span>
                 {data && (
                     <span className="text-on-surface-variant">
-                        {filtered.nodes.length} notas · {filtered.edges.length} enlaces
+                        {t.notes.graph.counts({notes: filtered.nodes.length, links: filtered.edges.length})}
                         {data.selfLinks > 0 && (
                             <span
                                 className="ml-1 text-on-surface-variant/70"
-                                title="Notas que se enlazan a sí mismas. No se dibujan —una línea de un nodo a sí mismo no dice nada— pero se cuentan acá: si no, el enlace aparece en el panel lateral de la nota y en el grafo no se ve ninguna línea, y el grafo parece roto."
+                                title={t.notes.graph.selfLinksTitle}
                             >
-                                · {data.selfLinks} a sí misma
+                                {t.notes.graph.selfLinks(data.selfLinks)}
                             </span>
                         )}
                         {data.brokenLinks > 0 && (
                             <span
                                 className="ml-1 text-tertiary"
-                                title="Enlaces que apuntan a notas que todavía no existen. No se dibujan porque no hay a dónde ponerlos, pero se cuentan: son el trabajo pendiente de tu base."
+                                title={t.notes.graph.brokenLinksTitle}
                             >
-                                · {data.brokenLinks} sin destino
+                                {t.notes.graph.brokenLinks(data.brokenLinks)}
                             </span>
                         )}
                     </span>
@@ -315,21 +317,21 @@ export default function NotesGraphView({onOpenNote, onClose, activeNoteId}: Prop
 
                 <label
                     className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 text-on-surface-variant"
-                    title="Oculta las notas que no enlazan ni son enlazadas por ninguna otra"
+                    title={t.notes.graph.hideOrphansTitle}
                 >
                     <input type="checkbox" checked={hideOrphans} onChange={(e) => setHideOrphans(e.target.checked)} />
-                    Sin huérfanas
+                    {t.notes.graph.hideOrphans}
                 </label>
                 <label
                     className="flex shrink-0 cursor-pointer items-center gap-1 text-on-surface-variant"
-                    title="Oculta las notas marcadas como privadas. Solo cambia esta vista: siguen existiendo y siguen sin ser legibles para los agentes."
+                    title={t.notes.graph.hidePrivateTitle}
                 >
                     <input type="checkbox" checked={hidePrivate} onChange={(e) => setHidePrivate(e.target.checked)} />
-                    Sin privadas
+                    {t.notes.graph.hidePrivate}
                 </label>
                 <button
                     onClick={onClose}
-                    title="Cierra el grafo y vuelve a lo que estabas haciendo (Esc)"
+                    title={t.notes.graph.closeTitle}
                     className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="close" size={16} />
@@ -340,15 +342,15 @@ export default function NotesGraphView({onOpenNote, onClose, activeNoteId}: Prop
 
             {data && data.nodes.length === 0 && (
                 <p className="p-6 text-center text-xs text-on-surface-variant">
-                    Todavía no hay notas que graficar. Escribí <span className="font-mono">[[Otra nota]]</span> dentro de
-                    una para empezar a conectarlas.
+                    {t.notes.graph.emptyBefore} <span className="font-mono">{t.notes.graph.emptyExample}</span>{' '}
+                    {t.notes.graph.emptyAfter}
                 </p>
             )}
 
             <canvas
                 ref={canvasRef}
                 className="min-h-0 flex-1 cursor-grab"
-                title="Arrastrá un nodo para moverlo, el fondo para desplazar el grafo, y la rueda para acercar. Un clic abre la nota."
+                title={t.notes.graph.canvasTitle}
                 onMouseDown={(e) => {
                     const {x, y} = toGraphCoords(e)
                     const hit = nodeAt(x, y)

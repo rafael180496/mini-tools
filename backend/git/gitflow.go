@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"strings"
 )
 
@@ -248,23 +248,26 @@ func (r *Runner) InitGitFlow(repoPath string, cfg GitFlowConfig) error {
 		cfg.Support = defaults.Support
 	}
 
-	for label, v := range map[string]string{"rama de producción": cfg.Master, "rama de desarrollo": cfg.Develop} {
-		if err := checkRefArg(label, v); err != nil {
+	for _, a := range []struct {
+		label i18n.Msg
+		v     string
+	}{{argProductionBranch, cfg.Master}, {argDevelopBranch, cfg.Develop}} {
+		if err := checkRefArg(a.label, a.v); err != nil {
 			return err
 		}
 	}
 	if cfg.Master == cfg.Develop {
-		return fmt.Errorf("la rama de producción y la de desarrollo no pueden ser la misma (%q)", cfg.Master)
+		return i18n.Errorf(i18n.Msg{ES: "la rama de producción y la de desarrollo no pueden ser la misma (%q)", EN: "the production and development branches cannot be the same (%q)"}, cfg.Master)
 	}
 	if !r.localBranchExists(root, cfg.Master) {
-		return fmt.Errorf("la rama de producción %q no existe en este repositorio", cfg.Master)
+		return i18n.Errorf(i18n.Msg{ES: "la rama de producción %q no existe en este repositorio", EN: "the production branch %q does not exist in this repository"}, cfg.Master)
 	}
 
 	// La rama develop primero: si falla, no queda una configuración que
 	// apunta a algo inexistente.
 	if !r.localBranchExists(root, cfg.Develop) {
 		if err := r.CreateBranch(root, cfg.Develop, cfg.Master, false); err != nil {
-			return fmt.Errorf("no se pudo crear la rama %q: %w", cfg.Develop, err)
+			return i18n.Errorf(i18n.Msg{ES: "no se pudo crear la rama %q: %w", EN: "could not create the branch %q: %w"}, cfg.Develop, err)
 		}
 	}
 
@@ -315,12 +318,12 @@ func (r *Runner) StartGitFlowBranch(repoPath string, kind GitFlowKind, name stri
 		return "", err
 	}
 	if !cfg.Initialized {
-		return "", fmt.Errorf("este repositorio todavía no tiene Git Flow inicializado")
+		return "", i18n.New(i18n.Msg{ES: "este repositorio todavía no tiene Git Flow inicializado", EN: "Git Flow is not initialized in this repository yet"})
 	}
 
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", fmt.Errorf("el nombre no puede estar vacío")
+		return "", i18n.New(i18n.Msg{ES: "el nombre no puede estar vacío", EN: "the name cannot be empty"})
 	}
 
 	var prefix, base string
@@ -334,11 +337,11 @@ func (r *Runner) StartGitFlowBranch(repoPath string, kind GitFlowKind, name stri
 	case FlowSupport:
 		prefix, base = cfg.Support, cfg.Master
 	default:
-		return "", fmt.Errorf("tipo de rama desconocido: %q", kind)
+		return "", i18n.Errorf(i18n.Msg{ES: "tipo de rama desconocido: %q", EN: "unknown branch type: %q"}, kind)
 	}
 
 	if !r.localBranchExists(root, base) {
-		return "", fmt.Errorf("falta la rama base %q: volvé a inicializar Git Flow", base)
+		return "", i18n.Errorf(i18n.Msg{ES: "falta la rama base %q: volvé a inicializar Git Flow", EN: "the base branch %q is missing: initialize Git Flow again"}, base)
 	}
 
 	// Si el usuario ya escribió el prefijo, no se duplica: "feature/x" y "x"
@@ -347,11 +350,11 @@ func (r *Runner) StartGitFlowBranch(repoPath string, kind GitFlowKind, name stri
 	if prefix != "" && !strings.HasPrefix(name, prefix) {
 		full = prefix + name
 	}
-	if err := checkRefArg("rama", full); err != nil {
+	if err := checkRefArg(argBranch, full); err != nil {
 		return "", err
 	}
 	if r.localBranchExists(root, full) {
-		return "", fmt.Errorf("la rama %q ya existe", full)
+		return "", i18n.Errorf(i18n.Msg{ES: "la rama %q ya existe", EN: "the branch %q already exists"}, full)
 	}
 
 	if err := r.CreateBranch(root, full, base, true); err != nil {

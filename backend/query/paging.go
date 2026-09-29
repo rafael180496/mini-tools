@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // Paged result fetching — the "traé las primeras N filas y seguí cuando te lo
@@ -263,7 +265,7 @@ func readPage(c *pausedCursor, limit int) (batch [][]interface{}, hasMore bool, 
 func (e *Executor) FetchMore(queryID string) {
 	c, ok := e.cursors.take(queryID)
 	if !ok {
-		e.emit(queryID, Event{Type: "error", Error: "el resultado ya no está disponible para paginar (se cerró por inactividad o por una consulta nueva en esa conexión) — volvé a ejecutar la consulta"})
+		e.emit(queryID, Event{Type: "error", Error: i18n.T(i18n.Msg{ES: "el resultado ya no está disponible para paginar (se cerró por inactividad o por una consulta nueva en esa conexión) — volvé a ejecutar la consulta", EN: "the result is no longer available for paging (it was closed due to inactivity or a new query on that connection) — run the query again"})})
 		return
 	}
 	// Async so the binding returns immediately and the page can be cancelled

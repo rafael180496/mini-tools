@@ -2,10 +2,10 @@ package vaultgate
 
 import (
 	"crypto/rand"
-	"fmt"
 	"os"
 
 	"mini-tools/backend/appdata"
+	"mini-tools/backend/i18n"
 )
 
 const saltSize = 16
@@ -16,22 +16,22 @@ const saltSize = 16
 func LoadOrCreateSalt() ([]byte, error) {
 	path, err := appdata.SaltPath()
 	if err != nil {
-		return nil, fmt.Errorf("vaultgate: resolving salt path: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vaultgate: resolviendo la ruta del salt: %w", EN: "vaultgate: resolving salt path: %w"}, err)
 	}
 
 	if data, err := os.ReadFile(path); err == nil {
 		return data, nil
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("vaultgate: reading salt: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vaultgate: leyendo el salt: %w", EN: "vaultgate: reading salt: %w"}, err)
 	}
 
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
-		return nil, fmt.Errorf("vaultgate: generating salt: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vaultgate: generando el salt: %w", EN: "vaultgate: generating salt: %w"}, err)
 	}
 
 	if err := os.WriteFile(path, salt, 0o600); err != nil {
-		return nil, fmt.Errorf("vaultgate: writing salt: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vaultgate: escribiendo el salt: %w", EN: "vaultgate: writing salt: %w"}, err)
 	}
 
 	return salt, nil

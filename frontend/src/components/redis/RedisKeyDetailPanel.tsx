@@ -22,13 +22,14 @@ import RedisValueTable, {
     HASH_COLUMNS, LIST_COLUMNS, SET_COLUMNS, ZSET_COLUMNS, STREAM_COLUMNS,
     hashRows, listRows, setRows, zsetRows, streamRows,
 } from './RedisValueTable'
-import {formatError, formatValue, REDIS_FORMATS, type RedisFormat} from '../../lib/redisFormat'
+import {formatError, formatValue, redisFormats, type RedisFormat} from '../../lib/redisFormat'
 import RedisStagingBar from './RedisStagingBar'
 import RedisValueDrawer from './RedisValueDrawer'
 import {formatBytes} from '../../lib/formatBytes'
 import {redisTypeStyle} from '../../lib/redisTypeStyle'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 interface RedisKeyDetailPanelProps {
     connId: string
@@ -70,6 +71,8 @@ interface ValuePage {
 // backend/db/rediskeys.go). Hash/list/set/zset mutations (HSET/SADD/ZADD/
 // RPUSH/LSET) never touch TTL to begin with, nothing special needed there.
 export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisKeyDetailPanelProps) {
+    const t = useT()
+    const d = t.redis.detail
     const [info, setInfo] = useState<db.RedisKeyInfo | null>(null)
     const [value, setValue] = useState<ValuePage | null>(null)
     const [loading, setLoading] = useState(true)
@@ -118,7 +121,7 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
     // wipe the staged buffer along with it. Rather than silently losing that
     // work, the add row is blocked while anything is pending.
     const hasStaged = Object.keys(pendingEdits).length > 0 || pendingDeletes.length > 0
-    const stagedBlockTitle = 'Guardá o descartá los cambios pendientes antes de agregar: agregar recarga la clave y perdería lo que tenés sin aplicar.'
+    const stagedBlockTitle = d.stagedBlock
 
     function discardStaged() {
         setPendingEdits({})
@@ -187,7 +190,7 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
             // The buffer is deliberately NOT cleared on failure: some
             // commands may have gone through and some not, and dropping the
             // rest would hide what is still unapplied.
-            setError(`No se pudieron aplicar todos los cambios: ${e}`)
+            setError(d.applyFailed({error: String(e)}))
         } finally {
             setApplying(false)
         }
@@ -292,7 +295,7 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
 
     async function copyKey() {
         await navigator.clipboard.writeText(keyName)
-        setCopyHint('Copiado')
+        setCopyHint(d.copied)
         setTimeout(() => setCopyHint(''), 1500)
     }
 
@@ -343,7 +346,7 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
             try {
                 JSON.parse(wholeDraft)
             } catch (err) {
-                setWholeError(`JSON inválido: ${String(err)}`)
+                setWholeError(d.invalidJson({error: String(err)}))
                 return
             }
         }
@@ -358,6 +361,16 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
         if (ok) setEditingWhole(false)
     }
 
+    // Which value view applies, worked out before the JSX so the markup
+    // below reads as layout.
+    const kind = info?.type
+    const isWholeValue = kind === 'string' || kind === 'ReJSON-RL'
+    const isHash = kind === 'hash'
+    const isList = kind === 'list'
+    const isSet = kind === 'set'
+    const isZset = kind === 'zset'
+    const isStream = kind === 'stream'
+
     return (
         <div className="flex h-full flex-col gap-3 overflow-hidden p-4">
             <div className="flex items-center gap-2">
@@ -367,7 +380,7 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                 </h2>
             </div>
 
-            {loading && <p className="text-xs text-on-surface-variant">Cargando…</p>}
+            {loading && <p className="text-xs text-on-surface-variant">{t.common.loading}</p>}
             {error && <p className="text-xs text-error">{error}</p>}
 
             {info && !loading && (
@@ -378,7 +391,7 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                             return (
                                 <span className={`flex items-center gap-1 rounded px-2 py-0.5 ${style.badgeClass}`}>
                                     <Icon name={style.icon} size={12} />
-                                    {style.label}
+                                    {style.name}
                                 </span>
                             )
                         })()}
@@ -389,14 +402,14 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                             onChanged={() => void load()}
                             onError={setError}
                         />
-                        <label className="flex items-center gap-1" title="Cómo interpretar el contenido de los valores">
-                            Formato
+                        <label className="flex items-center gap-1" title={d.formatHint}>
+                            {d.format}
                             <select
                                 value={format}
                                 onChange={(e) => setFormat(e.target.value as RedisFormat)}
                                 className="rounded border border-outline-variant bg-surface-container-low px-1 py-0.5 text-xs text-on-surface"
                             >
-                                {REDIS_FORMATS.map((f) => (
+                                {redisFormats().map((f) => (
                                     <option key={f.value} value={f.value} title={f.hint}>
                                         {f.label}
                                     </option>
@@ -404,27 +417,27 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                             </select>
                         </label>
                         {!!info.sizeBytes && (
-                            <span title="Estimación de MEMORY USAGE — memoria aproximada que ocupa esta key">
-                                Tamaño: {formatBytes(info.sizeBytes)}
+                            <span title={d.sizeHint}>
+                                {d.size({size: formatBytes(info.sizeBytes)})}
                             </span>
                         )}
-                        {saving && <span className="text-primary">Guardando…</span>}
+                        {saving && <span className="text-primary">{d.saving}</span>}
                         <div className="flex-1" />
                         <button
                             onClick={() => void copyKey()}
-                            title="Copia el nombre de esta key al portapapeles"
+                            title={d.copyKeyHint}
                             className="flex items-center gap-1 rounded px-2 py-1 hover:bg-surface-variant"
                         >
                             <Icon name="content_copy" size={14} />
-                            {copyHint || 'Copiar clave'}
+                            {copyHint || d.copyKey}
                         </button>
                         <button
                             onClick={() => setConfirmDelete(true)}
-                            title="Elimina esta key de Redis — no se puede deshacer"
+                            title={d.deleteKeyHint}
                             className="flex items-center gap-1 rounded px-2 py-1 text-error hover:bg-error-container"
                         >
                             <Icon name="delete" size={14} />
-                            Eliminar
+                            {t.redis.browser.delete}
                         </button>
                     </div>
 
@@ -437,7 +450,7 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                     />
 
                     <div className="relative flex-1 overflow-auto rounded-lg border border-outline-variant bg-surface p-2 font-mono text-xs">
-                        {(info.type === 'string' || info.type === 'ReJSON-RL') &&
+                        {isWholeValue &&
                             (editingWhole ? (
                                 <div className="flex h-full flex-col gap-2">
                                     <textarea
@@ -453,32 +466,31 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                                             onClick={() => setEditingWhole(false)}
                                             className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-variant"
                                         >
-                                            Cancelar
+                                            {t.common.cancel}
                                         </button>
                                         <button
                                             onClick={() => void saveWhole()}
                                             disabled={saving}
                                             className="rounded bg-primary px-2 py-1 text-on-primary hover:opacity-90 disabled:opacity-50"
                                         >
-                                            Guardar
+                                            {t.common.save}
                                         </button>
                                     </div>
                                 </div>
                             ) : looksBinary(value?.stringVal ?? '') ? (
                                 <p className="italic text-on-surface-variant">
-                                    Valor binario o no imprimible — no se puede mostrar ni editar como texto ({(value?.stringVal ?? '').length}{' '}
-                                    caracteres). Probablemente un objeto serializado (ej. un lock de Sidekiq/Resque), no un string legible.
+                                    {d.binaryValue((value?.stringVal ?? '').length)}
                                 </p>
                             ) : (
                                 <div className="flex h-full flex-col gap-2">
                                     <div className="flex justify-end">
                                         <button
                                             onClick={startEditWhole}
-                                            title="Edita el valor completo — preserva el TTL existente"
+                                            title={d.editWholeHint}
                                             className="flex items-center gap-1 rounded px-2 py-1 text-primary hover:bg-surface-variant"
                                         >
                                             <Icon name="edit" size={13} />
-                                            Editar
+                                            {d.edit}
                                         </button>
                                     </div>
                                     {formatError(value?.stringVal ?? '', format) && (
@@ -488,30 +500,30 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                                 </div>
                             ))}
 
-                        {info.type === 'hash' && (
+                        {isHash && (
                             <>
                                 <RedisValueTable
                                     columns={HASH_COLUMNS}
                                     rows={hashRows(value?.hashPairs ?? [])}
                                     format={format}
-                                    emptyLabel="Este hash no tiene campos."
+                                    emptyLabel={d.emptyHash}
                                     {...stagingProps('value')}
                                     onExpand={(rowId, v) => setDrawer({rowId, value: v, readOnly: false})}
                                     rowActions={(row) => (
                                         <DeleteToggle
                                             staged={pendingDeletes.includes(row.id)}
                                             onToggle={() => toggleDelete(row.id)}
-                                            label="campo (HDEL)"
+                                            titles={d.rowDelete.hash}
                                         />
                                     )}
                                 />
                                 <AddRow
                                     inputs={[
-                                        {value: newHashField, onChange: setNewHashField, placeholder: 'campo nuevo'},
-                                        {value: newHashValue, onChange: setNewHashValue, placeholder: 'valor'},
+                                        {value: newHashField, onChange: setNewHashField, placeholder: d.newField},
+                                        {value: newHashValue, onChange: setNewHashValue, placeholder: d.value},
                                     ]}
                                     disabled={!newHashField || hasStaged}
-                                    title={hasStaged ? stagedBlockTitle : "Agrega un campo al hash (HSET)"}
+                                    title={hasStaged ? stagedBlockTitle : d.addHashHint}
                                     onAdd={() =>
                                         void mutate(async () => {
                                             await SetRedisHashField(connId, keyName, newHashField, newHashValue)
@@ -526,27 +538,27 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                             </>
                         )}
 
-                        {info.type === 'list' && (
+                        {isList && (
                             <>
                                 <RedisValueTable
                                     columns={LIST_COLUMNS}
                                     rows={listRows(value?.listItems ?? [], 0)}
                                     format={format}
-                                    emptyLabel="Esta lista está vacía."
+                                    emptyLabel={d.emptyList}
                                     {...stagingProps('value')}
                                     onExpand={(rowId, v) => setDrawer({rowId, value: v, readOnly: false})}
                                     rowActions={(row) => (
                                         <DeleteToggle
                                             staged={pendingDeletes.includes(row.id)}
                                             onToggle={() => toggleDelete(row.id)}
-                                            label="elemento de la lista"
+                                            titles={d.rowDelete.list}
                                         />
                                     )}
                                 />
                                 <AddRow
-                                    inputs={[{value: newListValue, onChange: setNewListValue, placeholder: 'nuevo elemento (se agrega al final)'}]}
+                                    inputs={[{value: newListValue, onChange: setNewListValue, placeholder: d.newListItem}]}
                                     disabled={!newListValue || hasStaged}
-                                    title={hasStaged ? stagedBlockTitle : "Agrega el elemento al final de la lista (RPUSH)"}
+                                    title={hasStaged ? stagedBlockTitle : d.addListHint}
                                     onAdd={() =>
                                         void mutate(async () => {
                                             await PushRedisListValue(connId, keyName, newListValue)
@@ -556,27 +568,27 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                             </>
                         )}
 
-                        {info.type === 'set' && (
+                        {isSet && (
                             <>
                                 <RedisValueTable
                                     columns={SET_COLUMNS}
                                     rows={setRows(value?.setMembers ?? [])}
                                     format={format}
-                                    emptyLabel="Este conjunto está vacío."
+                                    emptyLabel={d.emptySet}
                                     {...stagingProps()}
                                     onExpand={(rowId, v) => setDrawer({rowId, value: v, readOnly: true})}
                                     rowActions={(row) => (
                                         <DeleteToggle
                                             staged={pendingDeletes.includes(row.id)}
                                             onToggle={() => toggleDelete(row.id)}
-                                            label="miembro del conjunto (SREM)"
+                                            titles={d.rowDelete.set}
                                         />
                                     )}
                                 />
                                 <AddRow
-                                    inputs={[{value: newSetMember, onChange: setNewSetMember, placeholder: 'miembro nuevo'}]}
+                                    inputs={[{value: newSetMember, onChange: setNewSetMember, placeholder: d.newMember}]}
                                     disabled={!newSetMember || hasStaged}
-                                    title={hasStaged ? stagedBlockTitle : "Agrega un miembro al conjunto (SADD)"}
+                                    title={hasStaged ? stagedBlockTitle : d.addSetHint}
                                     onAdd={() =>
                                         void mutate(async () => {
                                             await AddRedisSetMember(connId, keyName, newSetMember)
@@ -586,29 +598,29 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                             </>
                         )}
 
-                        {info.type === 'zset' && (
+                        {isZset && (
                             <>
                                 <RedisValueTable
                                     columns={ZSET_COLUMNS}
                                     rows={zsetRows(value?.zsetItems ?? [])}
                                     format={format}
-                                    emptyLabel="Este sorted set está vacío."
+                                    emptyLabel={d.emptyZset}
                                     {...stagingProps('score')}
                                     rowActions={(row) => (
                                         <DeleteToggle
                                             staged={pendingDeletes.includes(row.id)}
                                             onToggle={() => toggleDelete(row.id)}
-                                            label="miembro del sorted set (ZREM)"
+                                            titles={d.rowDelete.zset}
                                         />
                                     )}
                                 />
                                 <AddRow
                                     inputs={[
-                                        {value: newZsetMember, onChange: setNewZsetMember, placeholder: 'miembro nuevo'},
-                                        {value: newZsetScore, onChange: setNewZsetScore, placeholder: 'score', numeric: true},
+                                        {value: newZsetMember, onChange: setNewZsetMember, placeholder: d.newMember},
+                                        {value: newZsetScore, onChange: setNewZsetScore, placeholder: d.score, numeric: true},
                                     ]}
                                     disabled={!newZsetMember || hasStaged}
-                                    title={hasStaged ? stagedBlockTitle : "Agrega un miembro con su score (ZADD)"}
+                                    title={hasStaged ? stagedBlockTitle : d.addZsetHint}
                                     onAdd={() =>
                                         void mutate(async () => {
                                             await AddRedisZSetMember(connId, keyName, newZsetMember, Number(newZsetScore) || 0)
@@ -623,12 +635,12 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                             </>
                         )}
 
-                        {info.type === 'stream' && (
+                        {isStream && (
                             <RedisValueTable
                                 columns={STREAM_COLUMNS}
                                 rows={streamRows(value?.streamEntries ?? [])}
                                 format={format}
-                                emptyLabel="Este stream no tiene entradas."
+                                emptyLabel={d.emptyStream}
                             />
                         )}
                     </div>
@@ -637,10 +649,10 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
                         <button
                             onClick={() => void loadMore()}
                             disabled={loadingMore}
-                            title="Carga la siguiente página de este valor — nunca se trae todo de una sola vez"
+                            title={d.loadMoreHint}
                             className="w-full rounded px-2 py-1 text-center text-xs text-primary hover:bg-surface-variant disabled:opacity-50"
                         >
-                            {loadingMore ? 'Cargando…' : 'Cargar más'}
+                            {loadingMore ? t.common.loading : d.loadMore}
                         </button>
                     )}
                 </>
@@ -661,9 +673,9 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
 
             {confirmDelete && (
                 <ConfirmDialog
-                    title="Eliminar key"
-                    description={`Esto elimina "${keyName}" de Redis de forma permanente. No se puede deshacer.`}
-                    confirmLabel={deleting ? 'Eliminando…' : 'Eliminar'}
+                    title={d.deleteKeyTitle}
+                    description={d.deleteKeyConfirm({key: keyName})}
+                    confirmLabel={deleting ? t.redis.browser.deleting : t.redis.browser.delete}
                     danger
                     onConfirm={() => void doDelete()}
                     onClose={() => setConfirmDelete(false)}
@@ -676,11 +688,11 @@ export default function RedisKeyDetailPanel({connId, keyName, onDeleted}: RedisK
 // DeleteToggle marks a row for removal instead of removing it. The write
 // happens when the staging bar is saved, which is what makes a mis-click
 // recoverable — Redis has no undo.
-function DeleteToggle({staged, onToggle, label}: {staged: boolean; onToggle: () => void; label: string}) {
+function DeleteToggle({staged, onToggle, titles}: {staged: boolean; onToggle: () => void; titles: {cancel: string; mark: string}}) {
     return (
         <button
             onClick={onToggle}
-            title={staged ? `Cancela la baja pendiente de este ${label}` : `Marca este ${label} para eliminar. Se borra recién al guardar los cambios.`}
+            title={staged ? titles.cancel : titles.mark}
             className={`rounded p-0.5 ${staged ? 'text-error' : 'text-on-surface-variant hover:bg-surface-variant hover:text-error'}`}
         >
             <Icon name={staged ? 'undo' : 'delete'} size={13} />
@@ -700,6 +712,7 @@ function AddRow({
     disabled: boolean
     title: string
 }) {
+    const t = useT()
     return (
         <div className="mt-2 flex items-center gap-1.5">
             <Icon name="add" size={14} className="shrink-0 text-on-surface-variant" />
@@ -721,7 +734,7 @@ function AddRow({
                 title={title}
                 className="shrink-0 rounded bg-primary px-2 py-0.5 text-ui-11 text-on-primary disabled:opacity-40"
             >
-                Agregar
+                {t.redis.detail.add}
             </button>
         </div>
     )

@@ -1,9 +1,10 @@
 package mongoquery
 
 import (
-	"fmt"
 	"strings"
 	"unicode"
+
+	"mini-tools/backend/i18n"
 )
 
 // command is one parsed mongosh statement: db.<collection>.<method>(args...)
@@ -108,7 +109,7 @@ func (sc *scanner) readIdent() string {
 // (without the outer delimiters).
 func (sc *scanner) readBalanced(open, close rune) (string, error) {
 	if sc.peek() != open {
-		return "", fmt.Errorf("se esperaba %q", string(open))
+		return "", i18n.Errorf(i18n.Msg{ES: "se esperaba %q", EN: "expected %q"}, string(open))
 	}
 	start := sc.i + 1
 	depth := 0
@@ -141,7 +142,7 @@ func (sc *scanner) readBalanced(open, close rune) (string, error) {
 		}
 		sc.i++
 	}
-	return "", fmt.Errorf("delimitador %q sin cerrar", string(open))
+	return "", i18n.Errorf(i18n.Msg{ES: "delimitador %q sin cerrar", EN: "unclosed delimiter %q"}, string(open))
 }
 
 // parseOne parses a single db.<collection>.<method>(...)[.chain(...)]* command.
@@ -149,7 +150,7 @@ func (sc *scanner) parseOne() (command, error) {
 	startRaw := sc.i
 	sc.skipWSComments()
 	if sc.readIdent() != "db" {
-		return command{}, fmt.Errorf("un comando debe empezar con 'db.' (posición %d)", startRaw)
+		return command{}, i18n.Errorf(i18n.Msg{ES: "un comando debe empezar con 'db.' (posición %d)", EN: "a command must start with 'db.' (position %d)"}, startRaw)
 	}
 	sc.skipWSComments()
 
@@ -166,7 +167,7 @@ func (sc *scanner) parseOne() (command, error) {
 		sc.skipWSComments()
 		ident := sc.readIdent()
 		if ident == "" {
-			return command{}, fmt.Errorf("se esperaba el nombre de la colección después de 'db.'")
+			return command{}, i18n.Errorf(i18n.Msg{ES: "se esperaba el nombre de la colección después de 'db.'", EN: "expected the collection name after 'db.'"})
 		}
 		sc.skipWSComments()
 		if sc.peek() == '(' {
@@ -176,28 +177,28 @@ func (sc *scanner) parseOne() (command, error) {
 				return command{}, err
 			}
 			if ident != "getCollection" {
-				return command{}, fmt.Errorf("db.%s() no soportado; usar db.<colección>.<método>()", ident)
+				return command{}, i18n.Errorf(i18n.Msg{ES: "db.%s() no soportado; usar db.<colección>.<método>()", EN: "db.%s() not supported; use db.<collection>.<method>()"}, ident)
 			}
 			collection = strings.Trim(strings.TrimSpace(inner), `'"`)
 		} else {
 			collection = ident
 		}
 	default:
-		return command{}, fmt.Errorf("se esperaba '.' o '[' después de 'db'")
+		return command{}, i18n.Errorf(i18n.Msg{ES: "se esperaba '.' o '[' después de 'db'", EN: "expected '.' or '[' after 'db'"})
 	}
 	if collection == "" {
-		return command{}, fmt.Errorf("no se pudo determinar la colección")
+		return command{}, i18n.Errorf(i18n.Msg{ES: "no se pudo determinar la colección", EN: "could not determine the collection"})
 	}
 
 	// Primary method call.
 	sc.skipWSComments()
 	if sc.peek() != '.' {
-		return command{}, fmt.Errorf("falta el método: db.%s.<método>(...)", collection)
+		return command{}, i18n.Errorf(i18n.Msg{ES: "falta el método: db.%s.<método>(...)", EN: "missing method: db.%s.<method>(...)"}, collection)
 	}
 	sc.i++
 	method := sc.readIdent()
 	if method == "" {
-		return command{}, fmt.Errorf("se esperaba un método después de db.%s.", collection)
+		return command{}, i18n.Errorf(i18n.Msg{ES: "se esperaba un método después de db.%s.", EN: "expected a method after db.%s."}, collection)
 	}
 	sc.skipWSComments()
 	inner, err := sc.readBalanced('(', ')')
@@ -220,7 +221,7 @@ func (sc *scanner) parseOne() (command, error) {
 		sc.i++
 		cm := sc.readIdent()
 		if cm == "" {
-			return command{}, fmt.Errorf("se esperaba un método encadenado después de '.'")
+			return command{}, i18n.Errorf(i18n.Msg{ES: "se esperaba un método encadenado después de '.'", EN: "expected a chained method after '.'"})
 		}
 		sc.skipWSComments()
 		var cargs []string
@@ -278,7 +279,7 @@ func splitArgs(inner string) ([]string, error) {
 		}
 	}
 	if quote != 0 {
-		return nil, fmt.Errorf("string sin cerrar en los argumentos")
+		return nil, i18n.Errorf(i18n.Msg{ES: "string sin cerrar en los argumentos", EN: "unclosed string in the arguments"})
 	}
 	args = append(args, strings.TrimSpace(string(runes[start:])))
 	return args, nil

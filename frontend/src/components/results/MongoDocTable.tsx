@@ -21,7 +21,7 @@ export default function MongoDocTable({columns, rows}: {columns: string[]; rows:
                         <tr key={i} className="border-b border-outline-variant/40 odd:bg-surface-container-low/30">
                             {row.map((cell, j) => (
                                 <td key={j} className="max-w-xs truncate px-2 py-1 text-on-surface" title={cell == null ? '' : String(cell)}>
-                                    {cell == null ? <span className="text-on-surface-variant/50">null</span> : String(cell)}
+                                    {cell == null ? <span className="text-on-surface-variant/50">{String(null)}</span> : String(cell)}
                                 </td>
                             ))}
                         </tr>

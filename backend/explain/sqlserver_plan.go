@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // SQLServerPlan gets the estimated execution plan via SET SHOWPLAN_ALL ON —
@@ -22,12 +24,12 @@ func SQLServerPlan(ctx context.Context, pool *sql.DB, query string, analyze bool
 
 	conn, err := pool.Conn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("explain: reservando conexión: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: reservando conexión: %w", EN: "explain: reserving connection: %w"}, err)
 	}
 	defer conn.Close()
 
 	if _, err := conn.ExecContext(ctx, "SET SHOWPLAN_ALL ON"); err != nil {
-		return nil, fmt.Errorf("explain: activando SHOWPLAN_ALL: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: activando SHOWPLAN_ALL: %w", EN: "explain: enabling SHOWPLAN_ALL: %w"}, err)
 	}
 	defer func() {
 		_, _ = conn.ExecContext(context.Background(), "SET SHOWPLAN_ALL OFF")
@@ -35,13 +37,13 @@ func SQLServerPlan(ctx context.Context, pool *sql.DB, query string, analyze bool
 
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("explain: obteniendo el plan: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: obteniendo el plan: %w", EN: "explain: getting the plan: %w"}, err)
 	}
 	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("explain: leyendo columnas del plan: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: leyendo columnas del plan: %w", EN: "explain: reading plan columns: %w"}, err)
 	}
 	colIdx := make(map[string]int, len(cols))
 	for i, c := range cols {
@@ -68,7 +70,7 @@ func SQLServerPlan(ctx context.Context, pool *sql.DB, query string, analyze bool
 			holders[i] = &scan[i]
 		}
 		if err := rows.Scan(holders...); err != nil {
-			return nil, fmt.Errorf("explain: escaneando fila del plan: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "explain: escaneando fila del plan: %w", EN: "explain: scanning plan row: %w"}, err)
 		}
 
 		r := planRow{
@@ -95,7 +97,7 @@ func SQLServerPlan(ctx context.Context, pool *sql.DB, query string, analyze bool
 		return nil, err
 	}
 	if len(parsed) == 0 {
-		return nil, fmt.Errorf("explain: SHOWPLAN_ALL no devolvió filas")
+		return nil, i18n.Errorf(i18n.Msg{ES: "explain: SHOWPLAN_ALL no devolvió filas", EN: "explain: SHOWPLAN_ALL returned no rows"})
 	}
 
 	nodesByID := make(map[int64]*PlanNode, len(parsed))

@@ -16,6 +16,7 @@ import {forget as forgetRate, formatEta, formatRate, observe} from '../../lib/tr
 import Icon from '../Icon'
 import SftpConflictDialog, {type ConflictPolicy} from './SftpConflictDialog'
 import SftpPane from './SftpPane'
+import {useT} from '../../i18n'
 import {LOCAL_SESSION, type PaneHost, type ProgressEvent, type TransferItem} from './types'
 
 interface SftpTabProps {
@@ -117,6 +118,7 @@ export default function SftpTab({
     followTerminalSessionId,
     onOpenTerminalAt,
 }: SftpTabProps) {
+    const t = useT()
     const [panes, setPanes] = useState<{left: PaneState; right: PaneState}>({
         left: {host: LOCAL_HOST, dir: '', reload: 0},
         right: {host: NONE_HOST, dir: '', reload: 0},
@@ -215,7 +217,7 @@ export default function SftpTab({
         setError(null)
         const to = panes[toSide]
         if (to.host.kind === 'none') {
-            setError('Elegí un host de destino en el otro panel primero')
+            setError(t.sftp.tab.pickDestFirst)
             return
         }
         if (items.length === 0) return
@@ -228,7 +230,7 @@ export default function SftpTab({
 
         const from = sourceHost(src)
         const id = newId()
-        const label = `${src.kind === 'desktop' ? 'Escritorio' : from.connName} → ${to.host.connName}`
+        const label = `${src.kind === 'desktop' ? t.sftp.tab.desktop : from.connName} → ${to.host.connName}`
 
         // La fila entra en la cola ANTES de la primera ida al servidor. Con
         // cientos de archivos la comprobación de conflictos tarda, y hasta que
@@ -441,23 +443,23 @@ export default function SftpTab({
                         onClick={() => setFollow((v) => !v)}
                         title={
                             follow
-                                ? 'El explorador está siguiendo a la terminal: cuando hacés cd, el panel salta a esa carpeta. Hacé clic para desengancharlo.'
-                                : 'Engancha el explorador a la terminal: cuando hagas cd, el panel salta a esa carpeta. Funciona si la shell del servidor informa su directorio (la mayoría de las modernas lo hacen); si no, se avisa.'
+                                ? t.sftp.tab.followOnTooltip
+                                : t.sftp.tab.followOffTooltip
                         }
                         className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 ${
                             follow ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                         }`}
                     >
                         <Icon name={follow ? 'link' : 'link_off'} size={13} />
-                        Seguir a la terminal
+                        {t.sftp.tab.follow}
                     </button>
 
                     {follow && cwdKnown === false && (
                         <span
                             className="min-w-0 truncate text-tertiary"
-                            title="El directorio se sabe solo si la shell lo informa (secuencia OSC 7). No se ejecuta `pwd` por nuestra cuenta: eso escribiría en tu sesión interactiva, aparecería en tu pantalla y dentro de un editor abierto sería un desastre."
+                            title={t.sftp.tab.noCwdTooltip}
                         >
-                            La shell de este servidor no informa su directorio — el panel no se va a mover.
+                            {t.sftp.tab.noCwd}
                         </span>
                     )}
                     {follow && termCwd && (
@@ -470,11 +472,11 @@ export default function SftpTab({
                         <button
                             onClick={() => onOpenTerminalAt(panes[followSide].dir)}
                             disabled={!panes[followSide].dir}
-                            title="Escribe `cd` a esta carpeta en la terminal, SIN ejecutarlo: lo ves antes de apretar Enter. Es la dirección contraria del seguimiento."
+                            title={t.sftp.tab.cdHereTooltip}
                             className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                         >
                             <Icon name="terminal" size={13} />
-                            Ir acá en la terminal
+                            {t.sftp.tab.cdHere}
                         </button>
                     )}
                 </div>
@@ -484,7 +486,7 @@ export default function SftpTab({
                 <div className="flex shrink-0 items-start gap-2 border-b border-error/40 bg-error-container/40 px-3 py-1.5 text-xs text-on-error-container">
                     <Icon name="error" size={16} className="mt-0.5 shrink-0" />
                     <span className="min-w-0 flex-1 whitespace-pre-wrap wrap-break-word">{error}</span>
-                    <button onClick={() => setError(null)} title="Cerrar" className="mt-0.5 shrink-0 rounded p-0.5 hover:bg-error/20">
+                    <button onClick={() => setError(null)} title={t.common.close} className="mt-0.5 shrink-0 rounded p-0.5 hover:bg-error/20">
                         <Icon name="close" size={14} />
                     </button>
                 </div>
@@ -497,7 +499,7 @@ export default function SftpTab({
                         currentDir={panes.left.dir}
                         reloadToken={panes.left.reload}
                         connections={connections}
-                        otherLabel={panes.right.host.kind === 'none' ? 'destino' : panes.right.host.connName}
+                        otherLabel={panes.right.host.kind === 'none' ? t.sftp.tab.destination : panes.right.host.connName}
                         onPickHost={(h) => void pickHost('left', h)}
                         onNavigate={(dir) => updatePane('left', {dir})}
                         onRefresh={() => refresh('left')}
@@ -515,7 +517,7 @@ export default function SftpTab({
                         currentDir={panes.right.dir}
                         reloadToken={panes.right.reload}
                         connections={connections}
-                        otherLabel={panes.left.host.kind === 'none' ? 'destino' : panes.left.host.connName}
+                        otherLabel={panes.left.host.kind === 'none' ? t.sftp.tab.destination : panes.left.host.connName}
                         onPickHost={(h) => void pickHost('right', h)}
                         onNavigate={(dir) => updatePane('right', {dir})}
                         onRefresh={() => refresh('right')}
@@ -534,16 +536,18 @@ export default function SftpTab({
                 <div className="max-h-48 shrink-0 overflow-auto border-t border-outline-variant bg-surface-container-low">
                     <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-ui-11 font-medium text-on-surface-variant">
                         <Icon name="swap_vert" size={14} />
-                        Transferencias {activeCount > 0 && <span className="text-secondary">({activeCount} activas)</span>}
+                        {t.sftp.tab.transfers} {activeCount > 0 && <span className="text-secondary">{t.sftp.tab.active(activeCount)}</span>}
                         <button
                             onClick={() => setQueue((q) => q.filter((it) => it.status === 'running' || it.status === 'checking'))}
                             className="ml-auto rounded px-2 py-0.5 hover:bg-surface-variant hover:text-on-surface"
-                            title="Quitar las transferencias finalizadas de la lista"
+                            title={t.sftp.tab.clearFinishedTooltip}
                         >
-                            Limpiar finalizadas
+                            {t.sftp.tab.clearFinished}
                         </button>
                     </div>
-                    {queue.map((it) => (
+                    {queue.map((it) => {
+                        const running = it.status === 'running'
+                        return (
                         <div key={it.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
                             {it.status === 'checking' ? (
                                 <span
@@ -585,20 +589,20 @@ export default function SftpTab({
                                             como para que pareciera que no pasaba nada. */}
                                         {it.status === 'checking' ? (
                                             <span className="text-primary">
-                                                Comprobando el destino… ({it.itemCount} elemento{it.itemCount === 1 ? '' : 's'})
+                                                {t.sftp.tab.checking(it.itemCount)}
                                             </span>
-                                        ) : it.status === 'running' && it.totalFiles === 0 ? (
-                                            <span className="text-primary">Preparando… (contando archivos)</span>
+                                        ) : running && it.totalFiles === 0 ? (
+                                            <span className="text-primary">{t.sftp.tab.preparing}</span>
                                         ) : (
                                             <>
-                                                {it.totalFiles > 0 && `${it.filesDone}/${it.totalFiles} archivos · `}
+                                                {it.totalFiles > 0 && t.sftp.tab.files({done: it.filesDone, total: it.totalFiles})}
                                                 {formatBytes(it.bytesDone)}
                                                 {it.bytesTotal > 0 && ` / ${formatBytes(it.bytesTotal)}`}
-                                                {it.status === 'running' && it.bytesPerSec > 0 && (
+                                                {running && it.bytesPerSec > 0 && (
                                                     <>
                                                         {' · '}
                                                         <span className="text-primary">{formatRate(it.bytesPerSec)}</span>
-                                                        {it.etaSeconds >= 0 && ` · faltan ${formatEta(it.etaSeconds)}`}
+                                                        {it.etaSeconds >= 0 && t.sftp.tab.remaining({eta: formatEta(it.etaSeconds)})}
                                                     </>
                                                 )}
                                             </>
@@ -626,17 +630,18 @@ export default function SftpTab({
                                 </div>
                                 {it.error && <p className="mt-0.5 whitespace-pre-wrap wrap-break-word text-ui-11 text-error">{it.error}</p>}
                             </div>
-                            {it.status === 'running' && (
+                            {running && (
                                 <button
                                     onClick={() => void CancelSftpTransfer(it.id)}
-                                    title="Cancelar esta transferencia"
+                                    title={t.sftp.tab.cancelTooltip}
                                     className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-error-container/40 hover:text-error"
                                 >
                                     <Icon name="stop_circle" size={16} />
                                 </button>
                             )}
                         </div>
-                    ))}
+                        )
+                    })}
                 </div>
             )}
 

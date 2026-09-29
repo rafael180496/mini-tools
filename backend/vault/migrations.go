@@ -2,7 +2,8 @@ package vault
 
 import (
 	"database/sql"
-	"fmt"
+
+	"mini-tools/backend/i18n"
 )
 
 // migration is one schema change above the baseline (schema_migrations
@@ -1291,6 +1292,17 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 56,
+		desc:    "agrega settings.language (idioma de la interfaz: 'en' | 'es', '' = sin elegir)",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT '' y no 'en': "sin elegir" y "eligió inglés" son cosas
+			// distintas. Hoy los dos se ven en inglés, pero si el default
+			// cambia, quien eligió no debería cambiar con él.
+			_, err := tx.Exec(`ALTER TABLE settings ADD COLUMN language TEXT NOT NULL DEFAULT ''`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the
@@ -1303,7 +1315,7 @@ var migrations = []migration{
 func applyMigrations(db *sql.DB) error {
 	var current int
 	if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
-		return fmt.Errorf("vault: leyendo versión de schema: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: leyendo versión de schema: %w", EN: "vault: reading schema version: %w"}, err)
 	}
 
 	for _, m := range migrations {
@@ -1313,12 +1325,12 @@ func applyMigrations(db *sql.DB) error {
 
 		tx, err := db.Begin()
 		if err != nil {
-			return fmt.Errorf("vault: migración %d (%s): begin: %w", m.version, m.desc, err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: migración %d (%s): begin: %w", EN: "vault: migration %d (%s): begin: %w"}, m.version, m.desc, err)
 		}
 
 		if err := m.apply(tx); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("vault: migración %d (%s): %w", m.version, m.desc, err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: migración %d (%s): %w", EN: "vault: migration %d (%s): %w"}, m.version, m.desc, err)
 		}
 
 		if _, err := tx.Exec(
@@ -1326,11 +1338,11 @@ func applyMigrations(db *sql.DB) error {
 			m.version,
 		); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("vault: migración %d (%s): guardando versión: %w", m.version, m.desc, err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: migración %d (%s): guardando versión: %w", EN: "vault: migration %d (%s): saving version: %w"}, m.version, m.desc, err)
 		}
 
 		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("vault: migración %d (%s): commit: %w", m.version, m.desc, err)
+			return i18n.Errorf(i18n.Msg{ES: "vault: migración %d (%s): commit: %w", EN: "vault: migration %d (%s): commit: %w"}, m.version, m.desc, err)
 		}
 	}
 

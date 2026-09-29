@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,7 +56,7 @@ func (r *Runner) ReadConflictFile(repoPath, path string) (string, error) {
 
 	data, err := os.ReadFile(full)
 	if err != nil {
-		return "", fmt.Errorf("leyendo %q: %w", path, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "leyendo %q: %w", EN: "reading %q: %w"}, path, err)
 	}
 	return string(data), nil
 }
@@ -87,7 +87,7 @@ func (r *Runner) ResolveConflictFile(repoPath, path, content string) error {
 	}
 
 	if err := os.WriteFile(full, []byte(content), mode); err != nil {
-		return fmt.Errorf("escribiendo %q: %w", path, err)
+		return i18n.Errorf(i18n.Msg{ES: "escribiendo %q: %w", EN: "writing %q: %w"}, path, err)
 	}
 
 	_, err = r.runLocal(root, "add", "--", path)
@@ -118,7 +118,7 @@ func (r *Runner) ContinueOperation(repoPath, op string) error {
 	case "merge", "rebase", "cherry-pick", "revert":
 		sub = op
 	default:
-		return fmt.Errorf("no hay ninguna operación en curso que continuar")
+		return i18n.New(i18n.Msg{ES: "no hay ninguna operación en curso que continuar", EN: "there is no operation in progress to continue"})
 	}
 
 	_, err = r.runLocal(root, "-c", "core.editor=true", sub, "--continue")
@@ -139,16 +139,16 @@ func (r *Runner) safeWorkingPath(repoPath, path string) (string, error) {
 		return "", err
 	}
 	if strings.TrimSpace(path) == "" {
-		return "", fmt.Errorf("la ruta del archivo está vacía")
+		return "", i18n.New(i18n.Msg{ES: "la ruta del archivo está vacía", EN: "the file path is empty"})
 	}
 	if filepath.IsAbs(path) {
-		return "", fmt.Errorf("la ruta debe ser relativa al repositorio")
+		return "", i18n.New(i18n.Msg{ES: "la ruta debe ser relativa al repositorio", EN: "the path must be relative to the repository"})
 	}
 
 	full := filepath.Join(root, path)
 	rel, err := filepath.Rel(root, full)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("la ruta %q queda fuera del repositorio", path)
+		return "", i18n.Errorf(i18n.Msg{ES: "la ruta %q queda fuera del repositorio", EN: "the path %q is outside the repository"}, path)
 	}
 	return full, nil
 }

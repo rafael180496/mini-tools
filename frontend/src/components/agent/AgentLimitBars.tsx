@@ -1,5 +1,6 @@
 import {agentlimits} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {formatDateTime, t as tr, useT} from '../../i18n'
 
 // Cuánto llevás usado DEL LÍMITE de un proveedor, con su barra por ventana.
 //
@@ -41,11 +42,12 @@ function resetLabel(iso: string): string {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return ''
     const mins = Math.round((d.getTime() - Date.now()) / 60000)
-    if (mins <= 0) return 'se reinicia en cualquier momento'
-    if (mins < 60) return `se reinicia en ${mins} min`
+    const l = tr().agent.limits
+    if (mins <= 0) return l.resetsAnyMoment
+    if (mins < 60) return l.resetsInMin({n: mins})
     const hours = Math.round(mins / 60)
-    if (hours < 24) return `se reinicia en ${hours} h`
-    return `se reinicia en ${Math.round(hours / 24)} días`
+    if (hours < 24) return l.resetsInHours({n: hours})
+    return l.resetsInDays({n: Math.round(hours / 24)})
 }
 
 // measuredLabel es la edad del dato. Se dice en palabras y no en fecha porque
@@ -54,14 +56,16 @@ function measuredLabel(iso: string): string {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return ''
     const mins = Math.round((Date.now() - d.getTime()) / 60000)
-    if (mins < 2) return 'recién medido'
-    if (mins < 60) return `medido hace ${mins} min`
+    const l = tr().agent.limits
+    if (mins < 2) return l.justMeasured
+    if (mins < 60) return l.measuredMin({n: mins})
     const hours = Math.round(mins / 60)
-    if (hours < 24) return `medido hace ${hours} h`
-    return `medido hace ${Math.round(hours / 24)} días`
+    if (hours < 24) return l.measuredHours({n: hours})
+    return l.measuredDays({n: Math.round(hours / 24)})
 }
 
 export default function AgentLimitBars({limits, onQuery, querying, queryError}: Props) {
+    const t = useT()
     if (!limits) return null
 
     // El botón de consultar solo aparece donde hace algo: si el agente no
@@ -73,10 +77,10 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
             disabled={querying}
             title={
                 querying
-                    ? 'Preguntándole al CLI del agente — arranca su servidor y le consulta la cuota al servicio, suele tardar unos segundos'
+                    ? t.agent.limits.queryingTitle
                     : limits.known
-                      ? 'Vuelve a preguntarle al CLI cuánto queda de cada límite. No consume cuota.'
-                      : 'Le pregunta al CLI del agente cuánto queda de cada límite (lo mismo que /usage dentro de su sesión). Tarda unos segundos y no consume cuota.'
+                      ? t.agent.limits.refreshTitle
+                      : t.agent.limits.queryTitle
             }
             className="flex shrink-0 items-center gap-1 rounded border border-outline-variant px-1.5 py-0.5 text-ui-10 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
         >
@@ -85,7 +89,7 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
             ) : (
                 <Icon name="query_stats" size={11} />
             )}
-            {querying ? 'Consultando…' : limits.known ? 'Actualizar' : 'Consultar'}
+            {querying ? t.agent.limits.querying : limits.known ? t.agent.limits.refresh : t.agent.limits.query}
         </button>
     )
 
@@ -96,7 +100,7 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
             <div className="mt-1">
                 <p className="flex items-start gap-1 text-ui-10 leading-4 text-on-surface-variant/70" title={limits.source}>
                     <Icon name="help" size={11} className="mt-px shrink-0" />
-                    <span>{limits.note || 'Este agente no publica su límite en el disco.'}</span>
+                    <span>{limits.note || t.agent.limits.unknown}</span>
                 </p>
                 {queryError && <p className="mt-0.5 text-ui-10 leading-4 text-error">{queryError}</p>}
                 {askButton && <div className="mt-1">{askButton}</div>}
@@ -110,9 +114,13 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
                 <div
                     key={`${w.kind}-${w.label}`}
                     className="mt-0.5 flex items-center gap-1.5"
-                    title={`${w.label}: ${w.percent}% del límite usado${w.resetsAt ? ` — ${resetLabel(w.resetsAt)} (${new Date(w.resetsAt).toLocaleString('es')})` : ' — el proveedor no informa cuándo se reinicia'}${
-                        w.active ? '. Es la ventana que manda ahora mismo: la primera que corta el trabajo si se llena.' : ''
-                    }${w.detail ? `\n\n${w.detail}` : ''}`}
+                    title={t.agent.limits.windowTitle({
+                        label: w.label,
+                        percent: w.percent,
+                        reset: w.resetsAt ? `${resetLabel(w.resetsAt)} (${formatDateTime(new Date(w.resetsAt))})` : '',
+                        active: !!w.active,
+                        detail: w.detail ?? '',
+                    })}
                 >
                     <span className={`w-44 shrink-0 truncate text-ui-11 ${w.active ? 'text-on-surface' : 'text-on-surface-variant'}`}>
                         {w.active && <span aria-hidden className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-secondary align-middle" />}
@@ -131,9 +139,9 @@ export default function AgentLimitBars({limits, onQuery, querying, queryError}: 
             ))}
 
             <div className="mt-0.5 flex items-center gap-2">
-            <p className="min-w-0 truncate text-ui-10 text-on-surface-variant/70" title={`De dónde salió este dato: ${limits.source}`}>
+            <p className="min-w-0 truncate text-ui-10 text-on-surface-variant/70" title={t.agent.limits.sourceTitle({source: limits.source})}>
                 {measuredLabel(limits.measuredAt)}
-                {limits.plan && ` · plan ${limits.plan}`}
+                {limits.plan && t.agent.limits.plan({plan: limits.plan})}
                 {limits.windows.some((w) => w.resetsAt) && ` · ${resetLabel(limits.windows.find((w) => w.active && w.resetsAt)?.resetsAt ?? limits.windows.find((w) => w.resetsAt)!.resetsAt)}`}
             </p>
             {askButton}

@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"path/filepath"
 	"strings"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/agentapprove"
 	"mini-tools/backend/agentchat"
@@ -17,6 +17,7 @@ import (
 	"mini-tools/backend/agents"
 	"mini-tools/backend/agentusage"
 	"mini-tools/backend/appdata"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/localterm"
 	"mini-tools/backend/mcpconf"
 	"mini-tools/backend/vault"
@@ -91,7 +92,7 @@ func (a *App) OpenLocalTerminal(sessionID, repoID string, cols, rows int) error 
 		return err
 	}
 	if sessionID == "" {
-		return fmt.Errorf("app: falta el id de sesión de la terminal")
+		return i18n.Errorf(i18n.Msg{ES: "app: falta el id de sesión de la terminal", EN: "app: the terminal session id is missing"})
 	}
 
 	cwd := ""
@@ -136,7 +137,7 @@ func (a *App) OpenLocalTerminalWith(sessionID, shellID string, cols, rows int) e
 		return err
 	}
 	if sessionID == "" {
-		return fmt.Errorf("app: falta el id de sesión de la terminal")
+		return i18n.Errorf(i18n.Msg{ES: "app: falta el id de sesión de la terminal", EN: "app: the terminal session id is missing"})
 	}
 	if shellID == "" {
 		return a.OpenLocalTerminal(sessionID, "", cols, rows)
@@ -253,7 +254,7 @@ func (a *App) SetAgentCommand(agentID, command string) error {
 		return err
 	}
 	if _, ok := agents.Find(agentID); !ok {
-		return fmt.Errorf("app: agente desconocido %q", agentID)
+		return i18n.Errorf(i18n.Msg{ES: "app: agente desconocido %q", EN: "app: unknown agent %q"}, agentID)
 	}
 	return a.vault.SetAgentCommand(agentID, command)
 }
@@ -264,7 +265,7 @@ func (a *App) SetAgentKey(agentID, apiKey string) error {
 		return err
 	}
 	if _, ok := agents.Find(agentID); !ok {
-		return fmt.Errorf("app: agente desconocido %q", agentID)
+		return i18n.Errorf(i18n.Msg{ES: "app: agente desconocido %q", EN: "app: unknown agent %q"}, agentID)
 	}
 	return a.vault.SetAgentKey(agentID, apiKey)
 }
@@ -294,7 +295,7 @@ func (a *App) OpenAgentSession(sessionID, repoID, agentID string, cols, rows int
 		return err
 	}
 	if sessionID == "" {
-		return fmt.Errorf("app: falta el id de sesión de la terminal")
+		return i18n.Errorf(i18n.Msg{ES: "app: falta el id de sesión de la terminal", EN: "app: the terminal session id is missing"})
 	}
 
 	configs, err := a.vault.ListAgentConfigs()
@@ -316,7 +317,7 @@ func (a *App) OpenAgentSession(sessionID, repoID, agentID string, cols, rows int
 		}
 	}
 	if !found {
-		return fmt.Errorf("app: agente desconocido %q", agentID)
+		return i18n.Errorf(i18n.Msg{ES: "app: agente desconocido %q", EN: "app: unknown agent %q"}, agentID)
 	}
 
 	cwd := ""
@@ -524,7 +525,7 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 	case "":
 		m = agentchat.ModeAsk
 	default:
-		return fmt.Errorf("app: modo de chat desconocido %q", mode)
+		return i18n.Errorf(i18n.Msg{ES: "app: modo de chat desconocido %q", EN: "app: unknown chat mode %q"}, mode)
 	}
 
 	return a.agentChats.Send(agentchat.Turn{
@@ -643,7 +644,7 @@ func (a *App) GitRemoveMCPServer(path, name string) error {
 		return err
 	}
 	if !mcpconf.Writable(mcpconf.File{Path: path, Agent: agentForPath(path)}) {
-		return fmt.Errorf("app: %q no se edita desde la app", path)
+		return i18n.Errorf(i18n.Msg{ES: "app: %q no se edita desde la app", EN: "app: %q can't be edited from the app"}, path)
 	}
 	return mcpconf.RemoveServer(path, name)
 }
@@ -660,7 +661,7 @@ func (a *App) GitUpsertMCPServer(path string, in mcpconf.ServerInput) error {
 		return err
 	}
 	if !mcpconf.Writable(mcpconf.File{Path: path, Agent: agentForPath(path)}) {
-		return fmt.Errorf("app: %q no se edita desde la app", path)
+		return i18n.Errorf(i18n.Msg{ES: "app: %q no se edita desde la app", EN: "app: %q can't be edited from the app"}, path)
 	}
 	return mcpconf.UpsertServer(path, in)
 }
@@ -958,7 +959,7 @@ func (a *App) AgentQueryLimits(agentID string) (agentlimits.AgentLimits, error) 
 		return agentlimits.AgentLimits{}, err
 	}
 	if !agentlimits.Queryable(agentID) {
-		return agentlimits.AgentLimits{}, fmt.Errorf("app: a ese agente no se le puede preguntar el límite por línea de comandos")
+		return agentlimits.AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "app: a ese agente no se le puede preguntar el límite por línea de comandos", EN: "app: that agent can't be asked for its limit from the command line"})
 	}
 
 	agent, err := a.agentByID(agentID)
@@ -966,7 +967,7 @@ func (a *App) AgentQueryLimits(agentID string) (agentlimits.AgentLimits, error) 
 		return agentlimits.AgentLimits{}, err
 	}
 	if !agent.Available {
-		return agentlimits.AgentLimits{}, fmt.Errorf("app: %s no está instalado en esta máquina", agent.Label)
+		return agentlimits.AgentLimits{}, i18n.Errorf(i18n.Msg{ES: "app: %s no está instalado en esta máquina", EN: "app: %s is not installed on this machine"}, agent.Label)
 	}
 
 	env, err := a.agentEnv(agent)

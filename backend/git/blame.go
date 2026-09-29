@@ -1,7 +1,7 @@
 package git
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"strconv"
 	"strings"
 	"time"
@@ -45,12 +45,12 @@ func (r *Runner) Blame(repoPath, path, rev string) ([]BlameLine, error) {
 		return nil, err
 	}
 	if strings.TrimSpace(path) == "" {
-		return nil, fmt.Errorf("la ruta del archivo está vacía")
+		return nil, i18n.New(i18n.Msg{ES: "la ruta del archivo está vacía", EN: "the file path is empty"})
 	}
 
 	args := []string{"blame", "--line-porcelain"}
 	if rev != "" {
-		if err := checkRefArg("revisión", rev); err != nil {
+		if err := checkRefArg(argRevision, rev); err != nil {
 			return nil, err
 		}
 		args = append(args, rev)

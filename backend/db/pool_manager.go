@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"mini-tools/backend/db/sqlcipher"
+	"mini-tools/backend/i18n"
 )
 
 const (
@@ -48,7 +49,7 @@ func materializeDSN(dbType DBType, dsn string) (finalDSN, tempPath string, err e
 
 	tmp, err := os.CreateTemp("", "mini-tools-sqlcipher-*.db")
 	if err != nil {
-		return "", "", fmt.Errorf("db: creando copia temporal descifrada: %w", err)
+		return "", "", i18n.Errorf(i18n.Msg{ES: "db: creando copia temporal descifrada: %w", EN: "db: creating decrypted temporary copy: %w"}, err)
 	}
 	tmp.Close()
 	if _, err := sqlcipher.DecryptToFile(srcPath, key, tmp.Name()); err != nil {
@@ -80,7 +81,7 @@ func (m *PoolManager) Get(connID string) (*sql.DB, error) {
 
 	pc, ok := m.pools[connID]
 	if !ok {
-		return nil, fmt.Errorf("db: no hay un pool abierto para la conexión %q", connID)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: no hay un pool abierto para la conexión %q", EN: "db: no pool open for connection %q"}, connID)
 	}
 	return pc.db, nil
 }
@@ -134,7 +135,7 @@ func (m *PoolManager) Open(connID string, dbType DBType, dsn string) (*sql.DB, e
 		if tempPath != "" {
 			os.Remove(tempPath)
 		}
-		return nil, fmt.Errorf("db: abriendo pool %s: %w", dbType, err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: abriendo pool %s: %w", EN: "db: opening pool %s: %w"}, dbType, err)
 	}
 
 	pool.SetMaxOpenConns(defaultMaxOpenConns)
@@ -149,7 +150,7 @@ func (m *PoolManager) Open(connID string, dbType DBType, dsn string) (*sql.DB, e
 		if tempPath != "" {
 			os.Remove(tempPath)
 		}
-		return nil, fmt.Errorf("db: haciendo ping al pool %s: %w", dbType, err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: haciendo ping al pool %s: %w", EN: "db: pinging pool %s: %w"}, dbType, err)
 	}
 
 	m.pools[connID] = pooledConn{db: pool, dbType: dbType, tempPath: tempPath}
@@ -205,7 +206,7 @@ func Ping(dbType DBType, dsn string) error {
 
 	conn, err := sql.Open(dbType.DriverName(), finalDSN)
 	if err != nil {
-		return fmt.Errorf("db: abriendo para probar conexión: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: abriendo para probar conexión: %w", EN: "db: opening to test connection: %w"}, err)
 	}
 	defer conn.Close()
 
@@ -213,7 +214,7 @@ func Ping(dbType DBType, dsn string) error {
 	defer cancel()
 
 	if err := conn.PingContext(ctx); err != nil {
-		return fmt.Errorf("db: ping falló: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: ping falló: %w", EN: "db: ping failed: %w"}, err)
 	}
 	return nil
 }

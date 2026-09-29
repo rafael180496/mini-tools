@@ -119,6 +119,7 @@ import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
 import {lintMongoCommands} from '../lib/mongoLinter'
 import {formatElapsed} from '../lib/formatElapsed'
+import {errorCode, formatNumber, t as tr, useT} from '../i18n'
 import {setActiveMongoCollections} from '../codemirror/mongoCollectionsStore'
 import type {Theme} from '../hooks/useTheme'
 
@@ -292,7 +293,7 @@ function languageForDbType(dbType: string): TabLanguage {
 }
 
 function newScratchTab(): EditorTab {
-    return {id: newTabId(), title: 'Query sin título', path: null, content: 'SELECT 1', dirty: false, connId: null, language: 'sql', kind: 'editor'}
+    return {id: newTabId(), title: tr().workspace.tabs.untitledQuery, path: null, content: 'SELECT 1', dirty: false, connId: null, language: 'sql', kind: 'editor'}
 }
 
 // Vertical separator between button clusters in the toolbar — purely
@@ -398,6 +399,7 @@ export default function Workspace({
     uiFontScale,
     onChangeUIFontScale,
 }: WorkspaceProps) {
+    const t = useT()
     // `selected` is ONLY the sidebar's own navigation state — which
     // connection's table/key tree is expanded there. It is deliberately
     // never synced with the active editor tab in either direction (a
@@ -514,36 +516,36 @@ export default function Workspace({
             {
                 id: 'connections' as const,
                 icon: 'database',
-                label: 'Conexiones',
-                hint: 'bases de datos: explorar el esquema y correr consultas',
+                label: t.workspace.modules.connections,
+                hint: t.workspace.modules.connectionsHint,
                 matchCount: connectionsMatches,
             },
             {
                 id: 'ssh' as const,
                 icon: 'terminal',
                 label: 'SSH',
-                hint: 'servidores remotos: abrir una terminal o transferir archivos',
+                hint: t.workspace.modules.sshHint,
                 matchCount: sshMatches,
             },
             {
                 id: 'git' as const,
                 icon: 'commit',
                 label: 'Git',
-                hint: 'repositorios: ver cambios, ramas y trabajar con los agentes',
+                hint: t.workspace.modules.gitHint,
                 matchCount: gitMatches,
             },
             {
                 id: 'notes' as const,
                 icon: 'description',
-                label: 'Notas',
-                hint: 'tu base de conocimiento cifrada: runbooks y apuntes',
+                label: t.workspace.modules.notes,
+                hint: t.workspace.modules.notesHint,
                 matchCount: notesMatches,
             },
             {
                 id: 'http' as const,
                 icon: 'api',
                 label: 'HTTP',
-                hint: 'colecciones de peticiones: probar y guardar endpoints',
+                hint: t.workspace.modules.httpHint,
                 // El contador de coincidencias queda en null hasta que el
                 // árbol sepa buscar por sí mismo (el filtro ya llega y
                 // filtra): mostrar un 0 permanente sobre el ícono diría que
@@ -551,7 +553,7 @@ export default function Workspace({
                 matchCount: null,
             },
         ],
-        [connectionsMatches, sshMatches, gitMatches, notesMatches],
+        [connectionsMatches, sshMatches, gitMatches, notesMatches, t],
     )
 
     // Schema metadata cached per connection id — shared by the sidebar tree
@@ -700,7 +702,7 @@ export default function Workspace({
                     const resultSets = e.resultSets.map((r) => {
                         if (!r.hasMore || !closedSet.has(r.queryId)) return r
                         tabChanged = true
-                        return {...r, hasMore: false, pagingClosedBy: 'otra consulta usó esta conexión'}
+                        return {...r, hasMore: false, pagingClosedBy: 'otherQuery'}
                     })
                     next[tabId] = tabChanged ? {...e, resultSets} : e
                     anyChange = anyChange || tabChanged
@@ -999,7 +1001,7 @@ export default function Workspace({
         setTabs((prev) => {
             const tab: EditorTab = {
                 id: newTabId(),
-                title: 'Petición rápida',
+                title: tr().workspace.tabs.quickRequest,
                 path: null,
                 content: '',
                 dirty: false,
@@ -1021,7 +1023,7 @@ export default function Workspace({
         setTabs((prev) => {
             const tab: EditorTab = {
                 id: newTabId(),
-                title: 'Petición rápida',
+                title: tr().workspace.tabs.quickRequest,
                 path: null,
                 content: '',
                 dirty: false,
@@ -1051,7 +1053,7 @@ export default function Workspace({
             }
             const tab: EditorTab = {
                 id: newTabId(),
-                title: title || 'Nota',
+                title: title || tr().workspace.tabs.note,
                 path: null,
                 content: '',
                 dirty: false,
@@ -1244,7 +1246,7 @@ export default function Workspace({
                         if (info.connId) {
                             restored.push({
                                 id: newTabId(),
-                                title: 'Redis Browser',
+                                title: tr().workspace.tabs.redisBrowser,
                                 path: null,
                                 content: '',
                                 dirty: false,
@@ -1538,8 +1540,8 @@ export default function Workspace({
         const dest = await BackupVault(password)
         setBackupResult(
             dest
-                ? {ok: true, text: `Backup guardado en ${dest}`}
-                : {ok: false, text: 'No se guardó ningún backup: se cerró el diálogo sin elegir dónde.'},
+                ? {ok: true, text: tr().workspace.status.backupSaved({path: dest})}
+                : {ok: false, text: tr().workspace.status.backupNotSaved},
         )
         // Vuelve a Configuración, que es de donde salió el pedido y donde se
         // cuenta cómo terminó. El backup se pide desde ahí, se confirma en un
@@ -1633,7 +1635,7 @@ export default function Workspace({
             GetSchemaIndexStatus(editorConnId)
                 .then((st) => {
                     if (!alive) return
-                    setIndexError(st?.state === 'error' ? st.error || 'no se pudo leer el catálogo' : null)
+                    setIndexError(st?.state === 'error' ? st.error || tr().workspace.status.catalogUnreadable : null)
                 })
                 .catch(() => {})
         }
@@ -1703,7 +1705,7 @@ export default function Workspace({
         try {
             await BeginTransaction(activeTabConnection.id)
             setTxOpenFor(activeTabConnection.id, true)
-            setStatusMessage('Transacción abierta — auto-commit desactivado')
+            setStatusMessage(tr().workspace.status.txOpened)
         } catch (err) {
             setStatusMessage(String(err))
         } finally {
@@ -1717,7 +1719,7 @@ export default function Workspace({
         try {
             await CommitTransaction(activeTabConnection.id)
             setTxOpenFor(activeTabConnection.id, false)
-            setStatusMessage('Commit hecho — auto-commit activado')
+            setStatusMessage(tr().workspace.status.committed)
         } catch (err) {
             setStatusMessage(String(err))
         } finally {
@@ -1731,7 +1733,7 @@ export default function Workspace({
         try {
             await RollbackTransaction(activeTabConnection.id)
             setTxOpenFor(activeTabConnection.id, false)
-            setStatusMessage('Rollback hecho — auto-commit activado')
+            setStatusMessage(tr().workspace.status.rolledBack)
         } catch (err) {
             setStatusMessage(String(err))
         } finally {
@@ -1741,7 +1743,7 @@ export default function Workspace({
 
     function refreshMetadata() {
         if (!activeTabConnection) return
-        setStatusMessage('Actualizando metadata…')
+        setStatusMessage(tr().workspace.status.refreshingMetadata)
         ensureMetadata(activeTabConnection.id, activeTabConnection.dbType, true)
     }
 
@@ -1793,9 +1795,7 @@ export default function Workspace({
                     ([tid, e]) => e.liveRuns.length > 0 && tabsRef.current.find((t) => t.id === tid)?.connId === connection.id,
                 )
                 if (busySameConn) {
-                    setStatusMessage(
-                        `"${connection.name}" tiene una transacción abierta y ya está ejecutando: las dos corridas compartirían esa transacción. Esperá a que termine, o hacé Commit/Rollback.`,
-                    )
+                    setStatusMessage(tr().workspace.status.txBusy({name: connection.name}))
                     return
                 }
             }
@@ -1913,7 +1913,7 @@ export default function Workspace({
                             break
                         case 'error':
                             cur.status = 'error'
-                            cur.error = event.error ?? 'Error desconocido'
+                            cur.error = event.error ?? tr().workspace.status.unknownError
                             break
                     }
 
@@ -2094,7 +2094,7 @@ export default function Workspace({
             if (!runTab || !commandText.trim()) return
             const database = mongoDbByConn[connection.id] ?? ''
             if (!database) {
-                setStatusMessage('Elegí una base de datos en el árbol lateral antes de ejecutar comandos MongoDB')
+                setStatusMessage(tr().workspace.status.pickMongoDb)
                 return
             }
 
@@ -2167,7 +2167,7 @@ export default function Workspace({
     // prevent running a plain read query.
     function confirmAndRun(text: string) {
         if (!activeTabConnection) {
-            setStatusMessage('Vinculá esta pestaña a una conexión antes de ejecutar (ícono a la izquierda del título)')
+            setStatusMessage(tr().workspace.status.bindFirst)
             return
         }
 
@@ -2209,11 +2209,10 @@ export default function Workspace({
                     .slice(0, 5)
                     .map((r) => `• ${r.label}: ${r.detail}\n  ${r.statement.split('\n')[0]}`)
                     .join('\n\n')
-                const extra = risks.length > 5 ? `\n\n…y ${risks.length - 5} sentencia(s) más.` : ''
                 setPendingSqlRun({
                     text,
-                    title: `Estás en PRODUCCIÓN — ${activeTabConnection.name}`,
-                    description: `Este script modifica datos o estructura en una conexión marcada como Producción:\n\n${detail}${extra}`,
+                    title: tr().workspace.confirmRun.prodTitle({name: activeTabConnection.name}),
+                    description: tr().workspace.confirmRun.prodDescription({detail, more: Math.max(0, risks.length - 5)}),
                 })
                 return
             }
@@ -2227,8 +2226,8 @@ export default function Workspace({
         if (warnings.length > 0) {
             setPendingSqlRun({
                 text,
-                title: 'Advertencias antes de ejecutar',
-                description: warnings.map((w) => `Línea ${w.startLineNumber}: ${w.message}`).join('\n'),
+                title: tr().workspace.confirmRun.lintTitle,
+                description: warnings.map((w) => tr().workspace.confirmRun.lintLine({line: w.startLineNumber, message: w.message})).join('\n'),
             })
             return
         }
@@ -2406,7 +2405,7 @@ export default function Workspace({
         const entry: ConsoleLogEntry = {
             index: 0,
             total: 1,
-            sqlText: failed ? '-- la transacción se revirtió entera, no quedó ninguna sentencia aplicada' : result.statements.join('\n'),
+            sqlText: failed ? tr().workspace.gridEdit.rolledBack : result.statements.join('\n'),
             status: failed ? 'error' : 'done',
             hasColumns: false,
             rowsAffected: result.rows,
@@ -2423,8 +2422,8 @@ export default function Workspace({
                     : result.values,
             origin:
                 failed || result.statements.length === 1
-                    ? 'Edición de la grilla'
-                    : `Edición de la grilla · ${result.statements.length} sentencias en una transacción`,
+                    ? tr().workspace.gridEdit.origin
+                    : tr().workspace.gridEdit.originMany(result.statements.length),
         }
         patchExec(activeTabIdRef.current, (cur) => {
             const next = [...cur.consoleLog, entry]
@@ -2455,7 +2454,7 @@ export default function Workspace({
         } else {
             const tab: EditorTab = {
                 id: newTabId(),
-                title: 'Query sin título',
+                title: tr().workspace.tabs.untitledQuery,
                 path: null,
                 content: q,
                 dirty: false,
@@ -2482,7 +2481,7 @@ export default function Workspace({
         }
         const tab: EditorTab = {
             id: newTabId(),
-            title: 'Redis Browser',
+            title: tr().workspace.tabs.redisBrowser,
             path: null,
             content: '',
             dirty: false,
@@ -2520,7 +2519,7 @@ export default function Workspace({
         }
         const tab: EditorTab = {
             id: newTabId(),
-            title: 'MongoDB Browser',
+            title: tr().workspace.tabs.mongoBrowser,
             path: null,
             content: '',
             dirty: false,
@@ -2548,7 +2547,7 @@ export default function Workspace({
         }
         const tab: EditorTab = {
             id: newTabId(),
-            title: 'MongoDB Browser',
+            title: tr().workspace.tabs.mongoBrowser,
             path: null,
             content: '',
             dirty: false,
@@ -2633,7 +2632,7 @@ export default function Workspace({
     function openLocalTerminal(shellId: string, shellLabel: string) {
         const tab: EditorTab = {
             id: newTabId(),
-            title: `Terminal — ${shellLabel}`,
+            title: tr().workspace.tabs.terminal({name: shellLabel}),
             path: null,
             content: '',
             dirty: false,
@@ -2706,7 +2705,7 @@ export default function Workspace({
         }
         const tab: EditorTab = {
             id: newTabId(),
-            title: `Sesión — ${conn.name}`,
+            title: tr().workspace.tabs.session({name: conn.name}),
             path: null,
             content: '',
             dirty: false,
@@ -2730,7 +2729,7 @@ export default function Workspace({
         }
         const tab: EditorTab = {
             id: newTabId(),
-            title: `SFTP — ${conn.name}`,
+            title: tr().workspace.tabs.sftp({name: conn.name}),
             path: null,
             content: '',
             dirty: false,
@@ -2761,7 +2760,7 @@ export default function Workspace({
         }
         const tab: EditorTab = {
             id: newTabId(),
-            title: `Git — ${repo.name}`,
+            title: tr().workspace.tabs.git({name: repo.name}),
             path: null,
             content: '',
             dirty: false,
@@ -2791,7 +2790,7 @@ export default function Workspace({
     async function exportConnectionConfig(connId: string) {
         try {
             const dest = await ExportConnectionConfig(connId)
-            setStatusMessage(dest ? `Config exportada a ${dest}` : '')
+            setStatusMessage(dest ? tr().workspace.status.configExported({path: dest}) : '')
         } catch (err) {
             setStatusMessage(String(err))
         }
@@ -2810,7 +2809,7 @@ export default function Workspace({
             if (selected?.id === connId) {
                 setSelected(null)
             }
-            setStatusMessage('Desconectado')
+            setStatusMessage(tr().workspace.status.disconnected)
         } catch (err) {
             setStatusMessage(String(err))
         }
@@ -2828,7 +2827,7 @@ export default function Workspace({
             setReloadToken((n) => n + 1)
             if (selected?.id === connId) setSelected(null)
             setTabs((prev) => prev.map((t) => (t.connId === connId ? {...t, connId: null} : t)))
-            setStatusMessage('Conexión eliminada')
+            setStatusMessage(tr().workspace.status.connectionDeleted)
         } catch (err) {
             setStatusMessage(String(err))
         }
@@ -2843,7 +2842,7 @@ export default function Workspace({
             // 'public' only when nothing is active yet, same default the
             // hardcode used to be).
             const dest = await ExportSchemaDDL(selected.id, sidebarActiveSchema || 'public')
-            setStatusMessage(dest ? `DDL del schema exportado a ${dest}` : '')
+            setStatusMessage(dest ? tr().workspace.status.schemaDdlExported({path: dest}) : '')
         } catch (err) {
             setStatusMessage(String(err))
         }
@@ -2921,10 +2920,10 @@ export default function Workspace({
                     t.id === tab.id && t.remote ? {...t, dirty: false, remote: {...t.remote, modTimeUnix: newMtime}} : t,
                 ),
             )
-            setStatusMessage(`Guardado ${tab.remote.path} en ${tab.remote.connName}`)
+            setStatusMessage(tr().workspace.status.remoteSaved({path: tab.remote.path, conn: tab.remote.connName}))
         } catch (err) {
             const message = String(err)
-            if (message.includes('cambió en el servidor')) {
+            if (errorCode(err) === 'remote-changed') {
                 // Never overwrite silently: somebody else's change would
                 // disappear with nobody noticing.
                 setRemoteConflict({tabId: tab.id, path: tab.remote.path, connName: tab.remote.connName})
@@ -2951,11 +2950,11 @@ export default function Workspace({
         try {
             const file = await ReadSftpFileForEdit(host.sessionId, path)
             if (file.binary) {
-                setStatusMessage(`"${path}" es un archivo binario — no se puede editar como texto.`)
+                setStatusMessage(tr().workspace.status.binaryFile({path}))
                 return
             }
             if (file.tooLarge) {
-                setStatusMessage(`"${path}" es demasiado grande para abrirlo en el editor.`)
+                setStatusMessage(tr().workspace.status.tooLarge({path}))
                 return
             }
 
@@ -3084,6 +3083,15 @@ export default function Workspace({
     useEffect(refreshLiveConnections, [selected, activeTabConnection, reloadToken])
 
     const activeResult = resultSets[activeResultTab]
+    // Estados del resultado activo, resueltos fuera del JSX (así el chequeo de
+    // i18n no los confunde con texto de interfaz).
+    const resultDone = activeResult?.status === 'done'
+    const resultCancelled = activeResult?.status === 'cancelled'
+    const resultError = activeResult?.status === 'error'
+    // `pagingClosedBy` guarda un código ('otherQuery'), no el texto: el texto
+    // se resuelve al dibujar, en el idioma activo.
+    const pagingClosedReason =
+        activeResult?.pagingClosedBy === 'otherQuery' ? t.workspace.paging.otherQuery : (activeResult?.pagingClosedBy ?? '')
     // Contra qué tabla escriben el INSERT y el UPDATE que genera la grilla.
     // Se resuelve acá, una vez, y baja a la barra de exporte y a la grilla:
     // las dos generan la misma sentencia y tienen que nombrar la misma tabla.
@@ -3142,6 +3150,8 @@ export default function Workspace({
     // qué hace y con qué atajo— sigue estando, así que no se pierde nada que
     // no estuviera a un hover de distancia.
     const compactToolbar = editorAppearance.toolbar === 'compact'
+    const toolbarHidden = editorAppearance.toolbar === 'hidden'
+    const isOracleActive = activeTabConnection?.dbType === 'oracle'
 
     // El ÁREA DE CONSULTA: el editor SQL con su barra de acciones y su panel
     // de resultados abajo. Todo lo demás —un explorador de claves, una
@@ -3259,7 +3269,7 @@ export default function Workspace({
                     />
                     ),
                     git: (
-                        <GitErrorBoundary label="sidebar Git">
+                        <GitErrorBoundary label={t.workspace.gitSidebarLabel}>
                             <GitRepoTree
                         onOpenRepo={openGitRepo}
                         activeTabRepoId={activeTabData?.repoId ?? null}
@@ -3342,12 +3352,9 @@ export default function Workspace({
                     <div className="flex w-96 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg">
                         <h2 className="flex items-center gap-2 text-lg font-semibold">
                             <Icon name="warning" className="text-tertiary" />
-                            Archivos no encontrados
+                            {t.workspace.deletedFiles.title}
                         </h2>
-                        <p className="text-xs text-on-surface-variant">
-                            Estos archivos estaban abiertos la última vez pero ya no existen en disco — no se van a volver a
-                            abrir automáticamente:
-                        </p>
+                        <p className="text-xs text-on-surface-variant">{t.workspace.deletedFiles.body}</p>
                         <ul className="max-h-40 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-lowest p-2 font-mono text-xs text-on-surface-variant">
                             {deletedPaths.map((p) => (
                                 <li key={p} className="truncate">
@@ -3358,10 +3365,10 @@ export default function Workspace({
                         <div className="mt-2 flex justify-end">
                             <button
                                 onClick={() => setDeletedPaths([])}
-                                title="Cierra este aviso — las pestañas de archivos que ya no existen en disco quedan como pestañas sin guardar"
+                                title={t.workspace.deletedFiles.closeTitle}
                                 className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary hover:opacity-90"
                             >
-                                Entendido
+                                {t.workspace.deletedFiles.ok}
                             </button>
                         </div>
                     </div>
@@ -3384,7 +3391,7 @@ export default function Workspace({
                 working={
                     activeTabData?.kind === 'editor' && activeTabData.content.trim()
                         ? {
-                              label: 'Consulta del editor',
+                              label: t.workspace.agent.editorQuery,
                               text: activeTabData.content,
                               language: activeTabData.language === 'sql' ? 'sql' : '',
                           }
@@ -3422,8 +3429,8 @@ export default function Workspace({
                     isSshTerminalTabActive || isHybridTabActive || isLocalTerminalTabActive
                         ? undefined
                         : isNoteTabActive
-                        ? 'Inserta el bloque en la nota, donde está el cursor'
-                        : 'Inserta el bloque en el editor, donde está el cursor — no pisa lo que ya escribiste'
+                        ? t.workspace.agent.insertNote
+                        : t.workspace.agent.insertEditor
                 }
             >
                 {/* Tab strip goes FIRST, above the toolbar — its position
@@ -3562,11 +3569,11 @@ export default function Workspace({
                         lo pregunta. */}
                     {!isNoteTabActive && !isLocalTerminalTabActive && !isHttpTabActive && !isGitTabActive && !isSshTerminalTabActive && !isHybridTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-1.5">
-                        {editorAppearance.toolbar !== 'hidden' && isQueryArea && (
+                        {!toolbarHidden && isQueryArea && (
                             <>
                                 <button
                                     onClick={() => void saveActiveTab()}
-                                    title="Guardar la pestaña en disco (Ctrl+S). Si es una pestaña nueva, te pide dónde guardarla"
+                                    title={t.workspace.toolbar.save}
                                     className={TOOLBAR_ICON}
                                 >
                                     <Icon name="save" size={16} />
@@ -3581,16 +3588,16 @@ export default function Workspace({
                                 <button
                                     onClick={runSelectionOrLine}
                                     disabled={!activeTabConnection || running}
-                                    title="Ejecutar lo seleccionado, o la sentencia donde está el cursor si no hay selección (Ctrl+Enter)"
+                                    title={t.workspace.toolbar.runTitle}
                                     className={`${TOOLBAR_BTN} bg-secondary-container font-semibold text-on-secondary-container hover:opacity-90`}
                                 >
                                     <Icon name="play_arrow" size={16} filled />
-                                    {!compactToolbar && 'Ejecutar'}
+                                    {!compactToolbar && t.workspace.toolbar.run}
                                 </button>
                                 <button
                                     onClick={runFullScript}
                                     disabled={!activeTabConnection || running}
-                                    title="Ejecutar TODOS los statements del editor en orden, uno por uno (Ctrl+Shift+Enter)"
+                                    title={t.workspace.toolbar.runAll}
                                     className={TOOLBAR_ICON}
                                 >
                                     <Icon name="playlist_play" size={16} />
@@ -3605,10 +3612,10 @@ export default function Workspace({
                                     disabled={!running}
                                     title={
                                         !running
-                                            ? 'Cancelar: deshabilitado, no hay ninguna consulta corriendo en esta pestaña'
+                                            ? t.workspace.toolbar.cancelDisabled
                                             : liveRunCount > 1
-                                              ? `Interrumpir las ${liveRunCount} corridas de esta pestaña. No toca lo que estén ejecutando las demás.`
-                                              : 'Interrumpir la consulta que está corriendo en esta pestaña. No toca lo que estén ejecutando las demás.'
+                                              ? t.workspace.toolbar.interruptMany(liveRunCount)
+                                              : t.workspace.toolbar.interruptOne
                                     }
                                     className={running ? `${TOOLBAR_BTN} bg-error-container text-on-error-container hover:opacity-90` : TOOLBAR_ICON}
                                 >
@@ -3622,7 +3629,7 @@ export default function Workspace({
                                         <button
                                             onClick={() => void runExplain(false)}
                                             disabled={!activeTabConnection}
-                                            title="Explain: muestra el plan de ejecución SIN correr nada. Explica lo que tengas seleccionado; sin selección, la sentencia donde está el cursor — no el archivo entero"
+                                            title={t.workspace.toolbar.explain}
                                             className={TOOLBAR_ICON}
                                         >
                                             <Icon name="query_stats" size={16} />
@@ -3637,7 +3644,7 @@ export default function Workspace({
                                         <button
                                             onClick={() => void runExplain(true)}
                                             disabled={!activeTabConnection}
-                                            title="Explain Analyze — EJECUTA la consulta de verdad contra la base y muestra el plan con filas y tiempos reales. Corre lo seleccionado; sin selección, la sentencia donde está el cursor. Si modifica datos se pide confirmación y la ejecución va en una transacción que se revierte"
+                                            title={t.workspace.toolbar.explainAnalyze}
                                             className={`${TOOLBAR_ICON} hover:bg-tertiary/10`}
                                         >
                                             <Icon name="analytics" size={16} className="text-tertiary" />
@@ -3648,7 +3655,7 @@ export default function Workspace({
                                         <button
                                             onClick={refreshMetadata}
                                             disabled={!activeTabConnection}
-                                            title="Refrescar el catálogo: vuelve a leer tablas y columnas de la base (F5) — usalo si acabás de crear o alterar una tabla"
+                                            title={t.workspace.toolbar.refresh}
                                             className={TOOLBAR_ICON}
                                         >
                                             <Icon name="refresh" size={16} />
@@ -3676,11 +3683,11 @@ export default function Workspace({
                                 {txOpen ? (
                                     <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-tertiary-container py-0.5 pl-2 pr-1 text-xs text-on-tertiary-container">
                                         <Icon name="warning" size={13} />
-                                        <span className="font-medium">Transacción abierta</span>
+                                        <span className="font-medium">{t.workspace.toolbar.txOpen}</span>
                                         <button
                                             onClick={() => void commitTransaction()}
                                             disabled={txBusy}
-                                            title="Commit: confirma de forma permanente todos los cambios (INSERT/UPDATE/DELETE) hechos desde que se abrió la transacción, y vuelve a auto-commit"
+                                            title={t.workspace.toolbar.commit}
                                             className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container hover:opacity-90 disabled:opacity-40"
                                         >
                                             <Icon name="check_circle" size={13} />
@@ -3688,7 +3695,7 @@ export default function Workspace({
                                         <button
                                             onClick={() => void rollbackTransaction()}
                                             disabled={txBusy}
-                                            title="Rollback: descarta todos los cambios pendientes de la transacción, vuelve al estado previo a abrirla y reactiva el auto-commit"
+                                            title={t.workspace.toolbar.rollback}
                                             className="flex h-5 w-5 items-center justify-center rounded-full bg-error-container text-on-error-container hover:opacity-90 disabled:opacity-40"
                                         >
                                             <Icon name="undo" size={13} />
@@ -3698,7 +3705,7 @@ export default function Workspace({
                                     <button
                                         onClick={() => void beginTransaction()}
                                         disabled={txBusy}
-                                        title="Auto-commit activo: cada statement se aplica solo apenas termina. Clic para pasar a transacción manual — a partir de ahí los cambios quedan pendientes hasta que hagas Commit o Rollback"
+                                        title={t.workspace.toolbar.autoCommit}
                                         className={TOOLBAR_ICON_ON}
                                     >
                                         <Icon name="bolt" size={16} filled />
@@ -3707,13 +3714,13 @@ export default function Workspace({
                             </>
                         )}
 
-                        {isSqlActive && activeTabConnection?.dbType === 'oracle' && (
+                        {isSqlActive && isOracleActive && (
                             <button
                                 onClick={() => setDbmsOutputEnabled(!dbmsOutputEnabled)}
                                 title={
                                     dbmsOutputEnabled
-                                        ? 'DBMS_OUTPUT activado: se captura el log de DBMS_OUTPUT.PUT_LINE de cada bloque PL/SQL y aparece en su propia solapa. Clic para desactivarlo — en un script con muchos bloques ahorra los round-trips de ENABLE/GET_LINE'
-                                        : 'DBMS_OUTPUT desactivado: los PUT_LINE de tus bloques PL/SQL no se leen ni se muestran. Clic para capturarlos'
+                                        ? t.workspace.toolbar.dbmsOn
+                                        : t.workspace.toolbar.dbmsOff
                                 }
                                 className={dbmsOutputEnabled ? TOOLBAR_ICON_ON : TOOLBAR_ICON}
                             >
@@ -3727,7 +3734,7 @@ export default function Workspace({
                         {isSqlActive && editorMetadataLoading && (
                             <span
                                 className="flex h-7 w-7 shrink-0 items-center justify-center"
-                                title="Leyendo tablas, columnas y rutinas de la conexión para el autocompletado del editor"
+                                title={t.workspace.toolbar.loadingCatalog}
                             >
                                 <span
                                     aria-hidden
@@ -3738,7 +3745,7 @@ export default function Workspace({
                         {isSqlActive && !editorMetadataLoading && indexError && (
                             <span
                                 className="flex h-7 w-7 shrink-0 items-center justify-center text-error"
-                                title={`El editor no pudo leer el catálogo de esta conexión, así que el autocompletado solo ofrece palabras clave y funciones — sin tablas ni columnas. Motivo: ${indexError}. Suele ser permisos sobre el diccionario de datos o una conexión que se cayó; reconectar vuelve a intentarlo.`}
+                                title={t.workspace.toolbar.catalogError({reason: indexError})}
                             >
                                 <Icon name="warning" size={16} />
                             </span>
@@ -3758,8 +3765,8 @@ export default function Workspace({
                                 }
                                 size="sm"
                                 variant="ghost"
-                                ariaLabel="Schema activo"
-                                title="Schema activo de esta conexión: acota el autocompletado del editor y es el que se asume cuando escribís una tabla sin prefijo"
+                                ariaLabel={t.workspace.toolbar.schemaAria}
+                                title={t.workspace.toolbar.schemaTitle}
                                 className="max-w-44"
                             />
                         )}
@@ -3774,11 +3781,11 @@ export default function Workspace({
                                         icon: <Icon name="database" size={14} />,
                                     }))}
                                     onChange={(v) => selectMongoDatabase(activeTabConnection.id, v)}
-                                    placeholder="elegí una base"
+                                    placeholder={t.workspace.toolbar.mongoPlaceholder}
                                     size="sm"
                                     variant="ghost"
-                                    ariaLabel="Base de datos activa de MongoDB"
-                                    title="Base de datos a la que apunta `db` en el editor mongosh — cambiarla acá reapunta todos los comandos de esta pestaña"
+                                    ariaLabel={t.workspace.toolbar.mongoAria}
+                                    title={t.workspace.toolbar.mongoTitle}
                                     className="max-w-44"
                                 />
                                 <button
@@ -3786,8 +3793,8 @@ export default function Workspace({
                                     disabled={!mongoDbByConn[activeTabConnection.id]}
                                     title={
                                         mongoDbByConn[activeTabConnection.id]
-                                            ? 'Asistente de consulta: armá un find() visualmente (colección, condiciones, orden, límite) — se abre en una pestaña de editor y se ejecuta'
-                                            : 'Asistente de consulta: elegí primero una base de datos, el asistente necesita saber sobre qué colecciones armar el find()'
+                                            ? t.workspace.toolbar.wizard
+                                            : t.workspace.toolbar.wizardDisabled
                                     }
                                     className={TOOLBAR_ICON}
                                 >
@@ -3805,8 +3812,8 @@ export default function Workspace({
                             className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap px-1 text-xs text-on-surface-variant"
                             title={
                                 activeTabConnection
-                                    ? `Esta pestaña ejecuta contra la conexión "${activeTabConnection.name}" (${dbTypeLabel(activeTabConnection.dbType)}). Para cambiarla, usá el selector que está a la izquierda del título de la pestaña.`
-                                    : 'Esta pestaña no está vinculada a ninguna conexión, así que todavía no puede ejecutar nada. Vinculala con el ícono que está a la izquierda del título de la pestaña.'
+                                    ? t.workspace.toolbar.boundTitle({name: activeTabConnection.name, engine: dbTypeLabel(activeTabConnection.dbType)})
+                                    : t.workspace.toolbar.unboundTitle
                             }
                         >
                             <span
@@ -3819,7 +3826,7 @@ export default function Workspace({
                                 contra la réplica de Postgres. */}
                             {activeTabConnection && <DbTypeIcon dbType={activeTabConnection.dbType} size={13} />}
                             <span className={`truncate ${activeTabConnection ? 'text-on-surface' : ''}`}>
-                                {activeTabConnection ? activeTabConnection.name : 'Sin conexión'}
+                                {activeTabConnection ? activeTabConnection.name : t.workspace.toolbar.noConnection}
                             </span>
                         </span>
 
@@ -4161,7 +4168,7 @@ export default function Workspace({
                             startEditorResize. */}
                         <div
                             onMouseDown={startEditorResize}
-                            title="Arrastrar para cambiar el alto del editor — el tamaño queda guardado"
+                            title={t.workspace.bottom.resizeTitle}
                             className="group flex h-1.5 shrink-0 cursor-row-resize items-center justify-center bg-surface-container-low hover:bg-primary/30"
                         >
                             <div className="h-0.5 w-8 rounded-full bg-outline-variant group-hover:bg-primary" />
@@ -4178,7 +4185,7 @@ export default function Workspace({
                         <div className="flex items-center gap-1 border-b border-outline-variant bg-surface-container px-2 pt-1">
                             <button
                                 onClick={() => selectBottomTab('results')}
-                                title="Resultado de la última ejecución: la grilla de filas devueltas"
+                                title={t.workspace.bottom.resultsTitle}
                                 className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
                                     activeBottomTab === 'results'
                                         ? 'bg-surface text-on-surface'
@@ -4186,12 +4193,12 @@ export default function Workspace({
                                 }`}
                             >
                                 <Icon name="table_chart" size={14} className="opacity-70" />
-                                Resultados
+                                {t.workspace.bottom.results}
                             </button>
                             {!isRedisActive && !isMongoActive && (
                                 <button
                                     onClick={() => selectBottomTab('console')}
-                                    title="Consola de ejecución: cada statement del último script corrido, con su texto completo y si terminó OK (con duración) o con error — como el output de un cliente SQL de escritorio"
+                                    title={t.workspace.bottom.consoleTitle}
                                     className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
                                         activeBottomTab === 'console'
                                             ? 'bg-surface text-on-surface'
@@ -4199,7 +4206,7 @@ export default function Workspace({
                                     }`}
                                 >
                                     <Icon name="terminal" size={14} className="opacity-70" />
-                                    Consola
+                                    {t.workspace.bottom.console}
                                     {consoleLog.some((e) => e.status === 'error') && (
                                         <Icon name="error" size={14} className="text-error" filled />
                                     )}
@@ -4216,7 +4223,7 @@ export default function Workspace({
                             {dbmsOutputLines.length > 0 && (
                                 <button
                                     onClick={() => selectBottomTab('dbms')}
-                                    title={`Salida de DBMS_OUTPUT.PUT_LINE del último bloque PL/SQL ejecutado — ${dbmsOutputLines.length} ${dbmsOutputLines.length === 1 ? 'línea' : 'líneas'}, con filtro y copiado`}
+                                    title={t.workspace.bottom.dbmsTitle(dbmsOutputLines.length)}
                                     className={`flex items-center gap-1.5 rounded-t-xs px-3 py-1 text-xs ${
                                         activeBottomTab === 'dbms'
                                             ? 'bg-surface text-on-surface'
@@ -4224,7 +4231,7 @@ export default function Workspace({
                                     }`}
                                 >
                                     <Icon name="wysiwyg" size={14} className="opacity-70" />
-                                    DBMS_OUTPUT
+                                    {t.workspace.bottom.dbmsOutput}
                                     <span className="rounded-full bg-primary/15 px-1.5 font-mono text-ui-10 tabular-nums text-primary">
                                         {dbmsOutputLines.length}
                                     </span>
@@ -4233,7 +4240,7 @@ export default function Workspace({
                             {showExplain && (
                                 <button
                                     onClick={() => selectBottomTab('explain')}
-                                    title="Plan de ejecución de la última consulta explicada, con métricas y diagnóstico. Se cierra con la X, como una pestaña de resultados."
+                                    title={t.workspace.bottom.explainTitle}
                                     className={`flex items-center gap-1.5 rounded-t-xs py-1 pl-3 pr-1.5 text-xs ${
                                         activeBottomTab === 'explain'
                                             ? 'bg-surface text-on-surface'
@@ -4241,11 +4248,11 @@ export default function Workspace({
                                     }`}
                                 >
                                     <Icon name="query_stats" size={14} className="opacity-70" />
-                                    {explainPlan?.analyzed ? 'Explain Analyze' : 'Explain'}
+                                    {explainPlan?.analyzed ? t.workspace.bottom.explainAnalyze : t.workspace.bottom.explain}
                                     {explainCriticalCount > 0 && (
                                         <span
                                             className="rounded-full bg-error/20 px-1 text-ui-9 font-semibold text-error"
-                                            title={`${explainCriticalCount} problema(s) crítico(s) detectado(s) en el plan`}
+                                            title={t.workspace.bottom.criticalIssues(explainCriticalCount)}
                                         >
                                             {explainCriticalCount}
                                         </span>
@@ -4257,7 +4264,7 @@ export default function Workspace({
                                             e.stopPropagation()
                                             closeExplain()
                                         }}
-                                        title="Cierra el plan de ejecución"
+                                        title={t.workspace.bottom.closeExplain}
                                         className="ml-0.5 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                                     >
                                         <Icon name="close" size={12} />
@@ -4319,31 +4326,32 @@ export default function Workspace({
                             {activeResult && activeResult.rows.length > 0 && (
                                 <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11 text-on-surface-variant">
                                     <span>
-                                        Mostrando <span className="font-mono text-on-surface">{activeResult.rows.length.toLocaleString()}</span>
-                                        {activeResult.hasMore ? '+' : ''} filas
+                                        {t.workspace.paging.showing}{' '}
+                                        <span className="font-mono text-on-surface">{formatNumber(activeResult.rows.length)}</span>
+                                        {activeResult.hasMore ? '+' : ''} {t.workspace.paging.rows}
                                     </span>
 
                                     {activeResult.hasMore && !activeResult.loadingMore && (
                                         <button
                                             onClick={fetchMoreRows}
-                                            title="Traer las próximas filas del mismo resultado — no vuelve a ejecutar la consulta, sigue leyendo el cursor abierto"
+                                            title={t.workspace.paging.loadMoreTitle}
                                             className="rounded bg-surface-variant px-2 py-0.5 text-on-surface-variant hover:bg-surface-container-highest"
                                         >
-                                            Cargar {pageSize === 0 ? 'todo' : pageSize.toLocaleString()} más
+                                            {t.workspace.paging.loadMore({n: pageSize === 0 ? null : formatNumber(pageSize)})}
                                         </button>
                                     )}
                                     {activeResult.loadingMore && (
                                         <>
                                             <span className="flex items-center gap-1 text-primary">
                                                 <span aria-hidden className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                                                Cargando más…
+                                                {t.workspace.paging.loadingMore}
                                             </span>
                                             <button
                                                 onClick={cancelQuery}
-                                                title="Cancelar la carga de esta página — las filas ya traídas se conservan"
+                                                title={t.workspace.paging.cancelLoadTitle}
                                                 className="rounded bg-error-container px-2 py-0.5 text-on-error-container hover:opacity-90"
                                             >
-                                                Cancelar
+                                                {t.common.cancel}
                                             </button>
                                         </>
                                     )}
@@ -4357,17 +4365,17 @@ export default function Workspace({
                                         (activeResult.pagingClosedBy ? (
                                             <span
                                                 className="flex items-center gap-1 text-tertiary"
-                                                title={`El cursor que paginaba este resultado se cerró porque ${activeResult.pagingClosedBy}: el motor guarda un solo cursor pausado por conexión (backend/query/paging.go). Volvé a ejecutar la consulta para seguir leyendo desde el principio.`}
+                                                title={t.workspace.paging.closedTitle({reason: pagingClosedReason})}
                                             >
                                                 <Icon name="link_off" size={12} />
-                                                paginación cerrada — {activeResult.pagingClosedBy}
+                                                {t.workspace.paging.closed({reason: pagingClosedReason})}
                                             </span>
                                         ) : (
-                                            <span className="opacity-70">— resultado completo</span>
+                                            <span className="opacity-70">{t.workspace.paging.complete}</span>
                                         ))}
 
-                                    <label className="ml-auto flex items-center gap-1" title="Cuántas filas trae cada página. 'Todas' desactiva la paginación — cuidado con tablas grandes. Se guarda como preferencia.">
-                                        Filas por página
+                                    <label className="ml-auto flex items-center gap-1" title={t.workspace.paging.pageSizeTitle}>
+                                        {t.workspace.paging.pageSize}
                                         <select
                                             value={pageSize}
                                             onChange={(e) => {
@@ -4379,10 +4387,10 @@ export default function Workspace({
                                         >
                                             {[10, 100, 250, 500, 1000, 5000].map((n) => (
                                                 <option key={n} value={n}>
-                                                    {n.toLocaleString()}
+                                                    {formatNumber(n)}
                                                 </option>
                                             ))}
-                                            <option value={0}>Todas</option>
+                                            <option value={0}>{t.workspace.paging.all}</option>
                                         </select>
                                     </label>
                                 </div>
@@ -4418,32 +4426,32 @@ export default function Workspace({
                                 className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary"
                             />
                             {runProgress && runProgress.total > 1
-                                ? `Ejecutando ${runProgress.current}/${runProgress.total}…`
-                                : 'Ejecutando…'}
+                                ? t.workspace.footer.runningProgress({current: runProgress.current, total: runProgress.total})
+                                : t.workspace.footer.running}
                             {/* El progreso que se muestra es el de la última
                                 corrida; cuando hay más de una en esta pestaña
                                 hay que decirlo, o el "1/3" parece ser todo lo
                                 que está pasando. */}
                             {liveRunCount > 1 && (
                                 <span
-                                    title={`${liveRunCount} corridas en curso en esta pestaña. El progreso es el de la última; "Cancelar" las corta todas.`}
+                                    title={t.workspace.footer.liveRunsTitle(liveRunCount)}
                                     className="rounded-full bg-primary/15 px-1.5 text-ui-10 font-semibold text-primary"
                                 >
-                                    {liveRunCount} corridas
+                                    {t.workspace.footer.liveRuns(liveRunCount)}
                                 </span>
                             )}
                         </span>
                     )}
-                    {!isRedisActive && activeResult?.status === 'done' && (
+                    {!isRedisActive && resultDone && (
                         <span className="shrink-0">
-                            {activeResult.rowsAffected} filas ·{' '}
-                            <span title={`${activeResult.durationMs} ms`}>{formatElapsed(activeResult.durationMs)}</span>
+                            {t.workspace.footer.rows({rows: formatNumber(activeResult.rowsAffected)})}{' '}
+                            <span title={t.workspace.footer.durationMs({ms: formatNumber(activeResult.durationMs)})}>{formatElapsed(activeResult.durationMs)}</span>
                         </span>
                     )}
-                    {!isRedisActive && activeResult?.status === 'cancelled' && (
-                        <span className="shrink-0 text-tertiary">Cancelada</span>
+                    {!isRedisActive && resultCancelled && (
+                        <span className="shrink-0 text-tertiary">{t.workspace.footer.cancelled}</span>
                     )}
-                    {!isRedisActive && activeResult?.status === 'error' && (
+                    {!isRedisActive && resultError && activeResult && (
                         <>
                             <span className="min-w-0 flex-1 truncate text-error" title={activeResult.error}>
                                 {activeResult.error}
@@ -4457,11 +4465,11 @@ export default function Workspace({
                             {activeTabConnection && (
                                 <button
                                     onClick={() => setNlBar({errorText: activeResult.error})}
-                                    title="Le pasa al agente el error, la consulta y el esquema de las tablas que menciona, y propone la versión corregida. No la ejecuta: la aplicás vos."
+                                    title={t.workspace.footer.fixTitle}
                                     className="flex shrink-0 items-center gap-1 rounded bg-error-container px-2 py-0.5 text-ui-11 text-on-error-container hover:opacity-90"
                                 >
                                     <Icon name="healing" size={12} />
-                                    Explicar y corregir
+                                    {t.workspace.footer.fix}
                                 </button>
                             )}
                         </>
@@ -4548,9 +4556,9 @@ export default function Workspace({
 
             {showBackupPasswordDialog && (
                 <PasswordConfirmDialog
-                    title="Confirmar backup del vault"
-                    description="El backup incluye tus conexiones cifradas y puede terminar en otra máquina — reingresá tu clave maestra para confirmar. Sin ella, el backup no sirve de nada aunque alguien lo copie."
-                    confirmLabel="Guardar backup"
+                    title={t.workspace.dialogs.backupTitle}
+                    description={t.workspace.dialogs.backupDescription}
+                    confirmLabel={t.workspace.dialogs.backupConfirm}
                     onConfirm={backupVault}
                     onClose={() => setShowBackupPasswordDialog(false)}
                 />
@@ -4562,9 +4570,9 @@ export default function Workspace({
 
             {pendingRedisCommandRun && activeTabConnection && (
                 <ConfirmDialog
-                    title="Comando destructivo"
-                    description="Este script incluye FLUSHALL/FLUSHDB, que borra datos de Redis de forma irreversible. ¿Ejecutar de todas formas?"
-                    confirmLabel="Ejecutar"
+                    title={t.workspace.dialogs.destructiveTitle}
+                    description={t.workspace.dialogs.redisDescription}
+                    confirmLabel={t.workspace.dialogs.run}
                     danger
                     onConfirm={() => runRedisText(activeTabConnection, pendingRedisCommandRun)}
                     onClose={() => setPendingRedisCommandRun(null)}
@@ -4572,9 +4580,9 @@ export default function Workspace({
             )}
             {pendingAnalyzeRun && activeTabConnection && (
                 <ConfirmDialog
-                    title="Explain Analyze ejecuta la consulta"
-                    description="Este script modifica datos o estructura (INSERT/UPDATE/DELETE/DDL). EXPLAIN ANALYZE lo ejecuta de verdad para poder medirlo. Se correrá dentro de una transacción que se revierte al terminar, así que no deberían quedar cambios aplicados — pero los disparadores, secuencias y efectos fuera de la transacción sí ocurren."
-                    confirmLabel="Ejecutar y medir"
+                    title={t.workspace.dialogs.analyzeTitle}
+                    description={t.workspace.dialogs.analyzeDescription}
+                    confirmLabel={t.workspace.dialogs.analyzeConfirm}
                     danger
                     onConfirm={() => void executeExplain(pendingAnalyzeRun, true)}
                     onClose={() => setPendingAnalyzeRun(null)}
@@ -4584,7 +4592,7 @@ export default function Workspace({
                 <ConfirmDialog
                     title={pendingSqlRun.title}
                     description={pendingSqlRun.description}
-                    confirmLabel="Ejecutar igual"
+                    confirmLabel={t.workspace.dialogs.runAnyway}
                     danger
                     onConfirm={() => runText(activeTabConnection, pendingSqlRun.text)}
                     onClose={() => setPendingSqlRun(null)}
@@ -4616,9 +4624,9 @@ export default function Workspace({
             )}
             {pendingMongoCommandRun && activeTabConnection && (
                 <ConfirmDialog
-                    title="Comando destructivo"
-                    description="Este script incluye un deleteMany/updateMany con filtro vacío o un drop(), que afecta o elimina datos de forma irreversible. ¿Ejecutar de todas formas?"
-                    confirmLabel="Ejecutar"
+                    title={t.workspace.dialogs.destructiveTitle}
+                    description={t.workspace.dialogs.mongoDescription}
+                    confirmLabel={t.workspace.dialogs.run}
                     danger
                     onConfirm={() => runMongoText(activeTabConnection, pendingMongoCommandRun)}
                     onClose={() => setPendingMongoCommandRun(null)}
@@ -4626,9 +4634,9 @@ export default function Workspace({
             )}
             {remoteConflict && (
                 <ConfirmDialog
-                    title="El archivo cambió en el servidor"
-                    description={`"${remoteConflict.path}" fue modificado en ${remoteConflict.connName} desde que lo abriste. Si continuás, tus cambios reemplazan los que están ahora en el servidor y esos se pierden. Cancelá si preferís volver a abrirlo y comparar primero.`}
-                    confirmLabel="Sobrescribir igual"
+                    title={t.workspace.dialogs.remoteTitle}
+                    description={t.workspace.dialogs.remoteDescription({path: remoteConflict.path, conn: remoteConflict.connName})}
+                    confirmLabel={t.workspace.dialogs.overwrite}
                     danger
                     onConfirm={() => {
                         const tab = tabsRef.current.find((t) => t.id === remoteConflict.tabId)
@@ -4664,7 +4672,7 @@ export default function Workspace({
                         } else {
                             const tab: EditorTab = {
                                 id: newTabId(),
-                                title: 'Consulta Mongo',
+                                title: tr().workspace.tabs.mongoQuery,
                                 path: null,
                                 content: query + '\n',
                                 dirty: false,

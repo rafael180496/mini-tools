@@ -1,9 +1,11 @@
 import {useState} from 'react'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 import ExportMenu from './ExportMenu'
 import JsonView from './JsonView'
 import MongoDocTable from './MongoDocTable'
 import {mongoResultToTable} from '../../lib/mongoResultToTable'
+import {formatElapsed} from '../../lib/formatElapsed'
 
 // One accumulated UI row per mongosh command run — owner-defines-type pattern,
 // imported by Workspace.tsx (same as RedisResultView's RedisCommandResult).
@@ -29,11 +31,12 @@ interface MongoResultViewProps {
 // ExportMenu (CSV/JSON/XLSX) is still reused per command via the
 // mongoResultToTable flatten adapter.
 export default function MongoResultView({results}: MongoResultViewProps) {
+    const t = useT()
     const [viewMode, setViewMode] = useState<'json' | 'table'>('json')
     const [search, setSearch] = useState('')
 
     if (results.length === 0) {
-        return <p className="p-3 text-xs text-on-surface-variant/60">Sin resultados todavía — ejecutá un comando MongoDB.</p>
+        return <p className="p-3 text-xs text-on-surface-variant/60">{t.results.mongo.empty}</p>
     }
 
     const needle = search.trim().toLowerCase()
@@ -44,17 +47,17 @@ export default function MongoResultView({results}: MongoResultViewProps) {
                 <div className="inline-flex overflow-hidden rounded-md border border-outline-variant">
                     <button
                         onClick={() => setViewMode('json')}
-                        title="Ver los documentos como JSON con color"
+                        title={t.results.mongo.jsonTitle}
                         className={`px-2 py-0.5 ${viewMode === 'json' ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
                     >
                         JSON
                     </button>
                     <button
                         onClick={() => setViewMode('table')}
-                        title="Ver los documentos como tabla (una columna por campo de nivel superior)"
+                        title={t.results.mongo.tableTitle}
                         className={`px-2 py-0.5 ${viewMode === 'table' ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
                     >
-                        Tabla
+                        {t.results.mongo.table}
                     </button>
                 </div>
                 <div className="relative flex-1">
@@ -62,8 +65,8 @@ export default function MongoResultView({results}: MongoResultViewProps) {
                     <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Filtrar documentos por texto…"
-                        title="Muestra solo los documentos que contienen este texto (búsqueda en el JSON del documento)"
+                        placeholder={t.results.mongo.filterPlaceholder}
+                        title={t.results.mongo.filterTitle}
                         className="w-full rounded border border-outline-variant bg-surface-container-low py-1 pl-7 pr-2 text-on-surface"
                     />
                 </div>
@@ -74,6 +77,7 @@ export default function MongoResultView({results}: MongoResultViewProps) {
                     const allDocs = r.documents ?? []
                     const docs = needle ? allDocs.filter((d) => d.toLowerCase().includes(needle)) : allDocs
                     const table = docs.length > 0 ? mongoResultToTable(docs) : {columns: [], rows: []}
+                    const done = r.status === 'done'
 
                     return (
                         <div key={i} className="mb-2 rounded-lg border border-outline-variant bg-surface p-2">
@@ -86,26 +90,26 @@ export default function MongoResultView({results}: MongoResultViewProps) {
                                 <span className="flex-1 truncate font-mono text-on-surface" title={r.commandText}>
                                     {r.commandText}
                                 </span>
-                                {needle && r.status === 'done' && (
+                                {needle && done && (
                                     <span className="shrink-0 text-on-surface-variant/70">
                                         {docs.length}/{allDocs.length}
                                     </span>
                                 )}
                                 {r.summary && <span className="shrink-0 text-on-surface-variant">{r.summary}</span>}
-                                {r.status === 'done' && <span className="shrink-0 text-on-surface-variant">{r.durationMs}ms</span>}
-                                {r.status === 'done' && table.columns.length > 0 && <ExportMenu columns={table.columns} rows={table.rows} />}
+                                {done && <span className="shrink-0 text-on-surface-variant">{formatElapsed(r.durationMs ?? NaN)}</span>}
+                                {done && table.columns.length > 0 && <ExportMenu columns={table.columns} rows={table.rows} />}
                             </div>
                             <div className="font-mono text-xs">
                                 {r.status === 'error' ? (
                                     <p className="whitespace-pre-wrap break-words text-error">{r.error}</p>
                                 ) : r.status === 'cancelled' ? (
-                                    <p className="text-on-surface-variant">Cancelado.</p>
+                                    <p className="text-on-surface-variant">{t.results.mongo.cancelled}</p>
                                 ) : r.status === 'running' ? (
-                                    <p className="text-on-surface-variant">Ejecutando…</p>
+                                    <p className="text-on-surface-variant">{t.results.mongo.running}</p>
                                 ) : allDocs.length === 0 ? (
-                                    <p className="text-on-surface-variant">Sin documentos.</p>
+                                    <p className="text-on-surface-variant">{t.results.mongo.noDocuments}</p>
                                 ) : docs.length === 0 ? (
-                                    <p className="text-on-surface-variant">Ningún documento coincide con el filtro.</p>
+                                    <p className="text-on-surface-variant">{t.results.mongo.noMatch}</p>
                                 ) : viewMode === 'table' ? (
                                     <MongoDocTable columns={table.columns} rows={table.rows} />
                                 ) : (

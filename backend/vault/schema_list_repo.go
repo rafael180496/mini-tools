@@ -4,8 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // SaveSchemaListCache persists connID's list of visible schema/owner names
@@ -16,7 +17,7 @@ import (
 func (s *Store) SaveSchemaListCache(connID string, schemas []string) error {
 	schemasJSON, err := json.Marshal(schemas)
 	if err != nil {
-		return fmt.Errorf("vault: serializando lista de esquemas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: serializando lista de esquemas: %w", EN: "vault: serializing schema list: %w"}, err)
 	}
 
 	_, err = s.db.Exec(
@@ -25,7 +26,7 @@ func (s *Store) SaveSchemaListCache(connID string, schemas []string) error {
 		connID, string(schemasJSON), time.Now().Unix(),
 	)
 	if err != nil {
-		return fmt.Errorf("vault: guardando cache de lista de esquemas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando cache de lista de esquemas: %w", EN: "vault: saving schema list cache: %w"}, err)
 	}
 	return nil
 }
@@ -39,11 +40,11 @@ func (s *Store) GetSchemaListCache(connID string) (schemas []string, ok bool, er
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("vault: leyendo cache de lista de esquemas: %w", err)
+		return nil, false, i18n.Errorf(i18n.Msg{ES: "vault: leyendo cache de lista de esquemas: %w", EN: "vault: reading schema list cache: %w"}, err)
 	}
 
 	if err := json.Unmarshal([]byte(schemasJSON), &schemas); err != nil {
-		return nil, false, fmt.Errorf("vault: parseando cache de lista de esquemas: %w", err)
+		return nil, false, i18n.Errorf(i18n.Msg{ES: "vault: parseando cache de lista de esquemas: %w", EN: "vault: parsing schema list cache: %w"}, err)
 	}
 	return schemas, true, nil
 }
@@ -53,7 +54,7 @@ func (s *Store) GetSchemaListCache(connID string) (schemas []string, ok bool, er
 // different target database can have an entirely different set of schemas.
 func (s *Store) DeleteSchemaListCache(connID string) error {
 	if _, err := s.db.Exec(`DELETE FROM schema_list_cache WHERE connection_id = ?`, connID); err != nil {
-		return fmt.Errorf("vault: borrando cache de lista de esquemas: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: borrando cache de lista de esquemas: %w", EN: "vault: deleting schema list cache: %w"}, err)
 	}
 	return nil
 }

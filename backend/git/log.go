@@ -120,7 +120,7 @@ func (r *Runner) GetCommitLog(repoPath string, opts LogOptions) ([]CommitInfo, e
 		// "everything", so honouring --all here would silently undo the
 		// user's hidden branches.
 		for _, rev := range opts.Revs {
-			if err := checkRefArg("revisión", rev); err != nil {
+			if err := checkRefArg(argRevision, rev); err != nil {
 				return nil, err
 			}
 			args = append(args, rev)
@@ -128,7 +128,7 @@ func (r *Runner) GetCommitLog(repoPath string, opts LogOptions) ([]CommitInfo, e
 	} else if opts.All {
 		args = append(args, "--all")
 	} else if opts.Rev != "" {
-		if err := checkRefArg("revisión", opts.Rev); err != nil {
+		if err := checkRefArg(argRevision, opts.Rev); err != nil {
 			return nil, err
 		}
 		args = append(args, opts.Rev)
@@ -272,7 +272,7 @@ func (r *Runner) GetCommitStats(repoPath, hash string) (DiffStat, error) {
 	if err != nil {
 		return DiffStat{}, err
 	}
-	if err := checkRefArg("commit", hash); err != nil {
+	if err := checkRefArg(argCommit, hash); err != nil {
 		return DiffStat{}, err
 	}
 	out, err := r.runLocal(root, "show", "--numstat", "--format=", hash)

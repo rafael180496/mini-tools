@@ -14,16 +14,19 @@
 // away — a hex dump that silently lies is worse than no hex dump.
 
 import {tryPrettyPrintJSON} from './prettyPrintJSON'
+import {formatNumber, t} from '../i18n'
 
 export type RedisFormat = 'auto' | 'text' | 'json' | 'hex' | 'base64'
 
-export const REDIS_FORMATS: {value: RedisFormat; label: string; hint: string}[] = [
-    {value: 'auto', label: 'Auto', hint: 'Elige el formato según el contenido: JSON si parsea, texto si es legible, hexadecimal si son bytes'},
-    {value: 'text', label: 'Texto', hint: 'El valor tal cual, sin interpretar'},
-    {value: 'json', label: 'JSON', hint: 'Formatea e indenta el valor como JSON. Si no parsea, se muestra tal cual con el error.'},
-    {value: 'hex', label: 'Hex', hint: 'Volcado hexadecimal con la columna ASCII al costado — para valores binarios (locks, objetos serializados, contadores empaquetados)'},
-    {value: 'base64', label: 'Base64', hint: 'El valor codificado en Base64, listo para copiar a otra herramienta'},
-]
+// The labels and hints live in the dictionary (t().redis.formats.<value>) and
+// are resolved on every call: a module-level list with the text inside would
+// freeze in the startup language.
+const REDIS_FORMAT_VALUES: RedisFormat[] = ['auto', 'text', 'json', 'hex', 'base64']
+
+export function redisFormats(): {value: RedisFormat; label: string; hint: string}[] {
+    const d = t().redis.formats
+    return REDIS_FORMAT_VALUES.map((value) => ({value, ...d[value]}))
+}
 
 // U+FFFD, what the backend substitutes for bytes that are not valid UTF-8.
 const REPLACEMENT = '�'
@@ -88,11 +91,11 @@ export function formatError(raw: string, format: RedisFormat): string {
             JSON.parse(raw.trim())
             return ''
         } catch (e) {
-            return `No es JSON válido: ${String(e).replace(/^SyntaxError:\s*/, '')}`
+            return t().redis.formatErrors.invalidJson({error: String(e).replace(/^SyntaxError:\s*/, '')})
         }
     }
     if ((format === 'hex' || format === 'base64') && raw.includes(REPLACEMENT)) {
-        return 'Este valor tenía bytes que no son UTF-8 válido y ya fueron reemplazados al leerlo: lo que ves acá son los bytes reemplazados, no los originales.'
+        return t().redis.formatErrors.replacedBytes
     }
     return ''
 }
@@ -123,7 +126,7 @@ function hexDump(raw: string): string {
         lines.push(`${off.toString(16).padStart(8, '0')}  ${hex.join(' ')}  |${ascii}|`)
     }
 
-    return lines.length > 0 ? lines.join('\n') : '(vacío)'
+    return lines.length > 0 ? lines.join('\n') : t().redis.formatErrors.emptyDump
 }
 
 function toBase64(raw: string): string {
@@ -157,10 +160,10 @@ export interface TTLDisplay {
 // to read and mentally convert a seconds count.
 export function describeTTL(ttlSeconds: number): TTLDisplay {
     if (ttlSeconds === TTL_MISSING) {
-        return {label: 'no existe', tone: 'danger', hint: 'Redis dice que la clave no existe — lo más probable es que haya vencido desde que se listó.'}
+        return {label: t().redis.ttl.missing, tone: 'danger', hint: t().redis.ttl.missingHint}
     }
     if (ttlSeconds === TTL_NO_EXPIRY) {
-        return {label: 'sin vencimiento', tone: 'none', hint: 'La clave es permanente: no tiene TTL configurado.'}
+        return {label: t().redis.ttl.noExpiry, tone: 'none', hint: t().redis.ttl.noExpiryHint}
     }
 
     let tone: TTLDisplay['tone'] = 'ok'
@@ -170,7 +173,7 @@ export function describeTTL(ttlSeconds: number): TTLDisplay {
     return {
         label: formatDuration(ttlSeconds),
         tone,
-        hint: `Vence en ${formatDuration(ttlSeconds)} (${ttlSeconds.toLocaleString('es')} segundos).`,
+        hint: t().redis.ttl.expiresIn({duration: formatDuration(ttlSeconds), seconds: formatNumber(ttlSeconds)}),
     }
 }
 

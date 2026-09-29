@@ -1,6 +1,7 @@
 import {linter, type Diagnostic} from '@codemirror/lint'
 import type {Extension} from '@codemirror/state'
 import {NoteTitles} from '../../wailsjs/go/main/App'
+import {t} from '../i18n'
 
 // Revisión del texto de una nota.
 //
@@ -65,8 +66,8 @@ export function notesLint(onCreateNote: (title: string) => void): Extension {
                 from: m.index,
                 to: m.index + m[0].length,
                 severity: 'info',
-                message: `La nota «${target}» todavía no existe. En un grafo de conocimiento eso es normal: el enlace queda pendiente hasta que la escribas.`,
-                actions: [{name: 'Crear la nota', apply: () => onCreateNote(target)}],
+                message: t().notes.lint.brokenLink({target}),
+                actions: [{name: t().notes.lint.createNote, apply: () => onCreateNote(target)}],
             })
         }
 
@@ -88,11 +89,10 @@ export function notesLint(onCreateNote: (title: string) => void): Extension {
                         from,
                         to: from + h[2].length + h[3].length,
                         severity: 'warning',
-                        message:
-                            'Un encabezado necesita un espacio después de las almohadillas. Sin el espacio esto es una ETIQUETA, no un título — es la confusión más común de Markdown.',
+                        message: t().notes.lint.headingSpace,
                         actions: [
                             {
-                                name: 'Convertir en título',
+                                name: t().notes.lint.convertToHeading,
                                 apply: (v, a) => {
                                     v.dispatch({changes: {from: a + h[2].length, insert: ' '}})
                                 },
@@ -108,7 +108,7 @@ export function notesLint(onCreateNote: (title: string) => void): Extension {
                         from: pos + url,
                         to: pos + url + 6,
                         severity: 'warning',
-                        message: 'Este enlace todavía tiene la dirección de ejemplo: reemplazá `url` por la real.',
+                        message: t().notes.lint.exampleUrl,
                     })
                 }
             }
@@ -122,11 +122,10 @@ export function notesLint(onCreateNote: (title: string) => void): Extension {
                 from: last,
                 to: Math.min(last + 3, doc.length),
                 severity: 'error',
-                message:
-                    'Este bloque de código no se cierra, así que todo lo que sigue se muestra como código. Agregá ``` al final.',
+                message: t().notes.lint.unclosedFence,
                 actions: [
                     {
-                        name: 'Cerrarlo al final',
+                        name: t().notes.lint.closeAtEnd,
                         apply: (v) => {
                             v.dispatch({changes: {from: v.state.doc.length, insert: '\n```\n'}})
                         },

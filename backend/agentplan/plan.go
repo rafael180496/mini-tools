@@ -33,6 +33,7 @@ package agentplan
 import (
 	"encoding/base64"
 	"encoding/json"
+	"mini-tools/backend/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,7 +70,7 @@ func claudePlan(home string) Plan {
 
 	raw, err := os.ReadFile(filepath.Join(home, ".claude.json"))
 	if err != nil {
-		p.Note = "No hay una sesión de Claude Code iniciada en esta máquina."
+		p.Note = i18n.T(i18n.Msg{ES: "No hay una sesión de Claude Code iniciada en esta máquina.", EN: "There is no Claude Code session signed in on this machine."})
 		return p
 	}
 	var doc struct {
@@ -83,7 +84,7 @@ func claudePlan(home string) Plan {
 		} `json:"oauthAccount"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		p.Note = "No se pudo leer la configuración de Claude Code."
+		p.Note = i18n.T(i18n.Msg{ES: "No se pudo leer la configuración de Claude Code.", EN: "The Claude Code configuration could not be read."})
 		return p
 	}
 
@@ -92,7 +93,7 @@ func claudePlan(home string) Plan {
 	// cuando está: es el que dice cuánto, no solo cuál.
 	tier := firstNonEmpty(doc.OAuth.OrgRateLimitTier, doc.OAuth.UserRateLimitTier)
 	if tier == "" && doc.OAuth.OrganizationType == "" {
-		p.Note = "La sesión de Claude Code no informa un plan."
+		p.Note = i18n.T(i18n.Msg{ES: "La sesión de Claude Code no informa un plan.", EN: "The Claude Code session does not report a plan."})
 		return p
 	}
 
@@ -104,10 +105,10 @@ func claudePlan(home string) Plan {
 		detail = append(detail, doc.OAuth.OrganizationType)
 	}
 	if doc.OAuth.HasExtraUsageEnabled {
-		detail = append(detail, "uso extra habilitado")
+		detail = append(detail, i18n.T(i18n.Msg{ES: "uso extra habilitado", EN: "extra usage enabled"}))
 	}
 	if doc.OAuth.ClaudeCodeTrialEndsAt != "" {
-		detail = append(detail, "en prueba")
+		detail = append(detail, i18n.T(i18n.Msg{ES: "en prueba", EN: "on trial"}))
 	}
 	p.Detail = strings.Join(detail, " · ")
 	return p
@@ -118,7 +119,7 @@ func codexPlan(home string) Plan {
 
 	raw, err := os.ReadFile(filepath.Join(home, ".codex", "auth.json"))
 	if err != nil {
-		p.Note = "No hay una sesión de Codex iniciada en esta máquina."
+		p.Note = i18n.T(i18n.Msg{ES: "No hay una sesión de Codex iniciada en esta máquina.", EN: "There is no Codex session signed in on this machine."})
 		return p
 	}
 	var doc struct {
@@ -128,25 +129,25 @@ func codexPlan(home string) Plan {
 		} `json:"tokens"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		p.Note = "No se pudo leer la sesión de Codex."
+		p.Note = i18n.T(i18n.Msg{ES: "No se pudo leer la sesión de Codex.", EN: "The Codex session could not be read."})
 		return p
 	}
 	if doc.Tokens.IDToken == "" {
 		// Con API key no hay plan de suscripción que informar: se paga por uso.
-		p.Note = "Codex está autenticado por API key, que no tiene plan asociado."
+		p.Note = i18n.T(i18n.Msg{ES: "Codex está autenticado por API key, que no tiene plan asociado.", EN: "Codex is authenticated with an API key, which has no associated plan."})
 		return p
 	}
 
 	claims := jwtClaims(doc.Tokens.IDToken)
 	if claims == nil {
-		p.Note = "La sesión de Codex no informa un plan."
+		p.Note = i18n.T(i18n.Msg{ES: "La sesión de Codex no informa un plan.", EN: "The Codex session does not report a plan."})
 		return p
 	}
 	var auth struct {
 		PlanType string `json:"chatgpt_plan_type"`
 	}
 	if err := json.Unmarshal(claims["https://api.openai.com/auth"], &auth); err != nil || auth.PlanType == "" {
-		p.Note = "La sesión de Codex no informa un plan."
+		p.Note = i18n.T(i18n.Msg{ES: "La sesión de Codex no informa un plan.", EN: "The Codex session does not report a plan."})
 		return p
 	}
 
@@ -161,7 +162,7 @@ func antigravityPlan(home string) Plan {
 
 	dir := filepath.Join(home, ".gemini", "antigravity-cli")
 	if _, err := os.Stat(dir); err != nil {
-		p.Note = "No se encontró Antigravity CLI en esta máquina."
+		p.Note = i18n.T(i18n.Msg{ES: "No se encontró Antigravity CLI en esta máquina.", EN: "Antigravity CLI was not found on this machine."})
 		return p
 	}
 
@@ -178,11 +179,11 @@ func antigravityPlan(home string) Plan {
 
 	switch {
 	case onboarding.Enterprise:
-		p.Detail = "cuenta de empresa"
+		p.Detail = i18n.T(i18n.Msg{ES: "cuenta de empresa", EN: "business account"})
 	case onboarding.Consumer:
-		p.Detail = "cuenta personal"
+		p.Detail = i18n.T(i18n.Msg{ES: "cuenta personal", EN: "personal account"})
 	}
-	p.Note = "Antigravity no publica su plan en el disco: el límite semanal y el de cinco horas los contesta el servidor, y se ven con /usage dentro de la sesión."
+	p.Note = i18n.T(i18n.Msg{ES: "Antigravity no publica su plan en el disco: el límite semanal y el de cinco horas los contesta el servidor, y se ven con /usage dentro de la sesión.", EN: "Antigravity does not publish its plan on disk: the weekly and five-hour limits are answered by the server, and are shown with /usage inside the session."})
 	return p
 }
 

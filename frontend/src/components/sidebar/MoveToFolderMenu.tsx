@@ -2,6 +2,7 @@ import {useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import {createPortal} from 'react-dom'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 import type {FolderNode} from '../../lib/folderTree'
 
 // Portal-based "Mover a carpeta ▸" menu on a connection row — same
@@ -23,6 +24,7 @@ export default function MoveToFolderMenu({
     flatFolders: {folder: vault.Folder; depth: number}[]
     onMove: (connId: string, folderId: string) => void
 }) {
+    const t = useT()
     const [open, setOpen] = useState(false)
     const [pos, setPos] = useState({top: 0, left: 0})
     const btnRef = useRef<HTMLButtonElement>(null)
@@ -39,7 +41,7 @@ export default function MoveToFolderMenu({
             <button
                 ref={btnRef}
                 onClick={openMenu}
-                title="Mover a carpeta"
+                title={t.sidebar.folders.moveToFolder}
                 className="hidden shrink-0 sidebar-icon group-hover:block"
             >
                 <Icon name="drive_file_move" size={15} />
@@ -61,7 +63,7 @@ export default function MoveToFolderMenu({
                                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                             >
                                 <Icon name="close" size={14} className="opacity-60" />
-                                Sin carpeta
+                                {t.sidebar.folders.noFolder}
                             </button>
                             {flatFolders.map(({folder, depth}) => (
                                 <button
@@ -78,7 +80,7 @@ export default function MoveToFolderMenu({
                                 </button>
                             ))}
                             {flatFolders.length === 0 && (
-                                <p className="px-2 py-1.5 text-xs text-on-surface-variant/60">Sin carpetas todavía.</p>
+                                <p className="px-2 py-1.5 text-xs text-on-surface-variant/60">{t.sidebar.folders.noFoldersYet}</p>
                             )}
                         </div>
                     </>,

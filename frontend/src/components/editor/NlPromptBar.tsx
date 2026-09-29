@@ -4,6 +4,7 @@ import {main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import MarkdownPreview from '../MarkdownPreview'
 import {countChanges, diffLines} from './lineDiff'
+import {useT} from '../../i18n'
 
 // Asistente de consultas del editor: se abre con Cmd/Ctrl+I, se le pide algo en
 // castellano y devuelve una consulta EN EL DIALECTO del motor de la conexión
@@ -25,29 +26,6 @@ import {countChanges, diffLines} from './lineDiff'
 
 type Mode = 'generate' | 'fix'
 
-// Cómo se nombra el contexto que viajó, por motor. Cada uno manda algo
-// distinto y con una regla de privacidad distinta — ver backend/agentctx.
-const CONTEXT_NOUNS: Record<string, {singular: string; plural: string; explain: string; empty: string}> = {
-    sql: {
-        singular: 'tabla',
-        plural: 'tablas',
-        explain: 'Se le pasó el DDL de estas tablas — columnas, tipos y claves, ninguna fila',
-        empty: 'No se le pasó el DDL de ninguna tabla: el pedido no mencionaba ninguna que exista en esta conexión.',
-    },
-    mongodb: {
-        singular: 'colección',
-        plural: 'colecciones',
-        explain: 'Se le pasaron los nombres de campo y sus tipos de estas colecciones — ningún documento',
-        empty: 'No se le pasó el detalle de ninguna colección: el pedido no mencionaba ninguna que exista en esta base.',
-    },
-    redis: {
-        singular: 'patrón de clave',
-        plural: 'patrones de clave',
-        explain: 'Se le pasaron estos PATRONES de clave con su tipo — ni claves completas ni ningún valor',
-        empty: 'No se pudo muestrear ninguna clave de esta conexión.',
-    },
-}
-
 interface Props {
     connId: string
     connName: string
@@ -66,12 +44,16 @@ interface Props {
 }
 
 export default function NlPromptBar({connId, connName, dbType, currentSql, errorText, onApply, onClose}: Props) {
+    const t = useT()
     const mode: Mode = errorText ? 'fix' : 'generate'
-    const noun = dbType === 'redis' ? 'comandos' : dbType === 'mongodb' ? 'una consulta Mongo' : 'una consulta'
+    const isGenerate = mode === 'generate'
+    const writeTitle = dbType === 'redis' ? t.editor.nl.writeRedis : dbType === 'mongodb' ? t.editor.nl.writeMongo : t.editor.nl.writeSql
     // Cómo se llama lo que se le mandó de contexto. No es cosmético: decir
     // "3 tablas" sobre una conexión Redis daría a entender que se mandó algo
     // que no existe, y lo que se mandó ahí son patrones de clave.
-    const ctxNoun = CONTEXT_NOUNS[dbType] ?? CONTEXT_NOUNS.sql
+    // Cada motor manda algo distinto y con una regla de privacidad distinta —
+    // ver backend/agentctx.
+    const ctxNoun = dbType === 'mongodb' ? t.editor.nl.context.mongodb : dbType === 'redis' ? t.editor.nl.context.redis : t.editor.nl.context.sql
     const [request, setRequest] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
@@ -128,24 +110,24 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
             <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-ui-11">
                 <Icon name={mode === 'fix' ? 'healing' : 'auto_awesome'} size={14} className="shrink-0 text-primary" />
                 <span className="font-medium text-on-surface">
-                    {mode === 'fix' ? 'Explicar y corregir' : `Escribir ${noun}`}
+                    {mode === 'fix' ? t.editor.nl.fixTitle : writeTitle}
                 </span>
                 <span
                     className="truncate text-on-surface-variant"
-                    title="El agente escribe en el dialecto de ESTE motor: la misma consulta se escribe distinto en Oracle, Postgres o SQL Server, y una escrita para el motor equivocado falla al correrla."
+                    title={t.editor.nl.dialectHint}
                 >
                     · {connName}
                 </span>
                 <button
                     onClick={onClose}
-                    title="Cierra el asistente sin aplicar nada (Esc)"
+                    title={t.editor.nl.closeTitle}
                     className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="close" size={14} />
                 </button>
             </div>
 
-            {mode === 'generate' && (
+            {isGenerate && (
                 <div className="flex items-end gap-2 p-2">
                     <textarea
                         ref={inputRef}
@@ -158,20 +140,16 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
                             }
                         }}
                         rows={2}
-                        placeholder={
-                            currentSql.trim()
-                                ? 'Qué cambiarle a lo que hay en el editor… (Enter manda)'
-                                : `Qué necesitás… (Enter manda, Shift+Enter salta de línea)`
-                        }
+                        placeholder={currentSql.trim() ? t.editor.nl.placeholderChange : t.editor.nl.placeholderNew}
                         className="min-w-0 flex-1 resize-none rounded border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface outline-none focus:border-primary"
                     />
                     <button
                         onClick={submit}
                         disabled={!request.trim() || busy}
-                        title="Le pide la consulta al agente activo. No la ejecuta: la propone para que la revises."
+                        title={t.editor.nl.askTitle}
                         className="shrink-0 rounded bg-primary px-3 py-1.5 text-xs text-on-primary disabled:opacity-40"
                     >
-                        {busy ? '…' : 'Pedir'}
+                        {busy ? '…' : t.editor.nl.ask}
                     </button>
                 </div>
             )}
@@ -179,7 +157,7 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
             {busy && (
                 <p className="flex items-center gap-2 px-3 pb-2 text-ui-11 text-on-surface-variant">
                     <span aria-hidden className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                    {mode === 'fix' ? 'Leyendo el error y el esquema…' : 'Escribiendo la consulta…'}
+                    {mode === 'fix' ? t.editor.nl.busyFix : t.editor.nl.busyWrite}
                 </p>
             )}
 
@@ -201,27 +179,31 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
                                 <Icon name="difference" size={11} className="shrink-0" />
                                 {currentSql.trim() ? (
                                     <span>
-                                        Propuesta ·{' '}
+                                        {t.editor.nl.proposal} ·{' '}
                                         <span className="text-primary">+{changes.added}</span>{' '}
-                                        <span className="text-error">−{changes.removed}</span> líneas
+                                        <span className="text-error">−{changes.removed}</span> {t.editor.nl.lines}
                                     </span>
                                 ) : (
-                                    <span>Propuesta</span>
+                                    <span>{t.editor.nl.proposal}</span>
                                 )}
                                 <span
                                     className="ml-auto truncate"
                                     title={
                                         result.tables.length > 0
-                                            ? `${ctxNoun.explain}:\n${result.tables.join('\n')}${
-                                                  result.totalTables > result.tables.length
-                                                      ? `\n\n(de ${result.totalTables} ${ctxNoun.plural} en la conexión)`
-                                                      : ''
-                                              }`
+                                            ? t.editor.nl.contextTitle({
+                                                  explain: ctxNoun.explain,
+                                                  items: result.tables.join('\n'),
+                                                  total: result.totalTables,
+                                                  totalOf: result.tables.length,
+                                                  many: ctxNoun.many,
+                                              })
                                             : ctxNoun.empty
                                     }
                                 >
-                                    contexto: {result.tables.length}{' '}
-                                    {result.tables.length === 1 ? ctxNoun.singular : ctxNoun.plural}
+                                    {t.editor.nl.contextLabel({
+                                        n: result.tables.length,
+                                        noun: result.tables.length === 1 ? ctxNoun.one : ctxNoun.many,
+                                    })}
                                 </span>
                             </div>
                             <pre className="max-h-56 overflow-auto bg-surface p-2 font-mono text-ui-11 leading-5">
@@ -249,26 +231,26 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
                     <div className="flex items-center gap-2 border-t border-outline-variant px-2 py-1.5">
                         <span
                             className="min-w-0 flex-1 truncate text-ui-10 text-on-surface-variant"
-                            title="Aplicar solo reemplaza el texto del editor. Ejecutar la consulta sigue siendo el botón de siempre, con la confirmación de producción donde corresponda."
+                            title={t.editor.nl.applyHint}
                         >
-                            Aplicar reemplaza el editor. <strong>No ejecuta nada.</strong>
+                            {t.editor.nl.applyReplaces} <strong>{t.editor.nl.runsNothing}</strong>
                         </span>
                         <button
                             onClick={onClose}
-                            title="Descarta la propuesta y deja el editor como estaba"
+                            title={t.editor.nl.discardTitle}
                             className="shrink-0 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                         >
-                            Descartar
+                            {t.editor.nl.discard}
                         </button>
                         <button
                             onClick={() => {
                                 void navigator.clipboard.writeText(result.code)
                             }}
                             disabled={!result.code}
-                            title="Copia la consulta propuesta sin tocar el editor"
+                            title={t.editor.nl.copyTitle}
                             className="shrink-0 rounded border border-outline-variant px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-40"
                         >
-                            Copiar
+                            {t.editor.nl.copy}
                         </button>
                         <button
                             onClick={() => {
@@ -276,10 +258,10 @@ export default function NlPromptBar({connId, connName, dbType, currentSql, error
                                 onClose()
                             }}
                             disabled={!result.code}
-                            title="Reemplaza el contenido del editor con la consulta propuesta. Podés deshacer con Cmd/Ctrl+Z."
+                            title={t.editor.nl.applyTitle}
                             className="shrink-0 rounded bg-primary px-3 py-1 text-xs text-on-primary disabled:opacity-40"
                         >
-                            Aplicar
+                            {t.editor.nl.apply}
                         </button>
                     </div>
                 </div>

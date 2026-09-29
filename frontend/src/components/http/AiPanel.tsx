@@ -10,6 +10,8 @@ import {
 import {httpclient, main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import MarkdownPreview from '../MarkdownPreview'
+import {rich} from './httpShared'
+import {useT} from '../../i18n'
 
 // Ayuda con IA sobre una petición: explicar la respuesta, diagnosticar un
 // fallo, escribir la petición desde una descripción, redactar la documentación
@@ -28,45 +30,17 @@ import MarkdownPreview from '../MarkdownPreview'
 
 export type AiAction = 'explain' | 'diagnose' | 'generate' | 'docs' | 'tests'
 
-export const AI_ACTIONS: {id: AiAction; label: string; icon: string; hint: string; needsResponse: boolean}[] = [
-    {
-        id: 'explain',
-        label: 'Explicar la respuesta',
-        icon: 'quiz',
-        hint: 'Qué contestó la API y qué significa',
-        needsResponse: true,
-    },
-    {
-        id: 'diagnose',
-        label: 'Diagnosticar el fallo',
-        icon: 'troubleshoot',
-        hint: 'Por qué falló y qué cambiar',
-        needsResponse: true,
-    },
-    {
-        id: 'generate',
-        label: 'Escribir la petición…',
-        icon: 'auto_fix_high',
-        // Se nombra el cURL primero: es de lejos el caso más frecuente —se
-        // copia del navegador con «Copy as cURL»— y ahí ni siquiera hace falta
-        // el agente (ver el importador del panel).
-        hint: 'Pegá un cURL y se importa, o describila',
-        needsResponse: false,
-    },
-    {
-        id: 'docs',
-        label: 'Redactar la documentación',
-        icon: 'menu_book',
-        hint: 'Va a la pestaña Docs',
-        needsResponse: false,
-    },
-    {
-        id: 'tests',
-        label: 'Escribir los tests',
-        icon: 'science',
-        hint: 'Formato de Postman; esta app no los corre',
-        needsResponse: false,
-    },
+// Rótulo y ayuda de cada acción viven en el diccionario (t.http.ai.actions),
+// indexados por `id`: un texto guardado acá quedaría en el idioma de arranque.
+// En la ayuda de «generate» se nombra el cURL primero: es de lejos el caso más
+// frecuente —se copia del navegador con «Copy as cURL»— y ahí ni siquiera hace
+// falta el agente (ver el importador del panel).
+export const AI_ACTIONS: {id: AiAction; icon: string; needsResponse: boolean}[] = [
+    {id: 'explain', icon: 'quiz', needsResponse: true},
+    {id: 'diagnose', icon: 'troubleshoot', needsResponse: true},
+    {id: 'generate', icon: 'auto_fix_high', needsResponse: false},
+    {id: 'docs', icon: 'menu_book', needsResponse: false},
+    {id: 'tests', icon: 'science', needsResponse: false},
 ]
 
 interface AiPanelProps {
@@ -102,7 +76,13 @@ export default function AiPanel({
     onClose,
     onFollowUp,
 }: AiPanelProps) {
+    const t = useT()
     const meta = AI_ACTIONS.find((a) => a.id === action)!
+    const text = t.http.ai.actions[action]
+    const heading = text.label.replace('…', '')
+    const isGenerate = action === 'generate'
+    const isDocs = action === 'docs'
+    const isTests = action === 'tests'
     const [prompt, setPrompt] = useState('')
     const [running, setRunning] = useState(false)
     const [answer, setAnswer] = useState('')
@@ -195,34 +175,34 @@ export default function AiPanel({
         <div className="flex w-[26rem] shrink-0 flex-col border-l border-outline-variant bg-surface-container-low">
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                 <Icon name={meta.icon} size={16} className="text-primary" />
-                <p className="flex-1 truncate text-ui-11 font-medium text-on-surface" title={meta.hint}>
-                    {meta.label.replace('…', '')}
+                <p className="flex-1 truncate text-ui-11 font-medium text-on-surface" title={text.hint}>
+                    {heading}
                 </p>
                 {answer && !running && onFollowUp && (
                     <button
-                        onClick={() => onFollowUp(`${meta.label.replace('…', '')} — respuesta anterior`, answer)}
-                        title="Abre el chat con la petición, la respuesta y este análisis adjuntos, para repreguntar"
+                        onClick={() => onFollowUp(t.http.ai.followUpLabel({title: heading}), answer)}
+                        title={t.http.ai.followUpTitle}
                         className="flex items-center gap-1 rounded px-1.5 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="forum" size={14} />
-                        Seguir en el chat
+                        {t.http.ai.followUp}
                     </button>
                 )}
                 {answer && !running && (
                     <button
                         onClick={() => void run()}
-                        title="Volver a preguntar"
+                        title={t.http.ai.rerunTitle}
                         className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="refresh" size={14} />
                     </button>
                 )}
-                <button onClick={onClose} title="Cerrar" className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                <button onClick={onClose} title={t.common.close} className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                     <Icon name="close" size={14} />
                 </button>
             </div>
 
-            {action === 'generate' && (
+            {isGenerate && (
                 <div className="shrink-0 border-b border-outline-variant p-2">
                     <textarea
                         autoFocus
@@ -238,7 +218,7 @@ export default function AiPanel({
                                 else void run()
                             }
                         }}
-                        placeholder={'Pegá un cURL —se importa tal cual, sin agente— o describí qué tiene que hacer la petición.\n\nCtrl+Enter.'}
+                        placeholder={t.http.ai.promptPlaceholder}
                         rows={6}
                         // Monoespaciada en cuanto lo pegado es un comando: un
                         // cURL con seis cabeceras en tipografía de interfaz no
@@ -254,35 +234,34 @@ export default function AiPanel({
                                 <button
                                     onClick={() => void importCurl()}
                                     disabled={importing}
-                                    title="Traduce el comando exactamente como está —método, URL, cabeceras, cuerpo— y lo pone en el editor. No pasa por el agente: es instantáneo, no gasta cuota y no cambia nada de lo que pegaste."
+                                    title={t.http.ai.importTitle}
                                     className="flex flex-1 items-center justify-center gap-1.5 rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                                 >
                                     <Icon name="content_paste" size={14} />
-                                    {importing ? 'Importando…' : 'Importar tal cual'}
+                                    {importing ? t.http.ai.importing : t.http.ai.import}
                                 </button>
                                 <button
                                     onClick={() => void run()}
                                     disabled={running}
-                                    title="Mandarle el comando al agente en vez de importarlo. Sirve cuando además querés que le cambie algo: «este cURL pero contra staging y sin el header de traza»."
+                                    title={t.http.ai.askChangeTitle}
                                     className="flex shrink-0 items-center gap-1.5 rounded border border-outline-variant px-3 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
                                 >
                                     <Icon name="auto_fix_high" size={14} />
-                                    {running ? 'Pensando…' : 'Pedirle un cambio'}
+                                    {running ? t.http.ai.thinking : t.http.ai.askChange}
                                 </button>
                             </div>
                             <p className="mt-1.5 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                                Detecté un comando cURL. Importarlo lo reproduce <strong>exacto</strong> y no usa el agente; pedile un cambio
-                                solo si querés que además lo modifique.
+                                {rich(t.http.ai.curlDetected)}
                             </p>
                         </>
                     ) : (
                         <button
                             onClick={() => void run()}
                             disabled={running || !prompt.trim()}
-                            title="Le describís qué tiene que hacer la petición y el agente la escribe. Devuelve texto: aplicarla al editor es un clic tuyo."
+                            title={t.http.ai.writeTitle}
                             className="mt-2 w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                         >
-                            {running ? 'Pensando…' : 'Escribir la petición'}
+                            {running ? t.http.ai.thinking : t.http.ai.write}
                         </button>
                     )}
                 </div>
@@ -296,7 +275,7 @@ export default function AiPanel({
                 {running && !answer && (
                     <p className="flex items-center gap-2 text-on-surface-variant">
                         <Icon name="hourglass_empty" size={14} className="animate-pulse" />
-                        Preguntándole al agente…
+                        {t.http.ai.asking}
                     </p>
                 )}
                 {answer && (action === 'tests' ? <pre className="whitespace-pre-wrap font-mono">{answer}</pre> : <MarkdownPreview source={answer} />)}
@@ -304,50 +283,49 @@ export default function AiPanel({
 
             {answer && !running && (
                 <div className="shrink-0 border-t border-outline-variant p-2">
-                    {action === 'generate' &&
+                    {isGenerate &&
                         (generated?.request ? (
                             <button
                                 onClick={() => {
                                     onApplyRequest(generated.request as httpclient.Request)
                                     onClose()
                                 }}
-                                title="Reemplazar método, URL, cabeceras y cuerpo con lo que propuso el agente. Podés deshacerlo sin guardar."
+                                title={t.http.ai.applyTitle}
                                 className="w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
-                                Aplicar al editor
+                                {t.http.ai.apply}
                             </button>
                         ) : (
                             <p className="text-ui-10 leading-relaxed text-on-surface-variant">
-                                El comando que devolvió no se pudo interpretar como una petición, así que no hay nada que aplicar automáticamente.
-                                Copialo del bloque de arriba.
+                                {t.http.ai.notParsed}
                             </p>
                         ))}
-                    {action === 'docs' && (
+                    {isDocs && (
                         <button
                             onClick={() => {
                                 onApplyDocs(answer)
                                 onClose()
                             }}
-                            title="Poner este texto en la pestaña Docs de la petición. Se guarda con Ctrl+S como cualquier otro cambio."
+                            title={t.http.ai.applyDocsTitle}
                             className="w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                         >
-                            Poner en Docs
+                            {t.http.ai.applyDocs}
                         </button>
                     )}
-                    {action === 'tests' && (
+                    {isTests && (
                         <>
                             <button
                                 onClick={() => {
                                     onApplyTests(answer)
                                     onClose()
                                 }}
-                                title="Poner este script en el campo de tests. Se guarda y se exporta con la colección."
+                                title={t.http.ai.applyTestsTitle}
                                 className="w-full rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
-                                Poner en el script de tests
+                                {t.http.ai.applyTests}
                             </button>
                             <p className="mt-2 text-ui-10 leading-relaxed text-on-surface-variant">
-                                Esta aplicación no ejecuta scripts: el test se guarda y viaja en el export, y quien lo corre es Postman o newman.
+                                {t.http.ai.testsNote}
                             </p>
                         </>
                     )}

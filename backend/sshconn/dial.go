@@ -1,7 +1,7 @@
 package sshconn
 
 import (
-	"fmt"
+	"mini-tools/backend/i18n"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -37,7 +37,7 @@ func Dial(dsn string) (*ssh.Client, error) {
 // y la conexión son la misma operación y no dos.
 func ChangePassword(dsn, newPassword string) error {
 	if strings.TrimSpace(newPassword) == "" {
-		return fmt.Errorf("sshconn: la contraseña nueva no puede estar vacía")
+		return i18n.New(i18n.Msg{ES: "sshconn: la contraseña nueva no puede estar vacía", EN: "sshconn: the new password cannot be empty"})
 	}
 
 	client, answerer, err := dial(dsn, newPassword)
@@ -51,7 +51,7 @@ func ChangePassword(dsn, newPassword string) error {
 	// va a guardar la contraseña nueva en el vault al recibir un nil, y ahí
 	// quedaría guardada una que el servidor no conoce.
 	if answerer.newAnswers == 0 {
-		return fmt.Errorf("sshconn: el servidor no pidió cambiar la contraseña, así que no se cambió (la contraseña guardada sigue siendo válida)")
+		return i18n.New(i18n.Msg{ES: "sshconn: el servidor no pidió cambiar la contraseña, así que no se cambió (la contraseña guardada sigue siendo válida)", EN: "sshconn: the server did not ask to change the password, so it was not changed (the saved password is still valid)"})
 	}
 	return nil
 }
@@ -82,7 +82,7 @@ func dial(dsn, newPassword string) (*ssh.Client, *promptAnswerer, error) {
 		if described := answerer.describe(err); described != nil {
 			return nil, answerer, described
 		}
-		return nil, answerer, fmt.Errorf("sshconn: conectando: %w", err)
+		return nil, answerer, i18n.Errorf(i18n.Msg{ES: "sshconn: conectando: %w", EN: "sshconn: connecting: %w"}, err)
 	}
 	return client, answerer, nil
 }

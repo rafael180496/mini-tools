@@ -30,6 +30,7 @@ import AuthPanel from './AuthPanel'
 import ComputedTable from './ComputedTable'
 import ImportDialog from './ImportDialog'
 import HistoryPanel from './HistoryPanel'
+import {t as dict, useT} from '../../i18n'
 
 // Árbol de colecciones del módulo HTTP.
 //
@@ -82,6 +83,9 @@ export default function HttpTree({
     onOpenScratchWith,
     historyToken,
 }: HttpTreeProps) {
+    const t = useT()
+    const tr = t.sidebar.http
+    const tf = t.sidebar.folders
     // Qué muestra la barra: el árbol de colecciones o el historial. Dos
     // secciones y no dos módulos de la barra lateral porque las dos son el
     // mismo trabajo —peticiones HTTP— y el buscador de arriba filtra las dos.
@@ -220,10 +224,10 @@ export default function HttpTree({
 
     function newCollection() {
         askName({
-            title: 'Nueva colección',
-            label: 'Nombre',
+            title: tr.newCollection,
+            label: tf.nameLabel,
             initial: '',
-            confirmLabel: 'Crear',
+            confirmLabel: tf.create,
             onSubmit: (name) =>
                 void guard(async () => {
                     const c = await HttpSaveCollection(new vault.HTTPCollection({name}))
@@ -234,10 +238,10 @@ export default function HttpTree({
 
     function newItem(collectionId: string, parentId: string, kind: 'folder' | 'request') {
         askName({
-            title: kind === 'folder' ? 'Nueva carpeta' : 'Nueva petición',
-            label: 'Nombre',
+            title: kind === 'folder' ? tf.newFolder : tr.newRequest,
+            label: tf.nameLabel,
             initial: '',
-            confirmLabel: 'Crear',
+            confirmLabel: tf.create,
             onSubmit: (name) =>
                 void guard(async () => {
                     const created = await HttpSaveItem(
@@ -263,20 +267,20 @@ export default function HttpTree({
 
     function renameCollection(c: vault.HTTPCollection) {
         askName({
-            title: 'Renombrar colección',
-            label: 'Nombre',
+            title: tr.renameCollection,
+            label: tf.nameLabel,
             initial: c.name,
-            confirmLabel: 'Guardar',
+            confirmLabel: t.common.save,
             onSubmit: (name) => void guard(() => HttpSaveCollection(new vault.HTTPCollection({...c, name}))),
         })
     }
 
     function renameItem(it: vault.HTTPItem) {
         askName({
-            title: it.kind === 'folder' ? 'Renombrar carpeta' : 'Renombrar petición',
-            label: 'Nombre',
+            title: it.kind === 'folder' ? tr.renameFolder : tr.renameRequest,
+            label: tf.nameLabel,
             initial: it.name,
-            confirmLabel: 'Guardar',
+            confirmLabel: t.common.save,
             onSubmit: (name) =>
                 void guard(async () => {
                     await HttpSaveItem(new vault.HTTPItem({...it, name}))
@@ -287,11 +291,8 @@ export default function HttpTree({
 
     function deleteItem(it: vault.HTTPItem) {
         setConfirm({
-            title: it.kind === 'folder' ? 'Borrar la carpeta' : 'Borrar la petición',
-            description:
-                it.kind === 'folder'
-                    ? `Se borra "${it.name}" con todo lo que tenga adentro. No se puede deshacer.`
-                    : `Se borra "${it.name}" y su historial de ejecuciones. No se puede deshacer.`,
+            title: it.kind === 'folder' ? tr.deleteFolderTitle : tr.deleteRequestTitle,
+            description: it.kind === 'folder' ? tr.deleteFolderDesc({name: it.name}) : tr.deleteRequestDesc({name: it.name}),
             run: async () => {
                 await HttpDeleteItem(it.id)
                 await reloadItems(it.collectionId)
@@ -306,7 +307,7 @@ export default function HttpTree({
     function duplicateRequest(it: vault.HTTPItem) {
         void guard(async () => {
             const full = (await HttpGetItem(it.id)) ?? it
-            const copy = await HttpSaveItem(new vault.HTTPItem({...full, id: '', sortOrder: 0, name: `${full.name} (copia)`}))
+            const copy = await HttpSaveItem(new vault.HTTPItem({...full, id: '', sortOrder: 0, name: tr.copyName({name: full.name})}))
             await reloadItems(it.collectionId)
             if (copy) onOpenRequest(copy)
         })
@@ -372,12 +373,12 @@ export default function HttpTree({
     function collectionMenu(e: ReactMouseEvent, c: vault.HTTPCollection) {
         const open = forceOpen || expanded.has(c.id)
         menu.openAt(e, [
-            {label: 'Nueva petición', icon: 'add', onSelect: () => newItem(c.id, '', 'request')},
-            {label: 'Nueva carpeta', icon: 'create_new_folder', onSelect: () => newItem(c.id, '', 'folder')},
+            {label: tr.newRequest, icon: 'add', onSelect: () => newItem(c.id, '', 'request')},
+            {label: tf.newFolder, icon: 'create_new_folder', onSelect: () => newItem(c.id, '', 'folder')},
             {
-                label: 'Pegar un comando cURL…',
+                label: tr.pasteCurl,
                 icon: 'content_paste',
-                title: 'Crea una petición desde un «Copy as cURL» del navegador',
+                title: tr.pasteCurlTitle,
                 onSelect: () => {
                     setCurlText('')
                     setCurlFor(c)
@@ -385,69 +386,69 @@ export default function HttpTree({
             },
             'separator',
             {
-                label: 'Correr la colección',
+                label: tr.runCollection,
                 icon: 'play_arrow',
-                title: 'Todas sus peticiones, en orden',
+                title: tr.runCollectionTitle,
                 onSelect: () => setRunFor({collectionId: c.id, folderId: '', title: c.name}),
             },
-            {label: 'Documentación…', icon: 'menu_book', title: 'Verla o publicarla como nota del vault', onSelect: () => setDocsFor(c)},
-            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: forceOpen, onSelect: () => toggle(c.id)},
+            {label: tr.docs, icon: 'menu_book', title: tr.docsTitle, onSelect: () => setDocsFor(c)},
+            {label: open ? t.common.collapse : t.common.expand, icon: open ? 'unfold_less' : 'unfold_more', disabled: forceOpen, onSelect: () => toggle(c.id)},
             'separator',
             {
-                label: 'Autenticación…',
+                label: tr.auth,
                 icon: 'key',
-                title: 'La heredan todas sus peticiones: cambiar un token es UNA edición y no treinta',
+                title: tr.authCollectionTitle,
                 onSelect: () => {
                     setAuthDraft(parseAuth(c.auth))
                     setAuthFor({kind: 'collection', id: c.id, name: c.name, collectionId: c.id})
                 },
             },
             {
-                label: 'Variables…',
+                label: tr.variables,
                 icon: 'data_object',
-                title: 'Valores por defecto de la colección, que el entorno activo puede pisar',
+                title: tr.variablesTitle,
                 onSelect: () => {
                     setVarsRows(parseVariables(c.variables))
                     setVarsFor(c)
                 },
             },
             {
-                label: 'Variables calculadas…',
+                label: tr.computed,
                 icon: 'functions',
-                title: 'Firmas y tokens derivados, para todas sus peticiones',
+                title: tr.computedTitle,
                 onSelect: () => {
                     setComputedRows(parseComputed(c.computed))
                     setComputedFor(c)
                 },
             },
-            {label: 'Cookies…', icon: 'cookie', title: 'Las del entorno con el que corre', onSelect: () => setCookiesFor(c)},
+            {label: tr.cookies, icon: 'cookie', title: tr.cookiesTitle, onSelect: () => setCookiesFor(c)},
             'separator',
             {
-                label: c.favoriteAt ? 'Quitar de favoritas' : 'Marcar como favorita',
+                label: c.favoriteAt ? tr.unfavorite : tr.favorite,
                 icon: 'star',
-                title: 'Las favoritas quedan arriba de la lista',
+                title: tr.favoriteTitle,
                 onSelect: () => void guard(() => HttpSetCollectionFavorite(c.id, !c.favoriteAt)),
             },
-            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => renameCollection(c)},
+            {label: tf.rename, icon: 'edit', onSelect: () => renameCollection(c)},
             {
-                label: 'Exportar a Postman…',
+                label: tr.exportPostman,
                 icon: 'upload',
-                title: 'Un archivo .json de Postman v2.1, con todo lo que se importó',
+                title: tr.exportPostmanTitle,
                 onSelect: () =>
                     void guard(async () => {
                         const dest = await HttpExportPostman(c.id)
-                        if (dest) setImportSummary({name: `Exportada a ${dest}`, requests: 0, folders: 0, warnings: []})
+                        if (dest) setImportSummary({name: tr.exportedTo({path: dest}), requests: 0, folders: 0, warnings: []})
                     }),
             },
             'separator',
             {
-                label: 'Borrar colección',
+                label: tr.deleteCollection,
                 icon: 'delete',
                 danger: true,
                 onSelect: () =>
                     setConfirm({
-                        title: 'Borrar la colección',
-                        description: `Se borra "${c.name}" con todas sus carpetas, sus peticiones y su historial. No se puede deshacer.`,
+                        title: tr.deleteCollectionTitle,
+                        description: tr.deleteCollectionDesc({name: c.name}),
                         run: () => HttpDeleteCollection(c.id),
                     }),
             },
@@ -457,50 +458,50 @@ export default function HttpTree({
     function folderMenu(e: ReactMouseEvent, it: vault.HTTPItem) {
         const open = forceOpen || expanded.has(it.id)
         menu.openAt(e, [
-            {label: 'Nueva petición aquí', icon: 'add', onSelect: () => newItem(it.collectionId, it.id, 'request')},
-            {label: 'Subcarpeta nueva', icon: 'create_new_folder', onSelect: () => newItem(it.collectionId, it.id, 'folder')},
+            {label: tr.newRequestHere, icon: 'add', onSelect: () => newItem(it.collectionId, it.id, 'request')},
+            {label: tf.newSubfolder, icon: 'create_new_folder', onSelect: () => newItem(it.collectionId, it.id, 'folder')},
             'separator',
             {
-                label: 'Correr esta carpeta',
+                label: tr.runFolder,
                 icon: 'play_arrow',
-                title: 'Sus peticiones y las de sus subcarpetas, en orden',
+                title: tr.runFolderTitle,
                 onSelect: () => setRunFor({collectionId: it.collectionId, folderId: it.id, title: it.name}),
             },
-            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: forceOpen, onSelect: () => toggle(it.id)},
+            {label: open ? t.common.collapse : t.common.expand, icon: open ? 'unfold_less' : 'unfold_more', disabled: forceOpen, onSelect: () => toggle(it.id)},
             {
-                label: 'Autenticación…',
+                label: tr.auth,
                 icon: 'key',
-                title: 'La heredan las peticiones de adentro',
+                title: tr.authFolderTitle,
                 onSelect: () => {
                     setAuthDraft(parseAuth(it.auth))
                     setAuthFor({kind: 'folder', id: it.id, name: it.name, collectionId: it.collectionId})
                 },
             },
             'separator',
-            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => renameItem(it)},
-            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(moveTargets(it), it.parentId ?? '', (f) => moveItem(it, f), 'Raíz de la colección')},
+            {label: tf.rename, icon: 'edit', onSelect: () => renameItem(it)},
+            {label: tf.moveTo, icon: 'drive_file_move', submenu: moveToFolderSubmenu(moveTargets(it), it.parentId ?? '', (f) => moveItem(it, f), tr.collectionRoot)},
             'separator',
-            {label: 'Borrar carpeta', icon: 'delete', danger: true, title: 'Con todo lo que tenga adentro', onSelect: () => deleteItem(it)},
+            {label: t.sidebar.git.deleteFolder, icon: 'delete', danger: true, title: tr.deleteFolderMenuTitle, onSelect: () => deleteItem(it)},
         ])
     }
 
     function requestMenu(e: ReactMouseEvent, it: vault.HTTPItem) {
         const items: TreeMenuEntry[] = [
-            {label: 'Abrir', icon: 'open_in_new', onSelect: () => onOpenRequest(it)},
+            {label: tr.open, icon: 'open_in_new', onSelect: () => onOpenRequest(it)},
             'separator',
-            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => renameItem(it)},
-            {label: 'Duplicar', icon: 'content_copy', title: 'Copia la petición entera —headers, cuerpo, autenticación y scripts— en la misma carpeta', onSelect: () => duplicateRequest(it)},
-            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(moveTargets(it), it.parentId ?? '', (f) => moveItem(it, f), 'Raíz de la colección')},
+            {label: tf.rename, icon: 'edit', onSelect: () => renameItem(it)},
+            {label: t.sidebar.notes.duplicate, icon: 'content_copy', title: tr.duplicateTitle, onSelect: () => duplicateRequest(it)},
+            {label: tf.moveTo, icon: 'drive_file_move', submenu: moveToFolderSubmenu(moveTargets(it), it.parentId ?? '', (f) => moveItem(it, f), tr.collectionRoot)},
             'separator',
             {
-                label: 'Copiar como cURL',
+                label: tr.copyAsCurl,
                 icon: 'terminal',
-                title: 'Con las variables resueltas y los secretos enmascarados. Para los valores reales, usá el panel de código de la petición.',
+                title: tr.copyAsCurlTitle,
                 onSelect: () => copyAsCurl(it),
             },
-            {label: 'Copiar URL', icon: 'link', disabled: !it.url, title: it.url ? it.url : 'La petición todavía no tiene URL', onSelect: () => copy(it.url ?? '')},
+            {label: t.sidebar.git.copyUrl, icon: 'link', disabled: !it.url, title: it.url ? it.url : tr.noUrlYet, onSelect: () => copy(it.url ?? '')},
             'separator',
-            {label: 'Borrar petición', icon: 'delete', danger: true, title: 'Con su historial de ejecuciones', onSelect: () => deleteItem(it)},
+            {label: tr.deleteRequest, icon: 'delete', danger: true, title: tr.deleteRequestMenuTitle, onSelect: () => deleteItem(it)},
         ]
         menu.openAt(e, items)
     }
@@ -509,13 +510,13 @@ export default function HttpTree({
     // encabezado, para quien ya tiene el mouse en el árbol.
     function blankMenu(e: ReactMouseEvent) {
         menu.openAt(e, [
-            {label: 'Nueva colección', icon: 'create_new_folder', onSelect: newCollection},
-            {label: 'Petición rápida', icon: 'bolt', title: 'Una pestaña para probar un endpoint sin guardarlo en ninguna colección', onSelect: onNewScratch},
-            {label: 'Importar…', icon: 'download', title: 'cURL, una URL, una petición en texto o archivos de Postman', onSelect: () => setShowImport(true)},
-            {label: 'Entornos…', icon: 'layers', onSelect: () => setShowEnvironments(true)},
+            {label: tr.newCollection, icon: 'create_new_folder', onSelect: newCollection},
+            {label: tr.scratch, icon: 'bolt', title: tr.scratchMenuTitle, onSelect: onNewScratch},
+            {label: tr.importEllipsis, icon: 'download', title: tr.importMenuTitle, onSelect: () => setShowImport(true)},
+            {label: tr.environments, icon: 'layers', onSelect: () => setShowEnvironments(true)},
             'separator',
-            {label: 'Desplegar todo', icon: 'unfold_more', disabled: forceOpen || collections.length === 0, onSelect: expandAll},
-            {label: 'Plegar todo', icon: 'unfold_less', disabled: forceOpen || expanded.size === 0, onSelect: collapseAll},
+            {label: tf.expandAll, icon: 'unfold_more', disabled: forceOpen || collections.length === 0, onSelect: expandAll},
+            {label: tf.collapseAll, icon: 'unfold_less', disabled: forceOpen || expanded.size === 0, onSelect: collapseAll},
         ])
     }
 
@@ -553,7 +554,7 @@ export default function HttpTree({
                                 iconFilled={!open}
                                 label={it.name}
                                 labelClass="text-on-surface font-medium"
-                                title={`Carpeta "${it.name}" — ${count} ${count === 1 ? 'elemento' : 'elementos'}. Clic derecho: agregar, correr, mover o borrar.`}
+                                title={tr.folderTitle({name: it.name, count})}
                                 expanded={open}
                                 onToggle={() => toggle(it.id)}
                                 onClick={() => toggle(it.id)}
@@ -563,12 +564,12 @@ export default function HttpTree({
                                     <>
                                         <button
                                             onClick={() => newItem(collectionId, it.id, 'request')}
-                                            title={`Crear una petición dentro de «${it.name}»`}
+                                            title={tr.newRequestInFolder({name: it.name})}
                                             className="sidebar-icon !p-0.5"
                                         >
                                             <Icon name="add" size={14} />
                                         </button>
-                                        <MenuButton onOpen={(e) => folderMenu(e, it)} title="Opciones de la carpeta" />
+                                        <MenuButton onOpen={(e) => folderMenu(e, it)} title={tf.folderOptions} />
                                     </>
                                 }
                             />
@@ -593,11 +594,11 @@ export default function HttpTree({
                             </span>
                         }
                         label={it.name}
-                        title={it.url ? `${method} ${it.url}` : `${method} — petición sin URL todavía`}
+                        title={it.url ? `${method} ${it.url}` : tr.requestNoUrl({method})}
                         onClick={() => onOpenRequest(it)}
                         onContextMenu={(e) => requestMenu(e, it)}
                         active={active}
-                        actions={<MenuButton onOpen={(e) => requestMenu(e, it)} title="Opciones de la petición" />}
+                        actions={<MenuButton onOpen={(e) => requestMenu(e, it)} title={tr.requestOptions} />}
                     />
                 )
             })
@@ -608,6 +609,7 @@ export default function HttpTree({
         [collections, query, itemsByCollection, matches],
     )
 
+    const onCollections = section === 'collections'
     const headerButton = 'shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40'
 
     return (
@@ -620,28 +622,26 @@ export default function HttpTree({
                         key={s}
                         onClick={() => setSection(s)}
                         title={
-                            s === 'collections'
-                                ? 'Las colecciones guardadas, con sus carpetas y peticiones'
-                                : 'Todo lo que se mandó desde la aplicación, de lo más nuevo a lo más viejo'
+                            s === 'collections' ? tr.collectionsTabTitle : tr.historyTabTitle
                         }
                         className={`rounded px-1.5 py-0.5 text-ui-10 font-semibold uppercase tracking-wider ${
                             section === s ? 'text-on-surface' : 'text-on-surface-variant/50 hover:text-on-surface-variant'
                         }`}
                     >
-                        {s === 'collections' ? 'Colecciones' : 'Historial'}
+                        {s === 'collections' ? tr.collections : tr.history.title}
                     </button>
                 ))}
                 <span className="flex-1" />
-                {section === 'collections' && (
+                {onCollections && (
                     <button
                         onClick={() => (expanded.size > 0 ? collapseAll() : expandAll())}
                         disabled={forceOpen || collections.length === 0}
                         title={
                             forceOpen
-                                ? 'Con una búsqueda activa todo queda desplegado, para que ningún resultado quede escondido'
+                                ? tr.searchKeepsOpen
                                 : expanded.size > 0
-                                  ? 'Plegar todas las colecciones y carpetas'
-                                  : 'Desplegar todas las colecciones y sus carpetas'
+                                  ? tr.collapseAllTitle
+                                  : tr.expandAllTitle
                         }
                         className={headerButton}
                     >
@@ -650,28 +650,28 @@ export default function HttpTree({
                 )}
                 <button
                     onClick={onNewScratch}
-                    title="Probar un endpoint sin guardarlo: se abre una pestaña con una petición que no pertenece a ninguna colección. Si después querés conservarla, «Guardar en…» la mete en la que elijas."
+                    title={tr.scratchTitle}
                     className={headerButton}
                 >
                     <Icon name="bolt" size={16} />
                 </button>
                 <button
                     onClick={() => setShowImport(true)}
-                    title="Importar: pegá un comando cURL, una URL o una petición en texto, o soltá colecciones y entornos exportados de Postman. Una colección se trae completa —peticiones, carpetas, variables, autenticación y scripts— y lo que esta aplicación todavía no ejecuta se guarda igual para no perderlo al volver a exportar."
+                    title={tr.importTitle}
                     className={headerButton}
                 >
                     <Icon name="download" size={16} />
                 </button>
                 <button
                     onClick={() => setShowEnvironments(true)}
-                    title="Entornos: los valores que cambian entre dev, pruebas y producción. Pisan a las variables de la colección, así que la misma petición sirve contra los tres."
+                    title={tr.environmentsTitle}
                     className={headerButton}
                 >
                     <Icon name="layers" size={16} />
                 </button>
                 <button
                     onClick={newCollection}
-                    title="Crear una colección nueva. Una colección agrupa peticiones y comparte sus variables — es la unidad que después se importa y se exporta."
+                    title={tr.newCollectionTitle}
                     className={headerButton}
                 >
                     <Icon name="create_new_folder" size={16} />
@@ -700,9 +700,9 @@ export default function HttpTree({
             <div className="min-h-0 flex-1 overflow-y-auto pb-6" onContextMenu={blankMenu}>
                 {collections.length === 0 && (
                     <p className="px-3 py-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
-                        Todavía no hay colecciones. Creá una con{' '}
-                        <Icon name="create_new_folder" size={12} className="inline align-text-bottom" /> de arriba, o con clic derecho acá, para
-                        empezar a guardar peticiones.
+                        {tr.empty.before}
+                        <Icon name="create_new_folder" size={12} className="inline align-text-bottom" />
+                        {tr.empty.after}
                     </p>
                 )}
                 {visibleCollections.map((c) => {
@@ -715,7 +715,7 @@ export default function HttpTree({
                     const star = (
                         <button
                             onClick={() => void guard(() => HttpSetCollectionFavorite(c.id, !fav))}
-                            title={fav ? 'Quitar de favoritas: vuelve a su lugar en la lista' : 'Marcar como favorita: queda arriba de la lista'}
+                            title={fav ? tr.unfavoriteStarTitle : tr.favoriteStarTitle}
                             className={`sidebar-icon !p-0.5 ${fav ? '!text-primary' : ''}`}
                         >
                             {/* Material Symbols no tiene un `star_border`: la
@@ -733,7 +733,7 @@ export default function HttpTree({
                                 iconFilled={!open}
                                 label={c.name}
                                 labelClass="text-on-surface font-medium"
-                                title={`Colección "${c.name}". Clic derecho: peticiones, variables, autenticación, correrla o exportarla.`}
+                                title={tr.collectionTitle({name: c.name})}
                                 expanded={open}
                                 onToggle={() => toggle(c.id)}
                                 onClick={() => toggle(c.id)}
@@ -744,12 +744,12 @@ export default function HttpTree({
                                         {star}
                                         <button
                                             onClick={() => newItem(c.id, '', 'request')}
-                                            title={`Crear una petición en «${c.name}»`}
+                                            title={tr.newRequestInCollection({name: c.name})}
                                             className="sidebar-icon !p-0.5"
                                         >
                                             <Icon name="add" size={14} />
                                         </button>
-                                        <MenuButton onOpen={(e) => collectionMenu(e, c)} title="Opciones de la colección" />
+                                        <MenuButton onOpen={(e) => collectionMenu(e, c)} title={tr.collectionOptions} />
                                     </>
                                 }
                             />
@@ -788,21 +788,18 @@ export default function HttpTree({
                     >
                         <p className="mb-2 flex items-center gap-2 text-sm font-medium text-on-surface">
                             <Icon name="check_circle" size={16} className="text-secondary" />
-                            {importSummary.requests > 0 || importSummary.folders > 0 ? 'Colección importada' : 'Listo'}
+                            {importSummary.requests > 0 || importSummary.folders > 0 ? tr.imported : tr.done}
                         </p>
                         <p className="text-ui-11 leading-relaxed text-on-surface-variant">
                             {importSummary.requests > 0 || importSummary.folders > 0 ? (
-                                <>
-                                    «{importSummary.name}»: {importSummary.requests} {importSummary.requests === 1 ? 'petición' : 'peticiones'}
-                                    {importSummary.folders > 0 && <> en {importSummary.folders} {importSummary.folders === 1 ? 'carpeta' : 'carpetas'}</>}.
-                                </>
+                                tr.importSummary({name: importSummary.name, requests: importSummary.requests, folders: importSummary.folders})
                             ) : (
                                 importSummary.name
                             )}
                         </p>
                         {importSummary.warnings.length > 0 && (
                             <div className="mt-2 rounded bg-surface-container-lowest p-2">
-                                <p className="mb-1 text-ui-10 font-semibold uppercase tracking-wider text-tertiary">Se importó, con salvedades</p>
+                                <p className="mb-1 text-ui-10 font-semibold uppercase tracking-wider text-tertiary">{tr.importWarnings}</p>
                                 <ul className="space-y-1 text-ui-10 leading-relaxed text-on-surface-variant">
                                     {importSummary.warnings.map((w, i) => (
                                         <li key={i}>· {w}</li>
@@ -813,10 +810,10 @@ export default function HttpTree({
                         <div className="mt-3 flex justify-end">
                             <button
                                 onClick={() => setImportSummary(null)}
-                                title="Cerrar este resumen"
+                                title={tr.closeSummary}
                                 className="rounded bg-primary px-3 py-1 text-xs text-on-primary hover:opacity-90"
                             >
-                                Entendido
+                                {tr.gotIt}
                             </button>
                         </div>
                     </div>
@@ -831,7 +828,7 @@ export default function HttpTree({
                     >
                         <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                             <Icon name="content_paste" size={16} className="text-on-surface-variant" />
-                            <p className="flex-1 text-sm font-medium text-on-surface">Pegar un comando cURL en «{curlFor.name}»</p>
+                            <p className="flex-1 text-sm font-medium text-on-surface">{tr.pasteCurlInto({name: curlFor.name})}</p>
                             <button
                                 onClick={() =>
                                     void guard(async () => {
@@ -857,12 +854,12 @@ export default function HttpTree({
                                     })
                                 }
                                 disabled={!curlText.trim()}
-                                title={curlText.trim() ? 'Crear la petición a partir del comando' : 'Pegá un comando cURL primero'}
+                                title={curlText.trim() ? tr.curlCreateTitle : tr.curlPasteFirst}
                                 className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                             >
-                                Importar
+                                {tr.importAction}
                             </button>
-                            <button onClick={() => setCurlFor(null)} title="Cerrar sin importar" className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                            <button onClick={() => setCurlFor(null)} title={tr.closeWithoutImporting} className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                                 <Icon name="close" size={16} />
                             </button>
                         </div>
@@ -870,12 +867,13 @@ export default function HttpTree({
                             autoFocus
                             value={curlText}
                             onChange={(e) => setCurlText(e.target.value)}
-                            placeholder={"curl 'https://api/x' \\\n  -H 'Authorization: Bearer ...' \\\n  --data-raw '{\"a\":1}'"}
+                            placeholder={CURL_PLACEHOLDER}
                             className="min-h-0 flex-1 resize-none bg-surface-container-lowest p-3 font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40"
                         />
                         <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                            Sirve el «Copy as cURL» de las herramientas del navegador. Se leen método, URL, headers, cuerpo, formularios con archivos,
-                            usuario y contraseña, y si el comando trae <span className="font-mono">-k</span> se respeta que no verifique el certificado.
+                            {tr.curlHelp.before}
+                            <span className="font-mono">-k</span>
+                            {tr.curlHelp.after}
                         </p>
                     </div>
                 </div>
@@ -927,7 +925,7 @@ export default function HttpTree({
                         <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                             <Icon name="key" size={16} className="text-on-surface-variant" />
                             <p className="flex-1 truncate text-sm font-medium text-on-surface">
-                                Autenticación de {authFor.kind === 'collection' ? 'la colección' : 'la carpeta'} «{authFor.name}»
+                                {tr.authDialogTitle({isCollection: authFor.kind === 'collection', name: authFor.name})}
                             </p>
                             <button
                                 onClick={() =>
@@ -947,12 +945,12 @@ export default function HttpTree({
                                         setAuthFor(null)
                                     })
                                 }
-                                title="Guardar la autenticación de este nivel"
+                                title={tr.saveAuthTitle}
                                 className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
-                                Guardar
+                                {t.common.save}
                             </button>
-                            <button onClick={() => setAuthFor(null)} title="Cerrar sin guardar" className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                            <button onClick={() => setAuthFor(null)} title={tr.closeWithoutSaving} className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                                 <Icon name="close" size={16} />
                             </button>
                         </div>
@@ -960,7 +958,7 @@ export default function HttpTree({
                             <AuthPanel
                                 auth={authDraft}
                                 onChange={setAuthDraft}
-                                inheritsFrom={authFor.kind === 'folder' ? 'la colección' : undefined}
+                                inheritsFrom={authFor.kind === 'folder' ? tr.inheritsFromCollection : undefined}
                                 onTokenObtained={setAuthDraft}
                             />
                         </div>
@@ -976,7 +974,7 @@ export default function HttpTree({
                     >
                         <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                             <Icon name="functions" size={16} className="text-on-surface-variant" />
-                            <p className="flex-1 truncate text-sm font-medium text-on-surface">Variables calculadas de «{computedFor.name}»</p>
+                            <p className="flex-1 truncate text-sm font-medium text-on-surface">{tr.computedDialogTitle({name: computedFor.name})}</p>
                             <button
                                 onClick={() =>
                                     void guard(async () => {
@@ -989,14 +987,14 @@ export default function HttpTree({
                                         setComputedFor(null)
                                     })
                                 }
-                                title="Guardar las variables calculadas de esta colección"
+                                title={tr.saveComputedTitle}
                                 className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
-                                Guardar
+                                {t.common.save}
                             </button>
                             <button
                                 onClick={() => setComputedFor(null)}
-                                title="Cerrar sin guardar"
+                                title={tr.closeWithoutSaving}
                                 className="rounded p-1 text-on-surface-variant hover:bg-surface-variant"
                             >
                                 <Icon name="close" size={16} />
@@ -1006,8 +1004,11 @@ export default function HttpTree({
                             <ComputedTable rows={computedRows} onChange={setComputedRows} />
                         </div>
                         <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                            Se calculan antes de cada envío de <strong>cualquier</strong> petición de esta colección, y sus resultados quedan disponibles como{' '}
-                            <span className="font-mono">{'{{nombre}}'}</span>. Es el lugar natural para una firma: se configura una vez y vale para todas.
+                            {tr.computedHelp.before}
+                            <strong>{tr.computedHelp.strong}</strong>
+                            {tr.computedHelp.middle}
+                            <span className="font-mono">{tr.computedHelp.code}</span>
+                            {tr.computedHelp.after}
                         </p>
                     </div>
                 </div>
@@ -1021,7 +1022,7 @@ export default function HttpTree({
                     >
                         <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-2">
                             <Icon name="data_object" size={16} className="text-on-surface-variant" />
-                            <p className="flex-1 truncate text-sm font-medium text-on-surface">Variables de «{varsFor.name}»</p>
+                            <p className="flex-1 truncate text-sm font-medium text-on-surface">{tr.varsDialogTitle({name: varsFor.name})}</p>
                             <button
                                 onClick={() =>
                                     void guard(async () => {
@@ -1031,12 +1032,12 @@ export default function HttpTree({
                                         setVarsFor(null)
                                     })
                                 }
-                                title="Guardar las variables de esta colección"
+                                title={tr.saveVarsTitle}
                                 className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90"
                             >
-                                Guardar
+                                {t.common.save}
                             </button>
-                            <button onClick={() => setVarsFor(null)} title="Cerrar sin guardar" className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
+                            <button onClick={() => setVarsFor(null)} title={tr.closeWithoutSaving} className="rounded p-1 text-on-surface-variant hover:bg-surface-variant">
                                 <Icon name="close" size={16} />
                             </button>
                         </div>
@@ -1044,8 +1045,7 @@ export default function HttpTree({
                             <VariablesTable rows={varsRows} onChange={setVarsRows} />
                         </div>
                         <p className="shrink-0 border-t border-outline-variant px-3 py-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                            Son los valores por defecto de la colección. Un entorno activo con el mismo nombre de variable los pisa — es lo que hace que la
-                            misma petición sirva contra dev y contra producción.
+                            {tr.varsHelp}
                         </p>
                     </div>
                 </div>
@@ -1070,7 +1070,7 @@ export default function HttpTree({
                 <ConfirmDialog
                     title={confirm.title}
                     description={confirm.description}
-                    confirmLabel="Borrar"
+                    confirmLabel={t.common.delete}
                     danger
                     onConfirm={() => void guard(confirm.run)}
                     onClose={() => setConfirm(null)}
@@ -1079,6 +1079,9 @@ export default function HttpTree({
         </div>
     )
 }
+
+// Ejemplo de comando, no texto: igual en todos los idiomas.
+const CURL_PLACEHOLDER = "curl 'https://api/x' \\\n  -H 'Authorization: Bearer ...' \\\n  --data-raw '{\"a\":1}'"
 
 // La autenticación se persiste como texto JSON; vacío significa "heredar".
 function parseAuth(raw: string | undefined): httpclient.Auth {
@@ -1110,8 +1113,8 @@ function nameFromURL(url: string): string {
     try {
         const path = url.split('?')[0].replace(/^[a-zA-Z][\w+.-]*:\/\//, '')
         const parts = path.split('/').filter(Boolean)
-        return parts[parts.length - 1] || parts[0] || 'Petición'
+        return parts[parts.length - 1] || parts[0] || dict().sidebar.http.defaultRequestName
     } catch {
-        return 'Petición'
+        return dict().sidebar.http.defaultRequestName
     }
 }

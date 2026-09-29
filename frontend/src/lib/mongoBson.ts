@@ -11,18 +11,18 @@
 // explicit types are the escape hatch for when inference guesses wrong (a
 // numeric string that really IS a string, a date typed as a number).
 
+import {t} from '../i18n'
+
 export type BsonType = 'auto' | 'string' | 'number' | 'boolean' | 'objectId' | 'date' | 'regex' | 'null'
 
-export const BSON_TYPES: {value: BsonType; label: string; hint: string}[] = [
-    {value: 'auto', label: 'Auto', hint: 'Deduce el tipo de lo que escribas: 24 hex → ObjectId, dígitos → número, true/false/null tal cual, el resto texto'},
-    {value: 'string', label: 'Texto', hint: 'Fuerza texto — necesario cuando el valor parece un número o un ObjectId pero en la base está guardado como string'},
-    {value: 'number', label: 'Número', hint: 'Fuerza número. Un número guardado como texto NO coincide con un filtro numérico, y viceversa'},
-    {value: 'boolean', label: 'Booleano', hint: 'true o false'},
-    {value: 'objectId', label: 'ObjectId', hint: 'Envuelve el valor en ObjectId("…") — obligatorio para filtrar por _id cuando la colección usa ObjectId'},
-    {value: 'date', label: 'Fecha', hint: 'Envuelve en ISODate("…"). Aceptá una fecha ISO (2024-01-31 o 2024-01-31T10:00:00Z)'},
-    {value: 'regex', label: 'Regex', hint: 'Expresión regular; el valor se usa como patrón'},
-    {value: 'null', label: 'Null', hint: 'El valor null literal — distinto de "campo ausente", que se consulta con $exists'},
-]
+// Labels and hints come from the dictionary (t().mongo.bsonTypes.<value>),
+// resolved on every call so they follow the active language.
+const BSON_TYPE_VALUES: BsonType[] = ['auto', 'string', 'number', 'boolean', 'objectId', 'date', 'regex', 'null']
+
+export function bsonTypes(): {value: BsonType; label: string; hint: string}[] {
+    const d = t().mongo.bsonTypes
+    return BSON_TYPE_VALUES.map((value) => ({value, ...d[value]}))
+}
 
 const OBJECT_ID_RE = /^[0-9a-fA-F]{24}$/
 const NUMBER_RE = /^-?\d+(\.\d+)?$/
@@ -80,27 +80,27 @@ export function typedLiteral(raw: string, type: BsonType): string {
 // typeWarning explains, in one line, why a value might not match anything —
 // shown next to the input rather than after the query comes back empty.
 export function typeWarning(raw: string, type: BsonType, field: string, fieldTypes?: string[]): string {
-    const t = raw.trim()
-    if (t === '') return ''
+    const v = raw.trim()
+    if (v === '') return ''
 
-    if (type === 'number' && !NUMBER_RE.test(t)) {
-        return 'No es un número: se enviará como texto.'
+    if (type === 'number' && !NUMBER_RE.test(v)) {
+        return t().mongo.typeWarnings.notNumber
     }
-    if (type === 'objectId' && !OBJECT_ID_RE.test(t)) {
-        return 'Un ObjectId son 24 caracteres hexadecimales; se enviará como texto.'
+    if (type === 'objectId' && !OBJECT_ID_RE.test(v)) {
+        return t().mongo.typeWarnings.badObjectId
     }
-    if (type === 'date' && !ISO_DATE_RE.test(t)) {
-        return 'Formato de fecha no reconocido (usá 2024-01-31 o 2024-01-31T10:00:00Z); se enviará como texto.'
+    if (type === 'date' && !ISO_DATE_RE.test(v)) {
+        return t().mongo.typeWarnings.badDate
     }
 
     // The most valuable check: the sampled type of the field disagreeing
     // with the type being sent. This is exactly the "returns zero results
     // and you don't know why" case.
-    const effective = type === 'auto' ? inferBsonType(t) : type
+    const effective = type === 'auto' ? inferBsonType(v) : type
     if (fieldTypes && fieldTypes.length > 0) {
         const expected = fieldTypes[0]
         if (!typeMatches(effective, expected)) {
-            return `En la muestra este campo es ${expected}; estás filtrando como ${effective}. Mongo no convierte tipos: es probable que no coincida nada.`
+            return t().mongo.typeWarnings.mismatch({expected, effective})
         }
     }
     return ''

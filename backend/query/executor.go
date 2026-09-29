@@ -3,13 +3,13 @@ package query
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // Event is what gets emitted (via EmitFunc) as a Wails runtime event under
@@ -165,7 +165,7 @@ func (e *Executor) BeginTransaction(ctx context.Context, connID string, dbType d
 	e.txMu.Lock()
 	defer e.txMu.Unlock()
 	if _, ok := e.txns[connID]; ok {
-		return fmt.Errorf("query: ya hay una transacción abierta para esta conexión")
+		return i18n.Errorf(i18n.Msg{ES: "query: ya hay una transacción abierta para esta conexión", EN: "query: there is already an open transaction for this connection"})
 	}
 
 	pool, err := e.pools.Get(connID)
@@ -174,7 +174,7 @@ func (e *Executor) BeginTransaction(ctx context.Context, connID string, dbType d
 	}
 	conn, err := pool.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("query: reservando conexión: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "query: reservando conexión: %w", EN: "query: reserving connection: %w"}, err)
 	}
 
 	// Oracle has no explicit BEGIN — a transaction starts implicitly with
@@ -185,7 +185,7 @@ func (e *Executor) BeginTransaction(ctx context.Context, connID string, dbType d
 	if beginStmt := transactionBeginStmt(dbType); beginStmt != "" {
 		if _, err := conn.ExecContext(ctx, beginStmt); err != nil {
 			conn.Close()
-			return fmt.Errorf("query: iniciando transacción: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "query: iniciando transacción: %w", EN: "query: starting transaction: %w"}, err)
 		}
 	}
 
@@ -206,12 +206,12 @@ func (e *Executor) endTransaction(ctx context.Context, connID, stmt string) erro
 	e.txMu.Unlock()
 
 	if !ok {
-		return fmt.Errorf("query: no hay una transacción abierta para esta conexión")
+		return i18n.Errorf(i18n.Msg{ES: "query: no hay una transacción abierta para esta conexión", EN: "query: there is no open transaction for this connection"})
 	}
 	defer conn.Close()
 
 	if _, err := conn.ExecContext(ctx, stmt); err != nil {
-		return fmt.Errorf("query: %s: %w", stmt, err)
+		return i18n.Errorf(i18n.Msg{ES: "query: %s: %w", EN: "query: %s: %w"}, stmt, err)
 	}
 	return nil
 }
@@ -310,7 +310,7 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool, 
 
 	statements := SplitStatements(sqlText)
 	if len(statements) == 0 {
-		e.emit(queryID, Event{Type: "error", Error: "query: no hay ninguna sentencia para ejecutar"})
+		e.emit(queryID, Event{Type: "error", Error: i18n.T(i18n.Msg{ES: "query: no hay ninguna sentencia para ejecutar", EN: "query: there is no statement to run"})})
 		return
 	}
 	total := len(statements)
@@ -359,7 +359,7 @@ func (e *Executor) run(connID, queryID, sqlText string, captureDBMSOutput bool, 
 			e.emit(queryID, Event{
 				Type: "done", StatementIndex: idx, TotalStatements: total,
 				SQLText: stmt.Text,
-				Note:    "omitido: comando de cliente SQL*Plus, no se envía a Oracle",
+				Note:    i18n.T(i18n.Msg{ES: "omitido: comando de cliente SQL*Plus, no se envía a Oracle", EN: "skipped: SQL*Plus client command, not sent to Oracle"}),
 			})
 			continue
 		}
@@ -553,7 +553,7 @@ func (e *Executor) runPLSQLBlock(ctx context.Context, pool *sql.DB, connID, quer
 		var err error
 		conn, err = pool.Conn(ctx)
 		if err != nil {
-			e.emitError(connID, queryID, sqlText, fmt.Errorf("query: reservando conexión para bloque PL/SQL: %w", err), idx, total)
+			e.emitError(connID, queryID, sqlText, i18n.Errorf(i18n.Msg{ES: "query: reservando conexión para bloque PL/SQL: %w", EN: "query: reserving connection for PL/SQL block: %w"}, err), idx, total)
 			return
 		}
 		defer conn.Close()

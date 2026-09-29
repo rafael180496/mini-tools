@@ -1,8 +1,9 @@
 package vault
 
 import (
-	"fmt"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // RecentFile is one entry of the recent-files list — never encrypted, like
@@ -21,7 +22,7 @@ func (s *Store) RecordRecentFile(path string) error {
 		path, time.Now().Unix(),
 	)
 	if err != nil {
-		return fmt.Errorf("vault: guardando recent file: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: guardando recent file: %w", EN: "vault: saving recent file: %w"}, err)
 	}
 	return nil
 }
@@ -34,7 +35,7 @@ func (s *Store) ListRecentFiles(limit int) ([]RecentFile, error) {
 
 	rows, err := s.db.Query(`SELECT path, opened_at FROM recent_files ORDER BY opened_at DESC LIMIT ?`, limit)
 	if err != nil {
-		return nil, fmt.Errorf("vault: listando recent files: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando recent files: %w", EN: "vault: listing recent files: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -42,7 +43,7 @@ func (s *Store) ListRecentFiles(limit int) ([]RecentFile, error) {
 	for rows.Next() {
 		var f RecentFile
 		if err := rows.Scan(&f.Path, &f.OpenedAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo recent file: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo recent file: %w", EN: "vault: reading recent file: %w"}, err)
 		}
 		out = append(out, f)
 	}
@@ -53,7 +54,7 @@ func (s *Store) ListRecentFiles(limit int) ([]RecentFile, error) {
 // historial" button.
 func (s *Store) ClearRecentFiles() error {
 	if _, err := s.db.Exec(`DELETE FROM recent_files`); err != nil {
-		return fmt.Errorf("vault: limpiando recent files: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "vault: limpiando recent files: %w", EN: "vault: clearing recent files: %w"}, err)
 	}
 	return nil
 }

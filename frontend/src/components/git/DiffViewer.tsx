@@ -14,6 +14,7 @@ import {
     type PatchSelection,
 } from '../../lib/gitPatch'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 import {parseSplitDiff, type SplitRow} from './splitDiff'
 
 type ViewMode = 'unified' | 'split'
@@ -169,6 +170,8 @@ export default function DiffViewer({
 }: DiffViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
+    const t = useT()
+    const td = t.git.diff
     const [mode, setMode] = useState<ViewMode>('unified')
     // Document lines currently selected in the editor, so "stage these
     // lines" knows what the user actually highlighted. Kept in state (not a
@@ -281,7 +284,7 @@ export default function DiffViewer({
         return (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
                 <span aria-hidden className="h-5 w-5 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                <p className="text-xs text-primary">Cargando diff…</p>
+                <p className="text-xs text-primary">{td.loading}</p>
             </div>
         )
     }
@@ -289,18 +292,20 @@ export default function DiffViewer({
         return <Placeholder icon="error" text={error} danger />
     }
     if (isBinary) {
-        return <Placeholder icon="draft" text={`"${path}" es un archivo binario — no hay diff de texto para mostrar.`} />
+        return <Placeholder icon="draft" text={td.binary({path})} />
     }
     if (!patch) {
-        return <Placeholder icon="check_circle" text="Sin cambios para mostrar." />
+        return <Placeholder icon="check_circle" text={td.noChanges} />
     }
+
+    const unified = mode === 'unified'
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            {canApply && mode === 'unified' && (
+            {canApply && unified && (
                 <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
                     <span className="text-on-surface-variant">
-                        {parsed.hunks.length} {parsed.hunks.length === 1 ? 'bloque' : 'bloques'}
+                        {td.hunkCount(parsed.hunks.length)}
                     </span>
                     <button
                         onClick={() =>
@@ -312,19 +317,19 @@ export default function DiffViewer({
                         disabled={selectedDocLines.length === 0}
                         title={
                             selectedDocLines.length === 0
-                                ? 'Seleccioná líneas en el diff (con el mouse) para preparar solo esas'
+                                ? td.selectLinesFirst
                                 : staged
-                                  ? 'Saca del stage solo las líneas seleccionadas. Las líneas de contexto se ignoran.'
-                                  : 'Prepara solo las líneas seleccionadas — así se arma un commit limpio de una sola tarea aunque el archivo tenga varias.'
+                                  ? td.unstageLinesTitle
+                                  : td.stageLinesTitle
                         }
                         className="ml-auto rounded border border-outline-variant px-1.5 py-0.5 text-on-surface hover:bg-surface-container-high disabled:opacity-40"
                     >
-                        {staged ? 'Quitar líneas seleccionadas' : 'Preparar líneas seleccionadas'}
+                        {staged ? td.unstageLines : td.stageLines}
                     </button>
                 </div>
             )}
 
-            {canApply && mode === 'unified' && parsed.hunks.length > 0 && (
+            {canApply && unified && parsed.hunks.length > 0 && (
                 <div className="flex max-h-24 shrink-0 flex-col overflow-y-auto border-b border-outline-variant">
                     {parsed.hunks.map((hunk, i) => {
                         const {added, removed} = hunkSummary(hunk)
@@ -341,7 +346,7 @@ export default function DiffViewer({
                                         const pos = view.state.doc.line(docLine + 1).from
                                         view.dispatch({selection: {anchor: pos}, scrollIntoView: true})
                                     }}
-                                    title={`Ir a este bloque en el diff (${hunk.header})`}
+                                    title={td.goToHunk({header: hunk.header})}
                                     className="min-w-0 flex-1 truncate text-left font-mono text-on-surface-variant hover:text-on-surface"
                                 >
                                     {hunk.header}
@@ -351,18 +356,18 @@ export default function DiffViewer({
                                 </span>
                                 <button
                                     onClick={() => applySelection({hunks: new Set([i])}, staged ? 'unstage' : 'stage')}
-                                    title={staged ? 'Saca este bloque del stage' : 'Prepara este bloque completo para el commit'}
+                                    title={staged ? td.unstageHunkTitle : td.stageHunkTitle}
                                     className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 text-on-surface hover:bg-surface-container-high"
                                 >
-                                    {staged ? 'Quitar' : 'Preparar'}
+                                    {staged ? td.unstage : td.stage}
                                 </button>
                                 {!staged && (
                                     <button
                                         onClick={() => applySelection({hunks: new Set([i])}, 'discard')}
-                                        title="Revierte SOLO este bloque en el working tree. Es destructivo y no se puede deshacer."
+                                        title={td.discardHunkTitle}
                                         className="shrink-0 rounded px-1 py-0.5 text-error hover:bg-error-container"
                                     >
-                                        Descartar
+                                        {td.discard}
                                     </button>
                                 )}
                             </div>
@@ -372,8 +377,8 @@ export default function DiffViewer({
             )}
 
             <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-outline-variant bg-surface-container-low px-2 py-1">
-                <ModeTab active={mode === 'unified'} onClick={() => setMode('unified')} icon="notes" label="Unificado" title="Ver el diff como un parche unificado, con las líneas agregadas y borradas intercaladas" />
-                <ModeTab active={mode === 'split'} onClick={() => setMode('split')} icon="vertical_split" label="Lado a lado" title="Ver el archivo antes y después en dos columnas alineadas" />
+                <ModeTab active={unified} onClick={() => setMode('unified')} icon="notes" label={td.unified} title={td.unifiedTitle} />
+                <ModeTab active={mode === 'split'} onClick={() => setMode('split')} icon="vertical_split" label={td.split} title={td.splitTitle} />
 
                 <div className="mx-1 h-4 w-px bg-outline-variant" />
 
@@ -382,29 +387,29 @@ export default function DiffViewer({
                         active={!!blame}
                         onClick={onToggleBlame}
                         icon="person_search"
-                        title="Mostrar quién tocó cada línea por última vez, con su commit y su fecha. En un diff del working tree las líneas agregadas todavía no tienen commit, así que aparecen vacías."
+                        title={td.blameTitle}
                     />
                 )}
 
                 {onEdit && (
                     <button
                         onClick={onEdit}
-                        title="Abre este archivo en el editor, en la solapa Archivos. Es el camino corto para el caso normal: ver el cambio, darse cuenta de que falta algo, y arreglarlo sin salir de la app."
+                        title={td.editTitle}
                         className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
                     >
                         <Icon name="edit" size={14} />
-                        Editar
+                        {td.edit}
                     </button>
                 )}
 
                 {onAsk && (
                     <button
                         onClick={onAsk}
-                        title="Le pasa este cambio a una sesión de agente y deja el prompt escrito para que lo completes — revisar un diff antes de commitear, o preguntar por qué algo no anda. No lo envía solo."
+                        title={td.askTitle}
                         className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
                     >
                         <Icon name="smart_toy" size={14} />
-                        Preguntar
+                        {td.ask}
                     </button>
                 )}
 
@@ -412,24 +417,24 @@ export default function DiffViewer({
                     active={ignoreWs}
                     onClick={() => onChangePrefs(context, !ignoreWs, wrap)}
                     icon="format_align_justify"
-                    title="Ignorar cambios que son solo de espacios/indentación — útil cuando un reformateo tapa el cambio real"
+                    title={td.ignoreWsTitle}
                 />
-                {mode === 'unified' && (
+                {unified && (
                     <IconToggle
                         active={wrap}
                         onClick={() => onChangePrefs(context, ignoreWs, !wrap)}
                         icon="wrap_text"
-                        title="Ajustar las líneas largas al ancho del panel en vez de scrollear horizontalmente"
+                        title={td.wrapTitle}
                     />
                 )}
 
                 <div className="mx-1 h-4 w-px bg-outline-variant" />
 
-                <span className="text-ui-10 text-on-surface-variant/70" title="Cuántas líneas sin cambios se muestran alrededor de cada cambio (git -U)">Contexto</span>
+                <span className="text-ui-10 text-on-surface-variant/70" title={td.contextTitle}>{td.context}</span>
                 <button
                     onClick={() => onChangePrefs(Math.max(1, context - 3), ignoreWs, wrap)}
                     disabled={context <= 1}
-                    title="Mostrar menos líneas de contexto alrededor de cada cambio"
+                    title={td.lessContext}
                     className="rounded px-1 text-on-surface-variant hover:bg-surface-variant disabled:opacity-40"
                 >
                     <Icon name="remove" size={14} />
@@ -438,15 +443,15 @@ export default function DiffViewer({
                 <button
                     onClick={() => onChangePrefs(Math.min(200, context + 3), ignoreWs, wrap)}
                     disabled={context >= 200}
-                    title="Mostrar más líneas de contexto alrededor de cada cambio"
+                    title={td.moreContext}
                     className="rounded px-1 text-on-surface-variant hover:bg-surface-variant disabled:opacity-40"
                 >
                     <Icon name="add" size={14} />
                 </button>
             </div>
-            {mode === 'unified' ? (
+            {unified ? (
                 <div className="flex min-h-0 flex-1">
-                {blameRows.length > 0 && mode === 'unified' && (
+                {blameRows.length > 0 && unified && (
                     <div className="w-52 shrink-0 overflow-hidden border-r border-outline-variant bg-surface-container-lowest">
                         {/* Aligned to the editor by matching its line height;
                             the column scrolls with the patch because both live
@@ -457,14 +462,14 @@ export default function DiffViewer({
                                 title={
                                     b
                                         ? `${b.author} · ${b.shortHash} · ${b.date}\n${b.summary}`
-                                        : 'Sin commit: la línea todavía no está en el historial'
+                                        : td.blameNoCommit
                                 }
                                 className="h-[18px] truncate px-1.5 text-ui-10 leading-[18px] text-on-surface-variant/60"
                             >
                                 {b ? (
                                     <>
-                                        <span className="font-mono text-on-surface-variant/80">{b.uncommitted ? 'local' : b.shortHash}</span>{' '}
-                                        <span>{b.uncommitted ? 'sin commitear' : b.author}</span>
+                                        <span className="font-mono text-on-surface-variant/80">{b.uncommitted ? td.blameLocal : b.shortHash}</span>{' '}
+                                        <span>{b.uncommitted ? td.blameUncommitted : b.author}</span>
                                     </>
                                 ) : (
                                     ''
@@ -518,8 +523,9 @@ function ModeTab({active, onClick, icon, label, title}: {active: boolean; onClic
 // scroll container holding both columns gets the alignment for free and cannot
 // desynchronise, which is the property that actually matters for reading a diff.
 function SplitView({rows, wrap}: {rows: SplitRow[]; wrap: boolean}) {
+    const t = useT()
     if (rows.length === 0) {
-        return <Placeholder icon="check_circle" text="Sin cambios de texto para mostrar." />
+        return <Placeholder icon="check_circle" text={t.git.diff.noTextChanges} />
     }
     return (
         <div className="min-h-0 flex-1 overflow-auto bg-surface-container-lowest font-mono text-ui-11 leading-[1.5]">

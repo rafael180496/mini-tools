@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react'
 import Icon from '../Icon'
 import MongoCollectionTree from './MongoCollectionTree'
 import MongoDocumentPanel from './MongoDocumentPanel'
+import {useT} from '../../i18n'
 
 interface MongoBrowserTabProps {
     connId: string
@@ -32,6 +33,7 @@ export default function MongoBrowserTab({
     onSelectCollection,
     onOpenWizard,
 }: MongoBrowserTabProps) {
+    const t = useT()
     const [selected, setSelected] = useState<{database: string; collection: string} | null>(
         initialDatabase && initialCollection ? {database: initialDatabase, collection: initialCollection} : null,
     )
@@ -57,15 +59,15 @@ export default function MongoBrowserTab({
             {onOpenWizard && (
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-surface-container px-2 py-1">
                     <span className="min-w-0 truncate font-mono text-xs text-on-surface-variant">
-                        {selected ? `${selected.database}.${selected.collection}` : 'sin colección seleccionada'}
+                        {selected ? `${selected.database}.${selected.collection}` : t.mongo.browser.noCollection}
                     </span>
                     <button
                         onClick={onOpenWizard}
-                        title="Abre el asistente de consulta ya apuntando a esta colección: armá un find() o un pipeline de agregación sin escribir MQL a mano"
+                        title={t.mongo.browser.wizardHint}
                         className="ml-auto flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="auto_awesome" size={14} />
-                        Asistente de consulta
+                        {t.mongo.browser.wizard}
                     </button>
                 </div>
             )}
@@ -82,7 +84,7 @@ export default function MongoBrowserTab({
                     {selected ? (
                         <MongoDocumentPanel connId={connId} database={selected.database} collection={selected.collection} />
                     ) : (
-                        <p className="p-3 text-xs text-on-surface-variant">Elegí una colección en el árbol de la izquierda.</p>
+                        <p className="p-3 text-xs text-on-surface-variant">{t.mongo.browser.pickCollection}</p>
                     )}
                 </div>
             </div>

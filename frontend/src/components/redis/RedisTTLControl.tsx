@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from 'react'
 import {PersistRedisKey, SetRedisKeyTTL} from '../../../wailsjs/go/main/App'
 import Icon from '../Icon'
 import {describeTTL, formatDuration, parseTTLInput, TTL_NO_EXPIRY} from '../../lib/redisFormat'
+import {useT} from '../../i18n'
 
 const TONE_CLASS: Record<string, string> = {
     none: 'bg-surface-variant text-on-surface-variant',
@@ -30,6 +31,9 @@ interface RedisTTLControlProps {
 // It turns red under five minutes and amber under an hour, because "1847"
 // in a corner is not something anyone reads as "about to expire".
 export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged, onError}: RedisTTLControlProps) {
+    // Also subscribes this control to the language: describeTTL reads the
+    // dictionary on each call.
+    const t = useT()
     const [remaining, setRemaining] = useState(ttlSeconds)
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState('')
@@ -98,31 +102,31 @@ export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged,
                         }
                     }}
                     placeholder="30m"
-                    title="Cuánto debe durar la clave a partir de ahora. Aceptá segundos sueltos (3600) o abreviado: 90s, 30m, 2h, 7d."
+                    title={t.redis.ttlControl.inputHint}
                     className="w-20 rounded border border-outline-variant bg-surface-container-low px-1.5 py-0.5 font-mono text-xs text-on-surface"
                 />
                 {draft.trim() !== '' && (
-                    <span className="font-mono text-ui-10 text-on-surface-variant/70" title="Cómo se interpreta lo que escribiste">
-                        {parsed === null ? 'no se entiende' : `= ${formatDuration(parsed)}`}
+                    <span className="font-mono text-ui-10 text-on-surface-variant/70" title={t.redis.ttlControl.parsedHint}>
+                        {parsed === null ? t.redis.ttlControl.unparsed : `= ${formatDuration(parsed)}`}
                     </span>
                 )}
                 <button
                     onClick={() => void applyTTL()}
                     disabled={parsed === null || saving}
-                    title={parsed === null ? 'Escribí una duración válida (3600, 30m, 2h, 7d)' : `Aplica un vencimiento de ${formatDuration(parsed)} contado desde ahora`}
+                    title={parsed === null ? t.redis.ttlControl.invalidHint : t.redis.ttlControl.applyHint({duration: formatDuration(parsed)})}
                     className="rounded bg-primary px-1.5 py-0.5 text-ui-11 text-on-primary disabled:opacity-40"
                 >
-                    Aplicar
+                    {t.redis.ttlControl.apply}
                 </button>
                 <button
                     onClick={() => {
                         setEditing(false)
                         setDraft('')
                     }}
-                    title="Cancela sin cambiar el vencimiento"
+                    title={t.redis.ttlControl.cancelHint}
                     className="rounded px-1 py-0.5 text-ui-11 text-on-surface-variant hover:text-on-surface"
                 >
-                    Cancelar
+                    {t.common.cancel}
                 </button>
             </div>
         )
@@ -144,7 +148,7 @@ export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged,
                     setEditing(true)
                 }}
                 disabled={saving}
-                title="Cambia el vencimiento de la clave (EXPIRE), contado desde ahora"
+                title={t.redis.ttlControl.editHint}
                 className="rounded p-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
             >
                 <Icon name="edit" size={13} />
@@ -154,7 +158,7 @@ export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged,
                 <button
                     onClick={() => void persist()}
                     disabled={saving}
-                    title="Quita el vencimiento (PERSIST): la clave deja de expirar y queda permanente"
+                    title={t.redis.ttlControl.persistHint}
                     className="rounded p-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
                 >
                     <Icon name="all_inclusive" size={13} />
@@ -164,7 +168,7 @@ export default function RedisTTLControl({connId, keyName, ttlSeconds, onChanged,
             <button
                 onClick={onChanged}
                 disabled={saving}
-                title="Vuelve a leer el TTL del servidor. La cuenta regresiva se calcula localmente; esto la resincroniza."
+                title={t.redis.ttlControl.refreshHint}
                 className="rounded p-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
             >
                 <Icon name="refresh" size={13} />

@@ -21,6 +21,7 @@ import ConnectionRowMenu from '../sidebar/ConnectionRowMenu'
 import {flattenForMenu} from '../sidebar/MoveToFolderMenu'
 import {buildFolderTree, countConnectionsIn, type FolderNode} from '../../lib/folderTree'
 import ShellScriptEditor from './ShellScriptEditor'
+import {useT} from '../../i18n'
 
 interface SshSnippetsPanelProps {
     // Dónde escriben Ejecutar/Pegar. La lista de snippets es GLOBAL (la misma
@@ -94,6 +95,7 @@ function findNode(nodes: FolderNode[], id: string): FolderNode | null {
 type DragItem = {kind: 'snippet' | 'folder'; id: string}
 
 export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps) {
+    const t = useT()
     const [snippets, setSnippets] = useState<vault.SshSnippet[]>([])
     const [folders, setFolders] = useState<vault.Folder[]>([])
     const [loading, setLoading] = useState(true)
@@ -336,7 +338,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
 
     async function duplicateSnippet(s: vault.SshSnippet) {
         await run(async () => {
-            const created = await CreateSshSnippet(`${s.name} (copia)`, s.script)
+            const created = await CreateSshSnippet(t.ssh.snippets.copySuffix({name: s.name}), s.script)
             if (s.folderId) await MoveSshSnippetToFolder(created.id, s.folderId)
         })
     }
@@ -419,7 +421,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                             setNewFolderName('')
                         }
                     }}
-                    placeholder="Nombre de la carpeta — Enter crea, Esc cancela"
+                    placeholder={t.ssh.snippets.newFolderPlaceholder}
                     className="min-w-0 flex-1 border-none bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
                 />
             </div>
@@ -445,14 +447,14 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                     <Icon name="terminal" size={14} className="shrink-0 text-primary" />
                     <button
                         onDoubleClick={() => startEdit(s)}
-                        title={`${s.name} — doble clic para editar. Arrastralo sobre una carpeta para moverlo`}
+                        title={t.ssh.snippets.rowTooltip({name: s.name})}
                         className="min-w-0 flex-1 cursor-grab truncate text-left text-xs font-medium text-on-surface active:cursor-grabbing"
                     >
                         {s.name}
                     </button>
                     <button
                         onClick={() => startEdit(s)}
-                        title="Editar este snippet"
+                        title={t.ssh.snippets.editTooltip}
                         className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
                     >
                         <Icon name="edit" size={14} />
@@ -461,15 +463,15 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                         flatFolders={flatFolders}
                         onMoveToFolder={(folderId) => moveSnippetToFolder(s.id, folderId)}
                         items={[
-                            {icon: 'edit', label: 'Editar', onSelect: () => startEdit(s)},
-                            {icon: 'content_copy', label: 'Duplicar', onSelect: () => void duplicateSnippet(s)},
+                            {icon: 'edit', label: t.ssh.snippets.menu.edit, onSelect: () => startEdit(s)},
+                            {icon: 'content_copy', label: t.ssh.snippets.menu.duplicate, onSelect: () => void duplicateSnippet(s)},
                             {
                                 icon: 'assignment',
-                                label: 'Copiar script',
-                                title: 'Copia el script al portapapeles, sin escribir nada en la terminal',
+                                label: t.ssh.snippets.menu.copyScript,
+                                title: t.ssh.snippets.menu.copyScriptTooltip,
                                 onSelect: () => void navigator.clipboard.writeText(s.script).catch(() => {}),
                             },
-                            {icon: 'delete', label: 'Eliminar', danger: true, onSelect: () => setDeleteTarget(s)},
+                            {icon: 'delete', label: t.ssh.snippets.menu.delete, danger: true, onSelect: () => setDeleteTarget(s)},
                         ]}
                     />
                 </div>
@@ -484,26 +486,26 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                     ))}
                     {hidden > 0 && (
                         <div className="text-on-surface-variant/60">
-                            + {hidden} {hidden === 1 ? 'línea' : 'líneas'} más
+                            {t.ssh.snippets.moreLines(hidden)}
                         </div>
                     )}
                 </pre>
                 <div className="mt-1.5 flex gap-1.5">
                     <button
                         onClick={() => runSnippet(write, s.script)}
-                        title="Ejecuta cada línea de este snippet en la terminal, como si las tipearas y presionaras Enter"
+                        title={t.ssh.snippets.runTooltip}
                         className="flex items-center gap-1 rounded bg-secondary-container px-2 py-1 text-ui-11 font-medium text-on-secondary-container hover:opacity-90"
                     >
                         <Icon name="play_arrow" size={12} filled />
-                        Ejecutar
+                        {t.ssh.snippets.run}
                     </button>
                     <button
                         onClick={() => pasteSnippet(write, s.script)}
-                        title="Escribe este snippet en la terminal sin ejecutarlo — la última línea queda sin confirmar para que la revises antes de Enter"
+                        title={t.ssh.snippets.pasteTooltip}
                         className="flex items-center gap-1 rounded bg-surface-container-highest px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="content_paste" size={12} />
-                        Pegar
+                        {t.ssh.snippets.paste}
                     </button>
                 </div>
             </div>
@@ -533,7 +535,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                     title={
                         isRenaming
                             ? undefined
-                            : `${node.folder.name} — clic para ${expanded ? 'contraer' : 'expandir'}, doble clic para renombrar. Soltá un snippet o una carpeta encima para moverlo acá`
+                            : t.ssh.snippets.folderTooltip({name: node.folder.name, expanded})
                     }
                     className={`group flex cursor-pointer select-none items-center gap-1 rounded-md py-1 pr-1 pl-0.5 text-xs transition-colors ${
                         isDropTarget
@@ -568,7 +570,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                             <div className="flex items-center" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                                 <button
                                     onClick={() => startNew(node.folder.id)}
-                                    title="Nuevo snippet en esta carpeta"
+                                    title={t.ssh.snippets.newInFolderTooltip}
                                     className="hidden shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 group-hover:block"
                                 >
                                     <Icon name="add" size={15} />
@@ -577,15 +579,15 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                                     flatFolders={flatFolders.filter(({folder}) => !blocked.has(folder.id))}
                                     onMoveToFolder={(parentId) => moveFolderTo(node.folder.id, parentId)}
                                     items={[
-                                        {icon: 'add', label: 'Nuevo snippet aquí', onSelect: () => startNew(node.folder.id)},
-                                        {icon: 'create_new_folder', label: 'Nueva subcarpeta', onSelect: () => startCreateFolder(node.folder.id)},
-                                        {icon: 'edit', label: 'Renombrar', onSelect: () => startRenameFolder(node.folder)},
-                                        {icon: 'arrow_upward', label: 'Subir', onSelect: () => void run(() => ReorderFolder(node.folder.id, 'up'))},
-                                        {icon: 'arrow_downward', label: 'Bajar', onSelect: () => void run(() => ReorderFolder(node.folder.id, 'down'))},
+                                        {icon: 'add', label: t.ssh.snippets.menu.newHere, onSelect: () => startNew(node.folder.id)},
+                                        {icon: 'create_new_folder', label: t.ssh.snippets.menu.newSubfolder, onSelect: () => startCreateFolder(node.folder.id)},
+                                        {icon: 'edit', label: t.ssh.snippets.menu.rename, onSelect: () => startRenameFolder(node.folder)},
+                                        {icon: 'arrow_upward', label: t.ssh.snippets.menu.moveUp, onSelect: () => void run(() => ReorderFolder(node.folder.id, 'up'))},
+                                        {icon: 'arrow_downward', label: t.ssh.snippets.menu.moveDown, onSelect: () => void run(() => ReorderFolder(node.folder.id, 'down'))},
                                         {
                                             icon: 'delete',
-                                            label: 'Eliminar carpeta',
-                                            title: 'Su contenido se mueve a la carpeta contenedora, nunca se borra',
+                                            label: t.ssh.snippets.menu.deleteFolder,
+                                            title: t.ssh.snippets.menu.deleteFolderTooltip,
                                             danger: true,
                                             onSelect: () => setDeleteFolderTarget(node.folder),
                                         },
@@ -608,7 +610,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                                 className="mb-1 flex w-full items-center gap-1 rounded px-1 py-1 text-left text-ui-11 text-on-surface-variant/70 hover:bg-surface-variant hover:text-on-surface"
                             >
                                 <Icon name="add" size={13} />
-                                Carpeta vacía — crear un snippet acá
+                                {t.ssh.snippets.emptyFolder}
                             </button>
                         )}
                     </div>
@@ -624,9 +626,9 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
             <div className="flex flex-col gap-2 border-b border-outline-variant bg-surface-container-low p-2">
                 <div className="flex items-center gap-1.5">
                     <Icon name={isNew ? 'add_circle' : 'edit'} size={15} className="text-primary" />
-                    <span className="text-xs font-semibold text-on-surface">{isNew ? 'Nuevo snippet' : 'Editar snippet'}</span>
+                    <span className="text-xs font-semibold text-on-surface">{isNew ? t.ssh.snippets.newTitle : t.ssh.snippets.editTitle}</span>
                     <div className="flex-1" />
-                    <button onClick={cancelEdit} title="Cerrar sin guardar (Esc)" className={iconButton}>
+                    <button onClick={cancelEdit} title={t.ssh.snippets.closeWithoutSaving} className={iconButton}>
                         <Icon name="close" size={14} />
                     </button>
                 </div>
@@ -639,16 +641,16 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                             if (e.key === 'Escape') cancelEdit()
                             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void saveForm()
                         }}
-                        placeholder="Nombre (ej. Menú principal)"
+                        placeholder={t.ssh.snippets.namePlaceholder}
                         className="min-w-0 flex-1 rounded-lg border border-outline bg-surface px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary"
                     />
                     <select
                         value={formFolderId}
                         onChange={(e) => setFormFolderId(e.target.value)}
-                        title="Carpeta donde se guarda el snippet"
+                        title={t.ssh.snippets.folderSelectTooltip}
                         className="w-2/5 min-w-0 rounded-lg border border-outline bg-surface px-1.5 py-1.5 text-xs text-on-surface outline-none focus:border-primary"
                     >
-                        <option value="">Sin carpeta</option>
+                        <option value="">{t.ssh.snippets.noFolder}</option>
                         {flatFolders.map(({folder, depth}) => (
                             <option key={folder.id} value={folder.id}>
                                 {'\u00a0'.repeat(depth * 3)}
@@ -664,22 +666,22 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                     onSubmit={() => void saveForm()}
                     onCancel={cancelEdit}
                     autoFocus={!isNew}
-                    placeholder={'# Una línea por comando\ncd /export/env/sgc\n./menu_principal.sh'}
+                    placeholder={t.ssh.snippets.scriptPlaceholder}
                 />
                 <div className="flex items-center gap-1.5">
                     <span className="min-w-0 flex-1 truncate text-ui-10 text-on-surface-variant/70">
-                        Tab indenta · Ctrl+Enter guarda · Esc cancela
+                        {t.ssh.snippets.keysHint}
                     </span>
                     <button onClick={cancelEdit} className="rounded px-2 py-1 text-xs text-on-surface-variant hover:text-on-surface">
-                        Cancelar
+                        {t.common.cancel}
                     </button>
                     <button
                         onClick={() => void saveForm()}
                         disabled={!canSave}
-                        title="Guarda este snippet — queda disponible para cualquier terminal"
+                        title={t.ssh.snippets.saveTooltip}
                         className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
                     >
-                        {saving ? 'Guardando…' : 'Guardar'}
+                        {saving ? t.ssh.snippets.saving : t.common.save}
                     </button>
                 </div>
             </div>
@@ -700,38 +702,38 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
             <div
                 onMouseDown={startResize}
                 onDoubleClick={resetWidth}
-                title="Arrastrar para cambiar el ancho del panel — queda guardado. Doble clic vuelve al ancho por defecto"
+                title={t.ssh.snippets.resizeTooltip}
                 className="absolute inset-y-0 -left-0.5 z-10 w-1.5 cursor-col-resize hover:bg-primary/30"
             />
 
             <div className="flex items-center gap-0.5 border-b border-outline-variant px-2 py-1.5">
                 <Icon name="data_object" size={16} className="text-on-surface-variant" />
-                <span className="ml-1 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Snippets</span>
+                <span className="ml-1 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">{t.ssh.snippets.title}</span>
                 {!loading && <span className="ml-1 font-mono text-ui-10 tabular-nums text-on-surface-variant/50">{snippets.length}</span>}
                 <div className="flex-1" />
                 {folders.length > 0 && (
                     <>
-                        <button onClick={() => setAllFolders(true)} title="Expandir todas las carpetas" className={iconButton}>
+                        <button onClick={() => setAllFolders(true)} title={t.ssh.snippets.expandAll} className={iconButton}>
                             <Icon name="unfold_more" size={16} />
                         </button>
-                        <button onClick={() => setAllFolders(false)} title="Contraer todas las carpetas" className={iconButton}>
+                        <button onClick={() => setAllFolders(false)} title={t.ssh.snippets.collapseAll} className={iconButton}>
                             <Icon name="unfold_less" size={16} />
                         </button>
                     </>
                 )}
-                <button onClick={() => startCreateFolder('')} title="Crea una carpeta para organizar snippets" className={iconButton}>
+                <button onClick={() => startCreateFolder('')} title={t.ssh.snippets.newFolderTooltip} className={iconButton}>
                     <Icon name="create_new_folder" size={16} />
                 </button>
                 <button
                     onClick={() => startNew()}
-                    title="Crea un snippet nuevo: un comando o script reutilizable en cualquier terminal abierta, no solo esta"
+                    title={t.ssh.snippets.newTooltip}
                     className={iconButton}
                 >
                     <Icon name="add" size={16} />
                 </button>
                 <button
                     onClick={onClose}
-                    title="Cierra este panel — los snippets no se pierden, siguen disponibles la próxima vez que lo abras"
+                    title={t.ssh.snippets.closeTooltip}
                     className={iconButton}
                 >
                     <Icon name="close" size={16} />
@@ -745,14 +747,14 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                         onKeyDown={(e) => e.key === 'Escape' && setFilter('')}
-                        placeholder="Buscar..."
-                        title="Busca por nombre o contenido del snippet, o por nombre de carpeta — una carpeta con una coincidencia se expande automáticamente"
+                        placeholder={t.ssh.snippets.searchPlaceholder}
+                        title={t.ssh.snippets.searchTooltip}
                         className="min-w-0 flex-1 border-none bg-transparent py-1.5 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
                     />
                     {q && (
                         <>
                             <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/60">{matchCount}</span>
-                            <button onClick={() => setFilter('')} title="Limpiar búsqueda (Esc)" className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-on-surface">
+                            <button onClick={() => setFilter('')} title={t.ssh.snippets.clearSearch} className="shrink-0 rounded p-0.5 text-on-surface-variant hover:text-on-surface">
                                 <Icon name="close" size={13} />
                             </button>
                         </>
@@ -763,7 +765,7 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
             {error && (
                 <div className="mx-2 mt-1.5 flex items-start gap-1 rounded bg-error-container/40 px-2 py-1 text-ui-11 text-error">
                     <span className="min-w-0 flex-1">{error}</span>
-                    <button onClick={() => setError('')} title="Descartar" className="shrink-0">
+                    <button onClick={() => setError('')} title={t.ssh.snippets.dismiss} className="shrink-0">
                         <Icon name="close" size={12} />
                     </button>
                 </div>
@@ -776,12 +778,12 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                 className={`mt-1 min-h-0 flex-1 overflow-y-auto p-2 ${dropTarget === '' ? 'bg-primary/5 ring-1 ring-inset ring-primary/40' : ''}`}
             >
                 {creatingFolderParentId === '' && renderNewFolderInput()}
-                {loading && <p className="text-xs text-on-surface-variant">Cargando…</p>}
+                {loading && <p className="text-xs text-on-surface-variant">{t.common.loading}</p>}
                 {!loading && !hasContent && creatingFolderParentId !== '' && (
                     <div className="flex flex-col items-center gap-2 px-2 py-6 text-center">
                         <Icon name={q ? 'search_off' : 'data_object'} size={28} className="text-on-surface-variant/40" />
                         <p className="text-xs text-on-surface-variant">
-                            {q ? `Sin coincidencias para "${filter}".` : 'Sin snippets todavía. Guardá comandos para reutilizarlos en cualquier terminal.'}
+                            {q ? t.ssh.snippets.noMatch({filter}) : t.ssh.snippets.empty}
                         </p>
                         {!q && !editingId && (
                             <button
@@ -789,23 +791,23 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
                                 className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-on-primary hover:opacity-90"
                             >
                                 <Icon name="add" size={14} />
-                                Nuevo snippet
+                                {t.ssh.snippets.newTitle}
                             </button>
                         )}
                     </div>
                 )}
                 {visibleFolderNodes.map((node) => renderFolderNode(node))}
                 {rootSnippets.length > 0 && visibleFolderNodes.length > 0 && (
-                    <div className="mt-2 mb-1 px-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">Sin carpeta</div>
+                    <div className="mt-2 mb-1 px-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">{t.ssh.snippets.noFolder}</div>
                 )}
                 {rootSnippets.map((s) => renderSnippetRow(s))}
             </div>
 
             {deleteTarget && (
                 <ConfirmDialog
-                    title="Eliminar snippet"
-                    description={`"${deleteTarget.name}" se va a borrar permanentemente — no se puede deshacer.`}
-                    confirmLabel="Eliminar"
+                    title={t.ssh.snippets.deleteTitle}
+                    description={t.ssh.snippets.deleteConfirm({name: deleteTarget.name})}
+                    confirmLabel={t.ssh.snippets.deleteLabel}
                     danger
                     onConfirm={() => void confirmDelete()}
                     onClose={() => setDeleteTarget(null)}
@@ -813,9 +815,9 @@ export default function SshSnippetsPanel({write, onClose}: SshSnippetsPanelProps
             )}
             {deleteFolderTarget && (
                 <ConfirmDialog
-                    title="Eliminar carpeta"
-                    description={`Esto elimina la carpeta "${deleteFolderTarget.name}". Los snippets y subcarpetas que tenga adentro se mueven a la carpeta contenedora (o a la raíz) — nunca se borran.`}
-                    confirmLabel="Eliminar"
+                    title={t.ssh.snippets.deleteFolderTitle}
+                    description={t.ssh.snippets.deleteFolderConfirm({name: deleteFolderTarget.name})}
+                    confirmLabel={t.ssh.snippets.deleteLabel}
                     danger
                     onConfirm={() => {
                         const id = deleteFolderTarget.id

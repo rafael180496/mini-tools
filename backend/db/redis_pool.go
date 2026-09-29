@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -11,6 +10,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"mini-tools/backend/i18n"
 )
 
 const defaultRedisPingTimeout = 5 * time.Second
@@ -40,7 +41,7 @@ func (m *RedisPoolManager) Get(connID string) (redis.UniversalClient, error) {
 
 	c, ok := m.clients[connID]
 	if !ok {
-		return nil, fmt.Errorf("db: no hay un cliente Redis abierto para la conexión %q", connID)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: no hay un cliente Redis abierto para la conexión %q", EN: "db: no Redis client open for connection %q"}, connID)
 	}
 	return c, nil
 }
@@ -81,7 +82,7 @@ func (m *RedisPoolManager) Open(connID, dsn string) (redis.UniversalClient, erro
 	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
 		client.Close()
-		return nil, fmt.Errorf("db: haciendo ping al cliente Redis: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: haciendo ping al cliente Redis: %w", EN: "db: pinging Redis client: %w"}, err)
 	}
 
 	m.clients[connID] = client
@@ -130,7 +131,7 @@ func PingRedisDSN(dsn string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRedisPingTimeout)
 	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("db: ping a Redis falló: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "db: ping a Redis falló: %w", EN: "db: Redis ping failed: %w"}, err)
 	}
 	return nil
 }
@@ -143,7 +144,7 @@ func PingRedisDSN(dsn string) error {
 func redisUniversalOptionsFromDSN(dsn string) (*redis.UniversalOptions, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("db: parseando DSN de Redis: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "db: parseando DSN de Redis: %w", EN: "db: parsing Redis DSN: %w"}, err)
 	}
 
 	q := u.Query()
@@ -167,7 +168,7 @@ func redisUniversalOptionsFromDSN(dsn string) (*redis.UniversalOptions, error) {
 	case RedisModeCluster:
 		nodes := q.Get("nodes")
 		if nodes == "" {
-			return nil, fmt.Errorf("db: DSN de Redis en modo cluster sin 'nodes'")
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: DSN de Redis en modo cluster sin 'nodes'", EN: "db: Redis DSN in cluster mode without 'nodes'"})
 		}
 		opts.Addrs = splitNodes(nodes)
 		// IsClusterMode is set explicitly rather than relying on
@@ -180,7 +181,7 @@ func redisUniversalOptionsFromDSN(dsn string) (*redis.UniversalOptions, error) {
 	case RedisModeSentinel:
 		sentinels := q.Get("sentinels")
 		if sentinels == "" {
-			return nil, fmt.Errorf("db: DSN de Redis en modo sentinel sin 'sentinels'")
+			return nil, i18n.Errorf(i18n.Msg{ES: "db: DSN de Redis en modo sentinel sin 'sentinels'", EN: "db: Redis DSN in sentinel mode without 'sentinels'"})
 		}
 		opts.Addrs = splitNodes(sentinels)
 		opts.MasterName = q.Get("master")

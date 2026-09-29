@@ -5,6 +5,7 @@
 // en toda la aplicación: el árbol y la barra de URL tienen que pintar `POST`
 // del mismo color, y dos tablas de colores terminan divergiendo.
 
+import {createElement, type ReactNode} from 'react'
 import {httpclient} from '../../../wailsjs/go/models'
 
 // Métodos ofrecidos en el selector. El orden es el de uso real, no
@@ -164,4 +165,21 @@ function parseJsonRows<T>(raw: string | undefined, make: (init: Partial<T>) => T
         // Una fila corrupta no puede impedir abrir la petición.
         return []
     }
+}
+
+// rich dibuja un texto del diccionario que trae marcas mínimas: `código` va en
+// monoespaciada y **esto** en negrita. Existe para que un párrafo con un
+// `{{nombre}}` o una palabra destacada adentro sea UN solo texto traducible, en
+// vez de tres pedazos pegados en el componente —el orden de las palabras
+// cambia entre idiomas—.
+export function rich(text: string, codeClass = 'font-mono'): ReactNode[] {
+    return text.split(/(`[^`]+`|\*\*[^*]+\*\*)/).map((part, i) => {
+        if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
+            return createElement('span', {key: i, className: codeClass}, part.slice(1, -1))
+        }
+        if (part.startsWith('**') && part.endsWith('**') && part.length > 3) {
+            return createElement('strong', {key: i}, part.slice(2, -2))
+        }
+        return part
+    })
 }

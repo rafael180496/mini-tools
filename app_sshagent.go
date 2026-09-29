@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 
 	"mini-tools/backend/agentctx"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/sshconn"
 )
 
@@ -63,7 +63,7 @@ func (a *App) AnalyzeSSHError(connID, sessionID, selection string, lines int, ag
 		key = connID
 	}
 	if !a.sshSessions.HasSession(key) {
-		return SSHErrorAnalysis{}, fmt.Errorf("app: no hay ninguna terminal abierta para esa conexión")
+		return SSHErrorAnalysis{}, i18n.Errorf(i18n.Msg{ES: "app: no hay ninguna terminal abierta para esa conexión", EN: "app: there's no terminal open for that connection"})
 	}
 
 	conn, err := a.connByNameOrID(connID)
@@ -80,7 +80,7 @@ func (a *App) AnalyzeSSHError(connID, sessionID, selection string, lines int, ag
 		out.Lines, out.Redacted = a.sshSessions.TailRedacted(key, lines)
 	}
 	if len(out.Lines) == 0 {
-		return out, fmt.Errorf("app: la terminal todavía no imprimió nada que analizar")
+		return out, i18n.Errorf(i18n.Msg{ES: "app: la terminal todavía no imprimió nada que analizar", EN: "app: the terminal hasn't printed anything to analyze yet"})
 	}
 
 	out.OSInfo = a.sshOSInfo(key)
@@ -152,7 +152,7 @@ func (a *App) SSHTail(key string, lines int) ([]string, error) {
 		return nil, err
 	}
 	if !a.sshSessions.HasSession(key) {
-		return nil, fmt.Errorf("app: no hay ninguna terminal abierta para esa conexión")
+		return nil, i18n.Errorf(i18n.Msg{ES: "app: no hay ninguna terminal abierta para esa conexión", EN: "app: there's no terminal open for that connection"})
 	}
 	out := a.sshSessions.Tail(key, lines)
 	if out == nil {

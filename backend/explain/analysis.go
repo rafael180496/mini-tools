@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Row-count thresholds that turn a full scan from "the right plan" into
@@ -205,14 +207,14 @@ func buildInsights(plan *Plan, nodes []*PlanNode, analyzed bool) []Insight {
 			Severity: n.Severity,
 			Title:    scanTitle(n),
 			Node:     n.Operation,
-			Detail: fmt.Sprintf("Lee %s sin usar un índice (%.0f%% del peso del plan).",
+			Detail: i18n.T(i18n.Msg{ES: "Lee %s sin usar un índice (%.0f%% del peso del plan).", EN: "Reads %s without using an index (%.0f%% of the plan's weight)."},
 				formatRows(rowsOf(n)), n.ImpactPct),
 		}
 		if sql := SuggestIndex(plan.Engine, n); sql != "" {
 			insight.SQL = sql
-			insight.Detail += " Un índice sobre las columnas del filtro evitaría recorrer la tabla entera."
+			insight.Detail += i18n.T(i18n.Msg{ES: " Un índice sobre las columnas del filtro evitaría recorrer la tabla entera.", EN: " An index on the filter columns would avoid scanning the whole table."})
 		} else if n.ObjectName != "" {
-			insight.Detail += " No hay un filtro del que deducir el índice: revisá el WHERE o el JOIN que alimenta este nodo."
+			insight.Detail += i18n.T(i18n.Msg{ES: " No hay un filtro del que deducir el índice: revisá el WHERE o el JOIN que alimenta este nodo.", EN: " There is no filter to derive the index from: check the WHERE or the JOIN feeding this node."})
 		}
 		out = append(out, insight)
 	}
@@ -227,16 +229,16 @@ func buildInsights(plan *Plan, nodes []*PlanNode, analyzed bool) []Insight {
 			if n.RowsRatio < misestimateFactor && n.RowsRatio > 1/misestimateFactor {
 				continue
 			}
-			direction := "muchas más"
+			direction := i18n.T(i18n.Msg{ES: "muchas más", EN: "far more"})
 			if n.RowsRatio < 1 {
-				direction = "muchas menos"
+				direction = i18n.T(i18n.Msg{ES: "muchas menos", EN: "far fewer"})
 			}
 			insight := Insight{
 				Kind:     "misestimate",
 				Severity: SeverityWarning,
-				Title:    "El planner está descalibrado",
+				Title:    i18n.T(i18n.Msg{ES: "El planner está descalibrado", EN: "The planner is miscalibrated"}),
 				Node:     n.Operation,
-				Detail: fmt.Sprintf("%s estimó %s filas y devolvió %s (%s de las previstas). Con estadísticas desactualizadas el motor elige mal entre nested loop y hash join.",
+				Detail: i18n.T(i18n.Msg{ES: "%s estimó %s filas y devolvió %s (%s de las previstas). Con estadísticas desactualizadas el motor elige mal entre nested loop y hash join.", EN: "%s estimated %s rows and returned %s (%s than expected). With stale statistics the engine chooses poorly between nested loop and hash join."},
 					nodeLabel(n), formatRows(n.Rows), formatRows(n.ActualRows), direction),
 			}
 			if sql := SuggestAnalyze(plan.Engine, n.ObjectName); sql != "" {
@@ -251,16 +253,16 @@ func buildInsights(plan *Plan, nodes []*PlanNode, analyzed bool) []Insight {
 	// an expensive hash) — otherwise the user only ever hears about scans.
 	for _, n := range nodes {
 		if n.IsBottleneck && !n.IsFullScan && n.ImpactPct >= criticalImpactPct && isSignificant(n, analyzed) {
-			metric := fmt.Sprintf("%.0f%% del costo estimado", n.ImpactPct)
+			metric := i18n.T(i18n.Msg{ES: "%.0f%% del costo estimado", EN: "%.0f%% of the estimated cost"}, n.ImpactPct)
 			if analyzed {
-				metric = fmt.Sprintf("%.1f ms propios (%.0f%% del total)", n.SelfTimeMs, n.ImpactPct)
+				metric = i18n.T(i18n.Msg{ES: "%.1f ms propios (%.0f%% del total)", EN: "%.1f ms of its own (%.0f%% of the total)"}, n.SelfTimeMs, n.ImpactPct)
 			}
 			out = append(out, Insight{
 				Kind:     "bottleneck",
 				Severity: SeverityWarning,
-				Title:    "Nodo más pesado del plan",
+				Title:    i18n.T(i18n.Msg{ES: "Nodo más pesado del plan", EN: "Heaviest node in the plan"}),
 				Node:     n.Operation,
-				Detail:   fmt.Sprintf("%s concentra %s.", nodeLabel(n), metric),
+				Detail:   i18n.T(i18n.Msg{ES: "%s concentra %s.", EN: "%s accounts for %s."}, nodeLabel(n), metric),
 			})
 			break
 		}
@@ -270,8 +272,8 @@ func buildInsights(plan *Plan, nodes []*PlanNode, analyzed bool) []Insight {
 		out = append(out, Insight{
 			Kind:     "buffer-miss",
 			Severity: SeverityInfo,
-			Title:    "Buena parte de los datos vino del disco",
-			Detail: fmt.Sprintf("%.0f%% de aciertos en caché (%s bloques de memoria, %s leídos de disco). Si la consulta se repite seguido, el conjunto de trabajo no entra en shared_buffers.",
+			Title:    i18n.T(i18n.Msg{ES: "Buena parte de los datos vino del disco", EN: "Much of the data came from disk"}),
+			Detail: i18n.T(i18n.Msg{ES: "%.0f%% de aciertos en caché (%s bloques de memoria, %s leídos de disco). Si la consulta se repite seguido, el conjunto de trabajo no entra en shared_buffers.", EN: "%.0f%% cache hit rate (%s blocks from memory, %s read from disk). If the query runs often, the working set doesn't fit in shared_buffers."},
 				b.HitRatePct, formatRows(b.Hit), formatRows(b.Read)),
 		})
 	}
@@ -280,8 +282,8 @@ func buildInsights(plan *Plan, nodes []*PlanNode, analyzed bool) []Insight {
 		out = append(out, Insight{
 			Kind:     "not-analyzed",
 			Severity: SeverityInfo,
-			Title:    "Solo estimaciones",
-			Detail:   "Este plan son las previsiones del planner, no mediciones. Usá Explain Analyze para ver filas y tiempos reales — corre la consulta de verdad.",
+			Title:    i18n.T(i18n.Msg{ES: "Solo estimaciones", EN: "Estimates only"}),
+			Detail:   i18n.T(i18n.Msg{ES: "Este plan son las previsiones del planner, no mediciones. Usá Explain Analyze para ver filas y tiempos reales — corre la consulta de verdad.", EN: "This plan is the planner's forecast, not measurements. Use Explain Analyze to see real rows and timings — it actually runs the query."}),
 		})
 	}
 
@@ -309,14 +311,14 @@ func severityRank(s Severity) int {
 
 func scanTitle(n *PlanNode) string {
 	if n.ObjectName != "" {
-		return "Recorrido completo de " + n.ObjectName
+		return i18n.T(i18n.Msg{ES: "Recorrido completo de %s", EN: "Full scan of %s"}, n.ObjectName)
 	}
-	return "Recorrido completo de tabla"
+	return i18n.T(i18n.Msg{ES: "Recorrido completo de tabla", EN: "Full table scan"})
 }
 
 func nodeLabel(n *PlanNode) string {
 	if n.ObjectName != "" {
-		return n.Operation + " sobre " + n.ObjectName
+		return i18n.T(i18n.Msg{ES: "%s sobre %s", EN: "%s on %s"}, n.Operation, n.ObjectName)
 	}
 	return n.Operation
 }
@@ -335,9 +337,17 @@ func formatRows(n int64) string {
 	}
 	for i := lead; i < len(s); i += 3 {
 		if b.Len() > 0 {
-			b.WriteByte('.')
+			b.WriteByte(thousandsSep())
 		}
 		b.WriteString(s[i : i+3])
 	}
 	return b.String()
+}
+
+// thousandsSep is the digit-group separator of the active language.
+func thousandsSep() byte {
+	if i18n.Lang() == "es" {
+		return '.'
+	}
+	return ','
 }

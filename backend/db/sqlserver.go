@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	_ "github.com/microsoft/go-mssqldb"
+
+	"mini-tools/backend/i18n"
 )
 
 type sqlserverConnector struct{}
@@ -30,15 +32,15 @@ func (sqlserverConnector) Type() DBType { return DBTypeSQLServer }
 func (sqlserverConnector) BuildDSN(params map[string]string) (string, error) {
 	host := params["host"]
 	if host == "" {
-		return "", fmt.Errorf("sqlserver: falta el parámetro 'host'")
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlserver: falta el parámetro 'host'", EN: "sqlserver: missing 'host' parameter"})
 	}
 	user := params["user"]
 	if user == "" {
-		return "", fmt.Errorf("sqlserver: falta el parámetro 'user'")
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlserver: falta el parámetro 'user'", EN: "sqlserver: missing 'user' parameter"})
 	}
 	dbname := params["dbname"]
 	if dbname == "" {
-		return "", fmt.Errorf("sqlserver: falta el parámetro 'dbname'")
+		return "", i18n.Errorf(i18n.Msg{ES: "sqlserver: falta el parámetro 'dbname'", EN: "sqlserver: missing 'dbname' parameter"})
 	}
 
 	instance := params["instance"]
@@ -88,7 +90,7 @@ func (sqlserverConnector) BuildDSN(params map[string]string) (string, error) {
 func (sqlserverConnector) ParseDSN(dsn string) (map[string]string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("sqlserver: parseando DSN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "sqlserver: parseando DSN: %w", EN: "sqlserver: parsing DSN: %w"}, err)
 	}
 
 	params := map[string]string{

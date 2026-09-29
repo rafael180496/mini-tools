@@ -1,11 +1,11 @@
 package vault
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
+	"mini-tools/backend/i18n"
 )
 
 // Historial de comandos de las terminales LOCALES (la shell del sistema
@@ -45,14 +45,14 @@ func (s *Store) AppendLocalHistory(shellID, command string) (bool, error) {
 	}
 	ciphertext, nonce, err := mtcrypto.Encrypt(key, []byte(command))
 	if err != nil {
-		return false, fmt.Errorf("vault: cifrando el comando: %w", err)
+		return false, i18n.Errorf(i18n.Msg{ES: "vault: cifrando el comando: %w", EN: "vault: encrypting the command: %w"}, err)
 	}
 
 	if _, err := s.db.Exec(
 		`INSERT INTO local_command_history (shell_id, encrypted_cmd, nonce, ran_at) VALUES (?, ?, ?, ?)`,
 		shellID, ciphertext, nonce, time.Now().Unix(),
 	); err != nil {
-		return false, fmt.Errorf("vault: guardando el comando: %w", err)
+		return false, i18n.Errorf(i18n.Msg{ES: "vault: guardando el comando: %w", EN: "vault: saving the command: %w"}, err)
 	}
 	return true, nil
 }
@@ -76,7 +76,7 @@ func (s *Store) ListLocalHistory(shellID string, limit int) ([]SshHistoryEntry, 
 		shellID, limit,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("vault: leyendo el historial local: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el historial local: %w", EN: "vault: reading the local history: %w"}, err)
 	}
 	defer rows.Close()
 
@@ -85,7 +85,7 @@ func (s *Store) ListLocalHistory(shellID string, limit int) ([]SshHistoryEntry, 
 		var e SshHistoryEntry
 		var ciphertext, nonce []byte
 		if err := rows.Scan(&e.ID, &ciphertext, &nonce, &e.RanAt); err != nil {
-			return nil, fmt.Errorf("vault: leyendo una fila del historial local: %w", err)
+			return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo una fila del historial local: %w", EN: "vault: reading a local history row: %w"}, err)
 		}
 		plaintext, err := mtcrypto.Decrypt(key, ciphertext, nonce)
 		if err != nil {
@@ -105,7 +105,7 @@ func (s *Store) ListLocalHistory(shellID string, limit int) ([]SshHistoryEntry, 
 func (s *Store) ClearLocalHistory(shellID string) (int64, error) {
 	res, err := s.db.Exec(`DELETE FROM local_command_history WHERE shell_id = ?`, shellID)
 	if err != nil {
-		return 0, fmt.Errorf("vault: limpiando el historial local: %w", err)
+		return 0, i18n.Errorf(i18n.Msg{ES: "vault: limpiando el historial local: %w", EN: "vault: clearing the local history: %w"}, err)
 	}
 	n, _ := res.RowsAffected()
 	return n, nil

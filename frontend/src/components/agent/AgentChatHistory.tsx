@@ -1,6 +1,7 @@
 import {useMemo, useState} from 'react'
 import {agentchat, agents as agentsModel, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
+import {t as tr, useT} from '../../i18n'
 
 // Historial de conversaciones del repositorio, como pantalla y no como menú.
 //
@@ -59,14 +60,16 @@ interface Props {
 function relativeAge(unix: number): string {
     if (!unix) return ''
     const days = Math.floor((Date.now() / 1000 - unix) / 86400)
-    if (days <= 0) return 'hoy'
-    if (days === 1) return 'ayer'
-    if (days < 30) return `${days}d`
+    const a = tr().agent.age
+    if (days <= 0) return a.today
+    if (days === 1) return a.yesterday
+    if (days < 30) return a.days({n: days})
     const months = Math.floor(days / 30)
-    return `${months}m`
+    return a.months({n: months})
 }
 
 export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, onRename, onDelete, onNew}: Props) {
+    const t = useT()
     const [query, setQuery] = useState('')
     // Qué proveedor se está mirando. `null` es "todos", que es lo útil cuando
     // uno busca por texto y no se acuerda a quién le preguntó.
@@ -76,7 +79,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
         const own: ChatHistoryEntry[] = mine.map((c) => ({
             id: c.id,
             agentId: c.agentId,
-            title: c.title || 'Sin nombre',
+            title: c.title || t.agent.history.untitled,
             updatedAt: c.updatedAt,
             external: false,
         }))
@@ -87,7 +90,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
             .map((c) => ({id: c.id, agentId: c.agent, title: c.title, updatedAt: c.updatedAt, external: true, conv: c}))
 
         return [...own, ...external].sort((a, b) => b.updatedAt - a.updatedAt)
-    }, [mine, cli])
+    }, [mine, cli, t])
 
     const shown = useMemo(() => {
         const q = query.trim().toLowerCase()
@@ -105,19 +108,19 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
             <div className="flex shrink-0 items-center gap-0.5 border-b border-outline-variant px-1 py-1">
                 <button
                     onClick={() => setProvider(null)}
-                    title="Todas las conversaciones de este repositorio, de cualquier agente"
+                    title={t.agent.history.allTitle}
                     className={`shrink-0 rounded px-2 py-0.5 text-ui-11 ${
                         provider === null ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'
                     }`}
                 >
-                    Todas
+                    {t.agent.history.all}
                     <span className="ml-1 opacity-60">{entries.length}</span>
                 </button>
                 {tabs.map((a) => (
                     <button
                         key={a.id}
                         onClick={() => setProvider(a.id)}
-                        title={`Solo las conversaciones con ${a.label}`}
+                        title={t.agent.history.onlyAgentTitle({agent: a.label})}
                         className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-ui-11 ${
                             provider === a.id ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:bg-surface-variant'
                         }`}
@@ -137,7 +140,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                     onKeyDown={(e) => {
                         if (e.key === 'Escape') setQuery('')
                     }}
-                    placeholder="Buscar en las conversaciones…"
+                    placeholder={t.agent.history.searchPlaceholder}
                     className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
                 />
                 {/* Empezar una conversación vive acá también: si buscaste y no
@@ -145,11 +148,11 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                 {(provider !== null || tabs.length === 1) && (
                     <button
                         onClick={() => onNew(provider ?? tabs[0].id)}
-                        title="Empezar una conversación nueva con este agente"
+                        title={t.agent.history.newTitle}
                         className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-ui-11 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="add" size={13} />
-                        Nueva
+                        {t.agent.history.new}
                     </button>
                 )}
             </div>
@@ -158,8 +161,8 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                 {shown.length === 0 ? (
                     <p className="px-3 py-4 text-center text-ui-11 text-on-surface-variant">
                         {query.trim()
-                            ? `Ninguna conversación coincide con "${query.trim()}".`
-                            : 'Todavía no hay conversaciones en este repositorio. Empezá una desde el + de arriba.'}
+                            ? t.agent.history.noMatch({query: query.trim()})
+                            : t.agent.history.empty}
                     </p>
                 ) : (
                     shown.map((e) => (
@@ -176,7 +179,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                                 envoltorio porque Icon no lo acepta. */}
                             <span
                                 className="shrink-0"
-                                title={e.external ? 'Ya existía en el agente, fuera de esta app' : 'Conversación de esta app'}
+                                title={e.external ? t.agent.history.externalTitle : t.agent.history.ownTitle}
                             >
                                 <Icon
                                     name={e.external ? 'cloud_download' : 'chat'}
@@ -198,7 +201,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                                             ev.stopPropagation()
                                             onRename(e.id, e.title)
                                         }}
-                                        title="Cambiarle el nombre a esta conversación"
+                                        title={t.agent.history.renameTitle}
                                         className="rounded p-0.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
                                     >
                                         <Icon name="edit" size={13} />
@@ -208,7 +211,7 @@ export default function AgentChatHistory({agents, mine, cli, activeId, onOpen, o
                                             ev.stopPropagation()
                                             onDelete(e.id)
                                         }}
-                                        title="Quitarla del historial. La conversación sigue existiendo en el agente; se pierde el atajo para retomarla."
+                                        title={t.agent.history.deleteTitle}
                                         className="rounded p-0.5 text-on-surface-variant hover:bg-error-container/40 hover:text-error"
                                     >
                                         <Icon name="delete" size={13} />

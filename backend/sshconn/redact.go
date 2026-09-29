@@ -1,6 +1,7 @@
 package sshconn
 
 import (
+	"mini-tools/backend/i18n"
 	"regexp"
 	"strings"
 )
@@ -29,9 +30,11 @@ import (
 // redactMarker es lo que reemplaza al valor. redactOpen es su primer
 // caracter, que alcanza para reconocer un valor ya redactado aunque se lo
 // haya capturado a medias.
-const (
-	redactOpen   = "«"
-	redactMarker = redactOpen + "oculto por mini-tools»"
+const redactOpen = "«"
+
+var (
+	msgRedactMarker = i18n.Msg{ES: "«oculto por mini-tools»", EN: "«hidden by mini-tools»"}
+	msgRedactKey    = i18n.Msg{ES: "«oculto por mini-tools» (clave privada)", EN: "«hidden by mini-tools» (private key)"}
 )
 
 // secretPatterns son las formas donde el propio texto dice que lo que sigue es
@@ -63,6 +66,7 @@ func redactSecrets(lines []string) ([]string, int) {
 	out := make([]string, 0, len(lines))
 	count := 0
 	inKey := false
+	redactMarker := i18n.T(msgRedactMarker)
 
 	for _, line := range lines {
 		if inKey {
@@ -74,7 +78,7 @@ func redactSecrets(lines []string) ([]string, int) {
 		if privateKeyStart.MatchString(line) {
 			inKey = true
 			count++
-			out = append(out, redactMarker+" (clave privada)")
+			out = append(out, i18n.T(msgRedactKey))
 			continue
 		}
 

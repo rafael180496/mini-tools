@@ -1,9 +1,10 @@
 package db
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // MongoMode selects between a standard connection and a DNS-seedlist (SRV)
@@ -57,7 +58,7 @@ func (mongoConnector) BuildDSN(params map[string]string) (string, error) {
 		} else {
 			host := params["host"]
 			if host == "" {
-				return "", fmt.Errorf("mongodb: falta el parámetro 'host'")
+				return "", i18n.Errorf(i18n.Msg{ES: "mongodb: falta el parámetro 'host'", EN: "mongodb: missing 'host' parameter"})
 			}
 			port := params["port"]
 			if port == "" {
@@ -68,12 +69,12 @@ func (mongoConnector) BuildDSN(params map[string]string) (string, error) {
 	case MongoModeSRV:
 		host := params["host"]
 		if host == "" {
-			return "", fmt.Errorf("mongodb: falta el parámetro 'host' para el modo srv")
+			return "", i18n.Errorf(i18n.Msg{ES: "mongodb: falta el parámetro 'host' para el modo srv", EN: "mongodb: missing 'host' parameter for srv mode"})
 		}
 		// An SRV host must not carry a port — the DNS seedlist supplies it.
 		authority = strings.SplitN(host, ":", 2)[0]
 	default:
-		return "", fmt.Errorf("mongodb: modo de conexión desconocido %q (usar standard o srv)", params["mode"])
+		return "", i18n.Errorf(i18n.Msg{ES: "mongodb: modo de conexión desconocido %q (usar standard o srv)", EN: "mongodb: unknown connection mode %q (use standard or srv)"}, params["mode"])
 	}
 
 	u := url.URL{Scheme: scheme, Host: authority}
@@ -106,7 +107,7 @@ func (mongoConnector) BuildDSN(params map[string]string) (string, error) {
 func (mongoConnector) ParseDSN(dsn string) (map[string]string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("mongodb: parseando DSN: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "mongodb: parseando DSN: %w", EN: "mongodb: parsing DSN: %w"}, err)
 	}
 
 	params := map[string]string{}

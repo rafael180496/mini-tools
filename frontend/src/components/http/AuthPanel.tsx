@@ -3,6 +3,8 @@ import {HttpAuthorizeOAuth2, HttpFetchOAuth2Token} from '../../../wailsjs/go/mai
 import {httpclient} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import Select from '../Select'
+import {rich} from './httpShared'
+import {formatDateTime, useT} from '../../i18n'
 
 // Editor de autenticación, compartido por la petición, la carpeta y la
 // colección — son el mismo formulario en tres niveles de la herencia.
@@ -25,30 +27,36 @@ interface AuthPanelProps {
     onTokenObtained?: (auth: httpclient.Auth) => void
 }
 
-const TYPES: {id: string; label: string; executable: boolean}[] = [
-    {id: 'inherit', label: 'Heredar del nivel superior', executable: true},
-    {id: 'none', label: 'Sin autenticación', executable: true},
-    {id: 'basic', label: 'Basic', executable: true},
-    {id: 'bearer', label: 'Bearer Token', executable: true},
-    {id: 'apikey', label: 'API Key', executable: true},
-    {id: 'jwt', label: 'JWT Bearer', executable: true},
-    {id: 'digest', label: 'Digest', executable: true},
-    {id: 'oauth2', label: 'OAuth 2.0', executable: true},
-    {id: 'awsv4', label: 'AWS Signature v4', executable: true},
-    {id: 'oauth1', label: 'OAuth 1.0', executable: false},
-    {id: 'hawk', label: 'Hawk', executable: false},
-    {id: 'ntlm', label: 'NTLM', executable: false},
-    {id: 'edgegrid', label: 'Akamai EdgeGrid', executable: false},
-    {id: 'asap', label: 'ASAP (Atlassian)', executable: false},
+// `name` es el nombre técnico del esquema (Basic, OAuth 2.0…), igual en todos
+// los idiomas; los dos primeros son texto de la interfaz y se resuelven al
+// dibujar.
+const TYPES: {id: string; name: string; executable: boolean}[] = [
+    {id: 'inherit', name: '', executable: true},
+    {id: 'none', name: '', executable: true},
+    {id: 'basic', name: 'Basic', executable: true},
+    {id: 'bearer', name: 'Bearer Token', executable: true},
+    {id: 'apikey', name: 'API Key', executable: true},
+    {id: 'jwt', name: 'JWT Bearer', executable: true},
+    {id: 'digest', name: 'Digest', executable: true},
+    {id: 'oauth2', name: 'OAuth 2.0', executable: true},
+    {id: 'awsv4', name: 'AWS Signature v4', executable: true},
+    {id: 'oauth1', name: 'OAuth 1.0', executable: false},
+    {id: 'hawk', name: 'Hawk', executable: false},
+    {id: 'ntlm', name: 'NTLM', executable: false},
+    {id: 'edgegrid', name: 'Akamai EdgeGrid', executable: false},
+    {id: 'asap', name: 'ASAP (Atlassian)', executable: false},
 ]
 
 export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained}: AuthPanelProps) {
+    const t = useT()
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [notice, setNotice] = useState<string | null>(null)
 
     const type = auth.type || 'inherit'
-    const meta = TYPES.find((t) => t.id === type)
+    const meta = TYPES.find((x) => x.id === type)
+    const isType = (id: string) => type === id
+    const isGrant = (g: string) => auth.grantType === g
 
     function set(patch: Partial<httpclient.Auth>) {
         onChange(new httpclient.Auth({...auth, ...patch}))
@@ -69,7 +77,7 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
             })
             onChange(updated)
             onTokenObtained?.(updated)
-            setNotice(res.expiresAt ? `Token obtenido, vence ${new Date(res.expiresAt * 1000).toLocaleString()}` : 'Token obtenido')
+            setNotice(res.expiresAt ? t.http.auth.tokenObtainedUntil({date: formatDateTime(res.expiresAt)}) : t.http.auth.tokenObtained)
         } catch (e) {
             setError(String(e))
         } finally {
@@ -79,202 +87,192 @@ export default function AuthPanel({auth, onChange, inheritsFrom, onTokenObtained
 
     return (
         <div className="px-3 py-2 text-ui-11">
-            <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Tipo</label>
+            <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">{t.http.auth.type}</label>
             {/* El aviso de «todavía no se firma» va como aclaración de la
                 fila y no pegado al rótulo: en un <option> nativo era una línea
                 larguísima que tapaba el nombre del tipo, que es lo que se
                 busca al abrir la lista. */}
             <Select
                 value={type}
-                options={TYPES.map((t) => ({
-                    value: t.id,
-                    label: t.label,
-                    hint: t.executable ? undefined : 'se guarda, todavía no se firma',
+                options={TYPES.map((x) => ({
+                    value: x.id,
+                    label: x.id === 'inherit' ? t.http.auth.typeInherit : x.id === 'none' ? t.http.auth.typeNone : x.name,
+                    hint: x.executable ? undefined : t.http.auth.notSignedHint,
                 }))}
                 onChange={(v) => set({type: v})}
                 size="sm"
-                ariaLabel="Tipo de autenticación"
-                title="Cómo se autentica esta petición. «Heredar» usa lo que definan la carpeta o la colección, que es lo que permite cambiar un token en un solo lugar."
+                ariaLabel={t.http.auth.typeAria}
+                title={t.http.auth.typeTitle}
                 className="w-full"
             />
 
             {meta && !meta.executable && (
                 <p className="mt-2 rounded bg-surface-container-lowest px-2 py-1.5 text-ui-10 leading-relaxed text-tertiary">
-                    Esta autenticación se <strong>guarda y se exporta intacta</strong>, pero esta versión todavía no la firma: la petición va a salir sin
-                    autenticar. Se muestra igual para que una colección importada que la use no pierda su configuración.
+                    {rich(t.http.auth.notSigned)}
                 </p>
             )}
 
-            {type === 'inherit' && (
+            {isType('inherit') && (
                 <p className="mt-2 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                    {inheritsFrom
-                        ? `Usa la autenticación de ${inheritsFrom}. Si ese nivel también hereda, se sigue subiendo hasta la colección.`
-                        : 'Usa la autenticación de la carpeta o, si no tiene, la de la colección.'}
+                    {inheritsFrom ? t.http.auth.inheritsFrom({from: inheritsFrom}) : t.http.auth.inheritsDefault}
                 </p>
             )}
 
-            {(type === 'basic' || type === 'digest') && (
+            {(isType('basic') || isType('digest')) && (
                 <div className="mt-2 space-y-2">
-                    <Field label="Usuario" value={auth.username ?? ''} onChange={(v) => set({username: v})} />
-                    <Field label="Contraseña" value={auth.password ?? ''} onChange={(v) => set({password: v})} secret />
-                    {type === 'digest' && (
+                    <Field label={t.http.auth.username} value={auth.username ?? ''} onChange={(v) => set({username: v})} />
+                    <Field label={t.http.auth.password} value={auth.password ?? ''} onChange={(v) => set({password: v})} secret />
+                    {isType('digest') && (
                         <p className="text-ui-10 leading-relaxed text-on-surface-variant/70">
-                            Digest necesita un ida y vuelta: la primera petición sale sin firmar, el servidor responde 401 con su desafío, y recién ahí se
-                            calcula la respuesta. Vas a ver una sola petición acá, pero por el cable van dos.
+                            {t.http.auth.digestNote}
                         </p>
                     )}
                 </div>
             )}
 
-            {type === 'bearer' && (
+            {isType('bearer') && (
                 <div className="mt-2">
-                    <Field label="Token" value={auth.token ?? ''} onChange={(v) => set({token: v})} secret mono />
+                    <Field label={t.http.auth.token} value={auth.token ?? ''} onChange={(v) => set({token: v})} secret mono />
                     <p className="mt-1 text-ui-10 leading-relaxed text-on-surface-variant/70">
-                        Podés poner <span className="font-mono">{'{{token}}'}</span> y guardar el valor real como variable secreta del entorno: así queda
-                        cifrado, enmascarado y fuera del export.
+                        {rich(t.http.auth.bearerNote)}
                     </p>
                 </div>
             )}
 
-            {type === 'apikey' && (
+            {isType('apikey') && (
                 <div className="mt-2 space-y-2">
-                    <Field label="Nombre" value={auth.key ?? ''} onChange={(v) => set({key: v})} mono />
-                    <Field label="Valor" value={auth.value ?? ''} onChange={(v) => set({value: v})} secret mono />
+                    <Field label={t.http.auth.keyName} value={auth.key ?? ''} onChange={(v) => set({key: v})} mono />
+                    <Field label={t.http.auth.keyValue} value={auth.value ?? ''} onChange={(v) => set({value: v})} secret mono />
                     <div>
-                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Enviar en</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">{t.http.auth.sendIn}</label>
                         <Select
                             value={auth.in || 'header'}
                             options={[
-                                {value: 'header', label: 'Header'},
-                                {value: 'query', label: 'Query param', hint: 'queda en la URL y en los logs'},
+                                {value: 'header', label: t.http.auth.inHeader},
+                                {value: 'query', label: t.http.auth.inQuery, hint: t.http.auth.inQueryHint},
                             ]}
                             onChange={(v) => set({in: v})}
                             size="sm"
-                            ariaLabel="Dónde viaja la API key"
-                            title="Header es lo habitual; query pone la clave en la URL, donde queda registrada en los logs del servidor y del proxy."
+                            ariaLabel={t.http.auth.inAria}
+                            title={t.http.auth.inTitle}
                             className="w-full"
                         />
                     </div>
                 </div>
             )}
 
-            {type === 'jwt' && (
+            {isType('jwt') && (
                 <div className="mt-2 space-y-2">
                     <div>
-                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Algoritmo</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">{t.http.auth.algorithm}</label>
                         <Select
                             value={auth.algorithm || 'HS256'}
                             options={['HS256', 'HS384', 'HS512'].map((x) => ({value: x, label: x}))}
                             onChange={(v) => set({algorithm: v})}
                             size="sm"
-                            ariaLabel="Algoritmo del JWT"
-                            title="Solo HMAC: RS* y ES* piden manejar claves privadas en PEM, que es otra conversación."
+                            ariaLabel={t.http.auth.algorithmAria}
+                            title={t.http.auth.algorithmTitle}
                             className="w-full"
                         />
                     </div>
-                    <Field label="Secreto" value={auth.secret ?? ''} onChange={(v) => set({secret: v})} secret mono />
+                    <Field label={t.http.auth.secret} value={auth.secret ?? ''} onChange={(v) => set({secret: v})} secret mono />
                     <label className="flex items-center gap-1.5 text-ui-11 text-on-surface-variant">
                         <input
                             type="checkbox"
                             checked={!!auth.secretBase64}
                             onChange={(e) => set({secretBase64: e.target.checked})}
-                            title="Marcalo si el secreto que te dieron está en base64 y hay que decodificarlo antes de firmar."
+                            title={t.http.auth.secretBase64Title}
                             className="accent-primary"
                         />
-                        El secreto está en base64
+                        {t.http.auth.secretBase64}
                     </label>
                     <div>
-                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Payload (JSON)</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">{t.http.auth.payload}</label>
                         <textarea
                             value={auth.payload ?? ''}
                             onChange={(e) => set({payload: e.target.value})}
                             rows={4}
-                            placeholder='{ "sub": "1234", "role": "admin" }'
+                            placeholder={t.http.auth.payloadPlaceholder}
                             className="w-full rounded bg-surface-container-highest px-2 py-1 font-mono text-ui-11 text-on-surface outline-none focus:ring-1 focus:ring-primary"
                         />
                     </div>
                 </div>
             )}
 
-            {type === 'awsv4' && (
+            {isType('awsv4') && (
                 <div className="mt-2 space-y-2">
-                    <Field label="Access Key" value={auth.accessKey ?? ''} onChange={(v) => set({accessKey: v})} mono />
-                    <Field label="Secret Key" value={auth.secretKey ?? ''} onChange={(v) => set({secretKey: v})} secret mono />
-                    <Field label="Session Token (opcional)" value={auth.sessionToken ?? ''} onChange={(v) => set({sessionToken: v})} secret mono />
-                    <Field label="Región" value={auth.region ?? ''} onChange={(v) => set({region: v})} mono placeholder="us-east-1" />
+                    <Field label={t.http.auth.accessKey} value={auth.accessKey ?? ''} onChange={(v) => set({accessKey: v})} mono />
+                    <Field label={t.http.auth.secretKey} value={auth.secretKey ?? ''} onChange={(v) => set({secretKey: v})} secret mono />
+                    <Field label={t.http.auth.sessionToken} value={auth.sessionToken ?? ''} onChange={(v) => set({sessionToken: v})} secret mono />
+                    <Field label={t.http.auth.region} value={auth.region ?? ''} onChange={(v) => set({region: v})} mono placeholder={t.http.auth.regionPlaceholder} />
                     <Field
-                        label="Servicio"
+                        label={t.http.auth.service}
                         value={auth.service ?? ''}
                         onChange={(v) => set({service: v})}
                         mono
-                        placeholder="se deduce del host"
-                        hint="Si el host es de AWS (execute-api.us-east-1.amazonaws.com) el servicio se deduce solo; escribilo solo si no lo es."
+                        placeholder={t.http.auth.servicePlaceholder}
+                        hint={t.http.auth.serviceHint}
                     />
                 </div>
             )}
 
-            {type === 'oauth2' && (
+            {isType('oauth2') && (
                 <div className="mt-2 space-y-2">
                     <div>
-                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">Flujo</label>
+                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">{t.http.auth.flow}</label>
                         <Select
                             value={auth.grantType || 'client_credentials'}
                             options={[
-                                {value: 'client_credentials', label: 'Client Credentials'},
-                                {value: 'authorization_code', label: 'Authorization Code', hint: 'abre el navegador'},
-                                {value: 'password', label: 'Password'},
-                                {value: 'refresh_token', label: 'Refresh Token'},
+                                {value: 'client_credentials', label: t.http.auth.grantClientCredentials},
+                                {value: 'authorization_code', label: t.http.auth.grantAuthorizationCode, hint: t.http.auth.grantAuthorizationCodeHint},
+                                {value: 'password', label: t.http.auth.grantPassword},
+                                {value: 'refresh_token', label: t.http.auth.grantRefreshToken},
                             ]}
                             onChange={(v) => set({grantType: v})}
                             size="sm"
-                            ariaLabel="Flujo de OAuth 2.0"
-                            title="«Authorization code» abre el navegador para que autorices vos; los otros tres se resuelven sin salir de la app."
+                            ariaLabel={t.http.auth.flowAria}
+                            title={t.http.auth.flowTitle}
                             className="w-full"
                         />
                     </div>
-                    {auth.grantType === 'authorization_code' && (
-                        <Field label="URL de autorización" value={auth.authUrl ?? ''} onChange={(v) => set({authUrl: v})} mono />
+                    {isGrant('authorization_code') && (
+                        <Field label={t.http.auth.authUrl} value={auth.authUrl ?? ''} onChange={(v) => set({authUrl: v})} mono />
                     )}
-                    <Field label="URL del token" value={auth.accessTokenUrl ?? ''} onChange={(v) => set({accessTokenUrl: v})} mono />
-                    <Field label="Client ID" value={auth.clientId ?? ''} onChange={(v) => set({clientId: v})} mono />
-                    <Field label="Client Secret" value={auth.clientSecret ?? ''} onChange={(v) => set({clientSecret: v})} secret mono />
-                    <Field label="Scope" value={auth.scope ?? ''} onChange={(v) => set({scope: v})} mono />
-                    {auth.grantType === 'password' && (
+                    <Field label={t.http.auth.tokenUrl} value={auth.accessTokenUrl ?? ''} onChange={(v) => set({accessTokenUrl: v})} mono />
+                    <Field label={t.http.auth.clientId} value={auth.clientId ?? ''} onChange={(v) => set({clientId: v})} mono />
+                    <Field label={t.http.auth.clientSecret} value={auth.clientSecret ?? ''} onChange={(v) => set({clientSecret: v})} secret mono />
+                    <Field label={t.http.auth.scope} value={auth.scope ?? ''} onChange={(v) => set({scope: v})} mono />
+                    {isGrant('password') && (
                         <>
-                            <Field label="Usuario" value={auth.username ?? ''} onChange={(v) => set({username: v})} />
-                            <Field label="Contraseña" value={auth.password ?? ''} onChange={(v) => set({password: v})} secret />
+                            <Field label={t.http.auth.username} value={auth.username ?? ''} onChange={(v) => set({username: v})} />
+                            <Field label={t.http.auth.password} value={auth.password ?? ''} onChange={(v) => set({password: v})} secret />
                         </>
                     )}
-                    {auth.grantType === 'refresh_token' && (
-                        <Field label="Refresh Token" value={auth.refreshToken ?? ''} onChange={(v) => set({refreshToken: v})} secret mono />
+                    {isGrant('refresh_token') && (
+                        <Field label={t.http.auth.refreshToken} value={auth.refreshToken ?? ''} onChange={(v) => set({refreshToken: v})} secret mono />
                     )}
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                         <button
-                            onClick={() => void getToken(auth.grantType === 'authorization_code')}
+                            onClick={() => void getToken(isGrant('authorization_code'))}
                             disabled={busy}
-                            title={
-                                auth.grantType === 'authorization_code'
-                                    ? 'Abre tu navegador para que autorices. La respuesta vuelve a un puerto local (127.0.0.1) y el intercambio usa PKCE, como manda el estándar para aplicaciones de escritorio.'
-                                    : 'Pide un token al servidor sin salir de la aplicación.'
-                            }
+                            title={isGrant('authorization_code') ? t.http.auth.authorizeTitle : t.http.auth.fetchTitle}
                             className="rounded bg-primary px-3 py-1 text-ui-11 text-on-primary hover:opacity-90 disabled:opacity-40"
                         >
-                            {busy ? 'Pidiendo…' : 'Obtener token'}
+                            {busy ? t.http.auth.requesting : t.http.auth.getToken}
                         </button>
                         {auth.accessToken && (
                             <span
                                 className="inline-flex items-center gap-1 text-ui-10 text-secondary"
-                                title={auth.expiresAt ? `Vence ${new Date(auth.expiresAt * 1000).toLocaleString()}` : 'Sin vencimiento informado'}
+                                title={auth.expiresAt ? t.http.auth.expiresAt({date: formatDateTime(auth.expiresAt)}) : t.http.auth.noExpiry}
                             >
-                                <Icon name="check" size={12} /> token guardado
+                                <Icon name="check" size={12} /> {t.http.auth.tokenSaved}
                             </span>
                         )}
                     </div>
-                    {auth.grantType === 'authorization_code' && (
+                    {isGrant('authorization_code') && (
                         <p className="text-ui-10 leading-relaxed text-on-surface-variant/70">
-                            La redirección se recibe en <span className="font-mono">http://127.0.0.1:&lt;puerto&gt;/callback</span>. Si tu servidor exige
-                            registrar la URL de antes, fijala en el campo de arriba del proveedor con ese formato.
+                            {rich(t.http.auth.redirectNote)}
                         </p>
                     )}
                 </div>
@@ -308,6 +306,7 @@ function Field({
     // Los campos secretos arrancan ocultos pero se pueden revelar: hay que
     // poder comprobar un token pegado, y un campo que nunca se ve obliga a
     // borrarlo y repegarlo ante cualquier duda.
+    const t = useT()
     const [reveal, setReveal] = useState(false)
     return (
         <div>
@@ -326,7 +325,7 @@ function Field({
                 {secret && (
                     <button
                         onClick={() => setReveal((v) => !v)}
-                        title={reveal ? 'Ocultar' : 'Mostrar'}
+                        title={reveal ? t.http.auth.hide : t.http.auth.show}
                         className="shrink-0 rounded p-1 text-on-surface-variant/50 hover:text-on-surface"
                     >
                         <Icon name={reveal ? 'visibility_off' : 'visibility'} size={13} />

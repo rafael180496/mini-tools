@@ -9,6 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"mini-tools/backend/db"
+	"mini-tools/backend/i18n"
 )
 
 // Event is what gets emitted (via EmitFunc) as a Wails runtime event under
@@ -98,7 +99,7 @@ func (e *Executor) run(connID, queryID, commandText string) {
 
 	commands := SplitCommands(commandText)
 	if len(commands) == 0 {
-		e.emit(queryID, Event{Type: "error", Error: "redisquery: no hay ningún comando para ejecutar"})
+		e.emit(queryID, Event{Type: "error", Error: i18n.T(i18n.Msg{ES: "redisquery: no hay ningún comando para ejecutar", EN: "redisquery: there is no command to run"})})
 		return
 	}
 	total := len(commands)

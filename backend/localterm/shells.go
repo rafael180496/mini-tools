@@ -17,6 +17,7 @@
 package localterm
 
 import (
+	"mini-tools/backend/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,7 +55,7 @@ type Shell struct {
 // candidate es una entrada del registro antes de resolver si existe.
 type candidate struct {
 	id    string
-	label string
+	label i18n.Msg
 	// bin es el nombre a buscar en PATH.
 	bin string
 	// fallbacks son rutas absolutas a probar si PATH no lo tiene — el caso
@@ -62,72 +63,102 @@ type candidate struct {
 	// /opt/homebrew/bin.
 	fallbacks []string
 	args      []string
-	note      string
+	note      i18n.Msg
 }
 
 var unixCandidates = []candidate{
 	{
-		id: "zsh", label: "zsh", bin: "zsh",
+		id: "zsh", label: name("zsh"), bin: "zsh",
 		fallbacks: []string{"/bin/zsh", "/usr/bin/zsh", "/opt/homebrew/bin/zsh", "/usr/local/bin/zsh"},
 		args:      []string{"-l"},
-		note:      "El shell por defecto de macOS desde Catalina. Lee tu ~/.zshrc, así que alias y PATH son los mismos que en Terminal.app.",
+		note: i18n.Msg{
+			ES: "El shell por defecto de macOS desde Catalina. Lee tu ~/.zshrc, así que alias y PATH son los mismos que en Terminal.app.",
+			EN: "The default macOS shell since Catalina. It reads your ~/.zshrc, so aliases and PATH are the same as in Terminal.app.",
+		},
 	},
 	{
-		id: "bash", label: "bash", bin: "bash",
+		id: "bash", label: name("bash"), bin: "bash",
 		fallbacks: []string{"/bin/bash", "/usr/bin/bash", "/opt/homebrew/bin/bash", "/usr/local/bin/bash"},
 		args:      []string{"-l"},
-		note:      "El shell clásico de Unix. Elegilo si tus scripts o tu ~/.bashrc asumen bash y no zsh.",
+		note: i18n.Msg{
+			ES: "El shell clásico de Unix. Elegilo si tus scripts o tu ~/.bashrc asumen bash y no zsh.",
+			EN: "The classic Unix shell. Pick it if your scripts or your ~/.bashrc assume bash rather than zsh.",
+		},
 	},
 	{
-		id: "fish", label: "fish", bin: "fish",
+		id: "fish", label: name("fish"), bin: "fish",
 		fallbacks: []string{"/opt/homebrew/bin/fish", "/usr/local/bin/fish", "/usr/bin/fish"},
 		args:      []string{"-l"},
-		note:      "Shell con autocompletado y colores por defecto. Su sintaxis NO es compatible con bash: un script copiado de internet puede no correr tal cual.",
+		note: i18n.Msg{
+			ES: "Shell con autocompletado y colores por defecto. Su sintaxis NO es compatible con bash: un script copiado de internet puede no correr tal cual.",
+			EN: "A shell with autocompletion and colors out of the box. Its syntax is NOT bash-compatible: a script copied from the internet may not run as is.",
+		},
 	},
 	{
-		id: "sh", label: "sh", bin: "sh",
+		id: "sh", label: name("sh"), bin: "sh",
 		fallbacks: []string{"/bin/sh"},
 		args:      []string{"-l"},
-		note:      "El shell POSIX mínimo. Sin historial ni autocompletado; útil solo para reproducir el entorno más austero posible.",
+		note: i18n.Msg{
+			ES: "El shell POSIX mínimo. Sin historial ni autocompletado; útil solo para reproducir el entorno más austero posible.",
+			EN: "The minimal POSIX shell. No history or autocompletion; only useful to reproduce the most bare-bones environment possible.",
+		},
 	},
 }
 
 var windowsCandidates = []candidate{
 	{
-		id: "pwsh", label: "PowerShell 7", bin: "pwsh.exe",
+		id: "pwsh", label: name("PowerShell 7"), bin: "pwsh.exe",
 		fallbacks: []string{
 			`C:\Program Files\PowerShell\7\pwsh.exe`,
 			`C:\Program Files (x86)\PowerShell\7\pwsh.exe`,
 		},
 		args: []string{"-NoLogo"},
-		note: "La versión moderna y multiplataforma de PowerShell (se instala aparte). Es la que conviene si la tenés: mejor autocompletado y colores que Windows PowerShell.",
+		note: i18n.Msg{
+			ES: "La versión moderna y multiplataforma de PowerShell (se instala aparte). Es la que conviene si la tenés: mejor autocompletado y colores que Windows PowerShell.",
+			EN: "The modern, cross-platform version of PowerShell (installed separately). It is the one to use if you have it: better autocompletion and colors than Windows PowerShell.",
+		},
 	},
 	{
-		id: "powershell", label: "Windows PowerShell", bin: "powershell.exe",
+		id: "powershell", label: name("Windows PowerShell"), bin: "powershell.exe",
 		fallbacks: []string{`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`},
 		args:      []string{"-NoLogo"},
-		note:      "El PowerShell 5.1 que viene incluido en Windows. Siempre está disponible, aunque es una versión vieja del lenguaje.",
+		note: i18n.Msg{
+			ES: "El PowerShell 5.1 que viene incluido en Windows. Siempre está disponible, aunque es una versión vieja del lenguaje.",
+			EN: "The PowerShell 5.1 bundled with Windows. It is always available, although it is an old version of the language.",
+		},
 	},
 	{
-		id: "cmd", label: "Símbolo del sistema (cmd)", bin: "cmd.exe",
+		id: "cmd", label: i18n.Msg{ES: "Símbolo del sistema (cmd)", EN: "Command Prompt (cmd)"}, bin: "cmd.exe",
 		fallbacks: []string{`C:\Windows\System32\cmd.exe`},
-		note:      "El intérprete histórico de Windows. Sin colores ni autocompletado modernos, pero es lo que esperan muchos .bat y herramientas viejas.",
+		note: i18n.Msg{
+			ES: "El intérprete histórico de Windows. Sin colores ni autocompletado modernos, pero es lo que esperan muchos .bat y herramientas viejas.",
+			EN: "The historical Windows interpreter. No modern colors or autocompletion, but it is what many .bat files and old tools expect.",
+		},
 	},
 	{
-		id: "gitbash", label: "Git Bash", bin: "bash.exe",
+		id: "gitbash", label: name("Git Bash"), bin: "bash.exe",
 		fallbacks: []string{
 			`C:\Program Files\Git\bin\bash.exe`,
 			`C:\Program Files (x86)\Git\bin\bash.exe`,
 		},
 		args: []string{"--login", "-i"},
-		note: "El bash que instala Git para Windows. Es la opción práctica si seguís instrucciones escritas para Linux/macOS (rutas con /, ls, grep, ssh).",
+		note: i18n.Msg{
+			ES: "El bash que instala Git para Windows. Es la opción práctica si seguís instrucciones escritas para Linux/macOS (rutas con /, ls, grep, ssh).",
+			EN: "The bash that Git for Windows installs. It is the practical choice if you follow instructions written for Linux/macOS (paths with /, ls, grep, ssh).",
+		},
 	},
 	{
-		id: "wsl", label: "WSL (Linux)", bin: "wsl.exe",
+		id: "wsl", label: name("WSL (Linux)"), bin: "wsl.exe",
 		fallbacks: []string{`C:\Windows\System32\wsl.exe`},
-		note:      "Abre tu distribución de Linux instalada en WSL. Ojo: el sistema de archivos es el de Linux, así que la ruta del repositorio de Windows se ve bajo /mnt/c.",
+		note: i18n.Msg{
+			ES: "Abre tu distribución de Linux instalada en WSL. Ojo: el sistema de archivos es el de Linux, así que la ruta del repositorio de Windows se ve bajo /mnt/c.",
+			EN: "Opens your Linux distribution installed in WSL. Note: the file system is Linux's, so the Windows repository path shows up under /mnt/c.",
+		},
 	},
 }
+
+// name es el rótulo de un shell que se llama igual en los dos idiomas.
+func name(s string) i18n.Msg { return i18n.Msg{ES: s, EN: s} }
 
 // candidates devuelve el registro del sistema operativo actual.
 func candidates() []candidate {
@@ -164,11 +195,11 @@ func ListShells() []Shell {
 		path := resolve(c)
 		out = append(out, Shell{
 			ID:        c.id,
-			Label:     c.label,
+			Label:     i18n.T(c.label),
 			Path:      path,
 			Args:      c.args,
 			Available: path != "",
-			Note:      c.note,
+			Note:      i18n.T(c.note),
 		})
 	}
 	return out

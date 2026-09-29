@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"mini-tools/backend/i18n"
 )
 
 // Puente entre el proceso MCP y la ventana de la aplicación.
@@ -79,7 +81,7 @@ type Bridge struct {
 // servidor MCP**, nunca al arrancar la app.
 func StartBridge(dataDir string, h Handler) (*Bridge, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return nil, fmt.Errorf("mcpserver: preparando el directorio: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "mcpserver: preparando el directorio: %w", EN: "mcpserver: preparing the directory: %w"}, err)
 	}
 	path := SocketPath(dataDir)
 	// Un socket de una corrida anterior que terminó mal impide escuchar.
@@ -87,7 +89,7 @@ func StartBridge(dataDir string, h Handler) (*Bridge, error) {
 
 	ln, err := listen(path)
 	if err != nil {
-		return nil, fmt.Errorf("mcpserver: no se pudo abrir el canal: %w", err)
+		return nil, i18n.Errorf(i18n.Msg{ES: "mcpserver: no se pudo abrir el canal: %w", EN: "mcpserver: couldn't open the channel: %w"}, err)
 	}
 
 	b := &Bridge{ln: ln, path: path, handler: h}
@@ -128,7 +130,7 @@ func (b *Bridge) serve(conn net.Conn) {
 				reply.Text = text
 			}
 		default:
-			reply.Error = "operación desconocida"
+			reply.Error = i18n.T(i18n.Msg{ES: "operación desconocida", EN: "unknown operation"})
 		}
 		if err := enc.Encode(reply); err != nil {
 			return
@@ -165,24 +167,29 @@ type client struct {
 //
 // El texto es para que lo lea un modelo y se lo explique al usuario: dice qué
 // falta y qué hacer, no "connection refused".
-const errNoWindow = "mini-tools no está disponible: abrí la aplicación, desbloqueá el vault y " +
-	"activá el servidor MCP en Configuración → Acceso de la IA. Mientras esté apagado, " +
-	"estas herramientas no pueden leer nada."
+var errNoWindow = i18n.New(i18n.Msg{
+	ES: "mini-tools no está disponible: abrí la aplicación, desbloqueá el vault y " +
+		"activá el servidor MCP en Configuración → Acceso de la IA. Mientras esté apagado, " +
+		"estas herramientas no pueden leer nada.",
+	EN: "mini-tools isn't available: open the app, unlock the vault and " +
+		"turn on the MCP server in Settings → AI access. While it's off, " +
+		"these tools can't read anything.",
+})
 
 func (c *client) call(req bridgeCall) (bridgeReply, error) {
 	conn, err := dial(c.path, 5*time.Second)
 	if err != nil {
-		return bridgeReply{}, fmt.Errorf("%s", errNoWindow)
+		return bridgeReply{}, errNoWindow
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(2 * time.Minute))
 
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
-		return bridgeReply{}, fmt.Errorf("%s", errNoWindow)
+		return bridgeReply{}, errNoWindow
 	}
 	var reply bridgeReply
 	if err := json.NewDecoder(bufio.NewReader(conn)).Decode(&reply); err != nil {
-		return bridgeReply{}, fmt.Errorf("%s", errNoWindow)
+		return bridgeReply{}, errNoWindow
 	}
 	return reply, nil
 }

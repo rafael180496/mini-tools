@@ -1,9 +1,10 @@
 package query
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
+
+	"mini-tools/backend/i18n"
 )
 
 // Editar una fila del resultado: de qué tabla salió esta consulta.
@@ -67,27 +68,27 @@ func DetectEditSource(sqlText string) (EditSource, error) {
 	clean = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(clean), ";"))
 
 	if strings.Contains(clean, ";") {
-		return EditSource{}, fmt.Errorf("hay más de una sentencia: editar filas necesita una sola consulta")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "hay más de una sentencia: editar filas necesita una sola consulta", EN: "there is more than one statement: editing rows needs a single query"})
 	}
 	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(clean)), "select") {
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(clean)), "with") {
-			return EditSource{}, fmt.Errorf("las consultas con WITH no se editan: las filas salen de la CTE, no directamente de una tabla")
+			return EditSource{}, i18n.Errorf(i18n.Msg{ES: "las consultas con WITH no se editan: las filas salen de la CTE, no directamente de una tabla", EN: "queries with WITH can't be edited: the rows come from the CTE, not directly from a table"})
 		}
-		return EditSource{}, fmt.Errorf("solo se editan los resultados de un SELECT")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "solo se editan los resultados de un SELECT", EN: "only the results of a SELECT can be edited"})
 	}
 
 	m := reSelect.FindStringSubmatch(clean)
 	if m == nil {
-		return EditSource{}, fmt.Errorf("no se pudo leer de qué tabla sale esta consulta")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "no se pudo leer de qué tabla sale esta consulta", EN: "could not tell which table this query reads from"})
 	}
 	list, rest := m[1], m[2]
 
 	lowerList := strings.ToLower(list)
 	if strings.Contains(lowerList, "distinct") {
-		return EditSource{}, fmt.Errorf("con DISTINCT una fila del resultado puede representar varias de la tabla, así que no hay a cuál escribirle")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "con DISTINCT una fila del resultado puede representar varias de la tabla, así que no hay a cuál escribirle", EN: "with DISTINCT a result row can stand for several table rows, so there's no single one to write to"})
 	}
 	if strings.Contains(list, "(") {
-		return EditSource{}, fmt.Errorf("la lista de columnas tiene funciones o expresiones: lo que se ve no es el valor guardado")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "la lista de columnas tiene funciones o expresiones: lo que se ve no es el valor guardado", EN: "the column list has functions or expressions: what you see is not the stored value"})
 	}
 
 	// De la parte del FROM en adelante, hasta la primera cláusula que corta.
@@ -100,23 +101,23 @@ func DetectEditSource(sqlText string) (EditSource, error) {
 	lowerFrom := " " + strings.ToLower(from) + " "
 	switch {
 	case strings.Contains(from, "("):
-		return EditSource{}, fmt.Errorf("el origen es una subconsulta, no una tabla")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "el origen es una subconsulta, no una tabla", EN: "the source is a subquery, not a table"})
 	case strings.Contains(lowerFrom, " join "):
-		return EditSource{}, fmt.Errorf("hay un JOIN: la misma celda podría venir de cualquiera de las tablas, y guardar tendría que adivinar cuál")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "hay un JOIN: la misma celda podría venir de cualquiera de las tablas, y guardar tendría que adivinar cuál", EN: "there is a JOIN: the same cell could come from any of the tables, and saving would have to guess which"})
 	case strings.Contains(from, ","):
-		return EditSource{}, fmt.Errorf("hay más de una tabla en el FROM: no se puede saber a cuál pertenece cada columna")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "hay más de una tabla en el FROM: no se puede saber a cuál pertenece cada columna", EN: "there is more than one table in the FROM: there's no way to tell which one each column belongs to"})
 	}
 	if strings.Contains(strings.ToLower(rest), " union ") || strings.Contains(strings.ToLower(rest), " intersect ") {
-		return EditSource{}, fmt.Errorf("la consulta combina varios resultados (UNION/INTERSECT): una fila puede venir de cualquiera de ellos")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "la consulta combina varios resultados (UNION/INTERSECT): una fila puede venir de cualquiera de ellos", EN: "the query combines several results (UNION/INTERSECT): a row could come from any of them"})
 	}
 	if strings.Contains(strings.ToLower(rest), "group by") {
-		return EditSource{}, fmt.Errorf("con GROUP BY cada fila del resultado resume varias de la tabla")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "con GROUP BY cada fila del resultado resume varias de la tabla", EN: "with GROUP BY each result row summarizes several table rows"})
 	}
 
 	// `tabla alias` o `tabla AS alias`.
 	fields := strings.Fields(from)
 	if len(fields) == 0 {
-		return EditSource{}, fmt.Errorf("no se pudo leer el nombre de la tabla")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "no se pudo leer el nombre de la tabla", EN: "could not read the table name"})
 	}
 	src := EditSource{}
 	name := fields[0]
@@ -127,18 +128,18 @@ func DetectEditSource(sqlText string) (EditSource, error) {
 		}
 	}
 	if len(fields) > 3 {
-		return EditSource{}, fmt.Errorf("no se pudo leer el nombre de la tabla")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "no se pudo leer el nombre de la tabla", EN: "could not read the table name"})
 	}
 
 	nm := reTableName.FindStringSubmatch(name)
 	if nm == nil {
-		return EditSource{}, fmt.Errorf("no se pudo leer el nombre de la tabla")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "no se pudo leer el nombre de la tabla", EN: "could not read the table name"})
 	}
 	src.Raw = strings.TrimSpace(name)
 	src.Schema = unquoteIdent(nm[1])
 	src.Table = unquoteIdent(nm[2])
 	if src.Table == "" {
-		return EditSource{}, fmt.Errorf("no se pudo leer el nombre de la tabla")
+		return EditSource{}, i18n.Errorf(i18n.Msg{ES: "no se pudo leer el nombre de la tabla", EN: "could not read the table name"})
 	}
 	return src, nil
 }

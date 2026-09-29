@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"mini-tools/backend/i18n"
 	"os"
 	"strings"
 )
@@ -55,11 +56,11 @@ func IsSequenceEditorInvocation() bool {
 func SequenceEditorMain() {
 	todo := os.Getenv(envSequenceTodo)
 	if todo == "" {
-		fmt.Fprintln(os.Stderr, "mini-tools: no se preparó ninguna lista de rebase")
+		fmt.Fprintln(os.Stderr, i18n.T(i18n.Msg{ES: "mini-tools: no se preparó ninguna lista de rebase", EN: "mini-tools: no rebase list was prepared"}))
 		os.Exit(1)
 	}
 	if err := os.WriteFile(os.Args[1], []byte(todo), 0o600); err != nil {
-		fmt.Fprintln(os.Stderr, "mini-tools: no se pudo escribir la lista de rebase:", err)
+		fmt.Fprintln(os.Stderr, i18n.T(i18n.Msg{ES: "mini-tools: no se pudo escribir la lista de rebase: %v", EN: "mini-tools: could not write the rebase list: %v"}, err))
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -84,11 +85,11 @@ func (r *Runner) RebaseTodo(repoPath, base string, actions []RebaseAction) error
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("base", base); err != nil {
+	if err := checkRefArg(argBase, base); err != nil {
 		return err
 	}
 	if len(actions) == 0 {
-		return fmt.Errorf("no hay ninguna acción de rebase que aplicar")
+		return i18n.New(i18n.Msg{ES: "no hay ninguna acción de rebase que aplicar", EN: "there is no rebase action to apply"})
 	}
 
 	// A rebase rewrites history under the working tree; starting one with
@@ -99,7 +100,7 @@ func (r *Runner) RebaseTodo(repoPath, base string, actions []RebaseAction) error
 		return err
 	}
 	if status.HasChanges {
-		return fmt.Errorf("hay cambios sin commitear: guardalos en un stash o commiteálos antes de reordenar la historia")
+		return i18n.New(i18n.Msg{ES: "hay cambios sin commitear: guardalos en un stash o commiteálos antes de reordenar la historia", EN: "there are uncommitted changes: stash or commit them before reordering the history"})
 	}
 
 	// The first line must be a pick or an edit: git rejects a todo that
@@ -107,7 +108,7 @@ func (r *Runner) RebaseTodo(repoPath, base string, actions []RebaseAction) error
 	// into. Catching it here says why, instead of letting git fail with its
 	// own wording after the rebase already started.
 	if len(actions) > 0 && (actions[0].Command == "squash" || actions[0].Command == "fixup") {
-		return fmt.Errorf("el primer commit de la lista no puede ser squash ni fixup: no hay ningún commit anterior con el que combinarlo")
+		return i18n.New(i18n.Msg{ES: "el primer commit de la lista no puede ser squash ni fixup: no hay ningún commit anterior con el que combinarlo", EN: "the first commit in the list cannot be squash or fixup: there is no earlier commit to combine it with"})
 	}
 
 	var todo strings.Builder
@@ -115,9 +116,9 @@ func (r *Runner) RebaseTodo(repoPath, base string, actions []RebaseAction) error
 		switch a.Command {
 		case "pick", "reword", "edit", "squash", "fixup", "drop":
 		default:
-			return fmt.Errorf("acción de rebase desconocida: %q", a.Command)
+			return i18n.Errorf(i18n.Msg{ES: "acción de rebase desconocida: %q", EN: "unknown rebase action: %q"}, a.Command)
 		}
-		if err := checkRefArg("commit", a.Hash); err != nil {
+		if err := checkRefArg(argCommit, a.Hash); err != nil {
 			return err
 		}
 		todo.WriteString(a.Command)
@@ -128,7 +129,7 @@ func (r *Runner) RebaseTodo(repoPath, base string, actions []RebaseAction) error
 
 	self, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("no se pudo resolver el ejecutable para el editor de secuencia: %w", err)
+		return i18n.Errorf(i18n.Msg{ES: "no se pudo resolver el ejecutable para el editor de secuencia: %w", EN: "could not resolve the executable for the sequence editor: %w"}, err)
 	}
 
 	env := []string{
@@ -170,7 +171,7 @@ func (r *Runner) Rebase(repoPath, upstream string, autostash bool) error {
 	if err != nil {
 		return err
 	}
-	if err := checkRefArg("rama base", upstream); err != nil {
+	if err := checkRefArg(argBaseBranch, upstream); err != nil {
 		return err
 	}
 
@@ -221,7 +222,7 @@ func (r *Runner) RebaseTodoFrom(repoPath, base string) ([]RebaseAction, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkRefArg("base", base); err != nil {
+	if err := checkRefArg(argBase, base); err != nil {
 		return nil, err
 	}
 

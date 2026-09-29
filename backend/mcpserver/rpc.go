@@ -3,9 +3,10 @@ package mcpserver
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"io"
 	"sync"
+
+	"mini-tools/backend/i18n"
 )
 
 // Servidor MCP (Model Context Protocol) nativo, embebido en el propio binario.
@@ -167,7 +168,7 @@ func (s *Server) Serve(r io.Reader, w io.Writer) error {
 		if err := json.Unmarshal(line, &req); err != nil {
 			_ = enc.Encode(Response{
 				JSONRPC: "2.0",
-				Error:   &RPCError{Code: codeParseError, Message: "JSON inválido"},
+				Error:   &RPCError{Code: codeParseError, Message: i18n.T(i18n.Msg{ES: "JSON inválido", EN: "invalid JSON"})},
 			})
 			continue
 		}
@@ -180,7 +181,7 @@ func (s *Server) Serve(r io.Reader, w io.Writer) error {
 		err := enc.Encode(resp)
 		s.encMu.Unlock()
 		if err != nil {
-			return fmt.Errorf("mcpserver: escribiendo la respuesta: %w", err)
+			return i18n.Errorf(i18n.Msg{ES: "mcpserver: escribiendo la respuesta: %w", EN: "mcpserver: writing the response: %w"}, err)
 		}
 	}
 	return scanner.Err()
@@ -239,7 +240,7 @@ func (s *Server) handle(req Request) (Response, bool) {
 		resp.Result = map[string]any{}
 
 	default:
-		resp.Error = &RPCError{Code: codeMethodNotFound, Message: "método no soportado: " + req.Method}
+		resp.Error = &RPCError{Code: codeMethodNotFound, Message: i18n.T(i18n.Msg{ES: "método no soportado: %s", EN: "unsupported method: %s"}, req.Method)}
 	}
 	return resp, true
 }
@@ -258,7 +259,7 @@ func (s *Server) callTool(params json.RawMessage) map[string]any {
 		Arguments map[string]any `json:"arguments"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
-		return errorContent("argumentos inválidos")
+		return errorContent(i18n.T(i18n.Msg{ES: "argumentos inválidos", EN: "invalid arguments"}))
 	}
 
 	s.mu.Lock()
@@ -272,7 +273,7 @@ func (s *Server) callTool(params json.RawMessage) map[string]any {
 	s.mu.Unlock()
 
 	if tool == nil {
-		return errorContent("herramienta desconocida: " + p.Name)
+		return errorContent(i18n.T(i18n.Msg{ES: "herramienta desconocida: %s", EN: "unknown tool: %s"}, p.Name))
 	}
 	if p.Arguments == nil {
 		p.Arguments = map[string]any{}

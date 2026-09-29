@@ -3,6 +3,7 @@ import {AgentRefPolicies, GetSchemaMetadata, ListConnections, NoteTitles} from '
 import {agentctx, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import type {WorkContext} from './workContext'
+import {useT, type Dict} from '../../i18n'
 
 // Selector del sistema `@`: qué se puede referenciar y con qué sintaxis.
 //
@@ -43,6 +44,7 @@ interface Props {
 }
 
 export default function AgentRefPicker({query, paths, context, onPick, onFirstChange}: Props) {
+    const t = useT()
     const [connections, setConnections] = useState<vault.ConnectionSummary[]>([])
     const [policies, setPolicies] = useState<agentctx.Policy[]>([])
     const [tables, setTables] = useState<Record<string, string[]>>({})
@@ -92,8 +94,8 @@ export default function AgentRefPicker({query, paths, context, onPick, onFirstCh
     }, [pendingConn, tables])
 
     const suggestions = useMemo(
-        () => buildSuggestions(query, {paths, connections, policies, tables, notes, context}),
-        [query, paths, connections, policies, tables, notes, context],
+        () => buildSuggestions(query, {paths, connections, policies, tables, notes, context}, t),
+        [query, paths, connections, policies, tables, notes, context, t],
     )
 
     const first = suggestions.find((s) => !s.disabled) ?? null
@@ -145,6 +147,13 @@ function refValue(value: string): string {
     return needsQuotes(value) ? `"${value}"` : value
 }
 
+// Referencias fijas: son sintaxis que el usuario escribe y el backend
+// interpreta (backend/agentctx), no texto de interfaz — no se traducen.
+const REF_GIT_STAGED = '@git:staged'
+const REF_GIT_WORKTREE = '@git:worktree'
+const REF_EXPLAIN_LAST = '@explain:last'
+const explainRef = (name: string) => `@explain:${name}`
+
 const KIND_ICONS: Record<string, string> = {
     file: 'description',
     db: 'database',
@@ -164,8 +173,10 @@ function buildSuggestions(
         notes: main.NoteTitle[]
         context: WorkContext
     },
+    t: Dict,
 ): Suggestion[] {
     const {paths, connections, policies, tables, notes, context} = opts
+    const r = t.agent.refPicker
     const [kind, rest] = splitKind(query)
 
     // Nivel 1: todavía sin tipo. Se ofrecen los tipos Y las rutas sueltas.
@@ -178,8 +189,8 @@ function buildSuggestions(
                 insert: `@${p.kind}:`,
                 label: `@${p.kind}:`,
                 hint: p.available
-                    ? `${p.injects}${p.never ? ` Nunca: ${p.never}` : ''}`
-                    : `Todavía no disponible en esta versión. ${p.injects}`,
+                    ? r.kindHint({injects: p.injects, never: p.never ?? ''})
+                    : r.kindUnavailable({injects: p.injects}),
                 icon: KIND_ICONS[p.kind] ?? 'alternate_email',
                 partial: true,
                 disabled: !p.available,
@@ -198,37 +209,37 @@ function buildSuggestions(
         case 'git':
             return [
                 {
-                    insert: '@git:staged ',
-                    label: '@git:staged',
-                    hint: 'El diff de lo que está preparado para commitear',
+                    insert: `${REF_GIT_STAGED} `,
+                    label: REF_GIT_STAGED,
+                    hint: r.gitStaged,
                     icon: 'account_tree',
                 },
                 {
-                    insert: '@git:worktree ',
-                    label: '@git:worktree',
-                    hint: 'El diff de lo modificado y todavía sin preparar',
+                    insert: `${REF_GIT_WORKTREE} `,
+                    label: REF_GIT_WORKTREE,
+                    hint: r.gitWorktree,
                     icon: 'account_tree',
                 },
             ].filter((s) => s.label.includes(rest))
         case 'explain':
             return [
                 {
-                    insert: '@explain:last ',
-                    label: '@explain:last',
-                    hint: 'El último plan de ejecución de la conexión activa',
+                    insert: `${REF_EXPLAIN_LAST} `,
+                    label: REF_EXPLAIN_LAST,
+                    hint: r.explainLast,
                     icon: 'query_stats',
                 },
                 ...connections
                     .filter((c) => c.dbType !== 'ssh' && c.name.toLowerCase().includes(rest.toLowerCase()))
                     .map((c) => ({
                         insert: `@explain:${refValue(c.name)} `,
-                        label: `@explain:${c.name}`,
-                        hint: 'El último plan guardado de esa conexión',
+                        label: explainRef(c.name),
+                        hint: r.explainConn,
                         icon: 'query_stats',
                     })),
             ].slice(0, 12)
         case 'db':
-            return dbSuggestions(rest, connections, tables)
+            return dbSuggestions(rest, connections, tables, t)
         case 'note':
             // Solo las notas VISIBLES para la IA se pueden usar. Una privada se
             // ofrece igual pero deshabilitada y diciendo por qué: esconderla de
@@ -241,8 +252,8 @@ function buildSuggestions(
                     insert: `@note:"${n.title}" `,
                     label: n.title,
                     hint: n.isPrivate
-                        ? 'Marcada como privada: el agente no puede leerla. Abrí el candado en la nota para permitirlo.'
-                        : 'Se le manda el Markdown completo de la nota',
+                        ? r.notePrivate
+                        : r.noteFull,
                     icon: n.isPrivate ? 'lock' : 'sticky_note_2',
                     disabled: n.isPrivate,
                 }))
@@ -253,7 +264,7 @@ function buildSuggestions(
                 .map((c) => ({
                     insert: `@ssh:${refValue(`${c.name}/last_error`)} `,
                     label: c.name,
-                    hint: 'Las últimas 50 líneas de esa terminal, con los secretos ocultados',
+                    hint: r.sshLast,
                     icon: 'terminal',
                 }))
     }
@@ -267,7 +278,9 @@ function dbSuggestions(
     rest: string,
     connections: vault.ConnectionSummary[],
     tables: Record<string, string[]>,
+    t: Dict,
 ): Suggestion[] {
+    const r = t.agent.refPicker
     const slash = rest.indexOf('/')
     if (slash < 0) {
         return connections
@@ -276,7 +289,7 @@ function dbSuggestions(
                 // Con comillas se abre acá y se cierra al elegir la tabla.
                 insert: needsQuotes(c.name) ? `@db:"${c.name}/` : `@db:${c.name}/`,
                 label: c.name,
-                hint: `${c.dbType} — elegí una tabla`,
+                hint: r.dbPickTable({dbType: c.dbType}),
                 icon: 'database',
                 partial: true,
             }))
@@ -292,21 +305,21 @@ function dbSuggestions(
             {
                 insert: '',
                 label: connName,
-                hint: 'No hay ninguna conexión guardada con ese nombre',
+                hint: r.dbNoConn,
                 icon: 'database',
                 disabled: true,
             },
         ]
     }
     if (list === undefined) {
-        return [{insert: '', label: 'Leyendo el esquema…', hint: conn.name, icon: 'database', disabled: true}]
+        return [{insert: '', label: r.dbReading, hint: conn.name, icon: 'database', disabled: true}]
     }
     return list
         .filter((t) => t.toLowerCase().includes(tableQuery))
         .map((t) => ({
             insert: `@db:${refValue(`${conn.name}/${t}`)} `,
             label: t,
-            hint: 'Columnas, tipos, PK y FK — nunca filas',
+            hint: r.dbTable,
             icon: 'table_chart',
         }))
         .slice(0, 12)

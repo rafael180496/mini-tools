@@ -1,6 +1,7 @@
 import {httpclient} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import {emptyRow} from './httpShared'
+import {useT} from '../../i18n'
 
 // La tabla de pares clave/valor de Params, Headers y variables de ruta.
 //
@@ -28,11 +29,14 @@ interface KeyValueTableProps {
 export default function KeyValueTable({
     rows,
     onChange,
-    keyLabel = 'Key',
-    valueLabel = 'Value',
+    keyLabel: keyLabelProp,
+    valueLabel: valueLabelProp,
     lockKeys,
     emptyHint,
 }: KeyValueTableProps) {
+    const t = useT()
+    const keyLabel = keyLabelProp ?? t.http.kv.key
+    const valueLabel = valueLabelProp ?? t.http.kv.value
     // Con las claves bloqueadas no hay fila para agregar: la lista es
     // exactamente lo que declara la URL.
     const display = lockKeys ? rows : [...rows, emptyRow()]
@@ -75,11 +79,7 @@ export default function KeyValueTable({
                                             type="checkbox"
                                             checked={row.enabled}
                                             onChange={(e) => update(i, {enabled: e.target.checked})}
-                                            title={
-                                                row.enabled
-                                                    ? 'Se envía. Destildar la deja guardada pero fuera de la petición — útil para probar sin borrarla.'
-                                                    : 'No se envía. Queda guardada para volver a activarla.'
-                                            }
+                                            title={row.enabled ? t.http.kv.enabledTitle : t.http.kv.disabledTitle}
                                             className="accent-primary"
                                         />
                                     )}
@@ -90,7 +90,7 @@ export default function KeyValueTable({
                                         readOnly={lockKeys}
                                         onChange={(e) => update(i, {key: e.target.value, enabled: true})}
                                         placeholder={ghost ? keyLabel : ''}
-                                        title={lockKeys ? 'Sale de la URL de arriba: para cambiarlo, editá la URL' : undefined}
+                                        title={lockKeys ? t.http.kv.lockedKeyTitle : undefined}
                                         className={`w-full bg-transparent font-mono text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/40 ${
                                             lockKeys ? 'cursor-default text-on-surface-variant' : ''
                                         }`}
@@ -108,7 +108,7 @@ export default function KeyValueTable({
                                     {!ghost && !lockKeys && (
                                         <button
                                             onClick={() => remove(i)}
-                                            title="Borrar esta fila definitivamente. Si solo querés dejarla fuera de la petición, destildá el casillero de la izquierda."
+                                            title={t.http.kv.removeTitle}
                                             className="rounded p-0.5 text-on-surface-variant/40 hover:bg-surface-variant hover:text-error"
                                         >
                                             <Icon name="close" size={12} />

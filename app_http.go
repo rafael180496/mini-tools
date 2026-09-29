@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mini-tools/backend/httpclient"
+	"mini-tools/backend/i18n"
 	"mini-tools/backend/vault"
 )
 
@@ -187,7 +187,7 @@ func (a *App) scopesAndEnv(collectionID string) ([]httpclient.VarScope, string) 
 		if chosen != nil {
 			envID = chosen.ID
 			scopes = append(scopes, httpclient.VarScope{
-				Label: "entorno «" + chosen.Name + "»",
+				Label: i18n.T(i18n.Msg{ES: "entorno «%s»", EN: "environment «%s»"}, chosen.Name),
 				Vars:  decodeVariables(chosen.Variables),
 			})
 		}
@@ -198,7 +198,7 @@ func (a *App) scopesAndEnv(collectionID string) ([]httpclient.VarScope, string) 
 			for _, c := range cols {
 				if c.ID == collectionID {
 					scopes = append(scopes, httpclient.VarScope{
-						Label: "colección «" + c.Name + "»",
+						Label: i18n.T(i18n.Msg{ES: "colección «%s»", EN: "collection «%s»"}, c.Name),
 						Vars:  decodeVariables(c.Variables),
 					})
 					break
@@ -630,7 +630,7 @@ func (a *App) HttpPickFile(title string) (string, error) {
 	}
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo el selector de archivos: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo el selector de archivos: %w", EN: "app: opening the file picker: %w"}, err)
 	}
 	return path, nil
 }
@@ -651,11 +651,11 @@ func (a *App) HttpSaveResponseToFile(spillPath, base64Body, textBody, suggestedN
 	}
 
 	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Guardar la respuesta",
+		Title:           i18n.T(i18n.Msg{ES: "Guardar la respuesta", EN: "Save the response"}),
 		DefaultFilename: suggestedName,
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de guardado: %w", EN: "app: opening save dialog: %w"}, err)
 	}
 	if dest == "" {
 		return "", nil
@@ -668,28 +668,28 @@ func (a *App) HttpSaveResponseToFile(spillPath, base64Body, textBody, suggestedN
 		// el motivo de haberlo volcado.
 		src, err := os.Open(spillPath)
 		if err != nil {
-			return "", fmt.Errorf("no se pudo leer la respuesta guardada: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "no se pudo leer la respuesta guardada: %w", EN: "couldn't read the saved response: %w"}, err)
 		}
 		defer src.Close()
 		out, err := os.Create(dest)
 		if err != nil {
-			return "", fmt.Errorf("no se pudo crear %q: %w", dest, err)
+			return "", i18n.Errorf(i18n.Msg{ES: "no se pudo crear %q: %w", EN: "couldn't create %q: %w"}, dest, err)
 		}
 		defer out.Close()
 		if _, err := io.Copy(out, src); err != nil {
-			return "", fmt.Errorf("escribiendo %q: %w", dest, err)
+			return "", i18n.Errorf(i18n.Msg{ES: "escribiendo %q: %w", EN: "writing %q: %w"}, dest, err)
 		}
 	case base64Body != "":
 		raw, err := base64.StdEncoding.DecodeString(base64Body)
 		if err != nil {
-			return "", fmt.Errorf("la respuesta binaria está corrupta: %w", err)
+			return "", i18n.Errorf(i18n.Msg{ES: "la respuesta binaria está corrupta: %w", EN: "the binary response is corrupt: %w"}, err)
 		}
 		if err := os.WriteFile(dest, raw, 0o644); err != nil {
-			return "", fmt.Errorf("escribiendo %q: %w", dest, err)
+			return "", i18n.Errorf(i18n.Msg{ES: "escribiendo %q: %w", EN: "writing %q: %w"}, dest, err)
 		}
 	default:
 		if err := os.WriteFile(dest, []byte(textBody), 0o644); err != nil {
-			return "", fmt.Errorf("escribiendo %q: %w", dest, err)
+			return "", i18n.Errorf(i18n.Msg{ES: "escribiendo %q: %w", EN: "writing %q: %w"}, dest, err)
 		}
 	}
 	return dest, nil
@@ -762,7 +762,7 @@ func (a *App) HttpExportPostman(collectionID string) (string, error) {
 		}
 	}
 	if col == nil {
-		return "", fmt.Errorf("no existe la colección %q", collectionID)
+		return "", i18n.Errorf(i18n.Msg{ES: "no existe la colección %q", EN: "collection %q doesn't exist"}, collectionID)
 	}
 
 	items, err := a.vault.ListHTTPItems(collectionID)
@@ -790,18 +790,18 @@ func (a *App) HttpExportPostman(collectionID string) (string, error) {
 	}
 
 	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Exportar la colección",
+		Title:           i18n.T(i18n.Msg{ES: "Exportar la colección", EN: "Export the collection"}),
 		DefaultFilename: safeFilename(col.Name) + ".postman_collection.json",
-		Filters:         []runtime.FileFilter{{DisplayName: "Colección de Postman (*.json)", Pattern: "*.json"}},
+		Filters:         []runtime.FileFilter{{DisplayName: i18n.T(i18n.Msg{ES: "Colección de Postman (*.json)", EN: "Postman collection (*.json)"}), Pattern: "*.json"}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+		return "", i18n.Errorf(i18n.Msg{ES: "app: abriendo diálogo de guardado: %w", EN: "app: opening save dialog: %w"}, err)
 	}
 	if dest == "" {
 		return "", nil
 	}
 	if err := os.WriteFile(dest, encoded, 0o644); err != nil {
-		return "", fmt.Errorf("escribiendo %q: %w", dest, err)
+		return "", i18n.Errorf(i18n.Msg{ES: "escribiendo %q: %w", EN: "writing %q: %w"}, dest, err)
 	}
 	return dest, nil
 }
@@ -1008,7 +1008,7 @@ func (a *App) HttpBuildRequest(itemID string) (*httpclient.Request, error) {
 		return nil, err
 	}
 	if it.Kind != "request" {
-		return nil, fmt.Errorf("%q es una carpeta, no una petición", it.Name)
+		return nil, i18n.Errorf(i18n.Msg{ES: "%q es una carpeta, no una petición", EN: "%q is a folder, not a request"}, it.Name)
 	}
 
 	req := httpclient.Request{

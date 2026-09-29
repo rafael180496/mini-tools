@@ -1,6 +1,7 @@
 import type {ITheme} from '@xterm/xterm'
 import xtermTheme from 'xterm-theme'
 import type {Theme as AppTheme} from '../hooks/useTheme'
+import {t} from '../i18n'
 
 // "auto" is not a real xterm.js theme — it's resolved to OneHalfDark/
 // OneHalfLight below based on the app's own dark/light toggle (see
@@ -24,8 +25,13 @@ export const TERMINAL_THEME_IDS = [
 
 export type TerminalThemeId = (typeof TERMINAL_THEME_IDS)[number]
 
+// Las paletas son nombres propios y no se traducen; «Automático» sí, y por eso
+// es un getter: se resuelve en el idioma activo cada vez que se lee, en vez de
+// congelarse en el idioma con el que arrancó la app (ver i18n/index.ts).
 export const TERMINAL_THEME_LABELS: Record<TerminalThemeId, string> = {
-    auto: 'Automático (sigue el tema de la app)',
+    get auto() {
+        return t().terminal.theme.autoFull
+    },
     dracula: 'Dracula',
     nord: 'Nord',
     solarizedDark: 'Solarized Dark',

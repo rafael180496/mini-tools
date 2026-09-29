@@ -1,5 +1,6 @@
 import {useState} from 'react'
 import Icon from '../Icon'
+import {useT} from '../../i18n'
 
 // Bloque de código dentro de una respuesta del agente.
 //
@@ -42,6 +43,7 @@ function commandLines(code: string): string[] {
 }
 
 export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insertTarget = 'editor'}: Props) {
+    const t = useT()
     const [copied, setCopied] = useState(false)
     const [inserted, setInserted] = useState(false)
 
@@ -57,10 +59,10 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
                 {/* El lenguaje es lo primero: dice de un vistazo si eso es SQL
                     que se puede correr o un pedazo de configuración. */}
                 <span className="font-mono font-medium text-on-surface">
-                    {lang || 'texto'}
+                    {lang || t.agent.codeBlock.text}
                 </span>
                 <span className="text-on-surface-variant/50">
-                    {lines} {lines === 1 ? 'línea' : 'líneas'}
+                    {t.agent.codeBlock.lines({n: lines})}
                 </span>
 
                 {canInsert && (
@@ -73,13 +75,13 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
                         title={
                             insertLabel ??
                             (toTerminal
-                                ? 'Escribe el comando en la terminal SIN ejecutarlo — lo leés y el Enter lo ponés vos'
-                                : 'Inserta este código donde está el cursor, sin pisar lo que ya escribiste')
+                                ? t.agent.codeBlock.toTerminalTitle
+                                : t.agent.codeBlock.toEditorTitle)
                         }
                         className="ml-auto flex shrink-0 items-center gap-1 rounded-md border border-outline-variant px-1.5 py-0.5 text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
                     >
                         <Icon name={inserted ? 'check' : toTerminal ? 'play_arrow' : 'input'} size={12} />
-                        {inserted ? 'Insertado' : toTerminal ? 'A la terminal' : 'Al editor'}
+                        {inserted ? t.agent.codeBlock.inserted : toTerminal ? t.agent.codeBlock.toTerminal : t.agent.codeBlock.toEditor}
                     </button>
                 )}
 
@@ -89,13 +91,13 @@ export default function ChatCodeBlock({lang, code, onInsert, insertLabel, insert
                         setCopied(true)
                         setInserted(false)
                     }}
-                    title="Copia el bloque entero al portapapeles"
+                    title={t.agent.codeBlock.copyTitle}
                     className={`flex shrink-0 items-center gap-1 rounded-md border border-outline-variant px-1.5 py-0.5 text-on-surface-variant hover:border-primary/60 hover:text-on-surface ${
                         canInsert ? '' : 'ml-auto'
                     }`}
                 >
                     <Icon name={copied ? 'check' : 'content_copy'} size={12} />
-                    {copied ? 'Copiado' : 'Copiar'}
+                    {copied ? t.agent.codeBlock.copied : t.agent.codeBlock.copy}
                 </button>
             </div>
 

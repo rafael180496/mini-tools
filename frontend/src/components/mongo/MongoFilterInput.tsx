@@ -1,11 +1,12 @@
 import {useEffect, useRef} from 'react'
-import {EditorState, Prec} from '@codemirror/state'
+import {Compartment, EditorState, Prec} from '@codemirror/state'
 import {EditorView, keymap, placeholder} from '@codemirror/view'
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands'
 import {syntaxHighlighting, defaultHighlightStyle} from '@codemirror/language'
 import {json} from '@codemirror/lang-json'
 import {autocompletion, closeBrackets, type CompletionSource} from '@codemirror/autocomplete'
 import {MONGO_QUERY_OPERATORS} from '../../lib/mongoFilter'
+import {useT} from '../../i18n'
 
 // A compact single-line Extended-JSON filter editor for the Mongo browser, with
 // autocomplete of the collection's field names (from the loaded documents) and
@@ -98,6 +99,10 @@ function filterCompletionSource(fieldsRef: {current: string[]}, valuesRef: {curr
 }
 
 export default function MongoFilterInput({value, onChange, onApply, fields, valuesByField}: MongoFilterInputProps) {
+    const t = useT()
+    // The placeholder lives in a compartment so a language change swaps it in
+    // place instead of rebuilding the editor.
+    const placeholderRef = useRef(new Compartment())
     const containerRef = useRef<HTMLDivElement | null>(null)
     const viewRef = useRef<EditorView | null>(null)
     const onChangeRef = useRef(onChange)
@@ -134,7 +139,7 @@ export default function MongoFilterInput({value, onChange, onApply, fields, valu
                     json(),
                     syntaxHighlighting(defaultHighlightStyle),
                     autocompletion({override: [filterCompletionSource(fieldsRef, valuesRef)]}),
-                    placeholder('Filtro: { "campo": valor }  — Ctrl+Espacio autocompleta'),
+                    placeholderRef.current.of(placeholder(t.mongo.filterInput.placeholder)),
                     chrome,
                     // Keep it single-line: reject a change that would produce
                     // more than one line (e.g. a multi-line paste), so the box
@@ -153,6 +158,10 @@ export default function MongoFilterInput({value, onChange, onApply, fields, valu
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    useEffect(() => {
+        viewRef.current?.dispatch({effects: placeholderRef.current.reconfigure(placeholder(t.mongo.filterInput.placeholder))})
+    }, [t])
 
     // Sync when the value is set from outside (wizard, click-to-filter, clear).
     useEffect(() => {
