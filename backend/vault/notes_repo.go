@@ -71,6 +71,8 @@ type NoteSummary struct {
 	// de una carpeta ordena y muestra por fecha de creación, y sin él habría
 	// que abrir cada nota para saberla.
 	CreatedAt int64 `json:"createdAt"`
+	// Pinned es si está fijada arriba de la barra (migración 55).
+	Pinned bool `json:"pinned"`
 }
 
 // NoteLink es una arista del grafo ya resuelta contra las notas existentes.
@@ -282,7 +284,7 @@ func (s *Store) ListNotes() ([]NoteSummary, error) {
 	rows, err := s.db.Query(
 		`SELECT n.id, n.encrypted_title, n.title_nonce, n.is_private, n.updated_at, n.created_at,
 		        (SELECT COUNT(*) FROM vault_note_links l WHERE l.source_note_id = n.id),
-		        COALESCE(n.folder_id, '')
+		        COALESCE(n.folder_id, ''), n.pinned
 		 FROM vault_notes n ORDER BY n.updated_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: leyendo las notas: %w", err)
@@ -293,11 +295,12 @@ func (s *Store) ListNotes() ([]NoteSummary, error) {
 	for rows.Next() {
 		var s2 NoteSummary
 		var enc, nonce []byte
-		var private int
-		if err := rows.Scan(&s2.ID, &enc, &nonce, &private, &s2.UpdatedAt, &s2.CreatedAt, &s2.LinkCount, &s2.FolderID); err != nil {
+		var private, pinned int
+		if err := rows.Scan(&s2.ID, &enc, &nonce, &private, &s2.UpdatedAt, &s2.CreatedAt, &s2.LinkCount, &s2.FolderID, &pinned); err != nil {
 			return nil, err
 		}
 		s2.IsPrivate = private != 0
+		s2.Pinned = pinned != 0
 		s2.Title = s.decryptOptional(enc, nonce)
 		out = append(out, s2)
 	}
@@ -381,3 +384,175 @@ func (s *Store) SearchNotesForAI(query string, limit int) ([]NoteSummary, error)
 // agent_chats_repo.go: el esquema es el mismo (BLOB + nonce, vacío = NULL) y
 // tener dos implementaciones del mismo cifrado sería la peor clase de
 // duplicación — la que se corrige en un solo lado.
+
+// DuplicateNote copia una nota con otro id y otro título.
+//
+// Es una operación del vault y no "leer + CreateNote" desde la app por la
+// privacidad: CreateNote hace nacer la nota visible, y la copia de una nota
+// privada quedaría legible para un agente entre el alta y el SetNotePrivacy.
+// Acá el is_private se copia en el mismo INSERT, con la carpeta.
+//
+// Las imágenes se copian también, con ids nuevos, y el cuerpo se reescribe
+// para apuntar a las copias: las imágenes pertenecen a su nota y se borran con
+// ella, así que compartirlas dejaría a la copia sin imágenes el día que se
+// borre el original. El cifrado se copia tal cual — mismo texto plano, misma
+// clave, mismo nonce: no hay reuso de nonce sobre textos distintos.
+func (s *Store) DuplicateNote(srcID, newID, title string, newAssetID func() (string, error)) error {
+	src, err := s.GetNote(srcID)
+	if err != nil {
+		return err
+	}
+	var folderID string
+	if err := s.db.QueryRow(`SELECT COALESCE(folder_id, '') FROM vault_notes WHERE id = ?`, srcID).Scan(&folderID); err != nil {
+		return fmt.Errorf("vault: leyendo la carpeta de la nota: %w", err)
+	}
+	assetIDs, err := s.NoteAssetIDs(srcID)
+	if err != nil {
+		return err
+	}
+
+	content := src.Content
+	renames := make(map[string]string, len(assetIDs))
+	for _, old := range assetIDs {
+		id, err := newAssetID()
+		if err != nil {
+			return err
+		}
+		renames[old] = id
+		content = strings.ReplaceAll(content, "(nota:"+old+")", "(nota:"+id+")")
+	}
+
+	encTitle, titleNonce, err := s.encryptOptional(title)
+	if err != nil {
+		return err
+	}
+	encContent, contentNonce, err := s.encryptOptional(content)
+	if err != nil {
+		return err
+	}
+	encFm, fmNonce, err := s.encryptOptional(src.Frontmatter)
+	if err != nil {
+		return err
+	}
+	private := 0
+	if src.IsPrivate {
+		private = 1
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().Unix()
+	if _, err := tx.Exec(
+		`INSERT INTO vault_notes (id, encrypted_title, title_nonce, encrypted_content, content_nonce,
+		        encrypted_frontmatter, frontmatter_nonce, title_hash, is_private, checksum_hash, folder_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		newID, encTitle, titleNonce, encContent, contentNonce, encFm, fmNonce,
+		TitleHash(title), private, contentChecksum(title, content, src.Frontmatter), folderID, now, now,
+	); err != nil {
+		return fmt.Errorf("vault: duplicando la nota: %w", err)
+	}
+	for old, id := range renames {
+		if _, err := tx.Exec(
+			`INSERT INTO vault_note_assets (id, note_id, mime, encrypted_data, data_nonce, size_bytes, created_at)
+			 SELECT ?, ?, mime, encrypted_data, data_nonce, size_bytes, ? FROM vault_note_assets WHERE id = ?`,
+			id, newID, now, old,
+		); err != nil {
+			return fmt.Errorf("vault: copiando las imágenes de la nota: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.reindexLinks(newID, content)
+}
+
+// SetNotePinned fija o suelta una nota arriba de la barra. No toca updated_at:
+// fijar no es editar, y la tabla de una carpeta ordena por esa fecha.
+func (s *Store) SetNotePinned(id string, pinned bool) error {
+	v := 0
+	if pinned {
+		v = 1
+	}
+	res, err := s.db.Exec(`UPDATE vault_notes SET pinned = ? WHERE id = ?`, v, id)
+	if err != nil {
+		return fmt.Errorf("vault: fijando la nota: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("vault: no existe la nota %q", id)
+	}
+	return nil
+}
+
+// MergeNotes funde la nota src al final de dst y borra src, en una sola
+// transacción: a mitad de camino no puede quedar el texto en las dos, ni en
+// ninguna.
+//
+// **Privacidad: gana la más restrictiva.** Si cualquiera de las dos era
+// privada, el resultado es privado. Fundir una nota privada dentro de una
+// visible sin esto sería la forma más corta de dejarle leer a un agente lo
+// que alguien había escondido — el cortafuegos no puede depender de que se
+// mire hacia dónde se funde.
+//
+// Las imágenes de src pasan a dst (cambian de dueño, no se copian: la nota de
+// origen desaparece y sus `nota:ID` siguen valiendo en el texto fundido). Los
+// enlaces entrantes `[[src]]` de otras notas quedan rotos, igual que al
+// borrarla: reescribirlos sería editar notas que no se tocaron.
+func (s *Store) MergeNotes(srcID, dstID string) error {
+	if srcID == dstID {
+		return fmt.Errorf("vault: una nota no se puede fundir consigo misma")
+	}
+	src, err := s.GetNote(srcID)
+	if err != nil {
+		return err
+	}
+	dst, err := s.GetNote(dstID)
+	if err != nil {
+		return err
+	}
+
+	body := strings.TrimRight(dst.Content, "\n")
+	if body != "" {
+		body += "\n\n"
+	}
+	body += "## " + src.Title + "\n\n" + strings.TrimLeft(src.Content, "\n")
+
+	encContent, contentNonce, err := s.encryptOptional(body)
+	if err != nil {
+		return err
+	}
+	private := 0
+	if src.IsPrivate || dst.IsPrivate {
+		private = 1
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(
+		`UPDATE vault_notes SET encrypted_content = ?, content_nonce = ?, checksum_hash = ?, is_private = ?, updated_at = ?
+		 WHERE id = ?`,
+		encContent, contentNonce, contentChecksum(dst.Title, body, dst.Frontmatter), private, time.Now().Unix(), dstID,
+	); err != nil {
+		return fmt.Errorf("vault: fundiendo las notas: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE vault_note_assets SET note_id = ? WHERE note_id = ?`, dstID, srcID); err != nil {
+		return fmt.Errorf("vault: pasando las imágenes: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM vault_note_links WHERE source_note_id = ?`, srcID); err != nil {
+		return fmt.Errorf("vault: borrando los enlaces de la nota fundida: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM vault_notes WHERE id = ?`, srcID); err != nil {
+		return fmt.Errorf("vault: borrando la nota fundida: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.reindexLinks(dstID, body)
+}

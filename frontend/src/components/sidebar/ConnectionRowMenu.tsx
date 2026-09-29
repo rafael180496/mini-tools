@@ -20,9 +20,10 @@ interface ConnectionRowMenuProps {
     onMoveToFolder: (folderId: string) => void
 }
 
-// Overflow menu for a database connection row's secondary actions.
+// Overflow menu for a row's secondary actions. The sidebar trees moved to
+// TreeMenu (right-click + "⋯"); this one remains for the SSH snippets panel.
 //
-// Same reasoning and same shape as SshRowMenu: a row carrying eight unlabelled
+// A row carrying eight unlabelled
 // icons is not a menu, and "eliminar" sitting a few pixels from the action you
 // wanted is a real hazard. `items` is a list because this row's available
 // actions depend on the engine (schema picker only for Postgres/Oracle/SQL

@@ -189,6 +189,8 @@ export function DiscardRedisTransaction(arg1:string):Promise<void>;
 
 export function DisconnectConnection(arg1:string):Promise<void>;
 
+export function DuplicateNote(arg1:string):Promise<string>;
+
 export function ExecRedisTransaction(arg1:string):Promise<any>;
 
 export function ExecuteMongoQuery(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
@@ -200,6 +202,8 @@ export function ExecuteRedisCommand(arg1:string,arg2:string,arg3:string):Promise
 export function ExplainQuery(arg1:string,arg2:string,arg3:boolean):Promise<explain.Plan>;
 
 export function ExportConnectionConfig(arg1:string):Promise<string>;
+
+export function ExportNoteMarkdown(arg1:string):Promise<string>;
 
 export function ExportRedisKeys(arg1:string,arg2:Array<string>):Promise<Array<db.RedisKeyExport>>;
 
@@ -595,6 +599,8 @@ export function MCPServerStatus():Promise<main.MCPStatus>;
 
 export function MakeSftpDir(arg1:string,arg2:string):Promise<void>;
 
+export function MergeNotes(arg1:string,arg2:string):Promise<void>;
+
 export function MoveConnectionToFolder(arg1:string,arg2:string):Promise<void>;
 
 export function MoveFolder(arg1:string,arg2:string):Promise<void>;
@@ -670,6 +676,8 @@ export function RemoveRedisZSetMember(arg1:string,arg2:string,arg3:string):Promi
 export function RenameAgentChat(arg1:string,arg2:string):Promise<void>;
 
 export function RenameFolder(arg1:string,arg2:string):Promise<void>;
+
+export function RenameNote(arg1:string,arg2:string):Promise<void>;
 
 export function RenameSSHKey(arg1:string,arg2:string):Promise<void>;
 
@@ -768,6 +776,8 @@ export function SetMCPNotesWrite(arg1:boolean):Promise<void>;
 export function SetMCPServerEnabled(arg1:boolean):Promise<void>;
 
 export function SetNoteFolder(arg1:string,arg2:string):Promise<void>;
+
+export function SetNotePinned(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetNotePrivacy(arg1:string,arg2:boolean):Promise<void>;
 

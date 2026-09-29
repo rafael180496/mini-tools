@@ -1,11 +1,26 @@
-import {useCallback, useEffect, useMemo, useState, type ReactNode} from 'react'
-import {CreateNote, CreateNoteInFolder, DeleteNote, NotesGraph, SearchNotesSmart, SetNoteFolder} from '../../../wailsjs/go/main/App'
+import {useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react'
+import {
+    CreateNote,
+    CreateNoteInFolder,
+    DeleteNote,
+    DuplicateNote,
+    ExportNoteMarkdown,
+    MergeNotes,
+    NotesGraph,
+    RenameNote,
+    SearchNotesSmart,
+    SetNoteFolder,
+    SetNotePinned,
+    SetNotePrivacy,
+} from '../../../wailsjs/go/main/App'
 import {vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import SidebarSection from '../sidebar/SidebarSection'
-import MoveToFolderMenu from '../sidebar/MoveToFolderMenu'
+import TreeRow, {TREE_FOLDER_ICON} from '../sidebar/TreeRow'
+import {MenuButton, moveToFolderSubmenu, useTreeMenu, type TreeMenuEntry} from '../sidebar/TreeMenu'
 import ConfirmDialog from '../ConfirmDialog'
 import FolderNotesDialog from './FolderNotesDialog'
+import MergeNoteDialog from './MergeNoteDialog'
 import PromptDialog from '../git/PromptDialog'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
 import {buildNoteLinkTree, childrenIndex, type NoteTreeRow} from '../../lib/noteLinkTree'
@@ -90,6 +105,19 @@ export default function NotesTree({
     // Carpeta abierta en la vista de tabla: el clic en el NOMBRE la abre, el
     // chevron sigue plegando. Es lo que hace cualquier explorador de archivos.
     const [openedFolder, setOpenedFolder] = useState<vault.Folder | null>(null)
+    const [renamingNote, setRenamingNote] = useState<vault.NoteHit | null>(null)
+    // Volver visible una nota privada se confirma: es el único gesto de la
+    // barra que cambia lo que un agente puede leer.
+    const [publishing, setPublishing] = useState<vault.NoteHit | null>(null)
+    const [merging, setMerging] = useState<vault.NoteHit | null>(null)
+    // Aviso breve de algo que salió bien y no se ve solo (una exportación).
+    const [notice, setNotice] = useState('')
+    useEffect(() => {
+        if (!notice) return
+        const t = setTimeout(() => setNotice(''), 4000)
+        return () => clearTimeout(t)
+    }, [notice])
+    const menu = useTreeMenu()
 
     // Con retardo: cada búsqueda descifra las notas en memoria (ver
     // backend/vault/notesearch.go), así que buscar por pulsación las
@@ -130,6 +158,7 @@ export default function NotesTree({
     }, [query, onCreated, onClearFilter])
 
     const searching = query.trim().length > 0
+    const pinnedHits = useMemo(() => hits.filter((h) => h.pinned), [hits])
 
     const matchCount = searching ? hits.length : null
     useEffect(() => {
@@ -244,6 +273,138 @@ export default function NotesTree({
             .catch((e) => setError(String(e)))
     }
 
+    const expandAll = () => {
+        setOpenFolders(new Set(noteFolders.map((f) => f.id)))
+        setCollapsed(new Set())
+    }
+    const collapseAll = () => setOpenFolders(new Set())
+
+    const copy = (text: string) => void navigator.clipboard.writeText(text).catch(() => {})
+
+    // Ubicación de una nota como "Carpeta / Subcarpeta / Título": es el «Print
+    // file path» de Obsidian. Las notas no son archivos (viven cifradas en el
+    // vault), así que la ruta útil es la del árbol.
+    const locationOf = (hit: vault.NoteHit) => {
+        const byId = new Map(noteFolders.map((f) => [f.id, f]))
+        const parts: string[] = []
+        let f = hit.folderId ? byId.get(hit.folderId) : undefined
+        while (f && parts.length < 50) {
+            parts.unshift(f.name)
+            f = f.parentId ? byId.get(f.parentId) : undefined
+        }
+        return [...parts, hit.title || 'Sin título'].join(' / ')
+    }
+
+    const noteMenu = (e: ReactMouseEvent, hit: vault.NoteHit) => {
+        const title = hit.title || 'Sin título'
+        const items: TreeMenuEntry[] = [
+            {label: 'Abrir en una pestaña', icon: 'open_in_new', hint: 'clic', onSelect: () => onOpenNote(hit.id)},
+            {
+                label: hit.pinned ? 'Quitar de fijadas' : 'Fijar arriba',
+                icon: hit.pinned ? 'keep_off' : 'keep',
+                title: 'Las fijadas aparecen primero en la barra, en su propia sección',
+                onSelect: () =>
+                    void SetNotePinned(hit.id, !hit.pinned)
+                        .then(onChanged)
+                        .catch((err) => setError(String(err))),
+            },
+            'separator',
+            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => setRenamingNote(hit)},
+            {
+                label: 'Duplicar',
+                icon: 'content_copy',
+                title: 'Copia la nota con sus etiquetas, carpeta, privacidad e imágenes',
+                onSelect: () =>
+                    void DuplicateNote(hit.id)
+                        .then((id) => {
+                            onChanged()
+                            onCreated(id)
+                        })
+                        .catch((err) => setError(String(err))),
+            },
+            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFolders, hit.folderId ?? '', (f) => moveNote(hit.id, f))},
+            {
+                label: 'Fundir con otra nota…',
+                icon: 'call_merge',
+                title: 'Agrega su texto al final de otra nota y la borra',
+                onSelect: () => setMerging(hit),
+            },
+            'separator',
+            {label: 'Copiar enlace', icon: 'link', hint: '[[…]]', title: `Copia [[${title}]] para pegarlo en otra nota`, onSelect: () => copy(`[[${title}]]`)},
+            {label: 'Copiar título', icon: 'title', onSelect: () => copy(title)},
+            {label: 'Copiar ubicación', icon: 'account_tree', title: locationOf(hit), onSelect: () => copy(locationOf(hit))},
+            {label: 'Ver en el grafo', icon: 'hub', onSelect: onOpenGraph},
+            'separator',
+            {
+                label: 'Exportar como Markdown…',
+                icon: 'download',
+                title: 'Guarda un .md con las imágenes incluidas, que se abre en Obsidian o en cualquier editor. Queda en claro en el disco: la nota deja de estar cifrada en ese archivo.',
+                onSelect: () =>
+                    void ExportNoteMarkdown(hit.id)
+                        .then((path) => path && setNotice(`Exportada en ${path}`))
+                        .catch((err) => setError(String(err))),
+            },
+            hit.isPrivate
+                ? {label: 'Hacer visible para agentes', icon: 'lock_open', onSelect: () => setPublishing(hit)}
+                : {
+                      label: 'Hacer privada',
+                      icon: 'lock',
+                      title: 'Ningún agente (chat, @note, MCP) va a poder leerla',
+                      onSelect: () =>
+                          void SetNotePrivacy(hit.id, true)
+                              .then(onChanged)
+                              .catch((err) => setError(String(err))),
+                  },
+            'separator',
+            {label: 'Borrar', icon: 'delete', danger: true, onSelect: () => setDeleting(hit)},
+        ]
+        menu.openAt(e, items)
+    }
+
+    const folderMenu = (e: ReactMouseEvent, node: FolderNode, total: number) => {
+        const f = node.folder
+        const open = foldersOpen(f.id)
+        menu.openAt(e, [
+            {label: 'Nota nueva aquí', icon: 'note_add', onSelect: () => createNoteIn(f.id)},
+            {
+                label: 'Subcarpeta nueva',
+                icon: 'create_new_folder',
+                onSelect: () => {
+                    setOpenFolders((prev) => new Set([...prev, f.id]))
+                    onCreateFolder('Nueva carpeta', f.id)
+                },
+            },
+            'separator',
+            {label: 'Abrir como tabla', icon: 'table_rows', hint: `${total}`, title: 'Sus notas con fechas y un buscador propio', onSelect: () => setOpenedFolder(f)},
+            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: searching, onSelect: () => toggleFolder(f.id)},
+            'separator',
+            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => setRenamingFolder(f)},
+            'separator',
+            {
+                label: 'Borrar carpeta',
+                icon: 'delete',
+                danger: true,
+                title: 'Las notas que tenía NO se borran: quedan en la raíz',
+                onSelect: () => onDeleteFolder(f.id),
+            },
+        ])
+    }
+
+    const blankMenu = (e: ReactMouseEvent) =>
+        menu.openAt(e, [
+            {label: 'Nota nueva', icon: 'note_add', onSelect: createNote},
+            {
+                label: 'Carpeta nueva',
+                icon: 'create_new_folder',
+                onSelect: () => onCreateFolder('Nueva carpeta', ''),
+            },
+            'separator',
+            {label: 'Desplegar todo', icon: 'unfold_more', disabled: searching, onSelect: expandAll},
+            {label: 'Plegar todo', icon: 'unfold_less', disabled: searching, onSelect: collapseAll},
+            'separator',
+            {label: 'Grafo de conocimiento', icon: 'hub', onSelect: onOpenGraph},
+        ])
+
     return (
         <SidebarSection
             title="Notas"
@@ -260,6 +421,14 @@ export default function NotesTree({
                     className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 >
                     <Icon name="create_new_folder" size={16} />
+                </button>
+                <button
+                    onClick={() => (openFolders.size > 0 ? collapseAll() : expandAll())}
+                    disabled={searching || noteFolders.length === 0}
+                    title={openFolders.size > 0 ? 'Plegar todas las carpetas' : 'Desplegar todas las carpetas'}
+                    className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
+                >
+                    <Icon name={openFolders.size > 0 ? 'unfold_less' : 'unfold_more'} size={16} />
                 </button>
                 <button
                     onClick={onOpenGraph}
@@ -326,8 +495,9 @@ export default function NotesTree({
             </div>
 
             {error && <p className="px-2 pb-1 text-ui-10 text-error">{error}</p>}
+            {notice && <p className="truncate px-2 pb-1 text-ui-10 text-on-surface-variant" title={notice}>{notice}</p>}
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto pb-6" onContextMenu={blankMenu}>
                 {hits.length === 0 && !loading && (
                     <p className="px-2 py-2 text-ui-11 text-on-surface-variant">
                         {searching ? (
@@ -342,6 +512,30 @@ export default function NotesTree({
                     </p>
                 )}
 
+                {/* Fijadas arriba de todo, como los marcadores de Obsidian. La
+                    nota sigue apareciendo también en su carpeta: fijar es un
+                    atajo, no una mudanza. Buscando no se muestran — ahí manda
+                    la relevancia. */}
+                {!searching && pinnedHits.length > 0 && (
+                    <div className="mb-1 border-b border-outline-variant/60 pb-1">
+                        <p className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70">
+                            <Icon name="keep" size={12} />
+                            Fijadas
+                        </p>
+                        {pinnedHits.map((h) => (
+                            <NoteRow
+                                key={`pin-${h.id}`}
+                                row={{hit: h, depth: 0, path: `pin-${h.id}`, children: 0}}
+                                active={activeNoteId === h.id}
+                                collapsed={false}
+                                onToggleBranch={toggleBranch}
+                                onOpen={onOpenNote}
+                                onMenu={noteMenu}
+                            />
+                        ))}
+                    </div>
+                )}
+
                 {/* Carpetas primero y después las notas sueltas, que es el
                     orden de cualquier explorador de archivos. */}
                 {tree.map((node) => (
@@ -352,11 +546,8 @@ export default function NotesTree({
                         byFolder={byFolder}
                         isOpen={foldersOpen}
                         onToggle={toggleFolder}
-                        onCreateFolder={onCreateFolder}
-                        onCreateNote={createNoteIn}
                         onOpenFolder={setOpenedFolder}
-                        onRenameFolder={setRenamingFolder}
-                        onDeleteFolder={onDeleteFolder}
+                        onMenu={folderMenu}
                         renderNotes={(notes, depth) =>
                             rowsFor(notes, depth).map((row) => (
                                 <NoteRow
@@ -365,10 +556,8 @@ export default function NotesTree({
                                     active={activeNoteId === row.hit.id}
                                     collapsed={collapsed.has(row.path)}
                                     onToggleBranch={toggleBranch}
-                                    flatFolders={flatFolders}
                                     onOpen={onOpenNote}
-                                    onMove={moveNote}
-                                    onDelete={setDeleting}
+                                    onMenu={noteMenu}
                                 />
                             ))
                         }
@@ -382,10 +571,8 @@ export default function NotesTree({
                         active={activeNoteId === row.hit.id}
                         collapsed={collapsed.has(row.path)}
                         onToggleBranch={toggleBranch}
-                        flatFolders={flatFolders}
                         onOpen={onOpenNote}
-                        onMove={moveNote}
-                        onDelete={setDeleting}
+                        onMenu={noteMenu}
                     />
                 ))}
             </div>
@@ -416,6 +603,56 @@ export default function NotesTree({
                 />
             )}
 
+            {menu.element}
+
+            {renamingNote && (
+                <PromptDialog
+                    title="Cambiar el nombre de la nota"
+                    label="Título"
+                    initial={renamingNote.title}
+                    confirmLabel="Guardar"
+                    description={`Las notas que la enlazan con [[${renamingNote.title}]] no se actualizan solas: van a mostrar el enlace como roto hasta que lo corrijas.`}
+                    onSubmit={(value) => {
+                        const id = renamingNote.id
+                        setRenamingNote(null)
+                        if (value.trim() && value.trim() !== renamingNote.title)
+                            void RenameNote(id, value.trim())
+                                .then(onChanged)
+                                .catch((e) => setError(String(e)))
+                    }}
+                    onClose={() => setRenamingNote(null)}
+                />
+            )}
+
+            {merging && (
+                <MergeNoteDialog
+                    source={merging}
+                    onMerge={(targetId) =>
+                        void MergeNotes(merging.id, targetId)
+                            .then(() => {
+                                onChanged()
+                                onOpenNote(targetId)
+                            })
+                            .catch((e) => setError(String(e)))
+                    }
+                    onClose={() => setMerging(null)}
+                />
+            )}
+
+            {publishing && (
+                <ConfirmDialog
+                    title="Hacer visible para los agentes"
+                    description={`«${publishing.title || 'Sin título'}» va a poder leerse desde el chat, con @note y por el servidor MCP. Si tiene credenciales o datos sensibles, dejala privada.`}
+                    confirmLabel="Hacer visible"
+                    onConfirm={() => {
+                        void SetNotePrivacy(publishing.id, false)
+                            .then(onChanged)
+                            .catch((e) => setError(String(e)))
+                    }}
+                    onClose={() => setPublishing(null)}
+                />
+            )}
+
             {renamingFolder && (
                 <PromptDialog
                     title="Cambiar el nombre de la carpeta"
@@ -435,17 +672,18 @@ export default function NotesTree({
 }
 
 // FolderRow es una carpeta y lo que tiene adentro.
+//
+// Clic en la fila la despliega, como en cualquier explorador (Obsidian, el de
+// archivos del sistema). La vista de tabla —fechas, buscador propio— sigue
+// estando, con doble clic o desde el menú contextual.
 function FolderRow({
     node,
     depth,
     byFolder,
     isOpen,
     onToggle,
-    onCreateFolder,
-    onCreateNote,
     onOpenFolder,
-    onRenameFolder,
-    onDeleteFolder,
+    onMenu,
     renderNotes,
 }: {
     node: FolderNode
@@ -453,11 +691,8 @@ function FolderRow({
     byFolder: Record<string, vault.NoteHit[]>
     isOpen: (id: string) => boolean
     onToggle: (id: string) => void
-    onCreateFolder: (name: string, parentId: string) => void
-    onCreateNote: (folderId: string) => void
     onOpenFolder: (folder: vault.Folder) => void
-    onRenameFolder: (folder: vault.Folder) => void
-    onDeleteFolder: (id: string) => void
+    onMenu: (e: ReactMouseEvent, node: FolderNode, total: number) => void
     // Recibe TODAS las notas de la carpeta y no una por una: el anidado por
     // enlaces necesita el conjunto para saber cuáles son raíz.
     renderNotes: (notes: vault.NoteHit[], depth: number) => ReactNode
@@ -470,67 +705,22 @@ function FolderRow({
 
     return (
         <div>
-            {/* Solo el chevron y el nombre. El ícono de carpeta al lado del
-                chevron es información repetida —el chevron ya dice que se
-                despliega— y en una barra angosta cada ícono de más come ancho
-                del nombre, que es lo único que hay que leer. El contador
-                aparece al pasar por encima. */}
-            <div
-                className="group mx-1 flex items-center gap-1 rounded py-[3px] pr-1 text-ui-12 hover:bg-surface-variant"
-                style={{paddingLeft: `${depth * 12 + 4}px`}}
-            >
-                <button
-                    onClick={() => onToggle(node.folder.id)}
-                    title={open ? 'Plegar la carpeta' : `Desplegar la carpeta (${total} ${total === 1 ? 'nota' : 'notas'})`}
-                    className="shrink-0 rounded text-on-surface-variant/70 hover:text-on-surface"
-                >
-                    <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} />
-                </button>
-                {/* El NOMBRE abre la carpeta en una tabla; la flecha la
-                    despliega en el árbol. Es la separación de cualquier
-                    explorador de archivos, y es lo que permite revisar una
-                    carpeta —fechas, cuántas hay, buscar adentro— sin perder el
-                    plegado que sirve para navegar. */}
-                <button
-                    onClick={() => onOpenFolder(node.folder)}
-                    title={`Abre «${node.folder.name}» en una tabla: sus notas con fecha de creación y de última modificación, y un buscador propio. La flecha de la izquierda solo despliega.`}
-                    className="flex min-w-0 flex-1 items-center gap-1 text-left"
-                >
-                    <span className="min-w-0 truncate text-on-surface">{node.folder.name}</span>
-                    <span className="shrink-0 text-ui-10 text-on-surface-variant/50 group-hover:hidden">{total}</span>
-                </button>
-
-                <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
-                    <button
-                        onClick={() => onCreateNote(node.folder.id)}
-                        title="Crea una nota adentro de esta carpeta. Si hay algo escrito en el buscador, lo usa como título."
-                        className="rounded p-0.5 text-on-surface-variant hover:text-on-surface"
-                    >
-                        <Icon name="note_add" size={12} />
-                    </button>
-                    <button
-                        onClick={() => onCreateFolder('Nueva carpeta', node.folder.id)}
-                        title="Crea una subcarpeta acá adentro"
-                        className="rounded p-0.5 text-on-surface-variant hover:text-on-surface"
-                    >
-                        <Icon name="create_new_folder" size={12} />
-                    </button>
-                    <button
-                        onClick={() => onRenameFolder(node.folder)}
-                        title="Renombrar la carpeta"
-                        className="rounded p-0.5 text-on-surface-variant hover:text-on-surface"
-                    >
-                        <Icon name="edit" size={12} />
-                    </button>
-                    <button
-                        onClick={() => onDeleteFolder(node.folder.id)}
-                        title="Borra la carpeta. Las notas que tenía NO se borran: quedan en la raíz."
-                        className="rounded p-0.5 text-on-surface-variant hover:text-on-error-container"
-                    >
-                        <Icon name="delete" size={12} />
-                    </button>
-                </span>
-            </div>
+            <TreeRow
+                depth={depth}
+                icon={open ? 'folder_open' : 'folder'}
+                iconClass={TREE_FOLDER_ICON}
+                iconFilled={!open}
+                label={node.folder.name}
+                labelClass="text-on-surface font-medium"
+                title={`${node.folder.name} — ${total} ${total === 1 ? 'nota' : 'notas'}. Doble clic: abrirla como tabla. Clic derecho: más opciones.`}
+                expanded={open}
+                onToggle={() => onToggle(node.folder.id)}
+                onClick={() => onToggle(node.folder.id)}
+                onDoubleClick={() => onOpenFolder(node.folder)}
+                onContextMenu={(e) => onMenu(e, node, total)}
+                trailing={<span className="text-ui-10 tabular-nums text-on-surface-variant/50">{total}</span>}
+                actions={<MenuButton onOpen={(e) => onMenu(e, node, total)} title="Opciones de la carpeta" />}
+            />
 
             {open && (
                 <>
@@ -542,11 +732,8 @@ function FolderRow({
                             byFolder={byFolder}
                             isOpen={isOpen}
                             onToggle={onToggle}
-                            onCreateFolder={onCreateFolder}
-                            onCreateNote={onCreateNote}
                             onOpenFolder={onOpenFolder}
-                            onRenameFolder={onRenameFolder}
-                            onDeleteFolder={onDeleteFolder}
+                            onMenu={onMenu}
                             renderNotes={renderNotes}
                         />
                     ))}
@@ -563,109 +750,71 @@ function countIn(node: FolderNode, byFolder: Record<string, vault.NoteHit[]>): n
     return n
 }
 
-// NoteRow es una nota en el árbol.
+// NoteRow es una nota en el árbol. Una nota de la que cuelgan otras (las que
+// enlaza) lleva chevron y un ícono distinto: es un "índice", y tiene que
+// verse como algo que se despliega antes de apuntarle.
 function NoteRow({
     row,
     active,
     collapsed,
     onToggleBranch,
-    flatFolders,
     onOpen,
-    onMove,
-    onDelete,
+    onMenu,
 }: {
     row: NoteTreeRow
     active: boolean
     collapsed: boolean
     onToggleBranch: (path: string) => void
-    flatFolders: {folder: vault.Folder; depth: number}[]
     onOpen: (id: string) => void
-    onMove: (noteId: string, folderId: string) => void
-    onDelete: (hit: vault.NoteHit) => void
+    onMenu: (e: ReactMouseEvent, hit: vault.NoteHit) => void
 }) {
     const {hit, depth} = row
+    const parent = row.children > 0
     return (
-        // La nota activa se marca con un fondo redondeado, no con una barra al
-        // costado: en una lista de treinta títulos la barra se pierde y el
-        // fondo se ve de un vistazo. Y sin ícono de documento — todas son
-        // documentos, así que el ícono no distingue nada y solo come ancho del
-        // título, que es lo único que hay que leer.
-        <div
-            className={`group mx-1 flex flex-col rounded pr-1 ${
-                active ? 'sidebar-row-active' : 'hover:bg-surface-container-high'
-            }`}
-            style={{paddingLeft: `${depth * 12 + 4}px`}}
-        >
-            <div className="flex items-center gap-1.5 py-[3px]">
-                {/* El chevron solo si de esta nota cuelga algo. Las hojas
-                    llevan un hueco del mismo ancho para que los títulos del
-                    mismo nivel queden alineados. */}
-                {row.children > 0 ? (
-                    <button
-                        onClick={() => onToggleBranch(row.path)}
-                        title={
-                            collapsed
-                                ? `Mostrar las ${row.children} notas que esta enlaza`
-                                : 'Plegar las notas que esta enlaza'
-                        }
-                        className="shrink-0 rounded text-on-surface-variant/70 hover:text-on-surface"
-                    >
-                        <Icon name={collapsed ? 'chevron_right' : 'expand_more'} size={13} />
-                    </button>
-                ) : (
-                    <span className="w-[13px] shrink-0" />
-                )}
-                <button
-                    onClick={() => onOpen(hit.id)}
-                    title={
-                        hit.isPrivate
-                            ? `${hit.title} — privada: ningún agente puede leerla`
-                            : `${hit.title} — visible para los agentes`
-                    }
-                    className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                >
-                    {/* El candado SÍ se queda: es la única señal de un vistazo
-                        de qué puede leer un agente, y solo aparece cuando hay
-                        algo que decir. */}
-                    {hit.isPrivate && (
-                        <Icon name="lock" size={11} className="shrink-0 text-on-surface-variant/60" />
-                    )}
-                    <span
-                        className={`min-w-0 truncate text-ui-12 ${
-                            active ? 'text-on-surface' : 'text-on-surface/90'
-                        } ${hit.matchedTitle ? 'font-medium' : ''}`}
-                    >
-                        {hit.title || 'Sin título'}
+        <TreeRow
+            depth={depth}
+            icon={parent ? 'library_books' : 'description'}
+            iconClass={active ? 'text-primary' : undefined}
+            label={hit.title || 'Sin título'}
+            labelClass={`${active ? 'text-on-surface' : 'text-on-surface/90'} ${hit.matchedTitle ? 'font-medium' : ''}`}
+            title={
+                (hit.isPrivate ? `${hit.title} — privada: ningún agente puede leerla` : `${hit.title} — visible para los agentes`) +
+                (parent ? `. Enlaza ${row.children} ${row.children === 1 ? 'nota' : 'notas'}.` : '')
+            }
+            expanded={parent ? !collapsed : undefined}
+            onToggle={() => onToggleBranch(row.path)}
+            onClick={() => onOpen(hit.id)}
+            onContextMenu={(e) => onMenu(e, hit)}
+            active={active}
+            // El candado se queda a la vista: es la única señal de un vistazo
+            // de qué puede leer un agente.
+            trailing={
+                hit.isPrivate || hit.pinned ? (
+                    <>
+                        {hit.pinned && <Icon name="keep" size={12} className="text-on-surface-variant/60" />}
+                        {hit.isPrivate && <Icon name="lock" size={12} className="text-on-surface-variant/60" />}
+                    </>
+                ) : undefined
+            }
+            actions={<MenuButton onOpen={(e) => onMenu(e, hit)} title="Opciones de la nota" />}
+            below={
+                // El fragmento es lo que evita abrir cinco notas para ver cuál
+                // era. El resaltado viene marcado con «…» desde el backend y se
+                // parte acá — nunca se inyecta HTML.
+                hit.snippet ? (
+                    <span className="line-clamp-2 pb-1 pl-[46px] pr-1 text-ui-10 leading-4 text-on-surface-variant">
+                        {hit.snippet.split(/«|»/).map((part, i) =>
+                            i % 2 === 1 ? (
+                                <mark key={i} className="rounded bg-primary/25 text-on-surface">
+                                    {part}
+                                </mark>
+                            ) : (
+                                <span key={i}>{part}</span>
+                            ),
+                        )}
                     </span>
-                </button>
-                <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
-                    <MoveToFolderMenu connId={hit.id} flatFolders={flatFolders} onMove={onMove} />
-                    <button
-                        onClick={() => onDelete(hit)}
-                        title="Borra esta nota y sus imágenes. Las notas que la enlazaban van a mostrar el enlace como roto — no se borran en silencio."
-                        className="rounded p-0.5 text-on-surface-variant hover:bg-error-container hover:text-on-error-container"
-                    >
-                        <Icon name="delete" size={12} />
-                    </button>
-                </span>
-            </div>
-
-            {/* El fragmento es lo que evita abrir cinco notas para ver cuál
-                era. El resaltado viene marcado con «…» desde el backend y se
-                parte acá — nunca se inyecta HTML. */}
-            {hit.snippet && (
-                <span className="line-clamp-2 pb-1 text-ui-10 leading-4 text-on-surface-variant">
-                    {hit.snippet.split(/«|»/).map((part, i) =>
-                        i % 2 === 1 ? (
-                            <mark key={i} className="rounded bg-primary/25 text-on-surface">
-                                {part}
-                            </mark>
-                        ) : (
-                            <span key={i}>{part}</span>
-                        ),
-                    )}
-                </span>
-            )}
-        </div>
+                ) : undefined
+            }
+        />
     )
 }

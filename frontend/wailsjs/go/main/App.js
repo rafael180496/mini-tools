@@ -334,6 +334,10 @@ export function DisconnectConnection(arg1) {
   return window['go']['main']['App']['DisconnectConnection'](arg1);
 }
 
+export function DuplicateNote(arg1) {
+  return window['go']['main']['App']['DuplicateNote'](arg1);
+}
+
 export function ExecRedisTransaction(arg1) {
   return window['go']['main']['App']['ExecRedisTransaction'](arg1);
 }
@@ -356,6 +360,10 @@ export function ExplainQuery(arg1, arg2, arg3) {
 
 export function ExportConnectionConfig(arg1) {
   return window['go']['main']['App']['ExportConnectionConfig'](arg1);
+}
+
+export function ExportNoteMarkdown(arg1) {
+  return window['go']['main']['App']['ExportNoteMarkdown'](arg1);
 }
 
 export function ExportRedisKeys(arg1, arg2) {
@@ -1146,6 +1154,10 @@ export function MakeSftpDir(arg1, arg2) {
   return window['go']['main']['App']['MakeSftpDir'](arg1, arg2);
 }
 
+export function MergeNotes(arg1, arg2) {
+  return window['go']['main']['App']['MergeNotes'](arg1, arg2);
+}
+
 export function MoveConnectionToFolder(arg1, arg2) {
   return window['go']['main']['App']['MoveConnectionToFolder'](arg1, arg2);
 }
@@ -1296,6 +1308,10 @@ export function RenameAgentChat(arg1, arg2) {
 
 export function RenameFolder(arg1, arg2) {
   return window['go']['main']['App']['RenameFolder'](arg1, arg2);
+}
+
+export function RenameNote(arg1, arg2) {
+  return window['go']['main']['App']['RenameNote'](arg1, arg2);
 }
 
 export function RenameSSHKey(arg1, arg2) {
@@ -1492,6 +1508,10 @@ export function SetMCPServerEnabled(arg1) {
 
 export function SetNoteFolder(arg1, arg2) {
   return window['go']['main']['App']['SetNoteFolder'](arg1, arg2);
+}
+
+export function SetNotePinned(arg1, arg2) {
+  return window['go']['main']['App']['SetNotePinned'](arg1, arg2);
 }
 
 export function SetNotePrivacy(arg1, arg2) {

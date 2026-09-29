@@ -1282,6 +1282,15 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 55,
+		desc:    "agrega vault_notes.pinned (notas fijadas arriba de la barra, el «marcador» de Obsidian)",
+		apply: func(tx *sql.Tx) error {
+			// DEFAULT 0: ninguna nota existente queda fijada sola.
+			_, err := tx.Exec(`ALTER TABLE vault_notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

@@ -1,25 +1,25 @@
-import {useCallback, useEffect, useMemo, useState} from 'react'
+import {useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import {
+    HttpBuildRequest,
     HttpDeleteCollection,
     HttpDeleteItem,
     HttpExportPostman,
+    HttpGenerateCode,
     HttpGetItem,
     HttpImportCurl,
     HttpListCollections,
     HttpListItems,
+    HttpMoveItem,
     HttpSaveCollection,
     HttpSaveItem,
     HttpSetCollectionFavorite,
 } from '../../../wailsjs/go/main/App'
 import {httpclient, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
-// ContextMenu vive bajo components/git/ porque nació ahí, pero no tiene nada
-// de Git adentro: es un menú anclado con portal. Se importa en vez de
-// copiarlo — dos implementaciones del mismo menú divergen, y moverlo
-// obligaría a tocar media docena de archivos de Git sin ganar nada.
-import ContextMenu from '../git/ContextMenu'
-import type {DropdownItem} from '../git/DropdownMenu'
+import TreeRow, {TREE_FOLDER_ICON} from '../sidebar/TreeRow'
+import {MenuButton, moveToFolderSubmenu, useTreeMenu, type TreeMenuEntry} from '../sidebar/TreeMenu'
 import ConfirmDialog from '../ConfirmDialog'
+import PromptDialog from '../git/PromptDialog'
 import {methodColor, parseComputed, parseVariables, type HttpComputed, type HttpVariable} from './httpShared'
 import EnvironmentsDialog from './EnvironmentsDialog'
 import HttpDocsDialog from './HttpDocsDialog'
@@ -90,9 +90,12 @@ export default function HttpTree({
     const [collections, setCollections] = useState<vault.HTTPCollection[]>([])
     const [itemsByCollection, setItemsByCollection] = useState<Record<string, vault.HTTPItem[]>>({})
     const [expanded, setExpanded] = useState<Set<string>>(new Set())
-    const [menu, setMenu] = useState<{x: number; y: number; items: (DropdownItem | 'separator')[]} | null>(null)
+    const menu = useTreeMenu()
+    // «Desplegar todo» no puede abrir las carpetas de una colección que
+    // todavía no se leyó: sus ítems se cargan recién al abrirla. La marca
+    // queda puesta hasta que llegan, y ahí se suman sus carpetas.
+    const expandAllRef = useRef(false)
     const [prompt, setPrompt] = useState<PendingPrompt | null>(null)
-    const [promptValue, setPromptValue] = useState('')
     const [confirm, setConfirm] = useState<{title: string; description: string; run: () => Promise<unknown>} | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [showEnvironments, setShowEnvironments] = useState(false)
@@ -136,6 +139,10 @@ export default function HttpTree({
         try {
             const items = (await HttpListItems(collectionId)) ?? []
             setItemsByCollection((prev) => ({...prev, [collectionId]: items}))
+            if (expandAllRef.current) {
+                const folders = items.filter((it) => it.kind === 'folder').map((it) => it.id)
+                if (folders.length > 0) setExpanded((prev) => new Set([...prev, ...folders]))
+            }
         } catch (e) {
             setError(String(e))
         }
@@ -167,6 +174,7 @@ export default function HttpTree({
     }, [forceOpen, collections])
 
     function toggle(id: string) {
+        expandAllRef.current = false
         setExpanded((prev) => {
             const next = new Set(prev)
             next.has(id) ? next.delete(id) : next.add(id)
@@ -189,8 +197,23 @@ export default function HttpTree({
     )
 
     function askName(spec: PendingPrompt) {
-        setPromptValue(spec.initial)
         setPrompt(spec)
+    }
+
+    // Plegar a mano cualquier rama cancela un «desplegar todo» pendiente: si
+    // no, la próxima colección que termine de cargar volvería a abrir lo que
+    // el usuario acaba de cerrar.
+    const expandAll = () => {
+        expandAllRef.current = true
+        const folders = Object.values(itemsByCollection)
+            .flat()
+            .filter((it) => it.kind === 'folder')
+            .map((it) => it.id)
+        setExpanded(new Set([...collections.map((c) => c.id), ...folders]))
+    }
+    const collapseAll = () => {
+        expandAllRef.current = false
+        setExpanded(new Set())
     }
 
     // --- altas -------------------------------------------------------------
@@ -236,177 +259,264 @@ export default function HttpTree({
         })
     }
 
-    // --- menús -------------------------------------------------------------
+    // --- acciones sobre ítems ----------------------------------------------
 
-    function collectionMenu(c: vault.HTTPCollection, e: React.MouseEvent) {
-        e.preventDefault()
-        setMenu({
-            x: e.clientX,
-            y: e.clientY,
-            items: [
-                {label: 'Nueva petición…', icon: 'add', onSelect: () => newItem(c.id, '', 'request')},
-                {label: 'Nueva carpeta…', icon: 'create_new_folder', onSelect: () => newItem(c.id, '', 'folder')},
-                'separator',
-                {
-                    label: 'Pegar un comando cURL…',
-                    icon: 'content_paste',
-                    hint: 'Crea una petición desde un «Copy as cURL»',
-                    onSelect: () => {
-                        setCurlText('')
-                        setCurlFor(c)
-                    },
-                },
-                {
-                    label: 'Exportar a Postman…',
-                    icon: 'upload',
-                    hint: 'Archivo .json compatible',
-                    onSelect: () =>
-                        void guard(async () => {
-                            const dest = await HttpExportPostman(c.id)
-                            if (dest) setImportSummary({name: `Exportada a ${dest}`, requests: 0, folders: 0, warnings: []})
-                        }),
-                },
-                'separator',
-                {
-                    label: 'Autenticación de la colección…',
-                    icon: 'key',
-                    hint: 'La heredan todas sus peticiones',
-                    onSelect: () => {
-                        setAuthDraft(parseAuth(c.auth))
-                        setAuthFor({kind: 'collection', id: c.id, name: c.name, collectionId: c.id})
-                    },
-                },
-                {
-                    label: 'Variables de la colección…',
-                    icon: 'data_object',
-                    hint: 'Valores por defecto que el entorno puede pisar',
-                    onSelect: () => {
-                        setVarsRows(parseVariables(c.variables))
-                        setVarsFor(c)
-                    },
-                },
-                {
-                    label: 'Correr la colección',
-                    icon: 'play_arrow',
-                    hint: 'Todas sus peticiones, en orden',
-                    onSelect: () => setRunFor({collectionId: c.id, folderId: '', title: c.name}),
-                },
-                {
-                    label: 'Cookies…',
-                    icon: 'cookie',
-                    hint: 'Las del entorno con el que corre',
-                    onSelect: () => setCookiesFor(c),
-                },
-                'separator',
-                {
-                    label: 'Documentación…',
-                    icon: 'menu_book',
-                    hint: 'Publicarla como nota del vault',
-                    onSelect: () => setDocsFor(c),
-                },
-                {
-                    label: 'Variables calculadas…',
-                    icon: 'functions',
-                    hint: 'Firmas y tokens derivados, para todas sus peticiones',
-                    onSelect: () => {
-                        setComputedRows(parseComputed(c.computed))
-                        setComputedFor(c)
-                    },
-                },
-                {
-                    label: c.favoriteAt ? 'Quitar de favoritas' : 'Marcar como favorita',
-                    icon: 'star',
-                    hint: 'Las favoritas quedan arriba de la lista',
-                    onSelect: () => void guard(() => HttpSetCollectionFavorite(c.id, !c.favoriteAt)),
-                },
-                {
-                    label: 'Renombrar…',
-                    icon: 'edit',
-                    onSelect: () =>
-                        askName({
-                            title: 'Renombrar colección',
-                            label: 'Nombre',
-                            initial: c.name,
-                            confirmLabel: 'Guardar',
-                            onSubmit: (name) => void guard(() => HttpSaveCollection(new vault.HTTPCollection({...c, name}))),
-                        }),
-                },
-                {
-                    label: 'Borrar colección',
-                    icon: 'delete',
-                    danger: true,
-                    onSelect: () =>
-                        setConfirm({
-                            title: 'Borrar la colección',
-                            description: `Se borra "${c.name}" con todas sus carpetas, sus peticiones y su historial. No se puede deshacer.`,
-                            run: () => HttpDeleteCollection(c.id),
-                        }),
-                },
-            ],
+    function renameCollection(c: vault.HTTPCollection) {
+        askName({
+            title: 'Renombrar colección',
+            label: 'Nombre',
+            initial: c.name,
+            confirmLabel: 'Guardar',
+            onSubmit: (name) => void guard(() => HttpSaveCollection(new vault.HTTPCollection({...c, name}))),
         })
     }
 
-    function itemMenu(it: vault.HTTPItem, e: React.MouseEvent) {
-        e.preventDefault()
-        const items: (DropdownItem | 'separator')[] = []
-        if (it.kind === 'folder') {
-            items.push(
-                {label: 'Nueva petición acá…', icon: 'add', onSelect: () => newItem(it.collectionId, it.id, 'request')},
-                {label: 'Nueva carpeta acá…', icon: 'create_new_folder', onSelect: () => newItem(it.collectionId, it.id, 'folder')},
-                {
-                    label: 'Correr esta carpeta',
-                    icon: 'play_arrow',
-                    hint: 'Sus peticiones y las de sus subcarpetas, en orden',
-                    onSelect: () => setRunFor({collectionId: it.collectionId, folderId: it.id, title: it.name}),
-                },
-                {
-                    label: 'Autenticación de la carpeta…',
-                    icon: 'key',
-                    hint: 'La heredan las peticiones de adentro',
-                    onSelect: () => {
-                        setAuthDraft(parseAuth(it.auth))
-                        setAuthFor({kind: 'folder', id: it.id, name: it.name, collectionId: it.collectionId})
-                    },
-                },
-                'separator',
-            )
+    function renameItem(it: vault.HTTPItem) {
+        askName({
+            title: it.kind === 'folder' ? 'Renombrar carpeta' : 'Renombrar petición',
+            label: 'Nombre',
+            initial: it.name,
+            confirmLabel: 'Guardar',
+            onSubmit: (name) =>
+                void guard(async () => {
+                    await HttpSaveItem(new vault.HTTPItem({...it, name}))
+                    await reloadItems(it.collectionId)
+                }),
+        })
+    }
+
+    function deleteItem(it: vault.HTTPItem) {
+        setConfirm({
+            title: it.kind === 'folder' ? 'Borrar la carpeta' : 'Borrar la petición',
+            description:
+                it.kind === 'folder'
+                    ? `Se borra "${it.name}" con todo lo que tenga adentro. No se puede deshacer.`
+                    : `Se borra "${it.name}" y su historial de ejecuciones. No se puede deshacer.`,
+            run: async () => {
+                await HttpDeleteItem(it.id)
+                await reloadItems(it.collectionId)
+            },
+        })
+    }
+
+    // Duplicar relee el ítem entero antes de copiarlo: el listado del árbol
+    // alcanza para dibujar, pero la copia tiene que llevarse cuerpo,
+    // autenticación y scripts, y eso es lo que HttpGetItem garantiza. Sin id,
+    // el vault la da de alta al final de la misma carpeta.
+    function duplicateRequest(it: vault.HTTPItem) {
+        void guard(async () => {
+            const full = (await HttpGetItem(it.id)) ?? it
+            const copy = await HttpSaveItem(new vault.HTTPItem({...full, id: '', sortOrder: 0, name: `${full.name} (copia)`}))
+            await reloadItems(it.collectionId)
+            if (copy) onOpenRequest(copy)
+        })
+    }
+
+    // Mover dentro de la misma colección: el vault reordena a los hermanos y
+    // un orden fuera de rango lo deja al final, que es donde lo buscaría
+    // quien acaba de moverlo.
+    function moveItem(it: vault.HTTPItem, folderId: string) {
+        if ((it.parentId ?? '') === folderId) return
+        void guard(async () => {
+            await HttpMoveItem(it.id, folderId, 1_000_000)
+            await reloadItems(it.collectionId)
+            if (folderId) setExpanded((prev) => new Set([...prev, folderId]))
+        })
+    }
+
+    // Carpetas a las que se puede mover un ítem, aplanadas y en el orden del
+    // árbol. Una carpeta no se ofrece a sí misma ni a su propia rama: el
+    // backend lo rechaza igual, pero una opción que siempre falla no debería
+    // estar en el menú.
+    function moveTargets(it: vault.HTTPItem) {
+        const all = itemsByCollection[it.collectionId] ?? []
+        const out: {folder: {id: string; name: string}; depth: number}[] = []
+        const walk = (parent: string, depth: number) => {
+            for (const f of all) {
+                if (f.kind !== 'folder' || (f.parentId ?? '') !== parent || f.id === it.id) continue
+                out.push({folder: {id: f.id, name: f.name}, depth})
+                walk(f.id, depth + 1)
+            }
         }
-        items.push(
+        walk('', 0)
+        return out
+    }
+
+    // «Copiar como cURL» sale del mismo generador que el panel de snippets, y
+    // con los secretos ENMASCARADOS: el portapapeles termina pegado en un
+    // ticket o un chat, y ahí un token real es una filtración. Quien lo
+    // necesite con valores reales lo saca del panel, que tiene el interruptor.
+    function copyAsCurl(it: vault.HTTPItem) {
+        void (async () => {
+            setError(null)
+            try {
+                const req = await HttpBuildRequest(it.id)
+                if (!req) return
+                await navigator.clipboard.writeText(await HttpGenerateCode(it.id, req, 'curl', false))
+            } catch (e) {
+                setError(String(e))
+            }
+        })()
+    }
+
+    const copy = (text: string) => void navigator.clipboard.writeText(text).catch(() => {})
+
+    // --- menús -------------------------------------------------------------
+    //
+    // Mismo menú y misma forma que el resto de los árboles (TreeMenu): crear
+    // arriba, lo que se hace con el elemento en el medio, configuración
+    // después y el borrado siempre último y en rojo. Las explicaciones largas
+    // van en el title de cada opción, no en la fila: la fila tiene que
+    // leerse de un vistazo.
+
+    function collectionMenu(e: ReactMouseEvent, c: vault.HTTPCollection) {
+        const open = forceOpen || expanded.has(c.id)
+        menu.openAt(e, [
+            {label: 'Nueva petición', icon: 'add', onSelect: () => newItem(c.id, '', 'request')},
+            {label: 'Nueva carpeta', icon: 'create_new_folder', onSelect: () => newItem(c.id, '', 'folder')},
             {
-                label: 'Renombrar…',
-                icon: 'edit',
-                onSelect: () =>
-                    askName({
-                        title: it.kind === 'folder' ? 'Renombrar carpeta' : 'Renombrar petición',
-                        label: 'Nombre',
-                        initial: it.name,
-                        confirmLabel: 'Guardar',
-                        onSubmit: (name) =>
-                            void guard(async () => {
-                                await HttpSaveItem(new vault.HTTPItem({...it, name}))
-                                await reloadItems(it.collectionId)
-                            }),
-                    }),
+                label: 'Pegar un comando cURL…',
+                icon: 'content_paste',
+                title: 'Crea una petición desde un «Copy as cURL» del navegador',
+                onSelect: () => {
+                    setCurlText('')
+                    setCurlFor(c)
+                },
+            },
+            'separator',
+            {
+                label: 'Correr la colección',
+                icon: 'play_arrow',
+                title: 'Todas sus peticiones, en orden',
+                onSelect: () => setRunFor({collectionId: c.id, folderId: '', title: c.name}),
+            },
+            {label: 'Documentación…', icon: 'menu_book', title: 'Verla o publicarla como nota del vault', onSelect: () => setDocsFor(c)},
+            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: forceOpen, onSelect: () => toggle(c.id)},
+            'separator',
+            {
+                label: 'Autenticación…',
+                icon: 'key',
+                title: 'La heredan todas sus peticiones: cambiar un token es UNA edición y no treinta',
+                onSelect: () => {
+                    setAuthDraft(parseAuth(c.auth))
+                    setAuthFor({kind: 'collection', id: c.id, name: c.name, collectionId: c.id})
+                },
             },
             {
-                label: it.kind === 'folder' ? 'Borrar carpeta' : 'Borrar petición',
+                label: 'Variables…',
+                icon: 'data_object',
+                title: 'Valores por defecto de la colección, que el entorno activo puede pisar',
+                onSelect: () => {
+                    setVarsRows(parseVariables(c.variables))
+                    setVarsFor(c)
+                },
+            },
+            {
+                label: 'Variables calculadas…',
+                icon: 'functions',
+                title: 'Firmas y tokens derivados, para todas sus peticiones',
+                onSelect: () => {
+                    setComputedRows(parseComputed(c.computed))
+                    setComputedFor(c)
+                },
+            },
+            {label: 'Cookies…', icon: 'cookie', title: 'Las del entorno con el que corre', onSelect: () => setCookiesFor(c)},
+            'separator',
+            {
+                label: c.favoriteAt ? 'Quitar de favoritas' : 'Marcar como favorita',
+                icon: 'star',
+                title: 'Las favoritas quedan arriba de la lista',
+                onSelect: () => void guard(() => HttpSetCollectionFavorite(c.id, !c.favoriteAt)),
+            },
+            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => renameCollection(c)},
+            {
+                label: 'Exportar a Postman…',
+                icon: 'upload',
+                title: 'Un archivo .json de Postman v2.1, con todo lo que se importó',
+                onSelect: () =>
+                    void guard(async () => {
+                        const dest = await HttpExportPostman(c.id)
+                        if (dest) setImportSummary({name: `Exportada a ${dest}`, requests: 0, folders: 0, warnings: []})
+                    }),
+            },
+            'separator',
+            {
+                label: 'Borrar colección',
                 icon: 'delete',
                 danger: true,
                 onSelect: () =>
                     setConfirm({
-                        title: it.kind === 'folder' ? 'Borrar la carpeta' : 'Borrar la petición',
-                        description:
-                            it.kind === 'folder'
-                                ? `Se borra "${it.name}" con todo lo que tenga adentro. No se puede deshacer.`
-                                : `Se borra "${it.name}" y su historial de ejecuciones. No se puede deshacer.`,
-                        run: async () => {
-                            await HttpDeleteItem(it.id)
-                            await reloadItems(it.collectionId)
-                        },
+                        title: 'Borrar la colección',
+                        description: `Se borra "${c.name}" con todas sus carpetas, sus peticiones y su historial. No se puede deshacer.`,
+                        run: () => HttpDeleteCollection(c.id),
                     }),
             },
-        )
-        setMenu({x: e.clientX, y: e.clientY, items})
+        ])
+    }
+
+    function folderMenu(e: ReactMouseEvent, it: vault.HTTPItem) {
+        const open = forceOpen || expanded.has(it.id)
+        menu.openAt(e, [
+            {label: 'Nueva petición aquí', icon: 'add', onSelect: () => newItem(it.collectionId, it.id, 'request')},
+            {label: 'Subcarpeta nueva', icon: 'create_new_folder', onSelect: () => newItem(it.collectionId, it.id, 'folder')},
+            'separator',
+            {
+                label: 'Correr esta carpeta',
+                icon: 'play_arrow',
+                title: 'Sus peticiones y las de sus subcarpetas, en orden',
+                onSelect: () => setRunFor({collectionId: it.collectionId, folderId: it.id, title: it.name}),
+            },
+            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: forceOpen, onSelect: () => toggle(it.id)},
+            {
+                label: 'Autenticación…',
+                icon: 'key',
+                title: 'La heredan las peticiones de adentro',
+                onSelect: () => {
+                    setAuthDraft(parseAuth(it.auth))
+                    setAuthFor({kind: 'folder', id: it.id, name: it.name, collectionId: it.collectionId})
+                },
+            },
+            'separator',
+            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => renameItem(it)},
+            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(moveTargets(it), it.parentId ?? '', (f) => moveItem(it, f), 'Raíz de la colección')},
+            'separator',
+            {label: 'Borrar carpeta', icon: 'delete', danger: true, title: 'Con todo lo que tenga adentro', onSelect: () => deleteItem(it)},
+        ])
+    }
+
+    function requestMenu(e: ReactMouseEvent, it: vault.HTTPItem) {
+        const items: TreeMenuEntry[] = [
+            {label: 'Abrir', icon: 'open_in_new', onSelect: () => onOpenRequest(it)},
+            'separator',
+            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => renameItem(it)},
+            {label: 'Duplicar', icon: 'content_copy', title: 'Copia la petición entera —headers, cuerpo, autenticación y scripts— en la misma carpeta', onSelect: () => duplicateRequest(it)},
+            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(moveTargets(it), it.parentId ?? '', (f) => moveItem(it, f), 'Raíz de la colección')},
+            'separator',
+            {
+                label: 'Copiar como cURL',
+                icon: 'terminal',
+                title: 'Con las variables resueltas y los secretos enmascarados. Para los valores reales, usá el panel de código de la petición.',
+                onSelect: () => copyAsCurl(it),
+            },
+            {label: 'Copiar URL', icon: 'link', disabled: !it.url, title: it.url ? it.url : 'La petición todavía no tiene URL', onSelect: () => copy(it.url ?? '')},
+            'separator',
+            {label: 'Borrar petición', icon: 'delete', danger: true, title: 'Con su historial de ejecuciones', onSelect: () => deleteItem(it)},
+        ]
+        menu.openAt(e, items)
+    }
+
+    // Clic derecho en el espacio vacío: lo mismo que los botones del
+    // encabezado, para quien ya tiene el mouse en el árbol.
+    function blankMenu(e: ReactMouseEvent) {
+        menu.openAt(e, [
+            {label: 'Nueva colección', icon: 'create_new_folder', onSelect: newCollection},
+            {label: 'Petición rápida', icon: 'bolt', title: 'Una pestaña para probar un endpoint sin guardarlo en ninguna colección', onSelect: onNewScratch},
+            {label: 'Importar…', icon: 'download', title: 'cURL, una URL, una petición en texto o archivos de Postman', onSelect: () => setShowImport(true)},
+            {label: 'Entornos…', icon: 'layers', onSelect: () => setShowEnvironments(true)},
+            'separator',
+            {label: 'Desplegar todo', icon: 'unfold_more', disabled: forceOpen || collections.length === 0, onSelect: expandAll},
+            {label: 'Plegar todo', icon: 'unfold_less', disabled: forceOpen || expanded.size === 0, onSelect: collapseAll},
+        ])
     }
 
     // --- árbol -------------------------------------------------------------
@@ -436,42 +546,59 @@ export default function HttpTree({
                     const count = all.filter((c) => c.parentId === it.id).length
                     return (
                         <div key={it.id}>
-                            <button
+                            <TreeRow
+                                depth={depth}
+                                icon={open ? 'folder_open' : 'folder'}
+                                iconClass={TREE_FOLDER_ICON}
+                                iconFilled={!open}
+                                label={it.name}
+                                labelClass="text-on-surface font-medium"
+                                title={`Carpeta "${it.name}" — ${count} ${count === 1 ? 'elemento' : 'elementos'}. Clic derecho: agregar, correr, mover o borrar.`}
+                                expanded={open}
+                                onToggle={() => toggle(it.id)}
                                 onClick={() => toggle(it.id)}
-                                onContextMenu={(e) => itemMenu(it, e)}
-                                title={`Carpeta "${it.name}" — ${count} ${count === 1 ? 'elemento' : 'elementos'}. Botón derecho para agregar, renombrar o borrar.`}
-                                style={{paddingLeft: 8 + depth * 12}}
-                                className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
-                            >
-                                <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
-                                <Icon name={open ? 'folder_open' : 'folder'} size={13} className="shrink-0 opacity-60" />
-                                <span className="truncate">{it.name}</span>
-                                <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-50">{count}</span>
-                            </button>
+                                onContextMenu={(e) => folderMenu(e, it)}
+                                trailing={<span className="text-ui-10 tabular-nums text-on-surface-variant/50">{count}</span>}
+                                actions={
+                                    <>
+                                        <button
+                                            onClick={() => newItem(collectionId, it.id, 'request')}
+                                            title={`Crear una petición dentro de «${it.name}»`}
+                                            className="sidebar-icon !p-0.5"
+                                        >
+                                            <Icon name="add" size={14} />
+                                        </button>
+                                        <MenuButton onOpen={(e) => folderMenu(e, it)} title="Opciones de la carpeta" />
+                                    </>
+                                }
+                            />
                             {open && renderItems(collectionId, it.id, depth + 1)}
                         </div>
                     )
                 }
                 const active = activeItemId === it.id
+                const method = (it.method || 'GET').toUpperCase()
                 return (
-                    <button
+                    <TreeRow
                         key={it.id}
+                        depth={depth}
+                        // El «ícono» de una petición es su método: es lo que
+                        // se escanea en una lista larga, y un glifo genérico
+                        // repetiría lo mismo en cada fila. Monoespaciado y con
+                        // ancho fijo: sin eso los nombres quedan dentados y la
+                        // columna del método deja de leerse como columna.
+                        icon={
+                            <span className={`inline-block w-[30px] font-mono text-ui-9 font-semibold ${methodColor(method)}`}>
+                                {shortMethod(method)}
+                            </span>
+                        }
+                        label={it.name}
+                        title={it.url ? `${method} ${it.url}` : `${method} — petición sin URL todavía`}
                         onClick={() => onOpenRequest(it)}
-                        onContextMenu={(e) => itemMenu(it, e)}
-                        title={it.url ? `${it.method || 'GET'} ${it.url}` : 'Petición sin URL todavía'}
-                        style={{paddingLeft: 8 + depth * 12}}
-                        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 ${
-                            active ? 'sidebar-row-active' : 'text-on-surface-variant hover:bg-surface-variant'
-                        }`}
-                    >
-                        {/* El método en monoespaciada y con ancho fijo: es lo
-                            que se escanea al buscar en una lista larga, y sin
-                            ancho fijo los nombres quedan dentados. */}
-                        <span className={`w-10 shrink-0 font-mono text-ui-9 font-semibold ${methodColor(it.method || 'GET')}`}>
-                            {(it.method || 'GET').toUpperCase()}
-                        </span>
-                        <span className="truncate">{it.name}</span>
-                    </button>
+                        onContextMenu={(e) => requestMenu(e, it)}
+                        active={active}
+                        actions={<MenuButton onOpen={(e) => requestMenu(e, it)} title="Opciones de la petición" />}
+                    />
                 )
             })
     }
@@ -481,61 +608,73 @@ export default function HttpTree({
         [collections, query, itemsByCollection, matches],
     )
 
+    const headerButton = 'shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40'
+
     return (
         <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center gap-0.5 pb-1 pl-1 pr-1 pt-2">
+            <div className="flex shrink-0 items-center gap-0.5 pb-1 pl-2 pr-2 pt-2">
                 {/* Dos secciones y no dos módulos de la barra lateral: son el
                     mismo trabajo y las filtra el mismo buscador de arriba. */}
-                <button
-                    onClick={() => setSection('collections')}
-                    title="Las colecciones guardadas, con sus carpetas y peticiones"
-                    className={`rounded px-1.5 py-0.5 text-ui-10 font-semibold uppercase tracking-wider ${
-                        section === 'collections'
-                            ? 'bg-surface-variant text-on-surface'
-                            : 'text-on-surface-variant/50 hover:text-on-surface-variant'
-                    }`}
-                >
-                    Colecciones
-                </button>
-                <button
-                    onClick={() => setSection('history')}
-                    title="Todo lo que se mandó desde la aplicación, de lo más nuevo a lo más viejo"
-                    className={`rounded px-1.5 py-0.5 text-ui-10 font-semibold uppercase tracking-wider ${
-                        section === 'history'
-                            ? 'bg-surface-variant text-on-surface'
-                            : 'text-on-surface-variant/50 hover:text-on-surface-variant'
-                    }`}
-                >
-                    Historial
-                </button>
+                {(['collections', 'history'] as const).map((s) => (
+                    <button
+                        key={s}
+                        onClick={() => setSection(s)}
+                        title={
+                            s === 'collections'
+                                ? 'Las colecciones guardadas, con sus carpetas y peticiones'
+                                : 'Todo lo que se mandó desde la aplicación, de lo más nuevo a lo más viejo'
+                        }
+                        className={`rounded px-1.5 py-0.5 text-ui-10 font-semibold uppercase tracking-wider ${
+                            section === s ? 'text-on-surface' : 'text-on-surface-variant/50 hover:text-on-surface-variant'
+                        }`}
+                    >
+                        {s === 'collections' ? 'Colecciones' : 'Historial'}
+                    </button>
+                ))}
                 <span className="flex-1" />
+                {section === 'collections' && (
+                    <button
+                        onClick={() => (expanded.size > 0 ? collapseAll() : expandAll())}
+                        disabled={forceOpen || collections.length === 0}
+                        title={
+                            forceOpen
+                                ? 'Con una búsqueda activa todo queda desplegado, para que ningún resultado quede escondido'
+                                : expanded.size > 0
+                                  ? 'Plegar todas las colecciones y carpetas'
+                                  : 'Desplegar todas las colecciones y sus carpetas'
+                        }
+                        className={headerButton}
+                    >
+                        <Icon name={expanded.size > 0 ? 'unfold_less' : 'unfold_more'} size={16} />
+                    </button>
+                )}
                 <button
                     onClick={onNewScratch}
                     title="Probar un endpoint sin guardarlo: se abre una pestaña con una petición que no pertenece a ninguna colección. Si después querés conservarla, «Guardar en…» la mete en la que elijas."
-                    className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
+                    className={headerButton}
                 >
-                    <Icon name="bolt" size={14} />
+                    <Icon name="bolt" size={16} />
                 </button>
                 <button
                     onClick={() => setShowImport(true)}
                     title="Importar: pegá un comando cURL, una URL o una petición en texto, o soltá colecciones y entornos exportados de Postman. Una colección se trae completa —peticiones, carpetas, variables, autenticación y scripts— y lo que esta aplicación todavía no ejecuta se guarda igual para no perderlo al volver a exportar."
-                    className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
+                    className={headerButton}
                 >
-                    <Icon name="download" size={14} />
+                    <Icon name="download" size={16} />
                 </button>
                 <button
                     onClick={() => setShowEnvironments(true)}
                     title="Entornos: los valores que cambian entre dev, pruebas y producción. Pisan a las variables de la colección, así que la misma petición sirve contra los tres."
-                    className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
+                    className={headerButton}
                 >
-                    <Icon name="layers" size={14} />
+                    <Icon name="layers" size={16} />
                 </button>
                 <button
                     onClick={newCollection}
                     title="Crear una colección nueva. Una colección agrupa peticiones y comparte sus variables — es la unidad que después se importa y se exporta."
-                    className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
+                    className={headerButton}
                 >
-                    <Icon name="add" size={14} />
+                    <Icon name="create_new_folder" size={16} />
                 </button>
             </div>
 
@@ -558,48 +697,62 @@ export default function HttpTree({
                     onOpenScratch={onOpenScratchWith}
                 />
             ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
+            <div className="min-h-0 flex-1 overflow-y-auto pb-6" onContextMenu={blankMenu}>
                 {collections.length === 0 && (
-                    <p className="px-2 py-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
-                        Todavía no hay colecciones. Creá una con el <span className="font-mono">+</span> de arriba para empezar a guardar peticiones.
+                    <p className="px-3 py-3 text-ui-11 leading-relaxed text-on-surface-variant/70">
+                        Todavía no hay colecciones. Creá una con{' '}
+                        <Icon name="create_new_folder" size={12} className="inline align-text-bottom" /> de arriba, o con clic derecho acá, para
+                        empezar a guardar peticiones.
                     </p>
                 )}
                 {visibleCollections.map((c) => {
                     const open = forceOpen || expanded.has(c.id)
+                    const fav = !!c.favoriteAt
+                    // La estrella: marcar una favorita es un gesto ocasional,
+                    // pero SABER cuáles lo son se lee todo el tiempo — por
+                    // eso queda fija a la derecha de las favoritas y en las
+                    // demás aparece solo al pasar el mouse.
+                    const star = (
+                        <button
+                            onClick={() => void guard(() => HttpSetCollectionFavorite(c.id, !fav))}
+                            title={fav ? 'Quitar de favoritas: vuelve a su lugar en la lista' : 'Marcar como favorita: queda arriba de la lista'}
+                            className={`sidebar-icon !p-0.5 ${fav ? '!text-primary' : ''}`}
+                        >
+                            {/* Material Symbols no tiene un `star_border`: la
+                                estrella es la misma y lo que cambia es el eje
+                                FILL. */}
+                            <Icon name="star" size={14} filled={fav} />
+                        </button>
+                    )
                     return (
                         <div key={c.id}>
-                            <div className="group flex w-full items-center gap-1 rounded pr-1 hover:bg-surface-variant">
-                                <button
-                                    onClick={() => toggle(c.id)}
-                                    onContextMenu={(e) => collectionMenu(c, e)}
-                                    title={`Colección "${c.name}". Botón derecho para agregar una petición, renombrarla o borrarla.`}
-                                    className="flex min-w-0 flex-1 items-center gap-1 rounded px-2 py-1 text-left text-ui-11 font-medium text-on-surface"
-                                >
-                                    <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
-                                    <Icon name="folder_special" size={13} className="shrink-0 opacity-70" />
-                                    <span className="truncate">{c.name}</span>
-                                </button>
-                                {/* La estrella aparece al pasar el mouse y se
-                                    queda fija en las favoritas: marcar una es
-                                    un gesto ocasional, pero SABER cuáles lo
-                                    son se lee todo el tiempo. */}
-                                <button
-                                    onClick={() => void guard(() => HttpSetCollectionFavorite(c.id, !c.favoriteAt))}
-                                    title={
-                                        c.favoriteAt
-                                            ? 'Quitar de favoritas: vuelve a su lugar en la lista'
-                                            : 'Marcar como favorita: queda arriba de la lista'
-                                    }
-                                    className={`shrink-0 rounded p-0.5 hover:text-primary ${
-                                        c.favoriteAt ? 'text-primary' : 'text-on-surface-variant/0 group-hover:text-on-surface-variant/50'
-                                    }`}
-                                >
-                                    {/* Material Symbols no tiene un
-                                        `star_border`: la estrella es la misma
-                                        y lo que cambia es el eje FILL. */}
-                                    <Icon name="star" size={13} filled={!!c.favoriteAt} />
-                                </button>
-                            </div>
+                            <TreeRow
+                                depth={0}
+                                icon="collections_bookmark"
+                                iconClass={TREE_FOLDER_ICON}
+                                iconFilled={!open}
+                                label={c.name}
+                                labelClass="text-on-surface font-medium"
+                                title={`Colección "${c.name}". Clic derecho: peticiones, variables, autenticación, correrla o exportarla.`}
+                                expanded={open}
+                                onToggle={() => toggle(c.id)}
+                                onClick={() => toggle(c.id)}
+                                onContextMenu={(e) => collectionMenu(e, c)}
+                                trailing={fav ? <Icon name="star" size={13} filled className="text-primary" /> : undefined}
+                                actions={
+                                    <>
+                                        {star}
+                                        <button
+                                            onClick={() => newItem(c.id, '', 'request')}
+                                            title={`Crear una petición en «${c.name}»`}
+                                            className="sidebar-icon !p-0.5"
+                                        >
+                                            <Icon name="add" size={14} />
+                                        </button>
+                                        <MenuButton onOpen={(e) => collectionMenu(e, c)} title="Opciones de la colección" />
+                                    </>
+                                }
+                            />
                             {open && renderItems(c.id, '', 1)}
                         </div>
                     )
@@ -607,7 +760,7 @@ export default function HttpTree({
             </div>
             )}
 
-            {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} width={260} />}
+            {menu.element}
 
             {showImport && (
                 <ImportDialog
@@ -899,48 +1052,20 @@ export default function HttpTree({
             )}
 
             {prompt && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setPrompt(null)}>
-                    <div className="w-80 rounded-lg border border-outline-variant bg-surface-container-high p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-                        <p className="mb-2 text-sm font-medium text-on-surface">{prompt.title}</p>
-                        <label className="mb-1 block text-ui-10 uppercase tracking-wider text-on-surface-variant/60">{prompt.label}</label>
-                        <input
-                            autoFocus
-                            value={promptValue}
-                            onChange={(e) => setPromptValue(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && promptValue.trim()) {
-                                    prompt.onSubmit(promptValue.trim())
-                                    setPrompt(null)
-                                }
-                                if (e.key === 'Escape') setPrompt(null)
-                            }}
-                            className="w-full rounded bg-surface-container-highest px-2 py-1.5 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                        />
-                        <div className="mt-3 flex justify-end gap-2">
-                            <button
-                                onClick={() => setPrompt(null)}
-                                title="Cerrar sin crear nada"
-                                className="rounded px-3 py-1 text-xs text-on-surface-variant hover:bg-surface-variant"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (!promptValue.trim()) return
-                                    prompt.onSubmit(promptValue.trim())
-                                    setPrompt(null)
-                                }}
-                                disabled={!promptValue.trim()}
-                                title={promptValue.trim() ? prompt.confirmLabel : 'Escribí un nombre primero'}
-                                className="rounded bg-primary px-3 py-1 text-xs text-on-primary hover:opacity-90 disabled:opacity-40"
-                            >
-                                {prompt.confirmLabel}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                // El diálogo de la app y no un window.prompt: uno nativo
+                // dentro del webview no se percibe como un diálogo (ver
+                // .claude/rules/conventions.md).
+                <PromptDialog
+                    title={prompt.title}
+                    label={prompt.label}
+                    initial={prompt.initial}
+                    confirmLabel={prompt.confirmLabel}
+                    onSubmit={(value) => {
+                        if (value.trim()) prompt.onSubmit(value.trim())
+                    }}
+                    onClose={() => setPrompt(null)}
+                />
             )}
-
             {confirm && (
                 <ConfirmDialog
                     title={confirm.title}
@@ -962,6 +1087,20 @@ function parseAuth(raw: string | undefined): httpclient.Auth {
         return new httpclient.Auth(JSON.parse(raw))
     } catch {
         return new httpclient.Auth({type: 'inherit'})
+    }
+}
+
+// El método abreviado como en Postman: la columna del árbol tiene ancho fijo y
+// DELETE u OPTIONS completos la obligarían a ser más ancha para todas las
+// filas. El método entero sigue en el title de la fila.
+function shortMethod(method: string): string {
+    switch (method) {
+        case 'DELETE':
+            return 'DEL'
+        case 'OPTIONS':
+            return 'OPT'
+        default:
+            return method
     }
 }
 

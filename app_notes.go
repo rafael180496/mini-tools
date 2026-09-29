@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -85,14 +87,8 @@ func (a *App) createNote(title, content, frontmatter string) (string, error) {
 	// Un título duplicado se rechaza: dos notas con el mismo título hacen que
 	// un `[[enlace]]` sea ambiguo, y el grafo tendría que elegir una en
 	// silencio. Mejor pedir otro nombre que resolverlo por sorteo.
-	existing, err := a.vault.ListNotes()
-	if err != nil {
+	if err := a.checkNoteTitleFree(title, ""); err != nil {
 		return "", err
-	}
-	for _, n := range existing {
-		if vault.NormalizeTitle(n.Title) == vault.NormalizeTitle(title) {
-			return "", fmt.Errorf("app: ya existe una nota que se llama %q — los títulos tienen que ser únicos para que [[%s]] apunte a una sola", n.Title, title)
-		}
 	}
 
 	id, err := newNoteID()
@@ -188,8 +184,18 @@ func (a *App) DeleteNote(id string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	return a.vault.DeleteNote(id)
+	if err := a.vault.DeleteNote(id); err != nil {
+		return err
+	}
+	runtime.EventsEmit(a.ctx, NoteRemovedEvent, map[string]string{"id": id})
+	return nil
 }
+
+// NoteRemovedEvent avisa que una nota dejó de existir (borrada o fundida en
+// otra). Lo escucha el marco de pestañas: sin él, la pestaña de la nota queda
+// abierta y su autoguardado falla contra una fila que ya no está. Con
+// `mergedInto`, la pestaña salta a la nota que la absorbió.
+const NoteRemovedEvent = "note:removed"
 
 // NoteLinks son los enlaces que SALEN de una nota, resueltos contra las que
 // existen. Un destino inexistente vuelve con id vacío: es un enlace roto, que
@@ -362,4 +368,159 @@ func (a *App) NoteTags() ([]vault.NoteTag, error) {
 		return nil, err
 	}
 	return a.vault.AllNoteTags()
+}
+
+// checkNoteTitleFree rechaza un título que ya usa otra nota (except es la
+// propia, al renombrar). Un solo lugar para la regla: alta, renombre y
+// duplicado tienen que decir lo mismo.
+func (a *App) checkNoteTitleFree(title, except string) error {
+	existing, err := a.vault.ListNotes()
+	if err != nil {
+		return err
+	}
+	for _, n := range existing {
+		if n.ID != except && vault.NormalizeTitle(n.Title) == vault.NormalizeTitle(title) {
+			return fmt.Errorf("app: ya existe una nota que se llama %q — los títulos tienen que ser únicos para que [[%s]] apunte a una sola", n.Title, title)
+		}
+	}
+	return nil
+}
+
+// RenameNote cambia solo el título, desde el menú contextual de la barra.
+//
+// Emite NoteChangedEvent porque la nota puede estar abierta: sin el aviso el
+// editor seguiría con el título viejo y su autoguardado desharía el renombre.
+// Los enlaces [[Título viejo]] de otras notas NO se reescriben — quedan rotos,
+// y la interfaz lo dice antes de confirmar.
+func (a *App) RenameNote(id, title string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return fmt.Errorf("app: la nota necesita un título")
+	}
+	if err := a.checkNoteTitleFree(title, id); err != nil {
+		return err
+	}
+	n, err := a.vault.GetNote(id)
+	if err != nil {
+		return err
+	}
+	if err := a.vault.UpdateNote(id, title, n.Content, n.Frontmatter); err != nil {
+		return err
+	}
+	runtime.EventsEmit(a.ctx, NoteChangedEvent, map[string]string{"id": id, "title": title})
+	return nil
+}
+
+// DuplicateNote copia una nota —cuerpo, etiquetas, carpeta, privacidad e
+// imágenes— con el título «X (copia)», o «X (copia 2)» si ese ya existe.
+func (a *App) DuplicateNote(id string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	src, err := a.vault.GetNote(id)
+	if err != nil {
+		return "", err
+	}
+	base := strings.TrimSpace(src.Title) + " (copia)"
+	title := base
+	for i := 2; a.checkNoteTitleFree(title, "") != nil; i++ {
+		if i > 100 {
+			return "", fmt.Errorf("app: no se encontró un título libre para la copia de %q", src.Title)
+		}
+		title = fmt.Sprintf("%s (copia %d)", strings.TrimSpace(src.Title), i)
+	}
+	newID, err := newNoteID()
+	if err != nil {
+		return "", err
+	}
+	if err := a.vault.DuplicateNote(id, newID, title, newNoteID); err != nil {
+		return "", err
+	}
+	return newID, nil
+}
+
+// SetNotePinned fija una nota arriba de la barra lateral, o la suelta.
+func (a *App) SetNotePinned(id string, pinned bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetNotePinned(id, pinned)
+}
+
+// MergeNotes funde src al final de dst (con el título de src como encabezado)
+// y borra src. Si cualquiera de las dos era privada, el resultado es privado:
+// ver vault.MergeNotes.
+func (a *App) MergeNotes(srcID, dstID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	dst, err := a.vault.GetNote(dstID)
+	if err != nil {
+		return err
+	}
+	src, err := a.vault.GetNote(srcID)
+	if err != nil {
+		return err
+	}
+	if err := a.vault.MergeNotes(srcID, dstID); err != nil {
+		return err
+	}
+	runtime.EventsEmit(a.ctx, NoteRemovedEvent, map[string]string{"id": srcID, "mergedInto": dstID})
+	runtime.EventsEmit(a.ctx, NoteChangedEvent, map[string]string{"id": dstID, "title": dst.Title})
+	if src.IsPrivate && !dst.IsPrivate {
+		runtime.EventsEmit(a.ctx, NotePrivacyEvent, map[string]any{"id": dstID, "isPrivate": true})
+	}
+	return nil
+}
+
+var noteImageRef = regexp.MustCompile(`\(nota:([0-9a-f]+)\)`)
+
+// ExportNoteMarkdown guarda la nota como un .md donde el usuario elija.
+//
+// Las imágenes van **incrustadas** como `data:` URI: el esquema `nota:ID` solo
+// existe adentro de esta app, y un .md exportado con esas referencias se abre
+// en Obsidian sin ninguna imagen. Incrustadas, el archivo es uno solo y se ve
+// completo en cualquier editor.
+//
+// Es la única salida en claro de una nota a disco, y por eso va siempre por el
+// diálogo de guardado: nunca a un temporal que después abra otra aplicación.
+// Devuelve la ruta, o "" si se canceló.
+func (a *App) ExportNoteMarkdown(id string) (string, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return "", err
+	}
+	n, err := a.vault.GetNote(id)
+	if err != nil {
+		return "", err
+	}
+
+	body := noteImageRef.ReplaceAllStringFunc(n.Content, func(m string) string {
+		asset, err := a.vault.GetNoteAsset(noteImageRef.FindStringSubmatch(m)[1])
+		if err != nil {
+			return m
+		}
+		return "(data:" + asset.Mime + ";base64," + asset.Data + ")"
+	})
+	if strings.TrimSpace(n.Frontmatter) != "" {
+		body = "---\n" + strings.TrimSpace(n.Frontmatter) + "\n---\n\n" + body
+	}
+
+	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Exportar nota como Markdown",
+		DefaultFilename: safeFilename(n.Title) + ".md",
+		Filters:         []runtime.FileFilter{{DisplayName: "Markdown (*.md)", Pattern: "*.md"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("app: abriendo diálogo de guardado: %w", err)
+	}
+	if dest == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(dest, []byte(body), 0o600); err != nil {
+		return "", fmt.Errorf("app: escribiendo la nota: %w", err)
+	}
+	return dest, nil
 }

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react'
+import {useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react'
 import {
     GitAddRepo,
     GitInitRepo,
@@ -29,13 +29,13 @@ import {git, vault} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import SidebarSection from '../sidebar/SidebarSection'
-import MoveToFolderMenu, {flattenForMenu} from '../sidebar/MoveToFolderMenu'
+import TreeRow, {TREE_FOLDER_ICON} from '../sidebar/TreeRow'
+import {MenuButton, moveToFolderSubmenu, useTreeMenu, type TreeMenuEntry} from '../sidebar/TreeMenu'
+import {flattenForMenu} from '../sidebar/MoveToFolderMenu'
 import {buildFolderTree, type FolderNode} from '../../lib/folderTree'
-import ContextMenu from './ContextMenu'
 import PromptDialog from './PromptDialog'
 import GitCloneDialog from './GitCloneDialog'
 import GitSettingsDialog from './GitSettingsDialog'
-import type {DropdownItem} from './DropdownMenu'
 import {buildBranchTree, countBranches, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
 
 interface GitRepoTreeProps {
@@ -75,10 +75,6 @@ interface GitRepoTreeProps {
     onMoveRepoToFolder: (repoId: string, folderId: string) => void
 }
 
-// Expandable per-repository detail sections, mirroring the reference client's
-// sidebar (BRANCHES / REMOTES / TAGS / STASHES).
-type Section = 'branches' | 'remotes' | 'tags' | 'stashes'
-
 // Everything PromptDialog takes except onClose — this component owns closing
 // (it clears the state), so carrying it in the spec would be redundant.
 interface PromptSpec {
@@ -106,6 +102,13 @@ interface RepoDetail {
 // repository row is expanded, and only once per expansion: a user with a dozen
 // registered repositories would otherwise pay four git invocations per
 // repository on every sidebar render.
+//
+// Las filas son las de TreeRow y el menú el de TreeMenu, igual que Notas: el
+// mismo clic derecho abre el mismo menú en los cinco módulos. Cada fila deja a
+// la vista una o dos acciones como mucho; todo lo demás vive en ese menú (y en
+// el «⋯», para quien no sabe que existe el clic derecho). Antes un repositorio
+// tenía cuatro íconos al pasar el mouse y una carpeta seis, y la fila se leía
+// como una barra de herramientas y no como un nombre.
 export default function GitRepoTree({
     onOpenRepo,
     activeTabRepoId,
@@ -129,7 +132,7 @@ export default function GitRepoTree({
     const [error, setError] = useState<string | null>(null)
     const [localToken, setLocalToken] = useState(0)
 
-    const [menu, setMenu] = useState<{x: number; y: number; items: (DropdownItem | 'separator')[]} | null>(null)
+    const menu = useTreeMenu()
     const [confirmRemove, setConfirmRemove] = useState<vault.GitRepo | null>(null)
     const [confirmRemoveRemote, setConfirmRemoveRemote] = useState<{repoId: string; name: string} | null>(null)
     // Repositorio cuya configuración de git está abierta, y con qué pestaña
@@ -150,12 +153,7 @@ export default function GitRepoTree({
     const [confirmDeleteBranch, setConfirmDeleteBranch] = useState<{repoId: string; name: string} | null>(null)
     const [confirmStash, setConfirmStash] = useState<{repoId: string; ref: string; message: string} | null>(null)
 
-    // Folder UI state, mirroring SshConnectionTree's.
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
-    const [creatingFolderParentId, setCreatingFolderParentId] = useState<string | null>(null)
-    const [newFolderName, setNewFolderName] = useState('')
-    const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
-    const [renameFolderName, setRenameFolderName] = useState('')
     const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<vault.Folder | null>(null)
     const [showClone, setShowClone] = useState(false)
 
@@ -215,20 +213,24 @@ export default function GitRepoTree({
         }
     }
 
+    const copy = (text: string) => void navigator.clipboard.writeText(text).catch(() => {})
+
     // Right-click menu for a LOCAL branch in the sidebar — checkout, rename,
     // delete. A trimmed version of the repo tab's branch menu (no merge/
     // upstream here; those belong to the tab's working context).
-    function localBranchMenuItems(repoId: string, b: git.Branch): (DropdownItem | 'separator')[] {
-        return [
+    function localBranchMenu(e: ReactMouseEvent, repoId: string, b: git.Branch) {
+        menu.openAt(e, [
             {
-                label: `Checkout ${b.name}`,
+                label: 'Checkout',
                 icon: 'check',
                 disabled: b.isCurrent,
-                hint: b.isCurrent ? 'Ya estás en esta rama' : undefined,
+                title: b.isCurrent ? 'Ya estás en esta rama' : `Cambia el repositorio a "${b.name}" (lo mismo que el doble clic)`,
                 onSelect: () => void checkout(repoId, b.name),
             },
+            {label: 'Crear rama desde acá…', icon: 'call_split', onSelect: () => startCreateBranch(repoId, b.name)},
+            'separator',
             {
-                label: `Renombrar ${b.name}…`,
+                label: 'Cambiar nombre…',
                 icon: 'edit',
                 onSelect: () =>
                     setPrompt({
@@ -240,38 +242,76 @@ export default function GitRepoTree({
                             try {
                                 await GitRenameBranch(repoId, b.name, v)
                                 onChanged()
-                            } catch (e) {
-                                setError(String(e))
+                            } catch (err) {
+                                setError(String(err))
                             }
                         },
                     }),
             },
-            {label: `Copiar '${b.name}'`, icon: 'content_copy', onSelect: () => void navigator.clipboard.writeText(b.name)},
+            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(b.name)},
             'separator',
             {
-                label: `Borrar ${b.name}`,
+                label: 'Borrar rama',
                 icon: 'delete',
                 danger: true,
                 disabled: b.isCurrent,
-                hint: b.isCurrent ? 'No podés borrar la rama en la que estás' : undefined,
+                title: b.isCurrent ? 'No podés borrar la rama en la que estás: cambiá a otra primero' : 'Borra la rama local; la del remoto no se toca',
                 onSelect: () => setConfirmDeleteBranch({repoId, name: b.name}),
             },
-        ]
+        ])
     }
 
-    // Create a new local branch from HEAD (optionally checking it out).
-    function startCreateBranch(repoId: string) {
+    // Una rama remota no tenía menú: solo el doble clic. Con el mismo gesto en
+    // todas las filas, dejarla muda se lee como un error.
+    function remoteBranchMenu(e: ReactMouseEvent, repoId: string, b: git.Branch) {
+        menu.openAt(e, [
+            {
+                label: 'Checkout',
+                icon: 'check',
+                title: 'Si no tenés la rama local, se crea siguiendo a esta (lo mismo que el doble clic)',
+                onSelect: () => void checkout(repoId, b.name),
+            },
+            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(b.name)},
+        ])
+    }
+
+    // Create a new local branch (optionally from a start point) and check it out.
+    function startCreateBranch(repoId: string, from = '') {
         setPrompt({
-            title: 'Crear rama',
+            title: from ? `Crear rama desde "${from}"` : 'Crear rama',
             label: 'Nombre de la rama',
             placeholder: 'mi-rama',
             confirmLabel: 'Crear y cambiar',
-            description: 'La rama nueva se crea en el commit actual (HEAD) y se hace checkout.',
+            description: from
+                ? `La rama nueva arranca en el commit al que apunta "${from}" y se hace checkout.`
+                : 'La rama nueva se crea en el commit actual (HEAD) y se hace checkout.',
             onSubmit: async (name) => {
                 try {
                     // startPoint vacío = HEAD, checkout = true
-                    await GitCreateBranch(repoId, name, '', true)
+                    await GitCreateBranch(repoId, name, from, true)
                     onChanged()
+                } catch (e) {
+                    setError(String(e))
+                }
+            },
+        })
+    }
+
+    function startCreateTag(repoId: string) {
+        setPrompt({
+            title: 'Crear tag',
+            label: 'Nombre del tag',
+            placeholder: 'v1.0.0',
+            secondLabel: 'Mensaje (opcional)',
+            secondPlaceholder: 'Con mensaje crea un tag anotado; sin mensaje, uno liviano.',
+            confirmLabel: 'Crear tag',
+            description: 'El tag se crea en el commit actual (HEAD), local. Después te pregunto si querés pushearlo.',
+            onSubmit: async (name, msg) => {
+                try {
+                    // ref vacío = HEAD
+                    await GitCreateTag(repoId, name, '', msg)
+                    await loadDetail(repoId)
+                    setConfirmPushTag({repoId, name})
                 } catch (e) {
                     setError(String(e))
                 }
@@ -327,28 +367,31 @@ export default function GitRepoTree({
         }
     }
 
-    // The "+" menu: the three ways to get a repository into the sidebar, same
-    // trio a standalone Git client offers on its start screen.
-    const addMenuItems: DropdownItem[] = [
-        {label: 'Abrir repositorio…', icon: 'folder_open', hint: 'Uno que ya existe en tu disco', onSelect: () => void openRepo()},
-        {label: 'Nuevo repositorio…', icon: 'create_new_folder', hint: 'git init en una carpeta', onSelect: () => void newRepo()},
-        {label: 'Clonar…', icon: 'cloud_download', hint: 'Desde una URL', onSelect: () => setShowClone(true)},
+    // Las tres formas de meter un repositorio en la barra, el mismo trío que
+    // ofrece un cliente de Git en su pantalla de inicio. Se usan en el «+» del
+    // encabezado y en el clic derecho sobre el fondo del árbol.
+    const available = !!probe?.available
+    const addEntries: TreeMenuEntry[] = [
+        {label: 'Abrir repositorio…', icon: 'folder_open', disabled: !available, title: 'Uno que ya existe en tu disco', onSelect: () => void openRepo()},
+        {label: 'Nuevo repositorio…', icon: 'create_new_folder', disabled: !available, title: 'git init en una carpeta', onSelect: () => void newRepo()},
+        {label: 'Clonar…', icon: 'cloud_download', disabled: !available, title: 'Desde una URL', onSelect: () => setShowClone(true)},
     ]
 
     // Remote right-click menu — the actions from the reference client, plus a
     // fetch shortcut since it is the one people reach for most.
-    function remoteMenuItems(repo: vault.GitRepo, remote: git.Remote): (DropdownItem | 'separator')[] {
+    function remoteMenu(e: ReactMouseEvent, repo: vault.GitRepo, remote: git.Remote) {
         const repoId = repo.id
-        return [
+        menu.openAt(e, [
             {
-                label: `Fetch from ${remote.name}`,
+                label: `Fetch de ${remote.name}`,
                 icon: 'cloud_download',
+                title: 'Trae lo nuevo del remoto sin tocar tus ramas locales',
                 onSelect: async () => {
                     try {
                         await GitFetch(repoId, new git.FetchOptions({remote: remote.name}), new git.AuthConfig({}))
                         await loadDetail(repoId)
-                    } catch (e) {
-                        setError(String(e))
+                    } catch (err) {
+                        setError(String(err))
                     }
                 },
             },
@@ -356,7 +399,7 @@ export default function GitRepoTree({
             {
                 label: 'Editar remoto…',
                 icon: 'edit',
-                hint: 'Nombre, URL de fetch y URL de push',
+                title: 'Nombre, URL de fetch y URL de push',
                 // Reemplaza a los viejos "Renombrar remoto" y "Cambiar URL",
                 // que eran dos prompts de una línea: servían para PEGAR una
                 // URL nueva, no para ver la que estaba puesta — que es lo que
@@ -366,38 +409,44 @@ export default function GitRepoTree({
             },
             {
                 label: 'Copiar URL',
-                icon: 'content_copy',
+                icon: 'link',
                 onSelect: async () => {
                     try {
                         const url = await GitRemoteURLForCopy(repoId, remote.name)
                         await navigator.clipboard.writeText(url)
-                    } catch (e) {
-                        setError(String(e))
+                    } catch (err) {
+                        setError(String(err))
                     }
                 },
             },
             'separator',
             {label: 'Eliminar remoto', icon: 'delete', danger: true, onSelect: () => setConfirmRemoveRemote({repoId, name: remote.name})},
-        ]
+        ])
     }
 
     // Tag right-click menu. Local and remote deletion are separate entries on
     // purpose: deleting a tag locally leaves it on the server and vice versa,
     // which is the single most common surprise with tags — collapsing them into
     // one "delete" would hide exactly the distinction that trips people up.
-    function tagMenuItems(repoId: string, tag: git.Tag): (DropdownItem | 'separator')[] {
+    function tagMenu(e: ReactMouseEvent, repoId: string, tag: git.Tag) {
         const guard = async (fn: () => Promise<unknown>) => {
             try {
                 await fn()
                 onChanged()
-            } catch (e) {
-                setError(String(e))
+            } catch (err) {
+                setError(String(err))
             }
         }
-        return [
+        menu.openAt(e, [
             {
-                label: `Crear rama desde ${tag.name}…`,
-                icon: 'account_tree',
+                label: 'Checkout',
+                icon: 'check',
+                title: 'Deja el repo en HEAD desacoplado',
+                onSelect: () => void guard(() => GitCheckout(repoId, tag.name)),
+            },
+            {
+                label: 'Crear rama desde acá…',
+                icon: 'call_split',
                 onSelect: () =>
                     setPrompt({
                         title: `Crear rama desde el tag "${tag.name}"`,
@@ -408,35 +457,30 @@ export default function GitRepoTree({
                         onSubmit: (v) => void guard(() => GitCreateBranch(repoId, v, tag.name, true)),
                     }),
             },
-            {
-                label: `Checkout ${tag.name}`,
-                icon: 'check',
-                hint: 'Deja el repo en HEAD desacoplado',
-                onSelect: () => void guard(() => GitCheckout(repoId, tag.name)),
-            },
-            {label: `Copiar '${tag.name}'`, icon: 'content_copy', onSelect: () => void navigator.clipboard.writeText(tag.name)},
             'separator',
-            {label: `Push ${tag.name}`, icon: 'upload', onSelect: () => void guard(() => GitPushTag(repoId, 'origin', tag.name, new git.AuthConfig({})))},
-            {label: `Borrar ${tag.name}`, icon: 'delete', danger: true, hint: 'Solo local', onSelect: () => setConfirmTag({repoId, name: tag.name, remote: false})},
-            {label: `Borrar ${tag.name} de origin`, icon: 'delete_forever', danger: true, hint: 'Solo en el remoto', onSelect: () => setConfirmTag({repoId, name: tag.name, remote: true})},
-        ]
+            {label: 'Push a origin', icon: 'upload', onSelect: () => void guard(() => GitPushTag(repoId, 'origin', tag.name, new git.AuthConfig({})))},
+            {label: 'Copiar nombre', icon: 'content_copy', onSelect: () => copy(tag.name)},
+            'separator',
+            {label: 'Borrar tag', icon: 'delete', danger: true, hint: 'local', title: 'Solo de tu repositorio: la copia del remoto queda', onSelect: () => setConfirmTag({repoId, name: tag.name, remote: false})},
+            {label: 'Borrar de origin', icon: 'delete_forever', danger: true, hint: 'remoto', title: 'Solo del remoto: tu copia local queda', onSelect: () => setConfirmTag({repoId, name: tag.name, remote: true})},
+        ])
     }
 
-    function stashMenuItems(repoId: string, stash: git.Stash): (DropdownItem | 'separator')[] {
+    function stashMenu(e: ReactMouseEvent, repoId: string, stash: git.Stash) {
         const guard = async (fn: () => Promise<unknown>) => {
             try {
                 await fn()
                 onChanged()
-            } catch (e) {
-                setError(String(e))
+            } catch (err) {
+                setError(String(err))
             }
         }
-        return [
-            {label: 'Aplicar (y conservar)', icon: 'download', onSelect: () => void guard(() => GitStashApply(repoId, stash.ref, false))},
-            {label: 'Pop (aplicar y borrar)', icon: 'move_up', onSelect: () => void guard(() => GitStashApply(repoId, stash.ref, true))},
+        menu.openAt(e, [
+            {label: 'Aplicar', icon: 'download', title: 'Aplica los cambios y conserva el stash', onSelect: () => void guard(() => GitStashApply(repoId, stash.ref, false))},
+            {label: 'Pop', icon: 'move_up', title: 'Aplica los cambios y borra el stash', onSelect: () => void guard(() => GitStashApply(repoId, stash.ref, true))},
             'separator',
-            {label: 'Descartar este stash', icon: 'delete', danger: true, onSelect: () => setConfirmStash({repoId, ref: stash.ref, message: stash.message})},
-        ]
+            {label: 'Descartar stash', icon: 'delete', danger: true, onSelect: () => setConfirmStash({repoId, ref: stash.ref, message: stash.message})},
+        ])
     }
 
     const q = filter.trim().toLowerCase()
@@ -450,7 +494,6 @@ export default function GitRepoTree({
     const folderNameMatches = (f: vault.Folder) => !q || f.name.toLowerCase().includes(q)
 
     function folderHasVisibleContent(node: FolderNode): boolean {
-        if (creatingFolderParentId === node.folder.id) return true
         if (folderNameMatches(node.folder)) return true
         if (repos.some((r) => r.folderId === node.folder.id && repoMatches(r))) return true
         return node.children.some(folderHasVisibleContent)
@@ -475,174 +518,191 @@ export default function GitRepoTree({
         })
     }
 
+    // Desplegar todo abre las carpetas y NO los repositorios: abrir un
+    // repositorio son cuatro llamadas a git, y con una docena registrados el
+    // botón costaría medio centenar de procesos para mirar una lista. Plegar
+    // sí cierra los dos, que es barato.
+    const expandAll = () => setExpandedFolders(new Set(gitFolders.map((f) => f.id)))
+    const collapseAll = () => {
+        setExpandedFolders(new Set())
+        setExpanded(new Set())
+    }
+    const anyOpen = expandedFolders.size > 0 || expanded.size > 0
+
+    // Carpeta nueva con el diálogo de la app, como en Notas. Antes era un
+    // input dentro de la lista que se confirmaba al perder el foco: un clic
+    // afuera creaba la carpeta con lo que hubiera escrito a medias.
     function startCreateFolder(parentId: string) {
         if (parentId) setExpandedFolders((prev) => new Set(prev).add(parentId))
-        setCreatingFolderParentId(parentId)
-        setNewFolderName('')
+        setPrompt({
+            title: parentId ? 'Subcarpeta nueva' : 'Carpeta nueva',
+            label: 'Nombre',
+            placeholder: 'Trabajo',
+            confirmLabel: 'Crear',
+            description: 'Las carpetas solo organizan la lista: no mueven nada en tu disco.',
+            onSubmit: (name) => onCreateFolder(name, parentId),
+        })
     }
 
-    function commitCreateFolder() {
-        const name = newFolderName.trim()
-        if (name && creatingFolderParentId !== null) onCreateFolder(name, creatingFolderParentId)
-        setCreatingFolderParentId(null)
-        setNewFolderName('')
+    function startRenameFolder(folder: vault.Folder) {
+        setPrompt({
+            title: 'Cambiar el nombre de la carpeta',
+            label: 'Nombre',
+            initial: folder.name,
+            confirmLabel: 'Guardar',
+            onSubmit: (name) => onRenameFolder(folder.id, name),
+        })
     }
 
-    function commitRenameFolder() {
-        const name = renameFolderName.trim()
-        if (name && renamingFolderId) onRenameFolder(renamingFolderId, name)
-        setRenamingFolderId(null)
+    const blankMenu = (e: ReactMouseEvent) =>
+        menu.openAt(e, [
+            ...addEntries,
+            'separator',
+            {label: 'Carpeta nueva', icon: 'create_new_folder', onSelect: () => startCreateFolder('')},
+            'separator',
+            {label: 'Desplegar todo', icon: 'unfold_more', disabled: !!q || gitFolders.length === 0, onSelect: expandAll},
+            {label: 'Plegar todo', icon: 'unfold_less', disabled: !!q, onSelect: collapseAll},
+        ])
+
+    function folderMenu(e: ReactMouseEvent, folder: vault.Folder) {
+        const open = isFolderExpanded(folder.id)
+        menu.openAt(e, [
+            {label: 'Subcarpeta nueva', icon: 'create_new_folder', onSelect: () => startCreateFolder(folder.id)},
+            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: !!q, onSelect: () => toggleFolder(folder.id)},
+            'separator',
+            {label: 'Subir', icon: 'arrow_upward', title: 'Sube la carpeta un lugar entre sus hermanas', onSelect: () => onReorderFolder(folder.id, 'up')},
+            {label: 'Bajar', icon: 'arrow_downward', title: 'Baja la carpeta un lugar entre sus hermanas', onSelect: () => onReorderFolder(folder.id, 'down')},
+            'separator',
+            {label: 'Cambiar nombre…', icon: 'edit', onSelect: () => startRenameFolder(folder)},
+            'separator',
+            {
+                label: 'Borrar carpeta',
+                icon: 'delete',
+                danger: true,
+                title: 'Los repositorios que tenga adentro se mueven a la carpeta contenedora: no se quitan ni se borran',
+                onSelect: () => setConfirmDeleteFolder(folder),
+            },
+        ])
     }
 
-    function newFolderInput() {
-        return (
-            <input
-                autoFocus
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onBlur={commitCreateFolder}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitCreateFolder()
-                    if (e.key === 'Escape') {
-                        setCreatingFolderParentId(null)
-                        setNewFolderName('')
-                    }
-                }}
-                placeholder="Nombre de la carpeta..."
-                className="mb-1 w-full rounded border-none bg-surface-container-highest px-2 py-1 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
-            />
-        )
+    function repoMenu(e: ReactMouseEvent, repo: vault.GitRepo) {
+        const open = expanded.has(repo.id)
+        menu.openAt(e, [
+            {label: 'Abrir en una pestaña', icon: 'open_in_new', hint: 'doble clic', onSelect: () => onOpenRepo(repo)},
+            {label: open ? 'Plegar' : 'Ver ramas, remotos y tags', icon: open ? 'unfold_less' : 'unfold_more', onSelect: () => toggleRepo(repo.id)},
+            'separator',
+            {label: 'Crear rama…', icon: 'call_split', title: 'Rama local nueva en el commit actual (HEAD), con checkout', onSelect: () => startCreateBranch(repo.id)},
+            {label: 'Crear tag…', icon: 'sell', title: 'Tag nuevo en el commit actual (HEAD)', onSelect: () => startCreateTag(repo.id)},
+            'separator',
+            {
+                label: 'Configuración de git…',
+                icon: 'settings',
+                title: 'Identidad (nombre y email, local o global) y tokens de acceso',
+                onSelect: () => setSettingsFor({repo, tab: 'identity'}),
+            },
+            {label: 'Remotos…', icon: 'lan', title: 'Agregar, ver y cambiar la URL (token incluido), renombrar o quitar', onSelect: () => setSettingsFor({repo, tab: 'remotes'})},
+            'separator',
+            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFoldersForMenu, repo.folderId ?? '', (f) => onMoveRepoToFolder(repo.id, f))},
+            {label: 'Copiar ruta', icon: 'content_copy', title: repo.path, onSelect: () => copy(repo.path)},
+            'separator',
+            {
+                label: 'Quitar de la lista',
+                icon: 'playlist_remove',
+                danger: true,
+                title: 'Saca el repositorio de la barra — no borra nada de tu disco',
+                onSelect: () => setConfirmRemove(repo),
+            },
+        ])
     }
 
     // One repository row, indented by depth (its position in the folder tree).
     function renderRepoRow(repo: vault.GitRepo, depth: number) {
         const isExpanded = expanded.has(repo.id)
         const detail = details[repo.id]
+        const active = activeTabRepoId === repo.id
+        // La rama actual solo se conoce con el detalle cargado (al desplegar):
+        // pedirla para cada repositorio de la lista es el costo que el
+        // detalle perezoso existe para evitar.
+        const current = detail?.branches.find((b) => b.isCurrent && !b.isRemote)
         return (
             <div key={repo.id}>
-                <div
-                    style={{paddingLeft: `${8 + depth * 14}px`}}
-                    className={`group flex items-center gap-1 py-1 pr-2 text-xs ${
-                        activeTabRepoId === repo.id ? 'sidebar-row-active' : 'text-on-surface hover:bg-surface-variant/50'
-                    }`}
-                >
-                    <button
-                        onClick={() => toggleRepo(repo.id)}
-                        title={isExpanded ? 'Colapsar ramas, remotos, tags y stashes' : 'Ver ramas, remotos, tags y stashes de este repositorio'}
-                        className="shrink-0 rounded p-0.5 hover:bg-surface-variant"
-                    >
-                        <Icon name={isExpanded ? 'expand_more' : 'chevron_right'} size={14} className="opacity-70" />
-                    </button>
-                    <button
-                        onDoubleClick={() => onOpenRepo(repo)}
-                        title={`Doble click para abrir "${repo.name}" en una pestaña — ${repo.path}`}
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                    >
-                        <Icon name="source" size={14} className="shrink-0 opacity-70" />
-                        <span className="truncate">{repo.name}</span>
-                    </button>
-                    {flatFoldersForMenu.length > 0 && (
-                        <MoveToFolderMenu connId={repo.id} flatFolders={flatFoldersForMenu} onMove={onMoveRepoToFolder} />
-                    )}
-                    <button
-                        onClick={() => setSettingsFor({repo, tab: 'identity'})}
-                        title="Configuración de git de este repositorio: identidad (nombre y email, local o global), remotos y tokens de acceso"
-                        className="shrink-0 rounded p-0.5 text-on-surface-variant opacity-0 hover:bg-surface-variant group-hover:opacity-100"
-                    >
-                        <Icon name="settings" size={13} />
-                    </button>
-                    <button
-                        onClick={() => setConfirmRemove(repo)}
-                        title="Quitar este repositorio de la lista — no borra nada de tu disco"
-                        className="shrink-0 rounded p-0.5 text-on-surface-variant opacity-0 hover:bg-surface-variant group-hover:opacity-100"
-                    >
-                        <Icon name="close" size={13} />
-                    </button>
-                </div>
-
-                {isExpanded && (
-                    <div className="pb-1" style={{paddingLeft: `${depth * 14}px`}}>
-                        {!detail && (
-                            <p className="flex items-center gap-1.5 py-1 pl-8 text-ui-10 text-primary">
-                                <span aria-hidden className="h-2.5 w-2.5 shrink-0 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                                Cargando…
-                            </p>
-                        )}
-                        {detail && renderRepoDetail(repo, detail)}
-                    </div>
-                )}
+                <TreeRow
+                    depth={depth}
+                    icon="book_2"
+                    iconClass={active ? 'text-primary' : undefined}
+                    label={repo.name}
+                    labelClass={active ? 'text-on-surface font-medium' : 'text-on-surface/90'}
+                    title={`${repo.name} — ${repo.path}. Doble clic: abrirlo en una pestaña. Clic derecho: más opciones.`}
+                    active={active}
+                    expanded={isExpanded}
+                    onToggle={() => toggleRepo(repo.id)}
+                    // El segundo clic de un doble clic no vuelve a plegar: el
+                    // doble clic abre la pestaña y el repositorio queda
+                    // desplegado, que es lo que se quería ver.
+                    onClick={(e) => e.detail < 2 && toggleRepo(repo.id)}
+                    onDoubleClick={() => onOpenRepo(repo)}
+                    onContextMenu={(e) => repoMenu(e, repo)}
+                    trailing={
+                        current ? (
+                            <span className="max-w-[96px] truncate font-mono text-ui-10 text-on-surface-variant/60" title={`Rama actual: ${current.name}`}>
+                                {current.name}
+                            </span>
+                        ) : undefined
+                    }
+                    actions={
+                        <>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSettingsFor({repo, tab: 'identity'})
+                                }}
+                                title="Configuración de git de este repositorio: identidad (nombre y email, local o global), remotos y tokens de acceso"
+                                className="sidebar-icon !p-0.5"
+                            >
+                                <Icon name="settings" size={14} />
+                            </button>
+                            <MenuButton onOpen={(e) => repoMenu(e, repo)} title="Opciones del repositorio" />
+                        </>
+                    }
+                />
+                {isExpanded &&
+                    (detail ? (
+                        renderRepoDetail(repo, detail, depth + 1)
+                    ) : (
+                        <TreeRow depth={depth + 1} icon="progress_activity" iconClass="animate-spin text-primary" label="Cargando…" labelClass="text-on-surface-variant" />
+                    ))}
             </div>
         )
     }
 
     // A folder node and everything under it: subfolders first, then the repos
-    // that live directly in this folder. Recursion mirrors SshConnectionTree.
+    // that live directly in this folder.
     function renderFolderNode(node: FolderNode, depth: number) {
         const {folder} = node
-        const expanded = isFolderExpanded(folder.id)
+        const open = isFolderExpanded(folder.id)
         const folderRepos = repos.filter((r) => r.folderId === folder.id && repoMatches(r))
         return (
             <div key={folder.id}>
-                <div
-                    style={{paddingLeft: `${4 + depth * 14}px`}}
-                    className="group flex items-center gap-1 py-1 pr-2 text-xs text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface"
-                >
-                    {/* Chevron toggle then a separate folder icon, matching
-                        ConnectionTree/SshConnectionTree's folder rows so all
-                        three sidebar modules read the same. */}
-                    <button onClick={() => toggleFolder(folder.id)} title={expanded ? 'Contraer carpeta' : 'Expandir carpeta'} className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100">
-                        <Icon name={expanded ? 'expand_more' : 'chevron_right'} size={16} />
-                    </button>
-                    <Icon name={expanded ? 'folder_open' : 'folder'} size={15} className="shrink-0 opacity-70" />
-                    {renamingFolderId === folder.id ? (
-                        <input
-                            autoFocus
-                            value={renameFolderName}
-                            onChange={(e) => setRenameFolderName(e.target.value)}
-                            onBlur={commitRenameFolder}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') commitRenameFolder()
-                                if (e.key === 'Escape') setRenamingFolderId(null)
-                            }}
-                            className="min-w-0 flex-1 rounded border-none bg-surface-container-highest px-1 py-0.5 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary"
-                        />
-                    ) : (
-                        <button onClick={() => toggleFolder(folder.id)} className="flex min-w-0 flex-1 items-center text-left" title={`Carpeta "${folder.name}"`}>
-                            <span className="truncate">{folder.name}</span>
-                            <span className="ml-1.5 shrink-0 text-ui-10 text-on-surface-variant/50">{folderRepos.length || ''}</span>
-                        </button>
-                    )}
-                    <div className="flex shrink-0 items-center opacity-0 group-hover:opacity-100">
-                        <button onClick={() => onReorderFolder(folder.id, 'up')} title="Subir la carpeta" className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant">
-                            <Icon name="keyboard_arrow_up" size={13} />
-                        </button>
-                        <button onClick={() => onReorderFolder(folder.id, 'down')} title="Bajar la carpeta" className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant">
-                            <Icon name="keyboard_arrow_down" size={13} />
-                        </button>
-                        <button onClick={() => startCreateFolder(folder.id)} title="Nueva subcarpeta acá" className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant">
-                            <Icon name="create_new_folder" size={13} />
-                        </button>
-                        <button
-                            onClick={() => {
-                                setRenamingFolderId(folder.id)
-                                setRenameFolderName(folder.name)
-                            }}
-                            title="Renombrar la carpeta"
-                            className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant"
-                        >
-                            <Icon name="edit" size={13} />
-                        </button>
-                        <button onClick={() => setConfirmDeleteFolder(folder)} title="Eliminar la carpeta (los repos que tenga adentro se mueven a la carpeta contenedora, no se quitan)" className="rounded p-0.5 text-error hover:bg-error-container/40">
-                            <Icon name="delete" size={13} />
-                        </button>
-                    </div>
-                </div>
-                {expanded && (
-                    <div>
-                        {creatingFolderParentId === folder.id && <div style={{paddingLeft: `${8 + (depth + 1) * 14}px`}} className="pr-2">{newFolderInput()}</div>}
+                <TreeRow
+                    depth={depth}
+                    icon={open ? 'folder_open' : 'folder'}
+                    iconClass={TREE_FOLDER_ICON}
+                    iconFilled={!open}
+                    label={folder.name}
+                    labelClass="text-on-surface font-medium"
+                    title={`${folder.name} — ${folderRepos.length} ${folderRepos.length === 1 ? 'repositorio' : 'repositorios'}. Clic derecho: más opciones.`}
+                    expanded={open}
+                    onToggle={() => toggleFolder(folder.id)}
+                    onClick={() => toggleFolder(folder.id)}
+                    onContextMenu={(e) => folderMenu(e, folder)}
+                    trailing={folderRepos.length ? <span className="text-ui-10 tabular-nums text-on-surface-variant/50">{folderRepos.length}</span> : undefined}
+                    actions={<MenuButton onOpen={(e) => folderMenu(e, folder)} title="Opciones de la carpeta" />}
+                />
+                {open && (
+                    <>
                         {node.children.filter((n) => !q || folderHasVisibleContent(n)).map((child) => renderFolderNode(child, depth + 1))}
                         {folderRepos.map((r) => renderRepoRow(r, depth + 1))}
-                    </div>
+                    </>
                 )}
             </div>
         )
@@ -657,63 +717,76 @@ export default function GitRepoTree({
                     <button
                         onClick={() => startCreateFolder('')}
                         title="Crea una carpeta para agrupar repositorios — las carpetas solo organizan, nunca mueven nada en tu disco"
-                        className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                     >
                         <Icon name="create_new_folder" size={16} />
                     </button>
                     <button
-                        onClick={(e) => {
-                            const r = e.currentTarget.getBoundingClientRect()
-                            setMenu({x: r.right - 200, y: r.bottom + 4, items: addMenuItems})
-                        }}
-                        disabled={!probe?.available}
-                        title={probe?.available ? 'Abrir un repositorio que ya existe, crear uno nuevo (git init) o clonar desde una URL' : 'Deshabilitado: el módulo Git usa el git del sistema y no está instalado en este equipo'}
-                        className="rounded p-1 text-primary hover:bg-surface-variant disabled:opacity-40"
+                        onClick={() => (anyOpen ? collapseAll() : expandAll())}
+                        disabled={!!q || (!anyOpen && gitFolders.length === 0)}
+                        title={
+                            q
+                                ? 'Buscando, las carpetas se despliegan solas'
+                                : anyOpen
+                                  ? 'Plegar todas las carpetas y repositorios'
+                                  : gitFolders.length
+                                    ? 'Desplegar todas las carpetas (los repositorios se despliegan de a uno: cada uno consulta a git)'
+                                    : 'No hay carpetas para desplegar'
+                        }
+                        className="rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
+                    >
+                        <Icon name={anyOpen ? 'unfold_less' : 'unfold_more'} size={16} />
+                    </button>
+                    <button
+                        onClick={(e) => menu.openAt(e, addEntries)}
+                        disabled={!available}
+                        title={available ? 'Abrir un repositorio que ya existe, crear uno nuevo (git init) o clonar desde una URL' : 'Deshabilitado: el módulo Git usa el git del sistema y no está instalado en este equipo'}
+                        className="rounded p-0.5 text-primary hover:bg-surface-variant disabled:opacity-40"
                     >
                         <Icon name="add" size={16} />
                     </button>
                 </>
             }
         >
-                {/* git missing is a first-class state, not a per-operation
-                    failure — see backend/git's package doc on the exec tradeoff. */}
-                {probe && !probe.available && (
-                    <div className="mx-3 mb-2 rounded border border-outline-variant bg-error-container/40 p-2 text-ui-11 text-on-error-container">
-                        <p className="font-medium">git no está instalado</p>
-                        <p className="mt-0.5 opacity-80">
-                            El módulo Git usa el git del sistema. Instalalo (en macOS: <span className="font-mono">xcode-select --install</span>) y reabrí la app.
-                        </p>
-                    </div>
-                )}
-
-                {error && (
-                    <div className="mx-3 mt-2 flex items-start gap-1 rounded bg-error-container/40 p-1.5 text-ui-10 text-on-error-container">
-                        <span className="min-w-0 flex-1 break-words">{error}</span>
-                        <button onClick={() => setError(null)} title="Cerrar este error" className="shrink-0">
-                            <Icon name="close" size={12} />
-                        </button>
-                    </div>
-                )}
-
-                {creatingFolderParentId === '' && <div className="px-3 pt-1">{newFolderInput()}</div>}
-
-                <div className="mt-0.5 flex-1">
-                    {!hasAnything && q && <p className="p-3 text-xs text-on-surface-variant/60">Sin coincidencias para "{filter}".</p>}
-                    {/* Empty state: the three ways to add a repository, as a
-                        standalone Git client offers on its start screen. */}
-                    {!hasAnything && !q && probe?.available && (
-                        <div className="space-y-1.5 px-3 py-2">
-                            <p className="pb-1 text-ui-11 text-on-surface-variant/70">Todavía no agregaste ningún repositorio.</p>
-                            <EmptyAction icon="folder_open" label="Abrir repositorio" desc="Uno que ya existe en tu disco" onClick={() => void openRepo()} />
-                            <EmptyAction icon="create_new_folder" label="Nuevo repositorio" desc="git init en una carpeta" onClick={() => void newRepo()} />
-                            <EmptyAction icon="cloud_download" label="Clonar…" desc="Desde una URL" onClick={() => setShowClone(true)} />
-                        </div>
-                    )}
-                    {visibleFolderNodes.map((node) => renderFolderNode(node, 0))}
-                    {rootRepos.map((repo) => renderRepoRow(repo, 0))}
+            {/* git missing is a first-class state, not a per-operation
+                failure — see backend/git's package doc on the exec tradeoff. */}
+            {probe && !probe.available && (
+                <div className="mx-3 mb-2 rounded border border-outline-variant bg-error-container/40 p-2 text-ui-11 text-on-error-container">
+                    <p className="font-medium">git no está instalado</p>
+                    <p className="mt-0.5 opacity-80">
+                        El módulo Git usa el git del sistema. Instalalo (en macOS: <span className="font-mono">xcode-select --install</span>) y reabrí la app.
+                    </p>
                 </div>
+            )}
 
-            {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+            {error && (
+                <div className="mx-3 mt-2 flex items-start gap-1 rounded bg-error-container/40 p-1.5 text-ui-10 text-on-error-container">
+                    <span className="min-w-0 flex-1 break-words">{error}</span>
+                    <button onClick={() => setError(null)} title="Cerrar este error" className="shrink-0">
+                        <Icon name="close" size={12} />
+                    </button>
+                </div>
+            )}
+
+            <div className="mt-0.5 min-h-0 flex-1 pb-6" onContextMenu={blankMenu}>
+                {!hasAnything && q && <p className="p-3 text-xs text-on-surface-variant/60">Sin coincidencias para "{filter}".</p>}
+                {/* Empty state: the three ways to add a repository, as a
+                    standalone Git client offers on its start screen. */}
+                {!hasAnything && !q && available && (
+                    <div className="space-y-1.5 px-3 py-2">
+                        <p className="pb-1 text-ui-11 text-on-surface-variant/70">Todavía no agregaste ningún repositorio.</p>
+                        <EmptyAction icon="folder_open" label="Abrir repositorio" desc="Uno que ya existe en tu disco" onClick={() => void openRepo()} />
+                        <EmptyAction icon="create_new_folder" label="Nuevo repositorio" desc="git init en una carpeta" onClick={() => void newRepo()} />
+                        <EmptyAction icon="cloud_download" label="Clonar…" desc="Desde una URL" onClick={() => setShowClone(true)} />
+                    </div>
+                )}
+                {/* Carpetas primero y después los repositorios sueltos, el
+                    orden de cualquier explorador de archivos. */}
+                {visibleFolderNodes.map((node) => renderFolderNode(node, 0))}
+                {rootRepos.map((repo) => renderRepoRow(repo, 0))}
+            </div>
+
+            {menu.element}
 
             {confirmDeleteFolder && (
                 <ConfirmDialog
@@ -730,158 +803,157 @@ export default function GitRepoTree({
         </SidebarSection>
     )
 
-    // renderRepoDetail is the branches/remotes/tags/stashes block for an
-    // expanded repository — unchanged from before, just lifted into a function
-    // so renderRepoRow can call it from any folder depth.
-    function renderRepoDetail(repo: vault.GitRepo, detail: RepoDetail) {
+    // renderRepoDetail es lo que cuelga de un repositorio desplegado: ramas,
+    // remotos, tags y stashes, cada grupo una fila plegable con su contador.
+    // Se abre de a un grupo y no todo junto: un repositorio con cuarenta tags
+    // taparía las ramas, que es lo que casi siempre se viene a mirar.
+    function renderRepoDetail(repo: vault.GitRepo, detail: RepoDetail, depth: number) {
+        const local = detail.branches.filter((b) => !b.isRemote)
+        const key = (s: string) => `${repo.id}:${s}`
         return (
             <>
-                <TreeSection
-                    label="Ramas"
+                <GroupRow
+                    depth={depth}
                     icon="account_tree"
-                    count={detail.branches.filter((b) => !b.isRemote).length}
-                    open={openSections.has(`${repo.id}:branches`)}
-                    onToggle={() => toggleSection(`${repo.id}:branches`)}
-                    action={{
-                        icon: 'add',
-                        title: 'Crear una rama local nueva en el commit actual (HEAD)',
-                        onClick: () => startCreateBranch(repo.id),
-                    }}
+                    label="Ramas"
+                    count={local.length}
+                    open={openSections.has(key('branches'))}
+                    onToggle={() => toggleSection(key('branches'))}
+                    add={{title: 'Crear una rama local nueva en el commit actual (HEAD)', onClick: () => startCreateBranch(repo.id)}}
+                    onMenu={(e) => menu.openAt(e, [{label: 'Crear rama…', icon: 'call_split', onSelect: () => startCreateBranch(repo.id)}])}
                 >
                     <SidebarBranchTree
-                        node={buildBranchTree(detail.branches.filter((b) => !b.isRemote))}
-                        depth={0}
-                        isOpen={(path) => openSections.has(`${repo.id}:bf:${path}`)}
-                        onToggle={(path) => toggleSection(`${repo.id}:bf:${path}`)}
-                        renderBranch={(b, folderPath, depth) => (
-                            <TreeLeaf
+                        node={buildBranchTree(local)}
+                        depth={depth + 1}
+                        isOpen={(path) => openSections.has(key(`bf:${path}`))}
+                        onToggle={(path) => toggleSection(key(`bf:${path}`))}
+                        renderBranch={(b, folderPath, d) => (
+                            <TreeRow
                                 key={b.name}
+                                depth={d}
+                                icon={b.isCurrent ? 'radio_button_checked' : 'call_split'}
+                                iconClass={b.isCurrent ? 'text-primary' : 'text-on-surface-variant/80'}
                                 label={leafLabel(b, folderPath)}
-                                depth={depth}
+                                labelClass={b.isCurrent ? 'font-semibold text-primary' : 'text-on-surface/85'}
                                 title={
                                     b.isCurrent
-                                        ? `"${b.name}" es la rama actual${b.upstream ? ` — sigue a ${b.upstream}` : ''}. Click derecho para renombrar o borrar`
-                                        : `Doble click para hacer checkout de "${b.name}"${b.upstream ? ` — sigue a ${b.upstream}` : ' — sin upstream configurado'}. Click derecho para más acciones`
+                                        ? `"${b.name}" es la rama actual${b.upstream ? ` — sigue a ${b.upstream}` : ''}. Clic derecho para renombrar o borrar`
+                                        : `Doble clic para hacer checkout de "${b.name}"${b.upstream ? ` — sigue a ${b.upstream}` : ' — sin upstream configurado'}. Clic derecho para más acciones`
                                 }
-                                bold={b.isCurrent}
                                 onDoubleClick={() => void checkout(repo.id, b.name)}
-                                onContextMenu={(e) => {
-                                    e.preventDefault()
-                                    setMenu({x: e.clientX, y: e.clientY, items: localBranchMenuItems(repo.id, b)})
-                                }}
+                                onContextMenu={(e) => localBranchMenu(e, repo.id, b)}
+                                trailing={<AheadBehind branch={b} />}
+                                actions={<MenuButton onOpen={(e) => localBranchMenu(e, repo.id, b)} title="Opciones de la rama" />}
                             />
                         )}
                     />
-                </TreeSection>
-                                                <TreeSection
-                                                    label="Remotos"
-                                                    icon="cloud"
-                                                    count={detail.remotes.length}
-                                                    open={openSections.has(`${repo.id}:remotes`)}
-                                                    onToggle={() => toggleSection(`${repo.id}:remotes`)}
-                                                    action={{
-                                                        icon: 'settings',
-                                                        title: 'Administrar los remotos de este repositorio: agregar uno, ver y cambiar su URL (token incluido), renombrarlo o quitarlo',
-                                                        onClick: () => setSettingsFor({repo, tab: 'remotes'}),
-                                                    }}
-                                                >
-                                                    {detail.remotes.map((r) => {
-                                                        const remoteBranches = detail.branches.filter(
-                                                            (b) => b.isRemote && b.name.startsWith(`${r.name}/`),
-                                                        )
-                                                        return (
-                                                            <div key={r.name}>
-                                                                <TreeLeaf
-                                                                    label={`${r.name} (${remoteBranches.length})`}
-                                                                    title={`${r.fetchUrl} — click derecho para fetch, editar la URL, copiarla o quitar el remoto`}
-                                                                    onContextMenu={(e) => {
-                                                                        e.preventDefault()
-                                                                        setMenu({x: e.clientX, y: e.clientY, items: remoteMenuItems(repo, r)})
-                                                                    }}
-                                                                />
-                                                                <SidebarBranchTree
-                                                                    node={buildBranchTree(remoteBranches, r.name)}
-                                                                    depth={0}
-                                                                    indent
-                                                                    isOpen={(path) => openSections.has(`${repo.id}:rbf:${r.name}:${path}`)}
-                                                                    onToggle={(path) => toggleSection(`${repo.id}:rbf:${r.name}:${path}`)}
-                                                                    renderBranch={(b, folderPath, depth) => (
-                                                                        <TreeLeaf
-                                                                            key={b.name}
-                                                                            label={leafLabel(b, folderPath, r.name)}
-                                                                            indent
-                                                                            depth={depth}
-                                                                            title={`Doble click para hacer checkout de "${b.name}" — si no tenés la rama local, se crea siguiendo a esta`}
-                                                                            onDoubleClick={() => void checkout(repo.id, b.name)}
-                                                                        />
-                                                                    )}
-                                                                />
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </TreeSection>
-                                                <TreeSection
-                                                    label="Tags"
-                                                    icon="sell"
-                                                    count={detail.tags.length}
-                                                    open={openSections.has(`${repo.id}:tags`)}
-                                                    onToggle={() => toggleSection(`${repo.id}:tags`)}
-                                                    action={{
-                                                        icon: 'add',
-                                                        title: 'Crear un tag nuevo en el commit actual (HEAD)',
-                                                        onClick: () =>
-                                                            setPrompt({
-                                                                title: 'Crear tag',
-                                                                label: 'Nombre del tag',
-                                                                placeholder: 'v1.0.0',
-                                                                secondLabel: 'Mensaje (opcional)',
-                                                                secondPlaceholder: 'Con mensaje crea un tag anotado; sin mensaje, uno liviano.',
-                                                                confirmLabel: 'Crear tag',
-                                                                description: 'El tag se crea en el commit actual (HEAD), local. Después te pregunto si querés pushearlo.',
-                                                                onSubmit: async (name, msg) => {
-                                                                    try {
-                                                                        // ref vacío = HEAD
-                                                                        await GitCreateTag(repo.id, name, '', msg)
-                                                                        await loadDetail(repo.id)
-                                                                        setConfirmPushTag({repoId: repo.id, name})
-                                                                    } catch (e) {
-                                                                        setError(String(e))
-                                                                    }
-                                                                },
-                                                            }),
-                                                    }}
-                                                >
-                                                    {detail.tags.map((t) => (
-                                                        <TreeLeaf
-                                                            key={t.name}
-                                                            label={t.name}
-                                                            title={`${t.annotated ? 'Tag anotado' : 'Tag liviano'} — ${t.hash.slice(0, 8)}. Click derecho para crear rama, checkout, push o borrar`}
-                                                            onContextMenu={(e) => {
-                                                                e.preventDefault()
-                                                                setMenu({x: e.clientX, y: e.clientY, items: tagMenuItems(repo.id, t)})
-                                                            }}
-                                                        />
-                                                    ))}
-                                                </TreeSection>
-                                                <TreeSection
-                                                    label="Stashes"
-                                                    icon="archive"
-                                                    count={detail.stashes.length}
-                                                    open={openSections.has(`${repo.id}:stashes`)}
-                                                    onToggle={() => toggleSection(`${repo.id}:stashes`)}
-                                                >
-                                                    {detail.stashes.map((st) => (
-                                                        <TreeLeaf
-                                                            key={st.ref}
-                                                            label={st.message}
-                                                            title={`${st.ref} — guardado el ${st.date}. Click derecho para aplicar, hacer pop o descartar`}
-                                                            onContextMenu={(e) => {
-                                                                e.preventDefault()
-                                                                setMenu({x: e.clientX, y: e.clientY, items: stashMenuItems(repo.id, st)})
-                                                            }}
-                                                        />
-                                                    ))}
-                </TreeSection>
+                </GroupRow>
+                <GroupRow
+                    depth={depth}
+                    icon="lan"
+                    label="Remotos"
+                    count={detail.remotes.length}
+                    open={openSections.has(key('remotes'))}
+                    onToggle={() => toggleSection(key('remotes'))}
+                    add={{
+                        icon: 'settings',
+                        title: 'Administrar los remotos de este repositorio: agregar uno, ver y cambiar su URL (token incluido), renombrarlo o quitarlo',
+                        onClick: () => setSettingsFor({repo, tab: 'remotes'}),
+                    }}
+                    onMenu={(e) => menu.openAt(e, [{label: 'Administrar remotos…', icon: 'settings', onSelect: () => setSettingsFor({repo, tab: 'remotes'})}])}
+                >
+                    {detail.remotes.map((r) => {
+                        const remoteBranches = detail.branches.filter((b) => b.isRemote && b.name.startsWith(`${r.name}/`))
+                        // Guarda lo PLEGADO: las ramas de un remoto se veían
+                        // siempre, y así sigue siendo hasta que se lo pliegue.
+                        const closedKey = key(`rc:${r.name}`)
+                        const open = !openSections.has(closedKey)
+                        return (
+                            <div key={r.name}>
+                                <TreeRow
+                                    depth={depth + 1}
+                                    icon="cloud"
+                                    iconClass="text-on-surface-variant/80"
+                                    label={r.name}
+                                    title={`${r.fetchUrl} — clic derecho para fetch, editar la URL, copiarla o quitar el remoto`}
+                                    expanded={remoteBranches.length ? open : undefined}
+                                    onToggle={() => toggleSection(closedKey)}
+                                    onClick={() => remoteBranches.length && toggleSection(closedKey)}
+                                    onContextMenu={(e) => remoteMenu(e, repo, r)}
+                                    trailing={<Count n={remoteBranches.length} />}
+                                    actions={<MenuButton onOpen={(e) => remoteMenu(e, repo, r)} title="Opciones del remoto" />}
+                                />
+                                {open && (
+                                    <SidebarBranchTree
+                                        node={buildBranchTree(remoteBranches, r.name)}
+                                        depth={depth + 2}
+                                        isOpen={(path) => openSections.has(key(`rbf:${r.name}:${path}`))}
+                                        onToggle={(path) => toggleSection(key(`rbf:${r.name}:${path}`))}
+                                        renderBranch={(b, folderPath, d) => (
+                                            <TreeRow
+                                                key={b.name}
+                                                depth={d}
+                                                icon="call_split"
+                                                iconClass="text-on-surface-variant/60"
+                                                label={leafLabel(b, folderPath, r.name)}
+                                                labelClass="text-on-surface-variant"
+                                                title={`Doble clic para hacer checkout de "${b.name}" — si no tenés la rama local, se crea siguiendo a esta`}
+                                                onDoubleClick={() => void checkout(repo.id, b.name)}
+                                                onContextMenu={(e) => remoteBranchMenu(e, repo.id, b)}
+                                                actions={<MenuButton onOpen={(e) => remoteBranchMenu(e, repo.id, b)} title="Opciones de la rama remota" />}
+                                            />
+                                        )}
+                                    />
+                                )}
+                            </div>
+                        )
+                    })}
+                </GroupRow>
+                <GroupRow
+                    depth={depth}
+                    icon="sell"
+                    label="Tags"
+                    count={detail.tags.length}
+                    open={openSections.has(key('tags'))}
+                    onToggle={() => toggleSection(key('tags'))}
+                    add={{title: 'Crear un tag nuevo en el commit actual (HEAD)', onClick: () => startCreateTag(repo.id)}}
+                    onMenu={(e) => menu.openAt(e, [{label: 'Crear tag…', icon: 'sell', onSelect: () => startCreateTag(repo.id)}])}
+                >
+                    {detail.tags.map((t) => (
+                        <TreeRow
+                            key={t.name}
+                            depth={depth + 1}
+                            icon="sell"
+                            iconClass="text-on-surface-variant/80"
+                            label={t.name}
+                            title={`${t.annotated ? 'Tag anotado' : 'Tag liviano'} — ${t.hash.slice(0, 8)}. Clic derecho para crear rama, checkout, push o borrar`}
+                            onContextMenu={(e) => tagMenu(e, repo.id, t)}
+                            trailing={<span className="font-mono text-ui-10 text-on-surface-variant/50">{t.hash.slice(0, 7)}</span>}
+                            actions={<MenuButton onOpen={(e) => tagMenu(e, repo.id, t)} title="Opciones del tag" />}
+                        />
+                    ))}
+                </GroupRow>
+                <GroupRow
+                    depth={depth}
+                    icon="inventory_2"
+                    label="Stashes"
+                    count={detail.stashes.length}
+                    open={openSections.has(key('stashes'))}
+                    onToggle={() => toggleSection(key('stashes'))}
+                >
+                    {detail.stashes.map((st) => (
+                        <TreeRow
+                            key={st.ref}
+                            depth={depth + 1}
+                            icon="inventory_2"
+                            iconClass="text-on-surface-variant/80"
+                            label={st.message}
+                            title={`${st.ref} — guardado el ${st.date}. Clic derecho para aplicar, hacer pop o descartar`}
+                            onContextMenu={(e) => stashMenu(e, repo.id, st)}
+                            actions={<MenuButton onOpen={(e) => stashMenu(e, repo.id, st)} title="Opciones del stash" />}
+                        />
+                    ))}
+                </GroupRow>
             </>
         )
     }
@@ -1050,140 +1122,147 @@ function EmptyAction({icon, label, desc, onClick}: {icon: string; label: string;
     )
 }
 
-function TreeSection({label, icon, count, open, onToggle, children, action}: {label: string; icon: string; count: number; open: boolean; onToggle: () => void; children: React.ReactNode; action?: {icon: string; title: string; onClick: () => void}}) {
-    return (
-        <div className="group/section">
-            <div className="flex items-center pr-1 hover:bg-surface-variant/40">
-                <button
-                    onClick={onToggle}
-                    title={open ? `Colapsar ${label.toLowerCase()}` : `Ver ${label.toLowerCase()} (${count})`}
-                    className="flex min-w-0 flex-1 items-center gap-1 py-0.5 pl-6 pr-2 text-left text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70"
-                >
-                    <Icon name={open ? 'expand_more' : 'chevron_right'} size={12} className="shrink-0" />
-                    <Icon name={icon} size={12} className="shrink-0" />
-                    <span className="truncate">{label}</span>
-                    <span className="ml-auto shrink-0 opacity-60">{count}</span>
-                </button>
-                {action && (
-                    <button
-                        onClick={action.onClick}
-                        title={action.title}
-                        className="shrink-0 rounded p-0.5 text-on-surface-variant opacity-0 hover:bg-surface-variant group-hover/section:opacity-100"
-                    >
-                        <Icon name={action.icon} size={13} />
-                    </button>
-                )}
-            </div>
-            {open && <div>{children}</div>}
-        </div>
-    )
+function Count({n}: {n: number}) {
+    return <span className="text-ui-10 tabular-nums text-on-surface-variant/50">{n}</span>
 }
 
-function TreeLeaf({
-    label,
-    title,
-    bold,
-    indent,
-    depth,
-    onContextMenu,
-    onDoubleClick,
-}: {
-    label: string
-    title: string
-    bold?: boolean
-    // One extra level, for a remote's branches nested under the remote itself.
-    indent?: boolean
-    // Niveles adicionales de sangría, para las ramas que cuelgan de una
-    // carpeta del árbol (`feature/` y compañía). Se suma a `indent`.
-    depth?: number
-    onContextMenu?: (e: React.MouseEvent) => void
-    onDoubleClick?: () => void
-}) {
+// Commits por delante / por detrás del upstream. Se quedan siempre a la vista
+// (no solo en el title): "tengo 8 commits sin pushear" es justo lo que se
+// busca de un vistazo antes de cambiar de rama.
+function AheadBehind({branch}: {branch: git.Branch}) {
+    if (!branch.ahead && !branch.behind) return null
     return (
-        <div
-            onContextMenu={onContextMenu}
-            onDoubleClick={onDoubleClick}
-            title={title}
-            style={{paddingLeft: (indent ? 64 : 48) + (depth ?? 0) * 12}}
-            className={`truncate py-0.5 pr-2 text-ui-11 hover:bg-surface-variant/40 ${
-                bold ? 'font-semibold text-primary' : 'text-on-surface-variant'
-            } ${onDoubleClick ? 'cursor-pointer' : ''}`}
+        <span
+            className="flex items-center gap-1 font-mono text-ui-10 tabular-nums text-on-surface-variant/70"
+            title={`${branch.ahead} ${branch.ahead === 1 ? 'commit' : 'commits'} por delante y ${branch.behind} por detrás de ${branch.upstream || 'su upstream'}`}
         >
-            {label}
-        </div>
+            {branch.ahead > 0 && (
+                <span className="flex items-center text-primary">
+                    <Icon name="arrow_upward" size={11} />
+                    {branch.ahead}
+                </span>
+            )}
+            {branch.behind > 0 && (
+                <span className="flex items-center text-tertiary">
+                    <Icon name="arrow_downward" size={11} />
+                    {branch.behind}
+                </span>
+            )}
+        </span>
     )
 }
 
-// Fila de carpeta del árbol de ramas de la barra lateral. Misma idea que la
-// de la pestaña de repositorio (GitRepoTab), con el diseño denso de este
-// módulo: acá las filas miden la mitad y no tienen iconografía propia.
-function TreeBranchFolder({
-    node,
+// GroupRow es un grupo del detalle de un repositorio (Ramas, Remotos, Tags,
+// Stashes). Antes era un rótulo en mayúsculas con su propia sangría; ahora es
+// una fila más del árbol, con la guía de su nivel, para que el detalle se lea
+// como parte del repositorio y no como otra lista pegada debajo.
+function GroupRow({
     depth,
-    indent,
+    icon,
+    label,
+    count,
     open,
     onToggle,
+    add,
+    onMenu,
+    children,
 }: {
-    node: BranchTreeNode
     depth: number
-    indent?: boolean
+    icon: string
+    label: string
+    count: number
     open: boolean
     onToggle: () => void
+    // La acción principal del grupo (crear rama, crear tag), a la vista al
+    // pasar el mouse. Es la única: lo demás está en el menú.
+    add?: {icon?: string; title: string; onClick: () => void}
+    onMenu?: (e: ReactMouseEvent) => void
+    children: ReactNode
 }) {
-    const total = countBranches(node)
+    // Sin elementos no hay nada que desplegar: el chevron prometería algo.
+    const branch = count > 0
     return (
-        <div
-            onClick={onToggle}
-            title={
-                open
-                    ? `Plegar "${node.path}" — sus ${total} ramas dejan de ocupar la lista`
-                    : `Desplegar "${node.path}" — tiene ${total} ${total === 1 ? 'rama' : 'ramas'}`
-            }
-            style={{paddingLeft: (indent ? 64 : 48) + depth * 12}}
-            className="flex cursor-pointer items-center gap-1 py-0.5 pr-2 text-ui-11 text-on-surface-variant hover:bg-surface-variant/40"
-        >
-            <Icon name={open ? 'expand_more' : 'chevron_right'} size={12} className="shrink-0 opacity-60" />
-            <Icon name={open ? 'folder_open' : 'folder'} size={12} className="shrink-0 opacity-60" />
-            <span className="truncate">{node.label}</span>
-            <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-50">{total}</span>
-        </div>
+        <>
+            <TreeRow
+                depth={depth}
+                icon={icon}
+                iconClass="text-on-surface-variant/70"
+                label={label}
+                labelClass="text-on-surface-variant"
+                title={branch ? (open ? `Plegar ${label.toLowerCase()}` : `Ver ${label.toLowerCase()} (${count})`) : `Sin ${label.toLowerCase()}`}
+                expanded={branch ? open : undefined}
+                onToggle={onToggle}
+                onClick={() => branch && onToggle()}
+                onContextMenu={onMenu}
+                trailing={<Count n={count} />}
+                actions={
+                    add || onMenu ? (
+                        <>
+                            {add && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        add.onClick()
+                                    }}
+                                    title={add.title}
+                                    className="sidebar-icon !p-0.5"
+                                >
+                                    <Icon name={add.icon ?? 'add'} size={14} />
+                                </button>
+                            )}
+                            {onMenu && <MenuButton onOpen={onMenu} title={`Opciones de ${label.toLowerCase()}`} />}
+                        </>
+                    ) : undefined
+                }
+            />
+            {branch && open && children}
+        </>
     )
 }
 
-// Recorre el árbol dibujando carpetas y delegando las ramas en renderBranch,
-// igual que su gemela de GitRepoTab — el árbol no conoce el diseño de la fila.
+// Recorre el árbol de ramas (`feature/`, `fix/`…) dibujando carpetas y
+// delegando las ramas en renderBranch, igual que su gemela de GitRepoTab — el
+// árbol no conoce el diseño de la fila.
 function SidebarBranchTree({
     node,
     depth,
-    indent,
     isOpen,
     onToggle,
     renderBranch,
 }: {
     node: BranchTreeNode
     depth: number
-    indent?: boolean
     isOpen: (path: string) => boolean
     onToggle: (path: string) => void
-    renderBranch: (branch: git.Branch, folderPath: string, depth: number) => React.ReactNode
+    renderBranch: (branch: git.Branch, folderPath: string, depth: number) => ReactNode
 }) {
     return (
         <>
             {node.folders.map((folder) => {
                 const open = isOpen(folder.path)
+                const total = countBranches(folder)
                 return (
                     <div key={folder.path}>
-                        <TreeBranchFolder node={folder} depth={depth} indent={indent} open={open} onToggle={() => onToggle(folder.path)} />
-                        {open && (
-                            <SidebarBranchTree
-                                node={folder}
-                                depth={depth + 1}
-                                indent={indent}
-                                isOpen={isOpen}
-                                onToggle={onToggle}
-                                renderBranch={renderBranch}
-                            />
-                        )}
+                        {/* Carpeta de ramas, no de la barra: mismo ícono pero sin
+                            el tono terciario, que es el de las carpetas que
+                            organiza el usuario. */}
+                        <TreeRow
+                            depth={depth}
+                            icon={open ? 'folder_open' : 'folder'}
+                            iconClass="text-on-surface-variant/70"
+                            label={folder.label}
+                            labelClass="text-on-surface-variant"
+                            title={
+                                open
+                                    ? `Plegar "${folder.path}" — sus ${total} ramas dejan de ocupar la lista`
+                                    : `Desplegar "${folder.path}" — tiene ${total} ${total === 1 ? 'rama' : 'ramas'}`
+                            }
+                            expanded={open}
+                            onToggle={() => onToggle(folder.path)}
+                            onClick={() => onToggle(folder.path)}
+                            trailing={<Count n={total} />}
+                        />
+                        {open && <SidebarBranchTree node={folder} depth={depth + 1} isOpen={isOpen} onToggle={onToggle} renderBranch={renderBranch} />}
                     </div>
                 )
             })}

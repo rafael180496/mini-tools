@@ -12,6 +12,22 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
   Los mensajes de error largos también tienen ahora tope de alto y scroll propio.
 
+- **La barra lateral, rediseñada al estilo de un explorador de archivos.** Los cinco árboles —Conexiones, SSH, Git, Notas y HTTP— se dibujaban cada uno a su manera: en Notas no había un solo ícono (una carpeta y una nota se distinguían solo por el chevron), y en el resto cada fila cargaba hasta cinco íconos sin rótulo al pasar el mouse, con *borrar* a pocos píxeles de la acción que se quería. Ahora comparten la misma fila y el mismo menú:
+
+  - **Ícono por tipo**: carpeta abierta o cerrada, el logo del motor de base, servidor SSH (verde mientras hay sesión), repositorio, rama —la actual marcada—, remoto, tag, stash, nota, nota que enlaza a otras y el método de cada petición HTTP.
+  - **Los íconos toman el color del tema**: carpetas y colecciones en el acento, todo lo demás en el tono neutro. El color queda para lo que es un estado —la fila activa, una sesión SSH viva—, así que un ícono de color vuelve a significar algo.
+  - **Líneas guía por nivel**, como en Obsidian: en un árbol de cuatro niveles se ve de un vistazo qué cuelga de qué.
+  - La **franja de entorno** (Producción en rojo, Staging en ámbar) va pegada al borde de su fila, igual en SSH que en Conexiones; en SSH quedaba separada del contenido por todo el sangrado. Las filas tienen un poco más de alto y un píxel de aire entre sí, y menos margen a la izquierda.
+  - **Menú de clic derecho** en cada fila y en el espacio vacío del árbol, con íconos, grupos separados y lo destructivo al final en rojo. «Mover a…» abre el árbol de carpetas dentro del mismo menú, con la carpeta actual marcada. Se maneja con flechas, Enter y Esc. El botón **⋯** que aparece al pasar por encima abre el mismo menú.
+  - **Plegar / desplegar todo** en la cabecera de cada módulo.
+  - Crear y renombrar carpetas usa el diálogo de la app en vez de un campo en la fila que guardaba al perder el foco: hacer clic afuera ya no crea una carpeta con el nombre a medio escribir.
+
+  El menú de una nota trae además lo que tenía el de Obsidian que acá tiene sentido: **fijar arriba** (una sección «Fijadas» al tope de la barra, sin sacar la nota de su carpeta), **fundir con otra nota…** (agrega su texto al final de la elegida, con sus imágenes, y la borra; si cualquiera de las dos era privada, el resultado queda privado), **exportar como Markdown** (un `.md` con las imágenes incluidas, que se abre en Obsidian) y **copiar ubicación** («Carpeta / Subcarpeta / Título»). Abrir a la derecha o en otra ventana no se trajo porque la app no tiene vista dividida, y «mostrar en el explorador» no aplica: una nota no es un archivo, vive cifrada en el vault. Borrar o fundir una nota con su pestaña abierta ahora la cierra, en vez de dejarla editando algo que ya no existe.
+
+  Acciones nuevas que salieron del menú: en **Notas**, *cambiar nombre*, ***duplicar*** (con sus imágenes, su carpeta y su privacidad: la copia de una nota privada nace privada), copiar el enlace `[[…]]`, hacerla privada o visible (esto último con confirmación) y ver en el grafo. En **HTTP**, *duplicar*, *mover a…*, *copiar como cURL* (con los secretos tapados) y *copiar URL*. En **Git**, las ramas muestran cuántos commits van adelante o atrás, los tags su hash, y una rama remota tiene menú propio. En **Conexiones**, copiar el nombre de un esquema, tabla u objeto, con o sin esquema.
+
+  Un cambio de costumbre en Notas: **un clic en una carpeta la pliega**, como en cualquier explorador; la vista de tabla se abre con doble clic o con «Abrir como tabla». Renombrar una nota no reescribe los `[[enlaces]]` que la apuntan, y el diálogo lo avisa antes de confirmar.
+
 ## [2.7.0] - 2026-09-25
 
 ### Cambiado

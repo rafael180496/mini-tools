@@ -114,3 +114,21 @@ func (s *Store) DeleteNoteAssets(noteID string) error {
 	}
 	return nil
 }
+
+// NoteAssetIDs devuelve los ids de las imágenes de una nota.
+func (s *Store) NoteAssetIDs(noteID string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT id FROM vault_note_assets WHERE note_id = ?`, noteID)
+	if err != nil {
+		return nil, fmt.Errorf("vault: listando las imágenes de la nota: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

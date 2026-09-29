@@ -155,6 +155,8 @@ al lado de la consulta que se está depurando.
 - **34** — `vault_notes` + índices (`idx_notes_ai_access`, por fecha, por hash).
 - **35** — `vault_note_links` + índices por origen y por destino.
 - **36** — `settings.notes_last_open` / `notes_side_width`.
+- **55** — `vault_notes.pinned` (notas fijadas). Como `folder_id`, se llena en
+  los DOS caminos de `SearchNotesSmart`.
 
 Verificadas con el patrón de script efímero en `HOME=$(mktemp -d)`, abriendo
 `vault.db` con `sqlite3` para confirmar que **el título y el cuerpo son
@@ -214,10 +216,61 @@ Revisar una carpeta es otra cosa —cuántas notas hay, cuál se tocó la últim
 vez, cuál quedó sin actualizar desde hace un año— y necesita lo contrario: una
 tabla con fechas, ordenable, con su propio buscador.
 
-Por eso el clic está partido: **el nombre abre la tabla, la flecha pliega**, que
-es la separación de cualquier explorador de archivos. Cambiar el clic del nombre
-por "plegar" fue lo que hizo falta discutir: plegar y desplegar es lo que sirve
-para navegar, y no se podía perder.
+Hasta la 2.7 el clic estaba partido: el nombre abría la tabla y la flecha
+plegaba. Con el rediseño estilo Obsidian de la barra (2.8) **el clic en la fila
+pliega y despliega**, como en Obsidian y en el explorador del sistema, y la
+tabla se abre con **doble clic** o desde el menú contextual («Abrir como
+tabla»). Plegar es lo que se hace cien veces por sesión; la tabla, de vez en
+cuando — el gesto corto va para lo frecuente.
+
+## Barra lateral: íconos y menú contextual
+
+Las filas se dibujan con `components/sidebar/TreeRow.tsx` y el clic derecho con
+`components/sidebar/TreeMenu.tsx`, las mismas piezas que usan los otros módulos
+de la barra: el mismo gesto abre el mismo menú en cualquier módulo.
+
+- **Íconos por tipo**: carpeta (abierta/cerrada), nota (`description`) y nota
+  que enlaza otras —un índice, con chevron— (`library_books`). El candado de
+  las privadas sigue a la vista.
+- **Menú de una nota**: abrir, cambiar nombre, duplicar, mover a…, copiar
+  enlace `[[…]]`, copiar título, ver en el grafo, hacer privada / visible y
+  borrar. De una carpeta: nota o subcarpeta nueva, abrir como tabla,
+  plegar, cambiar nombre y borrar. Del área vacía: nota y carpeta nuevas,
+  plegar y desplegar todo, grafo.
+- **`RenameNote`** es un binding propio y no `UpdateNote` desde la barra porque
+  emite `note:changed`: con la nota abierta, el editor se recarga (o avisa si
+  tiene cambios propios) en vez de deshacer el renombre con su autoguardado.
+  Los `[[Título viejo]]` de otras notas **no** se reescriben; el diálogo lo
+  dice antes de confirmar.
+- **`DuplicateNote`** vive en el store (`vault.DuplicateNote`) y no es "leer +
+  CreateNote" por el cortafuegos: `CreateNote` hace nacer la nota visible, y la
+  copia de una privada quedaría legible para un agente entre el alta y el
+  `SetNotePrivacy`. Acá el `is_private` va en el mismo INSERT. Copia también
+  las imágenes con ids nuevos y reescribe los `nota:ID` del cuerpo, porque las
+  imágenes se borran con su nota.
+- **Volver visible una nota privada desde el menú pide confirmación**; hacerla
+  privada no, porque solo restringe.
+- **Fijar** (`SetNotePinned`, migración 55) pone la nota en una sección
+  «Fijadas» arriba de todo. La nota sigue apareciendo en su carpeta: fijar es un
+  atajo, no una mudanza. No toca `updated_at`.
+- **Fundir con otra nota** (`MergeNotes`) agrega el texto al final del destino
+  con el título de origen como `## encabezado`, pasa las imágenes de dueño y
+  borra el origen, todo en una transacción. **Gana la privacidad más
+  restrictiva**: fundir una privada en una visible deja el resultado privado —
+  si no, fundir sería la forma más corta de sacar algo de atrás del cortafuegos.
+  Emite `note:removed` con `mergedInto`, y la pestaña del origen se cierra y se
+  abre la del destino (no se le cambia el `noteId`: el editor todavía tiene el
+  título viejo y un autoguardado se lo pondría a la otra).
+- **Exportar como Markdown** (`ExportNoteMarkdown`) es la única salida en claro
+  de una nota a disco, y por eso va siempre por el diálogo de guardado. Las
+  imágenes van incrustadas como `data:` URI, porque `nota:ID` solo existe acá.
+  Es lo que reemplaza al «Open in default app» de Obsidian: abrirla con otra
+  aplicación exigiría escribirla descifrada en un temporal que nadie borra.
+- **`note:removed`** lo emite también `DeleteNote`: antes, borrar una nota con
+  su pestaña abierta la dejaba abierta contra una fila inexistente.
+- Lo que **no** se trajo de Obsidian: abrir a la derecha o en otra ventana (la
+  app no tiene vista dividida ni multiventana) y mostrar en el explorador (una
+  nota no es un archivo).
 
 **El orden de la lista sin búsqueda es alfabético, no por fecha.** Es una
 decisión de navegación, no de presentación: con orden por fecha de modificación,

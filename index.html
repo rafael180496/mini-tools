@@ -561,6 +561,7 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
     <li>El <strong>panel inferior</strong> tiene Resultados y Consola (más DBMS_OUTPUT y el plan de ejecución cuando hay algo que mostrar); se arrastra para cambiarle el alto.</li>
     <li>La <strong>barra del editor</strong> es una sola fila de íconos: a la izquierda lo que se aprieta (guardar, ejecutar, explicar, refrescar), a la derecha contra qué corre la pestaña (esquema y conexión) y el chat. Lo que hace cada botón —y su atajo— está en su tooltip.</li>
     <li>La <strong>barra lateral</strong> se arrastra para cambiarle el ancho y se oculta entera dejando una columna de íconos. Ancho, módulo abierto y alto del editor quedan guardados entre sesiones.</li>
+    <li>Los cinco árboles de la barra (conexiones, SSH, Git, notas y HTTP) hablan igual: <strong>ícono por tipo</strong> —carpeta, motor de base, servidor, repositorio, rama, nota, método HTTP—, <strong>líneas guía</strong> por nivel y un botón en la cabecera para <strong>plegar o desplegar todo</strong>. El <strong>clic derecho</strong> en cualquier fila, o en el espacio vacío, abre su menú con todas las acciones (cambiar nombre, duplicar, mover a otra carpeta, copiar, borrar…); el botón <strong>⋯</strong> que aparece al pasar por encima abre el mismo. Se maneja también con el teclado: flechas, Enter y Esc.</li>
   </ul>
 </article>
 
@@ -1135,12 +1136,13 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 
   <figure>
     <div class="shot"><img src="docs/screenshots/notes-folder.png" alt="Carpeta Runbooks abierta como tabla: notas numeradas con su título, fecha de creación y de última modificación, y un buscador propio"></div>
-    <figcaption>Clic en el nombre de una carpeta y se abre como tabla; la flecha sigue plegando.</figcaption>
+    <figcaption>Doble clic en una carpeta (o «Abrir como tabla» en su menú) y se abre como tabla; un clic la pliega.</figcaption>
   </figure>
 
   <h2 id="notas-organizar--carpetas">Carpetas</h2>
   <ul>
-    <li>Cada carpeta tiene su propio <strong>«+» de nota</strong>, que la crea ya adentro.</li>
+    <li><strong>Clic derecho</strong> en una nota, una carpeta o el espacio vacío abre su menú: cambiar nombre, <strong>duplicar</strong> (con sus imágenes y su privacidad), mover a otra carpeta, <strong>fijar arriba</strong>, <strong>fundir con otra nota</strong> (si una de las dos es privada, el resultado también), <strong>exportar como Markdown</strong> con las imágenes incluidas, copiar el enlace <code>[[…]]</code> o su ubicación, hacerla privada o borrarla. El botón <strong>⋯</strong> de cada fila abre el mismo menú.</li>
+    <li>Cada carpeta crea notas y subcarpetas ya adentro desde su menú, y el botón de la cabecera <strong>pliega o despliega todas</strong>.</li>
     <li><strong>Vista de tabla</strong> por carpeta: fecha de creación, de última modificación, ordenable y con buscador que filtra solo ahí.</li>
     <li><strong>La lista se queda quieta.</strong> Sin búsqueda el orden es alfabético e insensible a tildes —«Ámbito» cae junto a «ambito»—, así que una nota está siempre en el mismo lugar. Cuando sí estás buscando, manda la relevancia.</li>
   </ul>

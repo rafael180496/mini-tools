@@ -301,10 +301,10 @@ const fixtures: Record<string, unknown> = {
     ],
     GitProbe: {available: true, version: '2.45.0', path: '/usr/bin/git', error: ''},
     GitBranches: [
-        {name: 'develop', current: true, remote: false, upstream: 'origin/develop', ahead: 8, behind: 0, hash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release'},
-        {name: 'main', current: false, remote: false, upstream: 'origin/main', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
-        {name: 'origin/develop', current: false, remote: true, upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
-        {name: 'origin/main', current: false, remote: true, upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
+        {name: 'develop', current: true, remote: false, isCurrent: true, isRemote: false, upstream: 'origin/develop', ahead: 8, behind: 0, hash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release'},
+        {name: 'main', current: false, remote: false, isCurrent: false, isRemote: false, upstream: 'origin/main', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
+        {name: 'origin/develop', current: false, remote: true, isCurrent: false, isRemote: true, upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
+        {name: 'origin/main', current: false, remote: true, isCurrent: false, isRemote: true, upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
     ],
     GitTags: [
         {name: 'v1.3.1', hash: '76d8575', message: '', date: '2026-08-15'},
@@ -487,17 +487,17 @@ const fixtures: Record<string, unknown> = {
     // árbol de carpetas es la mitad del diseño de la barra— y con todo en la
     // raíz la captura mentía sobre cómo se ve la app en uso.
     ListConnections: [
-        {id: 'c1', name: 'SGCPRO · producción', dbType: 'oracle', host: 'ora-prod.energuate.local', port: 1521, database: 'SGCPRO', username: 'app_sgc', folderId: 'f-prod', sortOrder: 0, environment: 'production', color: '#ef5350', metadataSchemas: ['SGCPRO']},
-        {id: 'c2', name: 'SGCPRO · réplica lectura', dbType: 'oracle', host: 'ora-ro.energuate.local', port: 1521, database: 'SGCPRO', username: 'lector', folderId: 'f-prod', sortOrder: 1, environment: 'production', metadataSchemas: ['SGCPRO']},
-        {id: 'c3', name: 'Redis · sesiones', dbType: 'redis', host: 'redis-prod.energuate.local', port: 6379, database: '0', username: '', folderId: 'f-prod', sortOrder: 2, environment: 'production', metadataSchemas: []},
+        {id: 'c1', name: 'SGCPRO · producción', dbType: 'oracle', host: 'ora-prod.energuate.local', port: 1521, database: 'SGCPRO', username: 'app_sgc', folderId: 'f-prod', sortOrder: 0, environment: 'prod', color: '#ef5350', metadataSchemas: ['SGCPRO']},
+        {id: 'c2', name: 'SGCPRO · réplica lectura', dbType: 'oracle', host: 'ora-ro.energuate.local', port: 1521, database: 'SGCPRO', username: 'lector', folderId: 'f-prod', sortOrder: 1, environment: 'prod', metadataSchemas: ['SGCPRO']},
+        {id: 'c3', name: 'Redis · sesiones', dbType: 'redis', host: 'redis-prod.energuate.local', port: 6379, database: '0', username: '', folderId: 'f-prod', sortOrder: 2, environment: 'prod', metadataSchemas: []},
         {id: 'c4', name: 'SGCTEST', dbType: 'oracle', host: 'ora-qa.energuate.local', port: 1521, database: 'SGCTEST', username: 'app_sgc', folderId: 'f-qa', sortOrder: 0, environment: 'staging', metadataSchemas: ['SGCPRO']},
         {id: 'c5', name: 'chatwoot · staging', dbType: 'postgres', host: 'pg-qa.energuate.local', port: 5432, database: 'chatwoot', username: 'chatwoot', folderId: 'f-qa', sortOrder: 1, environment: 'staging', metadataSchemas: ['public']},
         {id: 'c6', name: 'eventos', dbType: 'mongodb', host: 'mongo-qa.energuate.local', port: 27017, database: 'events', username: 'app', folderId: 'f-qa', sortOrder: 2, environment: 'staging', metadataSchemas: []},
-        {id: 'c7', name: 'chatwoot local', dbType: 'postgres', host: 'localhost', port: 5432, database: 'chatwoot_dev', username: 'dev', folderId: '', sortOrder: 3, environment: 'development', metadataSchemas: ['public']},
-        {id: 'c8', name: 'vault.db', dbType: 'sqlite', host: '', port: 0, database: '~/Library/Application Support/mini-tools/vault.db', username: '', folderId: '', sortOrder: 4, environment: 'development', metadataSchemas: []},
-        {id: 's1', name: 'app-01 · producción', dbType: 'ssh', host: 'app01.energuate.local', port: 22, database: '', username: 'deploy', folderId: 'f-ssh-prod', sortOrder: 0, environment: 'production', metadataSchemas: []},
-        {id: 's2', name: 'app-02 · producción', dbType: 'ssh', host: 'app02.energuate.local', port: 22, database: '', username: 'deploy', folderId: 'f-ssh-prod', sortOrder: 1, environment: 'production', metadataSchemas: []},
-        {id: 's3', name: 'batch-nocturno', dbType: 'ssh', host: 'batch.energuate.local', port: 22, database: '', username: 'sgc', folderId: 'f-ssh-prod', sortOrder: 2, environment: 'production', metadataSchemas: []},
+        {id: 'c7', name: 'chatwoot local', dbType: 'postgres', host: 'localhost', port: 5432, database: 'chatwoot_dev', username: 'dev', folderId: '', sortOrder: 3, environment: 'dev', metadataSchemas: ['public']},
+        {id: 'c8', name: 'vault.db', dbType: 'sqlite', host: '', port: 0, database: '~/Library/Application Support/mini-tools/vault.db', username: '', folderId: '', sortOrder: 4, environment: 'dev', metadataSchemas: []},
+        {id: 's1', name: 'app-01 · producción', dbType: 'ssh', host: 'app01.energuate.local', port: 22, database: '', username: 'deploy', folderId: 'f-ssh-prod', sortOrder: 0, environment: 'prod', metadataSchemas: []},
+        {id: 's2', name: 'app-02 · producción', dbType: 'ssh', host: 'app02.energuate.local', port: 22, database: '', username: 'deploy', folderId: 'f-ssh-prod', sortOrder: 1, environment: 'prod', metadataSchemas: []},
+        {id: 's3', name: 'batch-nocturno', dbType: 'ssh', host: 'batch.energuate.local', port: 22, database: '', username: 'sgc', folderId: 'f-ssh-prod', sortOrder: 2, environment: 'prod', metadataSchemas: []},
         {id: 's4', name: 'qa-app', dbType: 'ssh', host: 'qa.energuate.local', port: 22, database: '', username: 'deploy', folderId: '', sortOrder: 3, environment: 'staging', metadataSchemas: []},
     ],
     // Un árbol por scope: los cuatro módulos comparten la tabla `folders` pero
@@ -672,7 +672,7 @@ const fixtures: Record<string, unknown> = {
         selfLinks: 0,
     },
     SearchNotesSmart: [
-        {id: 'n1', title: 'Runbook · caída del pool de conexiones', isPrivate: false, updatedAt: 1786650000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-runbooks'},
+        {id: 'n1', title: 'Runbook · caída del pool de conexiones', isPrivate: false, updatedAt: 1786650000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-runbooks', pinned: true},
         {id: 'n3', title: 'Procedimiento de sesiones colgadas', isPrivate: false, updatedAt: 1786480000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-runbooks'},
         {id: 'n6', title: 'Postmortem 2026-07-30', isPrivate: false, updatedAt: 1786390000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-runbooks'},
         {id: 'n4', title: 'Guardia · qué mirar primero', isPrivate: false, updatedAt: 1786300000, score: 1, snippet: '', matchedTitle: true, folderId: 'f-notes-guardia'},
@@ -921,6 +921,10 @@ const fixtures: Record<string, unknown> = {
             '  TABLESPACE "DATOS1" ',
         ].join('\n'),
 }
+
+// Conexiones con un pool abierto: sin esto el árbol de Conexiones nunca
+// muestra el punto verde ni el botón de desconectar, que son parte de la fila.
+fixtures.ActiveConnectionIds = ['c1', 'c7']
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const anyWindow = window as any
@@ -1557,7 +1561,22 @@ if (view === 'thinking') {
         return [...document.querySelectorAll('button')].find((b) => b.title.startsWith('Manda el mensaje'))
     })
 }
-if (view === 'workspace' || view === 'sidebar') {
+if (view === 'sidebarmenu' || view === 'sidebaropen') {
+    const expand = () =>
+        [...document.querySelectorAll<HTMLButtonElement>('button[title="Desplegar"]')].forEach((b) => b.click())
+    setTimeout(expand, 1200)
+    setTimeout(expand, 1600)
+    setTimeout(() => {
+        // Solo las visibles: los módulos ocultos siguen montados y sus filas
+        // cuentan igual en el DOM.
+        const rows = [...document.querySelectorAll<HTMLElement>('[data-tree-row]')].filter((r) => r.getClientRects().length > 0)
+        if (view === 'sidebaropen') return
+        const row = rows[Math.min(2, rows.length - 1)]
+        const r = row?.getBoundingClientRect()
+        row?.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: (r?.left ?? 0) + 60, clientY: (r?.top ?? 0) + 14}))
+    }, 2100)
+}
+if (view === 'workspace' || view === 'sidebar' || view === 'sidebarmenu' || view === 'sidebaropen') {
     // Se abre una carpeta del árbol: la barra rediseñada se trata justamente
     // de la jerarquía, y con todas las carpetas plegadas la captura muestra
     // una lista plana que no prueba nada.
@@ -1691,6 +1710,12 @@ if (view === 'chatmode') {
 }
 
 views.pullnoticeopen = views.pullnotice
+// sidebarmenu: la barra (con UISHOT_MODULE) con todo desplegado y el menú
+// contextual abierto sobre una fila — sirve para cualquier árbol hecho con
+// TreeRow.
+views.sidebarmenu = views.sidebar
+// sidebaropen: lo mismo, desplegado y sin menú (para ver las guías).
+views.sidebaropen = views.sidebar
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
         <div className="h-screen w-screen bg-surface text-on-surface">

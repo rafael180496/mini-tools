@@ -43,6 +43,8 @@ Después de agregar o eliminar un archivo de código, correr `codegraph sync` pa
 ./scripts/uishot.sh agents 520 780             # panel de agentes, con ancho y alto
 ./scripts/uishot.sh chat
 UISHOT_SCALE=150 ./scripts/uishot.sh settings  # con el tamaño de letra al 150 %
+UISHOT_MODULE=notes ./scripts/uishot.sh sidebaropen  # un árbol de la barra, todo desplegado
+UISHOT_MODULE=git ./scripts/uishot.sh sidebarmenu    # ídem, con el menú contextual abierto
 ```
 
 Imprime la ruta del PNG. Sirve para **revisar disposición, jerarquía y textos**

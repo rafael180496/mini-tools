@@ -861,6 +861,21 @@ export default function Workspace({
     // interfaz haya hecho nada: sin este aviso, el árbol la mostraría recién al
     // reabrir la app, que se lee como que no se guardó.
     useEffect(() => EventsOn('note:changed', () => setNotesToken((n) => n + 1)), [])
+    // Una nota borrada o fundida en otra: su pestaña se cierra, porque el
+    // autoguardado fallaría contra una fila que ya no existe. Si se fundió, se
+    // abre la que la absorbió. Se cierra y se abre en vez de cambiarle el
+    // noteId a la pestaña: el editor todavía tiene el título de la nota vieja,
+    // y un autoguardado antes de terminar de cargar se lo pondría a la otra.
+    useEffect(
+        () =>
+            EventsOn('note:removed', (p: {id: string; mergedInto?: string}) => {
+                setNotesToken((n) => n + 1)
+                const tab = tabsRef.current.find((t) => t.kind === 'note' && t.noteId === p.id)
+                if (tab) closeTabRef.current(tab.id)
+                if (p.mergedInto && tab) openNoteRef.current(p.mergedInto)
+            }),
+        [],
+    )
 
     // Editores de las notas abiertas, por pestaña. Son vistas de CodeMirror
     // distintas de la del editor SQL, y hay una por nota montada.
@@ -1026,6 +1041,7 @@ export default function Workspace({
         setTabs((prev) => prev.map((t) => (t.id === tabId ? {...t, httpItemId: item.id, title: item.name} : t)))
     }, [])
 
+    const openNoteRef = useRef<(noteId: string) => void>(() => {})
     const openNote = useCallback((noteId: string, title?: string) => {
         setTabs((prev) => {
             const existing = prev.find((t) => t.kind === 'note' && t.noteId === noteId)
@@ -1049,6 +1065,7 @@ export default function Workspace({
         })
         void SetNotesLastOpen(noteId).catch(() => {})
     }, [])
+    openNoteRef.current = openNote
 
     const changeAgentLayout = useCallback((dock: AgentDock, size: number) => {
         setAgentDockState(dock)
@@ -2973,6 +2990,8 @@ export default function Workspace({
         setTabs(next)
     }
 
+    const closeTabRef = useRef<(id: string) => void>(() => {})
+    closeTabRef.current = closeTab
     function closeTab(id: string) {
         // Cerrar una pestaña con una consulta corriendo la CANCELA. Ahora que
         // una ejecución sobrevive a irse a otra pestaña, cerrar la suya es la

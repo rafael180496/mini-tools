@@ -4257,6 +4257,7 @@ export namespace vault {
 	    snippet: string;
 	    matchedTitle: boolean;
 	    folderId: string;
+	    pinned: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new NoteHit(source);
@@ -4272,6 +4273,7 @@ export namespace vault {
 	        this.snippet = source["snippet"];
 	        this.matchedTitle = source["matchedTitle"];
 	        this.folderId = source["folderId"];
+	        this.pinned = source["pinned"];
 	    }
 	}
 	export class NoteLink {
@@ -4300,6 +4302,7 @@ export namespace vault {
 	    linkCount: number;
 	    folderId: string;
 	    createdAt: number;
+	    pinned: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new NoteSummary(source);
@@ -4314,6 +4317,7 @@ export namespace vault {
 	        this.linkCount = source["linkCount"];
 	        this.folderId = source["folderId"];
 	        this.createdAt = source["createdAt"];
+	        this.pinned = source["pinned"];
 	    }
 	}
 	export class NoteTag {

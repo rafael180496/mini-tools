@@ -72,8 +72,12 @@ rm -rf tmp_migrationverify
 > hacía engañosa la sección: leerla daba a entender que agregar una migración
 > era todavía territorio inexplorado.
 
-- **Versión actual: 54.** El slice de `migrations.go` es la lista completa y
+- **Versión actual: 55.** El slice de `migrations.go` es la lista completa y
   autoritativa; cada entrada explica en su comentario por qué existe.
+- **Versión 55**: `vault_notes.pinned` (notas fijadas arriba de la barra, el
+  «marcador» de Obsidian), `DEFAULT 0`: ninguna nota existente queda fijada.
+  Verificada con los tests del store (`TestPinnedReachesBothSearchPaths`), que
+  abren un vault sandboxeado y aplican todas las migraciones.
 - **Versión 54**: `settings.snippets_panel_width` (ancho arrastrado del panel de
   snippets de las terminales), `DEFAULT 0` = sin arrastrar, que el frontend lee
   como su ancho por defecto. `SetSnippetsPanelWidth` lo acota a 240–900.

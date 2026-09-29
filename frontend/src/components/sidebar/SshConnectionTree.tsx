@@ -1,14 +1,14 @@
-import {useEffect, useRef, useState} from 'react'
-import {createPortal} from 'react-dom'
+import {useEffect, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
 import {ListConnections, ListShells} from '../../../wailsjs/go/main/App'
 import {localterm} from '../../../wailsjs/go/models'
 import {vault} from '../../../wailsjs/go/models'
 import ConfirmDialog from '../ConfirmDialog'
-import DbTypeIcon from '../DbTypeIcon'
 import Icon from '../Icon'
+import PromptDialog from '../git/PromptDialog'
 import SidebarSection from './SidebarSection'
+import TreeRow, {TREE_FOLDER_ICON, TREE_INDENT} from './TreeRow'
+import {MenuButton, menuAnchor, moveToFolderSubmenu, useTreeMenu, type TreeMenuEntry} from './TreeMenu'
 import {flattenForMenu} from './MoveToFolderMenu'
-import SshRowMenu from './SshRowMenu'
 import {buildFolderTree, countConnectionsIn, type FolderNode} from '../../lib/folderTree'
 import {environmentStyle} from '../../lib/environments'
 
@@ -23,9 +23,9 @@ interface SshConnectionTreeProps {
     onEditConnection: (conn: vault.ConnectionSummary) => void
     // Opens (or focuses) a connection's terminal tab — the only thing to do
     // with an SSH connection besides edit/move/delete, since it has no
-    // schema/keys to browse. Reached both from the dedicated row button and
-    // from clicking the row itself (unlike ConnectionTree, there's no
-    // separate "select to expand a tree" step to distinguish it from).
+    // schema/keys to browse. Reached both from the context menu and from
+    // clicking the row itself (unlike ConnectionTree, there's no separate
+    // "select to expand a tree" step to distinguish it from).
     onOpenSshTerminal: (conn: vault.ConnectionSummary) => void
     // Abre SIEMPRE una sesión más contra el servidor, aunque ya haya una
     // pestaña abierta. Separado del anterior a propósito: el clic en el nombre
@@ -46,7 +46,7 @@ interface SshConnectionTreeProps {
     // this host — reuses the same saved SSH connection as the terminal.
     onOpenSftp: (conn: vault.ConnectionSummary) => void
     // Opens terminal and files together in one tab. Additive: the two
-    // buttons above keep opening their standalone tabs exactly as before.
+    // entries above keep opening their standalone tabs exactly as before.
     onOpenSshHybrid: (conn: vault.ConnectionSummary) => void
     // Highlights whichever row's terminal is the ACTIVE editor tab right
     // now — this module has no "selected connection" concept of its own
@@ -55,9 +55,7 @@ interface SshConnectionTreeProps {
     activeTabConnectionId: string | null
     onExportConnectionConfig: (connId: string) => void
     // connIds con al menos UNA sesión remota viva ahora mismo. Decide el punto
-    // al lado del nombre y si el botón de desconectar existe. Cuántas hay no se
-    // muestra acá: las pestañas abiertas ya lo dicen, y un contador en el árbol
-    // repetiría ese dato en el lugar donde menos se mira.
+    // al lado del nombre y si la acción de desconectar existe.
     liveConnIds: Set<string>
     // Cuántas sesiones vivas tiene cada conexión. Solo se dibuja a partir de
     // dos: con una, el número no agrega nada al punto verde.
@@ -87,10 +85,16 @@ interface SshConnectionTreeProps {
 }
 
 // SSH's own sidebar module, sibling to "Conexiones" (ConnectionTree.tsx) —
-// same folder organization, search, and row actions (edit/move/export/
-// disconnect/delete), but none of ConnectionTree's schema-browsing surface
-// (no expand chevron, no metadata, no RedisKeyTree-equivalent): an SSH
-// connection's only real action is opening its terminal tab.
+// same folder organization and search, but none of ConnectionTree's
+// schema-browsing surface: an SSH connection is a leaf, and its real action
+// is opening its terminal tab.
+//
+// Las filas son las de TreeRow (guías por nivel, chevron solo en carpetas) y
+// casi todo lo que se hace con un servidor vive en el menú contextual —clic
+// derecho o «⋯»—, con palabras al lado de cada ícono. La fila llegó a cargar
+// cinco íconos sin rótulo al pasar el mouse, con «eliminar» a pocos píxeles
+// del que se quería; ahora en la fila solo queda lo que se repite con una
+// sesión abierta: otra terminal y desconectar.
 export default function SshConnectionTree({
     onNewConnection,
     onEditConnection,
@@ -119,24 +123,14 @@ export default function SshConnectionTree({
     // Intérpretes disponibles en esta máquina, para el menú de terminal local.
     // Se piden al abrir el menú y no al montar la barra: es una lista que solo
     // mira quien va a abrir una terminal, y cuesta un recorrido del PATH.
-    const [shells, setShells] = useState<localterm.Shell[]>([])
-    const [shellMenu, setShellMenu] = useState(false)
-    // Posición del menú de intérpretes, medida desde el botón al abrirlo.
-    //
-    // **Va en un portal con posición fija y no pegado al botón**: la barra
-    // lateral se puede angostar hasta menos que el ancho del menú, y ahí un
-    // desplegable posicionado adentro queda recortado por el contenedor —se
-    // veía cortado y con el texto encimado. Es la misma técnica que ya usan
-    // SshRowMenu y MoveToFolderMenu, y por la misma razón.
-    const [shellMenuPos, setShellMenuPos] = useState({top: 0, left: 0})
-    const shellBtnRef = useRef<HTMLButtonElement>(null)
+    const shellsRef = useRef<localterm.Shell[] | null>(null)
     const [confirmDelete, setConfirmDelete] = useState<vault.ConnectionSummary | null>(null)
     const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<vault.Folder | null>(null)
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
-    const [creatingFolderParentId, setCreatingFolderParentId] = useState<string | null>(null)
-    const [newFolderName, setNewFolderName] = useState('')
-    const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
-    const [renameFolderName, setRenameFolderName] = useState('')
+    // Carpeta nueva: id del padre ('' = raíz) mientras el diálogo está abierto.
+    const [creatingFolderIn, setCreatingFolderIn] = useState<string | null>(null)
+    const [renamingFolder, setRenamingFolder] = useState<vault.Folder | null>(null)
+    const menu = useTreeMenu()
 
     useEffect(() => {
         ListConnections().then((all) => setConnections(all.filter((c) => c.dbType === 'ssh')))
@@ -154,12 +148,13 @@ export default function SshConnectionTree({
     const flatFoldersForMenu = flattenForMenu(folderTree)
 
     function folderHasVisibleContent(node: FolderNode): boolean {
-        if (creatingFolderParentId === node.folder.id) return true
         if (folderNameMatches(node.folder)) return true
         if (connections.some((c) => c.folderId === node.folder.id && connectionMatches(c))) return true
         return node.children.some(folderHasVisibleContent)
     }
 
+    // Con una búsqueda activa todo se despliega: una coincidencia escondida
+    // dentro de una carpeta plegada es una coincidencia que no se ve.
     function isFolderExpanded(id: string): boolean {
         if (q) return true
         return expandedFolders.has(id)
@@ -182,180 +177,222 @@ export default function SshConnectionTree({
         })
     }
 
+    const expandAll = () => setExpandedFolders(new Set(sshFolders.map((f) => f.id)))
+    const collapseAll = () => setExpandedFolders(new Set())
+
     function startCreateFolder(parentId: string) {
-        setExpandedFolders((prev) => (parentId ? new Set(prev).add(parentId) : prev))
-        setCreatingFolderParentId(parentId)
-        setNewFolderName('')
+        if (parentId) setExpandedFolders((prev) => new Set(prev).add(parentId))
+        setCreatingFolderIn(parentId)
     }
 
-    function commitCreateFolder() {
-        const name = newFolderName.trim()
-        if (name && creatingFolderParentId !== null) {
-            onCreateFolder(name, creatingFolderParentId)
-        }
-        setCreatingFolderParentId(null)
-        setNewFolderName('')
+    // openWithShells abre un menú que necesita la lista de intérpretes, que se
+    // pide recién la primera vez (ver shellsRef). El menú se abre al volver la
+    // lista, así que el ancla se toma antes: React ya no sostiene
+    // `currentTarget` después de que el handler terminó.
+    function openWithShells(e: ReactMouseEvent, build: (shells: localterm.Shell[]) => TreeMenuEntry[]) {
+        const anchor = menuAnchor(e)
+        e.preventDefault()
+        e.stopPropagation()
+        const load = shellsRef.current
+            ? Promise.resolve(shellsRef.current)
+            : ListShells()
+                  .then((list) => list ?? [])
+                  .catch(() => [] as localterm.Shell[])
+        void load.then((list) => {
+            shellsRef.current = list
+            menu.openAtPoint(anchor, build(list))
+        })
     }
 
-    function startRenameFolder(f: vault.Folder) {
-        setRenamingFolderId(f.id)
-        setRenameFolderName(f.name)
+    const shellItems = (shells: localterm.Shell[]): TreeMenuEntry[] => [
+        {
+            label: 'Predeterminada',
+            icon: 'terminal',
+            title: 'Abre el intérprete elegido en Configuración → Terminal',
+            onSelect: () => onOpenLocalTerminal('', 'shell por defecto'),
+        },
+        ...(shells.length ? (['separator'] as TreeMenuEntry[]) : []),
+        ...shells.map(
+            (sh): TreeMenuEntry => ({
+                label: sh.label,
+                icon: 'terminal',
+                hint: sh.available ? undefined : 'falta',
+                disabled: !sh.available,
+                title: sh.available ? `Abre ${sh.label} (${sh.path}) en una pestaña nueva` : `${sh.label} no está instalado en esta máquina`,
+                onSelect: () => onOpenLocalTerminal(sh.id, sh.label),
+            }),
+        ),
+    ]
+
+    const connectionMenu = (e: ReactMouseEvent, c: vault.ConnectionSummary) => {
+        const liveCount = liveSessionCounts.get(c.id) ?? 0
+        const isLive = liveConnIds.has(c.id)
+        menu.openAt(e, [
+            {label: 'Abrir terminal', icon: 'terminal', hint: 'clic', title: 'Abre la terminal de este servidor, o la enfoca si ya está abierta', onSelect: () => onOpenSshTerminal(c)},
+            {
+                label: 'Nueva terminal',
+                icon: 'add',
+                title: 'Abre otra sesión contra este servidor, además de las que ya estén abiertas. Todas comparten una sola conexión SSH: no se autentica de nuevo',
+                onSelect: () => onOpenSshTerminalSession(c),
+            },
+            {label: 'Explorador SFTP', icon: 'swap_horiz', title: 'Transferir archivos entre esta máquina y el servidor', onSelect: () => onOpenSftp(c)},
+            {
+                label: 'Sesión combinada',
+                icon: 'vertical_split',
+                title: 'Consola y explorador de archivos del mismo servidor en una sola pestaña, sobre una única conexión SSH (Ctrl+Shift+F muestra u oculta los archivos)',
+                onSelect: () => onOpenSshHybrid(c),
+            },
+            'separator',
+            {label: 'Editar conexión', icon: 'edit', onSelect: () => onEditConnection(c)},
+            {label: 'Mover a…', icon: 'drive_file_move', submenu: moveToFolderSubmenu(flatFoldersForMenu, c.folderId ?? '', (f) => onMoveConnectionToFolder(c.id, f))},
+            {
+                label: 'Exportar configuración',
+                icon: 'output',
+                title: 'Guarda host, puerto y usuario en un archivo — nunca la contraseña ni la llave privada',
+                onSelect: () => onExportConnectionConfig(c.id),
+            },
+            'separator',
+            // Desconectar solo aparece si hay algo que desconectar: sin sesión
+            // viva no hacía nada y se leía como roto.
+            ...(isLive
+                ? [
+                      {
+                          label: liveCount > 1 ? `Desconectar (${liveCount} sesiones)` : 'Desconectar',
+                          icon: 'power_settings_new',
+                          title: 'Cierra las sesiones de terminal abiertas contra este servidor — la conexión guardada queda intacta',
+                          onSelect: () => onDisconnect(c.id),
+                      } as TreeMenuEntry,
+                  ]
+                : []),
+            {label: 'Eliminar conexión', icon: 'delete', danger: true, onSelect: () => setConfirmDelete(c)},
+        ])
     }
 
-    function commitRenameFolder() {
-        const name = renameFolderName.trim()
-        if (name && renamingFolderId) {
-            onRenameFolder(renamingFolderId, name)
-        }
-        setRenamingFolderId(null)
+    const folderMenu = (e: ReactMouseEvent, node: FolderNode) => {
+        const f = node.folder
+        const open = isFolderExpanded(f.id)
+        menu.openAt(e, [
+            {label: 'Subcarpeta nueva', icon: 'create_new_folder', onSelect: () => startCreateFolder(f.id)},
+            'separator',
+            {label: open ? 'Plegar' : 'Desplegar', icon: open ? 'unfold_less' : 'unfold_more', disabled: !!q, onSelect: () => toggleFolder(f.id)},
+            'separator',
+            {label: 'Cambiar nombre', icon: 'edit', onSelect: () => setRenamingFolder(f)},
+            {label: 'Subir', icon: 'arrow_upward', title: 'Mueve la carpeta un lugar hacia arriba entre sus hermanas', onSelect: () => onReorderFolder(f.id, 'up')},
+            {label: 'Bajar', icon: 'arrow_downward', title: 'Mueve la carpeta un lugar hacia abajo entre sus hermanas', onSelect: () => onReorderFolder(f.id, 'down')},
+            'separator',
+            {
+                label: 'Eliminar carpeta',
+                icon: 'delete',
+                danger: true,
+                title: 'Su contenido se mueve a la carpeta contenedora, nunca se borra',
+                onSelect: () => setConfirmDeleteFolder(f),
+            },
+        ])
     }
 
-    function renderNewFolderInput() {
-        return (
-            <input
-                autoFocus
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onBlur={commitCreateFolder}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitCreateFolder()
-                    if (e.key === 'Escape') {
-                        setCreatingFolderParentId(null)
-                        setNewFolderName('')
-                    }
-                }}
-                placeholder="Nombre de la carpeta..."
-                className="mb-1 w-full rounded border-none bg-surface-container-highest px-2 py-1 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary"
-            />
-        )
-    }
+    const blankMenu = (e: ReactMouseEvent) =>
+        openWithShells(e, (shells) => [
+            {label: 'Conexión SSH nueva', icon: 'add', onSelect: onNewConnection},
+            {label: 'Carpeta nueva', icon: 'create_new_folder', onSelect: () => startCreateFolder('')},
+            'separator',
+            {label: 'Terminal de esta máquina', icon: 'terminal', submenu: shellItems(shells)},
+            'separator',
+            {label: 'Desplegar todo', icon: 'unfold_more', disabled: !!q || sshFolders.length === 0, onSelect: expandAll},
+            {label: 'Plegar todo', icon: 'unfold_less', disabled: !!q || sshFolders.length === 0, onSelect: collapseAll},
+        ])
 
     function renderConnectionRow(c: vault.ConnectionSummary, depth: number) {
         const isActive = c.id === activeTabConnectionId
         const isLive = liveConnIds.has(c.id)
         const liveCount = liveSessionCounts.get(c.id) ?? 0
+        const env = envStyleOf(c)
         return (
-            <div key={c.id} className="mb-0.5">
-                <div
-                    style={{paddingLeft: `${8 + depth * 14}px`}}
-                    // `sidebar-row-active` (globals.css) explica por qué la fila
-                    // activa es un tinte con una barra y no un relleno.
-                    className={`group flex w-full items-center gap-1 py-1.5 pr-3 text-left text-sm transition-colors ${
-                        isActive ? 'sidebar-row-active' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
-                    } ${envStyleOf(c)?.border ?? ''}`}
-                >
-                    {/* No schema/keys to browse for an SSH connection — no
-                        expand chevron, just a same-size spacer so the row's
-                        icon/name align with folder rows above/below it. */}
-                    <span className="shrink-0 p-0.5 opacity-0" aria-hidden>
-                        <Icon name="chevron_right" size={18} />
-                    </span>
-                    {/* overflow-hidden: con la sesión viva y el mouse encima
-                        entran cinco botones más en la fila, el nombre se
-                        achica a cero y sin recorte el ícono y los puntos se
-                        dibujaban encima de los botones de al lado. */}
-                    <button
-                        onClick={() => onOpenSshTerminal(c)}
-                        title={`Abrir terminal — conecta por SSH a "${c.name}" en una pestaña nueva (o la enfoca si ya está abierta)`}
-                        className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left"
-                    >
-                        <DbTypeIcon dbType={c.dbType} size={16} />
+            <TreeRow
+                key={c.id}
+                depth={depth}
+                // El ícono cambia de tono con una sesión viva: es lo que se
+                // busca de un vistazo en una lista de servidores.
+                icon="dns"
+                iconFilled={isLive}
+                iconClass={isActive ? 'text-primary' : isLive ? 'text-secondary' : undefined}
+                label={
+                    <>
                         {c.color && (
                             <span
                                 aria-hidden
-                                title="Color de esta conexión"
-                                className="h-2 w-2 shrink-0 rounded-full"
+                                className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
                                 style={{backgroundColor: c.color}}
                             />
                         )}
-                        <span className={`truncate ${isActive ? 'font-semibold' : 'font-medium'}`}>{c.name}</span>
-                        {isLive &&
-                            (liveCount > 1 ? (
-                                <span
-                                    title={`${liveCount} sesiones SSH abiertas contra este servidor`}
-                                    className="shrink-0 rounded-full bg-emerald-500/15 px-1 text-ui-9 leading-tight font-semibold text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"
+                        {c.name}
+                    </>
+                }
+                labelClass={isActive ? 'text-on-surface font-medium' : undefined}
+                title={
+                    c.name +
+                    (env ? ` · ${env.label}` : '') +
+                    (isLive ? ` · ${liveCount > 1 ? `${liveCount} sesiones abiertas` : 'sesión abierta'}` : '') +
+                    '. Clic: abrir su terminal (o enfocarla). Clic derecho: más opciones.'
+                }
+                onClick={() => onOpenSshTerminal(c)}
+                onContextMenu={(e) => connectionMenu(e, c)}
+                active={isActive}
+                stripe={env?.dot}
+                trailing={
+                    isLive ? (
+                        liveCount > 1 ? (
+                            <span
+                                title={`${liveCount} sesiones SSH abiertas contra este servidor`}
+                                className="rounded-full bg-secondary/15 px-1 text-ui-9 leading-tight font-semibold tabular-nums text-secondary"
+                            >
+                                {liveCount}
+                            </span>
+                        ) : (
+                            <span
+                                aria-hidden
+                                title="Hay una sesión SSH abierta contra este servidor"
+                                className="h-1.5 w-1.5 rounded-full bg-secondary"
+                            />
+                        )
+                    ) : undefined
+                }
+                actions={
+                    <>
+                        {/* Con una sesión viva, lo que se repite es abrir
+                            otra y cerrarlas: van en la fila. Sin sesión, el
+                            clic ya abre la terminal y el resto es menú. */}
+                        {isLive && (
+                            <>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        onOpenSshTerminalSession(c)
+                                    }}
+                                    title="Nueva terminal — abre otra sesión contra este servidor. Todas comparten una sola conexión SSH: no se autentica de nuevo"
+                                    className="sidebar-icon p-0.5!"
                                 >
-                                    {liveCount}
-                                </span>
-                            ) : (
-                                <span
-                                    aria-hidden
-                                    title="Hay una sesión SSH abierta contra este servidor"
-                                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
-                                />
-                            ))}
-                    </button>
-                    {/* Only the actions with a distinct verb stay on the row.
-                        Everything else moved into SshRowMenu — seven unlabelled
-                        icons crammed into a sidebar this narrow were impossible
-                        to tell apart, with "eliminar" a few pixels from the one
-                        you meant to click. */}
-                    {/* Nueva sesión. Va en la fila y no solo en el menú
-                        porque con varias terminales por servidor es la acción
-                        que se repite: el menú es para lo que se hace una vez
-                        (editar, mover, exportar). */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onOpenSshTerminalSession(c)
-                        }}
-                        title="Nueva terminal — abre otra sesión contra este servidor, además de las que ya estén abiertas. Todas comparten una sola conexión SSH: no se autentica de nuevo"
-                        className="hidden shrink-0 sidebar-icon group-hover:block"
-                    >
-                        <Icon name="add" size={15} />
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onOpenSftp(c)
-                        }}
-                        title="Abrir explorador SFTP — transferir archivos entre hosts"
-                        className="hidden shrink-0 sidebar-icon group-hover:block"
-                    >
-                        <Icon name="swap_horiz" size={15} />
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onOpenSshHybrid(c)
-                        }}
-                        title="Abrir sesión combinada — consola y explorador de archivos del mismo servidor en una sola pestaña, sobre una única conexión SSH (Ctrl+Shift+F muestra u oculta los archivos)"
-                        className="hidden shrink-0 sidebar-icon group-hover:block"
-                    >
-                        <Icon name="vertical_split" size={15} />
-                    </button>
-                    {/* Disconnect only exists while there IS something to
-                        disconnect: on a connection with no live session the
-                        button did nothing, which made it read as broken. It
-                        also stays visible without hovering — a live session is
-                        state worth seeing, not just an action. */}
-                    {isLive && (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                onDisconnect(c.id)
-                            }}
-                            title={
-                                liveCount > 1
-                                    ? `Cerrar las ${liveCount} sesiones de terminal abiertas contra este servidor — la conexión guardada queda intacta`
-                                    : 'Cerrar la sesión de terminal abierta contra este servidor — la conexión guardada queda intacta'
-                            }
-                            className="shrink-0 rounded p-1 text-error transition-colors hover:bg-error-container/40"
-                        >
-                            <Icon name="power_settings_new" size={15} />
-                        </button>
-                    )}
-                    <SshRowMenu
-                        flatFolders={flatFoldersForMenu}
-                        onOpenTerminal={() => onOpenSshTerminal(c)}
-                        onOpenTerminalSession={() => onOpenSshTerminalSession(c)}
-                        onEdit={() => onEditConnection(c)}
-                        onMoveToFolder={(folderId) => onMoveConnectionToFolder(c.id, folderId)}
-                        onExport={() => onExportConnectionConfig(c.id)}
-                        onDelete={() => setConfirmDelete(c)}
-                    />
-                </div>
-            </div>
+                                    <Icon name="add" size={14} />
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        onDisconnect(c.id)
+                                    }}
+                                    title={
+                                        liveCount > 1
+                                            ? `Cerrar las ${liveCount} sesiones de terminal abiertas contra este servidor — la conexión guardada queda intacta`
+                                            : 'Cerrar la sesión de terminal abierta contra este servidor — la conexión guardada queda intacta'
+                                    }
+                                    className="rounded p-0.5 text-error hover:bg-error-container/40"
+                                >
+                                    <Icon name="power_settings_new" size={14} />
+                                </button>
+                            </>
+                        )}
+                        <MenuButton onOpen={(e) => connectionMenu(e, c)} title="Opciones del servidor: terminal, SFTP, editar, mover, exportar, eliminar" />
+                    </>
+                }
+            />
         )
     }
 
@@ -363,124 +400,46 @@ export default function SshConnectionTree({
         if (q && !folderHasVisibleContent(node)) return null
 
         const expanded = isFolderExpanded(node.folder.id)
-        const isRenaming = renamingFolderId === node.folder.id
         const ownConnections = connections.filter((c) => c.folderId === node.folder.id && connectionMatches(c))
-        const isCreatingHere = creatingFolderParentId === node.folder.id
         const total = countConnectionsIn(node, connections, connectionMatches)
+        const visibleChildren = q ? node.children.filter(folderHasVisibleContent) : node.children
 
         return (
-            <div key={node.folder.id} className="mb-0.5">
-                <div
-                    style={{paddingLeft: `${4 + depth * 14}px`}}
-                    className="group/folder flex items-center gap-1 rounded py-1 pr-2 text-xs text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                >
-                    <button
-                        onClick={() => toggleFolder(node.folder.id)}
-                        title={expanded ? 'Contraer carpeta' : 'Expandir carpeta'}
-                        className="shrink-0 sidebar-icon"
-                    >
-                        <Icon name={expanded ? 'expand_more' : 'chevron_right'} size={16} />
-                    </button>
-                    <Icon name={expanded ? 'folder_open' : 'folder'} size={15} className="shrink-0 opacity-70" />
-                    {isRenaming ? (
-                        <input
-                            autoFocus
-                            value={renameFolderName}
-                            onChange={(e) => setRenameFolderName(e.target.value)}
-                            onBlur={commitRenameFolder}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') commitRenameFolder()
-                                if (e.key === 'Escape') setRenamingFolderId(null)
-                            }}
-                            className="min-w-0 flex-1 rounded border-none bg-surface-container-highest px-1 py-0.5 text-xs text-on-surface outline-none"
-                        />
-                    ) : (
-                        <>
-                            <span className="min-w-0 flex-1 truncate font-medium">{node.folder.name}</span>
-                            {/* Ver ConnectionTree: el contador se esconde al
-                                pasar el mouse para dejarle el lugar a los
-                                botones de la fila. */}
-                            {total > 0 && (
-                                <span className="shrink-0 font-mono text-ui-10 tabular-nums text-on-surface-variant/45 group-hover/folder:hidden">
-                                    {total}
-                                </span>
-                            )}
-                        </>
-                    )}
-                    {!isRenaming && (
-                        <>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    startCreateFolder(node.folder.id)
-                                }}
-                                title="Nueva subcarpeta"
-                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
-                            >
-                                <Icon name="create_new_folder" size={14} />
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    onReorderFolder(node.folder.id, 'up')
-                                }}
-                                title="Mover arriba"
-                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
-                            >
-                                <Icon name="arrow_upward" size={13} />
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    onReorderFolder(node.folder.id, 'down')
-                                }}
-                                title="Mover abajo"
-                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
-                            >
-                                <Icon name="arrow_downward" size={13} />
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    startRenameFolder(node.folder)
-                                }}
-                                title="Renombrar carpeta"
-                                className="hidden shrink-0 sidebar-icon group-hover/folder:block"
-                            >
-                                <Icon name="edit" size={13} />
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    setConfirmDeleteFolder(node.folder)
-                                }}
-                                title="Eliminar carpeta — su contenido se mueve a la carpeta contenedora, nunca se borra"
-                                className="hidden shrink-0 rounded p-0.5 opacity-70 hover:text-error hover:opacity-100 group-hover/folder:block"
-                            >
-                                <Icon name="delete" size={13} />
-                            </button>
-                        </>
-                    )}
-                </div>
+            <div key={node.folder.id}>
+                <TreeRow
+                    depth={depth}
+                    icon={expanded ? 'folder_open' : 'folder'}
+                    iconClass={TREE_FOLDER_ICON}
+                    iconFilled={!expanded}
+                    label={node.folder.name}
+                    labelClass="text-on-surface font-medium"
+                    title={`${node.folder.name} — ${total} ${total === 1 ? 'servidor' : 'servidores'}. Clic derecho: más opciones.`}
+                    expanded={expanded}
+                    onToggle={() => toggleFolder(node.folder.id)}
+                    onClick={() => toggleFolder(node.folder.id)}
+                    onContextMenu={(e) => folderMenu(e, node)}
+                    trailing={total > 0 ? <span className="text-ui-10 tabular-nums text-on-surface-variant/50">{total}</span> : undefined}
+                    actions={<MenuButton onOpen={(e) => folderMenu(e, node)} title="Opciones de la carpeta" />}
+                />
                 {expanded && (
-                    <div>
-                        {isCreatingHere && (
-                            <div style={{paddingLeft: `${18 + depth * 14}px`, paddingRight: '8px'}}>{renderNewFolderInput()}</div>
-                        )}
-                        {node.children.map((child) => renderFolderNode(child, depth + 1))}
+                    <>
+                        {visibleChildren.map((child) => renderFolderNode(child, depth + 1))}
                         {ownConnections.map((c) => renderConnectionRow(c, depth + 1))}
-                        {!isCreatingHere &&
-                            (q ? node.children.filter(folderHasVisibleContent).length : node.children.length) === 0 &&
-                            ownConnections.length === 0 && (
-                                <p style={{paddingLeft: `${18 + depth * 14}px`}} className="py-1 text-xs text-on-surface-variant/60">
-                                    {q ? 'Sin coincidencias.' : 'Carpeta vacía.'}
-                                </p>
-                            )}
-                    </div>
+                        {visibleChildren.length === 0 && ownConnections.length === 0 && (
+                            <p
+                                style={{paddingLeft: `${(depth + 1) * TREE_INDENT + 28}px`}}
+                                className="py-0.5 text-ui-11 text-on-surface-variant/60"
+                            >
+                                {q ? 'Sin coincidencias.' : 'Carpeta vacía.'}
+                            </p>
+                        )}
+                    </>
                 )}
             </div>
         )
     }
+
+    const headerBtn = 'rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40'
 
     return (
         <SidebarSection
@@ -491,113 +450,88 @@ export default function SshConnectionTree({
                     <button
                         onClick={() => startCreateFolder('')}
                         title="Crea una carpeta para agrupar servidores SSH — las carpetas solo organizan, nunca cambian a qué host apunta una conexión"
-                        className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                        className={headerBtn}
                     >
                         <Icon name="create_new_folder" size={16} />
+                    </button>
+                    <button
+                        onClick={() => (expandedFolders.size > 0 ? collapseAll() : expandAll())}
+                        disabled={!!q || sshFolders.length === 0}
+                        title={
+                            q
+                                ? 'Con una búsqueda activa las carpetas ya están desplegadas'
+                                : sshFolders.length === 0
+                                  ? 'Todavía no hay carpetas que desplegar'
+                                  : expandedFolders.size > 0
+                                    ? 'Plegar todas las carpetas'
+                                    : 'Desplegar todas las carpetas'
+                        }
+                        className={headerBtn}
+                    >
+                        <Icon name={expandedFolders.size > 0 ? 'unfold_less' : 'unfold_more'} size={16} />
                     </button>
                     {/* Terminal local. Va en este encabezado y no en el
                         toolbar general porque es parte de trabajar acá: la
                         mitad de lo que se hace con un servidor tiene una mitad
                         local (un scp, un kubectl, mirar un archivo que uno
                         acaba de bajar). */}
-                    <>
-                        <button
-                            ref={shellBtnRef}
-                            onClick={() => {
-                                const rect = shellBtnRef.current?.getBoundingClientRect()
-                                if (rect) {
-                                    // Se ancla al botón pero se recorta contra
-                                    // la ventana: con la barra angosta el menú
-                                    // se abre por encima del área de trabajo,
-                                    // que es donde hay lugar, y nunca se pasa
-                                    // del borde derecho ni de abajo.
-                                    const width = 224
-                                    setShellMenuPos({
-                                        top: Math.min(rect.bottom + 4, Math.max(8, window.innerHeight - 220)),
-                                        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
-                                    })
-                                }
-                                setShellMenu((v) => !v)
-                                if (shells.length === 0) {
-                                    ListShells()
-                                        .then((list) => setShells(list ?? []))
-                                        .catch(() => setShells([]))
-                                }
-                            }}
-                            title="Abre una terminal de ESTA máquina (PowerShell, zsh, bash…) en una pestaña, con los mismos snippets y su propio historial. No es un servidor: lo que ejecutes corre en tu equipo."
-                            className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                        >
-                            <Icon name="terminal" size={16} />
-                        </button>
-                        {shellMenu &&
-                            createPortal(
-                            <>
-                                {/* Capa de cierre: un menú que solo se cierra
-                                    con su propio botón obliga a volver a
-                                    apuntarle. */}
-                                <div className="fixed inset-0 z-40" onClick={() => setShellMenu(false)} />
-                                <div
-                                    style={{position: 'fixed', top: shellMenuPos.top, left: shellMenuPos.left}}
-                                    className="z-50 max-h-72 w-56 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-high py-1 shadow-lg"
-                                >
-                                    <p className="px-3 py-1 text-ui-10 uppercase tracking-wider text-on-surface-variant/70">
-                                        Terminal de esta máquina
-                                    </p>
-                                    <button
-                                        onClick={() => {
-                                            setShellMenu(false)
-                                            onOpenLocalTerminal('', 'shell por defecto')
-                                        }}
-                                        title="Abre el intérprete elegido en Configuración → Terminal"
-                                        className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs text-on-surface hover:bg-surface-variant"
-                                    >
-                                        <Icon name="terminal" size={13} className="shrink-0 text-primary" />
-                                        Predeterminada
-                                    </button>
-                                    {shells.map((sh) => (
-                                        <button
-                                            key={sh.id}
-                                            disabled={!sh.available}
-                                            onClick={() => {
-                                                setShellMenu(false)
-                                                onOpenLocalTerminal(sh.id, sh.label)
-                                            }}
-                                            title={
-                                                sh.available
-                                                    ? `Abre ${sh.label} (${sh.path}) en una pestaña nueva`
-                                                    : `${sh.label} no está instalado en esta máquina`
-                                            }
-                                            className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs text-on-surface hover:bg-surface-variant disabled:opacity-40 disabled:hover:bg-transparent"
-                                        >
-                                            <Icon name="terminal" size={13} className="shrink-0 text-on-surface-variant" />
-                                            <span className="min-w-0 flex-1 truncate">{sh.label}</span>
-                                            {!sh.available && <span className="shrink-0 text-ui-10 text-on-surface-variant/60">falta</span>}
-                                        </button>
-                                    ))}
-                                </div>
-                            </>,
-                            document.body,
-                        )}
-                    </>
                     <button
-                        onClick={onNewConnection}
-                        title="Crea una nueva conexión SSH (host, usuario y clave o llave)"
-                        className="rounded p-1 text-primary hover:bg-surface-variant"
+                        onClick={(e) => openWithShells(e, shellItems)}
+                        title="Abre una terminal de ESTA máquina (PowerShell, zsh, bash…) en una pestaña, con los mismos snippets y su propio historial. No es un servidor: lo que ejecutes corre en tu equipo."
+                        className={headerBtn}
                     >
+                        <Icon name="terminal" size={16} />
+                    </button>
+                    <button onClick={onNewConnection} title="Crea una nueva conexión SSH (host, usuario y clave o llave)" className={headerBtn}>
                         <Icon name="add" size={16} />
                     </button>
                 </>
             }
         >
-            {creatingFolderParentId === '' && <div className="px-3 pt-1">{renderNewFolderInput()}</div>}
-            {rootConnections.length === 0 && visibleFolderNodes.length === 0 && (
-                <p className="p-3 text-xs text-on-surface-variant/60">
-                    {q ? `Sin coincidencias para "${filter}".` : 'Sin conexiones SSH todavía.'}
-                </p>
-            )}
-            {visibleFolderNodes.map((node) => renderFolderNode(node, 0))}
-            {rootConnections.map((c) => renderConnectionRow(c, 0))}
+            {/* El área vacía debajo de las filas también responde al clic
+                derecho (conexión nueva, carpeta, terminal local, plegar), como
+                en cualquier explorador. */}
+            <div className="min-h-0 flex-1 pb-6" onContextMenu={blankMenu}>
+                {rootConnections.length === 0 && visibleFolderNodes.length === 0 && (
+                    <p className="p-3 text-xs text-on-surface-variant/60">
+                        {q ? `Sin coincidencias para "${filter}".` : 'Sin conexiones SSH todavía.'}
+                    </p>
+                )}
+                {visibleFolderNodes.map((node) => renderFolderNode(node, 0))}
+                {rootConnections.map((c) => renderConnectionRow(c, 0))}
+            </div>
 
+            {menu.element}
+
+            {creatingFolderIn !== null && (
+                <PromptDialog
+                    title={creatingFolderIn ? 'Subcarpeta nueva' : 'Carpeta nueva'}
+                    label="Nombre"
+                    placeholder="Nombre de la carpeta..."
+                    confirmLabel="Crear"
+                    description="Las carpetas solo organizan: nunca cambian a qué host apunta una conexión."
+                    onSubmit={(value) => {
+                        const parent = creatingFolderIn
+                        setCreatingFolderIn(null)
+                        if (value.trim()) onCreateFolder(value.trim(), parent)
+                    }}
+                    onClose={() => setCreatingFolderIn(null)}
+                />
+            )}
+            {renamingFolder && (
+                <PromptDialog
+                    title="Cambiar el nombre de la carpeta"
+                    label="Nombre"
+                    initial={renamingFolder.name}
+                    confirmLabel="Guardar"
+                    onSubmit={(value) => {
+                        const id = renamingFolder.id
+                        setRenamingFolder(null)
+                        if (value.trim()) onRenameFolder(id, value.trim())
+                    }}
+                    onClose={() => setRenamingFolder(null)}
+                />
+            )}
             {confirmDelete && (
                 <ConfirmDialog
                     title="Eliminar conexión"

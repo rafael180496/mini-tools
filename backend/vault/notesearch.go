@@ -56,6 +56,10 @@ type NoteHit struct {
 	// FolderID es la carpeta donde vive, para poder dibujar el árbol con los
 	// resultados de una búsqueda en su lugar.
 	FolderID string `json:"folderId"`
+	// Pinned es si está fijada. Como FolderID, hay que llenarlo en los DOS
+	// caminos de SearchNotes (vacío y con texto): ver la trampa en
+	// .claude/specs/vault-notes.md.
+	Pinned bool `json:"pinned"`
 }
 
 // NoteQuery es una consulta ya parseada.
@@ -217,7 +221,7 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 			// que la carpeta sí llegaba.
 			out = append(out, NoteHit{
 				ID: n.ID, Title: n.Title, IsPrivate: n.IsPrivate,
-				UpdatedAt: n.UpdatedAt, FolderID: n.FolderID,
+				UpdatedAt: n.UpdatedAt, FolderID: n.FolderID, Pinned: n.Pinned,
 			})
 		}
 		return out, nil
@@ -245,7 +249,7 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 	rows, err := s.db.Query(
 		`SELECT id, encrypted_title, title_nonce, encrypted_content, content_nonce,
 		        encrypted_frontmatter, frontmatter_nonce, is_private, updated_at
-		        , COALESCE(folder_id, '')
+		        , COALESCE(folder_id, ''), pinned
 		 FROM vault_notes`)
 	if err != nil {
 		return nil, fmt.Errorf("vault: buscando en las notas: %w", err)
@@ -259,8 +263,9 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 		var private int
 		var updated int64
 		var folderID string
+		var pinned int
 		if err := rows.Scan(&id, &encTitle, &titleNonce, &encContent, &contentNonce,
-			&encFm, &fmNonce, &private, &updated, &folderID); err != nil {
+			&encFm, &fmNonce, &private, &updated, &folderID, &pinned); err != nil {
 			return nil, err
 		}
 
@@ -285,6 +290,7 @@ func (s *Store) SearchNotesSmart(raw string, limit int) ([]NoteHit, error) {
 		hit.IsPrivate = private != 0
 		hit.UpdatedAt = updated
 		hit.FolderID = folderID
+		hit.Pinned = pinned != 0
 		hits = append(hits, hit)
 	}
 	if err := rows.Err(); err != nil {
