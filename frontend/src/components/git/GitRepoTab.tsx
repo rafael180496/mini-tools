@@ -112,6 +112,7 @@ import GitRebaseDialog from './GitRebaseDialog'
 import GitStashPanel from './GitStashPanel'
 import GitFileEditor from './GitFileEditor'
 import GitAgentPanel from './GitAgentPanel'
+import GitOutputNotice from './GitOutputNotice'
 import AgentChat from '../agent/AgentChat'
 import type {WorkContext} from '../agent/workContext'
 import LocalTerminalPanel from '../terminal/LocalTerminalPanel'
@@ -1460,7 +1461,8 @@ export default function GitRepoTab({
             setSelectedPath(null)
             setSelectedBranch(null)
 
-            const known = commits.find((c) => c.hash === hash)
+            // startsWith: la salida de un pull da el hash abreviado.
+            const known = commits.find((c) => c.hash === hash || (hash.length >= 7 && c.hash.startsWith(hash)))
             if (known) {
                 setSelectedCommit(known)
                 setReveal({hash: known.hash, token: ++revealSeq.current})
@@ -2881,7 +2883,17 @@ export default function GitRepoTab({
             )}
 
             {error && <Banner kind="error" text={error} onClose={() => setError(null)} />}
-            {notice && <Banner kind="info" text={notice} onClose={() => setNotice(null)} />}
+            {notice && (
+                <GitOutputNotice
+                    text={notice}
+                    onClose={() => setNotice(null)}
+                    onOpenFile={(path) => {
+                        setEditRequest({path, token: Date.now()})
+                        setView('files')
+                    }}
+                    onRevealCommit={(hash) => void revealCommit(hash)}
+                />
+            )}
 
             {/* Cuerpo de la pestaña. El panel de la terminal se dibuja
                 ENCIMA en position:absolute y el área principal le hace lugar
@@ -4219,7 +4231,7 @@ function Banner({kind, text, onClose}: {kind: 'error' | 'info'; text: string; on
             <Icon name={kind === 'error' ? 'error' : 'info'} size={14} className="mt-px shrink-0" />
             {/* Errors from git are multi-line and the useful part is often the
                 last line — wrapped and shown whole rather than truncated. */}
-            <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono">{text}</pre>
+            <pre className="max-h-[30vh] min-w-0 flex-1 overflow-auto whitespace-pre-wrap break-words font-mono">{text}</pre>
             <button onClick={onClose} title="Cerrar este mensaje" className="shrink-0 rounded p-0.5 hover:bg-surface-variant/50">
                 <Icon name="close" size={14} />
             </button>

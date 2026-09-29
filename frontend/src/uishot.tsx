@@ -30,6 +30,7 @@
 import {StrictMode} from 'react'
 import {createRoot} from 'react-dom/client'
 import './styles/globals.css'
+import GitOutputNotice from './components/git/GitOutputNotice'
 
 // --- Bindings simulados ---------------------------------------------------
 //
@@ -1213,7 +1214,30 @@ const CONSOLE_ENTRIES = [
     },
 ]
 
+// Salida de un pull grande, con el ancho de COLUMNS=1000 que usa el backend.
+const pullOutput = [
+    'Updating dab00220f..0c234c506',
+    'Fast-forward',
+    ...Array.from({length: 60}, (_, i) => {
+        const n = (i * 37) % 320
+        return ` app/controllers/api/v1/accounts/${['agents', 'calls', 'conversations', 'forms', 'inboxes', 'labels'][i % 6]}_controller_${i}.rb | ${n} ${'+'.repeat(Math.ceil(n / 8))}${'-'.repeat(i % 4)}`
+    }),
+    ' app/javascript/{dashboard/old_api.js => shared/api.js} | 12 ++--',
+    ' public/logo.png | Bin 0 -> 3456 bytes',
+    ' 62 files changed, 9123 insertions(+), 188 deletions(-)',
+    ' create mode 100644 app/controllers/api/v1/accounts/calls_controller_1.rb',
+    ' delete mode 100644 app/controllers/api/v1/accounts/forms_controller_3.rb',
+].join('\n')
+
 const views: Record<string, React.ReactNode> = {
+    // pullnoticeopen: la misma, con la lista desplegada.
+    pullnoticeopen: null as React.ReactNode,
+    pullnotice: (
+        <div className="flex h-full flex-col bg-surface">
+            <GitOutputNotice text={pullOutput} onClose={() => {}} onOpenFile={() => {}} onRevealCommit={() => {}} />
+            <div className="flex-1 p-4 text-ui-11 text-on-surface-variant">(grafo de commits)</div>
+        </div>
+    ),
     // El visor de DDL, con un objeto largo de verdad: lo que se mira acá es que
     // el panel scrollee adentro del modal (y no desborde) y que la cabecera y
     // la barra de estado queden fijas mientras el DDL corre.
@@ -1659,10 +1683,14 @@ if (view === 'schematree') {
         tablas?.click()
     }, 2100)
 }
+if (view === 'pullnoticeopen') {
+    autoClick(() => [...document.querySelectorAll<HTMLElement>('button')].find((b) => b.textContent?.includes('archivos actualizados')))
+}
 if (view === 'chatmode') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Chat · Claude Code')))
 }
 
+views.pullnoticeopen = views.pullnotice
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
         <div className="h-screen w-screen bg-surface text-on-surface">

@@ -130,6 +130,9 @@ func hardenedEnv(extra []string) []string {
 		// terminal to write to.
 		"GIT_PAGER=cat",
 		"PAGER=cat",
+		// Sin terminal git asume 80 columnas y el diffstat de un pull recorta
+		// las rutas largas a ".../resto": la UI no podría abrir esos archivos.
+		"COLUMNS=1000",
 	)
 	return append(env, extra...)
 }

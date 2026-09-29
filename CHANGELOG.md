@@ -4,6 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Un pull con muchos cambios ya no tapa el módulo Git.** La salida de git se volcaba entera en un aviso sin tope de alto: un pull de ciento cincuenta archivos empujaba el grafo fuera de la pantalla y no había forma de llegar a él sin cerrar el mensaje. Además git, al no tener terminal, recortaba las rutas largas a `.../resto`, así que ni siquiera se podía saber qué archivo era.
+
+  Ahora el pull se resume en **una sola línea**: cuántos archivos cambiaron, las líneas agregadas y quitadas, cuántos son nuevos, modificados, renombrados o borrados, si fue *fast-forward* y el rango de commits — clic en el rango y el grafo salta al commit nuevo. La lista de archivos se **despliega a pedido**, con alto acotado y su propio scroll, un **filtro** cuando son muchos, la letra del tipo de cambio y una barra con la proporción de agregado y quitado. **Clic en un archivo lo abre** en la solapa Archivos. Las rutas llegan completas y, si no entran, se recorta el principio de la carpeta, nunca el nombre del archivo. *Ver salida de git* sigue mostrando el texto original, y el botón de copiar lo lleva entero al portapapeles.
+
+  Los mensajes de error largos también tienen ahora tope de alto y scroll propio.
+
 ## [2.7.0] - 2026-09-25
 
 ### Cambiado
