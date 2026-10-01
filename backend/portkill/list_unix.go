@@ -5,6 +5,7 @@ package portkill
 import (
 	"context"
 	"errors"
+	"mini-tools/backend/hidewin"
 	"os/exec"
 	"runtime"
 )
@@ -42,7 +43,7 @@ func listPlatform(ctx context.Context) ([]Listener, error) {
 
 func run(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	hideWindow(cmd)
+	hidewin.Hide(cmd)
 	out, err := cmd.Output()
 	return string(out), err
 }

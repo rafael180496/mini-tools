@@ -25,3 +25,13 @@ export function formatRate(bytesPerSec: number): string {
 export function formatPercent(v: number, digits = 1): string {
     return formatNumber(v, {minimumFractionDigits: digits, maximumFractionDigits: digits})
 }
+
+// Una duración en milisegundos como «0,2 s», «14,1 s» o «2 min 5 s».
+export function formatDuration(ms: number): string {
+    if (ms <= 0) return '—'
+    const s = ms / 1000
+    if (s < 60) return `${formatNumber(s, {minimumFractionDigits: 1, maximumFractionDigits: 1})} s`
+    const min = Math.floor(s / 60)
+    const rest = Math.round(s - min * 60)
+    return `${min} min ${rest} s`
+}

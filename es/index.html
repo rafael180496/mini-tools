@@ -372,8 +372,9 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>Utilidades</button>
   <ul>
-    <li><a href="#utilidades-port-killer">Port Killer</a></li>
-    <li><a href="#utilidades-activity-monitor">Activity Monitor</a></li>
+    <li><a href="#utilidades-port-killer">Liberador de puertos</a></li>
+    <li><a href="#utilidades-activity-monitor">Monitor de actividad</a></li>
+    <li><a href="#utilidades-docker">Docker</a></li>
   </ul>
 
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>Agentes de IA</button>
@@ -557,7 +558,7 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
     <tr><td>Git</td><td>Repositorios: ver cambios, ramas y trabajar con los agentes</td></tr>
     <tr><td>Notas</td><td>Tu base de conocimiento cifrada: runbooks y apuntes</td></tr>
     <tr><td>HTTP</td><td>Colecciones de peticiones: probar y guardar endpoints</td></tr>
-    <tr><td>Utilidades</td><td>Herramientas del sistema: puertos ocupados (Port Killer) y procesos en vivo (Activity Monitor)</td></tr>
+    <tr><td>Utilidades</td><td>Herramientas del sistema: puertos ocupados (Liberador de puertos) y procesos en vivo (Monitor de actividad) y Docker</td></tr>
   </table></div>
   <p>Se ve <strong>uno a la vez</strong>, así que el que estás usando se queda con toda la altura en vez de
   la franja que le dejaban los otros apilados.</p>
@@ -1444,17 +1445,17 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 </article>
 
 <!-- ------------------------------------------------------------ UTILIDADES -->
-<article class="topic" id="utilidades-port-killer" data-title="Port Killer">
-  <h1>Port Killer</h1>
+<article class="topic" id="utilidades-port-killer" data-title="Liberador de puertos">
+  <h1>Liberador de puertos</h1>
   <p class="lead">Qué proceso tiene ocupado el puerto 3000 —y terminarlo— sin salir de la app ni acordarte de
   <code>lsof</code>, <code>netstat</code> y <code>kill</code>.</p>
 
   <p>Vive en el módulo <strong>Utilidades</strong> (el ícono de martillo y llave en el menú de la barra). Hacé clic en
-  <em>Port Killer</em> y se abre en <strong>una pestaña propia</strong>; si ya estaba abierto, el clic te lleva a esa.
+  <em>Liberador de puertos</em> y se abre en <strong>una pestaña propia</strong>; si ya estaba abierto, el clic te lleva a esa.
   Funciona igual en macOS, Windows y Linux.</p>
 
   <figure>
-    <div class="shot"><img src="../docs/screenshots/es/utilities-port-killer.png" alt="Port Killer: barra con el buscador y los botones Auto y Actualizar, las pastillas Todos, Local y Red con su cuenta, y una tabla de puertos en escucha con dirección, proceso y PID y los botones Terminar y Forzar en cada fila"></div>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-port-killer.png" alt="Liberador de puertos: barra con el buscador y los botones Auto y Actualizar, las pastillas Todos, Local y Red con su cuenta, y una tabla de puertos en escucha con dirección, proceso y PID y los botones Terminar y Forzar en cada fila"></div>
     <figcaption>Cada puerto en escucha, quién lo tiene y si está expuesto a la red.</figcaption>
   </figure>
 
@@ -1502,16 +1503,16 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   un error que lo explica, en vez de una lista vacía que se leería como "nada está escuchando".</div>
 </article>
 
-<article class="topic" id="utilidades-activity-monitor" data-title="Activity Monitor">
-  <h1>Activity Monitor</h1>
+<article class="topic" id="utilidades-activity-monitor" data-title="Monitor de actividad">
+  <h1>Monitor de actividad</h1>
   <p class="lead">Qué está usando tu CPU y tu memoria ahora mismo, y cuánta red entra y sale —con la opción de
   terminar lo que se porta mal— sin abrir el monitor del propio sistema operativo.</p>
 
-  <p>Está en el módulo <strong>Utilidades</strong>, junto al Port Killer. Se abre en <strong>una pestaña propia</strong>
+  <p>Está en el módulo <strong>Utilidades</strong>, junto al Liberador de puertos. Se abre en <strong>una pestaña propia</strong>
   y funciona igual en macOS, Windows y Linux.</p>
 
   <figure>
-    <div class="shot"><img src="../docs/screenshots/es/utilities-activity-monitor.png" alt="Activity Monitor: la tabla de procesos ordenada por CPU, con una barra de memoria detrás de cada cifra, y al pie tres tarjetas con la CPU total, la memoria y la red, cada una con su línea de los últimos dos minutos"></div>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-activity-monitor.png" alt="Monitor de actividad: la tabla de procesos ordenada por CPU, con una barra de memoria detrás de cada cifra, y al pie tres tarjetas con la CPU total, la memoria y la red, cada una con su línea de los últimos dos minutos"></div>
     <figcaption>La lista de procesos arriba, el estado de toda la máquina abajo.</figcaption>
   </figure>
 
@@ -1543,7 +1544,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <h2 id="utilidades-activity-monitor--terminar">Terminar un proceso</h2>
   <p>Pasá el mouse por una fila (o hacé clic en ella) y aparecen dos íconos: <strong>Terminar</strong>, que le pide al
   proceso que se cierre de forma ordenada, y <strong>Forzar</strong>, que lo corta de inmediato. Los dos confirman antes,
-  nombrando el proceso y su PID, y funcionan igual que en el <a href="#utilidades-port-killer--terminar">Port Killer</a>,
+  nombrando el proceso y su PID, y funcionan igual que en el <a href="#utilidades-port-killer--terminar">Liberador de puertos</a>,
   incluido el pedido de permisos de administrador para los procesos de otros usuarios. Los procesos del sistema y esta
   misma app tienen los botones deshabilitados.</p>
 
@@ -1552,6 +1553,82 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   permisos de administrador. En <strong>Windows</strong> los procesos no traen dueño, así que la columna
   <em>Usuario</em> y la pastilla <em>Míos</em> no aparecen. Sin permisos de administrador algunos procesos del sistema
   informan 0 % de CPU.</div>
+</article>
+
+<article class="topic" id="utilidades-docker" data-title="Docker">
+  <h1>Docker</h1>
+  <p class="lead">Ver y operar tus contenedores, imágenes, volúmenes y redes —y leer sus logs en vivo— sin salir de la
+  app ni escribir <code>docker ps</code>.</p>
+
+  <p>Está en el módulo <strong>Utilidades</strong> y se abre en <strong>una pestaña propia</strong>. Funciona con el Docker
+  que ya tengas —Docker Desktop, OrbStack, Colima o Docker Engine—, porque habla con el comando <code>docker</code> y
+  respeta su contexto activo; el nombre del contexto y la versión aparecen junto al título para saber contra qué motor estás
+  mirando.</p>
+
+  <p>En la barra lateral, <strong>Docker despliega un submenú</strong> —<em>Contenedores, Imágenes, Volúmenes, Redes</em> y <em>Builds</em>—, como el de Git, cada una con su <strong>contador</strong>. Un clic abre la pestaña de Docker en esa sección (o te lleva a ella si ya está abierta) y la resalta en el menú. La pestaña no tiene menú propio: muestra el contenido de la sección a todo el ancho, con el nombre de la sección junto al título. Los contadores se actualizan mientras la pestaña está a la vista.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-docker.png" alt="Docker: tabla de contenedores agrupados por proyecto de Compose, cada uno con su punto de estado, imagen, puertos publicados, CPU y memoria, y los botones de iniciar, reiniciar, logs, inspeccionar y eliminar"></div>
+    <figcaption>Los contenedores agrupados por proyecto de Compose, como en Docker Desktop.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-docker--estado">¿Está instalado y andando?</h2>
+  <p>Lo primero que hace la pestaña es comprobarlo. Hay tres resultados. La misma comprobación la hace la <strong>lista de Utilidades de la barra lateral</strong>: si Docker no está instalado o su motor no está corriendo, la entrada <em>Docker</em> se muestra <strong>deshabilitada</strong> (apagada, con la etiqueta <em>No disponible</em> y el motivo al pasar el mouse) y no abre una pestaña que solo mostraría un error. Se vuelve a comprobar cada pocos segundos mientras esa lista está a la vista, así que se habilita sola cuando Docker arranca; un clic en la entrada también vuelve a comprobar.</p>
+  <ul>
+    <li><strong>No instalado</strong> — lo dice y ofrece un enlace de cómo instalarlo, más un botón <em>Volver a comprobar</em>.</li>
+    <li><strong>Instalado pero el motor no responde</strong> — muestra lo que contestó Docker y, en macOS y Windows, un botón <em>Abrir Docker Desktop</em> (u OrbStack). Vuelve a comprobar cada pocos segundos, así que apenas el motor arranca aparecen las listas solas. En Linux el motor es un servicio del sistema: se arranca a mano.</li>
+    <li><strong>Andando</strong> — las listas.</li>
+  </ul>
+
+  <h2 id="utilidades-docker--contenedores">Contenedores</h2>
+  <p>Agrupados por <strong>proyecto</strong> (el stack de Compose), con los sueltos al final. Cada fila trae un punto de
+  estado —<strong>azul</strong> en marcha, <strong>gris</strong> detenido sin problema, <strong>rojo</strong> terminó con error (el que
+  se suele buscar)—, el nombre del servicio, su id corto y estado, la imagen, los <strong>puertos publicados</strong> y la CPU y
+  memoria de los que están corriendo.</p>
+  <ul>
+    <li>Hacé clic en un <strong>puerto</strong> para abrir <code>http://localhost:&lt;puerto&gt;</code> en el navegador.</li>
+    <li>Por fila: <strong>iniciar / detener</strong>, <strong>reiniciar</strong>, <strong>logs</strong>, <strong>inspeccionar</strong> y <strong>eliminar</strong>.</li>
+    <li>En la <strong>línea del proyecto</strong> (Docker Compose): <strong>iniciar</strong>, <strong>detener</strong>, <strong>reiniciar</strong>, <strong>up</strong> (crea o recrea lo que haga falta y lo deja andando, <code>docker compose up -d</code>) y <strong>down</strong> (detiene y elimina los contenedores y redes del proyecto; los volúmenes se conservan). Compose corre con los mismos archivos con los que se levantó el proyecto, leídos de las etiquetas de sus contenedores; <em>up</em> puede tardar minutos si descarga o construye imágenes, y mientras trabaja se ve un indicador.</li>
+    <li><strong>Compose up…</strong> en la barra deja elegir un <code>docker-compose.yml</code> del disco y levantar un <strong>proyecto nuevo</strong> a partir de él.</li>
+    <li>Eliminar un contenedor y <em>down</em> siempre preguntan antes. Los volúmenes con nombre se conservan; lo que se haya escrito dentro del contenedor, no.</li>
+  </ul>
+
+  <h2 id="utilidades-docker--logs">Logs en vivo</h2>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-docker-logs.png" alt="Docker con el panel de logs abierto a la derecha: las líneas del contenedor api con su hora, los errores en rojo y los avisos en naranja, y los controles de filtro, seguir, hora, ajustar, pausar, limpiar y copiar"></div>
+    <figcaption>El panel se abre junto a la lista; la tabla cede las columnas de imagen, CPU y memoria para hacerle lugar.</figcaption>
+  </figure>
+  <p>Hacé clic en el nombre de un contenedor (o en su ícono de logs) y sus logs se abren a la derecha, <strong>en vivo</strong>:</p>
+  <ul>
+    <li><strong>Búsqueda con índice.</strong> Escribí en la caja y cada coincidencia queda resaltada; el contador dice <em>3 de 12</em>, y <kbd>Enter</kbd> / <kbd>Mayús+Enter</kbd> (o las flechas) saltan a la coincidencia siguiente y a la anterior. <em>Solo coincidencias</em> oculta las líneas que no contienen el texto.</li>
+    <li><strong>El tamaño, a tu medida.</strong> Escribí cualquier cantidad de líneas anteriores a cargar (de 1 a 10 000; los valores sugeridos son solo sugerencias), hacé la letra <strong>más grande o más chica</strong>, y <strong>arrastrá el borde del panel</strong> para ensancharlo (doble clic vuelve al ancho original; el botón de arriba lo <strong>maximiza</strong>).</li>
+    <li><strong>Actualización automática.</strong> <em>En vivo</em> viene encendido: las líneas nuevas llegan solas. Un clic lo pausa para leer sin movimiento. <em>Seguir</em> mantiene la vista en la última línea y se apaga solo si subís.</li>
+    <li><strong>Detener o iniciar el contenedor</strong> desde la propia cabecera del panel, sin volver a la lista.</li>
+    <li>Además: mostrar u ocultar la <strong>hora</strong>, <strong>ajustar</strong> las líneas largas, <strong>limpiar</strong> la pantalla y <strong>copiar</strong>. Las líneas con <em>error</em> o <em>fatal</em> salen en rojo y las de <em>warn</em> en naranja.</li>
+  </ul>
+
+  <h2 id="utilidades-docker--exportar">Exportar logs</h2>
+  <p>El botón <strong>Exportar</strong> guarda los logs en un archivo (<code>.log</code>), eligiendo dónde en el diálogo del sistema. Se fija un <strong>máximo de líneas</strong>, de <strong>100 a 10 000</strong> (se guardan las últimas, que es donde suele estar el problema). Hay dos opciones: <strong>del historial del contenedor</strong> —las últimas líneas que Docker tiene de él, no solo lo que muestra el panel— o <strong>lo que se ve</strong>, con el filtro de la búsqueda aplicado. El aviso final dice cuántas líneas se escribieron de verdad, que pueden ser menos que el límite si el contenedor no tiene tantas. El archivo se crea legible solo para vos, porque un log puede llevar datos que no son para cualquiera. Los logs de un build se exportan igual (sección siguiente).</p>
+  <div class="note tip"><span class="lbl">Cerrado no cuesta nada</span>
+  La lista solo se actualiza mientras la pestaña está abierta <em>y a la vista</em>. El flujo de logs es lo único que queda abierto, y solo
+  mientras su panel lo está: cerrar el panel, cambiar de pestaña o cerrar la app lo termina. No queda nada corriendo.</div>
+
+  <h2 id="utilidades-docker--builds">Builds</h2>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-docker-builds.png" alt="Docker, sección Builds: tabla del historial de builds de imágenes con su nombre, estado, pasos (completados, total y en caché), cuándo y duración, y los botones de ver el log y exportar"></div>
+    <figcaption>El historial de builds, con un log que se puede leer o exportar.</figcaption>
+  </figure>
+  <p>La sección <strong>Builds</strong> lista el historial de builds de imágenes (<code>docker buildx history</code>): nombre, estado —<em>completado</em>, <em>con error</em>, <em>cancelado</em>—, pasos (hechos, total y cuántos salieron de caché), cuándo y cuánto tardó. Hacé clic en uno para leer su <strong>log completo</strong> en el panel (uno muy largo muestra solo el final, donde suele estar el error), y con el ícono de descarga lo <strong>exportás a un archivo</strong>, con el mismo límite de 100 a 10 000 líneas. Hace falta buildx 0.20 o más nuevo; un Docker más viejo lo dice en vez de mostrar una lista vacía.</p>
+
+  <h2 id="utilidades-docker--recursos">Imágenes, volúmenes y redes</h2>
+  <p>Tres tablas simples con <strong>inspeccionar</strong> (la configuración completa, lista para copiar) y <strong>eliminar</strong>. Una
+  imagen muestra cuántos contenedores la usan y un volumen cuántos lo montan; <strong>lo que está en uso no se puede eliminar</strong>
+  —el botón queda deshabilitado y dice por qué—, y tampoco las redes predeterminadas de Docker.</p>
+
+  <div class="note warn"><span class="lbl">Lo que no hace</span>
+  No descarga imágenes, no ejecuta un build y no limpia en bloque (prune). Levanta y baja proyectos con Compose, pero no edita sus archivos.
+  La idea es ver, leer y exportar logs e iniciar, detener y eliminar; para el resto la terminal sigue siendo la herramienta.
+  Los logs pierden los colores de terminal en pantalla (se verían como códigos sueltos).</div>
 </article>
 
 <!-- ----------------------------------------------------------------- IA -->

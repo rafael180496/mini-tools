@@ -1233,6 +1233,195 @@ export namespace db {
 
 }
 
+export namespace dockerctl {
+	
+	export class Build {
+	    ref: string;
+	    name: string;
+	    status: string;
+	    createdAt: string;
+	    completedAt: string;
+	    durationMs: number;
+	    totalSteps: number;
+	    completedSteps: number;
+	    cachedSteps: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Build(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ref = source["ref"];
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.createdAt = source["createdAt"];
+	        this.completedAt = source["completedAt"];
+	        this.durationMs = source["durationMs"];
+	        this.totalSteps = source["totalSteps"];
+	        this.completedSteps = source["completedSteps"];
+	        this.cachedSteps = source["cachedSteps"];
+	    }
+	}
+	export class Container {
+	    id: string;
+	    name: string;
+	    image: string;
+	    state: string;
+	    status: string;
+	    ports: string;
+	    created: string;
+	    project: string;
+	    service: string;
+	    mounts: string[];
+	    workingDir: string;
+	    configFiles: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Container(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.image = source["image"];
+	        this.state = source["state"];
+	        this.status = source["status"];
+	        this.ports = source["ports"];
+	        this.created = source["created"];
+	        this.project = source["project"];
+	        this.service = source["service"];
+	        this.mounts = source["mounts"];
+	        this.workingDir = source["workingDir"];
+	        this.configFiles = source["configFiles"];
+	    }
+	}
+	export class Counts {
+	    containers: number;
+	    images: number;
+	    volumes: number;
+	    networks: number;
+	    builds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Counts(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.containers = source["containers"];
+	        this.images = source["images"];
+	        this.volumes = source["volumes"];
+	        this.networks = source["networks"];
+	        this.builds = source["builds"];
+	    }
+	}
+	export class Image {
+	    id: string;
+	    repository: string;
+	    tag: string;
+	    size: string;
+	    created: string;
+	    inUse: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Image(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.repository = source["repository"];
+	        this.tag = source["tag"];
+	        this.size = source["size"];
+	        this.created = source["created"];
+	        this.inUse = source["inUse"];
+	    }
+	}
+	export class Network {
+	    id: string;
+	    name: string;
+	    driver: string;
+	    scope: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Network(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.driver = source["driver"];
+	        this.scope = source["scope"];
+	    }
+	}
+	export class Stat {
+	    id: string;
+	    cpu: number;
+	    memUsage: string;
+	    memPercent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Stat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.cpu = source["cpu"];
+	        this.memUsage = source["memUsage"];
+	        this.memPercent = source["memPercent"];
+	    }
+	}
+	export class Status {
+	    installed: boolean;
+	    path: string;
+	    version: string;
+	    serverVersion: string;
+	    running: boolean;
+	    context: string;
+	    error: string;
+	    launcher: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.path = source["path"];
+	        this.version = source["version"];
+	        this.serverVersion = source["serverVersion"];
+	        this.running = source["running"];
+	        this.context = source["context"];
+	        this.error = source["error"];
+	        this.launcher = source["launcher"];
+	    }
+	}
+	export class Volume {
+	    name: string;
+	    driver: string;
+	    mountpoint: string;
+	    usedBy: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Volume(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.driver = source["driver"];
+	        this.mountpoint = source["mountpoint"];
+	        this.usedBy = source["usedBy"];
+	    }
+	}
+
+}
+
 export namespace explain {
 	
 	export class BufferStats {
@@ -2625,6 +2814,36 @@ export namespace main {
 	        this.params = source["params"];
 	        this.color = source["color"];
 	        this.environment = source["environment"];
+	    }
+	}
+	export class DockerBuildLogResult {
+	    text: string;
+	    truncated: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerBuildLogResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.truncated = source["truncated"];
+	    }
+	}
+	export class DockerExportResult {
+	    path: string;
+	    bytes: number;
+	    lines: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerExportResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.bytes = source["bytes"];
+	        this.lines = source["lines"];
 	    }
 	}
 	export class EditApplied {

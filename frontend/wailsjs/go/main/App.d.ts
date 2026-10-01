@@ -15,6 +15,7 @@ import {sftpx} from '../models';
 import {sqlintel} from '../models';
 import {vault} from '../models';
 import {query} from '../models';
+import {dockerctl} from '../models';
 import {explain} from '../models';
 import {osopen} from '../models';
 import {git} from '../models';
@@ -190,6 +191,46 @@ export function DetectSQLiteEncryption(arg1:string):Promise<boolean>;
 export function DiscardRedisTransaction(arg1:string):Promise<void>;
 
 export function DisconnectConnection(arg1:string):Promise<void>;
+
+export function DockerAction(arg1:string,arg2:Array<string>):Promise<string>;
+
+export function DockerBuildLogs(arg1:string):Promise<main.DockerBuildLogResult>;
+
+export function DockerBuilds():Promise<Array<dockerctl.Build>>;
+
+export function DockerCompose(arg1:string,arg2:string):Promise<string>;
+
+export function DockerComposeUpFile(arg1:string):Promise<string>;
+
+export function DockerContainers():Promise<Array<dockerctl.Container>>;
+
+export function DockerCounts():Promise<dockerctl.Counts>;
+
+export function DockerExportBuildLogs(arg1:string,arg2:string,arg3:number):Promise<main.DockerExportResult>;
+
+export function DockerExportContainerLogs(arg1:string,arg2:string,arg3:number):Promise<main.DockerExportResult>;
+
+export function DockerImages():Promise<Array<dockerctl.Image>>;
+
+export function DockerInspect(arg1:string,arg2:string):Promise<string>;
+
+export function DockerLogsStart(arg1:string,arg2:string,arg3:number):Promise<void>;
+
+export function DockerLogsStop(arg1:string):Promise<void>;
+
+export function DockerNetworks():Promise<Array<dockerctl.Network>>;
+
+export function DockerPickComposeFile():Promise<string>;
+
+export function DockerSaveText(arg1:string,arg2:string,arg3:number):Promise<main.DockerExportResult>;
+
+export function DockerStartApp():Promise<void>;
+
+export function DockerStats():Promise<Array<dockerctl.Stat>>;
+
+export function DockerStatus():Promise<dockerctl.Status>;
+
+export function DockerVolumes():Promise<Array<dockerctl.Volume>>;
 
 export function DuplicateNote(arg1:string):Promise<string>;
 

@@ -93,6 +93,7 @@ import {
     SetAutoSaveEnabled,
     SetAutoSaveIntervalSeconds,
     SetSidebarModule,
+    DockerStatus,
     SetSidebarWidth,
     SetEditorHeight,
     SetEditorAppearance,
@@ -107,12 +108,13 @@ import {
 } from '../../wailsjs/go/main/App'
 import {BrowserOpenURL, EventsOn} from '../../wailsjs/runtime'
 import {db, explain, updatecheck, vault} from '../../wailsjs/go/models'
-import type {query} from '../../wailsjs/go/models'
+import type {dockerctl, query} from '../../wailsjs/go/models'
 import type {ParamDraftMap} from './editor/QueryParamsDialog'
 import Sidebar from './sidebar/Sidebar'
 import type {SidebarModuleId} from './sidebar/SidebarMasterMenu'
 import UtilitiesTree from './utilities/UtilitiesTree'
 import type {UtilityId} from './utilities/utilities'
+import type {DockerSection} from './utilities/docker/sections'
 import {DEFAULT_EDITOR_APPEARANCE, editorAppearanceFromSettings, type EditorAppearance} from '../codemirror/editorAppearance'
 import type {EditorView} from '@codemirror/view'
 import {statementAt} from '../lib/sqlStatementAt'
@@ -137,6 +139,7 @@ const QueryParamsDialog = lazy(() => import('./editor/QueryParamsDialog'))
 // pestaña, y mientras no esté abierta no hay nada montado ni consultando.
 const PortKillerTab = lazy(() => import('./utilities/PortKillerTab'))
 const ActivityMonitorTab = lazy(() => import('./utilities/ActivityMonitorTab'))
+const DockerTab = lazy(() => import('./utilities/DockerTab'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'page' | 'done' | 'cancelled' | 'error'
@@ -2640,6 +2643,74 @@ export default function Workspace({
     // sola por herramienta, porque dos Port Killer mostrarían la misma lista y
     // cada una consultaría por su lado. Cerrar la pestaña la desmonta, y con
     // ella se va todo lo que la herramienta tuviera en marcha.
+    // ¿Se puede usar Docker ahora? null = todavía no se comprobó (y entonces la
+    // utilidad se ofrece normal: la propia pestaña explica lo que falte).
+    //
+    // Se comprueba SOLO mientras la lista de Utilidades está a la vista: un
+    // `docker info` por cada módulo que se mira sería gastar en algo que nadie
+    // está usando. Con Docker apagado se repite cada 10 s para que la entrada se
+    // habilite sola cuando arranca; con Docker andando, no se vuelve a preguntar.
+    const [dockerState, setDockerState] = useState<'ok' | 'not-installed' | 'not-running' | null>(null)
+    // La sección de Docker que muestra su pestaña (la elige el submenú de la
+    // barra) y los totales de cada una, que la pestaña informa mientras está a la
+    // vista.
+    const [dockerSection, setDockerSection] = useState<DockerSection>('containers')
+    const [dockerCounts, setDockerCounts] = useState<dockerctl.Counts | null>(null)
+    const dockerOpen = tabs.some((t) => t.kind === 'utility' && t.utilityId === 'docker')
+
+    const checkDocker = useCallback(async (): Promise<boolean> => {
+        try {
+            const st = await DockerStatus()
+            const next = !st.installed ? 'not-installed' : !st.running ? 'not-running' : 'ok'
+            setDockerState(next)
+            return next === 'ok'
+        } catch {
+            // Sin respuesta no se sabe: no se deshabilita por un error de la
+            // consulta, que no es lo mismo que Docker apagado.
+            return true
+        }
+    }, [])
+
+    const utilitiesVisible = activeModule === 'utilities' && !sidebarCollapsed
+    // Al mostrarse la lista, una comprobación. Si Docker estaba andando y se
+    // apagó mientras la lista estaba oculta, es lo que lo detecta.
+    useEffect(() => {
+        if (utilitiesVisible) void checkDocker()
+    }, [utilitiesVisible, checkDocker])
+    // Mientras Docker no sirve, se repite hasta que sirva.
+    useEffect(() => {
+        if (!utilitiesVisible || dockerState === 'ok') return
+        const timer = window.setInterval(() => {
+            if (!document.hidden) void checkDocker()
+        }, 10000)
+        return () => window.clearInterval(timer)
+    }, [utilitiesVisible, dockerState, checkDocker])
+
+    const unavailableUtilities = useMemo(
+        () => ({
+            ...(dockerState === 'not-installed' ? {docker: t.utilities.sidebar.docker.notInstalled} : {}),
+            ...(dockerState === 'not-running' ? {docker: t.utilities.sidebar.docker.notRunning} : {}),
+        }),
+        [dockerState, t],
+    )
+
+    // Abrir desde la lista: Docker se vuelve a comprobar en el momento, por si se
+    // arrancó desde la última vez; si sigue sin poder usarse, no se abre una
+    // pestaña que solo mostraría un error.
+    async function requestOpenUtility(id: UtilityId) {
+        if (id === 'docker' && !(await checkDocker())) return
+        openUtility(id)
+    }
+
+    // Una sección del submenú de Docker: lleva a la pestaña (la abre si hace
+    // falta) ya en esa sección. Docker se vuelve a comprobar antes, igual que al
+    // abrir la utilidad.
+    async function openDockerSection(section: DockerSection) {
+        if (!(await checkDocker())) return
+        setDockerSection(section)
+        openUtility('docker')
+    }
+
     function openUtility(id: UtilityId) {
         const existing = tabs.find((t) => t.kind === 'utility' && t.utilityId === id)
         if (existing) {
@@ -3237,7 +3308,11 @@ export default function Workspace({
                     utilities: (
                         <UtilitiesTree
                             openIds={new Set(tabs.filter((t) => t.kind === 'utility' && t.utilityId).map((t) => t.utilityId as UtilityId))}
-                            onOpen={openUtility}
+                            activeId={activeTabData?.kind === 'utility' ? (activeTabData.utilityId ?? null) : null}
+                            onOpen={(id) => void requestOpenUtility(id)}
+                            docker={{section: dockerSection, counts: dockerOpen ? dockerCounts : null}}
+                            onOpenDockerSection={(s) => void openDockerSection(s)}
+                            unavailable={unavailableUtilities}
                             filter={sidebarFilter}
                             onMatchCount={setUtilitiesMatches}
                         />
@@ -4148,6 +4223,7 @@ export default function Workspace({
                             <Suspense fallback={null}>
                                 {t.utilityId === 'portKiller' && <PortKillerTab visible={activeTabId === t.id} />}
                                 {t.utilityId === 'activityMonitor' && <ActivityMonitorTab visible={activeTabId === t.id} />}
+                                {t.utilityId === 'docker' && <DockerTab visible={activeTabId === t.id} section={dockerSection} onCounts={setDockerCounts} />}
                             </Suspense>
                         </div>
                     ))}

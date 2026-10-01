@@ -5,6 +5,7 @@ package portkill
 import (
 	"context"
 	"errors"
+	"mini-tools/backend/hidewin"
 	"os"
 	"os/exec"
 	"strconv"
@@ -70,7 +71,7 @@ func terminateElevated(ctx context.Context, pid int, _ bool) error {
 	script := "Start-Process -FilePath taskkill -ArgumentList '/PID','" + strconv.Itoa(pid) +
 		"','/F' -Verb RunAs -WindowStyle Hidden -Wait"
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
-	hideWindow(cmd)
+	hidewin.Hide(cmd)
 
 	out, err := cmd.CombinedOutput()
 	if err == nil {

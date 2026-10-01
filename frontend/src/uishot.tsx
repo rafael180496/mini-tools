@@ -321,6 +321,61 @@ const fixtures: Record<string, unknown> = {
         }
     },
     StopProcessMonitor: null,
+    // Docker: los contenedores de un stack inventado, con uno que falló, uno
+    // detenido bien y imágenes/volúmenes/redes de ejemplo.
+    DockerStatus: () =>
+        ['dockerdown', 'sidebardown'].includes(new URLSearchParams(location.search).get('view') ?? '')
+            ? {installed: true, path: '/usr/local/bin/docker', version: '29.4.0', serverVersion: '', running: false, context: 'desktop-linux', error: 'Cannot connect to the Docker daemon at unix:///Users/rafael/.docker/run/docker.sock. Is the docker daemon running?', launcher: 'Docker Desktop'}
+            : {installed: true, path: '/usr/local/bin/docker', version: '29.4.0', serverVersion: '29.4.0', running: true, context: 'desktop-linux', error: '', launcher: 'Docker Desktop'},
+    DockerContainers: [
+        {id: 'a1f3c9d0e2b4a1f3c9d0e2b4', name: 'ambdbpost_dbpost', image: 'postgres:17', state: 'running', status: 'Up 2 hours (healthy)', ports: '0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp', created: '', project: 'ambdbpost', service: 'dbpost', mounts: ['ambdbpost_postdbtest']},
+        {id: 'b2e4d1c0f3a5b2e4d1c0f3a5', name: 'ambdbpost_redis', image: 'redis:alpine', state: 'running', status: 'Up 2 hours', ports: '0.0.0.0:6379->6379/tcp', created: '', project: 'ambdbpost', service: 'redis', mounts: []},
+        {id: 'c3d5e2f1a4b6c3d5e2f1a4b6', name: 'mandadosgo_api', image: 'mandadosgo/api:aeead0d-dirty', state: 'running', status: 'Up 5 minutes (healthy)', ports: '0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp', created: '', project: 'mandadosgo', service: 'api', mounts: []},
+        {id: 'd4e6f3a2b5c7d4e6f3a2b5c7', name: 'mandadosgo_minio', image: 'pgsty/minio:RELEASE.2026-08-04', state: 'running', status: 'Up 5 minutes (healthy)', ports: '127.0.0.1:9000-9001->9000-9001/tcp', created: '', project: 'mandadosgo', service: 'minio', mounts: ['mandadosgo_minio']},
+        {id: 'e5f7a4b3c6d8e5f7a4b3c6d8', name: 'mandadosgo_minio_init', image: 'pgsty/mc:RELEASE.2026-09-16', state: 'exited', status: 'Exited (0) 19 hours ago', ports: '', created: '', project: 'mandadosgo', service: 'minio-init', mounts: []},
+        {id: 'f6a8b5c4d7e9f6a8b5c4d7e9', name: 'mandadosgo_worker', image: 'mandadosgo/worker:aeead0d', state: 'exited', status: 'Exited (137) 3 minutes ago', ports: '', created: '', project: 'mandadosgo', service: 'worker', mounts: []},
+        {id: '07b9c6d5e8f0a7b9c6d5e8f0', name: 'scratch_nginx', image: 'nginx:1.27', state: 'running', status: 'Up 20 minutes', ports: '0.0.0.0:8081->80/tcp', created: '', project: '', service: '', mounts: []},
+    ],
+    DockerStats: [
+        {id: 'a1f3c9d0e2b4', cpu: 0.17, memUsage: '31.2MiB / 7.8GiB', memPercent: 0.39},
+        {id: 'b2e4d1c0f3a5', cpu: 0.4, memUsage: '8.1MiB / 7.8GiB', memPercent: 0.1},
+        {id: 'c3d5e2f1a4b6', cpu: 12.6, memUsage: '186MiB / 7.8GiB', memPercent: 2.3},
+        {id: 'd4e6f3a2b5c7', cpu: 0.8, memUsage: '190MiB / 7.8GiB', memPercent: 2.4},
+        {id: '07b9c6d5e8f0', cpu: 0, memUsage: '4.4MiB / 7.8GiB', memPercent: 0.06},
+    ],
+    DockerImages: [
+        {id: 'sha256:1fe5b8a465cb', repository: 'mandadosgo/api', tag: 'aeead0d-dirty', size: '90.9MB', created: '19 hours ago', inUse: 1},
+        {id: 'sha256:b1581d2fff72', repository: 'mandadosgo/api', tag: 'ed3cb45-dirty', size: '90.9MB', created: '19 hours ago', inUse: 0},
+        {id: 'sha256:2293c15365b2', repository: 'postgres', tag: '17', size: '438MB', created: '2 weeks ago', inUse: 1},
+        {id: 'sha256:9a8b7c6d5e4f', repository: '<none>', tag: '<none>', size: '212MB', created: '3 weeks ago', inUse: 0},
+    ],
+    DockerVolumes: [
+        {name: 'ambdbpost_postdbtest', driver: 'local', mountpoint: '/var/lib/docker/volumes/ambdbpost_postdbtest/_data', usedBy: 1},
+        {name: 'mandadosgo_minio', driver: 'local', mountpoint: '/var/lib/docker/volumes/mandadosgo_minio/_data', usedBy: 1},
+        {name: 'old_backup_data', driver: 'local', mountpoint: '/var/lib/docker/volumes/old_backup_data/_data', usedBy: 0},
+    ],
+    DockerNetworks: [
+        {id: 'b3019108a3aa', name: 'ambdbpost_default', driver: 'bridge', scope: 'local'},
+        {id: '12a8741c11ab', name: 'bridge', driver: 'bridge', scope: 'local'},
+        {id: '7f1c2d3e4a5b', name: 'host', driver: 'host', scope: 'local'},
+    ],
+    DockerInspect: '[\n  {\n    "Id": "c3d5e2f1a4b6…",\n    "Name": "/mandadosgo_api",\n    "State": {"Status": "running", "Running": true},\n    "Config": {"Image": "mandadosgo/api:aeead0d-dirty"}\n  }\n]',
+    DockerCounts: {containers: 7, images: 10, volumes: 3, networks: 5, builds: 14},
+    DockerLogsStart: null,
+    DockerLogsStop: null,
+    DockerBuilds: [
+        {ref: 'hyrk5x1eb7v8gjadqybq235ai', name: 'https://github.com/totolab-ni/mandados-go-backend.git', status: 'Completed', createdAt: '2026-09-30T22:07:36.8Z', completedAt: '2026-09-30T22:07:50.9Z', durationMs: 14100, totalSteps: 18, completedSteps: 18, cachedSteps: 3},
+        {ref: 'zuku4xrum4ieqe2qe4np5nbot', name: 'deploy/postgres', status: 'Completed', createdAt: '2026-09-30T22:07:36.8Z', completedAt: '2026-09-30T22:07:37.0Z', durationMs: 189, totalSteps: 8, completedSteps: 8, cachedSteps: 2},
+        {ref: 'q8w7e6r5t4y3u2i1o0p9a8s7d', name: 'deploy/worker', status: 'Error', createdAt: '2026-09-30T21:10:02.0Z', completedAt: '2026-09-30T21:10:09.4Z', durationMs: 7400, totalSteps: 12, completedSteps: 9, cachedSteps: 6},
+        {ref: 'm1n2b3v4c5x6z7l8k9j0h1g2f', name: 'deploy/api', status: 'Canceled', createdAt: '2026-09-29T18:00:00.0Z', completedAt: '2026-09-29T18:01:05.0Z', durationMs: 65000, totalSteps: 10, completedSteps: 4, cachedSteps: 0},
+    ],
+    DockerBuildLogs: {text: '#1 [internal] load build definition from Dockerfile\n#1 transferring dockerfile: 498B done\n#1 DONE 0.0s\n\n#2 [internal] load metadata for docker.io/library/postgres:17\n#2 DONE 0.0s\n\n#5 [3/4] RUN apk add --no-cache curl\n#5 ERROR: process "/bin/sh -c apk add --no-cache curl" did not complete successfully: exit code: 1', truncated: false},
+    DockerExportContainerLogs: {path: '/Users/rafael/Downloads/api-logs-20261001-165500.log', bytes: 482113, lines: 10000},
+    DockerExportBuildLogs: {path: '/Users/rafael/Downloads/deploy_postgres-build-20261001-165500.log', bytes: 1402, lines: 33},
+    DockerSaveText: {path: '/Users/rafael/Downloads/api-view-20261001-165500.log', bytes: 2210, lines: 20},
+    DockerCompose: '',
+    DockerPickComposeFile: '',
+    DockerComposeUpFile: '',
     // Port Killer: datos inventados, con un puerto abierto a la red, un proceso
     // sin identificar (protegido) y varios locales.
     ListListeningPorts: [
@@ -1043,6 +1098,21 @@ const TERMINAL_OUTPUT: Record<string, string> = {
     ].join('\r\n'),
 }
 
+// Logs de ejemplo de un contenedor, con el prefijo de hora que pone
+// `docker logs --timestamps` y algún color de terminal.
+const DOCKER_LOGS = [
+    '2026-10-01T16:50:51.201133000Z \u001b[32mINFO\u001b[0m  servidor escuchando en :8080',
+    '2026-10-01T16:50:51.214802000Z INFO  conectado a postgis:5432 (17.2)',
+    '2026-10-01T16:50:52.009117000Z INFO  GET /health 200 1.2ms',
+    '2026-10-01T16:50:55.440021000Z INFO  GET /v1/pedidos?estado=abierto 200 14ms',
+    '2026-10-01T16:50:58.118305000Z WARN  cache miss repetido para repartidor:482 (3 veces)',
+    '2026-10-01T16:51:02.337640000Z INFO  POST /v1/pedidos 201 38ms',
+    '2026-10-01T16:51:07.552918000Z ERROR no se pudo notificar al repartidor 482: firebase: 401 Unauthorized',
+    '2026-10-01T16:51:07.553411000Z INFO  reintento 1/3 en 2s',
+    '2026-10-01T16:51:09.601220000Z INFO  notificación enviada a repartidor 482',
+    '2026-10-01T16:51:12.004470000Z INFO  GET /health 200 0.9ms',
+]
+
 // btoa solo acepta latin-1, y el texto de la terminal lleva acentos: se
 // codifica a UTF-8 primero, byte por byte, que es exactamente lo que hace el
 // backend antes de mandarlo.
@@ -1054,6 +1124,10 @@ function toBase64(text: string): string {
 
 anyWindow.runtime = {
     EventsOnMultiple: (name: string, cb: (data: unknown) => void) => {
+        if (name.startsWith('docker-logs-')) {
+            setTimeout(() => cb({lines: DOCKER_LOGS}), 300)
+            return () => {}
+        }
         const canned = TERMINAL_OUTPUT[name]
         if (canned) {
             // El evento viaja en base64 porque la shell remota puede emitir
@@ -1119,6 +1193,7 @@ const {default: AiAccessPanel} = await import('./components/AiAccessPanel')
 const {default: LocalTerminalTab} = await import('./components/terminal/LocalTerminalTab')
 const {default: PortKillerTab} = await import('./components/utilities/PortKillerTab')
 const {default: ActivityMonitorTab} = await import('./components/utilities/ActivityMonitorTab')
+const {default: DockerTab} = await import('./components/utilities/DockerTab')
 const {default: HttpTree} = await import('./components/http/HttpTree')
 const {default: HttpRequestTab} = await import('./components/http/HttpRequestTab')
 const {default: GitReflogPanel} = await import('./components/git/GitReflogPanel')
@@ -1490,6 +1565,36 @@ const views: Record<string, React.ReactNode> = {
             />
         </div>
     ),
+    docker: (
+        <div className="h-full">
+            <DockerTab visible section="containers" onCounts={() => {}} />
+        </div>
+    ),
+    dockerlogs: (
+        <div className="h-full">
+            <DockerTab visible section="containers" onCounts={() => {}} />
+        </div>
+    ),
+    dockerbuilds: (
+        <div className="h-full">
+            <DockerTab visible section="builds" onCounts={() => {}} />
+        </div>
+    ),
+    dockerexport: (
+        <div className="h-full">
+            <DockerTab visible section="containers" onCounts={() => {}} />
+        </div>
+    ),
+    dockersearch: (
+        <div className="h-full">
+            <DockerTab visible section="containers" onCounts={() => {}} />
+        </div>
+    ),
+    dockerdown: (
+        <div className="h-full">
+            <DockerTab visible section="containers" onCounts={() => {}} />
+        </div>
+    ),
     activitymonitor: (
         <div className="h-full">
             <ActivityMonitorTab visible />
@@ -1636,7 +1741,7 @@ if (view === 'thinking') {
         return document.querySelector<HTMLButtonElement>('button[data-chat-send]') ?? undefined
     })
 }
-if (view === 'sidebarmenu' || view === 'sidebaropen') {
+if (view === 'sidebarmenu' || view === 'sidebaropen' || view === 'sidebardown' || view === 'sidebardocker') {
     const expand = () =>
         [...document.querySelectorAll<HTMLButtonElement>('button[data-tree-toggle="closed"]')].forEach((b) => b.click())
     setTimeout(expand, 1200)
@@ -1651,7 +1756,7 @@ if (view === 'sidebarmenu' || view === 'sidebaropen') {
         row?.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: (r?.left ?? 0) + 60, clientY: (r?.top ?? 0) + 14}))
     }, 2100)
 }
-if (view === 'workspace' || view === 'sidebar' || view === 'sidebarmenu' || view === 'sidebaropen') {
+if (view === 'workspace' || view === 'sidebar' || view === 'sidebarmenu' || view === 'sidebaropen' || view === 'sidebardown' || view === 'sidebardocker') {
     // Se abre una carpeta del árbol: la barra rediseñada se trata justamente
     // de la jerarquía, y con todas las carpetas plegadas la captura muestra
     // una lista plana que no prueba nada.
@@ -1659,6 +1764,38 @@ if (view === 'workspace' || view === 'sidebar' || view === 'sidebarmenu' || view
     // title es lo mismo que hacen las demás vistas — el Icon renderiza su
     // ligadura como texto, así que textContent no sirve para encontrarlo.
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title === 'Expandir carpeta'))
+}
+if (view === 'dockerlogs') {
+    // El clic en el nombre del servicio abre el panel de logs del contenedor.
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => /^(Opens the live logs|Abre los logs)/.test(b.title) && b.textContent === 'api'))
+}
+if (view === 'sidebardocker') {
+    // Abre Docker desde la barra para que la pestaña informe los contadores, y
+    // pasa a «Imágenes» para ver el resaltado de la sección activa. El clic va al
+    // botón de la fila (el último: el primero es el chevron), no a la fila.
+    const rowButton = (re: RegExp) => {
+        const row = [...document.querySelectorAll<HTMLElement>('[data-tree-row]')].find((r) => re.test(r.textContent ?? ''))
+        return [...(row?.querySelectorAll('button') ?? [])].pop() as HTMLElement | undefined
+    }
+    setTimeout(() => rowButton(/Docker/)?.click(), 1200)
+    setTimeout(() => rowButton(/(Images|Imágenes)/)?.click(), 2600)
+}
+if (view === 'dockerexport') {
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => /^(Opens the live logs|Abre los logs)/.test(b.title) && b.textContent === 'api'))
+    setTimeout(() => {
+        ;[...document.querySelectorAll('button')].find((b) => /^(Saves the logs|Guarda los logs)/.test(b.title))?.click()
+    }, 1500)
+}
+if (view === 'dockersearch') {
+    autoClick(() => [...document.querySelectorAll('button')].find((b) => /^(Opens the live logs|Abre los logs)/.test(b.title) && b.textContent === 'api'))
+    // Escribir en un campo controlado de React: hay que usar el setter nativo y
+    // avisar con un evento `input`, o React no se entera.
+    setTimeout(() => {
+        const input = [...document.querySelectorAll('input')].find((i) => /^(Search the logs|Buscar en los logs)/.test(i.placeholder))
+        if (!input) return
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'repartidor')
+        input.dispatchEvent(new Event('input', {bubbles: true}))
+    }, 1200)
 }
 if (view === 'tabmenu') {
     // Dos clics encadenados, como los daría una persona: el rótulo de la
@@ -1792,6 +1929,8 @@ views.pullnoticeopen = views.pullnotice
 // contextual abierto sobre una fila — sirve para cualquier árbol hecho con
 // TreeRow.
 views.sidebarmenu = views.sidebar
+views.sidebardown = views.sidebar
+views.sidebardocker = views.sidebar
 // sidebaropen: lo mismo, desplegado y sin menú (para ver las guías).
 views.sidebaropen = views.sidebar
 // unlock / unlockcreate: la pantalla de la clave maestra (vault ya creado /

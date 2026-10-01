@@ -1001,3 +1001,42 @@ sus textos en `utilities.tools.<id>` (es/ y en/), el componente de su pestaña
 cargado con `lazy` y montado en el bloque `kind === 'utility'` de `Workspace.tsx`
 y, si necesita backend, un paquete en `backend/` con sus bindings en
 `app_utilities.go`.
+
+## Utilidades: Docker (`backend/dockerctl`, `app_docker.go`)
+
+Tercera utilidad del módulo. Todos los métodos pasan por `requireUnlocked`: operar
+contenedores es una acción sobre la máquina entera. Habla con la CLI `docker`, no
+con el socket (ver `architecture.md`).
+
+| Método | Nota |
+|---|---|
+| `DockerStatus()` → `dockerctl.Status` | `installed`, `path`, `version`, `serverVersion`, `running`, `context`, `error`, `launcher`. **No es un error de API** que Docker no esté instalado o no responda: viaja en el estado y la UI decide qué mostrar |
+| `DockerStartApp()` | Abre Docker Desktop / OrbStack / Rancher Desktop (macOS) o Docker Desktop (Windows). En Linux devuelve `no-launcher`: el motor es un servicio del sistema |
+| `DockerContainers()` / `DockerImages()` / `DockerVolumes()` / `DockerNetworks()` | Listados. Los contenedores traen `project`/`service` (etiquetas de Compose) y vienen ordenados por proyecto, con los sueltos al final. Imágenes y volúmenes traen cuántos contenedores los usan |
+| `DockerStats()` → `[]dockerctl.Stat` | CPU y memoria de los que corren. **Aparte de la lista** porque `docker stats` muestrea ~2 s. La clave es el id CORTO (12), no el completo |
+| `DockerAction(op, ids)` → `string` | `op` es de una lista cerrada (`container.start|stop|restart|pause|unpause|kill|remove`, `image.remove`, `volume.remove`, `network.remove`). **La UI manda el nombre de la operación, nunca una línea de comandos.** Los ids se validan (`bad-id`) |
+| `DockerInspect(kind, id)` → `string` | JSON de `docker <kind> inspect`, ya indentado |
+| `DockerLogsStart(sessionID, containerID, tail)` | Abre `docker logs -f` y vuelve. Las líneas llegan por el evento de Wails llamado `sessionID` como `{lines: string[], end: bool, error: string}`, agrupadas cada 100 ms. **Suscribirse ANTES** (misma carrera que las terminales). `LogEvent` NO está en `models.ts`: viaja por evento, el frontend lo espeja en `DockerLogs.tsx`. `tail` se acota a 1-5000 |
+| `DockerLogsStop(sessionID)` | Termina el flujo. También lo termina `shutdown` (`dockerLogs.CloseAll`) |
+
+| `DockerCompose(op, project)` → `string` | `op` ∈ `up`/`down`/`stop`/`start`/`restart`. **Los archivos NO los manda la interfaz**: el backend los lee de las etiquetas (`com.docker.compose.project.working_dir` / `config_files`) de los contenedores del proyecto, así solo se puede volver a operar lo que ya existe. `down` conserva los volúmenes (sin `-v`). `up` tiene tope de 15 min, el resto 3 |
+| `DockerPickComposeFile()` → `string` | Diálogo nativo para elegir un `.yml`/`.yaml`. Vacío si se cancela |
+| `DockerComposeUpFile(path)` → `string` | `docker compose -f path up -d` de un proyecto NUEVO. Valida ruta absoluta, extensión y que exista |
+| `DockerCounts()` → `dockerctl.Counts` | Totales de contenedores, imágenes, volúmenes, redes y builds para los contadores del submenú de la barra lateral. Solo ids (`-q`) y en paralelo (~250 ms). **-1 = no se pudo contar** (p. ej. builds sin buildx nuevo): la UI no muestra número. Se pide con cada actualización de la pestaña, solo con la pestaña a la vista |
+| `DockerBuilds()` → `[]dockerctl.Build` | Historial de `docker buildx history ls`. `ref` es el id corto: con la ruta `builder/ctx/id` que informa `ls`, `logs` responde «no record found». Sin buildx ≥ 0.20 devuelve `no-buildx` |
+| `DockerBuildLogs(ref)` → `{text, truncated}` | Log de un build para mostrar. Tope de 2 MB: si pasa, se conserva el FINAL (ahí está el error) |
+| `DockerExportContainerLogs(id, name, lines)` / `DockerExportBuildLogs(ref, name, lines)` / `DockerSaveText(name, content, lines)` → `{path, bytes, lines}` | Abren el diálogo de guardado (nombre sugerido `<slug>-<tipo>-AAAAMMDD-HHMMSS.log`, en Descargas si existe) y escriben. **`path` vacío = el usuario canceló.** **`lines` se acota a 100-10000 en el backend** (`dockerctl.ClampExportLines`), aunque la interfaz ya lo acote: es el backend quien decide cuánto se escribe a disco. Se exportan las ÚLTIMAS `lines` (`docker logs --tail`; para builds, que no tienen `--tail`, se recorta el log leído). El contenedor se transmite a disco sin pasar por memoria. `lines` en el resultado es lo que se escribió de verdad, que puede ser menos que el límite. Archivo con permisos 0600; si falla a mitad se borra |
+
+Errores con código: `not-installed`, `bad-id`, `bad-op`, `no-launcher`, `bad-project`, `no-project`, `bad-compose-file`, `no-buildx`.
+
+**La sección de Docker la elige el submenú de la barra lateral, no la pestaña.** `Workspace.tsx` guarda `dockerSection` y se lo pasa a `DockerTab` (`section`); la pestaña informa los totales con `onCounts` y el submenú los muestra (null mientras la pestaña no está abierta). `UtilitiesTree` dibuja el submenú con la misma `TreeRow` que Git; las secciones viven en `components/utilities/docker/sections.ts`.
+
+**La entrada «Docker» de la lista de Utilidades se deshabilita** (con el motivo) si `DockerStatus` dice que no está instalado o que el motor no responde. `Workspace.tsx` comprueba solo mientras esa lista está a la vista, cada 10 s mientras no sirve, y de nuevo al hacer clic en la entrada. Un error de la propia consulta NO la deshabilita: no es lo mismo que Docker apagado.
+
+**Cada apertura del flujo de logs usa un `sessionID` nuevo.** Reabrir con el mismo
+nombre (cambiar el `tail`, reanudar) hacía que el aviso de cierre del flujo VIEJO
+—que llega después de pedir su cierre— se leyera como el cierre del nuevo y lo
+dejara en pausa.
+
+**Costo cero con la pestaña cerrada**: la lista se actualiza solo con la pestaña a la vista;
+el único proceso que queda abierto es el `docker logs -f` del panel de logs, y se termina al cerrarlo.

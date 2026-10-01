@@ -47,6 +47,9 @@ chat-db chatdb 820 700
 settings-full settings:Vault 1100 720
 utilities-port-killer portkiller 1200 440
 utilities-activity-monitor activitymonitor 1200 640
+utilities-docker docker 1300 560
+utilities-docker-logs dockersearch 1500 600
+utilities-docker-builds dockerbuilds 1300 400
 '
 
 mkdir -p docs/screenshots/es

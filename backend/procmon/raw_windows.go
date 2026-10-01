@@ -4,6 +4,7 @@ package procmon
 
 import (
 	"context"
+	"mini-tools/backend/hidewin"
 	"os/exec"
 	"time"
 	"unsafe"
@@ -77,7 +78,7 @@ func readRaw(ctx context.Context) (*rawSample, error) {
 	}
 
 	cmd := exec.CommandContext(ctx, "netstat", "-e")
-	hideWindow(cmd)
+	hidewin.Hide(cmd)
 	if b, err := cmd.Output(); err == nil {
 		s.netRx, s.netTx = parseNetstatE(string(b))
 	}

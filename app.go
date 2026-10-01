@@ -320,6 +320,9 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.localTerms != nil {
 		a.localTerms.CloseAll()
 	}
+	// Los `docker logs -f` abiertos son procesos hijos: sin esto quedarían
+	// corriendo después de cerrar la ventana.
+	dockerLogs.CloseAll()
 	// LAST of the SSH group: the three above hold leases on the shared
 	// connections, and the pool only drops a connection once its last
 	// holder lets go. Closing it first would leave them releasing leases on

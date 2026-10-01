@@ -334,6 +334,86 @@ export function DisconnectConnection(arg1) {
   return window['go']['main']['App']['DisconnectConnection'](arg1);
 }
 
+export function DockerAction(arg1, arg2) {
+  return window['go']['main']['App']['DockerAction'](arg1, arg2);
+}
+
+export function DockerBuildLogs(arg1) {
+  return window['go']['main']['App']['DockerBuildLogs'](arg1);
+}
+
+export function DockerBuilds() {
+  return window['go']['main']['App']['DockerBuilds']();
+}
+
+export function DockerCompose(arg1, arg2) {
+  return window['go']['main']['App']['DockerCompose'](arg1, arg2);
+}
+
+export function DockerComposeUpFile(arg1) {
+  return window['go']['main']['App']['DockerComposeUpFile'](arg1);
+}
+
+export function DockerContainers() {
+  return window['go']['main']['App']['DockerContainers']();
+}
+
+export function DockerCounts() {
+  return window['go']['main']['App']['DockerCounts']();
+}
+
+export function DockerExportBuildLogs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DockerExportBuildLogs'](arg1, arg2, arg3);
+}
+
+export function DockerExportContainerLogs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DockerExportContainerLogs'](arg1, arg2, arg3);
+}
+
+export function DockerImages() {
+  return window['go']['main']['App']['DockerImages']();
+}
+
+export function DockerInspect(arg1, arg2) {
+  return window['go']['main']['App']['DockerInspect'](arg1, arg2);
+}
+
+export function DockerLogsStart(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DockerLogsStart'](arg1, arg2, arg3);
+}
+
+export function DockerLogsStop(arg1) {
+  return window['go']['main']['App']['DockerLogsStop'](arg1);
+}
+
+export function DockerNetworks() {
+  return window['go']['main']['App']['DockerNetworks']();
+}
+
+export function DockerPickComposeFile() {
+  return window['go']['main']['App']['DockerPickComposeFile']();
+}
+
+export function DockerSaveText(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DockerSaveText'](arg1, arg2, arg3);
+}
+
+export function DockerStartApp() {
+  return window['go']['main']['App']['DockerStartApp']();
+}
+
+export function DockerStats() {
+  return window['go']['main']['App']['DockerStats']();
+}
+
+export function DockerStatus() {
+  return window['go']['main']['App']['DockerStatus']();
+}
+
+export function DockerVolumes() {
+  return window['go']['main']['App']['DockerVolumes']();
+}
+
 export function DuplicateNote(arg1) {
   return window['go']['main']['App']['DuplicateNote'](arg1);
 }

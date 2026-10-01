@@ -374,6 +374,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   <ul>
     <li><a href="#utilidades-port-killer">Port Killer</a></li>
     <li><a href="#utilidades-activity-monitor">Activity Monitor</a></li>
+    <li><a href="#utilidades-docker">Docker</a></li>
   </ul>
 
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>AI agents</button>
@@ -558,7 +559,7 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
     <tr><td>Git</td><td>Repositories: see changes, branches and work with the agents</td></tr>
     <tr><td>Notes</td><td>Your encrypted knowledge base: runbooks and notes</td></tr>
     <tr><td>HTTP</td><td>Request collections: test and save endpoints</td></tr>
-    <tr><td>Utilities</td><td>System helpers: ports in use (Port Killer) and live processes (Activity Monitor)</td></tr>
+    <tr><td>Utilities</td><td>System helpers: ports in use (Port Killer) and live processes (Activity Monitor) and Docker</td></tr>
   </table></div>
   <p>You see <strong>one at a time</strong>, so the one you're using gets the full height instead of the
   strip the others used to leave it when stacked.</p>
@@ -1541,6 +1542,82 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   There's no disk or per-process network column: those numbers don't exist in a portable way, and the ones that do need
   administrator permission. On <strong>Windows</strong> processes don't carry an owner, so the <em>User</em> column and the
   <em>Mine</em> chip don't appear. Without administrator permission some system processes report 0 % CPU.</div>
+</article>
+
+<article class="topic" id="utilidades-docker" data-title="Docker">
+  <h1>Docker</h1>
+  <p class="lead">See and operate your containers, images, volumes and networks —and read their logs live— without
+  leaving the app or typing <code>docker ps</code>.</p>
+
+  <p>It's in the <strong>Utilities</strong> module and opens in <strong>its own tab</strong>. It works with whatever Docker
+  you already have —Docker Desktop, OrbStack, Colima or Docker Engine—, because it talks to the <code>docker</code> command
+  and respects its active context; the context name and version show next to the title so you know which engine you're
+  looking at.</p>
+
+  <p>In the sidebar, <strong>Docker unfolds a submenu</strong> —<em>Containers, Images, Volumes, Networks</em> and <em>Builds</em>—, like Git's, each with its <strong>count</strong>. Clicking one opens the Docker tab on that section (or takes you to it if it's already open) and highlights it in the menu. The tab itself has no menu of its own: it shows the section's content across the whole width, with the section name next to the title. The counts update while the tab is in view.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-docker.png" alt="Docker: table of containers grouped by Compose project, each with its state dot, image, published ports, CPU and memory, and the start, restart, logs, inspect and delete buttons"></div>
+    <figcaption>Containers grouped by Compose project, like Docker Desktop.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-docker--estado">Is Docker installed and running?</h2>
+  <p>The first thing the tab does is check. There are three outcomes. The same check is done by the <strong>Utilities list in the sidebar</strong>: if Docker isn't installed or its engine isn't running, the <em>Docker</em> entry shows <strong>disabled</strong> (greyed out, with an <em>Unavailable</em> tag and the reason on hover) and won't open a tab that would only show an error. It re-checks every few seconds while that list is in view, so it enables itself when Docker starts; clicking the entry also re-checks.</p>
+  <ul>
+    <li><strong>Not installed</strong> — it says so and offers a link on how to install it, plus a <em>Check again</em> button.</li>
+    <li><strong>Installed but the engine isn't responding</strong> — it shows what Docker answered and, on macOS and Windows, an <em>Open Docker Desktop</em> (or OrbStack) button. It re-checks every few seconds, so as soon as the engine is up the lists appear by themselves. On Linux the engine is a system service: start it by hand.</li>
+    <li><strong>Running</strong> — the lists.</li>
+  </ul>
+
+  <h2 id="utilidades-docker--contenedores">Containers</h2>
+  <p>Grouped by <strong>project</strong> (the Compose stack), with the standalone ones at the end. Each row shows a state dot —
+  <strong>blue</strong> running, <strong>grey</strong> stopped cleanly, <strong>red</strong> exited with an error (the one you're usually
+  looking for)—, the service name, its short id and status, the image, the <strong>published ports</strong> and the CPU and memory of
+  the running ones.</p>
+  <ul>
+    <li>Click a <strong>port</strong> chip to open <code>http://localhost:&lt;port&gt;</code> in the browser.</li>
+    <li>Per row: <strong>start / stop</strong>, <strong>restart</strong>, <strong>logs</strong>, <strong>inspect</strong> and <strong>delete</strong>.</li>
+    <li>On the <strong>project line</strong> (Docker Compose): <strong>start</strong>, <strong>stop</strong>, <strong>restart</strong>, <strong>up</strong> (create or recreate what's needed and leave it running, <code>docker compose up -d</code>) and <strong>down</strong> (stop and delete the project's containers and networks; volumes are kept). Compose runs with the same files the project was started from, read from its containers' labels; <em>up</em> can take minutes if it pulls or builds images, and a spinner shows while it works.</li>
+    <li><strong>Compose up…</strong> in the toolbar lets you pick a <code>docker-compose.yml</code> from disk and bring up a <strong>new project</strong> from it.</li>
+    <li>Deleting a container and <em>down</em> always ask first. Named volumes are kept; whatever was written inside the container isn't.</li>
+  </ul>
+
+  <h2 id="utilidades-docker--logs">Live logs</h2>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-docker-logs.png" alt="Docker with the logs panel open on the right: the lines of the api container with their time, errors in red and warnings in orange, and the filter, follow, time, wrap, pause, clear and copy controls"></div>
+    <figcaption>The panel opens next to the list; the table gives up the image, CPU and memory columns to make room.</figcaption>
+  </figure>
+  <p>Click a container's name (or its logs icon) and its logs open on the right, <strong>live</strong>:</p>
+  <ul>
+    <li><strong>Search with an index.</strong> Type in the search box and every match is highlighted; the counter says <em>3 of 12</em>, and <kbd>Enter</kbd> / <kbd>Shift+Enter</kbd> (or the arrows) jump to the next and previous match. <em>Matches only</em> hides the lines that don't contain the text.</li>
+    <li><strong>Size, your way.</strong> Type any number of earlier lines to load (1 to 10,000; the presets are just suggestions), make the text <strong>larger or smaller</strong>, and <strong>drag the panel's edge</strong> to widen it (double-click goes back; the button at the top <strong>maximizes</strong> it).</li>
+    <li><strong>Auto-refresh.</strong> <em>Live</em> is on by default: new lines arrive by themselves. Click it to pause and read without movement. <em>Follow</em> keeps the view on the last line and turns off by itself if you scroll up.</li>
+    <li><strong>Stop or start the container</strong> from the panel's own header, without going back to the list.</li>
+    <li>Also: show or hide the <strong>time</strong>, <strong>wrap</strong> long lines, <strong>clear</strong> the screen and <strong>copy</strong>. Lines with <em>error</em> or <em>fatal</em> show in red and <em>warn</em> in orange.</li>
+  </ul>
+
+  <h2 id="utilidades-docker--exportar">Export logs</h2>
+  <p>The <strong>Export</strong> button saves the logs to a file (<code>.log</code>), choosing where in the system dialog. You set a <strong>maximum number of lines</strong>, from <strong>100 to 10,000</strong> (the last ones are saved, which is where the problem usually is). Two options: <strong>from the container history</strong> —the last lines Docker has for it, not just what the panel shows— or <strong>what is on screen</strong>, with the search filter applied. The notice at the end says how many lines were really written, which can be fewer than the limit if the container doesn't have that many. The file is created readable only by you, since a log can hold data that isn't for anyone. Build logs export the same way (next section).</p>
+  <div class="note tip"><span class="lbl">It costs nothing while closed</span>
+  The list only refreshes while the tab is open <em>and in view</em>. The log stream is the only thing that stays open, and only while
+  its panel is: closing the panel, switching tabs or closing the app ends it. Nothing is left running.</div>
+
+  <h2 id="utilidades-docker--builds">Builds</h2>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-docker-builds.png" alt="Docker, Builds section: table of image builds with their name, status, steps (completed, total and cached), when and duration, and the view-log and export buttons"></div>
+    <figcaption>The build history, with a log you can read or export.</figcaption>
+  </figure>
+  <p>The <strong>Builds</strong> section lists the image build history (<code>docker buildx history</code>): name, status —<em>completed</em>, <em>failed</em>, <em>canceled</em>—, steps (done, total and how many came from cache), when and how long it took. Click one to read its <strong>full log</strong> in the panel (a very long one shows only its end, where the error usually is), and use the download icon to <strong>export it to a file</strong>, with the same 100 to 10,000 line limit. Needs buildx 0.20 or newer; an older Docker says so instead of showing an empty list.</p>
+
+  <h2 id="utilidades-docker--recursos">Images, volumes and networks</h2>
+  <p>Three simple tables with <strong>inspect</strong> (the full configuration, ready to copy) and <strong>delete</strong>. An image shows
+  how many containers use it, and a volume how many mount it; <strong>what is in use can't be deleted</strong> —the button is disabled and
+  says why—, and neither can Docker's default networks.</p>
+
+  <div class="note warn"><span class="lbl">What it doesn't do</span>
+  It doesn't pull images, doesn't run a build, and doesn't prune. It brings projects up and down with Compose, but doesn't edit their files.
+  The goal is to see, read and export logs and start, stop and delete; for the rest the terminal is still the tool.
+  Logs lose terminal colors on screen (they'd show as stray codes).</div>
 </article>
 
 <!-- ----------------------------------------------------------------- IA -->
