@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>mini-tools Help</title>
 <meta name="description" content="mini-tools documentation: Oracle, PostgreSQL, SQLite, SQL Server, Redis and MongoDB client, HTTP client with collections, SSH/SFTP terminal, Git client and three built-in AI CLIs. A 50 MB binary, no Electron, no account and no telemetry.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234a8eff'/><path d='M8 21V11h3.2l4.8 6 4.8-6H24v10h-3v-5.4l-3.8 4.7h-2.4L11 15.6V21z' fill='%23001a3d'/></svg>">
+<link rel="icon" type="image/png" href="docs/logo.png">
 <meta property="og:title" content="mini-tools Help">
 <meta property="og:description" content="Your database client, your HTTP client, your terminal, your Git client and your AI agents — in a single 50 MB binary.">
 <meta property="og:image" content="docs/screenshots/ui-workspace.png">
@@ -68,8 +68,7 @@ button{font:inherit;color:inherit}
   background:var(--lowest);border-bottom:1px solid var(--outline-variant);
 }
 .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.02em;text-decoration:none;color:inherit;font-size:15.5px;white-space:nowrap}
-.mark{width:25px;height:25px;border-radius:7px;background:var(--primary-container);color:var(--on-primary-container);
-  display:grid;place-items:center;font-weight:800;font-size:12px}
+.mark{width:28px;height:28px;border-radius:7px;flex:none;object-fit:cover}
 .ver{
   font-size:11.5px;color:var(--on-surface-variant);border:1px solid var(--outline-variant);
   border-radius:999px;padding:1px 9px;white-space:nowrap
@@ -301,8 +300,8 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Open the index">☰</button>
-  <a class="brand" href="#introduccion"><span class="mark">mt</span> mini-tools</a>
-  <span class="ver" title="This documentation describes version 2.8.0. Everything here exists in that binary.">2.8.0 · Help</span>
+  <a class="brand" href="#introduccion"><img class="mark" src="docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
+  <span class="ver" title="This documentation describes version 2.9.0. Everything here exists in that binary.">2.9.0 · Help</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Search the help…" autocomplete="off" spellcheck="false" aria-label="Search the help">
@@ -402,6 +401,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   <ul>
     <li><a href="#atajos">Keyboard shortcuts</a></li>
     <li><a href="#seguridad">Security</a></li>
+    <li><a href="#terminos">Terms and conditions</a></li>
     <li><a href="#faq">FAQ</a></li>
   </ul>
 </nav>
@@ -559,7 +559,7 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
     <tr><td>Git</td><td>Repositories: see changes, branches and work with the agents</td></tr>
     <tr><td>Notes</td><td>Your encrypted knowledge base: runbooks and notes</td></tr>
     <tr><td>HTTP</td><td>Request collections: test and save endpoints</td></tr>
-    <tr><td>Utilities</td><td>System helpers: ports in use (Port Killer) and live processes (Activity Monitor) and Docker</td></tr>
+    <tr><td>Utilities</td><td>System tools, each in its own tab: Port Killer (who holds a port), Activity Monitor (live processes, CPU and memory) and Docker (containers, images, volumes, networks, logs and Compose)</td></tr>
   </table></div>
   <p>You see <strong>one at a time</strong>, so the one you're using gets the full height instead of the
   strip the others used to leave it when stacked.</p>
@@ -1903,6 +1903,34 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   executable with a new version loses nothing, and why the backup is a file you can copy.</p>
 </article>
 
+<article class="topic" id="terminos" data-title="Terms and conditions">
+  <h1>Terms and conditions</h1>
+  <p class="lead">What you can do with mini-tools, what it does with your data and what remains your responsibility. In short: it's free, it's yours, and it's provided as it is.</p>
+
+  <h2 id="terminos--licencia">License</h2>
+  <p>mini-tools is free software under the <strong>MIT License</strong> (copyright 2026 rafael). You can use it, copy it, modify it, distribute it and use it at work or commercially, as long as you keep the copyright notice and the license text in the copies you distribute. The full text is the <a href="https://github.com/rafael180496/mini-tools/blob/main/LICENSE">LICENSE</a> file in the repository, and it is the one that prevails over this summary.</p>
+
+  <h2 id="terminos--garantia">No warranty</h2>
+  <p>The software is provided <strong>"as is", without warranty of any kind</strong>, express or implied —including fitness for a particular purpose or that it is free of errors—. The authors are not liable for any damage, data loss or downtime arising from its use. Official binaries are <strong>not signed</strong>, so macOS and Windows warn when opening them for the first time (see <a href="#instalacion">Install</a>); the Windows build is cross-compiled and each version says in its release notes whether it was tried on a real Windows.</p>
+
+  <h2 id="terminos--datos">Your data and your privacy</h2>
+  <ul>
+    <li><strong>It stays on your machine.</strong> Connections, passwords, keys and notes live in an encrypted vault in your operating system's application data folder. There is no account, no app server and <strong>no telemetry</strong>.</li>
+    <li><strong>The master password can't be recovered.</strong> It isn't stored anywhere: if you lose it, the vault and its backups can't be opened. Keeping the password and the backups safe is up to you.</li>
+    <li><strong>What does go out to the network</strong> is only what you ask for: connections to your databases, servers, APIs and Docker, one update check to GitHub on startup (it fails silently without a network), and whatever the AI CLIs you choose to use send to their own provider.</li>
+    <li>Screenshots in this help are generated with made-up data; they contain nobody's information.</li>
+  </ul>
+
+  <h2 id="terminos--uso">Responsible use</h2>
+  <p>mini-tools runs real operations: queries and statements against your databases, commands on remote servers, <strong>terminating processes</strong>, <strong>deleting containers, images and volumes</strong>, and purging logs. The confirmations and the production mark are help, not a safeguard; <strong>you decide, and you answer for, what runs and where</strong>. Use it only on systems you are authorized to access, and respect the policies of your organization and of the services you connect to.</p>
+
+  <h2 id="terminos--terceros">Third-party tools</h2>
+  <p>The AI agents (Claude Code, Codex CLI, Antigravity CLI), Docker, the database engines and the other programs mini-tools talks to belong to their own authors and are governed by <strong>their own terms</strong> and prices; mini-tools doesn't bundle or resell them. What you send to an AI agent is handled by its provider under its policies.</p>
+
+  <h2 id="terminos--cambios">Changes</h2>
+  <p>These terms can change from one version to the next, and this page describes the version shown in the top bar. Questions, reports and contributions go to the <a href="https://github.com/rafael180496/mini-tools">project's repository</a>.</p>
+</article>
+
 <article class="topic" id="faq" data-title="FAQ">
   <h1>Frequently asked questions</h1>
   <details><summary>Do I need an account or a license?</summary><p>No. It's MIT, there's no sign-up and no app server.</p></details>
@@ -1921,10 +1949,11 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentation for
-  v2.8.0; this page doesn't make a single external request.
+  v2.9.0; this page doesn't make a single external request.
   <a href="https://github.com/rafael180496/mini-tools">Source</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Downloads</a> ·
-  <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Changelog</a></p>
+  <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Changelog</a> ·
+  <a href="#terminos">Terms</a></p>
 </div>
 
 </main>

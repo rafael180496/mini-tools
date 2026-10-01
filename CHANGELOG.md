@@ -4,9 +4,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-10-01
+
 ### Agregado
 
-- **Un módulo nuevo en la barra lateral: Utilidades, y su primera herramienta, el Port Killer.** El menú de módulos suma un sexto ícono (martillo y llave) con la lista de herramientas; cada una se abre **en su propia pestaña**, y si ya estaba abierta el clic lleva a esa en vez de crear otra. La búsqueda global de la barra también filtra las utilidades, y la barra recuerda si quedaste en ese módulo.
+- **Un módulo nuevo en la barra lateral: Utilidades, y su primera herramienta, el Port Killer.** El menú de módulos suma un sexto ícono (martillo y llave) con la lista de herramientas; cada una se abre **en su propia pestaña**, y si ya estaba abierta el clic lleva a esa en vez de crear otra. La búsqueda global de la barra también filtra las utilidades, y la barra recuerda si quedaste en ese módulo. En la interfaz en español las herramientas se llaman **Liberador de puertos**, **Monitor de actividad** y **Docker**.
 
   **Port Killer** responde "¿quién se quedó con el puerto 3000?" sin pasar por `lsof -i :3000` + `kill` ni, en Windows, por `netstat -ano` + `taskkill`: una tabla con cada puerto TCP en escucha, su dirección, el proceso y el PID, con un buscador, pastillas **Todos / Local / Red** con su cuenta, orden por columna y un botón **Terminar** y otro **Forzar** por fila (más un **Abrir** que aparece al pasar el mouse y abre `http://localhost:<puerto>` en el navegador). La dirección lleva una etiqueta —**Local** si solo acepta conexiones de esta máquina, **Red** si escucha en todas las interfaces— porque la diferencia entre un servidor de desarrollo y uno expuesto es justo lo que se quiere ver de un vistazo. Antes de terminar nada, la app confirma nombrando el proceso, su PID y el puerto que libera; si el proceso atrapa el cierre ordenado y sigue vivo, el aviso lo dice y ofrece **Forzar** en vez de dar el puerto por libre.
 
@@ -37,6 +39,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
   **Exportar logs y builds.** Un botón *Exportar* guarda los logs a un archivo `.log` con el diálogo del sistema: **las últimas líneas del historial del contenedor** —no solo lo que muestra el panel— o **lo que se ve**, con el filtro de la búsqueda aplicado. **Un límite de líneas** (de **100 a 10 000**, por defecto 10 000) acota lo que se escribe, se aplica en la interfaz y otra vez en el backend, y el aviso final dice cuántas líneas se escribieron de verdad. Una sección nueva, **Builds**, lista el historial de `docker buildx history` —estado, pasos, caché, duración— y deja **leer el log completo de cada build y exportarlo**. Los archivos se crean con permisos solo para el usuario (0600): un log puede llevar datos que no son para cualquiera. El historial de builds necesita buildx 0.20 o más nuevo; un Docker más viejo lo dice en vez de mostrar una lista vacía.
 
   **Cerrado no cuesta nada**: la lista solo se actualiza con la pestaña abierta y a la vista, y lo único que queda abierto es el `docker logs -f` del panel de logs, que se termina al cerrar el panel, cambiar de pestaña o cerrar la app.
+
+- **La ayuda tiene logo y «Términos y condiciones».** La barra superior de la ayuda (en inglés y en español) ahora muestra el logo del proyecto —el loro— en lugar de las letras «mt», y el mismo logo es el ícono de la pestaña del navegador. Un tema nuevo, *Referencia → Términos y condiciones*, resume la licencia MIT, la ausencia de garantía, qué datos se quedan en tu máquina y qué sale a la red, el uso responsable de las operaciones que ejecuta la app y que las herramientas de terceros (agentes de IA, Docker, bases de datos) se rigen por sus propios términos; también hay un enlace en el pie de cada página.
 
 ## [2.8.0] - 2026-09-29
 

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ayuda de mini-tools</title>
 <meta name="description" content="Documentación de mini-tools: cliente de Oracle, PostgreSQL, SQLite, SQL Server, Redis y MongoDB, cliente HTTP con colecciones, terminal SSH/SFTP, cliente Git y tres CLIs de IA integrados. Un binario de 50 MB, sin Electron, sin cuenta y sin telemetría.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234a8eff'/><path d='M8 21V11h3.2l4.8 6 4.8-6H24v10h-3v-5.4l-3.8 4.7h-2.4L11 15.6V21z' fill='%23001a3d'/></svg>">
+<link rel="icon" type="image/png" href="../docs/logo.png">
 <meta property="og:title" content="Ayuda de mini-tools">
 <meta property="og:description" content="Tu cliente de base de datos, tu cliente HTTP, tu terminal, tu cliente Git y tus agentes de IA — en un solo binario de 50 MB.">
 <meta property="og:image" content="../docs/screenshots/es/ui-workspace.png">
@@ -68,8 +68,7 @@ button{font:inherit;color:inherit}
   background:var(--lowest);border-bottom:1px solid var(--outline-variant);
 }
 .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.02em;text-decoration:none;color:inherit;font-size:15.5px;white-space:nowrap}
-.mark{width:25px;height:25px;border-radius:7px;background:var(--primary-container);color:var(--on-primary-container);
-  display:grid;place-items:center;font-weight:800;font-size:12px}
+.mark{width:28px;height:28px;border-radius:7px;flex:none;object-fit:cover}
 .ver{
   font-size:11.5px;color:var(--on-surface-variant);border:1px solid var(--outline-variant);
   border-radius:999px;padding:1px 9px;white-space:nowrap
@@ -301,8 +300,8 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
 
 <div class="topbar">
   <button class="iconbtn" id="menubtn" aria-label="Abrir el índice">☰</button>
-  <a class="brand" href="#introduccion"><span class="mark">mt</span> mini-tools</a>
-  <span class="ver" title="Esta documentación describe la versión 2.8.0. Lo que está acá existe en ese binario.">2.8.0 · Ayuda</span>
+  <a class="brand" href="#introduccion"><img class="mark" src="../docs/logo.png" width="28" height="28" alt=""> mini-tools</a>
+  <span class="ver" title="Esta documentación describe la versión 2.9.0. Lo que está acá existe en ese binario.">2.9.0 · Ayuda</span>
   <div class="spacer"></div>
   <div class="search">
     <input id="q" type="search" placeholder="Buscar en la ayuda…" autocomplete="off" spellcheck="false" aria-label="Buscar en la ayuda">
@@ -402,6 +401,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   <ul>
     <li><a href="#atajos">Atajos de teclado</a></li>
     <li><a href="#seguridad">Seguridad</a></li>
+    <li><a href="#terminos">Términos y condiciones</a></li>
     <li><a href="#faq">Preguntas frecuentes</a></li>
   </ul>
 </nav>
@@ -558,7 +558,7 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
     <tr><td>Git</td><td>Repositorios: ver cambios, ramas y trabajar con los agentes</td></tr>
     <tr><td>Notas</td><td>Tu base de conocimiento cifrada: runbooks y apuntes</td></tr>
     <tr><td>HTTP</td><td>Colecciones de peticiones: probar y guardar endpoints</td></tr>
-    <tr><td>Utilidades</td><td>Herramientas del sistema: puertos ocupados (Liberador de puertos) y procesos en vivo (Monitor de actividad) y Docker</td></tr>
+    <tr><td>Utilidades</td><td>Herramientas del sistema, cada una en su pestaña: Liberador de puertos (quién ocupa un puerto), Monitor de actividad (procesos en vivo, CPU y memoria) y Docker (contenedores, imágenes, volúmenes, redes, logs y Compose)</td></tr>
   </table></div>
   <p>Se ve <strong>uno a la vez</strong>, así que el que estás usando se queda con toda la altura en vez de
   la franja que le dejaban los otros apilados.</p>
@@ -1920,6 +1920,34 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   podés copiar.</p>
 </article>
 
+<article class="topic" id="terminos" data-title="Términos y condiciones">
+  <h1>Términos y condiciones</h1>
+  <p class="lead">Qué podés hacer con mini-tools, qué hace con tus datos y qué sigue siendo tu responsabilidad. En corto: es libre, es tuyo y se entrega tal como está.</p>
+
+  <h2 id="terminos--licencia">Licencia</h2>
+  <p>mini-tools es software libre bajo la <strong>Licencia MIT</strong> (copyright 2026 rafael). Podés usarlo, copiarlo, modificarlo, distribuirlo y usarlo en el trabajo o con fines comerciales, siempre que conserves el aviso de copyright y el texto de la licencia en las copias que distribuyas. El texto completo es el archivo <a href="https://github.com/rafael180496/mini-tools/blob/main/LICENSE">LICENSE</a> del repositorio, y es el que prevalece sobre este resumen.</p>
+
+  <h2 id="terminos--garantia">Sin garantía</h2>
+  <p>El software se entrega <strong>«tal cual», sin garantía de ningún tipo</strong>, expresa o implícita —incluida la idoneidad para un fin particular o la ausencia de errores—. Los autores no responden por daños, pérdida de datos ni interrupciones derivados de su uso. Los binarios oficiales <strong>no están firmados</strong>, así que macOS y Windows avisan al abrirlos por primera vez (ver <a href="#instalacion">Instalación</a>); el de Windows se cross-compila y las notas de cada versión dicen si se probó en una Windows real.</p>
+
+  <h2 id="terminos--datos">Tus datos y tu privacidad</h2>
+  <ul>
+    <li><strong>Se quedan en tu máquina.</strong> Las conexiones, contraseñas, llaves y notas viven en una bóveda cifrada en la carpeta de datos de aplicación de tu sistema operativo. No hay cuenta, ni servidor de la app, ni <strong>telemetría</strong>.</li>
+    <li><strong>La contraseña maestra no se recupera.</strong> No se guarda en ningún lado: si la perdés, la bóveda y sus respaldos no se pueden abrir. Cuidar la contraseña y los respaldos es cosa tuya.</li>
+    <li><strong>Lo que sí sale a la red</strong> es solo lo que pedís: las conexiones a tus bases de datos, servidores, APIs y Docker, una comprobación de actualizaciones a GitHub al arrancar (falla en silencio sin red) y lo que los CLIs de IA que decidas usar envíen a su propio proveedor.</li>
+    <li>Las capturas de esta ayuda se generan con datos inventados; no contienen información de nadie.</li>
+  </ul>
+
+  <h2 id="terminos--uso">Uso responsable</h2>
+  <p>mini-tools ejecuta operaciones reales: consultas y sentencias contra tus bases de datos, comandos en servidores remotos, <strong>terminar procesos</strong>, <strong>eliminar contenedores, imágenes y volúmenes</strong> y purgar registros. Las confirmaciones y la marca de producción son una ayuda, no una salvaguarda; <strong>vos decidís, y respondés por, lo que se ejecuta y dónde</strong>. Usalo solo en sistemas a los que estés autorizado a acceder y respetá las políticas de tu organización y de los servicios a los que te conectes.</p>
+
+  <h2 id="terminos--terceros">Herramientas de terceros</h2>
+  <p>Los agentes de IA (Claude Code, Codex CLI, Antigravity CLI), Docker, los motores de base de datos y los demás programas con los que habla mini-tools pertenecen a sus autores y se rigen por <strong>sus propios términos</strong> y precios; mini-tools no los incluye ni los revende. Lo que enviés a un agente de IA lo trata su proveedor según sus políticas.</p>
+
+  <h2 id="terminos--cambios">Cambios</h2>
+  <p>Estos términos pueden cambiar de una versión a otra, y esta página describe la versión que muestra la barra superior. Las preguntas, reportes y contribuciones van al <a href="https://github.com/rafael180496/mini-tools">repositorio del proyecto</a>.</p>
+</article>
+
 <article class="topic" id="faq" data-title="Preguntas frecuentes">
   <h1>Preguntas frecuentes</h1>
   <details><summary>¿Necesito cuenta o licencia?</summary><p>No. Es MIT, no hay registro y no hay servidor de la app.</p></details>
@@ -1938,10 +1966,11 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 <div id="foot">
   <div class="pagenav" id="pagenav"></div>
   <p class="pagefoot"><strong>mini-tools</strong> — MIT. Go + Wails&nbsp;v2 + React. Documentación de la
-  v2.8.0; esta página no hace una sola petición externa.
+  v2.9.0; esta página no hace una sola petición externa.
   <a href="https://github.com/rafael180496/mini-tools">Código</a> ·
   <a href="https://github.com/rafael180496/mini-tools/releases">Descargas</a> ·
-  <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a></p>
+  <a href="https://github.com/rafael180496/mini-tools/blob/main/CHANGELOG.md">Cambios</a> ·
+  <a href="#terminos">Términos</a></p>
 </div>
 
 </main>

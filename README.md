@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.8.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.9.0-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -23,6 +23,31 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 </p>
 
 ---
+
+## Novedades — 2.9.0
+
+**La versión con herramientas de sistema.** La barra lateral suma un módulo
+**Utilidades**: mini-programas que se abren cada uno en su propia pestaña, sin
+salir de la app y **sin costo mientras están cerrados** —solo consultan con la
+pestaña abierta y a la vista—.
+
+- **Liberador de puertos (Port Killer).** Qué proceso tiene ocupado el puerto
+  3000, y un botón para terminarlo —o forzarlo— tras confirmar. Pide permisos al
+  sistema solo cuando hace falta, y los procesos del sistema no se ofrecen.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#utilidades-port-killer)
+- **Monitor de actividad.** Procesos con CPU % y memoria en vivo, ordenables y
+  filtrables, más tarjetas de CPU, memoria y red de toda la máquina con los
+  últimos dos minutos. Funciona en macOS, Windows y Linux.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#utilidades-activity-monitor)
+- **Docker.** Comprueba que Docker esté instalado y su motor corriendo (si no,
+  la entrada aparece deshabilitada). Contenedores agrupados por proyecto de
+  Compose, imágenes, volúmenes, redes y builds, con **logs en vivo** (búsqueda
+  con índice, tamaño a medida, auto-refresco), iniciar/detener, **Docker
+  Compose** y **exportar** logs de contenedores y de builds (100 a 10 000
+  líneas). Sus secciones son un submenú de la barra lateral, como el de Git.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#utilidades-docker)
+
+Todo el detalle en el [CHANGELOG](CHANGELOG.md).
 
 ## Novedades — 2.8.0
 
@@ -616,8 +641,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.8.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.8.0/mini-tools-v2.8.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.8.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.8.0/mini-tools-v2.8.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Esta versión todavía no se probó en una Windows real, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.9.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.9.0/mini-tools-v2.9.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.9.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.9.0/mini-tools-v2.9.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Esta versión todavía no se probó en una Windows real, ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -792,11 +817,11 @@ Actions crea el GitHub Release, le pega las notas de esa versión sacadas del
 ```bash
 ./scripts/bump-version.sh minor      # o patch/major
 ./scripts/package-all.sh             # genera el .dmg y el .exe
-cp build/bin/mini-tools-v2.8.0.dmg releases/macos/
-cp build/bin/mini-tools-v2.8.0-windows-amd64.exe releases/windows/
+cp build/bin/mini-tools-v2.9.0.dmg releases/macos/
+cp build/bin/mini-tools-v2.9.0-windows-amd64.exe releases/windows/
 # … volcar el CHANGELOG, actualizar los README con los checksums e index.html …
-git add -A && git commit -m "release: v2.8.0"
-git tag v2.8.0 && git push origin main --tags
+git add -A && git commit -m "release: v2.9.0"
+git tag v2.9.0 && git push origin main --tags
 #  ↑ el release se crea solo
 ```
 
@@ -851,11 +876,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.8.0 |
+| Versión | 2.9.0 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.8.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.8.0/mini-tools-v2.8.0.dmg)** |
-| SHA-256 | `731b508d160274e29603656de25ff3bb124088cb92106f26a23cafb2022cebbe` |
+| Archivo | **[⬇ Descargar mini-tools-v2.9.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.9.0/mini-tools-v2.9.0.dmg)** |
+| SHA-256 | `810bebffbcc4add7246a81185ee7f95b04af121a15e3dd0dca3b2fde7b1c040c` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -867,7 +892,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> **La 2.8.0 no se corrió todavía en una Windows real** — solo se confirmó que cross-compila limpio desde macOS. La 2.7.0 sí se probó en Windows 10 y 11. Esta versión trae dos migraciones nuevas del vault, las dos aditivas (**55**, notas fijadas; **56**, idioma de la interfaz), así que un `vault.db` de una versión anterior se abre sin perder nada — pero **al actualizar, la app pasa a inglés** hasta elegir español. Lo que conviene probar primero está listado en [releases/windows/README.md](releases/windows/README.md).
+> **La 2.9.0 no se corrió todavía en una Windows real** — solo se confirmó que cross-compila limpio desde macOS. La 2.7.0 sí se probó en Windows 10 y 11. Esta versión no trae migraciones del vault, pero sí código específico de Windows nuevo (el módulo **Utilidades**: Liberador de puertos, Monitor de actividad y Docker). Lo que conviene probar primero está listado en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -875,10 +900,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.8.0 |
+| Versión | 2.9.0 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **no verificado todavía en Windows real** |
-| Archivo | **[⬇ Descargar mini-tools-v2.8.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.8.0/mini-tools-v2.8.0-windows-amd64.exe)** |
-| SHA-256 | `1add2b803b73222df3cc8f6899f75b18edf6274b307c4e3b4d8518bbd4e113b1` |
+| Archivo | **[⬇ Descargar mini-tools-v2.9.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.9.0/mini-tools-v2.9.0-windows-amd64.exe)** |
+| SHA-256 | `565c7ac2169a13972bdc4a4c9252bd2f30c64d4827437184412acd1c5a3c282b` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

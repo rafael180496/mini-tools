@@ -10,17 +10,17 @@ red interna, etc.).
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.8.0 |
-| Archivo | `mini-tools-v2.8.0-windows-amd64.exe` |
-| Tamaño | ~58 MB (57,6 MB) |
-| SHA-256 | `1add2b803b73222df3cc8f6899f75b18edf6274b307c4e3b4d8518bbd4e113b1` |
+| Versión | 2.9.0 |
+| Archivo | `mini-tools-v2.9.0-windows-amd64.exe` |
+| Tamaño | ~58 MB (57,9 MB) |
+| SHA-256 | `565c7ac2169a13972bdc4a4c9252bd2f30c64d4827437184412acd1c5a3c282b` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
 Verificar la integridad del archivo descargado (PowerShell):
 
 ```powershell
-Get-FileHash mini-tools-v2.8.0-windows-amd64.exe -Algorithm SHA256
+Get-FileHash mini-tools-v2.9.0-windows-amd64.exe -Algorithm SHA256
 # debe coincidir con el hash de la tabla de arriba
 ```
 
@@ -34,36 +34,34 @@ Get-FileHash mini-tools-v2.8.0-windows-amd64.exe -Algorithm SHA256
 
 ## Estado de verificación en Windows real
 
-**La 2.8.0 NO se corrió en una Windows real.** Solo se confirmó que
+**La 2.9.0 NO se corrió en una Windows real.** Solo se confirmó que
 cross-compila limpio desde macOS y que el binario es un `PE32+ x86-64`. La
 2.7.0 sí se probó en Windows 10 y 11, pero eso no dice nada de esta versión:
 WebView2, DPI y los diálogos nativos se confirman únicamente corriéndola.
 
-Esta versión trae **dos** migraciones nuevas del vault, que corren en el primer
-`Open()` después de actualizar. Las dos son aditivas —agregan una columna con
-valor por defecto— y un `vault.db` de la versión anterior no pierde nada:
+Esta versión **no trae migraciones del vault**: un `vault.db` de la 2.8.0 abre
+tal cual.
 
-- **55**: `vault_notes.pinned` (notas fijadas), `DEFAULT 0`: ninguna nota
-  queda fijada sola.
-- **56**: `settings.language` (idioma de la interfaz), `DEFAULT ''` = sin
-  elegir, que la app lee como **inglés**. Consecuencia visible: **al
-  actualizar, la app pasa a inglés** hasta que se elija español en la pantalla
-  de desbloqueo o en Configuración → Apariencia → Idioma.
+Lo nuevo de esta versión es el módulo **Utilidades** (Liberador de puertos,
+Monitor de actividad y Docker), y es donde hay que mirar primero si algo falla
+en Windows, porque es código específico de plataforma que **nunca se ejecutó**
+ahí:
 
-Lo nuevo de esta versión que más depende de la plataforma, y donde hay que
-mirar primero si algo falla en Windows:
-
-- **Cambio de idioma en caliente** con terminales SSH abiertas y consultas
-  corriendo: no debería cortar nada.
-- **Exportar una nota como Markdown**: usa el diálogo nativo de guardado.
-- **Los procesos hijos heredan el idioma** por la variable `MINI_TOOLS_LANG`
-  (hook de aprobación de los agentes, servidor MCP por named pipe, askpass y
-  editor de rebase de git).
-- Lo que ya estaba pendiente de la 2.7.0 sigue sin ejercitarse en Windows: el
-  flujo OAuth 2.0 (aviso del Firewall), el servidor MCP por named pipe, lanzar
-  los CLIs agénticos (`.cmd`/`.exe` del `PATH`), varias terminales SSH contra
-  el mismo servidor (ConPTY), abrir en VS Code / el explorador y pegar
-  imágenes en una nota.
+- **Monitor de actividad**: lista los procesos con la API de Windows
+  (Toolhelp32, `GetProcessTimes`, `psapi`) y calcula la CPU % por diferencia
+  de tiempos. En Windows los procesos no traen dueño, así que no aparecen la
+  columna *Usuario* ni la pastilla *Míos* — es lo esperado, no un fallo.
+- **Liberador de puertos**: usa `netstat -ano` y `tasklist` sin abrir una
+  consola a la vista (`CREATE_NO_WINDOW`); terminar un proceso de otro usuario
+  pide el **UAC**.
+- **Docker**: habla con el comando `docker` del `PATH`; el botón **Abrir Docker
+  Desktop** lanza el ejecutable desde su ruta de instalación habitual. Exportar
+  logs usa el diálogo nativo de guardado.
+- Lo que ya estaba pendiente de versiones anteriores sigue sin ejercitarse en
+  Windows: el flujo OAuth 2.0 (aviso del Firewall), el servidor MCP por named
+  pipe, lanzar los CLIs agénticos (`.cmd`/`.exe` del `PATH`), varias terminales
+  SSH contra el mismo servidor (ConPTY), abrir en VS Code / el explorador y
+  pegar imágenes en una nota.
 
 **Esta sección se reescribe en cada release.** Si la versión siguiente sale sin
 que nadie la corra en una Windows real, va la advertencia explícita de "no
@@ -97,7 +95,7 @@ verificado" — nunca extrapolar de un release anterior.
 No hay instalador: el `.exe` es portable y corre standalone desde
 cualquier carpeta (Escritorio, `C:\Tools\`, un pendrive).
 
-1. Descargar `mini-tools-v2.8.0-windows-amd64.exe`.
+1. Descargar `mini-tools-v2.9.0-windows-amd64.exe`.
 2. (Opcional pero recomendado) Verificar la integridad en PowerShell con
    el comando de la sección "Versión actual" — el hash tiene que coincidir
    con el de la tabla.
