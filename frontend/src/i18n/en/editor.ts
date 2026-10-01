@@ -17,6 +17,7 @@ const en: Messages<typeof es> = {
             httpRequest: 'HTTP request from a collection',
             redisConsole: 'Redis command console',
             mongoConsole: 'mongosh console',
+            utility: 'System utility',
         },
         badgeRemote: 'REMOTE',
         badgeNote: 'NOTE',

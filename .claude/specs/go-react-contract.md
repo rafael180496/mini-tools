@@ -950,3 +950,54 @@ maneja su propio login y guarda sus credenciales donde decida. Leerlas,
 replicarlas o interceptarlas sería frágil y una responsabilidad que nadie
 pidió — la única credencial que la app guarda es la API key opcional de
 arriba, para quien usa el modo por variable de entorno.
+
+
+## Utilidades: Port Killer y Activity Monitor (`backend/portkill`, `backend/procmon`, `app_utilities.go`)
+
+Módulo **Utilidades** de la barra lateral: una lista de herramientas, cada una se
+abre en su propia pestaña (`kind: 'utility'`, una sola por herramienta). Hoy hay
+dos. Todos los métodos pasan por `requireUnlocked`: terminar un proceso es una
+acción con los permisos del usuario sobre la máquina entera, la misma razón por
+la que la terminal local está detrás de la clave maestra.
+
+| Método | Nota |
+|---|---|
+| `ListListeningPorts()` → `[]portkill.Listener` | Puertos TCP en escucha: `port`, `address`, `pid`, `process`, `protected`. Ordenados por puerto. `process` vacío = el SO no lo reveló. `protected` marca lo que no se ofrece terminar (pid ≤ 1, procesos del sistema de Windows, esta misma app, no identificados) |
+| `KillProcess(pid, force)` → `bool` | Termina con los permisos de la app. `force=false` = SIGTERM, `true` = SIGKILL; **en Windows ambos son TerminateProcess**. Devuelve si el proceso ya había salido a los 2 s (un servidor puede atrapar SIGTERM: ahí la UI ofrece Forzar) |
+| `KillProcessElevated(pid, force)` → `bool` | Lo mismo pidiendo permisos de administrador al SO (`osascript` / `pkexec` / `Start-Process -Verb RunAs`). Tope de 2 min para que el usuario responda. **Solo se llama después de que `KillProcess` respondió `permission` y el usuario lo confirmó** |
+
+| `ProcessSnapshot()` → `procmon.Snapshot` | Procesos (`pid`, `ppid`, `name`, `user`, `cpu`, `memory`, `protected`) + totales (`cpuTotal` 0-100, `memUsed`/`memTotal`, `netRx`/`netTx` en bytes/s, `cores`, `hasUser`, `me`). `cpu` es el % de UN núcleo (200 = dos núcleos). **Un % de CPU son dos lecturas**: el `Sampler` guarda la anterior; la primera llamada (o la primera tras un reset) toma dos lecturas con 400 ms de por medio, así que tarda ese tiempo. Una lectura anterior de más de 30 s se descarta |
+| `StopProcessMonitor()` | Suelta la lectura anterior del `Sampler`. La pestaña lo llama al salir de la vista o cerrarse: con la utilidad fuera de pantalla el backend no retiene nada |
+
+`KillProcess`/`KillProcessElevated` los usan las dos utilidades (el Port Killer
+por el puerto, el Activity Monitor por la lista de procesos): terminan por pid y
+no saben de dónde viene.
+
+**Qué lee `procmon` en cada sistema** (sin cgo ni dependencias nuevas): macOS
+`ps` (tiempo de CPU acumulado, de donde sale el % instantáneo), `vm_stat`,
+`sysctl hw.memsize` y `netstat -ib`; Linux `/proc` (`stat`, `meminfo`,
+`net/dev`); Windows Toolhelp32 + `GetProcessTimes` + `GetProcessMemoryInfo` +
+`GlobalMemoryStatusEx` + `netstat -e`. **No hay disco ni red por proceso**
+(no existen sin privilegios ni de forma portable) y en Windows los procesos no
+traen dueño (`hasUser=false`: la UI oculta la columna y el filtro «Míos»).
+
+Errores con código (`i18n.NewCoded`, el frontend los lee con `errorCode()`):
+`protected`, `permission`, `not-found`, `elevation-denied`, `no-tool`.
+
+`portkill.Listener` aparece en `models.ts` porque está en la firma de
+`ListListeningPorts`; no hay tipo espejo a mano.
+
+**Costo cero con la pestaña cerrada.** No hay goroutines ni caché en el
+backend: cada llamada es un `lsof`/`ss`/`netstat` que arranca y termina. El
+temporizador de refresco vive en el efecto de `PortKillerTab`, solo corre con la
+pestaña a la vista y la ventana visible, y la pestaña se carga con `React.lazy`.
+
+**Costo cero también en el Activity Monitor**: el temporizador vive en el efecto
+de `ActivityMonitorTab`, corre solo con la pestaña a la vista y la ventana
+visible, y el historial de los gráficos (60 puntos) vive en el componente.
+
+**Cómo se agrega otra utilidad**: id e ícono en `components/utilities/utilities.ts`,
+sus textos en `utilities.tools.<id>` (es/ y en/), el componente de su pestaña
+cargado con `lazy` y montado en el bloque `kind === 'utility'` de `Workspace.tsx`
+y, si necesita backend, un paquete en `backend/` con sus bindings en
+`app_utilities.go`.

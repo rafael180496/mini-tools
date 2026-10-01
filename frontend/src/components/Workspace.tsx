@@ -111,6 +111,8 @@ import type {query} from '../../wailsjs/go/models'
 import type {ParamDraftMap} from './editor/QueryParamsDialog'
 import Sidebar from './sidebar/Sidebar'
 import type {SidebarModuleId} from './sidebar/SidebarMasterMenu'
+import UtilitiesTree from './utilities/UtilitiesTree'
+import type {UtilityId} from './utilities/utilities'
 import {DEFAULT_EDITOR_APPEARANCE, editorAppearanceFromSettings, type EditorAppearance} from '../codemirror/editorAppearance'
 import type {EditorView} from '@codemirror/view'
 import {statementAt} from '../lib/sqlStatementAt'
@@ -131,6 +133,10 @@ const ExplainPlanPanel = lazy(() => import('./explain/ExplainPlanPanel'))
 const SchemaPickerDialog = lazy(() => import('./connections/SchemaPickerDialog'))
 const SettingsDialog = lazy(() => import('./SettingsDialog'))
 const QueryParamsDialog = lazy(() => import('./editor/QueryParamsDialog'))
+// Cada utilidad es un programa aparte: su código se descarga recién al abrir su
+// pestaña, y mientras no esté abierta no hay nada montado ni consultando.
+const PortKillerTab = lazy(() => import('./utilities/PortKillerTab'))
+const ActivityMonitorTab = lazy(() => import('./utilities/ActivityMonitorTab'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'page' | 'done' | 'cancelled' | 'error'
@@ -498,6 +504,7 @@ export default function Workspace({
     const [sshMatches, setSshMatches] = useState<number | null>(null)
     const [gitMatches, setGitMatches] = useState<number | null>(null)
     const [notesMatches, setNotesMatches] = useState<number | null>(null)
+    const [utilitiesMatches, setUtilitiesMatches] = useState<number | null>(null)
 
     const clearSidebarFilter = useCallback(() => setSidebarFilter(''), [])
 
@@ -552,8 +559,15 @@ export default function Workspace({
                 // no hay nada cuando lo que pasa es que todavía no se contó.
                 matchCount: null,
             },
+            {
+                id: 'utilities' as const,
+                icon: 'handyman',
+                label: t.workspace.modules.utilities,
+                hint: t.workspace.modules.utilitiesHint,
+                matchCount: utilitiesMatches,
+            },
         ],
-        [connectionsMatches, sshMatches, gitMatches, notesMatches, t],
+        [connectionsMatches, sshMatches, gitMatches, notesMatches, utilitiesMatches, t],
     )
 
     // Schema metadata cached per connection id — shared by the sidebar tree
@@ -2622,6 +2636,31 @@ export default function Workspace({
     // "Abrir en pestaña" button on an SSH connection row. language is set
     // to 'sql' purely as a placeholder — SshTerminalTab never reads it,
     // same "unused field" treatment redis-browser tabs give `content`.
+    // Abre una utilidad en una pestaña — o lleva a la que ya está abierta: una
+    // sola por herramienta, porque dos Port Killer mostrarían la misma lista y
+    // cada una consultaría por su lado. Cerrar la pestaña la desmonta, y con
+    // ella se va todo lo que la herramienta tuviera en marcha.
+    function openUtility(id: UtilityId) {
+        const existing = tabs.find((t) => t.kind === 'utility' && t.utilityId === id)
+        if (existing) {
+            setActiveTabId(existing.id)
+            return
+        }
+        const tab: EditorTab = {
+            id: newTabId(),
+            title: tr().utilities.tools[id].name,
+            path: null,
+            content: '',
+            dirty: false,
+            connId: null,
+            language: 'sql',
+            kind: 'utility',
+            utilityId: id,
+        }
+        setTabs((prev) => [...prev, tab])
+        setActiveTabId(tab.id)
+    }
+
     // Abre una terminal del SISTEMA OPERATIVO en una pestaña.
     //
     // A diferencia de las de SSH no se deduplica por conexión sino por
@@ -3137,6 +3176,8 @@ export default function Workspace({
     // esta bandera en las guardas de abajo, el editor SQL y su barra de
     // acciones se seguirían dibujando encima.
     const isHttpTabActive = activeTabData?.kind === 'http-request'
+    // Una utilidad ocupa el cuerpo entero, como Git o una nota.
+    const isUtilityTabActive = activeTabData?.kind === 'utility'
     // Una nota no es una consulta: no tiene conexión, ni esquema, ni botón de
     // ejecutar. La barra de herramientas del editor SQL entera se oculta —
     // dejarla visible decía "Sin conexión" sobre un documento de texto, que es
@@ -3171,7 +3212,8 @@ export default function Workspace({
         !isRemoteFileActive &&
         !isHybridTabActive &&
         !isNoteTabActive &&
-        !isHttpTabActive
+        !isHttpTabActive &&
+        !isUtilityTabActive
 
     return (
         <div className="flex h-full w-full overflow-hidden bg-background font-sans text-on-background">
@@ -3192,6 +3234,14 @@ export default function Workspace({
                 onToggleTheme={onToggleTheme}
                 onOpenSettings={() => setShowSettingsDialog(true)}
                 bodies={{
+                    utilities: (
+                        <UtilitiesTree
+                            openIds={new Set(tabs.filter((t) => t.kind === 'utility' && t.utilityId).map((t) => t.utilityId as UtilityId))}
+                            onOpen={openUtility}
+                            filter={sidebarFilter}
+                            onMatchCount={setUtilitiesMatches}
+                        />
+                    ),
                     http: (
                         <HttpTree
                             filter={sidebarFilter}
@@ -3567,7 +3617,7 @@ export default function Workspace({
                         components/ssh/SshTerminalTab.tsx), que es donde termina
                         la salida del comando y donde ya está mirando quien se
                         lo pregunta. */}
-                    {!isNoteTabActive && !isLocalTerminalTabActive && !isHttpTabActive && !isGitTabActive && !isSshTerminalTabActive && !isHybridTabActive && (
+                    {!isNoteTabActive && !isLocalTerminalTabActive && !isHttpTabActive && !isGitTabActive && !isSshTerminalTabActive && !isHybridTabActive && !isUtilityTabActive && (
                     <div className="flex flex-wrap items-center gap-1 border-t border-outline-variant px-2 py-1.5">
                         {!toolbarHidden && isQueryArea && (
                             <>
@@ -3857,7 +3907,7 @@ export default function Workspace({
                     className="relative min-w-0 border-b border-outline-variant"
                     style={{
                         height: isRemoteFileActive ? '100%' : editorHeight,
-                        display: isBrowserTabActive || isSshTerminalTabActive || isLocalTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive || isNoteTabActive || isHttpTabActive ? 'none' : undefined,
+                        display: isBrowserTabActive || isSshTerminalTabActive || isLocalTerminalTabActive || isSftpTabActive || isGitTabActive || isHybridTabActive || isNoteTabActive || isHttpTabActive || isUtilityTabActive ? 'none' : undefined,
                     }}
                 >
                     {/* Asistente de consultas: flota SOBRE el editor en vez de
@@ -4079,6 +4129,26 @@ export default function Workspace({
                                     active={activeTabId === t.id}
                                 />
                             </GitErrorBoundary>
+                        </div>
+                    ))}
+
+                {/* Las utilidades quedan montadas mientras su pestaña existe
+                    (para no perder el filtro ni el último aviso al cambiar de
+                    pestaña), pero solo la que está a la vista trabaja: `visible`
+                    es lo que le permite a cada una dejar de consultar cuando
+                    queda oculta. Cerrar la pestaña desmonta todo. */}
+                {tabs
+                    .filter((t) => t.kind === 'utility' && t.utilityId)
+                    .map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex w-full min-w-0 flex-1 overflow-hidden"
+                            style={{display: activeTabId === t.id ? undefined : 'none'}}
+                        >
+                            <Suspense fallback={null}>
+                                {t.utilityId === 'portKiller' && <PortKillerTab visible={activeTabId === t.id} />}
+                                {t.utilityId === 'activityMonitor' && <ActivityMonitorTab visible={activeTabId === t.id} />}
+                            </Suspense>
                         </div>
                     ))}
 

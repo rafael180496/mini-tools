@@ -16,7 +16,7 @@
 #   UISHOT_LANG=es ./scripts/uishot.sh files        # en español (por defecto, inglés)
 #
 # UISHOT_MODULE elige qué módulo abre el menú master de la barra lateral
-# (connections | ssh | git | notes | http). Solo lo miran las vistas que montan
+# (connections | ssh | git | notes | http | utilities). Solo lo miran las vistas que montan
 # el workspace entero; el resto lo ignora.
 #
 # UISHOT_SCALE es el tamaño de letra de la interfaz en porcentaje (ver

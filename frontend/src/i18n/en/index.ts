@@ -18,6 +18,7 @@ import ssh from './ssh'
 import terminal from './terminal'
 import notes from './notes'
 import agent from './agent'
+import utilities from './utilities'
 
 const en: Messages<typeof es> = {
     common,
@@ -38,5 +39,6 @@ const en: Messages<typeof es> = {
     terminal,
     notes,
     agent,
+    utilities,
 }
 export default en

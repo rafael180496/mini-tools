@@ -4,6 +4,22 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Agregado
+
+- **Un módulo nuevo en la barra lateral: Utilidades, y su primera herramienta, el Port Killer.** El menú de módulos suma un sexto ícono (martillo y llave) con la lista de herramientas; cada una se abre **en su propia pestaña**, y si ya estaba abierta el clic lleva a esa en vez de crear otra. La búsqueda global de la barra también filtra las utilidades, y la barra recuerda si quedaste en ese módulo.
+
+  **Port Killer** responde "¿quién se quedó con el puerto 3000?" sin pasar por `lsof -i :3000` + `kill` ni, en Windows, por `netstat -ano` + `taskkill`: una tabla con cada puerto TCP en escucha, su dirección, el proceso y el PID, con un buscador, pastillas **Todos / Local / Red** con su cuenta, orden por columna y un botón **Terminar** y otro **Forzar** por fila (más un **Abrir** que aparece al pasar el mouse y abre `http://localhost:<puerto>` en el navegador). La dirección lleva una etiqueta —**Local** si solo acepta conexiones de esta máquina, **Red** si escucha en todas las interfaces— porque la diferencia entre un servidor de desarrollo y uno expuesto es justo lo que se quiere ver de un vistazo. Antes de terminar nada, la app confirma nombrando el proceso, su PID y el puerto que libera; si el proceso atrapa el cierre ordenado y sigue vivo, el aviso lo dice y ofrece **Forzar** en vez de dar el puerto por libre.
+
+  **Funciona igual en macOS, Windows y Linux** y no agrega dependencias: usa lo que cada sistema ya trae (`lsof` en macOS, `ss` o `lsof` en Linux, `netstat` y `tasklist` en Windows), sin abrir una consola a la vista en Windows. Un proceso de otro usuario o del sistema **pide permisos**: la app lo explica y, si aceptás, se los pide al sistema operativo —el diálogo de contraseña en macOS, `pkexec` en Linux, el UAC en Windows—; si rechazás ahí, el proceso sigue corriendo. Los procesos del sistema, esta misma app y los que el sistema no dejó identificar aparecen **sin** botones: terminarlos no se ofrece desde acá. Sin permisos de administrador el sistema solo revela los procesos del propio usuario, así que los de otros pueden faltar en la lista.
+
+  **Cerrado no cuesta nada**: no hay nada en segundo plano. La pestaña solo consulta mientras está abierta *y a la vista* —cada 5 segundos si dejás encendido **Auto**, con la ventana visible— y se detiene al pasar a otra pestaña, al minimizar o al cerrarla. Ver el tema nuevo en la ayuda (*Utilidades → Port Killer*, en inglés y en español).
+
+- **Una segunda utilidad: Activity Monitor.** Los procesos de la máquina en una tabla —nombre, PID, usuario, **CPU %** y **memoria** con una barra que las compara— que se ordena con un clic en el encabezado (por defecto, CPU de mayor a menor), con pastillas **Todos / Míos / Activos** y un buscador por nombre, PID o usuario. Al pie, tres tarjetas dejan a la vista toda la máquina mientras se recorre la lista: **CPU** total, **memoria** usada sobre instalada y **red** de bajada y subida, cada una con los últimos dos minutos dibujados. El modo **En vivo** se puede pausar —para leer una cifra sin que se mueva— y el intervalo es de 1, 2 o 5 segundos. Cada fila trae **Terminar** y **Forzar**, con la misma confirmación y el mismo pedido de permisos de administrador que el Port Killer; los procesos del sistema y la propia app no los ofrecen.
+
+  La CPU de un proceso es el % de **un núcleo** (200 son dos núcleos completos) y sale del **tiempo de CPU acumulado** entre dos lecturas, no del promedio de toda su vida que da `ps -o %cpu`, así que el número es el de ahora. Funciona en macOS, Windows y Linux sin dependencias nuevas (`ps`/`vm_stat`/`netstat` en macOS, `/proc` en Linux, la API de Windows). **No hay disco ni red por proceso** —no existen de forma portable ni sin privilegios— y en Windows los procesos no traen dueño, así que no aparecen la columna *Usuario* ni la pastilla *Míos*.
+
+  **Cerrado no cuesta nada, igual que el Port Killer**: la pestaña solo lee mientras está abierta y a la vista; al salir de la vista, además, el backend suelta la única lectura que guardaba para calcular el % de CPU. Los métodos `KillPortProcess` pasaron a llamarse `KillProcess` porque ahora los comparten las dos utilidades.
+
 ## [2.8.0] - 2026-09-29
 
 ### Agregado

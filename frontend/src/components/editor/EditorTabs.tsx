@@ -9,6 +9,7 @@ import Icon from '../Icon'
 import Select from '../Select'
 import RecentFilesMenu from './RecentFilesMenu'
 import {t as tr, useT} from '../../i18n'
+import type {UtilityId} from '../utilities/utilities'
 
 export type TabLanguage = 'sql' | 'redis-cli' | 'mongosh'
 
@@ -54,6 +55,11 @@ export type TabKind =
     // en absoluto si es una **petición rápida** — una que se manda sin
     // guardarla, y que vive solo mientras la pestaña esté abierta.
     | 'http-request'
+    // Una utilidad del módulo Utilidades (hoy: Port Killer). Tipo propio y no
+    // un 'editor' disfrazado: no tiene lenguaje, conexión ni contenido, solo
+    // la herramienta que muestra (`utilityId`). Se abre una sola por
+    // herramienta, y mientras no está abierta no consume nada.
+    | 'utility'
 
 // El rótulo de tipo que lleva cada pestaña delante del nombre.
 //
@@ -81,6 +87,7 @@ const KIND_BADGE: Record<TabKind, {text: string; className: string; readonly hin
     'git-repo': {text: 'GIT', className: 'text-tertiary', get hint() { return tr().editor.tabs.kindHint.gitRepo }},
     note: {get text() { return tr().editor.tabs.badgeNote }, className: 'text-tertiary', get hint() { return tr().editor.tabs.kindHint.note }},
     'http-request': {text: 'HTTP', className: 'text-primary', get hint() { return tr().editor.tabs.kindHint.httpRequest }},
+    utility: {text: 'UTIL', className: 'text-tertiary', get hint() { return tr().editor.tabs.kindHint.utility }},
 }
 
 // Para una pestaña de editor el rótulo depende del lenguaje: "SQL" sobre una
@@ -156,6 +163,8 @@ export interface EditorTab {
     // defecto del sistema cuando el guardado no está instalado, y el rótulo
     // tiene que decir la verdad sobre lo que está corriendo.
     shellLabel?: string
+    // Herramienta que muestra la pestaña — solo para kind === 'utility'.
+    utilityId?: UtilityId
 }
 
 interface EditorTabsProps {

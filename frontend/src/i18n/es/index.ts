@@ -19,6 +19,7 @@ import ssh from './ssh'
 import terminal from './terminal'
 import notes from './notes'
 import agent from './agent'
+import utilities from './utilities'
 
 export default {
     common,
@@ -39,4 +40,5 @@ export default {
     terminal,
     notes,
     agent,
+    utilities,
 }

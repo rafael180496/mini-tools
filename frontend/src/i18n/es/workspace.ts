@@ -22,6 +22,8 @@ export default {
         notes: 'Notas',
         notesHint: 'tu base de conocimiento cifrada: runbooks y apuntes',
         httpHint: 'colecciones de peticiones: probar y guardar endpoints',
+        utilities: 'Utilidades',
+        utilitiesHint: 'herramientas del sistema: puertos ocupados y otros apoyos del día a día',
     },
     gitSidebarLabel: 'sidebar Git',
     // Mensajes de la barra de estado.

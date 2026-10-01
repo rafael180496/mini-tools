@@ -45,6 +45,8 @@ ui-chat chat 900 700
 ui-thinking thinking 900 560
 chat-db chatdb 820 700
 settings-full settings:Vault 1100 720
+utilities-port-killer portkiller 1200 440
+utilities-activity-monitor activitymonitor 1200 640
 '
 
 mkdir -p docs/screenshots/es

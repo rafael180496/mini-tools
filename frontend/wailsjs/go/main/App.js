@@ -1058,6 +1058,14 @@ export function IsVaultInitialized() {
   return window['go']['main']['App']['IsVaultInitialized']();
 }
 
+export function KillProcess(arg1, arg2) {
+  return window['go']['main']['App']['KillProcess'](arg1, arg2);
+}
+
+export function KillProcessElevated(arg1, arg2) {
+  return window['go']['main']['App']['KillProcessElevated'](arg1, arg2);
+}
+
 export function ListAgentChats(arg1) {
   return window['go']['main']['App']['ListAgentChats'](arg1);
 }
@@ -1080,6 +1088,10 @@ export function ListExplainHistory(arg1, arg2) {
 
 export function ListFolders() {
   return window['go']['main']['App']['ListFolders']();
+}
+
+export function ListListeningPorts() {
+  return window['go']['main']['App']['ListListeningPorts']();
 }
 
 export function ListLocalHistory(arg1, arg2) {
@@ -1260,6 +1272,10 @@ export function PreviewRowEdits(arg1, arg2, arg3) {
 
 export function PrimeSchemaIndex(arg1) {
   return window['go']['main']['App']['PrimeSchemaIndex'](arg1);
+}
+
+export function ProcessSnapshot() {
+  return window['go']['main']['App']['ProcessSnapshot']();
 }
 
 export function PushRedisListValue(arg1, arg2, arg3) {
@@ -1612,6 +1628,10 @@ export function SshHistoryEnabled() {
 
 export function StartSftpTransfer(arg1) {
   return window['go']['main']['App']['StartSftpTransfer'](arg1);
+}
+
+export function StopProcessMonitor() {
+  return window['go']['main']['App']['StopProcessMonitor']();
 }
 
 export function StopRedisMonitor(arg1) {

@@ -22,6 +22,8 @@ const en: Messages<typeof es> = {
         notes: 'Notes',
         notesHint: 'your encrypted knowledge base: runbooks and notes',
         httpHint: 'request collections: test and save endpoints',
+        utilities: 'Utilities',
+        utilitiesHint: 'system helpers: ports in use and other everyday tools',
     },
     gitSidebarLabel: 'Git sidebar',
     status: {

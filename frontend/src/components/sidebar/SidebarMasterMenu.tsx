@@ -17,7 +17,7 @@ import {useT} from '../../i18n'
 // cada ícono cuando hay una búsqueda activa — buscar sigue siendo global, y
 // el ícono es lo que dice en cuál de los cuatro cayó lo que se busca.
 
-export type SidebarModuleId = 'connections' | 'ssh' | 'git' | 'notes' | 'http'
+export type SidebarModuleId = 'connections' | 'ssh' | 'git' | 'notes' | 'http' | 'utilities'
 
 export interface SidebarModuleDef {
     id: SidebarModuleId

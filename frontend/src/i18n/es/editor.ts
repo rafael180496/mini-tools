@@ -16,6 +16,7 @@ export default {
             httpRequest: 'Petición HTTP de una colección',
             redisConsole: 'Consola de comandos Redis',
             mongoConsole: 'Consola mongosh',
+            utility: 'Utilidad del sistema',
         },
         badgeRemote: 'REMOTO',
         badgeNote: 'NOTA',

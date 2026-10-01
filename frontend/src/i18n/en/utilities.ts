@@ -1,0 +1,146 @@
+import type {Messages} from '../types'
+import type es from '../es/utilities'
+
+// Utilities module texts (the sidebar and each tool). The Spanish dictionary is
+// the shape reference — see .claude/specs/i18n.md.
+const en: Messages<typeof es> = {
+    sidebar: {
+        title: 'Utilities',
+        openTool: (p) => `Open ${p.name} in a new tab`,
+        alreadyOpen: 'Open',
+    },
+    tools: {
+        portKiller: {
+            name: 'Port Killer',
+            hint: 'see which process is holding a port and end it',
+        },
+        activityMonitor: {
+            name: 'Activity Monitor',
+            hint: 'live processes: what is using CPU and memory, and ending them',
+        },
+    },
+    portKiller: {
+        searchPlaceholder: 'Search port, process or PID…',
+        searchTitle: 'Filters the list by port number, process name, PID or address',
+        clearSearch: 'Clear the search',
+        refresh: 'Refresh',
+        refreshTitle: 'Reads again which ports are listening right now',
+        auto: 'Auto',
+        autoOnTitle: (p) => `Refreshes itself every ${p.seconds} s while this tab is in view. Click to stop it`,
+        autoOffTitle: 'Does not refresh by itself: use Refresh. Click to make it refresh every few seconds while this tab is in view',
+        count: (p) => (p.shown === p.total ? `${p.total} ${p.total === 1 ? 'port' : 'ports'}` : `${p.shown} of ${p.total} ports`),
+        updatedAt: (p) => `Updated ${p.time}`,
+        columns: {
+            port: 'Port',
+            address: 'Address',
+            process: 'Process',
+            pid: 'PID',
+        },
+        filters: {all: 'All', local: 'Local', network: 'Network'},
+        filterTitle: {
+            all: 'Every listening port',
+            local: 'Only those that accept connections from this machine',
+            network: 'Only those listening on every interface: other machines can connect',
+        },
+        sortBy: (p) => `Sort by ${p.column}`,
+        openBrowser: 'Open',
+        openBrowserTitle: (p) => `Opens http://localhost:${p.port} in the browser — useful if that port is a web server`,
+        scopeLocal: 'Local',
+        scopeNetwork: 'Network',
+        scopeLocalTitle: 'Only accepts connections from this machine',
+        scopeNetworkTitle: 'Listens on every interface: other machines on the network can connect',
+        unknownProcess: 'Unidentified',
+        terminate: 'End',
+        terminateTitle: (p) => `Asks ${p.process} (PID ${p.pid}) to shut down cleanly, freeing the port`,
+        force: 'Force',
+        forceTitle: (p) => `Cuts ${p.process} (PID ${p.pid}) off immediately, with no chance to save anything`,
+        protectedTitle:
+            "It's a system process, this very app, or the system wouldn't let it be identified: ending it isn't offered from here",
+        loading: 'Looking for ports…',
+        empty: 'No TCP port is listening right now.',
+        noMatches: (p) => `No port matches "${p.query}".`,
+        loadFailed: "Couldn't read the list of ports",
+        footNote: "Only processes the system shows without administrator permission appear: those of other users may be missing.",
+        confirm: {
+            terminateTitle: 'End the process',
+            terminateDescription: (p) =>
+                `${p.process} (PID ${p.pid}) will be asked to shut down and free port ${p.port}. Anything it had unsaved may be lost.`,
+            terminateAction: 'End process',
+            forceTitle: 'Force quit',
+            forceDescription: (p) =>
+                `${p.process} (PID ${p.pid}) is cut off right now, with no chance to shut down cleanly. It frees port ${p.port}, but loses anything it had unsaved.`,
+            forceAction: 'Force quit',
+            elevateTitle: 'Administrator permission needed',
+            elevateDescription: (p) =>
+                `${p.process} (PID ${p.pid}) belongs to another user or to the system. If you continue, the operating system will ask for your password or administrator approval before ending it.`,
+            elevateAction: 'Ask for permission',
+        },
+        result: {
+            ended: (p) => `${p.process} ended: port ${p.port} is free.`,
+            stillRunning: (p) => `${p.process} is still running: it got the shutdown request but did not end. Try Force.`,
+            gone: 'That process no longer existed. The list was refreshed.',
+            denied: 'Administrator permission was not granted, so the process is still running.',
+            failed: (p) => `Couldn't end the process: ${p.error}`,
+        },
+        dismiss: 'Dismiss the notice',
+    },
+    activityMonitor: {
+        searchPlaceholder: 'Search process, PID or user…',
+        searchTitle: 'Filters the list by process name, PID or user',
+        clearSearch: 'Clear the search',
+        live: 'Live',
+        paused: 'Paused',
+        liveTitle: (p) => `Refreshes itself every ${p.seconds} s while this tab is in view. Click to pause`,
+        pausedTitle: 'Paused: the list does not change. Click to make it refresh by itself again',
+        everyTitle: 'How often the list refreshes. More often is finer, but it queries more times',
+        everySeconds: (p) => `${p.seconds} s`,
+        refresh: 'Refresh',
+        refreshTitle: 'Reads the processes again right now',
+        filters: {all: 'All', mine: 'Mine', active: 'Active'},
+        filterTitle: {
+            all: 'Every process',
+            mine: 'Only processes of your own user',
+            active: 'Only those using CPU right now',
+        },
+        count: (p) => (p.shown === p.total ? `${p.total} processes` : `${p.shown} of ${p.total} processes`),
+        updatedAt: (p) => `Updated ${p.time}`,
+        columns: {name: 'Process', pid: 'PID', user: 'User', cpu: 'CPU %', memory: 'Memory'},
+        sortBy: (p) => `Sort by ${p.column}`,
+        loading: 'Reading processes…',
+        loadFailed: "Couldn't read the list of processes",
+        empty: 'No process matches.',
+        noMatches: (p) => `No process matches "${p.query}".`,
+        terminate: 'End',
+        force: 'Force',
+        terminateTitle: (p) => `Asks ${p.process} (PID ${p.pid}) to shut down cleanly`,
+        forceTitle: (p) => `Cuts ${p.process} (PID ${p.pid}) off immediately, with no chance to save anything`,
+        protectedTitle: "It's a system process or this very app: ending it isn't offered from here",
+        summary: {
+            cpu: 'CPU',
+            cpuDetail: (p) => `${p.cores} cores`,
+            memory: 'Memory',
+            memoryDetail: (p) => `${p.used} of ${p.total}`,
+            network: 'Network',
+            down: 'Down',
+            up: 'Up',
+        },
+        footNote: "Each process's CPU is the % of one core: 200 means two full cores. Without administrator permission some system processes show 0.",
+        kill: {
+            terminateTitle: 'End the process',
+            terminateDescription: (p) => `${p.process} (PID ${p.pid}) will be asked to shut down. Anything it had unsaved may be lost.`,
+            terminateAction: 'End process',
+            forceTitle: 'Force quit',
+            forceDescription: (p) =>
+                `${p.process} (PID ${p.pid}) is cut off right now, with no chance to shut down cleanly. It loses anything it had unsaved.`,
+            forceAction: 'Force quit',
+            elevateTitle: 'Administrator permission needed',
+            elevateDescription: (p) =>
+                `${p.process} (PID ${p.pid}) belongs to another user or to the system. If you continue, the operating system will ask for your password or administrator approval before ending it.`,
+            elevateAction: 'Ask for permission',
+            ended: (p) => `${p.process} ended.`,
+            stillRunning: (p) => `${p.process} is still running: it got the shutdown request but did not end. Try Force.`,
+        },
+    },
+}
+
+export default en

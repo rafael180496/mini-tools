@@ -293,6 +293,45 @@ const fixtures: Record<string, unknown> = {
         {id: 'pwsh', label: 'PowerShell', path: '', available: false},
     ],
     DefaultShellID: 'zsh',
+    // Activity Monitor: una lectura inventada; cambia un poco en cada llamada
+    // para que los gráficos tengan algo que dibujar.
+    ProcessSnapshot: () => {
+        const j = (v: number, d: number) => Math.max(0, v + (Math.random() - 0.5) * d)
+        const mk = (pid: number, name: string, user: string, cpu: number, mb: number, prot = false) => ({
+            pid, ppid: 1, name, user, cpu: j(cpu, cpu * 0.3), memory: mb * 1024 * 1024, protected: prot,
+        })
+        return {
+            processes: [
+                mk(602, 'WindowServer', '_windowserver', 15.5, 88),
+                mk(22518, 'Code Helper (Renderer)', 'rafael', 9, 341),
+                mk(23559, 'cpptools', 'rafael', 9, 81),
+                mk(48211, 'node', 'rafael', 41.2, 412),
+                mk(51022, 'java', 'rafael', 88.4, 1240),
+                mk(607, 'runningboardd', 'root', 5.2, 16),
+                mk(7271, 'Code Helper', 'rafael', 5.2, 86),
+                mk(912, 'postgres', 'rafael', 1.8, 58),
+                mk(1204, 'redis-server', 'rafael', 0.4, 12),
+                mk(1066, 'ControlCenter', 'rafael', 0.2, 64),
+                mk(968, 'rapportd', 'rafael', 0, 9),
+                mk(1, 'launchd', 'root', 0, 24, true),
+                mk(0, 'kernel_task', 'root', 2.1, 310, true),
+            ],
+            cores: 10, cpuTotal: j(14, 8), memUsed: 12244 * 1048576, memTotal: 16384 * 1048576,
+            netRx: j(420000, 300000), netTx: j(85000, 60000), hasUser: true, me: 'rafael', takenAt: Date.now(),
+        }
+    },
+    StopProcessMonitor: null,
+    // Port Killer: datos inventados, con un puerto abierto a la red, un proceso
+    // sin identificar (protegido) y varios locales.
+    ListListeningPorts: [
+        {port: 3000, address: '127.0.0.1', pid: 48211, process: 'node', protected: false},
+        {port: 5000, address: '*', pid: 1066, process: 'ControlCenter', protected: false},
+        {port: 5173, address: '::1', pid: 48390, process: 'vite', protected: false},
+        {port: 5432, address: '127.0.0.1', pid: 912, process: 'postgres', protected: false},
+        {port: 6379, address: '127.0.0.1', pid: 1204, process: 'redis-server', protected: false},
+        {port: 8080, address: '*', pid: 51022, process: 'java', protected: false},
+        {port: 9229, address: '127.0.0.1', pid: 0, process: '', protected: true},
+    ],
     LocalShellLabel: 'zsh',
     // Historial de la terminal LOCAL: por intérprete, no por servidor.
     ListLocalHistory: [
@@ -1078,6 +1117,8 @@ const {default: ExecutionConsole} = await import('./components/results/Execution
 const {default: AgentUsagePanel} = await import('./components/agent/AgentUsagePanel')
 const {default: AiAccessPanel} = await import('./components/AiAccessPanel')
 const {default: LocalTerminalTab} = await import('./components/terminal/LocalTerminalTab')
+const {default: PortKillerTab} = await import('./components/utilities/PortKillerTab')
+const {default: ActivityMonitorTab} = await import('./components/utilities/ActivityMonitorTab')
 const {default: HttpTree} = await import('./components/http/HttpTree')
 const {default: HttpRequestTab} = await import('./components/http/HttpRequestTab')
 const {default: GitReflogPanel} = await import('./components/git/GitReflogPanel')
@@ -1447,6 +1488,16 @@ const views: Record<string, React.ReactNode> = {
                 terminalFontSize={13}
                 onConnectedChange={() => {}}
             />
+        </div>
+    ),
+    activitymonitor: (
+        <div className="h-full">
+            <ActivityMonitorTab visible />
+        </div>
+    ),
+    portkiller: (
+        <div className="h-full">
+            <PortKillerTab visible />
         </div>
     ),
     localterm: (

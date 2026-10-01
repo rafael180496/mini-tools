@@ -20,8 +20,10 @@ import {osopen} from '../models';
 import {git} from '../models';
 import {mcpconf} from '../models';
 import {agents} from '../models';
+import {portkill} from '../models';
 import {localterm} from '../models';
 import {mcpserver} from '../models';
+import {procmon} from '../models';
 
 export function ActiveConnectionIds():Promise<Array<string>>;
 
@@ -551,6 +553,10 @@ export function InitializeVault(arg1:string):Promise<void>;
 
 export function IsVaultInitialized():Promise<boolean>;
 
+export function KillProcess(arg1:number,arg2:boolean):Promise<boolean>;
+
+export function KillProcessElevated(arg1:number,arg2:boolean):Promise<boolean>;
+
 export function ListAgentChats(arg1:string):Promise<Array<vault.AgentChat>>;
 
 export function ListAgents():Promise<Array<agents.Agent>>;
@@ -562,6 +568,8 @@ export function ListConnections():Promise<Array<vault.ConnectionSummary>>;
 export function ListExplainHistory(arg1:string,arg2:number):Promise<Array<vault.ExplainHistoryEntry>>;
 
 export function ListFolders():Promise<Array<vault.Folder>>;
+
+export function ListListeningPorts():Promise<Array<portkill.Listener>>;
 
 export function ListLocalHistory(arg1:string,arg2:number):Promise<Array<vault.SshHistoryEntry>>;
 
@@ -652,6 +660,8 @@ export function PickVaultBackupFileFirstRun():Promise<string>;
 export function PreviewRowEdits(arg1:string,arg2:string,arg3:Array<main.CellEdit>):Promise<Array<string>>;
 
 export function PrimeSchemaIndex(arg1:string):Promise<sqlintel.Status>;
+
+export function ProcessSnapshot():Promise<procmon.Snapshot>;
 
 export function PushRedisListValue(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -828,6 +838,8 @@ export function SignatureSQL(arg1:sqlintel.SignatureRequest):Promise<sqlintel.Si
 export function SshHistoryEnabled():Promise<boolean>;
 
 export function StartSftpTransfer(arg1:main.SftpTransferInput):Promise<void>;
+
+export function StopProcessMonitor():Promise<void>;
 
 export function StopRedisMonitor(arg1:string):Promise<void>;
 

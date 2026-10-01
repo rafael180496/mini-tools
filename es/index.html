@@ -370,6 +370,12 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li><a href="#ssh-sftp">Explorador SFTP</a></li>
   </ul>
 
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Utilidades</button>
+  <ul>
+    <li><a href="#utilidades-port-killer">Port Killer</a></li>
+    <li><a href="#utilidades-activity-monitor">Activity Monitor</a></li>
+  </ul>
+
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>Agentes de IA</button>
   <ul>
     <li><a href="#ia-chat">El chat, en todos los módulos</a></li>
@@ -535,7 +541,7 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
 
 <article class="topic" id="la-ventana" data-title="La ventana: módulos y pestañas">
   <h1>La ventana: módulos y pestañas</h1>
-  <p class="lead">Una barra lateral con cinco módulos —uno a la vez—, pestañas al centro y un panel abajo.
+  <p class="lead">Una barra lateral con seis módulos —uno a la vez—, pestañas al centro y un panel abajo.
   Todo lo que arrastres o pliegues se recuerda entre sesiones.</p>
 
   <figure>
@@ -543,7 +549,7 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
     <figcaption>Los contadores sobre cada ícono dicen en qué módulo está lo que buscás.</figcaption>
   </figure>
 
-  <h2 id="la-ventana--modulos">Los cinco módulos</h2>
+  <h2 id="la-ventana--modulos">Los seis módulos</h2>
   <div class="tablewrap"><table>
     <tr><th>Módulo</th><th>Para qué</th></tr>
     <tr><td>Conexiones</td><td>Bases de datos: explorar el esquema y correr consultas</td></tr>
@@ -551,18 +557,19 @@ host:1521/SERVICIO          <span class="c"># Easy Connect de Oracle</span>
     <tr><td>Git</td><td>Repositorios: ver cambios, ramas y trabajar con los agentes</td></tr>
     <tr><td>Notas</td><td>Tu base de conocimiento cifrada: runbooks y apuntes</td></tr>
     <tr><td>HTTP</td><td>Colecciones de peticiones: probar y guardar endpoints</td></tr>
+    <tr><td>Utilidades</td><td>Herramientas del sistema: puertos ocupados (Port Killer) y procesos en vivo (Activity Monitor)</td></tr>
   </table></div>
   <p>Se ve <strong>uno a la vez</strong>, así que el que estás usando se queda con toda la altura en vez de
   la franja que le dejaban los otros apilados.</p>
 
   <h2 id="la-ventana--buscar">Una sola búsqueda para todos</h2>
-  <p>La caja de arriba filtra los cinco módulos a la vez, y cada ícono muestra <strong>cuántas
+  <p>La caja de arriba filtra los seis módulos a la vez, y cada ícono muestra <strong>cuántas
   coincidencias</strong> tiene. Es lo que evita tener que decidir de antemano en cuál buscar algo que
   recordás nada más que por el nombre.</p>
 
   <h2 id="la-ventana--pestanas">Pestañas y paneles</h2>
   <ul>
-    <li>Las <strong>pestañas</strong> están rotuladas por tipo (SQL, REDIS, HTTP, nota, terminal, repositorio) y cada una de SQL se vincula a una conexión desde su propio selector — nunca como efecto colateral de navegar la barra lateral. Se arrastran para reordenarlas y se cierran con la ✕ o con el <strong>clic central de la rueda</strong>, como en VS Code.</li>
+    <li>Las <strong>pestañas</strong> están rotuladas por tipo (SQL, REDIS, HTTP, nota, terminal, repositorio, utilidad) y cada una de SQL se vincula a una conexión desde su propio selector — nunca como efecto colateral de navegar la barra lateral. Se arrastran para reordenarlas y se cierran con la ✕ o con el <strong>clic central de la rueda</strong>, como en VS Code.</li>
     <li>El <strong>panel inferior</strong> tiene Resultados y Consola (más DBMS_OUTPUT y el plan de ejecución cuando hay algo que mostrar); se arrastra para cambiarle el alto.</li>
     <li>La <strong>barra del editor</strong> es una sola fila de íconos: a la izquierda lo que se aprieta (guardar, ejecutar, explicar, refrescar), a la derecha contra qué corre la pestaña (esquema y conexión) y el chat. Lo que hace cada botón —y su atajo— está en su tooltip.</li>
     <li>La <strong>barra lateral</strong> se arrastra para cambiarle el ancho y se oculta entera dejando una columna de íconos. Ancho, módulo abierto y alto del editor quedan guardados entre sesiones.</li>
@@ -1434,6 +1441,117 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   Documentos desde el panel local, macOS pide permiso una vez. Si no aparece el diálogo, se concede en
   <em>Ajustes del Sistema → Privacidad y seguridad → Archivos y carpetas</em>. Tené en cuenta que una versión
   recién instalada cuenta como otra aplicación para macOS: el permiso se pide de nuevo.</p></div>
+</article>
+
+<!-- ------------------------------------------------------------ UTILIDADES -->
+<article class="topic" id="utilidades-port-killer" data-title="Port Killer">
+  <h1>Port Killer</h1>
+  <p class="lead">Qué proceso tiene ocupado el puerto 3000 —y terminarlo— sin salir de la app ni acordarte de
+  <code>lsof</code>, <code>netstat</code> y <code>kill</code>.</p>
+
+  <p>Vive en el módulo <strong>Utilidades</strong> (el ícono de martillo y llave en el menú de la barra). Hacé clic en
+  <em>Port Killer</em> y se abre en <strong>una pestaña propia</strong>; si ya estaba abierto, el clic te lleva a esa.
+  Funciona igual en macOS, Windows y Linux.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-port-killer.png" alt="Port Killer: barra con el buscador y los botones Auto y Actualizar, las pastillas Todos, Local y Red con su cuenta, y una tabla de puertos en escucha con dirección, proceso y PID y los botones Terminar y Forzar en cada fila"></div>
+    <figcaption>Cada puerto en escucha, quién lo tiene y si está expuesto a la red.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-port-killer--lista">La lista</h2>
+  <p>Una fila por cada puerto TCP que está escuchando ahora mismo: el <strong>puerto</strong>, la
+  <strong>dirección</strong> en la que escucha, el <strong>proceso</strong> y su <strong>PID</strong>. La dirección
+  trae una etiqueta:</p>
+  <ul>
+    <li><strong>Local</strong> — solo acepta conexiones de esta máquina (<code>127.0.0.1</code>, <code>::1</code>). Lo típico de un servidor de desarrollo.</li>
+    <li><strong>Red</strong> — escucha en todas las interfaces, así que otras máquinas de la red pueden llegar. Conviene mirarlo si no lo esperabas.</li>
+  </ul>
+  <p>La caja de búsqueda filtra por puerto, nombre del proceso, PID o dirección, y las pastillas
+  <strong>Todos / Local / Red</strong> (cada una con su cuenta) responden de un vistazo qué está expuesto a la red.
+  Hacé clic en el encabezado de una columna para <strong>ordenar</strong> por ella. <strong>Actualizar</strong> vuelve a
+  leer, y <strong>Auto</strong> lo hace cada pocos segundos. En una fila, <strong>Abrir</strong> (aparece al pasar el mouse)
+  abre <code>http://localhost:&lt;puerto&gt;</code> en el navegador, útil cuando el puerto es un servidor web.</p>
+
+  <div class="note tip"><span class="lbl">Cerrada no cuesta nada</span>
+  Nada de esta utilidad corre en segundo plano. La pestaña solo lee los puertos mientras está abierta <em>y a la
+  vista</em>: pasá a otra pestaña, o minimizá la ventana, y deja de consultar. Cerrá la pestaña y no queda nada
+  funcionando.</div>
+
+  <h2 id="utilidades-port-killer--terminar">Terminar un proceso</h2>
+  <ol class="steps">
+    <li>Hacé clic en <strong>Terminar</strong> en la fila. La app confirma antes, diciendo qué proceso es, su PID y qué puerto libera.</li>
+    <li>Al proceso se le pide que se cierre <strong>de forma ordenada</strong>. Si terminó, el puerto queda libre y un aviso lo dice.</li>
+    <li>Si ignoró el pedido y sigue corriendo, el aviso lo dice: usá <strong>Forzar</strong>, que lo corta de inmediato (el proceso pierde lo que tuviera sin guardar).</li>
+  </ol>
+  <div class="note"><span class="lbl">Windows</span>
+  Windows no tiene un "pedile amablemente" para un proceso cualquiera, así que allá <em>Terminar</em> y <em>Forzar</em>
+  hacen lo mismo.</div>
+
+  <h2 id="utilidades-port-killer--permisos">Permisos</h2>
+  <p>Los procesos propios se terminan directamente. Uno que es de <strong>otro usuario o del sistema</strong> necesita
+  permisos de administrador: la app te lo avisa y, si aceptás, se los pide al sistema operativo —el diálogo de
+  contraseña en macOS, el de <code>pkexec</code> en Linux, el UAC en Windows—. Si ahí decís que no, el proceso sigue
+  corriendo; nada se termina sin esa aprobación.</p>
+  <div class="note warn"><span class="lbl">Lo que no vas a ver</span>
+  Sin permisos de administrador el sistema solo revela los procesos de tu propio usuario, así que los de otros
+  usuarios pueden faltar en la lista. Los procesos del sistema, esta misma app y cualquiera que el sistema no dejó
+  identificar aparecen <strong>sin</strong> los botones: terminarlos no se ofrece desde acá.</div>
+
+  <div class="note"><span class="lbl">Linux</span>
+  Usa <code>ss</code> (o <code>lsof</code> si no hay <code>ss</code>). Una distro mínima sin ninguno de los dos muestra
+  un error que lo explica, en vez de una lista vacía que se leería como "nada está escuchando".</div>
+</article>
+
+<article class="topic" id="utilidades-activity-monitor" data-title="Activity Monitor">
+  <h1>Activity Monitor</h1>
+  <p class="lead">Qué está usando tu CPU y tu memoria ahora mismo, y cuánta red entra y sale —con la opción de
+  terminar lo que se porta mal— sin abrir el monitor del propio sistema operativo.</p>
+
+  <p>Está en el módulo <strong>Utilidades</strong>, junto al Port Killer. Se abre en <strong>una pestaña propia</strong>
+  y funciona igual en macOS, Windows y Linux.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-activity-monitor.png" alt="Activity Monitor: la tabla de procesos ordenada por CPU, con una barra de memoria detrás de cada cifra, y al pie tres tarjetas con la CPU total, la memoria y la red, cada una con su línea de los últimos dos minutos"></div>
+    <figcaption>La lista de procesos arriba, el estado de toda la máquina abajo.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-activity-monitor--lista">La lista de procesos</h2>
+  <p>Una fila por proceso con su <strong>nombre</strong>, <strong>PID</strong>, <strong>usuario</strong>,
+  <strong>CPU %</strong> y <strong>memoria</strong>; una barra detrás de cada cifra de memoria las compara de un
+  vistazo. Hacé clic en el encabezado de una columna para <strong>ordenar</strong> por ella —por defecto, CPU, de mayor
+  a menor—. Las pastillas <strong>Todos / Míos / Activos</strong> acotan la lista a todo, solo los procesos de tu
+  usuario, o solo los que están usando CPU en este momento; la caja de búsqueda filtra por nombre, PID o usuario.</p>
+  <ul>
+    <li>La CPU es el porcentaje de <strong>un núcleo</strong>: 200 son dos núcleos completos. Por encima de 25 % la cifra se resalta, y por encima de 80 % se pone en rojo.</li>
+    <li>Las filas con el mismo valor mantienen un orden estable, así la lista no «baila» entre una lectura y otra.</li>
+  </ul>
+
+  <h2 id="utilidades-activity-monitor--resumen">El resumen al pie</h2>
+  <p>Tres tarjetas dejan a la vista toda la máquina mientras recorrés la lista: <strong>CPU</strong> (total, sobre todos
+  los núcleos), <strong>Memoria</strong> (usada sobre instalada) y <strong>Red</strong> (velocidad de bajada y de subida),
+  cada una con los últimos dos minutos dibujados como una línea.</p>
+
+  <h2 id="utilidades-activity-monitor--vivo">En vivo, en pausa y el intervalo</h2>
+  <p><strong>En vivo</strong> actualiza cada pocos segundos; hacé clic para pausar y la lista queda quieta, útil para
+  leer una cifra sin que se mueva. Al lado se elige el intervalo: <strong>1, 2 o 5 segundos</strong>.
+  <strong>Actualizar</strong> lee una vez, ahora mismo.</p>
+  <div class="note tip"><span class="lbl">Cerrado no cuesta nada</span>
+  Nada corre en segundo plano. La pestaña solo lee el sistema mientras está abierta <em>y a la vista</em>: pasá a otra
+  pestaña, o minimizá la ventana, y se detiene; al irte, la app además suelta la lectura que guardaba para calcular el %
+  de CPU. Cerrá la pestaña y no queda nada corriendo ni guardado.</div>
+
+  <h2 id="utilidades-activity-monitor--terminar">Terminar un proceso</h2>
+  <p>Pasá el mouse por una fila (o hacé clic en ella) y aparecen dos íconos: <strong>Terminar</strong>, que le pide al
+  proceso que se cierre de forma ordenada, y <strong>Forzar</strong>, que lo corta de inmediato. Los dos confirman antes,
+  nombrando el proceso y su PID, y funcionan igual que en el <a href="#utilidades-port-killer--terminar">Port Killer</a>,
+  incluido el pedido de permisos de administrador para los procesos de otros usuarios. Los procesos del sistema y esta
+  misma app tienen los botones deshabilitados.</p>
+
+  <div class="note warn"><span class="lbl">Lo que no muestra</span>
+  No hay columna de disco ni de red por proceso: esos números no existen de forma portable, y los que existen piden
+  permisos de administrador. En <strong>Windows</strong> los procesos no traen dueño, así que la columna
+  <em>Usuario</em> y la pastilla <em>Míos</em> no aparecen. Sin permisos de administrador algunos procesos del sistema
+  informan 0 % de CPU.</div>
 </article>
 
 <!-- ----------------------------------------------------------------- IA -->

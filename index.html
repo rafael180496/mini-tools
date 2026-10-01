@@ -370,6 +370,12 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li><a href="#ssh-sftp">SFTP explorer</a></li>
   </ul>
 
+  <button class="grp" aria-expanded="true"><span class="caret">▾</span>Utilities</button>
+  <ul>
+    <li><a href="#utilidades-port-killer">Port Killer</a></li>
+    <li><a href="#utilidades-activity-monitor">Activity Monitor</a></li>
+  </ul>
+
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>AI agents</button>
   <ul>
     <li><a href="#ia-chat">The chat, in every module</a></li>
@@ -536,7 +542,7 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
 
 <article class="topic" id="la-ventana" data-title="The window: modules and tabs">
   <h1>The window: modules and tabs</h1>
-  <p class="lead">A sidebar with five modules —one at a time—, tabs in the center and a panel below.
+  <p class="lead">A sidebar with six modules —one at a time—, tabs in the center and a panel below.
   Everything you drag or collapse is remembered between sessions.</p>
 
   <figure>
@@ -544,7 +550,7 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
     <figcaption>The counters over each icon tell you which module holds what you're looking for.</figcaption>
   </figure>
 
-  <h2 id="la-ventana--modulos">The five modules</h2>
+  <h2 id="la-ventana--modulos">The six modules</h2>
   <div class="tablewrap"><table>
     <tr><th>Module</th><th>What it's for</th></tr>
     <tr><td>Connections</td><td>Databases: explore the schema and run queries</td></tr>
@@ -552,18 +558,19 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
     <tr><td>Git</td><td>Repositories: see changes, branches and work with the agents</td></tr>
     <tr><td>Notes</td><td>Your encrypted knowledge base: runbooks and notes</td></tr>
     <tr><td>HTTP</td><td>Request collections: test and save endpoints</td></tr>
+    <tr><td>Utilities</td><td>System helpers: ports in use (Port Killer) and live processes (Activity Monitor)</td></tr>
   </table></div>
   <p>You see <strong>one at a time</strong>, so the one you're using gets the full height instead of the
   strip the others used to leave it when stacked.</p>
 
   <h2 id="la-ventana--buscar">One search for all of them</h2>
-  <p>The box at the top filters all five modules at once, and each icon shows <strong>how many
+  <p>The box at the top filters all six modules at once, and each icon shows <strong>how many
   matches</strong> it has. That's what saves you from deciding up front where to look for something you
   only remember by name.</p>
 
   <h2 id="la-ventana--pestanas">Tabs and panels</h2>
   <ul>
-    <li><strong>Tabs</strong> are labeled by type (SQL, REDIS, HTTP, note, terminal, repository) and each SQL tab is bound to a connection from its own selector — never as a side effect of browsing the sidebar. Drag them to reorder, and close them with the ✕ or with a <strong>middle-click</strong>, like in VS Code.</li>
+    <li><strong>Tabs</strong> are labeled by type (SQL, REDIS, HTTP, note, terminal, repository, utility) and each SQL tab is bound to a connection from its own selector — never as a side effect of browsing the sidebar. Drag them to reorder, and close them with the ✕ or with a <strong>middle-click</strong>, like in VS Code.</li>
     <li>The <strong>bottom panel</strong> has Results and Console (plus DBMS_OUTPUT and the execution plan when there's something to show); drag it to change its height.</li>
     <li>The <strong>editor bar</strong> is a single row of icons: on the left what you press (save, run, explain, refresh), on the right what the tab runs against (schema and connection) and the chat. What each button does —and its shortcut— is in its tooltip.</li>
     <li>Drag the <strong>sidebar</strong> to change its width, or hide it entirely, leaving a column of icons. Width, open module and editor height are saved between sessions.</li>
@@ -1429,6 +1436,111 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   Documents from the local panel, macOS asks for permission once. If the dialog doesn't appear, grant it in
   <em>System Settings → Privacy &amp; Security → Files and Folders</em>. Keep in mind that a freshly installed
   version counts as a different application for macOS: the permission is requested again.</p></div>
+</article>
+
+<!-- ------------------------------------------------------------ UTILIDADES -->
+<article class="topic" id="utilidades-port-killer" data-title="Port Killer">
+  <h1>Port Killer</h1>
+  <p class="lead">Which process is holding port 3000 —and ending it— without leaving the app or remembering
+  <code>lsof</code>, <code>netstat</code> and <code>kill</code>.</p>
+
+  <p>It lives in the <strong>Utilities</strong> module (the hammer-and-wrench icon in the sidebar menu). Click <em>Port Killer</em>
+  and it opens in <strong>its own tab</strong>; if it's already open, the click takes you to it. It works the same on
+  macOS, Windows and Linux.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-port-killer.png" alt="Port Killer: toolbar with the search box and the Auto and Refresh buttons, the All, Local and Network chips with their counts, and a table of listening ports with address, process and PID and the End and Force buttons on each row"></div>
+    <figcaption>Every listening port, with who holds it and whether it's exposed to the network.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-port-killer--lista">The list</h2>
+  <p>One row per TCP port that's listening right now: the <strong>port</strong>, the <strong>address</strong> it
+  listens on, the <strong>process</strong> and its <strong>PID</strong>. The address comes with a badge:</p>
+  <ul>
+    <li><strong>Local</strong> — it only accepts connections from this machine (<code>127.0.0.1</code>, <code>::1</code>). A typical dev server.</li>
+    <li><strong>Network</strong> — it listens on every interface, so other machines on the network can reach it. Worth a look if you didn't expect it.</li>
+  </ul>
+  <p>The search box filters by port, process name, PID or address, and the <strong>All / Local / Network</strong> chips
+  (each with its count) answer at a glance what's exposed to the network. Click a column header to <strong>sort</strong>
+  by it. <strong>Refresh</strong> reads again, and <strong>Auto</strong> does it every few seconds. On a row, <strong>Open</strong>
+  (it shows when you hover it) opens <code>http://localhost:&lt;port&gt;</code> in the browser, handy when the port is a web server.</p>
+
+  <div class="note tip"><span class="lbl">It costs nothing while closed</span>
+  Nothing in this utility runs in the background. The tab only reads the ports while it's open <em>and in view</em>:
+  switch to another tab, or minimize the window, and it stops asking. Close the tab and there's nothing left running.</div>
+
+  <h2 id="utilidades-port-killer--terminar">Ending a process</h2>
+  <ol class="steps">
+    <li>Click <strong>End</strong> on the row. The app confirms first, naming the process, its PID and the port it frees.</li>
+    <li>The process is asked to shut down <strong>cleanly</strong>. If it ended, the port is free and you'll see a notice saying so.</li>
+    <li>If it ignored the request and keeps running, the notice says so: use <strong>Force</strong>, which cuts it off immediately (the process loses anything it had unsaved).</li>
+  </ol>
+  <div class="note"><span class="lbl">Windows</span>
+  Windows has no "ask politely" for an arbitrary process, so there <em>End</em> and <em>Force</em> do the same thing.</div>
+
+  <h2 id="utilidades-port-killer--permisos">Permissions</h2>
+  <p>Your own processes end directly. A process that belongs to <strong>another user or to the system</strong> needs
+  administrator permission: the app tells you so and, if you accept, asks the operating system for it —the password
+  dialog on macOS, the <code>pkexec</code> prompt on Linux, the UAC prompt on Windows—. Say no there and the process
+  keeps running; nothing is ended without that approval.</p>
+  <div class="note warn"><span class="lbl">What you won't see</span>
+  Without administrator permission the system only reveals the processes of your own user, so those of other users may
+  be missing from the list. System processes, this very app and any process the system wouldn't identify show
+  <strong>without</strong> the buttons: ending them isn't offered from here.</div>
+
+  <div class="note"><span class="lbl">Linux</span>
+  It uses <code>ss</code> (or <code>lsof</code> if there's no <code>ss</code>). A minimal distro with neither shows an error
+  explaining it, instead of an empty list that would read as "nothing is listening".</div>
+</article>
+
+<article class="topic" id="utilidades-activity-monitor" data-title="Activity Monitor">
+  <h1>Activity Monitor</h1>
+  <p class="lead">What is using your CPU and memory right now, and how much network is going in and out —with
+  the option to end whatever is misbehaving— without opening the operating system's own monitor.</p>
+
+  <p>It's in the <strong>Utilities</strong> module, next to Port Killer. It opens in <strong>its own tab</strong> and
+  works the same on macOS, Windows and Linux.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-activity-monitor.png" alt="Activity Monitor: the process table sorted by CPU, with a memory bar behind each figure, and at the bottom three cards with total CPU, memory and network, each with its line of the last two minutes"></div>
+    <figcaption>The process list on top, the whole machine's state at the bottom.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-activity-monitor--lista">The process list</h2>
+  <p>One row per process with its <strong>name</strong>, <strong>PID</strong>, <strong>user</strong>, <strong>CPU %</strong>
+  and <strong>memory</strong>; a bar behind each memory figure compares them at a glance. Click a column header to
+  <strong>sort</strong> by it —the default is CPU, biggest first—. The chips <strong>All / Mine / Active</strong> narrow
+  the list to everything, only your user's processes, or only those using CPU right now; the search box filters by
+  name, PID or user.</p>
+  <ul>
+    <li>CPU is the percentage of <strong>one core</strong>: 200 means two full cores. Above 25 % the figure is highlighted, and above 80 % it turns red.</li>
+    <li>Rows with the same value keep a stable order, so the list doesn't "dance" between refreshes.</li>
+  </ul>
+
+  <h2 id="utilidades-activity-monitor--resumen">The summary at the bottom</h2>
+  <p>Three cards keep the whole machine in view while you scroll the list: <strong>CPU</strong> (total, over every core),
+  <strong>Memory</strong> (used out of installed) and <strong>Network</strong> (download and upload rate), each with the last
+  two minutes drawn as a line.</p>
+
+  <h2 id="utilidades-activity-monitor--vivo">Live, paused and the interval</h2>
+  <p><strong>Live</strong> refreshes every few seconds; click it to pause and the list stays still, handy to read a
+  figure without it moving. Next to it you pick the interval: <strong>1, 2 or 5 seconds</strong>. <strong>Refresh</strong> reads
+  once, right now.</p>
+  <div class="note tip"><span class="lbl">It costs nothing while closed</span>
+  Nothing runs in the background. The tab only reads the system while it's open <em>and in view</em>: switch to another
+  tab, or minimize the window, and it stops; when you leave, the app also drops the reading it kept to compute the CPU %.
+  Close the tab and nothing is left running or stored.</div>
+
+  <h2 id="utilidades-activity-monitor--terminar">Ending a process</h2>
+  <p>Hover a row (or click it) and two icons appear: <strong>End</strong>, which asks the process to shut down cleanly, and
+  <strong>Force</strong>, which cuts it off immediately. Both confirm first, naming the process and its PID, and both
+  work exactly like in <a href="#utilidades-port-killer--terminar">Port Killer</a>, including the administrator
+  permission request for processes of other users. System processes and this very app have the buttons disabled.</p>
+
+  <div class="note warn"><span class="lbl">What it doesn't show</span>
+  There's no disk or per-process network column: those numbers don't exist in a portable way, and the ones that do need
+  administrator permission. On <strong>Windows</strong> processes don't carry an owner, so the <em>User</em> column and the
+  <em>Mine</em> chip don't appear. Without administrator permission some system processes report 0 % CPU.</div>
 </article>
 
 <!-- ----------------------------------------------------------------- IA -->

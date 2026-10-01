@@ -3344,6 +3344,108 @@ export namespace osopen {
 
 }
 
+export namespace portkill {
+	
+	export class Listener {
+	    port: number;
+	    address: string;
+	    pid: number;
+	    process: string;
+	    protected: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Listener(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.port = source["port"];
+	        this.address = source["address"];
+	        this.pid = source["pid"];
+	        this.process = source["process"];
+	        this.protected = source["protected"];
+	    }
+	}
+
+}
+
+export namespace procmon {
+	
+	export class Process {
+	    pid: number;
+	    ppid: number;
+	    name: string;
+	    user: string;
+	    cpu: number;
+	    memory: number;
+	    protected: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Process(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pid = source["pid"];
+	        this.ppid = source["ppid"];
+	        this.name = source["name"];
+	        this.user = source["user"];
+	        this.cpu = source["cpu"];
+	        this.memory = source["memory"];
+	        this.protected = source["protected"];
+	    }
+	}
+	export class Snapshot {
+	    processes: Process[];
+	    cores: number;
+	    cpuTotal: number;
+	    memUsed: number;
+	    memTotal: number;
+	    netRx: number;
+	    netTx: number;
+	    hasUser: boolean;
+	    me: string;
+	    takenAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Snapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.processes = this.convertValues(source["processes"], Process);
+	        this.cores = source["cores"];
+	        this.cpuTotal = source["cpuTotal"];
+	        this.memUsed = source["memUsed"];
+	        this.memTotal = source["memTotal"];
+	        this.netRx = source["netRx"];
+	        this.netTx = source["netTx"];
+	        this.hasUser = source["hasUser"];
+	        this.me = source["me"];
+	        this.takenAt = source["takenAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace query {
 	
 	export class Param {
