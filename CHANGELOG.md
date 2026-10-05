@@ -4,6 +4,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Importar un cURL ya no exige encontrar un ícono.** El panel de peticiones HTTP tiene ahora un botón **Importar (cURL, Postman)** con texto, en su propia fila arriba de las pestañas Colecciones/Historial, como en Postman. Antes era un ícono más al final de esa fila y, con la barra lateral angosta, los íconos del final se recortaban — justo el de importar. Los otros tres (petición rápida, entornos y colección nueva) pasaron a esa misma fila, así que ya no se cortan.
+- **Un cURL importado se abre en su pestaña.** Pegar un comando en el diálogo **Importar** lo guarda en la colección elegida y ahora además lo abre listo para mandar, y el diálogo se cierra; antes había que ir a buscarlo al árbol. Importar una colección entera sigue mostrando el resumen de qué entró.
+
+### Corregido
+
+- **Ctrl+S (⌘S) ya no ofrece guardar un `.sql` desde otras pestañas.** El editor SQL queda montado detrás de todas las pestañas y su atajo atendía la tecla con cualquier pestaña activa. En una petición HTTP guardaba la petición y además abría «Guardar como .sql»; lo mismo pasaba en notas, Git, terminales, SFTP, Redis, Mongo y utilidades. Ahora Ctrl+S, Ctrl+Enter, Ctrl+Shift+Enter y Ctrl+I del editor SQL solo responden en una pestaña de editor (un archivo remoto solo guarda), y cada módulo conserva su propio Ctrl+S. De paso, Ctrl+Enter en otra pestaña ya no corre la línea del editor escondido.
+
 ## [2.9.0] - 2026-10-01
 
 ### Agregado

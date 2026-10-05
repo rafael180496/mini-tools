@@ -614,7 +614,41 @@ export default function HttpTree({
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex shrink-0 items-center gap-0.5 pb-1 pl-2 pr-2 pt-2">
+            {/* Importar va con texto y en su propia fila, como en Postman: era
+                un ícono más al final de la fila de las pestañas y, con la
+                barra angosta, justo esos íconos eran los que se recortaban. */}
+            <div className="flex shrink-0 items-center gap-0.5 pl-2 pr-2 pt-2">
+                <button
+                    onClick={() => setShowImport(true)}
+                    title={tr.importTitle}
+                    className="flex min-w-0 flex-1 items-center gap-1 rounded border border-outline-variant px-2 py-0.5 text-ui-11 text-on-surface hover:bg-surface-variant"
+                >
+                    <Icon name="download" size={15} className="shrink-0 text-on-surface-variant" />
+                    <span className="truncate">{tr.importButton}</span>
+                </button>
+                <button
+                    onClick={onNewScratch}
+                    title={tr.scratchTitle}
+                    className={headerButton}
+                >
+                    <Icon name="bolt" size={16} />
+                </button>
+                <button
+                    onClick={() => setShowEnvironments(true)}
+                    title={tr.environmentsTitle}
+                    className={headerButton}
+                >
+                    <Icon name="layers" size={16} />
+                </button>
+                <button
+                    onClick={newCollection}
+                    title={tr.newCollectionTitle}
+                    className={headerButton}
+                >
+                    <Icon name="create_new_folder" size={16} />
+                </button>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5 pb-1 pl-2 pr-2 pt-1">
                 {/* Dos secciones y no dos módulos de la barra lateral: son el
                     mismo trabajo y las filtra el mismo buscador de arriba. */}
                 {(['collections', 'history'] as const).map((s) => (
@@ -624,7 +658,7 @@ export default function HttpTree({
                         title={
                             s === 'collections' ? tr.collectionsTabTitle : tr.historyTabTitle
                         }
-                        className={`rounded px-1.5 py-0.5 text-ui-10 font-semibold uppercase tracking-wider ${
+                        className={`min-w-0 truncate rounded px-1.5 py-0.5 text-ui-10 font-semibold uppercase tracking-wider ${
                             section === s ? 'text-on-surface' : 'text-on-surface-variant/50 hover:text-on-surface-variant'
                         }`}
                     >
@@ -648,34 +682,6 @@ export default function HttpTree({
                         <Icon name={expanded.size > 0 ? 'unfold_less' : 'unfold_more'} size={16} />
                     </button>
                 )}
-                <button
-                    onClick={onNewScratch}
-                    title={tr.scratchTitle}
-                    className={headerButton}
-                >
-                    <Icon name="bolt" size={16} />
-                </button>
-                <button
-                    onClick={() => setShowImport(true)}
-                    title={tr.importTitle}
-                    className={headerButton}
-                >
-                    <Icon name="download" size={16} />
-                </button>
-                <button
-                    onClick={() => setShowEnvironments(true)}
-                    title={tr.environmentsTitle}
-                    className={headerButton}
-                >
-                    <Icon name="layers" size={16} />
-                </button>
-                <button
-                    onClick={newCollection}
-                    title={tr.newCollectionTitle}
-                    className={headerButton}
-                >
-                    <Icon name="create_new_folder" size={16} />
-                </button>
             </div>
 
             {error && (
@@ -776,6 +782,18 @@ export default function HttpTree({
                         const ids = batch.items.map((o) => o.collectionId).filter((id): id is string => !!id)
                         if (ids.length > 0) setExpanded((prev) => new Set([...prev, ...ids]))
                         for (const id of ids) void reloadItems(id)
+                        // Un cURL pegado se importa para mandarlo: se abre en
+                        // su pestaña y el diálogo se cierra, como en Postman.
+                        // Una colección entera sigue mostrando su resumen.
+                        const only = batch.items.length === 1 ? batch.items[0] : null
+                        if (only && only.kind === 'request' && only.itemId && !only.error) {
+                            const itemId = only.itemId
+                            setShowImport(false)
+                            void guard(async () => {
+                                const it = await HttpGetItem(itemId)
+                                if (it) onOpenRequest(it)
+                            })
+                        }
                     }}
                 />
             )}

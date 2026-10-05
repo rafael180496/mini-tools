@@ -925,7 +925,7 @@ VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00
   run yet.</p>
 
   <h2 id="http-importar--importar">Import</h2>
-  <p>The import icon in the header opens a single dialog for everything: you paste something or drop files, and
+  <p>The <strong>Import (cURL, Postman)</strong> button at the top of the panel opens a single dialog for everything: you paste something or drop files, and
   the application <strong>recognizes on its own</strong> what it is and tells you before writing anything.</p>
   <ol class="steps">
     <li><strong>Paste</strong>: a cURL command, a request written as plain text
@@ -937,6 +937,8 @@ VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00
     <li>A collection comes in complete: requests, folders, variables, authentication, descriptions and scripts.
       Whatever this version doesn't run yet <strong>is saved anyway</strong>, so it comes back out intact on
       export.</li>
+    <li>A <strong>single request</strong> —a cURL, a URL, a plain-text request— is saved in the collection you
+      pick and <strong>opens in its own tab</strong>, ready to send.</li>
     <li>When it's done it tells you <strong>what came in, one by one</strong>, and with what caveats — <em>at
       import time</em>, not when the request fails three days later.</li>
   </ol>

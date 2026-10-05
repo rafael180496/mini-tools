@@ -496,6 +496,7 @@ export default {
         scratchTitle:
             'Probar un endpoint sin guardarlo: se abre una pestaña con una petición que no pertenece a ninguna colección. Si después querés conservarla, «Guardar en…» la mete en la que elijas.',
         importEllipsis: 'Importar…',
+        importButton: 'Importar (cURL, Postman)',
         importMenuTitle: 'cURL, una URL, una petición en texto o archivos de Postman',
         importTitle:
             'Importar: pegá un comando cURL, una URL o una petición en texto, o soltá colecciones y entornos exportados de Postman. Una colección se trae completa —peticiones, carpetas, variables, autenticación y scripts— y lo que esta aplicación todavía no ejecuta se guarda igual para no perderlo al volver a exportar.',

@@ -927,7 +927,7 @@ VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00
   versión todavía no ejecuta.</p>
 
   <h2 id="http-importar--importar">Importar</h2>
-  <p>El ícono de importar de la cabecera abre un solo diálogo para todo: pegás algo o soltás archivos, y la
+  <p>El botón <strong>Importar (cURL, Postman)</strong> de arriba del panel abre un solo diálogo para todo: pegás algo o soltás archivos, y la
   aplicación <strong>reconoce sola</strong> qué es y te lo dice antes de escribir nada.</p>
   <ol class="steps">
     <li><strong>Pegar</strong>: un comando cURL, una petición escrita en texto plano
@@ -939,6 +939,8 @@ VALUES (88213, TO_DATE('2026-08-25 09:11:40', 'YYYY-MM-DD HH24:MI:SS'), 41250.00
     <li>Una colección entra completa: peticiones, carpetas, variables, autenticación, descripciones y
       scripts. Lo que esta versión todavía no ejecuta <strong>se guarda igual</strong>, así que vuelve a
       salir intacto al exportar.</li>
+    <li>Una <strong>petición suelta</strong> —un cURL, una URL, una petición en texto— se guarda en la colección
+      que elijas y <strong>se abre en su propia pestaña</strong>, lista para mandar.</li>
     <li>Al terminar te dice <strong>qué entró, uno por uno</strong>, y con qué salvedades — <em>al
       importar</em>, no cuando la petición falla tres días después.</li>
   </ol>

@@ -3160,6 +3160,19 @@ export default function Workspace({
 
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
+            // Estos atajos son del editor SQL. Ese editor queda montado detrás
+            // de cualquier otra pestaña, así que sin esta guarda un Ctrl+S en
+            // una petición HTTP o una nota abría «Guardar .sql», y un
+            // Ctrl+Enter corría la línea del editor escondido. Las otras
+            // pestañas tienen sus propios atajos.
+            const kind = tabsRef.current.find((t) => t.id === activeTabIdRef.current)?.kind
+            const onEditor = kind === 'editor' || kind === 'remote-file'
+            if ((e.metaKey || e.ctrlKey) && !e.altKey && ['enter', 's', 'i'].includes(e.key.toLowerCase())) {
+                if (!onEditor) return
+                // Un archivo remoto no tiene conexión ni SQL que correr:
+                // solo se guarda.
+                if (kind === 'remote-file' && e.key.toLowerCase() !== 's') return
+            }
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && e.shiftKey) {
                 e.preventDefault()
                 runFullScript()

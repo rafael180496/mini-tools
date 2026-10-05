@@ -490,6 +490,7 @@ const en: Messages<typeof es> = {
         scratchTitle:
             "Try an endpoint without saving it: opens a tab with a request that doesn't belong to any collection. If you want to keep it later, «Save to…» puts it in the one you choose.",
         importEllipsis: 'Import…',
+        importButton: 'Import (cURL, Postman)',
         importMenuTitle: 'cURL, a URL, a request as text, or Postman files',
         importTitle:
             "Import: paste a cURL command, a URL or a request as text, or drop collections and environments exported from Postman. A collection comes in complete —requests, folders, variables, authentication and scripts— and whatever this app doesn't run yet is kept anyway so it isn't lost when you export again.",
