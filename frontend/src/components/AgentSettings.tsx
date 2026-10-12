@@ -4,6 +4,7 @@ import {BrowserOpenURL} from '../../wailsjs/runtime'
 import {agents} from '../../wailsjs/go/models'
 import Icon from './Icon'
 import {useT} from '../i18n'
+import {isModelServerAgent} from '../lib/modelServers'
 
 // Sección "Agentes de código" de Configuración.
 //
@@ -34,7 +35,10 @@ export default function AgentSettings() {
 
     const reload = useCallback(() => {
         ListAgents()
-            .then((l) => setList(l ?? []))
+            // Los servidores de modelos no son un CLI: no tienen comando, API
+            // key por entorno ni login que configurar acá. Se administran en
+            // su propia sección (ModelServersSettings), justo arriba.
+            .then((l) => setList((l ?? []).filter((a) => !isModelServerAgent(a.id))))
             .catch((e) => setError(String(e)))
     }, [])
 

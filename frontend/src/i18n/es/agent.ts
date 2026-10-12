@@ -23,6 +23,7 @@ export default {
         // son nombres técnicos y no se traducen.
         prefixDb: 'Base',
         prefixNote: 'Nota',
+        prefixRepo: 'Repositorio',
         // Cómo se nombra el recurso en una frase ("sobre repositorio «x»").
         nouns: {
             git: 'repositorio',
@@ -30,6 +31,7 @@ export default {
             ssh: 'servidor',
             note: 'nota',
             http: 'petición',
+            utilities: 'repositorio',
         },
     },
     chat: {
@@ -134,6 +136,90 @@ export default {
         allowAutoDescription: (p: {agent: string}) =>
             `${p.agent} va a aprobar por su cuenta las acciones que pasen su propio control de seguridad, y a frenar solo en lo que considere riesgoso — ese criterio lo aplica el CLI, no esta app. Vale para toda esta sesión de chat.`,
         allowEdits: 'Permitir ediciones',
+        // Un servidor de modelos (Ollama, compatible con OpenAI) no es un CLI: sus
+        // modos gobiernan las herramientas de archivos y comandos que esta app
+        // ejecuta en TU máquina dentro del repositorio de trabajo.
+        llmModes: {
+            query: {
+                label: 'Solo consulta',
+                hint: 'Lee y razona. Con un repositorio de trabajo puede leer, listar y buscar archivos; usa también las herramientas MCP si el servidor está encendido. No modifica nada.',
+            },
+            plan: {
+                label: 'Plan',
+                hint: 'Explora (lee archivos y busca) y arma un plan, sin escribir archivos ni correr comandos.',
+            },
+            approve: {
+                label: 'Aprobar cada acción',
+                hint: 'Puede escribir y editar archivos y correr comandos en el repositorio de trabajo, pero te pregunta antes de CADA una. Las herramientas MCP (notas, bases) no preguntan.',
+            },
+            auto: {
+                label: 'Automático',
+                hint: 'Edita archivos y corre comandos del repositorio sin preguntar, salvo los de riesgo (rm -rf, git push --force, sudo…), que siempre preguntan. Un comando corre con tus permisos y puede tocar cosas fuera del repositorio.',
+            },
+            edit: {
+                label: 'Aplicar ediciones',
+                hint: 'Crea y edita archivos del repositorio sin preguntar. Los comandos le preguntan cada vez. Los cambios caen en el árbol de trabajo: se ven en Cambios y se descartan desde ahí.',
+            },
+        },
+        willEditFilesLlm: 'Edita archivos; los comandos preguntan',
+        actsAloneLlm: 'Edita y corre comandos sin preguntar',
+        allowEditsDescriptionLlm: (p: {agent: string}) =>
+            `${p.agent} va a crear y editar archivos del repositorio de trabajo sin volver a preguntarte, durante toda esta sesión de chat. Cada comando que quiera correr sí te lo va a preguntar. Los cambios quedan en el árbol de trabajo: los ves en Cambios y los descartás desde ahí.`,
+        allowAutoDescriptionLlm: (p: {agent: string}) =>
+            `${p.agent} va a editar archivos y correr comandos del repositorio de trabajo sin preguntarte, durante toda esta sesión de chat. Solo los comandos de riesgo (rm -rf, git push --force, git reset --hard, sudo…) piden tu permiso. Los archivos están confinados al repositorio, pero un comando corre con tus permisos y puede afectar cosas fuera de él.`,
+        // Diálogo de aprobación de UNA acción (herramienta) del agente.
+        approval: {
+            title: (p: {tool: string}) => `¿Permitir ${p.tool}?`,
+            titleRisky: (p: {tool: string}) => `Comando de riesgo (${p.tool})`,
+            riskyReason: (p: {reason: string}) => `Motivo: ${p.reason}`,
+            intro: (p: {agent: string; tool: string}) => `${p.agent} quiere ejecutar ${p.tool}:`,
+            waiting: 'El agente está esperando tu respuesta. Si denegás, no lo hace y se le dice por qué.',
+            riskyHint:
+                'Puede borrar o sobrescribir datos sin vuelta atrás. Estos comandos preguntan siempre, en todos los modos: revisalo antes de permitirlo.',
+            deny: 'Denegar',
+            denyTitle: 'No lo ejecuta y le avisa al agente que no lo autorizaste',
+            allow: 'Permitir',
+            allowTitle: 'Deja que el agente ejecute esta acción, una vez',
+            allowRisky: 'Permitir de todos modos',
+            allowRiskyTitle: 'Ejecuta este comando de riesgo bajo tu responsabilidad. Solo vale para esta vez.',
+        },
+        toolCard: {
+            openNote: 'Abrir nota',
+            openNoteTitle: (p: {title: string}) => `Abre la nota «${p.title}» en una pestaña`,
+        },
+        // Servidor de modelos sin repositorio de trabajo (Chat de IA).
+        noRepo: {
+            onlyMcp:
+                'Sin repositorio de trabajo, este modelo solo dispone de las **herramientas MCP** (notas, bases, SSH, Git). Para que lea o edite archivos y corra comandos, elegí un repositorio en la cabecera.',
+            noTools:
+                'Sin repositorio de trabajo y con el servidor MCP apagado, este modelo **no tiene herramientas**: solo conversa. Elegí un repositorio en la cabecera, o encendé el servidor MCP en Configuración → IA.',
+            dismissTitle: 'Ocultar este aviso',
+        },
+        // Servidor de modelos remoto con herramientas de archivos o comandos.
+        remote: {
+            banner: (p: {server: string; url: string}) =>
+                `**«${p.server}» es un servidor remoto** (${p.url}). Con herramientas de archivos o comandos, lo que el agente lea —contenido de archivos, salida de comandos— se envía a ese servidor.`,
+            ack: 'Entendido',
+            ackTitle: 'Oculta este aviso en esta conversación',
+            recorded: (p: {server: string}) =>
+                `Aviso: «${p.server}» es un servidor remoto. Lo que el agente lea de tu repositorio (archivos, salida de comandos) se envía a ese servidor.`,
+            chip: 'remoto',
+            chipTitle: (p: {server: string; url: string}) =>
+                `«${p.server}» está en otra máquina (${p.url}). Lo que le mandes, y lo que el agente lea con sus herramientas, viaja por la red.`,
+        },
+        // «Guardar en mi cerebro»: el agente registra notas solo.
+        brain: {
+            label: 'Guardar en mi cerebro',
+            titleOn: (p: {root: string}) =>
+                `Activado para esta conversación: el agente deja en tu cerebro («${p.root}») lo que valga la pena conservar, en notas por proyecto o por tema. Hacé clic para apagarlo.`,
+            titleOff: (p: {root: string}) =>
+                `Apagado. Si lo activás, el agente anota por su cuenta en tu cerebro («${p.root}») lo que valga la pena conservar. Cada nota es visible y queda marcada como creada por un agente. Se recuerda en esta conversación.`,
+            blockedMcp:
+                'No disponible: el servidor MCP está apagado. Se enciende en Configuración → IA. Hacé clic para abrirla.',
+            blockedNotes:
+                'No disponible: falta el permiso de escritura de notas. Se da en Configuración → IA → Acceso de la IA. Hacé clic para abrirla.',
+            applyFailed: (p: {error: string}) => `No se pudo guardar el ajuste «Guardar en mi cerebro»: ${p.error}`,
+        },
         // Arranques del chat vacío, por módulo. El texto visible es el mismo
         // que se escribe en la caja, así que sigue el idioma de la interfaz.
         starters: {
@@ -142,9 +228,29 @@ export default {
             http: ['Explicá esta respuesta', '¿Por qué falla esta petición?', 'Escribí pruebas para este endpoint'],
             note: ['Resumí esta nota', '¿Este procedimiento sigue teniendo sentido?', 'Ampliá el último paso'],
             git: ['¿Qué cambió en esta rama?', 'Revisá los cambios preparados', 'Escribí el mensaje del commit'],
+            utilities: [
+                'Explicame un concepto técnico',
+                'Ayudame a depurar un error',
+                'Escribí un script que automatice una tarea',
+                'Revisá este código y proponé mejoras',
+            ],
             none: ['¿Qué podés hacer en mini-tools?'],
         },
         starterTitle: 'Escribe esto en la caja de mensaje. Podés editarlo antes de mandarlo.',
+        startersLabel: 'Sugerencias para empezar',
+        // Etiquetas de accesibilidad de los controles que son solo un ícono.
+        a11y: {
+            messages: 'Conversación',
+            composer: 'Mensaje para el agente',
+            send: 'Enviar mensaje',
+            stop: 'Detener el turno',
+            enqueue: 'Dejar el mensaje en cola',
+            search: 'Buscar en la conversación',
+            reset: 'Reiniciar la conversación',
+            jumpLatest: 'Ir al último mensaje',
+            copyMessage: 'Copiar el mensaje',
+        },
+        jumpLatestTitle: 'Vuelve al final de la conversación. Mientras leías más arriba, la respuesta que sigue llegando no te movió de lugar.',
         blockChipTitle: (p: {label: string; n: number}) =>
             `${p.label} — ${p.n} líneas. Clic para leer exactamente lo que se va a mandar.`,
         removeBlockTitle: 'Quitar este contexto — no se va a mandar',
@@ -160,7 +266,7 @@ export default {
     },
     host: {
         agent: 'Agente',
-        noneInstalledTitle: 'No hay ningún CLI agéntico instalado en esta máquina. Configuralos en Configuración → Agentes.',
+        noneInstalledTitle: 'No hay ningún CLI agéntico instalado ni servidor de modelos agregado. Configuralos en Configuración → IA.',
         pickerTitle:
             'Con qué agente hablás. Cambiarlo empieza una conversación nueva: el historial lo guarda cada CLI por su cuenta, así que otro no puede continuar la anterior.',
         noneInstalled: 'Ninguno instalado',
@@ -177,7 +283,7 @@ export default {
         closeTitle: 'Cierra el panel. La conversación queda como está: volver a abrirlo la retoma.',
         emptyNoAgent: 'No hay ningún agente instalado',
         emptyNoAgentHint:
-            'mini-tools usa los CLIs que ya tengas: Claude Code, Codex o Antigravity. Instalá uno y aparecerá acá — la autenticación la sigue manejando cada CLI.',
+            'mini-tools usa los CLIs que ya tengas (Claude Code, Codex o Antigravity) o un servidor de modelos (Ollama u otro compatible con OpenAI). Instalá un CLI o agregá un servidor en Configuración → IA y aparecerá acá.',
         emptyPick: 'Elegí un agente arriba para empezar.',
         resizeTitle: 'Arrastrar para cambiar el tamaño del panel — queda guardado',
         renameTitle: 'Cambiar el nombre de la conversación',
@@ -213,6 +319,7 @@ export default {
             ssh: 'Servidores',
             note: 'Notas',
             http: 'Peticiones HTTP',
+            utilities: 'Chat de IA',
             none: 'Sin módulo',
         },
         searchPlaceholder: (p: {n: number}) => `Buscar entre ${p.n} conversaciones…`,
@@ -304,6 +411,28 @@ export default {
         footer:
             'Las **barras de límite** son el porcentaje que calculó el servidor de cada proveedor y que su CLI dejó cacheado en esta máquina: se leen tal cual, con la hora en que se midieron — no son en vivo. Los porcentajes de **consumo** (modelo, caché) son proporciones de lo gastado, no de un tope. Para el dato del momento, cada CLI lo contesta con su propio comando (`/status`, `/usage`).',
     },
+    // Salud de un servidor de modelos (punto de estado, aviso del chat).
+    health: {
+        statusOk: 'Responde',
+        statusError: 'Sin respuesta',
+        statusChecking: 'Comprobando',
+        statusUnknown: 'Sin comprobar',
+        agoNow: 'hace un momento',
+        ago: (p: {sec: number}) => (p.sec < 5 ? 'hace un momento' : p.sec < 60 ? `hace ${p.sec} s` : `hace ${Math.floor(p.sec / 60)} min`),
+        dotOk: (p: {server: string; latency: number; ago: string}) => `«${p.server}» responde · ${p.latency} ms · comprobado ${p.ago}`,
+        dotError: (p: {server: string; error: string}) => `«${p.server}» no responde: ${p.error}`,
+        dotChecking: (p: {server: string}) => `Comprobando si «${p.server}» responde…`,
+        dotUnknown: (p: {server: string}) => `Todavía no se comprobó si «${p.server}» responde`,
+        badgeOk: (p: {latency: number}) => `${p.latency} ms`,
+        badgeError: 'sin respuesta',
+        badgeChecking: 'comprobando…',
+        bannerTitle: (p: {server: string}) => `«${p.server}» no responde`,
+        bannerHint: 'Podés seguir escribiendo, pero enviar va a fallar enseguida hasta que el servidor conteste.',
+        serverGone: 'Este servidor ya no está en la lista',
+        retry: 'Reintentar',
+        retrying: 'Comprobando…',
+        retryTitle: 'Vuelve a preguntarle ahora al servidor si responde, sin esperar a la próxima comprobación automática (cada 60 s mientras el chat está a la vista)',
+    },
     askPicker: {
         title: 'Con qué proveedor se hace ESTE análisis. No cambia el agente activo de la aplicación: sirve para pedirle la misma pregunta a otro modelo y comparar.',
         activeAgent: 'Agente activo',
@@ -321,6 +450,35 @@ export default {
         copy: 'Copiar',
         copied: 'Copiado',
     },
+    // Configuración → IA → Cerebro: carpeta raíz y qué falta para encenderlo.
+    brainPanel: {
+        heading: 'Cerebro',
+        title: 'Notas que escribe el agente',
+        intro:
+            'Con **Guardar en mi cerebro** encendido en una conversación, el agente anota solo lo que valga la pena conservar —un procedimiento, un diagnóstico, una decisión— como notas tuyas, ordenadas por proyecto y por tema. Está **apagado por defecto** y se enciende conversación por conversación.',
+        reqMcp: 'Servidor MCP encendido',
+        reqMcpHint: 'Se enciende arriba, en «Acceso de la IA»: las notas entran por sus herramientas.',
+        reqNotes: 'Escritura de notas permitida',
+        reqNotesHint: 'Se da arriba, en «Acceso de la IA»: sin ese permiso el agente solo puede leer tus notas.',
+        reqChat: 'En cada conversación: interruptor **Guardar en mi cerebro**, junto al selector de modo.',
+        rootLabel: 'Carpeta del cerebro',
+        rootTitle: 'Carpeta de tus notas donde el agente escribe. Por defecto «Cerebro»; se crea sola con la primera nota.',
+        rootHint: (p: {def: string}) =>
+            `Ruta dentro de tus notas, con \`/\` para subcarpetas (p. ej. \`Trabajo/Cerebro\`). Por defecto \`${p.def}\`. Cambiarla no mueve las notas que ya existan.`,
+        rootInvalid: 'Ruta no válida: sin carpetas vacías ni «..», hasta 80 caracteres.',
+        save: 'Guardar',
+        saved: 'Guardado',
+        saveTitle: 'Guarda la carpeta raíz. Vale para las próximas notas que escriba el agente.',
+        structureHeading: 'Cómo lo ordena',
+        exampleProjectNote: 'Decisión de caché',
+        exampleTopicNote: 'Índices en Oracle',
+        structureBody:
+            'Con contexto (un repositorio, una conexión, un servidor SSH) escribe en **Proyectos/<proyecto>**; sin contexto, en **Temas/<tema>**. Antes de crear busca, para **ampliar** una nota con `vault_append_to_note` en vez de duplicarla; enlaza con `[[Título]]` y etiqueta con `#etiqueta`.',
+        indexBody:
+            'Cada proyecto y cada tema tiene una nota **_Índice** (un mapa de contenido, como en Obsidian) que enlaza a sus notas: el grafo de notas lo muestra como un cerebro navegable.',
+        rules:
+            'Las reglas de siempre siguen: no toca notas privadas, no reescribe notas tuyas y todo queda en el registro de accesos.',
+    },
     aiAccess: {
         tools: {
             vault_search_notes: 'Buscó en tus notas',
@@ -332,6 +490,9 @@ export default {
             git_status: 'Miró el estado de un repositorio',
             vault_create_note: 'Creó una nota',
             vault_update_note: 'Reescribió una nota suya',
+            vault_append_to_note: 'Amplió una nota suya',
+            vault_list_folders: 'Listó las carpetas de notas',
+            vault_list_notes: 'Listó las notas de una carpeta',
         },
         examplePath: '/ruta/a/mini-tools',
         claudeHow: 'En una terminal, una sola vez:',

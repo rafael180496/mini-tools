@@ -363,37 +363,15 @@ func (s *Store) SearchNotesForAI(query string, limit int) ([]NoteSummary, error)
 	if limit <= 0 || limit > 20 {
 		limit = 20
 	}
-	q := strings.ToLower(strings.TrimSpace(query))
-
-	rows, err := s.db.Query(
-		`SELECT id, encrypted_title, title_nonce, encrypted_content, content_nonce, updated_at
-		 FROM vault_notes WHERE is_private = 0 ORDER BY updated_at DESC`)
+	hits, err := s.SearchSharedNotes(SharedNoteFilter{Query: query, Limit: limit})
 	if err != nil {
-		return nil, i18n.Errorf(i18n.Msg{ES: "vault: buscando en las notas: %w", EN: "vault: searching the notes: %w"}, err)
+		return nil, err
 	}
-	defer rows.Close()
-
-	out := []NoteSummary{}
-	for rows.Next() {
-		if len(out) >= limit {
-			break
-		}
-		var id string
-		var encTitle, titleNonce, encContent, contentNonce []byte
-		var updated int64
-		if err := rows.Scan(&id, &encTitle, &titleNonce, &encContent, &contentNonce, &updated); err != nil {
-			return nil, err
-		}
-		title := s.decryptOptional(encTitle, titleNonce)
-		if q != "" && !strings.Contains(strings.ToLower(title), q) {
-			content := s.decryptOptional(encContent, contentNonce)
-			if !strings.Contains(strings.ToLower(content), q) {
-				continue
-			}
-		}
-		out = append(out, NoteSummary{ID: id, Title: title, UpdatedAt: updated})
+	out := make([]NoteSummary, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, NoteSummary{ID: h.ID, Title: h.Title, UpdatedAt: h.UpdatedAt, FolderID: h.FolderID})
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // El cifrado reusa el par encryptOptional/decryptOptional de

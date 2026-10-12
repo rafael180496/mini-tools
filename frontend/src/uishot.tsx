@@ -27,7 +27,7 @@
 // No entra en el build de producción: Vite solo empaqueta `index.html`, y
 // este entra por `uishot.html`, que no es su entrada.
 
-import {StrictMode} from 'react'
+import {cloneElement, StrictMode, type ReactElement} from 'react'
 import {createRoot} from 'react-dom/client'
 import './styles/globals.css'
 import {normalizeLang, setLanguage, t} from './i18n'
@@ -127,6 +127,116 @@ const chatDbTurns = [
     },
 ]
 
+
+// Historial del Chat de IA: conversaciones de varios proveedores y módulos, con
+// fechas repartidas para que se vean los cuatro grupos (Hoy / Ayer / Últimos 7
+// días / Anteriores). Los instantes salen de `Date.now()` y no de una fecha
+// fija: la captura tiene que mostrar «Hoy» el día que se saque.
+const aiNow = Math.floor(Date.now() / 1000)
+const aiChats = [
+    {id: 'ac-1', repoId: '', agentId: 'claude', title: 'Cómo paginar por cursor en Postgres', conversationId: 'conv-ac-1', createdAt: aiNow - 5400, updatedAt: aiNow - 1500, model: 'sonnet', effort: '', mode: '', module: 'utilities', contextId: 'r4', brain: false},
+    {id: 'ac-2', repoId: '', agentId: 'llm:ms1', title: 'Resumí este log de arranque', conversationId: '', createdAt: aiNow - 14000, updatedAt: aiNow - 9000, model: 'qwen2.5:3b', effort: '', mode: '', module: 'utilities', contextId: '', brain: false},
+    {id: 'ac-3', repoId: '', agentId: 'codex', title: 'Script para rotar los backups de Docker', conversationId: 'conv-ac-3', createdAt: aiNow - 100000, updatedAt: aiNow - 86400 - 3000, model: '', effort: '', mode: '', module: 'utilities', contextId: '', brain: false},
+    {id: 'ac-4', repoId: '', agentId: 'claude', title: 'Explicá esta consulta', conversationId: 'conv-ac-4', createdAt: aiNow - 4 * 86400, updatedAt: aiNow - 3 * 86400, model: 'opus', effort: '', mode: '', module: 'db', contextId: 'c1', brain: false},
+    {id: 'ac-5', repoId: '', agentId: 'llm:ms2', title: 'Diferencias entre SSE y WebSocket', conversationId: '', createdAt: aiNow - 6 * 86400, updatedAt: aiNow - 5 * 86400, model: 'llama3.2:3b', effort: '', mode: '', module: 'utilities', contextId: '', brain: false},
+    {id: 'ac-6', repoId: '', agentId: 'antigravity', title: 'Plan de migración de índices en Oracle', conversationId: 'conv-ac-6', createdAt: aiNow - 20 * 86400, updatedAt: aiNow - 18 * 86400, model: '', effort: '', mode: '', module: 'utilities', contextId: '', brain: false},
+    {id: 'ac-7', repoId: '', agentId: 'claude', title: 'Revisá el runbook de guardia', conversationId: 'conv-ac-7', createdAt: aiNow - 40 * 86400, updatedAt: aiNow - 38 * 86400, model: '', effort: '', mode: '', module: 'note', contextId: 'n1', brain: false},
+    // Servidor local con herramientas de archivos y comandos sobre un repositorio,
+    // y con «Guardar en mi cerebro» encendido: la conversación de las capturas de
+    // eventos de herramientas.
+    {id: 'ac-8', repoId: '', agentId: 'llm:ms1', title: 'El test de paginación falla en CI', conversationId: '', createdAt: aiNow - 2400, updatedAt: aiNow - 600, model: 'qwen2.5:3b', effort: '', mode: 'approve', module: 'utilities', contextId: 'r4', brain: true},
+    // Servidor REMOTO con un repositorio de trabajo: la captura del aviso.
+    {id: 'ac-9', repoId: '', agentId: 'llm:ms2', title: 'Preparar el release 1.4', conversationId: '', createdAt: aiNow - 7200, updatedAt: aiNow - 3000, model: 'llama3.2:3b', effort: '', mode: '', module: 'utilities', contextId: 'r4', brain: false},
+]
+// Mensajes guardados de la primera conversación (AgentChatMessages): lo que se
+// dibuja al retomarla, con el consumo de cada turno.
+const aiChatMessages: Record<string, unknown[]> = {
+    // Una fila `tool` guarda «resumen\ndetalle» (backend/agentchat/record.go).
+    'ac-8': [
+        {seq: 1, role: 'user', content: 'El test TestCursorPage falla en CI pero no en mi máquina. Fijate qué pasa y arreglalo.', toolName: '', createdAt: aiNow - 2300},
+        {seq: 2, role: 'tool', content: 'backend/pagination', toolName: 'list_dir', createdAt: aiNow - 2290},
+        {seq: 3, role: 'tool', content: 'backend/pagination/cursor.go', toolName: 'read_file', createdAt: aiNow - 2285},
+        {seq: 4, role: 'tool', content: 'ORDER BY created_at', toolName: 'search', createdAt: aiNow - 2280},
+        {seq: 5, role: 'tool', content: 'go test ./backend/pagination/ -run TestCursorPage', toolName: 'run_command', createdAt: aiNow - 2270},
+        {seq: 6, role: 'tool', content: 'backend/pagination/cursor.go\n2 líneas', toolName: 'edit_file', createdAt: aiNow - 2250},
+        {seq: 7, role: 'tool', content: 'docs/paginacion.md\n18 líneas', toolName: 'write_file', createdAt: aiNow - 2240},
+        {seq: 8, role: 'tool', content: 'Paginación por cursor · desempate en created_at', toolName: 'vault_create_note', createdAt: aiNow - 2230},
+        {seq: 9, role: 'tool', content: '_Índice · mini-tools', toolName: 'vault_append_to_note', createdAt: aiNow - 2220},
+        {
+            seq: 10,
+            role: 'assistant',
+            content: [
+                'El test fallaba porque el orden por `created_at` no era estable: dos filas con el mismo instante salían en distinto orden según el plan que eligiera Postgres.',
+                '',
+                'Lo arreglé agregando `id` como desempate en `cursor.go` (2 líneas) y documenté la regla en `docs/paginacion.md`.',
+                '',
+                'Dejé el diagnóstico en tu cerebro: **Paginación por cursor · desempate en created_at**, enlazado desde el índice del proyecto.',
+            ].join('\n'),
+            toolName: '',
+            usage: {input: 5120, output: 410, total: 5530},
+            createdAt: aiNow - 2200,
+        },
+    ],
+    'ac-9': [
+        {seq: 1, role: 'user', content: '¿Qué falta para sacar el release 1.4?', toolName: '', createdAt: aiNow - 3100},
+        {
+            seq: 2,
+            role: 'assistant',
+            content:
+                '_⚠ Este modelo no admite herramientas: sigo sin ellas._\n\nSin ver el repositorio solo puedo darte una lista general: congelar la rama, actualizar el CHANGELOG, generar los artefactos y verificar los checksums.',
+            toolName: '',
+            usage: {input: 180, output: 62, total: 242},
+            createdAt: aiNow - 3000,
+        },
+    ],
+    'ac-1': [
+        {seq: 1, role: 'user', content: 'Cómo paginar por cursor en Postgres sin que se vuelva lento con millones de filas', toolName: '', createdAt: aiNow - 1800},
+        {
+            seq: 2,
+            role: 'assistant',
+            content: [
+                'La paginación por **cursor** (o *keyset*) evita el `OFFSET`, que obliga a Postgres a recorrer y descartar todas las filas anteriores.',
+                '',
+                '### La idea',
+                '',
+                '- Ordenás por una columna **única y estable** (`id`, o `(created_at, id)`).',
+                '- La página siguiente pide «lo que viene después del último que viste».',
+                '- Un índice sobre esas columnas hace que cada página cueste lo mismo, sea la 1 o la 10.000.',
+                '',
+                '```sql',
+                'SELECT id, subject, created_at',
+                'FROM tickets',
+                'WHERE (created_at, id) < ($1, $2)',
+                'ORDER BY created_at DESC, id DESC',
+                'LIMIT 50;',
+                '```',
+                '',
+                'Para que use el índice, creálo con el mismo orden:',
+                '',
+                '```sql',
+                'CREATE INDEX CONCURRENTLY tickets_cursor_idx',
+                '    ON tickets (created_at DESC, id DESC);',
+                '```',
+                '',
+                'El cliente guarda el `(created_at, id)` de la última fila y lo manda como cursor en la petición siguiente.',
+            ].join('\n'),
+            toolName: '',
+            usage: {input: 812, output: 436, cacheRead: 0, thinking: 0, total: 1248, costUsd: 0.0071},
+            createdAt: aiNow - 1790,
+        },
+        {seq: 3, role: 'user', content: '¿Y si el usuario necesita saltar a una página en particular?', toolName: '', createdAt: aiNow - 1600},
+        {
+            seq: 4,
+            role: 'assistant',
+            content:
+                'Con cursores **no se puede saltar** a la página N: solo avanzar o retroceder. Si hace falta, las opciones son:\n\n1. Mantener `OFFSET` pero solo para las primeras páginas (donde es barato) y pasar a cursor después.\n2. Ofrecer búsqueda o filtros en lugar de números de página: en tablas grandes nadie navega hasta la página 4.000.',
+            toolName: '',
+            usage: {input: 1320, output: 188, cacheRead: 640, thinking: 0, total: 1508, costUsd: 0.0034},
+            createdAt: aiNow - 1500,
+        },
+    ],
+}
+
 const fixtures: Record<string, unknown> = {
     GitListWorkTree: {files: repoFiles, truncated: false},
     GitStatus: {
@@ -155,7 +265,32 @@ const fixtures: Record<string, unknown> = {
         {id: 'claude', label: 'Claude Code', vendor: 'Anthropic', command: 'claude', defaultCommand: 'claude', path: '/usr/local/bin/claude', available: true, keyEnv: 'ANTHROPIC_API_KEY', hasKey: false, loginHint: '', note: '', docsUrl: ''},
         {id: 'codex', label: 'Codex CLI', vendor: 'OpenAI', command: 'codex', defaultCommand: 'codex', path: '/usr/local/bin/codex', available: true, keyEnv: 'OPENAI_API_KEY', hasKey: false, loginHint: '', note: '', docsUrl: ''},
         {id: 'antigravity', label: 'Antigravity CLI', vendor: 'Google', command: 'agy', defaultCommand: 'agy', path: '/usr/local/bin/agy', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
+        // Servidores de modelos: id `llm:<id>`, sin comando, key ni login.
+        {id: 'llm:ms1', label: 'Ollama local', vendor: 'Ollama', command: '', defaultCommand: '', path: '', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
+        {id: 'llm:ms2', label: 'vLLM en el servidor GPU', vendor: 'OpenAI-compatible', command: '', defaultCommand: '', path: '', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
+        {id: 'llm:ms3', label: 'LM Studio del laboratorio', vendor: 'OpenAI-compatible', command: '', defaultCommand: '', path: '', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
     ],
+    ListModelServers: [
+        {id: 'ms1', name: 'Ollama local', kind: 'ollama', baseUrl: 'http://localhost:11434', hasToken: false, isLocal: true, insecureTls: false, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+        // Detrás de Cloudflare Access: token más dos cabeceras (solo los nombres viajan).
+        {id: 'ms2', name: 'vLLM en el servidor GPU', kind: 'openai', baseUrl: 'https://gpu.example.com/v1', hasToken: true, isLocal: false, insecureTls: false, headerNames: ['CF-Access-Client-Id', 'CF-Access-Client-Secret'], createdAt: 1786741440, updatedAt: 1786741440},
+        // Servidor propio con certificado autofirmado.
+        {id: 'ms3', name: 'LM Studio del laboratorio', kind: 'openai', baseUrl: 'https://192.168.1.50:1234/v1', hasToken: false, isLocal: false, insecureTls: true, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+    ],
+    // Salud por servidor (cacheada 30 s en el backend). `checkedAt` sale del
+    // reloj de la captura para que el «comprobado hace Xs» sea creíble.
+    ModelServerHealth: (id: string) => ({
+        ok: true,
+        version: id === 'ms1' ? '0.5.7' : '',
+        models: ['qwen2.5:3b', 'llama3.2:3b'],
+        error: '',
+        latencyMs: id === 'ms1' ? 38 : id === 'ms2' ? 142 : 64,
+        checkedAt: Date.now() - 12000,
+    }),
+    // Con un Ollama ya guardado en localhost la sugerencia no se muestra; la
+    // captura de la sugerencia usa `?view=modelserverdetected`.
+    DetectLocalOllama: true,
+    TestModelServer: {ok: true, version: '0.5.7', models: ['qwen2.5:3b', 'llama3.2:3b', 'nomic-embed-text:latest'], error: '', latencyMs: 61, checkedAt: Date.now()},
     AgentDraftCommit: {
         message: 'feat(git): redactar el mensaje del commit con el agente por defecto',
         files: ['A   backend/agentchat/conversations.go'],
@@ -218,11 +353,33 @@ const fixtures: Record<string, unknown> = {
             {kind: 'session', label: 'Claude and GPT models · 5 h', percent: 0, resetsAt: new Date(Date.now() + 4 * 3600_000).toISOString(), severity: '', active: false},
         ],
     },
+    // Chat de IA (pestaña de Utilidades): historial de todas las conversaciones,
+    // búsqueda en su contenido y los mensajes guardados de una de ellas.
+    AgentActive: {id: 'claude', label: 'Claude Code', available: true, model: '', effort: '', chatSupported: true},
+    ListAllAgentChats: aiChats,
+    SearchAgentChats: (query: string) => {
+        const q = String(query).trim().toLowerCase()
+        // Encuentra también por el TEXTO de los mensajes, no solo por el título:
+        // es lo que distingue esta búsqueda de un filtro de la lista.
+        const inBody: Record<string, string> = {
+            'ac-1': 'cursor keyset offset postgres índice',
+            'ac-4': 'select join índice plan de ejecución',
+            'ac-6': 'índice oracle partición',
+        }
+        return aiChats.filter((c) => c.title.toLowerCase().includes(q) || (inBody[c.id] ?? '').includes(q))
+    },
+    AgentChatMessages: (chatID: string) => aiChatMessages[chatID] ?? [],
     AgentChatSupported: true,
     AgentChatModes: ['', 'plan', 'approve', 'auto', 'edit'],
+    // Cerebro: servidor MCP y escritura de notas encendidos (la vista
+    // `braindisabled` los apaga), con la carpeta por defecto.
+    BrainStatus: {mcpEnabled: true, notesWrite: true, root: 'Cerebro'},
+    GetBrainRoot: 'Cerebro',
+    SetBrainRoot: null,
+    SetAgentChatBrain: null,
     AgentModelCatalog: {
         models: [
-            {id: '', label: 'Por defecto', description: 'El que tenga configurado el CLI', efforts: []},
+            {id: '', label: 'Default', description: 'The one the CLI has configured', efforts: []},
             {id: 'opus', label: 'Opus', description: 'El más capaz para tareas complejas y largas', efforts: []},
             {id: 'sonnet', label: 'Sonnet', description: 'Equilibrio entre capacidad y velocidad', efforts: []},
         ],
@@ -1122,8 +1279,27 @@ function toBase64(text: string): string {
     return btoa(binary)
 }
 
+// Pregunta de aprobación de una herramienta, para la captura del diálogo con un
+// comando de riesgo. Llega por un evento GLOBAL (`agent-approval`), no por el de
+// la sesión, así que se entrega cuando el chat ya se abrió y se suscribió.
+const uiLang = new URLSearchParams(location.search).get('lang')
+const APPROVAL_RISKY = {
+    id: 'llm-approve-1',
+    tool: 'run_command',
+    input: '{"command":"git push --force origin main"}',
+    summary: 'git push --force origin main',
+    detail:
+        uiLang === 'es'
+            ? '⚠ Comando de riesgo: push forzado (git push --force)'
+            : '⚠ Risky command: force push (git push --force)',
+}
+
 anyWindow.runtime = {
     EventsOnMultiple: (name: string, cb: (data: unknown) => void) => {
+        if (name === 'agent-approval' && new URLSearchParams(location.search).get('view') === 'approvalrisky') {
+            setTimeout(() => cb(APPROVAL_RISKY), 2600)
+            return () => {}
+        }
         if (name.startsWith('docker-logs-')) {
             setTimeout(() => cb({lines: DOCKER_LOGS}), 300)
             return () => {}
@@ -1194,6 +1370,7 @@ const {default: LocalTerminalTab} = await import('./components/terminal/LocalTer
 const {default: PortKillerTab} = await import('./components/utilities/PortKillerTab')
 const {default: ActivityMonitorTab} = await import('./components/utilities/ActivityMonitorTab')
 const {default: DockerTab} = await import('./components/utilities/DockerTab')
+const {default: AiChatTab} = await import('./components/utilities/AiChatTab')
 const {default: HttpTree} = await import('./components/http/HttpTree')
 const {default: HttpRequestTab} = await import('./components/http/HttpRequestTab')
 const {default: GitReflogPanel} = await import('./components/git/GitReflogPanel')
@@ -1595,6 +1772,21 @@ const views: Record<string, React.ReactNode> = {
             <DockerTab visible section="containers" onCounts={() => {}} />
         </div>
     ),
+    aichat: (
+        <div className="h-full">
+            <AiChatTab visible />
+        </div>
+    ),
+    aichatchat: (
+        <div className="h-full">
+            <AiChatTab visible />
+        </div>
+    ),
+    aichatsearch: (
+        <div className="h-full">
+            <AiChatTab visible />
+        </div>
+    ),
     activitymonitor: (
         <div className="h-full">
             <ActivityMonitorTab visible />
@@ -1680,6 +1872,65 @@ const views: Record<string, React.ReactNode> = {
 
 const view = new URLSearchParams(location.search).get('view') ?? 'files'
 
+// Servidores de modelos: la sección vive en Configuración → IA. Estas vistas
+// montan el mismo modal y le pegan los clics que daría una persona.
+// La sección se pasa por prop (initialSection) y no con un clic sobre la barra
+// lateral: un clic deja la transición de color de la pestaña activa a medias en
+// la captura y la barra marca «Apariencia» sobre el contenido de «IA».
+const settingsInSection = (id: string) =>
+    cloneElement(views.settings as ReactElement<{initialSection?: string}>, {initialSection: id})
+if (view === 'settings') {
+    const sec = (new URLSearchParams(location.search).get('section') ?? '').toLowerCase()
+    const byName: Record<string, string> = {apariencia: 'general', appearance: 'general', ia: 'ai', ai: 'ai', vault: 'vault', terminal: 'terminal', general: 'general'}
+    if (byName[sec]) views.settings = settingsInSection(byName[sec])
+}
+views.modelserverform = settingsInSection('ai')
+views.modelserverdetected = settingsInSection('ai')
+// Sin servidores guardados y con un Ollama respondiendo en localhost: sale la sugerencia.
+if (view === 'modelserverdetected') fixtures.ListModelServers = []
+views.modelservertest = settingsInSection('ai')
+// Formulario con el editor de cabeceras y la opción de certificado autofirmado
+// (servidor nuevo, ya con las filas llenas) y edición de uno que ya guarda
+// cabeceras (solo sus nombres, con «Reemplazar cabeceras»).
+views.modelserverheaders = settingsInSection('ai')
+views.modelserveredit = settingsInSection('ai')
+
+// Agente de código local y cerebro (spec ia-ollama-chat-utilidades, fases 4-6).
+// Todas montan el Chat de IA y retoman una conversación del historial, que es el
+// camino real; la fixture de cada una decide qué se ve.
+//   toolevents      eventos de herramientas (archivos, comandos, notas) y el
+//                   cerebro encendido en un servidor local
+//   remotewarn      servidor remoto con un repositorio: aviso y distintivo
+//   approvalrisky   diálogo de aprobación de un comando de riesgo
+//   brainon         el interruptor encendido; braindisabled, bloqueado (un chat
+//                   nuevo, con el servidor MCP apagado); norepo, un servidor de
+//                   modelos sin repositorio de trabajo
+//   brainsettings   Configuración → IA, sección «Cerebro»
+views.toolevents = views.aichat
+views.remotewarn = views.aichat
+views.approvalrisky = views.aichat
+views.brainon = views.aichat
+views.braindisabled = views.aichat
+views.norepo = views.aichat
+// Abre en «IA» por prop (initialSection) y no con un clic: un clic deja la
+// transición de color de la barra lateral a medias en la captura.
+views.brainsettings = settingsInSection('ai')
+// Chat de IA con el servidor local caído: punto rojo en la cabecera, aviso sobre
+// la caja con el error y «Reintentar». Reutiliza la conversación ac-8 (Ollama
+// local); solo cambia lo que contesta la comprobación de salud.
+views.healthred = views.aichat
+if (view === 'healthred') {
+    fixtures.ModelServerHealth = (id: string) => ({
+        ok: id !== 'ms1',
+        version: '',
+        models: [],
+        error: id === 'ms1' ? 'dial tcp 127.0.0.1:11434: connect: connection refused' : '',
+        latencyMs: id === 'ms1' ? 0 : 142,
+        checkedAt: Date.now() - 3000,
+    })
+}
+if (view === 'braindisabled') fixtures.BrainStatus = {mcpEnabled: false, notesWrite: false, root: 'Cerebro'}
+
 // `&scale=150` fotografía la interfaz con el tamaño de letra agrandado.
 //
 // Se aplica acá y no por prop porque el ajuste no es de ningún componente: es
@@ -1687,6 +1938,10 @@ const view = new URLSearchParams(location.search).get('view') ?? 'files'
 // se monta App sino cada vista suelta. Sirve para comprobar que una pantalla
 // sigue entrando con el cuerpo al 150% antes de que se lo encuentre alguien
 // que lo necesita.
+// `&theme=light` fotografía el tema claro: la app guarda `dark` como clase de
+// <html> (useTheme), y acá se la quita igual que lo haría el selector de tema.
+if (new URLSearchParams(location.search).get('theme') === 'light') document.documentElement.classList.remove('dark')
+
 const scale = Number(new URLSearchParams(location.search).get('scale'))
 if (Number.isFinite(scale) && scale > 0) {
     document.documentElement.style.setProperty('--ui-font-scale', String(scale / 100))
@@ -1726,6 +1981,38 @@ if (view === 'newmenu') {
     setTimeout(() => {
         autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title === t().git.tab.panel.newChatTitle))
     }, 400)
+}
+if (view === 'aichatchat') {
+    // Abre desde el historial la conversación con mensajes guardados, como lo
+    // haría una persona: es el camino real de «retomar».
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-1"]') ?? undefined)
+}
+if (view === 'toolevents' || view === 'brainon' || view === 'approvalrisky' || view === 'healthred') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-8"]') ?? undefined)
+}
+if (view === 'norepo') {
+    // Un servidor de modelos sin repositorio de trabajo: aviso de que solo tiene MCP.
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-5"]') ?? undefined)
+}
+if (view === 'remotewarn') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-9"]') ?? undefined)
+}
+if (view === 'brainsettings') {
+    setTimeout(() => document.querySelector('[data-brain-settings]')?.scrollIntoView({block: 'start'}), 700)
+}
+if (view === 'aichatsearch') {
+    // Escribe en el buscador del historial (con el setter nativo, para que
+    // React vea el cambio) y abre el primer resultado.
+    autoClick(() => {
+        const input = document.querySelector<HTMLInputElement>('input[type="text"], input:not([type])')
+        if (!input) return undefined
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+        set?.call(input, 'índice')
+        input.dispatchEvent(new Event('input', {bubbles: true}))
+        return document.body
+    })
+    // Y abre el primer resultado, que es lo que se hace después de buscar.
+    setTimeout(() => autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-1"]') ?? undefined), 1600)
 }
 if (view === 'thinking') {
     // El indicador de trabajo solo existe con un turno en curso, y un turno
@@ -1813,6 +2100,82 @@ if (view === 'settings') {
     const legacy: Record<string, string> = {apariencia: 'general', appearance: 'general', ia: 'ai'}
     const id = section ? (legacy[section.toLowerCase()] ?? section.toLowerCase()) : ''
     if (id) autoClick(() => document.querySelector<HTMLButtonElement>(`button[role="tab"][data-section="${id}"]`) ?? undefined)
+}
+if (view === 'modelserverform' || view === 'modelservertest' || view === 'modelserverdetected') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('button[role="tab"][data-section="ai"]') ?? undefined)
+    setTimeout(
+        () =>
+            autoClick(() => {
+                const btn = document.querySelector<HTMLButtonElement>(
+                    view === 'modelserverform'
+                        ? '[data-model-server-add]'
+                        : view === 'modelserverdetected'
+                          ? '[data-model-servers]'
+                          : '[data-model-server-test]',
+                )
+                // La sección queda debajo del panel de acceso: se trae a la vista
+                // DESPUÉS del clic, porque el formulario o el resultado la alargan.
+                if (btn) setTimeout(() => document.querySelector('[data-model-servers]')?.scrollIntoView({block: 'start'}), 300)
+                return btn ?? undefined
+            }),
+        1200,
+    )
+}
+// Cambia el valor de un input controlado por React (setter nativo + evento).
+const fillInput = (el: HTMLInputElement, value: string) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, value)
+    el.dispatchEvent(new Event('input', {bubbles: true}))
+}
+if (view === 'modelserverheaders' || view === 'modelserveredit') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('button[role="tab"][data-section="ai"]') ?? undefined)
+    setTimeout(
+        () =>
+            autoClick(() =>
+                document.querySelector<HTMLButtonElement>(view === 'modelserveredit' ? '[data-model-server-edit="ms2"]' : '[data-model-server-add]') ?? undefined,
+            ),
+        1200,
+    )
+    if (view === 'modelserverheaders') {
+        // Un servidor nuevo detrás de Cloudflare Access con certificado propio:
+        // se llenan los campos como lo haría una persona.
+        // Cada paso en su propio tick: los manejadores del formulario leen el
+        // estado del render anterior, y dos cambios en el mismo tick se pisan.
+        const steps: (() => void)[] = [
+            () => {
+                const [name] = [...document.querySelectorAll<HTMLInputElement>('[data-model-servers] input')]
+                if (name) fillInput(name, 'LM Studio del laboratorio')
+            },
+            () => {
+                const url = document.querySelector<HTMLInputElement>('[data-model-servers] input[placeholder^="http"]')
+                if (url) fillInput(url, 'https://192.168.1.50:1234/v1')
+            },
+            () => document.querySelector<HTMLButtonElement>('[data-model-servers] [data-header-add]')?.click(),
+            () => document.querySelector<HTMLButtonElement>('[data-model-servers] [data-header-add]')?.click(),
+            () => {
+                const rows = [...document.querySelectorAll<HTMLElement>('[data-model-servers] [data-header-row]')]
+                const first = rows[0]?.querySelectorAll<HTMLInputElement>('input')
+                if (first) fillInput(first[0], 'CF-Access-Client-Id')
+            },
+            () => {
+                const first = document.querySelectorAll<HTMLElement>('[data-model-servers] [data-header-row]')[0]?.querySelectorAll<HTMLInputElement>('input')
+                if (first) fillInput(first[1], 'a1b2c3d4.access')
+            },
+            () => {
+                const second = document.querySelectorAll<HTMLElement>('[data-model-servers] [data-header-row]')[1]?.querySelectorAll<HTMLInputElement>('input')
+                if (second) fillInput(second[0], 'CF-Access-Client-Secret')
+            },
+            () => {
+                const second = document.querySelectorAll<HTMLElement>('[data-model-servers] [data-header-row]')[1]?.querySelectorAll<HTMLInputElement>('input')
+                if (second) fillInput(second[1], 'f3e9d2a8c7b6')
+            },
+            // La opción de certificado autofirmado, encendida.
+            () => document.querySelector<HTMLButtonElement>('[data-insecure-tls] button[role="switch"]')?.click(),
+            () => document.querySelector('[data-headers-editor]')?.scrollIntoView({block: 'center'}),
+        ]
+        steps.forEach((fn, i) => setTimeout(fn, 2400 + i * 90))
+    } else {
+        setTimeout(() => document.querySelector('[data-headers-editor]')?.scrollIntoView({block: 'center'}), 2500)
+    }
 }
 if (view === 'sidebarsearch') {
     // Se escribe en el buscador como lo haría una persona: el contador de

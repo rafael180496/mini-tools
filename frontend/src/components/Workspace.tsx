@@ -35,7 +35,7 @@ import GitErrorBoundary from './git/GitErrorBoundary'
 import GitRepoTab from './git/GitRepoTab'
 import AgentChatHost, {AgentChatButton, type AgentDock} from './agent/AgentChatHost'
 import LocalTerminalTab from './terminal/LocalTerminalTab'
-import {NO_CONTEXT, type WorkContext} from './agent/workContext'
+import {NO_CONTEXT, UTILITIES_CHAT_OWNER, type WorkContext} from './agent/workContext'
 import GitRepoTree from './git/GitRepoTree'
 import type {TerminalThemeId} from '../xterm/terminalThemes'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../xterm/terminalFont'
@@ -74,6 +74,7 @@ import {
     GetNote,
     GetSettings,
     SetAgentLayout,
+    NoteTitles,
     SetNotesLastOpen,
     HasOpenTransaction,
     ListConnections,
@@ -121,6 +122,7 @@ import {statementAt} from '../lib/sqlStatementAt'
 import {lintSQL} from '../lib/linter'
 import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
+import {onOpenNoteRequest, onOpenSettingsRequest, type SettingsSectionRequest} from '../lib/appBus'
 import {lintMongoCommands} from '../lib/mongoLinter'
 import {formatElapsed} from '../lib/formatElapsed'
 import {errorCode, formatNumber, t as tr, useT} from '../i18n'
@@ -140,6 +142,7 @@ const QueryParamsDialog = lazy(() => import('./editor/QueryParamsDialog'))
 const PortKillerTab = lazy(() => import('./utilities/PortKillerTab'))
 const ActivityMonitorTab = lazy(() => import('./utilities/ActivityMonitorTab'))
 const DockerTab = lazy(() => import('./utilities/DockerTab'))
+const AiChatTab = lazy(() => import('./utilities/AiChatTab'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'page' | 'done' | 'cancelled' | 'error'
@@ -822,6 +825,9 @@ export default function Workspace({
     const [showBackupPasswordDialog, setShowBackupPasswordDialog] = useState(false)
     const [showRestoreDialog, setShowRestoreDialog] = useState(false)
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+    // Sección con la que abre Configuración cuando el pedido viene de otro lado
+    // (el chat dice «encendelo en Configuración → IA»). Vacío = la de siempre.
+    const [settingsSection, setSettingsSection] = useState<SettingsSectionRequest | undefined>(undefined)
     const [statusMessage, setStatusMessage] = useState('')
 
     const [showMongoWizard, setShowMongoWizard] = useState(false)
@@ -937,6 +943,11 @@ export default function Workspace({
     const agentContext = useMemo<WorkContext>(() => {
         const t = activeTabData
         if (!t) return NO_CONTEXT
+        // El «Chat de IA» es un chat completo en sí mismo: el panel lateral se
+        // aparta (ver ownsChat) en vez de ofrecer un segundo chat sobre lo mismo.
+        if (t.kind === 'utility' && t.utilityId === 'aiChat') {
+            return {kind: 'utilities', id: UTILITIES_CHAT_OWNER, label: ''}
+        }
         if (t.kind === 'git-repo' && t.repoId) {
             return {kind: 'git', id: t.repoId, label: t.title.replace(/^Git — /, '')}
         }
@@ -1060,7 +1071,7 @@ export default function Workspace({
         setTabs((prev) => prev.map((t) => (t.id === tabId ? {...t, httpItemId: item.id, title: item.name} : t)))
     }, [])
 
-    const openNoteRef = useRef<(noteId: string) => void>(() => {})
+    const openNoteRef = useRef<(noteId: string, title?: string) => void>(() => {})
     const openNote = useCallback((noteId: string, title?: string) => {
         setTabs((prev) => {
             const existing = prev.find((t) => t.kind === 'note' && t.noteId === noteId)
@@ -1085,6 +1096,42 @@ export default function Workspace({
         void SetNotesLastOpen(noteId).catch(() => {})
     }, [])
     openNoteRef.current = openNote
+
+    // Pedidos que llegan desde componentes profundos (appBus): abrir Configuración
+    // en una sección y abrir una nota por su título —el agente que escribió una
+    // nota solo conoce el título—.
+    useEffect(
+        () =>
+            onOpenSettingsRequest((section) => {
+                setSettingsSection(section)
+                setShowSettingsDialog(true)
+            }),
+        [],
+    )
+    // La sección pedida vale para UNA apertura: la próxima vez que se abra
+    // Configuración con el engranaje vuelve a la de siempre.
+    useEffect(() => {
+        if (!showSettingsDialog) setSettingsSection(undefined)
+    }, [showSettingsDialog])
+    useEffect(
+        () =>
+            onOpenNoteRequest((req) => {
+                if (req.id) {
+                    openNoteRef.current(req.id)
+                    return
+                }
+                const wanted = (req.title ?? '').trim().toLowerCase()
+                if (!wanted) return
+                NoteTitles()
+                    .then((list) => {
+                        const found = (list ?? []).find((n) => n.title.trim().toLowerCase() === wanted)
+                        if (found) openNoteRef.current(found.id, found.title)
+                        else setStatusMessage(tr().workspace.status.noteNotFound({title: req.title ?? ''}))
+                    })
+                    .catch((err) => setStatusMessage(String(err)))
+            }),
+        [],
+    )
 
     const changeAgentLayout = useCallback((dock: AgentDock, size: number) => {
         setAgentDockState(dock)
@@ -4237,6 +4284,7 @@ export default function Workspace({
                                 {t.utilityId === 'portKiller' && <PortKillerTab visible={activeTabId === t.id} />}
                                 {t.utilityId === 'activityMonitor' && <ActivityMonitorTab visible={activeTabId === t.id} />}
                                 {t.utilityId === 'docker' && <DockerTab visible={activeTabId === t.id} section={dockerSection} onCounts={setDockerCounts} />}
+                                {t.utilityId === 'aiChat' && <AiChatTab visible={activeTabId === t.id} />}
                             </Suspense>
                         </div>
                     ))}
@@ -4660,6 +4708,7 @@ export default function Workspace({
             {showSettingsDialog && (
                 <Suspense fallback={null}>
                     <SettingsDialog
+                        initialSection={settingsSection}
                         rememberMasterKey={rememberMasterKey}
                         onToggleRememberMasterKey={(checked) => void toggleRememberMasterKey(checked)}
                         editorThemeId={editorThemeId}

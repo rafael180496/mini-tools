@@ -111,6 +111,19 @@ type App struct {
 	// eventos tipados con los que se puede dibujar un chat de verdad. Los dos
 	// conviven a propósito — ver el doc de backend/agentchat.
 	agentChats *agentchat.Manager
+	// chatRec lleva los turnos del chat en curso para grabarlos en el
+	// historial (app_chatrecord.go).
+	chatRec chatRecorder
+	// brain recuerda el cerebro encendido en chats que todavía no tienen fila
+	// (app_brain.go).
+	brain brainState
+	// modelHealth es el caché del chequeo previo de los servidores de modelos
+	// (app_modelserver_health.go). Su valor cero ya sirve.
+	modelHealth modelHealthCache
+	// noteEmit sustituye a runtime.EventsEmit en los avisos de nota creada o
+	// cambiada por un agente (app_mcp_notes.go); solo lo fijan los tests, que
+	// no tienen el contexto de Wails.
+	noteEmit func(event string, data any)
 	// mcp es el servidor MCP. **Nace apagado y no ocupa nada mientras lo esté**:
 	// el listener se abre recién cuando el usuario lo enciende en Configuración
 	// → Acceso de la IA, y apagarlo lo cierra y borra el socket. Ver app_mcp.go.
@@ -127,6 +140,11 @@ type App struct {
 	// indexadas por el id que asigna el canal.
 	approvePending map[string]chan agentapprove.Decision
 	approveMu      sync.Mutex
+	// approvalEmit publica los eventos de la pregunta de permiso del chat con
+	// servidores de modelos (app_llmtools.go). nil = el runtime de Wails; solo
+	// los tests lo reemplazan, porque EventsEmit exige el contexto de la
+	// ventana.
+	approvalEmit func(event string, data any)
 
 	// gitRunner is the Git module's engine — the system `git` binary driven
 	// through os/exec, another native parallel path like sshSessions/sftpx
@@ -254,6 +272,9 @@ func (a *App) startup(ctx context.Context) {
 	// una unión chica y cerrada (texto, herramienta, uso, error), y tiparlos
 	// es lo que permite que el frontend los dibuje sin adivinar.
 	a.agentChats = agentchat.NewManager(func(sessionID string, ev agentchat.Event) {
+		// Se graba ANTES de entregar: cuando la interfaz ve el `done`, las
+		// filas del turno ya están en el vault.
+		a.recordChatEvent(sessionID, ev)
 		emit(sessionID, ev)
 	})
 

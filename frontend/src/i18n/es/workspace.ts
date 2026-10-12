@@ -29,6 +29,7 @@ export default {
     // Mensajes de la barra de estado.
     status: {
         backupSaved: (p: {path: string}) => `Backup guardado en ${p.path}`,
+        noteNotFound: (p: {title: string}) => `No encontré la nota «${p.title}»: puede que se haya renombrado o borrado.`,
         backupNotSaved: 'No se guardó ningún backup: se cerró el diálogo sin elegir dónde.',
         txOpened: 'Transacción abierta — auto-commit desactivado',
         committed: 'Commit hecho — auto-commit activado',

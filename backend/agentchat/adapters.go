@@ -339,6 +339,11 @@ var adapters = map[string]adapter{
 // para ofrecer el chat solo donde funciona y dejar la terminal para el resto,
 // en vez de mostrar un chat que se queda mudo.
 func Supports(agentID string) bool {
+	// Los servidores de modelos no pasan por adaptador: los atiende el runner
+	// HTTP (llmrunner.go).
+	if IsLLM(agentID) {
+		return true
+	}
 	_, ok := adapters[agentID]
 	return ok
 }

@@ -12,6 +12,7 @@ import {
 } from '../../../wailsjs/go/main/App'
 import {agentctx, agentlimits, agentplan, agents as agentsNs, agentusage, mcpconf} from '../../../wailsjs/go/models'
 import AgentLimitBars from '../agent/AgentLimitBars'
+import {isModelServerAgent} from '../../lib/modelServers'
 import Icon from '../Icon'
 import ConfirmDialog from '../ConfirmDialog'
 import {formatNumber, useT} from '../../i18n'
@@ -281,8 +282,10 @@ function UsageSection({
 }) {
     const t = useT()
     return (
-        <Section title={t.git.agent.usage.title({days: usage.days})} count={usage.agents.filter((a) => a.available).length}>
-            {usage.agents.map((a) => (
+        <Section title={t.git.agent.usage.title({days: usage.days})} count={usage.agents.filter((a) => a.available && !isModelServerAgent(a.agent)).length}>
+            {/* Consumo y límites se leen de lo que un CLI deja en disco: un
+                servidor de modelos no tiene ni lo uno ni lo otro. */}
+            {usage.agents.filter((a) => !isModelServerAgent(a.agent)).map((a) => (
                 <div key={a.agent} className="mb-1.5 rounded border border-outline-variant px-2 py-1.5">
                     <div className="flex items-center gap-1.5">
                         <Icon name="monitoring" size={13} className="shrink-0 text-on-surface-variant" />

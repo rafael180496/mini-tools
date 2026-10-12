@@ -1,8 +1,13 @@
 import {useEffect, useState} from 'react'
 import {AgentAskAgents} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
+import Icon from '../Icon'
 import Select from '../Select'
 import {useT} from '../../i18n'
+import {isModelServerAgent} from '../../lib/modelServers'
+import {useModelServersHealth} from '../../lib/modelServerHealth'
+import {agentIconName} from './agentIcon'
+import {ProviderIconWithHealth} from './HealthIndicators'
 
 // Con qué proveedor se hace este análisis puntual.
 //
@@ -35,6 +40,17 @@ export default function AskAgentPicker({value, onChange, disabled}: Props) {
             .catch(() => setAgents([]))
     }, [])
 
+    // Una lectura del estado de cada servidor de modelos (sin sondeo): un
+    // análisis de una tirada contra un servidor caído falla enseguida, y el
+    // punto lo dice antes de elegirlo.
+    const health = useModelServersHealth(agents.map((a) => a.id), agents.length >= 2)
+    const iconOf = (a: main.AskAgent) =>
+        isModelServerAgent(a.id) ? (
+            <ProviderIconWithHealth icon={agentIconName(a.id)} health={health[a.id] ?? null} server={a.label} />
+        ) : (
+            <Icon name={agentIconName(a.id)} size={14} />
+        )
+
     if (agents.length < 2) return null
 
     return (
@@ -52,8 +68,12 @@ export default function AskAgentPicker({value, onChange, disabled}: Props) {
                     value: '',
                     label: agents.find((a) => a.active)?.label ?? t.agent.askPicker.activeAgent,
                     hint: t.agent.askPicker.active,
+                    icon: (() => {
+                        const act = agents.find((a) => a.active)
+                        return act ? iconOf(act) : undefined
+                    })(),
                 },
-                ...agents.filter((a) => !a.active).map((a) => ({value: a.id, label: a.label})),
+                ...agents.filter((a) => !a.active).map((a) => ({value: a.id, label: a.label, icon: iconOf(a)})),
             ]}
         />
     )

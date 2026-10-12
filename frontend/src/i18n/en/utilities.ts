@@ -28,6 +28,73 @@ const en: Messages<typeof es> = {
             name: 'Docker',
             hint: 'containers, images, volumes and networks: start, stop and read their logs',
         },
+        aiChat: {
+            name: 'AI Chat',
+            hint: 'talk to Claude, Codex, Antigravity or a local model, with history and search',
+        },
+    },
+    // «AI Chat» tab: history on the left, conversation in the middle.
+    aiChat: {
+        historyTitle: 'Conversations',
+        hideHistory: 'Hide history',
+        showHistory: 'Show history',
+        hideHistoryTitle: 'Hides the conversation list to give the chat the full width',
+        showHistoryTitle: 'Shows the conversation list from every module',
+        newChat: 'New chat',
+        newChatTitle: (p) =>
+            `Starts a new conversation with the provider and model picked (${p.shortcut}). The current one is not lost: it stays in the history, and if it was replying it finishes in the background.`,
+        searchLabel: 'Search conversations',
+        searchPlaceholder: 'Search all conversations…',
+        searchTitle:
+            'Searches the titles and the text of the saved messages of every conversation, from any provider and module. Esc clears the search.',
+        clearSearch: 'Clears the search and shows every conversation again',
+        searching: 'Searching…',
+        groups: {today: 'Today', yesterday: 'Yesterday', last7: 'Last 7 days', older: 'Older'},
+        providersLabel: 'Filter by provider',
+        allProviders: 'All',
+        allProvidersTitle: 'Shows the conversations of every provider',
+        providerChipTitle: (p) => `Shows only the conversations with ${p.agent} (${p.n}). Click again to see them all.`,
+        count: (p) => (p.n === 1 ? '1 conversation' : `${p.n} conversations`),
+        empty: 'There are no conversations yet. The first one shows up here as soon as you send a message.',
+        noMatch: (p) => `No conversation matches «${p.query}».`,
+        noMatchFilter: 'This provider has no matching conversations.',
+        searchFailed: "Couldn't search. Try again.",
+        untitled: 'Untitled',
+        openTitle: (p) =>
+            `Resumes this conversation with ${p.agent}${p.where ? ` · ${p.where}` : ''}. Its messages are redrawn when you open it.`,
+        notInstalledTitle: (p) =>
+            `This conversation belongs to ${p.agent}, which is no longer available on this machine. You can rename or delete it, but not resume it.`,
+        renameTitle: 'Rename this conversation. The title comes from your first message, which is rarely how you will look for it.',
+        deleteTitle: "Removes the conversation from mini-tools' history. It doesn't touch what the provider keeps on its own.",
+        rename: {
+            title: 'Rename the conversation',
+            label: 'Name',
+            description: "It's only the name you'll find it by here.",
+        },
+        remove: {
+            title: 'Delete the conversation',
+            description: (p) =>
+                `«${p.title}» leaves mini-tools' history. This can't be undone. What the provider keeps on its own is not touched.`,
+            confirm: 'Delete',
+        },
+        header: {
+            providerLabel: 'Provider',
+            providerTitle:
+                "Who you talk to: an installed CLI (Claude Code, Codex, Antigravity) or a model server. Changing it in a conversation that already started opens a new one: each provider keeps its own thread.",
+            providerPlaceholder: 'Pick a provider',
+            modelLabel: 'Model',
+            modelTitle: "Model that answers from now on. The provider reports the list itself; «Default» uses whichever it has configured.",
+            repoLabel: 'Repository',
+            repoTitle:
+                "This conversation's working repository. Its name and location travel with your messages so the agent knows which one you mean (you can drop it from the message). With no repository, the conversation is general.",
+            noRepo: 'No repository',
+            repoModuleTitle: (p) =>
+                `This conversation started in ${p.where} and stays tied to that resource: its repository can't be changed.`,
+        },
+        repoBlock: {
+            label: 'Working repository',
+            text: (p) => `${p.name}\n${p.path}`,
+        },
     },
     portKiller: {
         searchPlaceholder: 'Search port, process or PID…',

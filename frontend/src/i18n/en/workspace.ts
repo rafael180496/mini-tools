@@ -28,6 +28,7 @@ const en: Messages<typeof es> = {
     gitSidebarLabel: 'Git sidebar',
     status: {
         backupSaved: (p) => `Backup saved to ${p.path}`,
+        noteNotFound: (p) => `Could not find the note «${p.title}»: it may have been renamed or deleted.`,
         backupNotSaved: 'No backup was saved: the dialog was closed without choosing where.',
         txOpened: 'Transaction open — auto-commit off',
         committed: 'Committed — auto-commit on',

@@ -27,10 +27,14 @@ import Icon from '../Icon'
 import Select from '../Select'
 import AgentChat, {type ChatContextBlock} from './AgentChat'
 import AgentUsagePanel from './AgentUsagePanel'
+import {isModelServerAgent} from '../../lib/modelServers'
+import {useModelServerHealth, useModelServersHealth} from '../../lib/modelServerHealth'
+import {agentIconName} from './agentIcon'
+import {ProviderIconWithHealth} from './HealthIndicators'
 import AgentHistoryPanel from './AgentHistoryPanel'
 import PromptDialog from '../git/PromptDialog'
 import {useT} from '../../i18n'
-import {CONTEXT_ICONS, contextKey, repoIdOf, type WorkContext, type WorkContextKind} from './workContext'
+import {CONTEXT_ICONS, contextKey, ownsChat, repoIdOf, type WorkContext, type WorkContextKind} from './workContext'
 
 // Anfitrión del chat de nivel APLICACIÓN: una conversación que acompaña al
 // usuario por los módulos donde el agente CONSULTA (bases de datos, SSH,
@@ -175,7 +179,10 @@ interface Session {
     // seguir hablando de su recurso y no del que se esté mirando.
     context: WorkContext
     resumeConversationId?: string
-    initialSettings?: {model: string; effort: string; mode: string}
+    initialSettings?: {model: string; effort: string; mode: string; brain?: boolean}
+    // Entrada del historial que se retomó: con ella se redibujan los mensajes
+    // que guardó la app (los únicos que existen para un servidor de modelos).
+    resumeChatId?: string
 }
 
 export default function AgentChatHost({
@@ -250,6 +257,15 @@ export default function AgentChatHost({
         [available, active?.id],
     )
 
+    // Salud de los servidores de modelos: el agente elegido se sondea cada 60 s
+    // con el panel abierto; los demás se leen una vez, para el punto de cada
+    // opción. Un CLI no se sondea.
+    useModelServerHealth(active?.id ?? '', open)
+    const optionsHealth = useModelServersHealth(
+        useMemo(() => available.map((a) => a.id), [available]),
+        open,
+    )
+
     const startSession = useCallback(
         (agent: agentsModel.Agent, forContext: WorkContext, resume?: vault.AgentChat) => {
             const id = resume?.id ?? `agent-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -265,8 +281,9 @@ export default function AgentChatHost({
                     // mensaje.
                     chatId: resume?.id ?? '',
                     resumeConversationId: resume?.conversationId || undefined,
+                    resumeChatId: resume?.id,
                     initialSettings: resume
-                        ? {model: resume.model, effort: resume.effort, mode: resume.mode}
+                        ? {model: resume.model, effort: resume.effort, mode: resume.mode, brain: resume.brain}
                         : undefined,
                 },
             }))
@@ -276,8 +293,9 @@ export default function AgentChatHost({
     )
 
     // La pestaña Git tiene el agente adentro, con su propia solapa y su propio
-    // objetivo. Este anfitrión se apaga ahí en vez de superponerse.
-    const gitOwnsChat = context.kind === 'git'
+    // objetivo. Este anfitrión se apaga ahí en vez de superponerse. Igual el
+    // «Chat de IA» de Utilidades, que es un chat completo en sí mismo.
+    const gitOwnsChat = ownsChat(context)
 
     // Y si estaba abierto cuando se entra a un repositorio, se cierra: dejarlo
     // encima del banco de trabajo de Git sería mostrar dos chats a la vez.
@@ -442,7 +460,12 @@ export default function AgentChatHost({
                     options={available.map((a) => ({
                         value: a.id,
                         label: a.label,
-                        icon: <Icon name={a.id === 'claude' ? 'auto_awesome' : a.id === 'codex' ? 'terminal' : 'rocket_launch'} size={14} />,
+                        hint: isModelServerAgent(a.id) ? a.vendor : undefined,
+                        icon: isModelServerAgent(a.id) ? (
+                            <ProviderIconWithHealth icon={agentIconName(a.id)} health={optionsHealth[a.id] ?? null} server={a.label} />
+                        ) : (
+                            <Icon name={agentIconName(a.id)} size={14} />
+                        ),
                     }))}
                 />
 
@@ -615,6 +638,7 @@ export default function AgentChatHost({
                                 onSeedConsumed={() => setSeed(null)}
                                 working={visible ? working : null}
                                 resumeConversationId={s.resumeConversationId}
+                                resumeChatId={s.resumeChatId}
                                 initialSettings={s.initialSettings}
                                 onInsertText={visible ? (onInsertText ?? undefined) : undefined}
                                 onSessionUsage={visible ? setSessionUsage : undefined}

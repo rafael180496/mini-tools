@@ -125,15 +125,11 @@ func (a *App) SetAgentLayout(dock string, size int) error {
 // líneas idénticas cuyo único efecto de una copia desactualizada sería que un
 // camino respete el comando configurado por el usuario y otro no.
 func (a *App) agentByID(agentID string) (agents.Agent, error) {
-	configs, err := a.vault.ListAgentConfigs()
+	list, err := a.agentCatalog()
 	if err != nil {
 		return agents.Agent{}, err
 	}
-	overrides := make(map[string]agents.Override, len(configs))
-	for id, c := range configs {
-		overrides[id] = agents.Override{Command: c.Command, HasKey: c.HasKey}
-	}
-	for _, cand := range agents.List(overrides) {
+	for _, cand := range list {
 		if cand.ID == agentID {
 			return cand, nil
 		}
@@ -180,6 +176,14 @@ func (a *App) agentEnv(agent agents.Agent) ([]string, error) {
 func (a *App) agentCwd(module, contextID string) (string, error) {
 	if module == "git" && contextID != "" {
 		return a.gitRepo(contextID)
+	}
+	// El chat de Utilidades puede elegir un repositorio de trabajo: su
+	// contextId es el id de ese repositorio. Si no lo es (o no eligió ninguno)
+	// cae al directorio vacío de consultas como cualquier otro módulo.
+	if module == "utilities" && contextID != "" {
+		if path := a.workspaceRoot(module, contextID); path != "" {
+			return path, nil
+		}
 	}
 	dir, err := appdata.Dir()
 	if err != nil {
@@ -289,10 +293,6 @@ func (a *App) AgentAskWith(agentID, prompt, module, contextID string) (string, e
 		return "", i18n.Errorf(i18n.Msg{ES: "app: %s no está instalado en esta máquina", EN: "app: %s is not installed on this machine"}, agent.Label)
 	}
 
-	env, err := a.agentEnv(agent)
-	if err != nil {
-		return "", err
-	}
 	cwd, err := a.agentCwd(module, contextID)
 	if err != nil {
 		return "", err
@@ -305,6 +305,20 @@ func (a *App) AgentAskWith(agentID, prompt, module, contextID string) (string, e
 	ctx, cancel := context.WithTimeout(context.Background(), AgentAskTimeout)
 	defer cancel()
 
+	// Un servidor de modelos no lanza ningún proceso: no hay ejecutable ni
+	// entorno que resolver, solo el cliente HTTP.
+	if agentchat.IsLLM(agent.ID) {
+		client, err := a.llmClientForTurn(agent.ID)
+		if err != nil {
+			return "", err
+		}
+		return a.agentChats.Ask(ctx, agentchat.Turn{AgentID: agent.ID, Cwd: cwd, Prompt: prompt, Model: model, LLM: client})
+	}
+
+	env, err := a.agentEnv(agent)
+	if err != nil {
+		return "", err
+	}
 	return a.agentChats.Ask(ctx, agentchat.Turn{
 		AgentID: agent.ID,
 		Command: agent.Command,

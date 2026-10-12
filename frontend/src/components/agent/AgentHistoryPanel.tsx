@@ -43,7 +43,7 @@ type GroupBy = 'module' | 'agent'
 // de uso — la mayoría de las conversaciones salen del repositorio o de una
 // base, y las de "sin módulo" son las viejas, de antes de que el chat fuera
 // único.
-const GROUPS: WorkContextKind[] = ['db', 'git', 'ssh', 'note', 'http', 'none']
+const GROUPS: WorkContextKind[] = ['db', 'git', 'ssh', 'note', 'http', 'utilities', 'none']
 
 // relativeAge es cómo se ubica una conversación: "hoy", "2d", "3m". Una fecha
 // completa obliga a hacer la cuenta.

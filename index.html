@@ -374,11 +374,15 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li><a href="#utilidades-port-killer">Port Killer</a></li>
     <li><a href="#utilidades-activity-monitor">Activity Monitor</a></li>
     <li><a href="#utilidades-docker">Docker</a></li>
+    <li><a href="#utilidades-chat-ia">AI Chat</a></li>
   </ul>
 
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>AI agents</button>
   <ul>
     <li><a href="#ia-chat">The chat, in every module</a></li>
+    <li><a href="#ia-modelos">Model servers: Ollama and OpenAI-compatible</a></li>
+    <li><a href="#ia-agente-local">Local code agent: files and commands</a></li>
+    <li><a href="#ia-cerebro">Brain: notes the agent writes</a></li>
     <li><a href="#ia-referencias">The @ system</a></li>
     <li><a href="#ia-mcp">Embedded MCP server</a></li>
   </ul>
@@ -559,7 +563,7 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
     <tr><td>Git</td><td>Repositories: see changes, branches and work with the agents</td></tr>
     <tr><td>Notes</td><td>Your encrypted knowledge base: runbooks and notes</td></tr>
     <tr><td>HTTP</td><td>Request collections: test and save endpoints</td></tr>
-    <tr><td>Utilities</td><td>System tools, each in its own tab: Port Killer (who holds a port), Activity Monitor (live processes, CPU and memory) and Docker (containers, images, volumes, networks, logs and Compose)</td></tr>
+    <tr><td>Utilities</td><td>System tools, each in its own tab: Port Killer (who holds a port), Activity Monitor (live processes, CPU and memory), Docker (containers, images, volumes, networks, logs and Compose) and the AI Chat (every conversation in one place, with search)</td></tr>
   </table></div>
   <p>You see <strong>one at a time</strong>, so the one you're using gets the full height instead of the
   strip the others used to leave it when stacked.</p>
@@ -1622,11 +1626,80 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   Logs lose terminal colors on screen (they'd show as stray codes).</div>
 </article>
 
+<article class="topic" id="utilidades-chat-ia" data-title="AI Chat">
+  <h1>AI Chat</h1>
+  <p class="lead">A full-screen chat with Claude Code, Codex, Antigravity or a <a href="#ia-modelos">model server</a>,
+  with the history of every conversation on the left and a search box that looks inside the messages.</p>
+
+  <p>It lives in the <strong>Utilities</strong> module. Click <em>AI Chat</em> and it opens in <strong>its own tab</strong>;
+  if it's already open, the click takes you to it. It's the same chat as the side panel
+  (<kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd>), with room to choose and resume conversations. While this tab is in view the side panel steps aside:
+  there's no second chat over the same thing.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-ai-chat-conversation.png" alt="AI Chat tab: the conversation list grouped by day on the left, and on the right the provider, model and repository selectors above a resumed conversation with a SQL block, its Copy button and the tokens spent in each turn"></div>
+    <figcaption>History on the left, the conversation in the middle, and who answers —provider, model, repository— at the top.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-chat-ia--empezar">Start a conversation</h2>
+  <p>A new chat opens with <strong>suggestions</strong> to get started: click one and it's typed in the message box for
+  you to edit before sending. <kbd>Enter</kbd> sends and <kbd>Shift+Enter</kbd> adds a line.
+  <kbd>⌘N</kbd> / <kbd>Ctrl+N</kbd> (or the <strong>New chat</strong> button) starts another one; if you already have an empty one
+  open, it takes you back to it instead of piling up blank windows.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-ai-chat.png" alt="AI Chat with a new conversation: the four suggestions in the middle of the area, the message box below and the history on the left"></div>
+    <figcaption>An empty conversation: four suggestions and the box, with the history one click away.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-chat-ia--cabecera">Provider, model and repository</h2>
+  <ul>
+    <li><strong>Provider</strong> — the installed CLIs and the model servers you added in <em>Settings → AI</em>. Switching it in a conversation that already started opens a <em>new</em> one: each provider keeps its own thread, and there's no honest way to continue with another what one was doing.</li>
+    <li><strong>Model</strong> — the list is reported by the provider itself, and <em>Default</em> uses whichever it has configured. It applies from the next message on.</li>
+    <li><strong>Repository</strong> — one of the repositories you added in the Git module, or none. The conversation records it, and its name and location travel as a chip with your messages so the agent knows which one you mean; the chip can be dropped from the message. A conversation that started in another module (a connection, a note) shows its origin here and can't change repositories. With a <a href="#ia-modelos">model server</a>, it is also the <strong>working repository</strong> of its <a href="#ia-agente-local">file and command tools</a>; without one, the chat says that only the MCP tools are available.</li>
+  </ul>
+
+  <h2 id="utilidades-chat-ia--historial">History and search</h2>
+  <p>The list on the left holds <strong>every conversation from every module and provider</strong>, grouped by <em>Today</em>,
+  <em>Yesterday</em>, <em>Last 7 days</em> and <em>Older</em>. Each row shows the provider and, when it applies, where it came from.
+  A dot in front of the title means that conversation is answering right now.</p>
+  <ul>
+    <li><strong>Resume</strong> — click a conversation: its messages are redrawn and the thread continues where it was left, even in a model server's case, which has no history of its own: the app saved it.</li>
+    <li><strong>Search</strong> — looks at the titles <em>and the text of the messages</em>, so you find “that one about cursors” even if the title says something else. <kbd>Esc</kbd> clears it.</li>
+    <li><strong>Provider chips</strong> — show only one provider's conversations; click again to see them all again.</li>
+    <li><strong>Rename and delete</strong> — appear on the row when you hover it or tab to it. Deleting asks first, and only removes it from the app's history: it doesn't touch what the provider keeps on its own.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-ai-chat-search.png" alt="AI Chat with the word “índice” typed in the history search: only the conversations that mention it in their title or in their messages are listed"></div>
+    <figcaption>The search also finds the words inside the messages, not just in the titles.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-chat-ia--respuesta">While it answers</h2>
+  <ul>
+    <li><strong>Stop</strong> — while a turn runs, the send button becomes a red <em>Stop</em>. What you type in the meantime is queued and goes out when it ends.</li>
+    <li><strong>Copy</strong> — every message has its Copy button (it shows up when you hover it or tab to it), and every code block has its own bar with Copy.</li>
+    <li><strong>Tokens</strong> — under each answer, the tokens of that turn; at the bottom, the running total of the conversation.</li>
+    <li><strong>You choose where to read</strong> — if you scroll up to re-read while the answer keeps arriving, it won't drag you back down: a <em>jump to the latest message</em> button shows up.</li>
+  </ul>
+
+  <h2 id="utilidades-chat-ia--ejemplo">Example: pick up yesterday's conversation</h2>
+  <ol class="steps">
+    <li>Open <strong>Utilities → AI Chat</strong>.</li>
+    <li>Type a word you remember in the history search, for example <code>cursor</code>.</li>
+    <li>Click the conversation. Its messages show up; type your follow-up and press <kbd>Enter</kbd>.</li>
+    <li>If you want another model for the follow-up, pick it in the header before sending.</li>
+  </ol>
+
+  <div class="note tip"><span class="lbl">Where the data lives</span>
+  The conversations are stored in the app's encrypted vault. Search happens on your machine; the only thing that leaves
+  it is what you send to the provider you picked.</div>
+</article>
+
 <!-- ----------------------------------------------------------------- IA -->
 <article class="topic" id="ia-chat" data-title="The chat, in every module">
   <h1>The chat, in every module</h1>
-  <p class="lead">Claude Code, Codex CLI and Antigravity CLI, detected automatically on the PATH. The same chat
-  from the SQL editor, an SSH terminal, a note, a repository or an HTTP request.</p>
+  <p class="lead">Claude Code, Codex CLI and Antigravity CLI, detected automatically on the PATH, plus any
+  <a href="#ia-modelos">model server</a> you add. The same chat from the SQL editor, an SSH terminal, a note,
+  a repository or an HTTP request.</p>
 
   <figure>
     <div class="shot"><img src="docs/screenshots/chat-db.png" alt="Chat open on a connection: the editor's query attached at the bottom and the answer with SQL blocks, each with its Copy and To editor bar"></div>
@@ -1667,7 +1740,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <h2 id="ia-chat--historial">Conversation history</h2>
   <p>The panel's <strong>History</strong> tab lists every conversation, grouped by module or by agent, with a
   search box. Opening one <strong>resumes it in its own context</strong> —a conversation belongs to the resource
-  where it was born— and the messages are redrawn by reading the CLI's own transcript.</p>
+  where it was born— and the messages are redrawn from what the app saved (or from the CLI's own transcript, for conversations that predate that). For a full-screen version with search
+  inside the messages, see <a href="#utilidades-chat-ia">AI Chat</a>.</p>
 
   <figure>
     <div class="shot"><img src="docs/screenshots/chat-usage.png" alt="Usage panel: bars per agent with the percentage of the window used and the estimated cost"></div>
@@ -1677,6 +1751,272 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <h2 id="ia-chat--consumo">How much you've spent</h2>
   <p>The <strong>Usage</strong> tab reads what each CLI already stores about its own sessions. It's <em>their</em>
   estimate, not a parallel count by the app: making the number up would be worse than not showing it.</p>
+</article>
+
+<article class="topic" id="ia-modelos" data-title="Model servers: Ollama and OpenAI-compatible">
+  <h1>Model servers: Ollama and OpenAI-compatible</h1>
+  <p class="lead">Use a model that runs on your machine or on your network instead of a CLI. Add it once and it
+  appears as one more agent in the chat and in every AI button.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/model-servers.png" alt="Settings, AI section: the Model servers list with a local Ollama, a remote vLLM with a token and headers and a LAN server with an unverified certificate, each with its status dot and latency, the test result showing the version and the models, and the Add server button"></div>
+    <figcaption>Settings → AI → Model servers: name, type, address, token, headers, certificate, whether it responds, and a test button.</figcaption>
+  </figure>
+
+  <h2 id="ia-modelos--agregar">Add a server</h2>
+  <ol class="steps">
+    <li>Open <strong>Settings → AI</strong> and, under <strong>Model servers</strong>, click <strong>Add server</strong>.</li>
+    <li>Pick the <strong>type</strong>: <em>Ollama</em> for Ollama's own API, or <em>OpenAI-compatible</em> for LM Studio, vLLM, the llama.cpp server and anything else that speaks <code>/v1/chat/completions</code>.</li>
+    <li>Type the <strong>address</strong>: <code>http://localhost:11434</code> for the local Ollama, <code>http://localhost:1234/v1</code> for LM Studio, or the URL of a remote machine such as <code>https://gpu.mycompany.com/v1</code>.</li>
+    <li>Click <strong>Test connection</strong>: it shows the server version and how many models it lists, or the exact error. Then <strong>Save</strong>.</li>
+  </ol>
+  <div class="note tip"><span class="lbl">One click for Ollama</span>
+  When there is an Ollama answering on <code>localhost:11434</code>, Settings offers <strong>Local Ollama detected — Add</strong>
+  and saves it for you. The suggestion goes away once you add it or dismiss it.</div>
+
+  <h2 id="ia-modelos--token">The token</h2>
+  <p>It's optional, for servers behind a proxy or that require an API key. It's stored <strong>encrypted under your
+  master password</strong> and sent as <code>Authorization: Bearer</code>. It never comes back to the screen: when
+  you edit a server, an empty token field means <strong>keep the current one</strong>; to delete it, use
+  <strong>Remove token</strong>.</p>
+
+  <h2 id="ia-modelos--usar">Where it shows up</h2>
+  <p>Each server is an agent more, with the name you gave it. You can pick it in the chat's agent selector, as the
+  provider of the AI buttons (write or fix SQL, analyze a plan, explain an HTTP response, draft a commit, explain
+  an SSH error) and in the picker that asks the same question to another model. In the chat you choose the
+  <strong>model</strong> from the ones the server lists; if you don't pick one, the first it returns is used.</p>
+  <div class="note"><span class="lbl">What a server doesn't have</span><p>It isn't a program: there's no command to open
+  in a terminal, no API key per environment variable and no usage bars. Whatever it can do besides answering
+  —read and edit files, run commands, use your notes— is done by tools that <strong>this app</strong> runs for it: see below.</p></div>
+
+  <h2 id="ia-modelos--herramientas">Tools</h2>
+  <p>A server is not limited to chatting. With the <a href="#ia-mcp">MCP server</a> on, it can use its tools (search and
+  read your notes, a table's schema, SSH logs). And with a <strong>working repository</strong>, it can read and search files and, if you
+  allow it, edit them and run commands: that is the <a href="#ia-agente-local">local code agent</a>, governed by the same
+  permission modes as the rest of the chat. It can even write notes by itself if you turn on the
+  <a href="#ia-cerebro">brain</a>. A model that doesn't support tools keeps working as plain chat, and the chat tells you so.</p>
+
+  <h2 id="ia-modelos--remoto">Local or remote</h2>
+  <div class="note warn"><span class="lbl">Remote servers</span>
+  What you send to a model —the question, and any schema, file or note you attach with <kbd>@</kbd>— travels to
+  the machine that runs it. With a server on another machine, that content leaves yours: use <code>https</code> if it
+  crosses a network you don't control. The form warns you when the address isn't local, and remote servers carry a
+  <em>remote</em> badge in the list. If the agent also uses file or command tools, <strong>what it reads from your repository travels too</strong>:
+  the chat warns you the first time (see <a href="#ia-agente-local--remoto">With a remote server</a>).</div>
+
+  <h2 id="ia-modelos--acceso-remoto">Reaching a server on another machine</h2>
+  <p>Ollama listens only on <code>localhost</code> by default, so another machine can't reach it until you open it up.
+  There are two ways, and the second is the one to prefer:</p>
+  <ol class="steps">
+    <li><strong>Listen on the network.</strong> On the machine that runs Ollama, start it with <code>OLLAMA_HOST=0.0.0.0</code>
+    and allow the port (11434) in its firewall. On Linux with systemd, run <code>systemctl edit ollama</code> and add
+    <code>Environment="OLLAMA_HOST=0.0.0.0"</code> under <code>[Service]</code>; on macOS, <code>launchctl setenv OLLAMA_HOST "0.0.0.0"</code> and restart Ollama.
+    The traffic is plain <code>http</code> with no authentication: do it only on a network you trust.</li>
+    <li><strong>Put a reverse proxy with HTTPS in front</strong> (Caddy, nginx, Traefik…) and leave Ollama on <code>localhost</code>.
+    The proxy terminates TLS and asks for a <a href="#ia-modelos--token">token</a> (or sits behind an access proxy such as Cloudflare Access: see
+    <a href="#ia-modelos--cabeceras">Additional headers</a>). The address you type here is then <code>https://ollama.mycompany.com</code>.</li>
+  </ol>
+  <div class="codewrap"><pre><code>OLLAMA_HOST=0.0.0.0:11434 ollama serve</code></pre></div>
+  <p>LM Studio, vLLM and the llama.cpp server have their own equivalent (a <em>host</em> or <em>--host</em> option): bind to <code>0.0.0.0</code> or, better, keep them local behind the proxy.</p>
+
+  <h2 id="ia-modelos--cabeceras">Additional headers</h2>
+  <p>Some proxies ask for their own credential on every request. The form's <strong>Additional headers</strong> editor takes
+  as many <strong>name / value</strong> rows as you need; they're sent with every request to that server, on top of the token.
+  The typical case is <strong>Cloudflare Access</strong>: create a <em>service token</em> there and add
+  <code>CF-Access-Client-Id</code> and <code>CF-Access-Client-Secret</code> with the values it gives you.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/model-servers-form.png" alt="The add-server form with two additional headers whose values are hidden, and the Accept self-signed certificate switch turned on with its risk warning"></div>
+    <figcaption>The form with two headers (values hidden) and the self-signed certificate switch turned on.</figcaption>
+  </figure>
+  <p>The values are <strong>sensitive</strong>: they are hidden while you type, stored <strong>encrypted under your master
+  password</strong> and never come back to the screen. When you edit a server that already has headers you only see their
+  <em>names</em>, and <strong>Replace headers</strong> throws the stored ones away and opens a blank editor — you type the whole new list
+  (an empty list deletes them). If you don't touch them, saving keeps them as they are. <strong>Test connection</strong> uses what's in the
+  editor, or the stored headers if you haven't replaced them. In the list, a server with headers shows a <em>headers: N</em> badge.</p>
+
+  <h2 id="ia-modelos--tls">Self-signed certificates</h2>
+  <p>A private server behind <code>https</code> with a certificate you signed yourself fails the check with a certificate error.
+  The <strong>Accept self-signed certificate</strong> switch skips that verification for this server only.</p>
+  <div class="note warn"><span class="lbl">Risk</span>
+  With the check off, the app can't tell the real server from someone impersonating it. Anyone in the middle of the network can read the
+  token, the headers and everything you send. Turn it on only on a network you control — a certificate from a real authority
+  (Let's Encrypt, or your company's) or a reverse proxy that has one is always better. The switch only applies to <code>https://</code>
+  addresses and is disabled, with the reason, for <code>http</code>. A server saved this way carries a <em>TLS unverified</em> badge in the list.</div>
+
+  <h2 id="ia-modelos--estado">Is it responding? The status dot</h2>
+  <p>Wherever you pick a model server —the provider selector of the <a href="#utilidades-chat-ia">AI Chat</a>, the agent selector of the side chat panel
+  and the picker that asks another model— its icon carries a <strong>status dot</strong>:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Dot</th><th>Meaning</th></tr>
+    <tr><td>Green</td><td>It answered. Hover for the latency and <em>checked X s ago</em>.</td></tr>
+    <tr><td>Red</td><td>It did not answer. Hover for the exact error (connection refused, certificate, 401…).</td></tr>
+    <tr><td>Grey</td><td>Checking, or not checked yet.</td></tr>
+  </table></div>
+  <p>The app asks the server when you pick it and then <strong>every 60 seconds, only while that chat is in view</strong>; with the window hidden
+  or out of focus it stops asking, and a CLI is never checked. <strong>Settings → AI → Model servers</strong> shows each server's state when it opens, and
+  <strong>Test</strong> there updates the dot everywhere.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-model-offline.png" alt="AI Chat with the local Ollama server down: a red status badge in the header and, above the message box, a banner with the connection error and a Retry button"></div>
+    <figcaption>Server down: a red badge in the header and a banner above the message box with the error and <strong>Retry</strong>.</figcaption>
+  </figure>
+  <p>When the server is red, a banner above the message box shows the error and a <strong>Retry</strong> button that asks again right away.
+  It doesn't stop you from typing, but <strong>sending fails immediately</strong> with a clear error —shown as an error of the app, not as something the model
+  said— instead of leaving you waiting. Before every send the app checks the server, and if the connection drops before the first word arrives it retries once.</p>
+
+  <h2 id="ia-modelos--borrar">Delete a server</h2>
+  <p>The trash icon asks for confirmation, removes the server from the list and deletes its stored token. The
+  server itself isn't touched, and conversations you already had stay in the history.</p>
+</article>
+
+<article class="topic" id="ia-agente-local" data-title="Local code agent: files and commands">
+  <h1>Local code agent: files and commands</h1>
+  <p class="lead">A <a href="#ia-modelos">model server</a> can read and edit files and run commands in your repository,
+  <strong>with the permissions you choose</strong>. The model may be on another machine; the tools always run on yours.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-code-agent-tools.png" alt="AI Chat with a local Ollama model: a list of tool cards (list_dir, read_file, search, run_command, edit_file, write_file) and two note tools with an Open note button, above the answer"></div>
+    <figcaption>Every action of the agent is a card: the tool, what it acted on and, for writes, how many lines.</figcaption>
+  </figure>
+
+  <h2 id="ia-agente-local--herramientas">What it can do</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Tool</th><th>What it does</th><th>Kind</th></tr>
+    <tr><td><code>read_file</code></td><td>Reads a file (a line range, if it asks)</td><td>read</td></tr>
+    <tr><td><code>list_dir</code></td><td>Lists a folder</td><td>read</td></tr>
+    <tr><td><code>search</code></td><td>Searches text or a regex across the tree, respecting <code>.gitignore</code></td><td>read</td></tr>
+    <tr><td><code>write_file</code></td><td>Creates or replaces a file</td><td>write</td></tr>
+    <tr><td><code>edit_file</code></td><td>Replaces one exact, unique fragment</td><td>write</td></tr>
+    <tr><td><code>run_command</code></td><td>Runs a command in the working repository, with a time limit and trimmed output</td><td>command</td></tr>
+  </table></div>
+  <p>On top of these it can use the <a href="#ia-mcp">MCP server tools</a> (your notes, schemas, SSH logs…) when that server is on.</p>
+
+  <h2 id="ia-agente-local--repositorio">The working repository</h2>
+  <p>The tools act on <strong>one repository</strong>: the one open in the chat of a Git tab, or the one you choose in the
+  <em>Repository</em> selector of the <a href="#utilidades-chat-ia">AI Chat</a>. Paths are confined to it (symlinks are resolved,
+  and a path that escapes is rejected) and <code>.git/</code> is never written.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-code-agent-norepo.png" alt="AI Chat with a remote model server and no repository selected: a notice above the message box explains that without a working repository the model only has the MCP tools"></div>
+    <figcaption>No repository: the chat says it plainly — only the MCP tools are available.</figcaption>
+  </figure>
+
+  <h2 id="ia-agente-local--modos">Permission modes</h2>
+  <p>They are the same modes of the chat's selector, in the same order, from least to most permissive.
+  <strong>A tool the mode doesn't allow isn't even offered to the model</strong>: one that is listed and always fails only invites trying it.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Mode</th><th>Read</th><th>Write</th><th>Commands</th></tr>
+    <tr><td>Read-only</td><td>yes</td><td>not offered</td><td>not offered</td></tr>
+    <tr><td>Plan</td><td>yes</td><td>not offered</td><td>not offered</td></tr>
+    <tr><td>Approve each action</td><td>yes</td><td>asks every time</td><td>asks every time</td></tr>
+    <tr><td>Apply edits</td><td>yes</td><td>without asking</td><td>asks every time</td></tr>
+    <tr><td>Automatic</td><td>yes</td><td>without asking</td><td>without asking, except risky ones</td></tr>
+  </table></div>
+  <p><em>Apply edits</em> and <em>Automatic</em> need your explicit confirmation before they become active, and while one is
+  active the chat shows a warning in every turn. Without a working repository only <em>Read-only</em> and <em>Plan</em> are offered:
+  there would be nothing to touch.</p>
+
+  <h2 id="ia-agente-local--riesgo">Risky commands always ask</h2>
+  <p>Some commands ask <strong>in every mode</strong>, even in <em>Automatic</em>: recursive deletes (<code>rm -rf</code>),
+  <code>git push</code> (and above all <code>--force</code>), <code>git reset --hard</code>, <code>git clean -f</code>,
+  <code>sudo</code>, formatting or partitioning a disk, <code>dd</code>, redirections to devices, <code>curl … | sh</code> and similar.
+  The dialog shows the full command, the reason it counts as risky and a red <strong>Allow anyway</strong> button;
+  the focus starts on <strong>Deny</strong>, so a distracted <kbd>Enter</kbd> doesn't authorize it.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-code-agent-approval.png" alt="Approval dialog for a risky command: a red banner with the reason “force push (git push --force)”, the command git push --force origin main and the Deny and Allow anyway buttons"></div>
+    <figcaption>A risky command: the reason in red, the command in full and the safe option focused.</figcaption>
+  </figure>
+  <div class="note warn"><span class="lbl">A command is not confined</span>
+  File paths stay inside the repository, but <strong>a command runs with your permissions</strong> and can touch things outside it.
+  That's why commands ask in every mode except <em>Automatic</em>, and why it is a mode you pick on purpose.</div>
+  <p>If you don't answer, the question expires after 5 minutes and is <strong>denied</strong>; stopping the turn closes the dialog as well.</p>
+
+  <h2 id="ia-agente-local--remoto">With a remote server</h2>
+  <p>What the agent reads —file contents, command output— goes to the model, so with a server on another machine it
+  <strong>leaves yours</strong>. The first time you use a mode with tools (or any mode, with a repository selected) against a remote
+  server, the chat shows a notice above the message box and records it in the conversation. Remote servers carry a
+  <em>remote</em> badge in the chat header and in Settings.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-code-agent-remote.png" alt="Chat with a remote server and a repository: the remote badge in the header and the notice that the files the agent reads are sent to that server"></div>
+    <figcaption>The warning shows up before the first message, once per conversation.</figcaption>
+  </figure>
+
+  <h2 id="ia-agente-local--cambios">What it leaves behind</h2>
+  <p>What the agent writes lands in the repository's <strong>working tree</strong>: you see it in the Git module's diff and
+  discard it from there, exactly as with the CLIs. Nothing is committed on its own.</p>
+
+  <div class="note"><span class="lbl">If the model doesn't support tools</span>
+  Some models reject them. The turn carries on without tools and the chat shows a notice at the top of the answer, once per session and model.</div>
+
+  <h2 id="ia-agente-local--ejemplo">Example: have it fix a failing test</h2>
+  <ol class="steps">
+    <li>Open <strong>Utilities → AI Chat</strong>, pick your model server and, in <em>Repository</em>, your project.</li>
+    <li>Choose <strong>Approve each action</strong> in the mode selector.</li>
+    <li>Type <code>TestCursorPage fails in CI, find out why and fix it</code>. For every write or command, a dialog asks first.</li>
+    <li>When it finishes, review the diff in the Git module and discard whatever you don't want.</li>
+  </ol>
+</article>
+
+<article class="topic" id="ia-cerebro" data-title="Brain: notes the agent writes">
+  <h1>Brain: notes the agent writes</h1>
+  <p class="lead">If you allow it, the agent leaves what is worth keeping as <strong>notes of yours</strong>, sorted by project and topic,
+  like an Obsidian vault that fills itself.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-brain-chat.png" alt="Chat with the Save to my brain switch turned on next to the mode selector and, above, the agent's note tools with their Open note button"></div>
+    <figcaption>The <em>Save to my brain</em> switch, on, and the notes the agent wrote with their <em>Open note</em> button.</figcaption>
+  </figure>
+
+  <h2 id="ia-cerebro--activar">How to turn it on</h2>
+  <p>It needs three things, and the third is per conversation:</p>
+  <ol class="steps">
+    <li>Turn the <a href="#ia-mcp">MCP server</a> on in <strong>Settings → AI → AI access</strong>.</li>
+    <li>In the same card, allow <strong>letting the agent write in your knowledge base</strong>.</li>
+    <li>In the chat, turn on <strong>Save to my brain</strong>, next to the mode selector. It is <strong>off by default</strong> and remembered per conversation.</li>
+  </ol>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-brain-disabled.png" alt="Chat with the Save to my brain switch dashed and with a padlock: it is blocked until the MCP server and note writing are turned on"></div>
+    <figcaption>Without the MCP server or the write permission the switch is blocked; clicking it opens Settings → AI.</figcaption>
+  </figure>
+  <p>Once on, every turn of that conversation asks the agent to record what's worth keeping. It works with model servers
+  and with the CLIs that use the MCP server. If you later turn off the server or the permission, the switch stays on but
+  <strong>inactive</strong> (orange, with a padlock) and nothing is written.</p>
+
+  <h2 id="ia-cerebro--estructura">Where it writes</h2>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-brain-settings.png" alt="Settings, AI section, Brain card: the requirements checklist, the Brain folder field and the Cerebro/Proyectos/Temas structure with an _Índice note in each"></div>
+    <figcaption>Settings → AI → Brain: what's missing, the root folder and how it is organized.</figcaption>
+  </figure>
+  <div class="codewrap"><pre>Cerebro/
+  Proyectos/
+    mini-tools/
+      _Índice
+      Cache decision
+  Temas/
+    Oracle/
+      _Índice</pre></div>
+  <ul>
+    <li><strong>Projects</strong> — when the conversation has context (a repository, a connection, an SSH server), in <code>Proyectos/&lt;project&gt;</code>.</li>
+    <li><strong>Topics</strong> — when it doesn't, in <code>Temas/&lt;topic&gt;</code>.</li>
+    <li><strong>Index</strong> — each project and topic has an <code>_Índice</code> note (a map of content, as in Obsidian) linking to its notes; the notes graph shows it as a navigable brain.</li>
+    <li><strong>How</strong> — it searches first to <em>extend</em> a note instead of duplicating it, links with <code>[[…]]</code> and tags with <code>#…</code>.</li>
+  </ul>
+  <p>The folder and index names are fixed; only the <strong>root folder</strong> (<code>Cerebro</code> by default) changes, in <em>Settings → AI → Brain</em>. Changing it doesn't move existing notes.</p>
+
+  <h2 id="ia-cerebro--herramientas">The notes tools</h2>
+  <p>The brain uses the MCP notes tools, improved so the agent can find its way (they also work for the CLIs):</p>
+  <ul>
+    <li><code>vault_search_notes</code> — optional <code>folder</code> and <code>tag</code> filters.</li>
+    <li><code>vault_read_note</code> — also returns the folder, tags, outgoing links and backlinks.</li>
+    <li><code>vault_list_folders</code> and <code>vault_list_notes</code> — the folder tree with counts, and the titles in a folder.</li>
+    <li><code>vault_create_note</code> — optional <code>folder</code> as a path; it creates the missing folders.</li>
+    <li><code>vault_append_to_note</code> — adds a section to the end of one of <em>its own</em> notes, without rewriting it.</li>
+  </ul>
+  <div class="note warn"><span class="lbl">The rules don't change</span>
+  Private notes are out of reach, <strong>notes you wrote are never rewritten</strong> (and neither are the agent's own once you edit them),
+  writing only exists with the permission on, and everything goes into the access log. You can't delete anything this way.</div>
+
+  <h2 id="ia-cerebro--abrir">Open what it wrote</h2>
+  <p>In the chat, the cards for <code>vault_create_note</code>, <code>vault_append_to_note</code> and <code>vault_update_note</code> show the note's title and an
+  <strong>Open note</strong> button that takes you to it in a tab. Every note carries a mark saying an agent created it.</p>
 </article>
 
 <article class="topic" id="ia-referencias" data-title="The @ system">
@@ -1720,6 +2060,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <li>Everything goes into an <strong>access log</strong>: what it asked for, when and what it was given.</li>
     <li><strong>Private notes are always out of reach</strong>, with no switch that changes it.</li>
   </ul>
+  <p>The notes tools —search with folder and tag filters, read with links and backlinks, list folders and notes, create in a folder
+  and append a section to a note of its own— are what the <a href="#ia-cerebro">brain</a> uses to write notes by itself.</p>
   <div class="note"><span class="lbl">Note</span><p>The server <strong>doesn't turn itself on at
   startup</strong>. The app remembers whether you left it on, but that's a reminder for the interface, not an
   automatic start.</p></div>
@@ -1866,6 +2208,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td><kbd>Ctrl+Shift+↵</kbd></td><td>Run the PL/SQL block under the cursor</td></tr>
     <tr><td><kbd>⌘I</kbd> / <kbd>Ctrl+I</kbd></td><td>Query assistant: ask for a query or fix the one that failed</td></tr>
     <tr><td><kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd></td><td>Open the chat on whatever you're looking at</td></tr>
+    <tr><td><kbd>⌘N</kbd> / <kbd>Ctrl+N</kbd></td><td>In the AI Chat tab: start a new conversation</td></tr>
     <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Save the active tab (query, note, file, request)</td></tr>
     <tr><td><kbd>⌘V</kbd></td><td>Paste an image into a note or the chat</td></tr>
     <tr><td><kbd>Ctrl+Space</kbd></td><td>Force autocomplete, even where it doesn't open on its own</td></tr>

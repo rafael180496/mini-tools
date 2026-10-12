@@ -82,6 +82,7 @@ import type {TerminalThemeId} from '../../xterm/terminalThemes'
 import InlineDiff, {type InlineDiffState} from './InlineDiff'
 import {buildBranchTree, countBranches, expandedForBranch, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
 import {groupTags} from '../../lib/tagGroups'
+import {isModelServerAgent} from '../../lib/modelServers'
 import {
     applyPrefix,
     buildCommitPrefix,
@@ -3817,7 +3818,9 @@ export default function GitRepoTab({
                                     // Los CLIs en su terminal completa: es otra
                                     // cosa que el chat y por eso va en otro
                                     // grupo, no intercalado.
-                                    ...agentList.map((a) => ({
+                                    // Un servidor de modelos no es un programa de
+                                    // terminal: solo se usa por el chat.
+                                    ...agentList.filter((a) => !isModelServerAgent(a.id)).map((a) => ({
                                         label: g.panel.agentInTerminal({agent: a.label}),
                                         icon: 'smart_toy',
                                         hint: a.available ? g.panel.agentInTerminalHint({vendor: a.vendor}) : g.panel.notInstalled,
@@ -3964,9 +3967,10 @@ export default function GitRepoTab({
                                         resumeConversationId={
                                             chatHistory.find((c) => c.id === s.id)?.conversationId || undefined
                                         }
+                                        resumeChatId={chatHistory.find((c) => c.id === s.id)?.id}
                                         initialSettings={(() => {
                                             const c = chatHistory.find((x) => x.id === s.id)
-                                            return c ? {model: c.model, effort: c.effort, mode: c.mode} : undefined
+                                            return c ? {model: c.model, effort: c.effort, mode: c.mode, brain: c.brain} : undefined
                                         })()}
                                         // Después de un turno autónomo: se
                                         // relee el estado y se informa cuántos

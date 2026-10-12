@@ -223,6 +223,10 @@ func (s *Store) RemoveGitRepo(id string) error {
 	// es global: alteraría el comportamiento de toda tabla con FK declarada,
 	// incluidas las que hoy funcionan sin él, y eso merece su propia
 	// verificación en vez de entrar de costado con esta feature.
+	// Y los mensajes de esos chats (migración 58), por lo mismo.
+	if _, err := s.db.Exec(`DELETE FROM agent_chat_messages WHERE chat_id IN (SELECT id FROM agent_chats WHERE repo_id = ?)`, id); err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: quitando los mensajes de los chats del repositorio: %w", EN: "vault: removing the messages of the repository's chats: %w"}, err)
+	}
 	if _, err := s.db.Exec(`DELETE FROM agent_chats WHERE repo_id = ?`, id); err != nil {
 		return i18n.Errorf(i18n.Msg{ES: "vault: quitando los chats del repositorio: %w", EN: "vault: removing the repository's chats: %w"}, err)
 	}

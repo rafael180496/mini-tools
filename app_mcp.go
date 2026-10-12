@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"mini-tools/backend/appdata"
 	"mini-tools/backend/db"
 	"mini-tools/backend/git"
@@ -222,13 +220,30 @@ func (a *App) mcpTools() []mcpserver.ToolInfo {
 	tools := []mcpserver.ToolInfo{
 		{
 			Name:        "vault_search_notes",
-			Description: i18n.T(i18n.Msg{ES: "Busca en la base de conocimiento del usuario (runbooks, procedimientos, notas técnicas). Devuelve títulos y fragmentos. SOLO incluye notas que el usuario NO marcó como privadas.", EN: "Searches the user's knowledge base (runbooks, procedures, technical notes). Returns titles and snippets. ONLY includes notes the user did NOT mark as private."}),
-			InputSchema: obj(map[string]any{"query": str(i18n.T(i18n.Msg{ES: "Qué buscar. Varias palabras: todas tienen que aparecer.", EN: "What to search for. Several words: all of them must appear."}))}, "query"),
+			Description: i18n.T(i18n.Msg{ES: "Busca en la base de conocimiento del usuario (runbooks, procedimientos, notas técnicas). Devuelve título, carpeta, etiquetas y un fragmento de cada coincidencia. SOLO incluye notas que el usuario NO marcó como privadas. Con folder y tag se acota la búsqueda; sin texto lista las más recientes.", EN: "Searches the user's knowledge base (runbooks, procedures, technical notes). Returns title, folder, tags and a snippet for each match. ONLY includes notes the user did NOT mark as private. folder and tag narrow the search; with no text it lists the most recent ones."}),
+			InputSchema: obj(map[string]any{
+				"query":  str(i18n.T(i18n.Msg{ES: "Qué buscar. Varias palabras: todas tienen que aparecer. Puede ir vacío si se usa folder o tag.", EN: "What to search for. Several words: all of them must appear. May be empty when folder or tag is used."})),
+				"folder": str(i18n.T(i18n.Msg{ES: "Opcional. Ruta de carpeta, como \"Cerebro/Proyectos/mini-tools\": busca en esa carpeta y en sus subcarpetas.", EN: "Optional. Folder path, like \"Cerebro/Proyectos/mini-tools\": searches that folder and its subfolders."})),
+				"tag":    str(i18n.T(i18n.Msg{ES: "Opcional. Etiqueta sin el #, como \"oracle\".", EN: "Optional. Tag without the #, like \"oracle\"."})),
+			}, "query"),
 		},
 		{
 			Name:        "vault_read_note",
-			Description: i18n.T(i18n.Msg{ES: "Devuelve el Markdown completo de una nota, por su título. Si el usuario la marcó como privada, devuelve un error de permiso y NO su contenido.", EN: "Returns the full Markdown of a note, by its title. If the user marked it as private, returns a permission error and NOT its content."}),
+			Description: i18n.T(i18n.Msg{ES: "Devuelve una nota por su título: carpeta, etiquetas, enlaces salientes y entrantes (solo títulos de notas no privadas) y el Markdown completo. Si el usuario la marcó como privada, devuelve un error de permiso y NO su contenido.", EN: "Returns a note by its title: folder, tags, outgoing and incoming links (titles of non-private notes only) and the full Markdown. If the user marked it as private, returns a permission error and NOT its content."}),
 			InputSchema: obj(map[string]any{"title": str(i18n.T(i18n.Msg{ES: "Título exacto de la nota.", EN: "Exact title of the note."}))}, "title"),
+		},
+		{
+			Name:        "vault_list_folders",
+			Description: i18n.T(i18n.Msg{ES: "Lista las carpetas de la base de conocimiento como rutas, con la cantidad de notas de cada una. Los conteos y las carpetas solo consideran notas que el usuario NO marcó como privadas: una carpeta con solo notas privadas no aparece. No devuelve contenido de notas.", EN: "Lists the knowledge base folders as paths, with the number of notes in each. Counts and folders only consider notes the user did NOT mark as private: a folder holding only private notes doesn't show up. Doesn't return note content."}),
+			InputSchema: obj(map[string]any{}),
+		},
+		{
+			Name:        "vault_list_notes",
+			Description: i18n.T(i18n.Msg{ES: "Lista los títulos de las notas de una carpeta, con sus etiquetas y la fecha de la última modificación. SOLO notas que el usuario NO marcó como privadas. Sin folder lista las notas sueltas de la raíz. No devuelve contenido: para leer una, usá vault_read_note.", EN: "Lists the titles of the notes in a folder, with their tags and last-modified date. ONLY notes the user did NOT mark as private. Without folder it lists the loose notes at the root. Doesn't return content: to read one, use vault_read_note."}),
+			InputSchema: obj(map[string]any{
+				"folder":    str(i18n.T(i18n.Msg{ES: "Opcional. Ruta de la carpeta, como \"Cerebro/Temas\".", EN: "Optional. Folder path, like \"Cerebro/Temas\"."})),
+				"recursive": map[string]any{"type": "boolean", "description": i18n.T(i18n.Msg{ES: "Opcional. true incluye las subcarpetas (sin folder, toda la base).", EN: "Optional. true includes subfolders (without folder, the whole base)."})},
+			}),
 		},
 		{
 			Name:        "db_list_connections",
@@ -273,18 +288,28 @@ func (a *App) mcpTools() []mcpserver.ToolInfo {
 	if a.mcpNotesWrite() {
 		tools = append(tools, mcpserver.ToolInfo{
 			Name:        "vault_create_note",
-			Description: i18n.T(i18n.Msg{ES: "Crea una nota NUEVA en la base de conocimiento del usuario (su 'cerebro'), con título y contenido en Markdown. Sirve para dejar asentado lo que se averiguó: un procedimiento, un diagnóstico, una decisión. NO pisa nada: un título repetido se rechaza, elegí otro. Para corregir una nota que creaste vos, usá vault_update_note. La nota queda marcada como creada por un agente y visible para el usuario en su aplicación.", EN: "Creates a NEW note in the user's knowledge base (their 'brain'), with a title and Markdown content. Use it to record what was found out: a procedure, a diagnosis, a decision. It does NOT overwrite anything: a repeated title is rejected, pick another. To fix a note you created, use vault_update_note. The note is marked as created by an agent and visible to the user in their app."}),
+			Description: i18n.T(i18n.Msg{ES: "Crea una nota NUEVA en la base de conocimiento del usuario (su 'cerebro'), con título y contenido en Markdown, opcionalmente dentro de una carpeta (se crean las que falten). Sirve para dejar asentado lo que se averiguó: un procedimiento, un diagnóstico, una decisión. NO pisa nada: un título repetido se rechaza, elegí otro. Para corregir una nota que creaste vos, usá vault_update_note; para sumarle algo, vault_append_to_note. La nota queda marcada como creada por un agente y visible para el usuario en su aplicación.", EN: "Creates a NEW note in the user's knowledge base (their 'brain'), with a title and Markdown content, optionally inside a folder (missing ones are created). Use it to record what was found out: a procedure, a diagnosis, a decision. It does NOT overwrite anything: a repeated title is rejected, pick another. To fix a note you created, use vault_update_note; to add to it, vault_append_to_note. The note is marked as created by an agent and visible to the user in their app."}),
 			InputSchema: obj(map[string]any{
 				"title":   str(i18n.T(i18n.Msg{ES: "Título de la nota. Único: es lo que la hace enlazable con [[…]] desde otras notas.", EN: "Note title. Unique: it's what makes it linkable with [[…]] from other notes."})),
 				"content": str(i18n.T(i18n.Msg{ES: "Contenido en Markdown. Podés enlazar otras notas con [[Título]] y etiquetar con #etiqueta.", EN: "Markdown content. You can link other notes with [[Title]] and tag with #tag."})),
+				"folder":  str(i18n.T(i18n.Msg{ES: "Opcional. Ruta de la carpeta, como \"Cerebro/Proyectos/mini-tools\". Sin esta, la nota queda en la raíz.", EN: "Optional. Folder path, like \"Cerebro/Proyectos/mini-tools\". Without it the note goes to the root."})),
 			}, "title", "content"),
 		})
 		tools = append(tools, mcpserver.ToolInfo{
 			Name:        "vault_update_note",
-			Description: i18n.T(i18n.Msg{ES: "Reescribe el contenido de una nota que VOS creaste antes con vault_create_note — para corregirla o ampliarla. Solo funciona sobre tus propias notas: las que escribió el usuario, y las tuyas que él haya editado después, se rechazan. Tampoco toca ninguna nota marcada como privada. REEMPLAZA el contenido entero: leelo antes con vault_read_note si querés conservar parte.", EN: "Rewrites the content of a note that YOU created earlier with vault_create_note — to fix or extend it. It only works on your own notes: the ones the user wrote, and yours that they edited afterwards, are rejected. It doesn't touch any note marked as private either. It REPLACES the whole content: read it first with vault_read_note if you want to keep part of it."}),
+			Description: i18n.T(i18n.Msg{ES: "Reescribe el contenido de una nota que VOS creaste antes con vault_create_note — para corregirla o ampliarla. Solo funciona sobre tus propias notas: las que escribió el usuario, y las tuyas que él haya editado después, se rechazan. Tampoco toca ninguna nota marcada como privada. REEMPLAZA el contenido entero: leelo antes con vault_read_note si querés conservar parte. Para solo agregar al final, vault_append_to_note es más simple.", EN: "Rewrites the content of a note that YOU created earlier with vault_create_note — to fix or extend it. It only works on your own notes: the ones the user wrote, and yours that they edited afterwards, are rejected. It doesn't touch any note marked as private either. It REPLACES the whole content: read it first with vault_read_note if you want to keep part of it. To just add at the end, vault_append_to_note is simpler."}),
 			InputSchema: obj(map[string]any{
 				"title":   str(i18n.T(i18n.Msg{ES: "Título exacto de la nota a reescribir. El título no cambia.", EN: "Exact title of the note to rewrite. The title doesn't change."})),
 				"content": str(i18n.T(i18n.Msg{ES: "El contenido completo en Markdown que reemplaza al anterior.", EN: "The full Markdown content that replaces the previous one."})),
+			}, "title", "content"),
+		})
+		tools = append(tools, mcpserver.ToolInfo{
+			Name:        "vault_append_to_note",
+			Description: i18n.T(i18n.Msg{ES: "Agrega una sección en Markdown al final de una nota que VOS creaste antes, sin tocar lo que ya tiene. Es la forma de ampliar una nota en vez de duplicarla. Solo funciona sobre tus propias notas que el usuario no editó después; las del usuario y las privadas se rechazan. Los enlaces [[…]] de la sección se suman al grafo.", EN: "Appends a Markdown section to the end of a note that YOU created earlier, leaving what it already has untouched. It's the way to extend a note instead of duplicating it. It only works on your own notes the user didn't edit afterwards; the user's notes and private ones are rejected. The [[…]] links in the section are added to the graph."}),
+			InputSchema: obj(map[string]any{
+				"title":   str(i18n.T(i18n.Msg{ES: "Título exacto de la nota a ampliar.", EN: "Exact title of the note to extend."})),
+				"content": str(i18n.T(i18n.Msg{ES: "La sección en Markdown que se agrega al final.", EN: "The Markdown section to append at the end."})),
+				"heading": str(i18n.T(i18n.Msg{ES: "Opcional. Encabezado de la sección, sin los #: se agrega como \"## encabezado\".", EN: "Optional. Section heading, without the #: added as \"## heading\"."})),
 			}, "title", "content"),
 		})
 	}
@@ -301,65 +326,22 @@ func (a *App) mcpTools() []mcpserver.ToolInfo {
 func (a *App) runMCPTool(name string, args map[string]any) (string, string, error) {
 	switch name {
 	case "vault_search_notes":
-		q := mcpserver.StringArg(args, "query")
-		hits, err := a.vault.SearchNotesForAI(q, 10)
-		if err != nil {
-			return "", q, err
-		}
-		if len(hits) == 0 {
-			return i18n.T(i18n.Msg{ES: "No hay ninguna nota compartida que coincida. Puede que exista pero esté marcada como privada por el usuario.", EN: "No shared note matches. It may exist but be marked as private by the user."}), q, nil
-		}
-		var b strings.Builder
-		for _, h := range hits {
-			fmt.Fprintf(&b, "- %s\n", h.Title)
-		}
-		return b.String(), q, nil
+		return a.mcpSearchNotes(args)
 
 	case "vault_read_note":
-		title := mcpserver.StringArg(args, "title")
-		// El cortafuegos vive en NoteForAI, que filtra en la propia consulta
-		// SQL. Acá no hay ninguna decisión de permisos que tomar — y eso es a
-		// propósito.
-		note, err := a.vault.NoteForAI(title)
-		if err != nil {
-			return "", title, err
-		}
-		return note.Content, title, nil
+		return a.mcpReadNote(args)
+
+	case "vault_list_folders":
+		return a.mcpListFolders()
+
+	case "vault_list_notes":
+		return a.mcpListNotes(args)
 
 	case "vault_create_note":
-		// El permiso se vuelve a comprobar acá y no solo al armar el catálogo:
-		// entre que el agente leyó la lista y llama pueden pasar minutos, y en
-		// el medio el usuario pudo revocarlo. Un permiso que solo se mira al
-		// listar es un permiso que no se puede revocar.
-		if !a.mcpNotesWrite() {
-			return "", "", i18n.Errorf(i18n.Msg{ES: "el usuario no habilitó que un agente cree notas. Se activa en la aplicación, en Acceso de IA", EN: "the user hasn't allowed agents to create notes. It's enabled in the app, under AI access"})
-		}
-		title := strings.TrimSpace(mcpserver.StringArg(args, "title"))
-		content := mcpserver.StringArg(args, "content")
-		if title == "" || strings.TrimSpace(content) == "" {
-			return "", title, i18n.Errorf(i18n.Msg{ES: "hacen falta un título y un contenido", EN: "a title and content are required"})
-		}
-		// Tope de tamaño: una nota es algo que una persona va a leer. Sin
-		// límite, una respuesta larga del modelo termina volcada entera en el
-		// vault del usuario.
-		if len(content) > maxMCPNoteBytes {
-			return "", title, i18n.Errorf(i18n.Msg{ES: "la nota es demasiado grande (%d KB, máximo %d KB) — resumila o partila en varias", EN: "the note is too large (%d KB, max %d KB) — summarize it or split it into several"}, len(content)/1024, maxMCPNoteBytes/1024)
-		}
+		return a.mcpCreateNote(args)
 
-		// El frontmatter es lo que hace que "¿esto lo escribí yo o el agente?"
-		// tenga respuesta seis meses después. Va como metadato y no dentro del
-		// texto: la nota se lee limpia, y el dato sigue ahí.
-		fm := vault.NewAgentFrontmatter(time.Now())
-		id, err := a.createNote(title, content, fm)
-		if err != nil {
-			return "", title, err
-		}
-		// La nota nace NO privada a propósito: la escribió el agente, no es un
-		// secreto del usuario, y marcarla privada haría que ni siquiera pueda
-		// releer lo que acaba de dejar asentado. Esconderla después es un clic
-		// en la aplicación.
-		runtime.EventsEmit(a.ctx, NoteChangedEvent, map[string]string{"id": id, "title": title})
-		return i18n.T(i18n.Msg{ES: "Nota creada: %q. El usuario ya la ve en su base de conocimiento.", EN: "Note created: %q. The user can already see it in their knowledge base."}, title), title, nil
+	case "vault_append_to_note":
+		return a.mcpAppendToNote(args)
 
 	case "vault_update_note":
 		if !a.mcpNotesWrite() {
@@ -374,24 +356,9 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 			return "", title, i18n.Errorf(i18n.Msg{ES: "la nota es demasiado grande (%d KB, máximo %d KB)", EN: "the note is too large (%d KB, max %d KB)"}, len(content)/1024, maxMCPNoteBytes/1024)
 		}
 
-		// **La misma puerta que para leer.** NoteForAI ya rechaza las notas
-		// privadas con un mensaje que explica por qué, así que la regla "una
-		// nota privada no se toca" no se vuelve a escribir acá: si el agente no
-		// la puede leer, tampoco la puede editar, y las dos cosas dependen de
-		// una sola comprobación.
-		note, err := a.vault.NoteForAI(title)
+		note, err := a.agentOwnedNote(title)
 		if err != nil {
 			return "", title, err
-		}
-		if !vault.AgentCanEdit(note.Frontmatter) {
-			return "", title, i18n.Errorf(i18n.Msg{
-				ES: "la nota %q no la creaste vos: la escribió el usuario, o vos la creaste y él la editó después. " +
-					"Un agente solo puede reescribir sus propias notas intactas. " +
-					"Si hace falta cambiarla, decíselo al usuario o creá una nota nueva que la complemente",
-				EN: "you didn't create the note %q: the user wrote it, or you created it and they edited it afterwards. " +
-					"An agent can only rewrite its own untouched notes. " +
-					"If it needs changing, tell the user or create a new note that complements it",
-			}, title)
 		}
 
 		// El frontmatter conserva el origen y suma cuándo fue la última
@@ -401,7 +368,7 @@ func (a *App) runMCPTool(name string, args map[string]any) (string, string, erro
 		if err := a.vault.UpdateNote(note.ID, title, content, fm); err != nil {
 			return "", title, err
 		}
-		runtime.EventsEmit(a.ctx, NoteChangedEvent, map[string]string{"id": note.ID, "title": title})
+		a.emitNoteChanged(map[string]string{"id": note.ID, "title": title})
 		return i18n.T(i18n.Msg{ES: "Nota %q actualizada.", EN: "Note %q updated."}, title), title, nil
 
 	case "db_list_connections":

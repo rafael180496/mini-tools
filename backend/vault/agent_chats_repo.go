@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"database/sql"
 	"time"
 
 	mtcrypto "mini-tools/backend/crypto"
@@ -9,10 +10,12 @@ import (
 
 // Historial de conversaciones con agentes, por repositorio (migración 31).
 //
-// Lo que se guarda es el PUNTERO a la conversación —el id que devuelve el
-// propio CLI y con el que se la retoma— y no los mensajes. El historial lo
-// tiene el CLI: duplicarlo acá sería una segunda memoria que se desincroniza
-// con la real, y obligaría a meter en el vault todo lo que se conversó.
+// Esta tabla guarda el PUNTERO a la conversación —el id que devuelve el propio
+// CLI y con el que se la retoma—. Los mensajes viven aparte, en
+// agent_chat_messages (migración 58, ver agent_chat_messages_repo.go): antes
+// el historial lo tenía solo el CLI, pero un servidor de modelos no tiene
+// dónde guardarlo y la búsqueda necesita todo en un lugar. Retomar un CLI
+// sigue siendo por su id; los mensajes guardados son para mostrar y buscar.
 //
 // El título va cifrado con el mismo esquema que ssh_command_history: se deriva
 // de lo primero que se le escribió al agente, y eso puede traer cualquier cosa
@@ -46,9 +49,18 @@ type AgentChat struct {
 	// corresponde a nada.
 	Module    string `json:"module"`
 	ContextID string `json:"contextId"`
+	// Brain es si la conversación tiene encendida la escritura automática de
+	// notas en el cerebro (migración 59). Por conversación, apagado por
+	// defecto: ver SetAgentChatBrain.
+	Brain bool `json:"brain"`
 }
 
 // CreateAgentChat registra una conversación nueva.
+//
+// **Es idempotente**: si el id ya existe no hace nada. La fila la puede crear
+// el frontend al mandar el primer mensaje o el propio App al grabarlo
+// (SendAgentChat), y las dos órdenes viajan sin orden garantizado; la segunda
+// no tiene que fallar ni pisar el título de la primera.
 //
 // repoID puede venir vacío: desde el chat unificado una conversación puede
 // nacer en el editor SQL o en una terminal SSH, donde no hay repositorio. La FK
@@ -63,7 +75,8 @@ func (s *Store) CreateAgentChat(id, repoID, agentID, title, module, contextID st
 	now := time.Now().Unix()
 	_, err = s.db.Exec(
 		`INSERT INTO agent_chats (id, repo_id, agent_id, encrypted_title, title_nonce, conversation_id, created_at, updated_at, module, context_id)
-		 VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?)
+		 ON CONFLICT(id) DO NOTHING`,
 		id, repoID, agentID, enc, nonce, now, now, module, contextID,
 	)
 	if err != nil {
@@ -77,7 +90,7 @@ func (s *Store) CreateAgentChat(id, repoID, agentID, title, module, contextID st
 // cuando se agregue una columna — que es exactamente lo que pasó al sumar
 // module/context_id.
 const agentChatColumns = `id, repo_id, agent_id, encrypted_title, title_nonce, conversation_id, created_at, updated_at,
-	        COALESCE(model, ''), COALESCE(effort, ''), COALESCE(mode, ''), COALESCE(module, ''), COALESCE(context_id, '')`
+	        COALESCE(model, ''), COALESCE(effort, ''), COALESCE(mode, ''), COALESCE(module, ''), COALESCE(context_id, ''), brain`
 
 // ListAgentChats devuelve los chats de un repositorio, del más reciente al más
 // viejo — que es el orden en el que se los busca.
@@ -107,17 +120,48 @@ func (s *Store) queryAgentChats(query string, args ...any) ([]AgentChat, error) 
 	for rows.Next() {
 		var c AgentChat
 		var enc, nonce []byte
+		var brain int
 		if err := rows.Scan(&c.ID, &c.RepoID, &c.AgentID, &enc, &nonce, &c.ConversationID, &c.CreatedAt, &c.UpdatedAt,
-			&c.Model, &c.Effort, &c.Mode, &c.Module, &c.ContextID); err != nil {
+			&c.Model, &c.Effort, &c.Mode, &c.Module, &c.ContextID, &brain); err != nil {
 			return nil, err
 		}
 		// Un título que no se puede descifrar NO tira abajo la lista: se
 		// muestra sin nombre y el chat se puede seguir retomando o borrar.
 		// Perder el listado entero por una fila sería mucho peor.
 		c.Title = s.decryptOptional(enc, nonce)
+		c.Brain = brain != 0
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// AgentChatExists dice si ya hay una fila con ese id.
+func (s *Store) AgentChatExists(id string) (bool, error) {
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM agent_chats WHERE id = ?`, id).Scan(&n); err != nil {
+		return false, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el chat: %w", EN: "vault: reading the chat: %w"}, err)
+	}
+	return n > 0, nil
+}
+
+// AgentChatIDByConversation devuelve el id del chat que apunta a esa
+// conversación del CLI, o "" si ninguno. Es el puente entre
+// AgentChatHistory(agentID, conversationID) y los mensajes guardados por chat.
+func (s *Store) AgentChatIDByConversation(agentID, conversationID string) (string, error) {
+	if conversationID == "" {
+		return "", nil
+	}
+	var id string
+	err := s.db.QueryRow(
+		`SELECT id FROM agent_chats WHERE agent_id = ? AND conversation_id = ? ORDER BY updated_at DESC LIMIT 1`,
+		agentID, conversationID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: leyendo el chat: %w", EN: "vault: reading the chat: %w"}, err)
+	}
+	return id, nil
 }
 
 // SetAgentChatContext mueve una conversación al módulo/recurso donde se la
@@ -188,10 +232,16 @@ func (s *Store) SetAgentChatSettings(id, model, effort, mode string) error {
 	return nil
 }
 
-// DeleteAgentChat borra la entrada. **No borra la conversación del CLI**: esa
-// vive en su propio almacenamiento y esta app no la administra. Lo que se
-// pierde es el atajo para retomarla desde acá.
+// DeleteAgentChat borra la entrada y los mensajes que la app guardó de ella.
+// **No borra la conversación del CLI**: esa vive en su propio almacenamiento y
+// esta app no la administra. Lo que se pierde es el atajo para retomarla desde
+// acá y la copia de los mensajes.
 func (s *Store) DeleteAgentChat(id string) error {
+	// Los mensajes se borran a mano: la FK de agent_chat_messages declara
+	// CASCADE pero este vault no activa `PRAGMA foreign_keys`.
+	if err := s.DeleteAgentChatMessages(id); err != nil {
+		return err
+	}
 	if _, err := s.db.Exec(`DELETE FROM agent_chats WHERE id = ?`, id); err != nil {
 		return i18n.Errorf(i18n.Msg{ES: "vault: borrando el chat: %w", EN: "vault: deleting the chat: %w"}, err)
 	}

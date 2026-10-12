@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"strings"
 	"sync"
 
 	"mini-tools/backend/i18n"
@@ -309,6 +310,18 @@ func IntArg(args map[string]any, key string, def int) int {
 		return def
 	}
 	return int(f)
+}
+
+// BoolArg saca un argumento booleano. Los modelos chicos mandan "true" como
+// texto con frecuencia, así que se acepta también.
+func BoolArg(args map[string]any, key string) bool {
+	switch v := args[key].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	}
+	return false
 }
 
 // StringsArg saca una lista de textos.

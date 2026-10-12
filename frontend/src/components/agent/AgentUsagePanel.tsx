@@ -3,6 +3,7 @@ import {AgentPlans, AgentQueryLimits, AgentUsageAll, AgentUsageLimits} from '../
 import {agentlimits, agentplan, agentusage} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import AgentLimitBars from './AgentLimitBars'
+import {isModelServerAgent} from '../../lib/modelServers'
 import {rich} from './rich'
 import {formatNumber, useT} from '../../i18n'
 
@@ -107,7 +108,10 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
 
                 {!usage && !error && <p className="px-1 text-on-surface-variant">{t.agent.usage.reading}</p>}
 
-                {usage?.agents.map((a) => {
+                {/* Consumo y límites se leen de lo que un CLI deja en disco: un
+                    servidor de modelos no tiene ni lo uno ni lo otro. Lo que sí
+                    cuenta de él es la tarjeta de "esta conversación", arriba. */}
+                {usage?.agents.filter((a) => !isModelServerAgent(a.agent)).map((a) => {
                     const plan = plans.find((p) => p.agent === a.agent)
                     const limit = limits.find((l) => l.agent === a.agent)
                     return (

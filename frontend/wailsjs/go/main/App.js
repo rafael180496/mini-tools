@@ -42,6 +42,10 @@ export function AgentChatHistory(arg1, arg2) {
   return window['go']['main']['App']['AgentChatHistory'](arg1, arg2);
 }
 
+export function AgentChatMessages(arg1) {
+  return window['go']['main']['App']['AgentChatMessages'](arg1);
+}
+
 export function AgentChatModes(arg1) {
   return window['go']['main']['App']['AgentChatModes'](arg1);
 }
@@ -152,6 +156,10 @@ export function BeginRedisTransaction(arg1) {
 
 export function BeginTransaction(arg1) {
   return window['go']['main']['App']['BeginTransaction'](arg1);
+}
+
+export function BrainStatus() {
+  return window['go']['main']['App']['BrainStatus']();
 }
 
 export function CallTool(arg1, arg2) {
@@ -286,6 +294,10 @@ export function DeleteFolder(arg1) {
   return window['go']['main']['App']['DeleteFolder'](arg1);
 }
 
+export function DeleteModelServer(arg1) {
+  return window['go']['main']['App']['DeleteModelServer'](arg1);
+}
+
 export function DeleteMongoDocument(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeleteMongoDocument'](arg1, arg2, arg3, arg4);
 }
@@ -316,6 +328,10 @@ export function DeleteSftpPath(arg1, arg2) {
 
 export function DeleteSshSnippet(arg1) {
   return window['go']['main']['App']['DeleteSshSnippet'](arg1);
+}
+
+export function DetectLocalOllama() {
+  return window['go']['main']['App']['DetectLocalOllama']();
 }
 
 export function DetectQueryParams(arg1, arg2) {
@@ -472,6 +488,10 @@ export function FetchMoreRows(arg1) {
 
 export function GenerateProjectDocs(arg1, arg2, arg3) {
   return window['go']['main']['App']['GenerateProjectDocs'](arg1, arg2, arg3);
+}
+
+export function GetBrainRoot() {
+  return window['go']['main']['App']['GetBrainRoot']();
 }
 
 export function GetConnectionForEdit(arg1) {
@@ -1178,6 +1198,10 @@ export function ListLocalHistory(arg1, arg2) {
   return window['go']['main']['App']['ListLocalHistory'](arg1, arg2);
 }
 
+export function ListModelServers() {
+  return window['go']['main']['App']['ListModelServers']();
+}
+
 export function ListMongoCollections(arg1, arg2, arg3) {
   return window['go']['main']['App']['ListMongoCollections'](arg1, arg2, arg3);
 }
@@ -1248,6 +1272,10 @@ export function MakeSftpDir(arg1, arg2) {
 
 export function MergeNotes(arg1, arg2) {
   return window['go']['main']['App']['MergeNotes'](arg1, arg2);
+}
+
+export function ModelServerHealth(arg1) {
+  return window['go']['main']['App']['ModelServerHealth'](arg1);
 }
 
 export function MoveConnectionToFolder(arg1, arg2) {
@@ -1502,6 +1530,10 @@ export function SaveDDLToFile(arg1, arg2) {
   return window['go']['main']['App']['SaveDDLToFile'](arg1, arg2);
 }
 
+export function SaveModelServer(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SaveModelServer'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function SaveNoteImage(arg1, arg2) {
   return window['go']['main']['App']['SaveNoteImage'](arg1, arg2);
 }
@@ -1518,6 +1550,10 @@ export function SaveSSHKey(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveSSHKey'](arg1, arg2, arg3);
 }
 
+export function SearchAgentChats(arg1) {
+  return window['go']['main']['App']['SearchAgentChats'](arg1);
+}
+
 export function SearchNotesSmart(arg1, arg2) {
   return window['go']['main']['App']['SearchNotesSmart'](arg1, arg2);
 }
@@ -1528,6 +1564,10 @@ export function SendAgentChat(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, ar
 
 export function SetAgentActive(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetAgentActive'](arg1, arg2, arg3);
+}
+
+export function SetAgentChatBrain(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentChatBrain'](arg1, arg2);
 }
 
 export function SetAgentChatContext(arg1, arg2, arg3) {
@@ -1564,6 +1604,10 @@ export function SetAutoSaveEnabled(arg1) {
 
 export function SetAutoSaveIntervalSeconds(arg1) {
   return window['go']['main']['App']['SetAutoSaveIntervalSeconds'](arg1);
+}
+
+export function SetBrainRoot(arg1) {
+  return window['go']['main']['App']['SetBrainRoot'](arg1);
 }
 
 export function SetConnectionSchemas(arg1, arg2) {
@@ -1732,6 +1776,10 @@ export function SyncSchemaMetadata(arg1, arg2) {
 
 export function TestConnection(arg1) {
   return window['go']['main']['App']['TestConnection'](arg1);
+}
+
+export function TestModelServer(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['TestModelServer'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function TouchAgentChat(arg1, arg2) {

@@ -50,6 +50,10 @@ import (
 // vencerse se DENIEGA, nunca se permite — el silencio no es un sí.
 const approveTimeout = 5 * time.Minute
 
+// Timeout es ese mismo plazo para quien pregunta desde este proceso (el chat
+// con servidores de modelos, que no pasa por el socket).
+const Timeout = approveTimeout
+
 // Request es lo que el agente quiere hacer.
 type Request struct {
 	// ID lo genera el canal; la respuesta lo referencia.

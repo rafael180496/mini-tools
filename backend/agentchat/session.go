@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"mini-tools/backend/i18n"
+	"mini-tools/backend/llm"
 	"os/exec"
 	"strings"
 	"sync"
@@ -22,15 +23,32 @@ const maxLineBytes = 16 << 20
 // el id de conversación que ellos devuelven, para pasárselo al turno
 // siguiente. No se guarda acá el historial de la conversación — eso lo tiene el
 // CLI, y duplicarlo sería una segunda memoria que se desincroniza con la real.
+//
+// La excepción son los servidores de modelos (`llm:<id>`, ver llmrunner.go):
+// ahí no hay un CLI que guarde la charla, así que el Manager conserva en
+// memoria los mensajes de cada sesión para reenviarlos en el turno siguiente.
 type Manager struct {
-	mu      sync.Mutex
-	convos  map[string]string
-	cancels map[string]context.CancelFunc
-	emit    EmitFunc
+	mu         sync.Mutex
+	convos     map[string]string
+	llmHistory map[string][]llm.Message
+	cancels    map[string]context.CancelFunc
+	// llmNoTools recuerda qué modelos (agente|modelo) rechazaron las
+	// herramientas, para no reintentar —y fallar— en cada turno; llmNoticed,
+	// en qué sesiones ya se avisó. Ver llmrunner.go.
+	llmNoTools map[string]bool
+	llmNoticed map[string]bool
+	emit       EmitFunc
 }
 
 func NewManager(emit EmitFunc) *Manager {
-	return &Manager{convos: map[string]string{}, cancels: map[string]context.CancelFunc{}, emit: emit}
+	return &Manager{
+		convos:     map[string]string{},
+		llmHistory: map[string][]llm.Message{},
+		cancels:    map[string]context.CancelFunc{},
+		llmNoTools: map[string]bool{},
+		llmNoticed: map[string]bool{},
+		emit:       emit,
+	}
 }
 
 // Mode es qué tiene permitido hacer el agente en este turno. Son tres y no
@@ -95,6 +113,15 @@ var modesByAgent = map[string][]Mode{
 // ModesFor devuelve los modos de un agente, en orden de menos a más permisivo
 // — el orden importa: es el que ve el usuario en la lista.
 func ModesFor(agentID string, approveReady bool) []string {
+	// Un servidor de modelos tiene los cinco modos: las herramientas de
+	// archivos y comandos (llmtools.go) corren en este mismo proceso, así que
+	// la aprobación por acción no depende del canal de los CLIs (approveReady)
+	// y el modo «approve» se ofrece siempre. Los modos que no apliquen a un
+	// chat sin repositorio (no hay herramientas de archivos) siguen siendo
+	// válidos: el runner simplemente declara solo las del servidor MCP.
+	if IsLLM(agentID) {
+		return []string{string(ModeAsk), string(ModePlan), string(ModeApprove), string(ModeEdit), string(ModeAuto)}
+	}
 	modes := modesByAgent[agentID]
 	out := make([]string, 0, len(modes))
 	for _, m := range modes {
@@ -155,6 +182,40 @@ type Turn struct {
 	// así que alcanza con nombrarle el archivo. Verificado en el `--help` de
 	// cada uno, no supuesto.
 	Images []string
+	// LLM es el cliente HTTP de un servidor de modelos, ya configurado con su
+	// URL y su token. Solo se usa con agentes `llm:<id>`; en ese caso Command,
+	// Exec, Env y los campos de aprobación no aplican. Lo arma quien llama
+	// para que este paquete no conozca el vault.
+	LLM llm.Client
+	// History son los mensajes previos del chat (sin el mensaje de sistema),
+	// leídos del historial guardado. Solo los usa un agente `llm:` y **solo si
+	// la sesión no tiene historial en memoria**: después de reiniciar la app el
+	// Manager arranca vacío y esto lo siembra; con la sesión viva manda la
+	// memoria, que ya incluye el turno anterior. Lo arma quien llama.
+	History []llm.Message
+
+	// System es texto que se suma al mensaje de sistema de ESTE turno (el
+	// idioma de respuesta ya va siempre): para qué sirven las herramientas, en
+	// qué directorio trabajan, qué modo rige. Se regenera en cada turno y no
+	// se guarda en la memoria de la sesión, porque el modo puede cambiar
+	// entre un mensaje y el siguiente. Lo usan los agentes `llm:` y, como
+	// system prompt agregado (detrás del idioma de respuesta), `claude`; Codex
+	// y Antigravity lo ignoran (quien llama antepone el texto al prompt).
+	System string
+	// Tools son las herramientas que se le declaran al modelo en este turno y
+	// RunTool cómo se ejecuta una. Las arma quien llama (App) con el catálogo
+	// del servidor MCP y las de archivos y comandos que el modo permita; este
+	// paquete no conoce el vault ni los permisos, solo corre el bucle:
+	// pedido → ejecución → resultado al modelo → pedido…
+	//
+	// Un error de RunTool NO falla el turno: se le devuelve al modelo como
+	// texto («error: …») para que corrija. Una herramienta fuera de Tools se
+	// rechaza sin llamar a RunTool, aunque el modelo la pida.
+	Tools   []llm.ToolDef
+	RunTool func(ctx context.Context, name string, args map[string]any) (string, error)
+	// MaxToolRounds es el tope de vueltas del bucle (una vuelta = un pedido
+	// al modelo). 0 = DefaultToolRounds.
+	MaxToolRounds int
 }
 
 // Send arranca un turno y streamea sus eventos. Vuelve enseguida: el turno
@@ -166,6 +227,9 @@ func (m *Manager) Send(t Turn) error {
 	}
 	if strings.TrimSpace(t.Prompt) == "" {
 		return i18n.Errorf(i18n.Msg{ES: "agentchat: el mensaje está vacío", EN: "agentchat: the message is empty"})
+	}
+	if IsLLM(t.AgentID) {
+		return m.sendLLM(t)
 	}
 	adapt, ok := adapters[t.AgentID]
 	if !ok {
@@ -209,7 +273,7 @@ func (m *Manager) Send(t Turn) error {
 // donde el modo se elige a la vista.
 func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 	adapt, ok := adapters[t.AgentID]
-	if !ok {
+	if !ok && !IsLLM(t.AgentID) {
 		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: no hay modo headless verificado para %q", EN: "agentchat: there is no verified headless mode for %q"}, t.AgentID)
 	}
 	if t.Mode == ModeEdit || t.Mode == ModeAuto {
@@ -217,6 +281,9 @@ func (m *Manager) Ask(ctx context.Context, t Turn) (string, error) {
 	}
 	if strings.TrimSpace(t.Prompt) == "" {
 		return "", i18n.Errorf(i18n.Msg{ES: "agentchat: el mensaje está vacío", EN: "agentchat: the message is empty"})
+	}
+	if IsLLM(t.AgentID) {
+		return m.askLLM(ctx, t)
 	}
 
 	args, err := buildArgs(t, "")
@@ -316,7 +383,16 @@ func (m *Manager) Reset(sessionID string) {
 	m.Cancel(sessionID)
 	m.mu.Lock()
 	delete(m.convos, sessionID)
+	delete(m.llmHistory, sessionID)
 	m.mu.Unlock()
+}
+
+// Busy dice si la sesión está contestando un turno.
+func (m *Manager) Busy(sessionID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, busy := m.cancels[sessionID]
+	return busy
 }
 
 func (m *Manager) finish(sessionID string) {
@@ -511,7 +587,15 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 		// pisa ninguna instrucción propia del usuario. Codex no tiene un
 		// equivalente que no reemplace su `developer_instructions`, así que
 		// ahí manda el idioma de los prompts que arma la app.
-		args = append(args, "--append-system-prompt", i18n.T(replyLanguage))
+		//
+		// Un solo valor para la bandera: si el turno trae instrucciones
+		// propias (System: el cerebro), van detrás del idioma en el mismo
+		// system prompt agregado.
+		sys := i18n.T(replyLanguage)
+		if strings.TrimSpace(t.System) != "" {
+			sys += "\n\n" + t.System
+		}
+		args = append(args, "--append-system-prompt", sys)
 		return args, nil
 
 	case "codex":

@@ -12,7 +12,10 @@ import {t} from '../../i18n'
 // AgentChat.Module en backend/vault/agent_chats_repo.go) justamente para que
 // renombrar una conexión no deje el historial mintiendo.
 
-export type WorkContextKind = 'git' | 'db' | 'ssh' | 'note' | 'http' | 'none'
+// 'utilities' es el chat de la herramienta «Chat de IA» del módulo Utilidades:
+// una conversación general que no nace de ningún recurso, y cuyo `id` es el
+// repositorio de trabajo elegido en su cabecera (vacío si no eligió ninguno).
+export type WorkContextKind = 'git' | 'db' | 'ssh' | 'note' | 'http' | 'utilities' | 'none'
 
 export interface WorkContext {
     kind: WorkContextKind
@@ -40,6 +43,7 @@ export const CONTEXT_ICONS: Record<WorkContextKind, string> = {
     // El mismo ícono que el módulo en la barra lateral: el encabezado del chat
     // tiene que leerse como "esto es la pestaña de al lado".
     http: 'api',
+    utilities: 'forum',
     none: 'smart_toy',
 }
 
@@ -62,6 +66,21 @@ export function repoIdOf(context: WorkContext): string {
     return context.kind === 'git' ? context.id : ''
 }
 
+// workRepoIdOf devuelve el repositorio sobre el que el agente puede trabajar
+// con archivos: el del módulo Git, o el que se eligió en la cabecera del Chat de
+// IA. Es lo que el backend resuelve como directorio de trabajo (`agentCwd`), y
+// por lo tanto lo que decide si existen las herramientas de archivos y de
+// comandos de un servidor de modelos y si tienen sentido los modos que editan.
+//
+// Distinto de `repoIdOf`, que sigue siendo «el id que va en el parámetro del
+// repositorio»: en Utilidades ese parámetro va vacío (la conversación no nace
+// de un repositorio) aunque haya uno elegido para trabajar.
+export function workRepoIdOf(context: WorkContext): string {
+    if (context.kind === 'git') return context.id
+    if (context.kind === 'utilities' && context.id && context.id !== UTILITIES_CHAT_OWNER) return context.id
+    return ''
+}
+
 // describeContext arma la línea del encabezado: "Git · mini-tools".
 export function describeContext(context: WorkContext): string {
     if (context.kind === 'none' || !context.label) return ''
@@ -74,7 +93,9 @@ export function describeContext(context: WorkContext): string {
                 ? 'SSH'
                 : context.kind === 'http'
                   ? 'HTTP'
-                  : t().agent.context.prefixNote
+                  : context.kind === 'utilities'
+                    ? t().agent.context.prefixRepo
+                    : t().agent.context.prefixNote
     return `${prefix} · ${context.label}`
 }
 
@@ -92,4 +113,17 @@ export function describeContext(context: WorkContext): string {
 export function contextKey(context: WorkContext): string {
     if (context.kind === 'none') return 'none'
     return `${context.kind}:${context.id}`
+}
+
+// Marca del contexto que usa el anfitrión del chat lateral cuando la pestaña
+// activa es el «Chat de IA»: esa pestaña ya ES un chat completo, y ofrecer
+// además el panel lateral sería un segundo chat sobre lo mismo (y dos diálogos
+// de aprobación para un solo permiso). No se confunde con el `id` de una
+// conversación de Utilidades, que es el de un repositorio.
+export const UTILITIES_CHAT_OWNER = 'aiChat'
+
+// ownsChat dice si la pestaña activa trae su propio chat y por eso el panel
+// lateral se aparta: el módulo Git y el Chat de IA.
+export function ownsChat(context: WorkContext): boolean {
+    return context.kind === 'git' || (context.kind === 'utilities' && context.id === UTILITIES_CHAT_OWNER)
 }

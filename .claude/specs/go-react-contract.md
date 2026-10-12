@@ -824,7 +824,7 @@ se convierte en una ruta.
 | `GitSubmodules` / `GitAddSubmodule` / `GitUpdateSubmodules` / `GitUpdateSubmodule` / `GitSyncSubmodules` / `GitRemoveSubmodule` | post-2.2.0 | Repos anidados fijados en un commit (`backend/git/submodule.go`). `GitSubmodules` **no corre `git submodule status`** si no hay `.gitmodules`: un stat corta antes, porque no tener submódulos es el estado normal y un probe que falla llenaría de rojo el panel de comandos. `init` es un flag aparte en las dos variantes de update porque clona por red contra una URL que puede pedir credenciales, y eso tiene que ser una elección explícita. La ruta del alta es **opcional** (git usa el último tramo de la URL). `GitRemoveSubmodule` hace los tres pasos —`deinit`, `git rm` y borrar `.git/modules/<ruta>`— porque saltarse el tercero es lo que hace fallar un alta posterior del mismo submódulo; la ruta se revalida contra `.git/modules` antes de borrar nada, y es el único `RemoveAll` del paquete |
 | `OpenLocalTerminalWith(sessionID, shellID, cols, rows)` | post-2.1.0 | Terminal local con un intérprete ELEGIDO, sin tocar el configurado en Configuración. `shellID` vacío = el configurado. Arranca en el home: no cuelga de ningún repositorio |
 | `AppendLocalHistory` / `ListLocalHistory` / `ClearLocalHistory` | post-2.1.0 | Historial de las terminales locales, agrupado por **intérprete** y no por conexión (tabla `local_command_history`, migración 43). Mismo cifrado, mismo filtro de secretos y **mismo interruptor** (`ssh_history_enabled`) que el historial SSH |
-| `SetMCPNotesWrite(enabled)` | post-2.1.0 | Permiso de ESCRITURA del servidor MCP sobre las notas (`settings.mcp_notes_write`, migración 44, nace en 0). Interruptor aparte del que enciende el servidor: apagado, `vault_create_note`/`vault_update_note` **no se declaran** en el catálogo y una llamada en curso se rechaza. Editar exige además autoría del agente (`vault.AgentCanEdit` sobre el frontmatter) y pasa por `NoteForAI`, así que una nota privada tampoco se puede escribir. `MCPServerStatus` lo devuelve en `notesWrite` |
+| `SetMCPNotesWrite(enabled)` | post-2.1.0 | Permiso de ESCRITURA del servidor MCP sobre las notas (`settings.mcp_notes_write`, migración 44, nace en 0). Interruptor aparte del que enciende el servidor: apagado, `vault_create_note`/`vault_update_note`/`vault_append_to_note` **no se declaran** en el catálogo y una llamada en curso se rechaza. Editar exige además autoría del agente (`vault.AgentCanEdit` sobre el frontmatter) y pasa por `NoteForAI`, así que una nota privada tampoco se puede escribir. `MCPServerStatus` lo devuelve en `notesWrite` |
 | `RenameNote(id, title)` | post-2.7.0 | Cambia solo el título, desde el menú contextual de la barra. Valida título único (`checkNoteTitleFree`, la misma regla que el alta) y emite `note:changed`, para que un editor con la nota abierta se recargue en vez de deshacer el renombre al autoguardar. No reescribe los `[[Título viejo]]` de otras notas |
 | `DuplicateNote(id) → string` | post-2.7.0 | Copia cuerpo, frontmatter, carpeta, privacidad e imágenes con el título «X (copia)» / «X (copia N)». La copia nace con el `is_private` del original en el mismo INSERT (`vault.DuplicateNote`): pasar por `CreateNote` la dejaría legible para un agente hasta el `SetNotePrivacy` |
 | `SetLanguage(lang)` | post-2.7.0 | Idioma de la interfaz (`'en' \| 'es'`, rechaza otro). **Sin `requireUnlocked`**, como `SetTheme`: la pantalla de desbloqueo también cambia de idioma. `GetSettings().language` lo devuelve (`''` = sin elegir → inglés). Ver `.claude/specs/i18n.md` |
@@ -921,13 +921,79 @@ sigue montado (oculto por CSS) cuando se cierra.
 | `AgentChatSupported(agentID)` | Si hay adaptador **verificado** (`backend/agentchat`). La UI ofrece el chat solo donde funciona; duplicar la lista en el frontend se desincronizaría |
 | `AgentPlans()` | Plan de cada agente (`backend/agentplan`). Del JWT de Codex se extrae **solo** el claim del plan; el token nunca cruza |
 | `AgentModelCatalog(agentID)` | Modelos y esfuerzos que informa cada CLI (`backend/agentmodels`), no una lista escrita a mano |
-| `AgentChatHistory(agentID, conversationID)` | Mensajes de una conversación anterior, leídos del transcript del CLI (Claude Code, Codex y Antigravity). Vacío NO es error: una conversación borrada desde el propio CLI abre en blanco y sigue encadenando |
+| `AgentChatHistory(agentID, conversationID)` | Mensajes de una conversación anterior. Lee primero los que guardó la app (`AgentChatMessages`, ubicando el chat por su id de conversación) y, si el chat no tiene ninguno, el transcript del CLI (Claude Code, Codex y Antigravity). Vacío NO es error: una conversación borrada desde el propio CLI abre en blanco y sigue encadenando |
+| `AgentChatMessages(chatID)` | Historial genérico guardado en el vault (migración 58) para cualquier proveedor: `{seq, role: user\|assistant\|tool, content, toolName, usage?, createdAt}`. Dentro de un turno las herramientas van antes de la respuesta; un error del turno es una fila `assistant` con `content` que empieza con `⚠ `. Se guarda lo que se escribió, sin expandir las `@referencias` |
+| `SearchAgentChats(query)` | Chats (`vault.AgentChat`) cuyo título o mensajes contienen todas las palabras, sin acentos ni mayúsculas, más recientes primero (máx. 200). Descifra y filtra en Go. Consulta vacía → lista vacía |
 | `SaveChatAttachment(name, dataBase64)` | Guarda una imagen pegada/subida FUERA del repositorio y devuelve su ruta |
 | `AgentChatModes(agentID)` | Modos de permisos que soporta ESE agente, de menos a más permisivo. No son los mismos para todos (`auto` es solo de Claude Code) |
 | `SendAgentChat(sessionID, repoID, agentID, prompt, mode, effort, model)` | Vuelve enseguida; la respuesta llega como `agentchat.Event` en el evento de Wails llamado `sessionID`. **Suscribirse ANTES**, misma carrera que la terminal y las queries. `agentchat.Event` NO está en `wailsjs/go/models` —viaja por evento, no por retorno— así que el frontend lo espeja a mano en `AgentChat.tsx`, igual que `LocalTermEvent` |
 | `AskAgentOnce(repoID, agentID, prompt)` | Un turno de **una sola vez que devuelve el texto**, para las acciones agénticas del módulo Git (redactar el commit). Sin conversación ni estado; `agentchat.Ask` **rechaza los modos que editan**, así que un botón nunca puede tocar archivos. Con tope de tiempo: bloquea un formulario |
-| `CancelAgentChat(sessionID)` / `ResetAgentChat(sessionID)` | Cortar el turno / olvidar la conversación |
+| `CancelAgentChat(sessionID)` / `ResetAgentChat(sessionID)` | Cortar el turno / olvidar la conversación (también borra los mensajes guardados de ese chat; la entrada del historial queda) |
 | `GitAgentUsage(repoID, days)` | Consumo de tokens por agente (`backend/agentusage`), total y atribuido al repo. Los porcentajes son **proporciones de lo consumido, nunca fracciones del límite de un plan** (ese dato no existe en disco). Solo Claude Code tiene lector verificado; los demás devuelven `available:false` con nota |
+
+**Servidores de modelos (`llm:<id>`) con herramientas** (spec `ia-ollama-chat-utilidades`, fases 4 y 5):
+
+| Contrato | Detalle |
+| --- | --- |
+| `ModelServer.isLocal` | `true` si el host de `baseUrl` es de loopback (`localhost`, `127.x`, `::1`, `0.0.0.0`). Lo calcula Go; no se guarda. Un servidor remoto lo dice también en la `Note` del agente. Para advertir antes de usar herramientas de archivos |
+| `AgentChatModes("llm:<id>")` | Siempre `["", "plan", "approve", "edit", "auto"]`: la aprobación de un servidor de modelos es en proceso y no depende del canal de los CLIs |
+| `SendAgentChat(..., module, contextId, ...)` con `llm:` | Respeta `mode`. Herramientas del turno = MCP (si el servidor MCP está encendido; mismo catálogo y auditoría que el puente) + archivos/comandos si hay raíz de trabajo. Raíz: `module "git"` con `contextId` = id de repo, o `module "utilities"` con `contextId` = id del repo elegido (si no es un repo conocido, no hay herramientas de archivos y el cwd es el de consultas) |
+| Modos → herramientas | `""`/`plan`: `read_file`, `list_dir`, `search`. `approve`: + `write_file`, `edit_file`, `run_command`, y las tres preguntan cada vez. `edit`: escritura sin preguntar, comandos preguntan. `auto`: todo sin preguntar salvo la lista de riesgo (`workspace.Risk`), que pregunta en todos los modos |
+| Eventos `tool` | Mismo `agentchat.Event{kind:"tool", tool:{name,input,summary,detail}}` que los CLIs, emitido antes de ejecutar. `summary` = ruta / comando / patrón / título; `detail` = «N líneas» en escrituras |
+| `agent-approval` | Mismo evento y mismo `RespondAgentApproval(id, allow, reason)` que el canal de los CLIs; los ids de estas preguntas empiezan con `llm-approve-`. Vence a los 5 min (deniega) y también al cancelar el turno |
+| `agent-approval-dismiss` | **Nuevo.** Payload: el `id` (string) de una pregunta que ya no espera respuesta (turno cancelado o plazo vencido). La UI puede cerrar su diálogo; responder tarde se ignora de todos modos |
+| Aviso «sin herramientas» | Si el servidor rechaza las herramientas («does not support tools»), el turno sigue sin ellas y se emite **una línea `text`** en cursiva (`_⚠ …_`) al comienzo de la respuesta, una vez por sesión y modelo |
+
+**Servidores remotos: chequeo previo, cabeceras y TLS** (spec `ia-ollama-chat-utilidades` → «Servidores remotos»; migración 60):
+
+| Contrato | Detalle |
+| --- | --- |
+| `SaveModelServer(s, token, clearToken, headers, replaceHeaders)` | `headers` es `Record<string,string>` (nombre → valor). `replaceHeaders=false` conserva las guardadas e ignora `headers`; `true` las reemplaza (`{}` = borrar todas). `s.insecureTls` se guarda. Rechaza nombres inválidos o reservados (`Host`, `Content-Length`, `Content-Type`, `Accept`, `Transfer-Encoding`, `Connection`…), valores con saltos de línea, más de 20 cabeceras y `Authorization` si el servidor queda con token |
+| `TestModelServer(kind, baseUrl, token, serverId, insecureTls, headers)` | Con `serverId` y `token == ""` usa el token guardado; con `serverId` y `headers == null` usa las guardadas (un `{}` explícito prueba sin cabeceras). `insecureTls` es el del formulario. Los fallos van en `error`, no como excepción |
+| `ModelServerHealth(id)` | Devuelve `ModelServerProbe`. Usa el caché de chequeos (30 s); vencido, hace uno nuevo con 4 s de plazo. Un servidor caído o un id inexistente viajan en `error` con `ok:false`, no como excepción. Los fallos no se cachean |
+| `ModelServer.insecureTls` / `headerNames` | `insecureTls`: no verificar el certificado de ese servidor. `headerNames`: solo nombres, siempre arreglo (nunca `null`); los valores no cruzan nunca hacia el frontend, igual que el token |
+| `ModelServerProbe.latencyMs` / `checkedAt` | Lo que tardó el chequeo (ms) y cuándo se hizo (unix ms); con el caché, `checkedAt` dice cuán vieja es la respuesta. `models` es siempre arreglo |
+| Error de `SendAgentChat` / `AgentAsk*` / `AskAgentOnce` con `llm:` | Si el servidor no responde al chequeo previo (4 s), la llamada **devuelve el error** y el turno no empieza: ni eventos ni fila de chat. Texto: `No se pudo usar el servidor «nombre» (host:puerto): <causa>. Revisá que esté encendido y accesible desde esta máquina.` (un fallo de certificado lleva en su lugar la sugerencia «Aceptar certificado autofirmado») |
+| Tope de vueltas | 25 por turno (`agentchat.DefaultToolRounds`). Al llegar: evento `error` con el motivo y `usage` acumulado; lo ya hecho queda hecho |
+| `AgentAsk*` / `AskAgentOnce` | **Sin herramientas** a propósito: los botones de un turno son de solo texto y rápidos |
+
+**Cerebro: escritura automática de notas** (spec `ia-ollama-chat-utilidades`, fase 6; migración 59):
+
+```go
+type BrainStatus struct {
+    MCPEnabled bool   `json:"mcpEnabled"` // servidor MCP encendido
+    NotesWrite bool   `json:"notesWrite"` // mcpNotesWrite activo
+    Root       string `json:"root"`       // carpeta raíz (default "Cerebro")
+}
+func (a *App) BrainStatus() (BrainStatus, error)
+func (a *App) GetBrainRoot() (string, error)
+func (a *App) SetBrainRoot(root string) error                   // "" vuelve a "Cerebro"
+func (a *App) SetAgentChatBrain(chatID string, enabled bool) error
+// vault.AgentChat gana:  Brain bool `json:"brain"`  (ListAgentChats, ListAllAgentChats, SearchAgentChats)
+```
+
+| Contrato | Detalle |
+| --- | --- |
+| `SetBrainRoot(root)` | Nombre (`Cerebro`) o ruta (`Notas/Cerebro`). Se guarda canónica (segmentos recortados, separados por `/`). Rechaza segmentos vacíos, `.`, `..`, caracteres de control, >80 caracteres por nivel y >8 niveles (`vault.ErrBadFolderPath`). Vive en `settings.brain_root`, pero **no** está en `vault.Settings`: solo por estos dos bindings. Las notas ya escritas no se mueven |
+| `SetAgentChatBrain(chatID, enabled)` | Encender **falla** con un error i18n claro si el servidor MCP está apagado o si `mcpNotesWrite` está apagado; apagar nunca falla. **No exige que el chat exista**: sin fila en `agent_chats` el pedido queda en memoria y se persiste (`agent_chats.brain`) al terminar el primer `SendAgentChat` que crea la fila. Con fila, se guarda de inmediato y no toca `updated_at`. La UI puede llamarlo antes del primer envío |
+| `AgentChat.brain` | Lo que recuerda la conversación (per-chat, nace en `false`). Es la bandera guardada: si después se revoca un permiso global, `brain` sigue en `true` pero el turno **deja de llevar las instrucciones** (el cerebro efectivo = bandera ∧ MCP encendido ∧ `mcpNotesWrite`). Para explicarlo: `BrainStatus()` |
+| `BrainStatus()` | Estado de los dos permisos globales y la raíz, para explicar por qué el control está deshabilitado y a qué carpeta escribe |
+| Instrucciones por turno | Con el cerebro efectivo encendido, `SendAgentChat` agrega el texto del cerebro (es/en según el idioma de la app): `llm:*` → `Turn.System`; `claude` → `--append-system-prompt` (el mismo valor que el idioma de respuesta, detrás de él); `codex`/`antigravity` → antepuesto al prompt que recibe el CLI. **El historial guarda solo lo que escribió el usuario** |
+| Proyecto vs. tema | `module git` / `utilities` con `contextId` = id de un repo conocido → proyecto = nombre del repo; `db` / `ssh` con `contextId` = id o alias de conexión → proyecto = alias; cualquier otro (o recurso borrado) → tema. Una `/` o `\` del nombre se cambia por `-` para no partir la ruta. Carpeta: `<root>/Proyectos/<proyecto>` o `<root>/Temas/<tema>` (el tema lo elige el agente) |
+
+**Herramientas de notas del MCP** (puente MCP y `CallTool` de los `llm:*`; la escritura solo se declara con `mcpNotesWrite`):
+
+| Herramienta | Argumentos | Devuelve / regla |
+| --- | --- | --- |
+| `vault_search_notes` | `query` (req.), `folder?`, `tag?` | Hasta 10: `- título — carpeta — #tags` + fragmento. `folder` = esa carpeta y sus descendientes; `tag` sin `#`. `tag:x` dentro del texto vale como filtro. Carpeta inexistente → mensaje (no error) que remite a `vault_list_folders` |
+| `vault_read_note` | `title` (req.) | Cabecera (`Título`, `Carpeta`, `Etiquetas`, `Actualizada`, `Enlaza a`, `Enlazada desde`, y con escritura habilitada `Escrita por`) + `---` + Markdown. Los enlaces listan solo títulos de notas **no privadas**; un enlace a una nota inexistente se marca |
+| `vault_list_folders` | — | Carpetas de notas como rutas con `N notas (T con subcarpetas)` y la raíz. **Solo cuentan y solo aparecen carpetas con notas visibles**: una carpeta con solo notas privadas (o vacía) no se lista |
+| `vault_list_notes` | `folder?`, `recursive?` | Títulos alfabéticos con etiquetas y fecha (máx. 100). Sin `folder`: notas sueltas de la raíz; con `recursive` y sin `folder`: toda la base. Solo no privadas |
+| `vault_create_note` | `title`, `content`, `folder?` | `folder` = ruta; crea las que falten (scope `note`). Rechaza traversal/segmentos vacíos y un título repetido **antes** de crear carpetas |
+| `vault_append_to_note` | `title`, `content`, `heading?` | **Nueva.** Agrega una sección (`## heading` opcional) al final de una nota que creó un agente y el usuario no editó (`vault.AgentCanEdit`); privadas fuera (misma puerta `NoteForAI`); reindexa enlaces; el resultado no puede pasar de 64 KB |
+| `vault_update_note` | `title`, `content` | Sin cambios de regla |
+
+Etiquetas (`vault.NoteTags`): `#tag` en el cuerpo (fuera de bloques y código en línea) o en el frontmatter, y la clave `tags:` (`[a, b]`, `a, b` o lista `- a`); sin distinguir tildes ni mayúsculas.
 
 **La API key entra por el ENTORNO del proceso, nunca por la línea de
 comandos** — ahí quedaría visible en `ps` para cualquier proceso de la

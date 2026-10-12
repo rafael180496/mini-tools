@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 
 	"path/filepath"
 	"strings"
@@ -229,22 +230,15 @@ func (a *App) CloseLocalTerminal(sessionID string) error {
 // por variable de entorno.
 
 // ListAgents devuelve el catálogo de agentes resuelto contra esta máquina
-// (instalado o no) y contra la configuración guardada. Nunca incluye la API
+// (instalado o no) y contra la configuración guardada, más los servidores de
+// modelos como agentes `llm:<id>` (ver app_modelservers.go). Nunca incluye la API
 // key, solo si hay una — misma regla que SSHKeySummary con el material de la
 // llave.
 func (a *App) ListAgents() ([]agents.Agent, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
 	}
-	configs, err := a.vault.ListAgentConfigs()
-	if err != nil {
-		return nil, err
-	}
-	overrides := make(map[string]agents.Override, len(configs))
-	for id, c := range configs {
-		overrides[id] = agents.Override{Command: c.Command, HasKey: c.HasKey}
-	}
-	return agents.List(overrides), nil
+	return a.agentCatalog()
 }
 
 // SetAgentCommand cambia con qué comando se abre un agente. Vacío restaura el
@@ -499,7 +493,50 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 	// contenido, que es exactamente lo que no puede pasar (ver app_refs.go).
 	// El `@ruta` suelto del módulo Git no se toca: ese le pasa la ruta al
 	// agente a propósito, para que la lea él.
+	//
+	// Al historial va lo que llegó, SIN expandir (ver app_chatrecord.go).
+	typed := prompt
 	prompt, _ = a.expandRefs(prompt, module, contextID)
+
+	// Cerebro: si la conversación tiene "Guardar en mi cerebro" encendido, el
+	// turno lleva las instrucciones para ir dejando notas (app_brain.go). Vacío
+	// si está apagado o si los permisos de MCP ya no lo permiten.
+	brain := a.brainInstructions(sessionID, module, contextID)
+	// El pedido de encender el cerebro hecho antes de que existiera la fila se
+	// persiste cuando el envío la crea.
+	defer a.flushPendingBrain(sessionID)
+
+	// Un servidor de modelos no es un proceso: sin ejecutable, entorno ni
+	// aprobación por hook, solo el cliente HTTP. Sus herramientas (las del
+	// servidor MCP y, con un repositorio, las de archivos y comandos) corren en
+	// este proceso y las arma buildLLMTools según el modo — ver
+	// app_llmtools.go.
+	if agentchat.IsLLM(agentID) {
+		llmMode, err := parseChatMode(mode)
+		if err != nil {
+			return err
+		}
+		client, err := a.llmClientForTurn(agentID)
+		if err != nil {
+			return err
+		}
+		turn := agentchat.Turn{
+			SessionID: sessionID,
+			AgentID:   agentID,
+			Cwd:       cwd,
+			Prompt:    prompt,
+			Images:    images,
+			Model:     model,
+			Mode:      llmMode,
+			LLM:       client,
+			// Si la app se reinició y este chat se retoma, el Manager no
+			// tiene su memoria: se la arma desde lo guardado.
+			History: agentchat.SeedHistory(a.llmSeedHistory(sessionID), llmSeedMessages, llmSeedChars),
+		}
+		a.attachLLMTools(&turn, module, contextID)
+		turn.System = withBrain(turn.System, brain)
+		return a.sendRecorded(module, contextID, typed, turn)
+	}
 
 	// Mismo entorno que una sesión de terminal: PATH ampliado y, si hay una,
 	// la API key por variable — nunca por la línea de comandos, donde quedaría
@@ -509,26 +546,18 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		return err
 	}
 
-	// El modo se valida contra la unión conocida en vez de reenviarse tal
-	// cual: es lo único que separa "consultá" de "modificá archivos", y no
-	// puede depender de que el frontend mande un string bien escrito.
-	var m agentchat.Mode
-	switch mode {
-	case "plan":
-		m = agentchat.ModePlan
-	case "auto":
-		m = agentchat.ModeAuto
-	case "approve":
-		m = agentchat.ModeApprove
-	case "edit":
-		m = agentchat.ModeEdit
-	case "":
-		m = agentchat.ModeAsk
-	default:
-		return i18n.Errorf(i18n.Msg{ES: "app: modo de chat desconocido %q", EN: "app: unknown chat mode %q"}, mode)
+	m, err := parseChatMode(mode)
+	if err != nil {
+		return err
 	}
 
-	return a.agentChats.Send(agentchat.Turn{
+	// Claude Code recibe las instrucciones como system prompt agregado; Codex
+	// y Antigravity no tienen un equivalente que no reemplace las suyas, así
+	// que van adelante del mensaje que se le manda al CLI. `typed` —lo que se
+	// graba en el historial— no las lleva.
+	system, prompt := brainDelivery(agentID, brain, prompt)
+
+	return a.sendRecorded(module, contextID, typed, agentchat.Turn{
 		SessionID: sessionID,
 		AgentID:   agentID,
 		Command:   agent.Command,
@@ -539,6 +568,7 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		Cwd:             cwd,
 		Env:             env,
 		Prompt:          prompt,
+		System:          system,
 		Images:          images,
 		Mode:            m,
 		Effort:          effort,
@@ -546,6 +576,25 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		ApproveSettings: a.approveSettings,
 		ApproveEnv:      agentapprove.HookEnv(a.approve.Path()),
 	})
+}
+
+// parseChatMode valida el modo contra la unión conocida en vez de reenviarlo
+// tal cual: es lo único que separa «consultá» de «modificá archivos», y no
+// puede depender de que el frontend mande un string bien escrito.
+func parseChatMode(mode string) (agentchat.Mode, error) {
+	switch mode {
+	case "plan":
+		return agentchat.ModePlan, nil
+	case "auto":
+		return agentchat.ModeAuto, nil
+	case "approve":
+		return agentchat.ModeApprove, nil
+	case "edit":
+		return agentchat.ModeEdit, nil
+	case "":
+		return agentchat.ModeAsk, nil
+	}
+	return agentchat.ModeAsk, i18n.Errorf(i18n.Msg{ES: "app: modo de chat desconocido %q", EN: "app: unknown chat mode %q"}, mode)
 }
 
 // AskAgentOnce corre UN turno y devuelve el texto de la respuesta, en vez de
@@ -574,16 +623,24 @@ func (a *App) AskAgentOnce(repoID, agentID, prompt string) (string, error) {
 		return "", err
 	}
 
-	env, err := a.agentEnv(agent)
-	if err != nil {
-		return "", err
-	}
-
 	// Tope de tiempo: esto lo dispara un botón y bloquea un formulario, así
 	// que un agente que se cuelga tiene que fallar y no dejar el botón girando
 	// para siempre.
 	ctx, cancel := context.WithTimeout(context.Background(), AgentAskTimeout)
 	defer cancel()
+
+	if agentchat.IsLLM(agentID) {
+		client, err := a.llmClientForTurn(agentID)
+		if err != nil {
+			return "", err
+		}
+		return a.agentChats.Ask(ctx, agentchat.Turn{AgentID: agentID, Cwd: cwd, Prompt: prompt, LLM: client})
+	}
+
+	env, err := a.agentEnv(agent)
+	if err != nil {
+		return "", err
+	}
 
 	return a.agentChats.Ask(ctx, agentchat.Turn{
 		AgentID: agentID,
@@ -625,12 +682,19 @@ func (a *App) CancelAgentChat(sessionID string) error {
 
 // ResetAgentChat olvida la conversación: el próximo mensaje arranca de cero en
 // vez de encadenar con lo anterior.
+//
+// También borra los mensajes que la app guardó de ese chat (la entrada del
+// historial queda): el botón promete empezar de cero, y dejar lo anterior en el
+// vault haría que un servidor de modelos lo recuperara al retomar el chat, o
+// que el historial mostrara una conversación que la persona ya descartó. La
+// conversación propia del CLI no se toca.
 func (a *App) ResetAgentChat(sessionID string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
+	a.discardChatTurn(sessionID)
 	a.agentChats.Reset(sessionID)
-	return nil
+	return a.vault.DeleteAgentChatMessages(sessionID)
 }
 
 // GitRemoveMCPServer saca un servidor MCP de un archivo de configuración.
@@ -758,7 +822,12 @@ func (a *App) RespondAgentApproval(id string, allow bool, reason string) error {
 	a.approveMu.Unlock()
 
 	if reply != nil {
-		reply <- agentapprove.Decision{Allow: allow, Reason: reason}
+		// No bloqueante: si ya se respondió (doble clic) el canal tiene su
+		// único lugar ocupado y nadie lo va a leer.
+		select {
+		case reply <- agentapprove.Decision{Allow: allow, Reason: reason}:
+		default:
+		}
 	}
 	return nil
 }
@@ -790,6 +859,10 @@ func (a *App) ListAgentChats(repoID string) ([]vault.AgentChat, error) {
 func (a *App) AgentCLIConversations(agentID, repoID string) ([]agentchat.Conversation, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
+	}
+	// Un servidor de modelos no tiene conversaciones propias que listar.
+	if agentchat.IsLLM(agentID) {
+		return []agentchat.Conversation{}, nil
 	}
 	root, err := a.gitRepo(repoID)
 	if err != nil {
@@ -857,6 +930,8 @@ func (a *App) DeleteAgentChat(id string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
+	// Un turno en vuelo no debe volver a escribir en un chat borrado.
+	a.discardChatTurn(id)
 	return a.vault.DeleteAgentChat(id)
 }
 
@@ -880,18 +955,103 @@ func (a *App) TouchAgentChat(id, conversationID string) error {
 	return a.vault.TouchAgentChat(id, conversationID)
 }
 
+// AgentChatMessage es un mensaje guardado de una conversación.
+//
+// Role es "user", "assistant" o "tool". En las filas "tool", ToolName es la
+// herramienta y Content su resumen (primera línea) y detalle (segunda, si hay).
+// Un error del turno es una fila "assistant" cuyo Content empieza con "⚠ "
+// (agentchat.ErrorRowPrefix). Dentro de un turno las herramientas van antes de
+// la respuesta; los tokens (Usage) están en la última fila del turno.
+// CreatedAt son segundos Unix.
+type AgentChatMessage struct {
+	Seq       int              `json:"seq"`
+	Role      string           `json:"role"`
+	Content   string           `json:"content"`
+	ToolName  string           `json:"toolName"`
+	Usage     *agentchat.Usage `json:"usage"`
+	CreatedAt int64            `json:"createdAt"`
+}
+
+// AgentChatMessages devuelve los mensajes guardados de una conversación, del
+// primero al último. Es el historial genérico de la app: sirve igual para un
+// CLI que para un servidor de modelos. Una conversación sin mensajes
+// guardados (anterior a esta función) devuelve una lista vacía — para esas, el
+// transcript del CLI sigue disponible vía AgentChatHistory.
+func (a *App) AgentChatMessages(chatID string) ([]AgentChatMessage, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	rows, err := a.vault.ListAgentChatMessages(chatID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AgentChatMessage, 0, len(rows))
+	for _, m := range rows {
+		msg := AgentChatMessage{Seq: m.Seq, Role: m.Role, Content: m.Content, ToolName: m.ToolName, CreatedAt: m.CreatedAt}
+		if m.Usage != "" {
+			var u agentchat.Usage
+			if json.Unmarshal([]byte(m.Usage), &u) == nil {
+				msg.Usage = &u
+			}
+		}
+		out = append(out, msg)
+	}
+	return out, nil
+}
+
+// SearchAgentChats busca texto en los títulos y los mensajes de todas las
+// conversaciones, de cualquier proveedor, y devuelve las que aciertan —las más
+// recientes primero—. Sin distinguir mayúsculas ni acentos; varias palabras
+// deben aparecer todas (en el título o en cualquier mensaje) y las comillas
+// piden una frase literal. Una búsqueda vacía devuelve una lista vacía: para
+// listar todo está ListAllAgentChats.
+func (a *App) SearchAgentChats(query string) ([]vault.AgentChat, error) {
+	if err := a.requireUnlocked(); err != nil {
+		return nil, err
+	}
+	return a.vault.SearchAgentChats(query, 200)
+}
+
 // AgentChatHistory recupera los mensajes de una conversación anterior, para
 // que al retomar un chat el panel no arranque vacío.
 //
-// **No sale igual para los tres agentes** y eso es parte del contrato: Claude
-// Code se lee entero, Codex se lee con una heurística documentada para separar
-// sus mensajes inyectados de los reales, y Antigravity devuelve vacío porque
-// guarda sus pasos como blobs binarios. Un vacío NO es un error: la
+// Lee primero los mensajes que guardó la app (AgentChatMessages), ubicando el
+// chat por su id de conversación. Solo si ese chat no tiene mensajes guardados
+// —uno anterior a esa función, o una conversación del CLI adoptada— cae a la
+// transcripción del propio CLI.
+//
+// **La transcripción no sale igual para los tres agentes** y eso es parte del
+// contrato: Claude Code se lee entero, Codex se lee con una heurística
+// documentada para separar sus mensajes inyectados de los reales, y
+// Antigravity lee su transcript en JSONL. Un vacío NO es un error: la
 // conversación sigue encadenando igual, porque eso lo hace el id del CLI y no
 // esto.
 func (a *App) AgentChatHistory(agentID, conversationID string) ([]agentchat.PastTurn, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return nil, err
+	}
+	chatID, err := a.vault.AgentChatIDByConversation(agentID, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	// Un servidor de modelos usa el id de la sesión como id de conversación:
+	// si la fila todavía no apunta a él (el Touch del frontend puede llegar
+	// después), el id de conversación ES el del chat.
+	if chatID == "" && agentchat.IsLLM(agentID) {
+		chatID = conversationID
+	}
+	if chatID != "" {
+		rows, err := a.vault.ListAgentChatMessages(chatID)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 0 {
+			return agentchat.PastTurnsFromStored(storedToHistory(rows)), nil
+		}
+	}
+	// Un servidor de modelos no tiene transcripción propia: vacío, sin error.
+	if agentchat.IsLLM(agentID) {
+		return []agentchat.PastTurn{}, nil
 	}
 	return agentchat.History(agentID, conversationID)
 }
@@ -902,6 +1062,11 @@ func (a *App) AgentChatHistory(agentID, conversationID string) ([]agentchat.Past
 func (a *App) AgentModelCatalog(agentID string) (agentmodels.Catalog, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return agentmodels.Catalog{}, err
+	}
+	// Los modelos de un servidor salen de él en el momento (sin la caché de
+	// los CLIs: bajar un modelo nuevo tiene que verse enseguida).
+	if agentchat.IsLLM(agentID) {
+		return a.llmModelCatalog(agentID), nil
 	}
 	return agentmodels.For(agentID), nil
 }

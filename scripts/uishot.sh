@@ -14,6 +14,7 @@
 #   UISHOT_SECTION=Vault ./scripts/uishot.sh settings  # Configuración, sección Vault
 #   UISHOT_SCALE=150 ./scripts/uishot.sh settings   # con la letra al 150 %
 #   UISHOT_LANG=es ./scripts/uishot.sh files        # en español (por defecto, inglés)
+#   UISHOT_THEME=light ./scripts/uishot.sh files    # en tema claro (por defecto, oscuro)
 #
 # UISHOT_MODULE elige qué módulo abre el menú master de la barra lateral
 # (connections | ssh | git | notes | http | utilities). Solo lo miran las vistas que montan
@@ -41,6 +42,8 @@ SCALE="${UISHOT_SCALE:-}"
 SECTION="${UISHOT_SECTION:-}"
 # Idioma de la interfaz (en | es). Sin valor, el de la app: inglés.
 LANG_UI="${UISHOT_LANG:-en}"
+# Tema (dark | light). Sin valor, el oscuro, que es el de la app.
+THEME="${UISHOT_THEME:-}"
 PORT="${UISHOT_PORT:-5199}"
 
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -68,7 +71,7 @@ done
     --window-size="$W,$H" \
     --virtual-time-budget=4000 \
     --screenshot="$OUT" \
-    "http://localhost:$PORT/uishot.html?view=$VIEW&module=$MODULE&platform=$PLATFORM&scale=$SCALE&section=$SECTION&lang=$LANG_UI" >/dev/null 2>&1
+    "http://localhost:$PORT/uishot.html?view=$VIEW&module=$MODULE&platform=$PLATFORM&scale=$SCALE&section=$SECTION&lang=$LANG_UI&theme=$THEME" >/dev/null 2>&1
 
 [ -s "$OUT" ] || { echo "La captura salió vacía. Log de vite:"; tail -5 /tmp/uishot-vite.log; exit 1; }
 echo "$OUT"

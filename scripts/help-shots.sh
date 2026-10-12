@@ -40,6 +40,9 @@ unlock-vault unlock 1232 770
 sidebar-modules sidebarsearch 1200 760
 settings-editor settings 1100 820
 settings-ai settings:IA 1100 800
+model-servers modelservertest 1100 760
+model-servers-form modelserverheaders 1100 980
+ai-model-offline healthred 1440 860
 ssh-terminal sshterm 1280 420
 ui-chat chat 900 700
 ui-thinking thinking 900 560
@@ -50,6 +53,16 @@ utilities-activity-monitor activitymonitor 1200 640
 utilities-docker docker 1300 560
 utilities-docker-logs dockersearch 1500 600
 utilities-docker-builds dockerbuilds 1300 400
+utilities-ai-chat aichat 1440 860
+utilities-ai-chat-conversation aichatchat 1440 860
+utilities-ai-chat-search aichatsearch 1440 860
+ai-code-agent-tools toolevents 1440 860
+ai-code-agent-approval approvalrisky 1100 700
+ai-code-agent-remote remotewarn 1440 860
+ai-code-agent-norepo norepo 1440 860
+ai-brain-chat brainon 1440 860
+ai-brain-disabled braindisabled 1440 860
+ai-brain-settings brainsettings 1100 900
 '
 
 mkdir -p docs/screenshots/es

@@ -1303,6 +1303,113 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 57,
+		desc:    "crea model_servers (servidores de modelos Ollama / compatibles con OpenAI, con el token cifrado)",
+		apply: func(tx *sql.Tx) error {
+			// Un servidor de modelos aparece en el catálogo de agentes con id
+			// `llm:<id>`. El token (Bearer, opcional) va cifrado por columna con
+			// el mismo esquema que la API key de un agente: un servidor detrás
+			// de un proxy o con key propia no puede dejar el secreto en claro.
+			// La URL y el nombre van en claro: no son secretos y hay que poder
+			// listarlos sin pasar por el cifrado.
+			_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS model_servers (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL UNIQUE,
+				kind TEXT NOT NULL,
+				base_url TEXT NOT NULL,
+				encrypted_token BLOB,
+				token_nonce BLOB,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)`)
+			return err
+		},
+	},
+	{
+		version: 58,
+		desc:    "crea agent_chat_messages (mensajes de cada conversación con un agente, con el contenido cifrado)",
+		apply: func(tx *sql.Tx) error {
+			// Hasta acá agent_chats guardaba solo el PUNTERO a la conversación
+			// del CLI, y el historial lo tenía el CLI. Un servidor de modelos
+			// (`llm:<id>`) no tiene dónde guardar la charla, y buscar en el
+			// historial exige tenerlo en un solo lugar: desde esta migración la
+			// app guarda los mensajes de TODOS los proveedores. Los CLIs siguen
+			// retomando con su propio `--resume`; esto no lo reemplaza.
+			//
+			// El contenido va cifrado por columna con el mismo esquema que el
+			// título del chat: es lo que la persona escribió y lo que el modelo
+			// contestó, y puede traer cualquier cosa. El resto (rol, nombre de
+			// herramienta, tokens, fechas) va en claro — no es contenido.
+			//
+			// La FK con ON DELETE CASCADE queda declarada pero NO se aplica:
+			// este vault no activa `PRAGMA foreign_keys` (hallazgo de la
+			// migración 31). Quien borra un chat borra sus mensajes a mano.
+			if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS agent_chat_messages (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				chat_id TEXT NOT NULL REFERENCES agent_chats(id) ON DELETE CASCADE,
+				seq INTEGER NOT NULL,
+				role TEXT NOT NULL,
+				content BLOB,
+				nonce BLOB,
+				tool_name TEXT NOT NULL DEFAULT '',
+				usage TEXT NOT NULL DEFAULT '',
+				created_at INTEGER NOT NULL
+			)`); err != nil {
+				return err
+			}
+			// Toda lectura es "los mensajes de este chat, en orden".
+			_, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat ON agent_chat_messages (chat_id, seq)`)
+			return err
+		},
+	},
+	{
+		version: 59,
+		desc:    "agrega settings.brain_root (carpeta raíz del cerebro) y agent_chats.brain (escritura automática de notas por conversación)",
+		apply: func(tx *sql.Tx) error {
+			// Cerebro: un chat con el control encendido le pide al agente que
+			// vaya dejando asentado lo que vale la pena conservar como notas.
+			//
+			// brain_root es la carpeta de notas (ruta) bajo la que escribe; el
+			// DEFAULT es el nombre de siempre para que una instalación
+			// existente no necesite elegirlo. No es un permiso: el permiso de
+			// escribir notas sigue siendo mcp_notes_write.
+			//
+			// agent_chats.brain nace en 0 y es POR CONVERSACIÓN: encenderlo en
+			// un chat no lo enciende en los demás, y se recuerda al retomar.
+			if _, err := tx.Exec(`ALTER TABLE settings ADD COLUMN brain_root TEXT NOT NULL DEFAULT 'Cerebro'`); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`ALTER TABLE agent_chats ADD COLUMN brain INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
+	{
+		version: 60,
+		desc:    "agrega a model_servers las cabeceras propias cifradas (encrypted_headers / headers_nonce) y insecure_tls (certificado autofirmado)",
+		apply: func(tx *sql.Tx) error {
+			// Un servidor remoto detrás de un gateway suele pedir cabeceras
+			// propias (X-Api-Key, CF-Access-Client-Id…) y casi siempre sus
+			// VALORES son secretos. Van como un único JSON {nombre: valor}
+			// cifrado por columna con el mismo esquema que el token: una sola
+			// columna en lugar de una tabla hija, porque nunca se consulta por
+			// nombre ni por valor. NULL = sin cabeceras.
+			//
+			// insecure_tls es una preferencia, no un secreto, y se lee en cada
+			// listado: va en claro. Nace en 0 (verificar el certificado) para
+			// que ningún servidor existente cambie de comportamiento.
+			for _, stmt := range []string{
+				`ALTER TABLE model_servers ADD COLUMN encrypted_headers BLOB`,
+				`ALTER TABLE model_servers ADD COLUMN headers_nonce BLOB`,
+				`ALTER TABLE model_servers ADD COLUMN insecure_tls INTEGER NOT NULL DEFAULT 0`,
+			} {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

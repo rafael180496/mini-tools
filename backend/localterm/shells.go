@@ -253,3 +253,9 @@ func lookupShell(id string) (Shell, bool) {
 	}
 	return Shell{}, false
 }
+
+// ResolveShell es lookupShell para quien necesita lanzar un comando suelto
+// con el MISMO intérprete que la terminal (por ejemplo el chat con
+// herramientas): respeta el shell elegido en Configuración y cae al default
+// cuando el guardado no está instalado.
+func ResolveShell(id string) (Shell, bool) { return lookupShell(id) }

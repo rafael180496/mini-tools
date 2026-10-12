@@ -46,6 +46,8 @@ export function AgentCLIConversations(arg1:string,arg2:string):Promise<Array<age
 
 export function AgentChatHistory(arg1:string,arg2:string):Promise<Array<agentchat.PastTurn>>;
 
+export function AgentChatMessages(arg1:string):Promise<Array<main.AgentChatMessage>>;
+
 export function AgentChatModes(arg1:string):Promise<Array<string>>;
 
 export function AgentChatSupported(arg1:string):Promise<boolean>;
@@ -101,6 +103,8 @@ export function BackupVault(arg1:string):Promise<string>;
 export function BeginRedisTransaction(arg1:string):Promise<void>;
 
 export function BeginTransaction(arg1:string):Promise<void>;
+
+export function BrainStatus():Promise<main.BrainStatus>;
 
 export function CallTool(arg1:string,arg2:Record<string, any>):Promise<string>;
 
@@ -168,6 +172,8 @@ export function DeleteConnection(arg1:string):Promise<void>;
 
 export function DeleteFolder(arg1:string):Promise<void>;
 
+export function DeleteModelServer(arg1:string):Promise<void>;
+
 export function DeleteMongoDocument(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function DeleteNote(arg1:string):Promise<void>;
@@ -183,6 +189,8 @@ export function DeleteSSHKey(arg1:string):Promise<void>;
 export function DeleteSftpPath(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteSshSnippet(arg1:string):Promise<void>;
+
+export function DetectLocalOllama():Promise<boolean>;
 
 export function DetectQueryParams(arg1:string,arg2:string):Promise<Array<query.Param>>;
 
@@ -261,6 +269,8 @@ export function ExternalEditors():Promise<Array<osopen.Editor>>;
 export function FetchMoreRows(arg1:string):Promise<void>;
 
 export function GenerateProjectDocs(arg1:string,arg2:string,arg3:string):Promise<boolean>;
+
+export function GetBrainRoot():Promise<string>;
 
 export function GetConnectionForEdit(arg1:string):Promise<main.ConnectionEditInfo>;
 
@@ -614,6 +624,8 @@ export function ListListeningPorts():Promise<Array<portkill.Listener>>;
 
 export function ListLocalHistory(arg1:string,arg2:number):Promise<Array<vault.SshHistoryEntry>>;
 
+export function ListModelServers():Promise<Array<main.ModelServer>>;
+
 export function ListMongoCollections(arg1:string,arg2:string,arg3:boolean):Promise<Array<db.MongoCollectionInfo>>;
 
 export function ListMongoDatabases(arg1:string):Promise<Array<db.MongoDatabaseInfo>>;
@@ -649,6 +661,8 @@ export function MCPServerStatus():Promise<main.MCPStatus>;
 export function MakeSftpDir(arg1:string,arg2:string):Promise<void>;
 
 export function MergeNotes(arg1:string,arg2:string):Promise<void>;
+
+export function ModelServerHealth(arg1:string):Promise<main.ModelServerProbe>;
 
 export function MoveConnectionToFolder(arg1:string,arg2:string):Promise<void>;
 
@@ -776,6 +790,8 @@ export function SaveConnection(arg1:main.ConnectionInput,arg2:boolean):Promise<v
 
 export function SaveDDLToFile(arg1:string,arg2:string):Promise<string>;
 
+export function SaveModelServer(arg1:main.ModelServer,arg2:string,arg3:boolean,arg4:Record<string, string>,arg5:boolean):Promise<main.ModelServer>;
+
 export function SaveNoteImage(arg1:string,arg2:string):Promise<string>;
 
 export function SaveSQLFile(arg1:string,arg2:string):Promise<void>;
@@ -784,11 +800,15 @@ export function SaveSQLFileAs(arg1:string,arg2:string):Promise<string>;
 
 export function SaveSSHKey(arg1:string,arg2:string,arg3:string):Promise<vault.SSHKeySummary>;
 
+export function SearchAgentChats(arg1:string):Promise<Array<vault.AgentChat>>;
+
 export function SearchNotesSmart(arg1:string,arg2:number):Promise<Array<vault.NoteHit>>;
 
 export function SendAgentChat(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:Array<string>):Promise<void>;
 
 export function SetAgentActive(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function SetAgentChatBrain(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetAgentChatContext(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -807,6 +827,8 @@ export function SetAutoBackupIntervalHours(arg1:number):Promise<void>;
 export function SetAutoSaveEnabled(arg1:boolean):Promise<void>;
 
 export function SetAutoSaveIntervalSeconds(arg1:number):Promise<void>;
+
+export function SetBrainRoot(arg1:string):Promise<void>;
 
 export function SetConnectionSchemas(arg1:string,arg2:Array<string>):Promise<void>;
 
@@ -891,6 +913,8 @@ export function SuggestInlineSQL(arg1:sqlintel.Request):Promise<string>;
 export function SyncSchemaMetadata(arg1:string,arg2:string):Promise<db.SchemaMetadata>;
 
 export function TestConnection(arg1:main.ConnectionInput):Promise<void>;
+
+export function TestModelServer(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:Record<string, string>):Promise<main.ModelServerProbe>;
 
 export function TouchAgentChat(arg1:string,arg2:string):Promise<void>;
 

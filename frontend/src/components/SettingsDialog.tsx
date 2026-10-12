@@ -13,6 +13,7 @@ import {LANGUAGES, formatNumber, useT, type Lang} from '../i18n'
 import {TERMINAL_THEME_IDS, TERMINAL_THEME_LABELS, type TerminalThemeId} from '../xterm/terminalThemes'
 import {TERMINAL_FONT_MAX, TERMINAL_FONT_MIN} from '../xterm/terminalFont'
 import AgentSettings from './AgentSettings'
+import ModelServersSettings from './ModelServersSettings'
 import {
     EDITOR_FONTS,
     EDITOR_FONT_SIZES,
@@ -22,6 +23,7 @@ import {
     type EditorAppearance,
 } from '../codemirror/editorAppearance'
 import AiAccessPanel from './AiAccessPanel'
+import BrainSettingsPanel from './BrainSettingsPanel'
 
 interface SettingsDialogProps {
     rememberMasterKey: boolean
@@ -74,6 +76,9 @@ interface SettingsDialogProps {
     updateInfo: updatecheck.Info | null
     onOpenRepo: () => void
     onClose: () => void
+    // Sección con la que abre. Sirve para llegar directo a «IA» desde donde algo
+    // dice «encendelo en Configuración» (el interruptor del cerebro del chat).
+    initialSection?: SettingsSectionId
 }
 
 // Las secciones del modal. Agrupadas por DÓNDE se nota el ajuste, no por
@@ -101,6 +106,7 @@ const SECTIONS: {id: SettingsSectionId; icon: string}[] = [
 // cada opción en una tarjeta surface-container-highest, agrupadas por sección
 // (ver .claude/specs/design-system.md para el mapeo de roles de color).
 export default function SettingsDialog({
+    initialSection,
     rememberMasterKey,
     onToggleRememberMasterKey,
     editorThemeId,
@@ -160,7 +166,7 @@ export default function SettingsDialog({
     // entre aperturas: el modal se abre para cambiar una cosa puntual, y
     // devolverlo donde quedó la última vez esconde las otras tres detrás de
     // una decisión vieja.
-    const [section, setSection] = useState<SettingsSectionId>('general')
+    const [section, setSection] = useState<SettingsSectionId>(initialSection ?? 'general')
     const isSection = (id: SettingsSectionId) => section === id
     const [version, setVersion] = useState('')
     useEffect(() => {
@@ -778,6 +784,8 @@ export default function SettingsDialog({
                         {isSection('ai') && (
                             <>
                                 <AiAccessPanel />
+                                <BrainSettingsPanel />
+                                <ModelServersSettings />
                                 <AgentSettings />
                             </>
                         )}

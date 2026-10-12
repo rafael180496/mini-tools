@@ -1,0 +1,43 @@
+// Pedidos de un componente profundo a la ventana principal.
+//
+// El chat vive en tres lugares (panel lateral, pestaña Git, Chat de IA) y desde
+// cualquiera necesita pedirle a `Workspace` dos cosas que solo él puede hacer:
+// abrir Configuración en una sección y abrir una nota en una pestaña. Pasar un
+// callback por los tres anfitriones y por `AgentChat` es una cadena de props que
+// no aporta nada (ninguno de los intermedios hace algo con él), y un contexto
+// nuevo sería mucho para dos verbos. Un evento de ventana, tipado acá, es lo
+// justo.
+//
+// Si nadie escucha —una vista suelta del banco de capturas— el pedido se pierde
+// sin error: es un atajo, no una operación.
+
+export type SettingsSectionRequest = 'general' | 'vault' | 'terminal' | 'ai'
+
+export interface OpenNoteRequest {
+    // Se prefiere el id; con solo el título, quien escucha lo resuelve.
+    id?: string
+    title?: string
+}
+
+const OPEN_SETTINGS = 'mini-tools:open-settings'
+const OPEN_NOTE = 'mini-tools:open-note'
+
+export function requestOpenSettings(section: SettingsSectionRequest): void {
+    window.dispatchEvent(new CustomEvent<SettingsSectionRequest>(OPEN_SETTINGS, {detail: section}))
+}
+
+export function onOpenSettingsRequest(handler: (section: SettingsSectionRequest) => void): () => void {
+    const listener = (e: Event) => handler((e as CustomEvent<SettingsSectionRequest>).detail)
+    window.addEventListener(OPEN_SETTINGS, listener)
+    return () => window.removeEventListener(OPEN_SETTINGS, listener)
+}
+
+export function requestOpenNote(req: OpenNoteRequest): void {
+    window.dispatchEvent(new CustomEvent<OpenNoteRequest>(OPEN_NOTE, {detail: req}))
+}
+
+export function onOpenNoteRequest(handler: (req: OpenNoteRequest) => void): () => void {
+    const listener = (e: Event) => handler((e as CustomEvent<OpenNoteRequest>).detail)
+    window.addEventListener(OPEN_NOTE, listener)
+    return () => window.removeEventListener(OPEN_NOTE, listener)
+}

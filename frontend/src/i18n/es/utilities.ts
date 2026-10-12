@@ -27,6 +27,75 @@ export default {
             name: 'Docker',
             hint: 'contenedores, imágenes, volúmenes y redes: iniciarlos, detenerlos y ver sus logs',
         },
+        aiChat: {
+            name: 'Chat de IA',
+            hint: 'conversar con Claude, Codex, Antigravity o un modelo local, con historial y buscador',
+        },
+    },
+    // Pestaña «Chat de IA»: historial a la izquierda, conversación al centro.
+    aiChat: {
+        historyTitle: 'Conversaciones',
+        hideHistory: 'Ocultar historial',
+        showHistory: 'Mostrar historial',
+        hideHistoryTitle: 'Esconde la lista de conversaciones para darle todo el ancho al chat',
+        showHistoryTitle: 'Muestra la lista de conversaciones de todos los módulos',
+        newChat: 'Nuevo chat',
+        newChatTitle: (p: {shortcut: string}) =>
+            `Empieza una conversación nueva con el proveedor y el modelo elegidos (${p.shortcut}). La actual no se pierde: sigue en el historial, y si estaba respondiendo, termina detrás.`,
+        searchLabel: 'Buscar conversaciones',
+        searchPlaceholder: 'Buscar en todas las conversaciones…',
+        searchTitle:
+            'Busca en los títulos y en el texto de los mensajes guardados de todas las conversaciones, de cualquier proveedor y módulo. Esc borra la búsqueda.',
+        clearSearch: 'Borra la búsqueda y vuelve a mostrar todas las conversaciones',
+        searching: 'Buscando…',
+        groups: {today: 'Hoy', yesterday: 'Ayer', last7: 'Últimos 7 días', older: 'Anteriores'},
+        providersLabel: 'Filtrar por proveedor',
+        allProviders: 'Todos',
+        allProvidersTitle: 'Muestra las conversaciones de todos los proveedores',
+        providerChipTitle: (p: {agent: string; n: number}) =>
+            `Muestra solo las conversaciones con ${p.agent} (${p.n}). Hacé clic de nuevo para volver a ver todas.`,
+        count: (p: {n: number}) => (p.n === 1 ? '1 conversación' : `${p.n} conversaciones`),
+        empty: 'Todavía no hay conversaciones. La primera aparece acá en cuanto mandes un mensaje.',
+        noMatch: (p: {query: string}) => `Ninguna conversación coincide con «${p.query}».`,
+        noMatchFilter: 'Este proveedor no tiene conversaciones que coincidan.',
+        searchFailed: 'No se pudo buscar. Probá de nuevo.',
+        untitled: 'Sin título',
+        openTitle: (p: {agent: string; where: string}) =>
+            `Retoma esta conversación con ${p.agent}${p.where ? ` · ${p.where}` : ''}. Sus mensajes se vuelven a dibujar al abrirla.`,
+        notInstalledTitle: (p: {agent: string}) =>
+            `Esta conversación es de ${p.agent}, que ya no está disponible en esta máquina. Se puede renombrar o borrar, pero no retomar.`,
+        renameTitle: 'Cambiar el nombre de esta conversación. El título sale de tu primer mensaje, que casi nunca es cómo la vas a buscar.',
+        deleteTitle:
+            'Quita la conversación del historial de mini-tools. No toca lo que el proveedor tenga guardado por su cuenta.',
+        rename: {
+            title: 'Renombrar la conversación',
+            label: 'Nombre',
+            description: 'Es solo el nombre con el que la vas a encontrar acá.',
+        },
+        remove: {
+            title: 'Borrar la conversación',
+            description: (p: {title: string}) =>
+                `«${p.title}» sale del historial de mini-tools. No se puede deshacer. Lo que el proveedor tenga guardado por su cuenta no se toca.`,
+            confirm: 'Borrar',
+        },
+        header: {
+            providerLabel: 'Proveedor',
+            providerTitle:
+                'Con quién hablás: un CLI instalado (Claude Code, Codex, Antigravity) o un servidor de modelos. Cambiarlo en una conversación ya empezada abre una nueva: cada proveedor guarda su propio hilo.',
+            providerPlaceholder: 'Elegí un proveedor',
+            modelLabel: 'Modelo',
+            modelTitle: 'Modelo que contesta de acá en adelante. La lista la informa el propio proveedor; «Por defecto» usa el que tenga configurado.',
+            repoLabel: 'Repositorio',
+            repoTitle:
+                'Repositorio de trabajo de esta conversación. Su nombre y ubicación viajan con tus mensajes para que el agente sepa de cuál hablás (podés quitarlo del mensaje). Sin repositorio, la conversación es general.',
+            noRepo: 'Sin repositorio',
+            repoModuleTitle: (p: {where: string}) =>
+                `Esta conversación nació en ${p.where} y queda ligada a ese recurso: no se le puede cambiar el repositorio.`,
+        },
+        repoBlock: {
+            label: 'Repositorio de trabajo',
+            text: (p: {name: string; path: string}) => `${p.name}\n${p.path}`,
+        },
     },
     portKiller: {
         searchPlaceholder: 'Buscar puerto, proceso o PID…',

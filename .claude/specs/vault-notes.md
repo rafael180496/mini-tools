@@ -157,6 +157,8 @@ al lado de la consulta que se está depurando.
 - **36** — `settings.notes_last_open` / `notes_side_width`.
 - **55** — `vault_notes.pinned` (notas fijadas). Como `folder_id`, se llena en
   los DOS caminos de `SearchNotesSmart`.
+- **59** — `settings.brain_root` (carpeta raíz del cerebro, default `Cerebro`) y
+  `agent_chats.brain` (cerebro encendido por conversación). Ver abajo.
 
 Verificadas con el patrón de script efímero en `HOME=$(mktemp -d)`, abriendo
 `vault.db` con `sqlite3` para confirmar que **el título y el cuerpo son
@@ -202,9 +204,12 @@ contenido es válido— y el backend intercepta la referencia y lo dice.
   comandos destructivos para servidores.
 - **Grafo 3D** — el 2D alcanza; el 3D queda condicionado a que se quede corto
   con números medidos, no supuestos.
-- **Escribir notas desde un agente** — el MCP expone lectura. Un agente que
-  escribe en la base de conocimiento cifrada necesita su propio diseño de
-  confirmación y deshacer.
+- **Dejar que un agente reescriba o borre lo del usuario** — un agente escribe
+  por MCP desde que existen `vault_create_note`/`vault_update_note` (con el
+  permiso `mcpNotesWrite`), y con el cerebro lo hace solo; pero únicamente
+  **sus propias notas, mientras nadie las haya editado después**
+  (`vault.AgentCanEdit`). Lo escrito por una persona no se pisa, y borrar no
+  existe como herramienta. Ver «Herramientas MCP y cerebro».
 - **Sincronizar entre máquinas** — cifrado por columna + salt por instalación
   significa que el `vault.db` de una máquina no se descifra en otra. Es un plan
   propio, no un renglón de este.
@@ -290,3 +295,67 @@ raíz. Solo aparecían en su carpeta mientras había texto en el buscador, que e
 el único momento en que corre el otro camino.
 
 Cualquier campo nuevo de `NoteHit` hay que llenarlo **en los dos caminos**.
+
+## Herramientas MCP y cerebro
+
+Las notas se exponen a los agentes por el servidor MCP (`app_mcp.go`,
+`app_mcp_notes.go`), tanto a los CLIs por el puente como a los servidores de
+modelos (`llm:*`) por `CallTool`. Las reglas que no se tocan: nada sobre notas
+privadas, nada que reescriba lo del usuario, escritura solo con `mcpNotesWrite`
+(se comprueba en cada llamada) y todo en el registro de accesos.
+
+| Herramienta | Qué hace |
+|---|---|
+| `vault_search_notes` | busca texto (todas las palabras), con `folder` (esa carpeta y sus descendientes) y `tag` opcionales |
+| `vault_read_note` | el Markdown, más carpeta, etiquetas, enlaces salientes y backlinks (solo títulos de notas **no privadas**) |
+| `vault_list_folders` | carpetas como rutas con su cantidad de notas **visibles** |
+| `vault_list_notes` | títulos de una carpeta (opcionalmente recursiva), con etiquetas y fecha |
+| `vault_create_note` | nota nueva, con `folder` opcional como ruta; crea las carpetas que falten |
+| `vault_append_to_note` | agrega una sección al final de una nota propia del agente |
+| `vault_update_note` | reescribe una nota propia del agente (sin cambios) |
+
+**Lo que un agente ve de la estructura es lo que ve de las notas.**
+`vault_list_folders` solo lista carpetas con al menos una nota visible en su
+subárbol: el nombre de una carpeta va en claro y puede decir mucho («Credenciales
+prod»), así que una carpeta que solo contiene notas privadas no aparece, igual que
+sus notas. Los conteos tampoco incluyen las privadas. Todas las lecturas pasan
+por `NoteForAI` o por `SearchSharedNotes`/`SharedFolderTree`
+(`backend/vault/notes_tree.go`), que filtran `is_private = 0` en la propia
+consulta; los filtros de carpeta y etiqueta se aplican *después* de ese corte,
+así que ninguno puede ampliar lo visible.
+
+**Rutas de carpeta.** Un agente piensa en rutas (`Cerebro/Proyectos/mini-tools`),
+no en ids. `ParseFolderPath` rechaza segmentos vacíos, `.`, `..`, caracteres de
+control, nombres de más de 80 caracteres y más de 8 niveles; las carpetas se
+buscan sin distinguir tildes ni mayúsculas (si no, cada variante de «cerebro»
+crearía una carpeta nueva) y solo entre las de scope `note`.
+
+**Etiquetas.** `vault.NoteTags`: `#tag` en el cuerpo o el frontmatter y la clave
+`tags:`. Ignora el código: `#include` o un comentario de shell no son etiquetas.
+
+### El cerebro
+
+Un chat con **«Guardar en mi cerebro»** encendido le agrega al agente, en cada
+turno, un texto que le pide dejar asentado lo que valga la pena conservar
+(procedimientos, diagnósticos, decisiones) como notas:
+
+- **Dónde**: `<raíz>/Proyectos/<proyecto>` si la conversación tiene contexto
+  (repositorio de git o de Utilidades → nombre del repo; conexión de BD o
+  servidor SSH → su alias), o `<raíz>/Temas/<tema>` si no. La raíz es
+  `settings.brain_root` (`Cerebro` por defecto).
+- **Cómo**: busca antes, amplía con `vault_append_to_note` en vez de duplicar,
+  enlaza con `[[…]]`, etiqueta con `#…` y mantiene una nota `_Índice <nombre>`
+  por proyecto/tema que enlaza a las demás (estilo MOC de Obsidian): el grafo
+  existente la muestra como cerebro navegable.
+- **Permisos**: el control es por conversación, apagado por defecto, y solo se
+  puede encender con el servidor MCP encendido y `mcpNotesWrite` activo. Si
+  alguno se apaga después, el turno deja de llevar el texto. **No agrega ningún
+  permiso**: escribe con las mismas herramientas y las mismas reglas.
+- **Entrega**: `llm:*` por el mensaje de sistema; Claude Code por
+  `--append-system-prompt`; Codex y Antigravity, antepuesto al mensaje enviado
+  (nunca al historial grabado).
+
+Lo que el agente escribe nace con la marca `origen: agente-mcp`: seis meses
+después se sabe quién lo escribió, y en cuanto el usuario edita una de esas
+notas deja de ser editable por el agente (`editada-por-el-usuario:`). Cuando el
+agente necesita complementar una nota del usuario, crea una nueva que la enlace.

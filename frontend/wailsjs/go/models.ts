@@ -70,6 +70,29 @@ export namespace agentchat {
 		    return a;
 		}
 	}
+	
+	export class Usage {
+	    input: number;
+	    output: number;
+	    cacheRead: number;
+	    thinking: number;
+	    total: number;
+	    costUsd: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Usage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.output = source["output"];
+	        this.cacheRead = source["cacheRead"];
+	        this.thinking = source["thinking"];
+	        this.total = source["total"];
+	        this.costUsd = source["costUsd"];
+	    }
+	}
 
 }
 
@@ -2722,6 +2745,46 @@ export namespace main {
 	        this.chatSupported = source["chatSupported"];
 	    }
 	}
+	export class AgentChatMessage {
+	    seq: number;
+	    role: string;
+	    content: string;
+	    toolName: string;
+	    usage?: agentchat.Usage;
+	    createdAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentChatMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.seq = source["seq"];
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.toolName = source["toolName"];
+	        this.usage = this.convertValues(source["usage"], agentchat.Usage);
+	        this.createdAt = source["createdAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class AskAgent {
 	    id: string;
 	    label: string;
@@ -2736,6 +2799,22 @@ export namespace main {
 	        this.id = source["id"];
 	        this.label = source["label"];
 	        this.active = source["active"];
+	    }
+	}
+	export class BrainStatus {
+	    mcpEnabled: boolean;
+	    notesWrite: boolean;
+	    root: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BrainStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mcpEnabled = source["mcpEnabled"];
+	        this.notesWrite = source["notesWrite"];
+	        this.root = source["root"];
 	    }
 	}
 	export class CellEdit {
@@ -3282,6 +3361,58 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class ModelServer {
+	    id: string;
+	    name: string;
+	    kind: string;
+	    baseUrl: string;
+	    hasToken: boolean;
+	    isLocal: boolean;
+	    insecureTls: boolean;
+	    headerNames: string[];
+	    createdAt: number;
+	    updatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelServer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.baseUrl = source["baseUrl"];
+	        this.hasToken = source["hasToken"];
+	        this.isLocal = source["isLocal"];
+	        this.insecureTls = source["insecureTls"];
+	        this.headerNames = source["headerNames"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class ModelServerProbe {
+	    ok: boolean;
+	    version: string;
+	    models: string[];
+	    error: string;
+	    latencyMs: number;
+	    checkedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelServerProbe(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.version = source["version"];
+	        this.models = source["models"];
+	        this.error = source["error"];
+	        this.latencyMs = source["latencyMs"];
+	        this.checkedAt = source["checkedAt"];
+	    }
 	}
 	export class NoteStats {
 	    backlinks: number;
@@ -4106,6 +4237,7 @@ export namespace vault {
 	    mode: string;
 	    module: string;
 	    contextId: string;
+	    brain: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AgentChat(source);
@@ -4125,6 +4257,7 @@ export namespace vault {
 	        this.mode = source["mode"];
 	        this.module = source["module"];
 	        this.contextId = source["contextId"];
+	        this.brain = source["brain"];
 	    }
 	}
 	export class ConnectionSummary {

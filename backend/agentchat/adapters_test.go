@@ -473,3 +473,37 @@ func TestJSONRawStringUnescapes(t *testing.T) {
 		}
 	}
 }
+
+// Turn.System llega a Claude Code detrás del idioma, en UN solo valor de
+// --append-system-prompt (repetir la bandera pisaría la anterior). Codex y
+// Antigravity no lo usan: quien llama antepone el texto al prompt.
+func TestBuildArgsClaudeAppendsSystemInOneFlag(t *testing.T) {
+	flagValues := func(args []string) []string {
+		var out []string
+		for i, a := range args {
+			if a == "--append-system-prompt" && i+1 < len(args) {
+				out = append(out, args[i+1])
+			}
+		}
+		return out
+	}
+
+	args, _ := buildArgs(Turn{AgentID: "claude", Command: "claude", Prompt: "hola"}, "")
+	vals := flagValues(args)
+	if len(vals) != 1 || vals[0] != i18n.T(replyLanguage) {
+		t.Fatalf("sin System, solo el idioma: %q", vals)
+	}
+
+	args, _ = buildArgs(Turn{AgentID: "claude", Command: "claude", Prompt: "hola", System: "INSTRUCCIONES DEL CEREBRO"}, "")
+	vals = flagValues(args)
+	if len(vals) != 1 || !strings.HasPrefix(vals[0], i18n.T(replyLanguage)) || !strings.HasSuffix(vals[0], "INSTRUCCIONES DEL CEREBRO") {
+		t.Fatalf("idioma + System en un solo valor: %q", vals)
+	}
+
+	for _, id := range []string{"codex", "antigravity"} {
+		a, _ := buildArgs(Turn{AgentID: id, Command: id, Prompt: "hola", System: "INSTRUCCIONES DEL CEREBRO"}, "")
+		if strings.Contains(strings.Join(a, " "), "INSTRUCCIONES") {
+			t.Errorf("%s no debe recibir System por argumentos: %v", id, a)
+		}
+	}
+}

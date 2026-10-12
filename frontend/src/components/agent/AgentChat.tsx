@@ -1,46 +1,47 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
     AgentChatHistory,
+    AgentChatMessages,
     AgentChatModes,
     AgentModelCatalog,
+    BrainStatus,
     CancelAgentChat,
     GitListWorkTree,
+    ListModelServers,
     RespondAgentApproval,
     SaveChatAttachment,
     AgentResolveRefs,
+    SetAgentChatBrain,
     SetAgentChatSettings,
     ResetAgentChat,
     SendAgentChat,
 } from '../../../wailsjs/go/main/App'
 import {EventsOn} from '../../../wailsjs/runtime'
-import {agentctx, agentmodels} from '../../../wailsjs/go/models'
+import {agentctx, agentmodels, main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import Select from '../Select'
 import ConfirmDialog from '../ConfirmDialog'
 import MarkdownPreview from '../MarkdownPreview'
 import AgentRefPicker from './AgentRefPicker'
+import AgentApprovalDialog, {type ApprovalRequest} from './AgentApprovalDialog'
 import ChatCodeBlock from './ChatCodeBlock'
-import {CONTEXT_ICONS, contextNoun, describeContext, repoIdOf, type WorkContext} from './workContext'
+import ToolCallCard, {canonicalToolName, type ToolCall} from './ToolCallCard'
+import {CONTEXT_ICONS, contextNoun, describeContext, repoIdOf, workRepoIdOf, type WorkContext} from './workContext'
 import {rich} from './rich'
-import {formatDateTime, formatNumber, useT} from '../../i18n'
+import {errorText, formatDateTime, formatNumber, useT} from '../../i18n'
+import {isModelServerAgent, MODEL_SERVER_PREFIX} from '../../lib/modelServers'
+import {useModelServerHealth} from '../../lib/modelServerHealth'
+import {HealthBanner} from './HealthIndicators'
+import {requestOpenSettings} from '../../lib/appBus'
 
-// Espeja ChatEvent / ToolCall / Usage (backend/agentchat/types.go).
+// Espeja ChatEvent / Usage (backend/agentchat/types.go); ToolCall vive en
+// ToolCallCard.tsx.
 //
 // Se escribe a mano y no sale de wailsjs/go/models por el mismo motivo que
 // LocalTermEvent en LocalTerminalPanel.tsx: estos tipos viajan por un EVENTO
 // de Wails, no por el valor de retorno de un binding, y el generador solo
 // tipa lo segundo. Si cambia el Go, hay que cambiar esto — está anotado en
 // .claude/specs/go-react-contract.md.
-interface ToolCall {
-    name: string
-    input: string
-    // Línea legible de lo que hizo (el archivo, el comando). Vacía cuando la
-    // herramienta no se reconoce: ahí se muestra solo el nombre.
-    summary: string
-    // Efecto medible, cuando se puede calcular ("18 líneas").
-    detail: string
-}
-
 interface ChatUsage {
     input: number
     output: number
@@ -108,25 +109,78 @@ const STARTER_ICONS: Record<string, string[]> = {
     http: ['menu_book', 'troubleshoot', 'fact_check'],
     note: ['summarize', 'rule', 'add_notes'],
     git: ['difference', 'rate_review', 'commit'],
+    utilities: ['school', 'bug_report', 'terminal', 'rate_review'],
     none: ['help'],
 }
 
 const isUserTurn = (turn: Turn) => turn.role === 'user'
 
+// Aviso inicial de una respuesta: el backend antepone «_⚠ …_» (cursiva) cuando
+// el servidor no admite herramientas y el turno sigue sin ellas. Como Markdown
+// se vería como una línea más del texto del modelo; se separa para dibujarlo
+// como lo que es, un aviso de la app y no algo que dijo el modelo.
+function splitLeadingNotice(text: string): {notice: string; rest: string} {
+    const m = /^_⚠\s*([^\n]*?)_(?:\n\n|\s*$)/.exec(text)
+    return m ? {notice: m[1].trim(), rest: text.slice(m[0].length)} : {notice: '', rest: text}
+}
+
 function formatClock(at?: number): string {
     return at ? formatDateTime(new Date(at), {hour: '2-digit', minute: '2-digit'}) : ''
 }
 
-// Espeja agentapprove.Request: la acción que el agente quiere hacer y sobre la
-// que hay que decidir. Viaja por evento, así que se escribe a mano igual que
-// ChatEvent.
-interface ApprovalRequest {
-    id: string
-    tool: string
-    input: string
-    summary: string
-    detail: string
+// Mensaje guardado de una conversación (AgentChatMessages). Estructural y no el
+// tipo generado: así este archivo no depende de cómo lo nombre el generador.
+interface StoredMessage {
+    seq: number
+    role: string
+    content: string
+    toolName: string
+    usage?: Partial<ChatUsage> | null
+    createdAt: number
 }
+
+// Rearma los turnos de la pantalla desde los mensajes que la app guardó. Una
+// herramienta (`tool`) cuelga del turno del agente que la llamó, igual que se
+// dibuja en vivo; la hora llega en segundos o milisegundos según quién la
+// escribió, y se normaliza.
+function turnsFromStored(messages: StoredMessage[]): Turn[] {
+    const out: Turn[] = []
+    const stamp = (v: number) => (v ? (v > 1e12 ? v : v * 1000) : undefined)
+    for (const m of [...messages].sort((a, b) => a.seq - b.seq)) {
+        if (m.role === 'user') {
+            out.push({role: 'user', text: m.content, tools: [], at: stamp(m.createdAt)})
+            continue
+        }
+        let last = out[out.length - 1]
+        if (!last || last.role !== 'agent' || (m.role === 'assistant' && last.text)) {
+            last = {role: 'agent', text: '', tools: [], at: stamp(m.createdAt)}
+            out.push(last)
+        }
+        if (m.role === 'tool') {
+            // La fila guarda «resumen\ndetalle» (backend/agentchat/record.go).
+            const [summary, ...rest] = m.content.split('\n')
+            last.tools.push({name: m.toolName, input: m.content, summary, detail: rest.join('\n')})
+        } else {
+            last.text = m.content
+            if (m.usage) {
+                const u = m.usage
+                last.usage = {
+                    input: u.input ?? 0,
+                    output: u.output ?? 0,
+                    cacheRead: u.cacheRead ?? 0,
+                    thinking: u.thinking ?? 0,
+                    total: u.total ?? 0,
+                    costUsd: u.costUsd ?? 0,
+                }
+            }
+        }
+    }
+    return out.filter((t) => t.text || t.tools.length > 0)
+}
+
+// Anillo de foco visible para los controles que son solo un ícono: un control
+// que no se ve al navegar con el teclado no se puede usar con el teclado.
+const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary'
 
 const MODE_ICONS: Record<string, string> = {
     '': 'visibility',
@@ -143,7 +197,19 @@ const MODE_KEYS: Record<string, 'query' | 'plan' | 'approve' | 'auto' | 'edit'> 
     auto: 'auto',
     edit: 'edit',
 }
+// En un CLI solo `edit` es de peligro (nunca se le da permiso de correr
+// comandos). Un servidor de modelos en `auto` además ejecuta comandos sin
+// preguntar —salvo los de riesgo—, así que ahí también lo es.
 const DANGER_MODES = new Set(['edit'])
+const DANGER_MODES_LLM = new Set(['edit', 'auto'])
+// Modos de un servidor de modelos que tocan archivos o comandos del repositorio
+// de trabajo. Sin repositorio no se declara ninguna de esas herramientas, y
+// ofrecer el modo sería ofrecer un permiso sobre nada.
+const REPO_MODES = new Set(['approve', 'edit', 'auto'])
+// Modos con los que el modelo recibe herramientas de archivos o comandos que
+// escriben o ejecutan: son los que mandan contenido del repositorio a un
+// servidor remoto (la lectura de archivos viaja en cualquier modo con repo).
+const WRITE_MODES = new Set(['approve', 'edit', 'auto'])
 
 
 // Bloque de contexto adjunto al próximo mensaje: lo que un módulo le pasa al
@@ -171,6 +237,9 @@ interface Turn {
     tools: ToolCall[]
     usage?: ChatUsage
     error?: string
+    // Aviso de la propia app (no del modelo) que va al comienzo del turno. Hoy,
+    // el de servidor remoto al usar herramientas por primera vez. No se guarda.
+    notice?: string
 }
 
 interface AgentChatProps {
@@ -203,9 +272,19 @@ interface AgentChatProps {
     // para volver a dibujar lo que ya se habló — la continuidad de la charla
     // no depende de esto, la maneja el backend con el mismo id.
     resumeConversationId?: string
+    // Id de la conversación en el historial de la app. Con él, al retomar se
+    // dibujan los mensajes que la app guardó (de cualquier proveedor, también
+    // los servidores de modelos, que no tienen historial propio); si no hay,
+    // se cae al historial del CLI por `resumeConversationId`.
+    resumeChatId?: string
+    // Modelo controlado desde afuera (la cabecera del Chat de IA). Con los dos
+    // props el selector de modelo de la caja se esconde: tener dos para lo
+    // mismo obligaría a decidir cuál manda.
+    model?: string
+    onModelChange?: (model: string) => void
     // Ajustes con los que venía este chat (migración 32). El MODO llega pero
     // no se aplica solo: ver el efecto de abajo.
-    initialSettings?: {model: string; effort: string; mode: string}
+    initialSettings?: {model: string; effort: string; mode: string; brain?: boolean}
     // Se llama al terminar un turno que corrió en un modo permisivo. Devuelve
     // cuántos archivos quedaron modificados en el árbol de trabajo.
     //
@@ -240,6 +319,10 @@ interface AgentChatProps {
     // una conversación a la que nunca se le escribió nada no es historial, es
     // una ventana que se abrió.
     onSend?: (text: string) => void
+    // Avisa cuando el agente empieza o termina de contestar. Lo usa el Chat de
+    // IA para marcar en el historial qué conversaciones están respondiendo y
+    // para reordenarlo al terminar.
+    onBusyChange?: (busy: boolean) => void
     // Lo que estás mirando AHORA en el módulo, adjuntado automáticamente al
     // mensaje: la consulta del editor SQL, por ejemplo.
     //
@@ -283,12 +366,16 @@ export default function AgentChat({
     seed,
     onSeedConsumed,
     resumeConversationId,
+    resumeChatId,
+    model: modelProp,
+    onModelChange,
     initialSettings,
     onTurnFinished,
     onReviewChanges,
     onValidateWithAnother,
     onConversation,
     onSend,
+    onBusyChange,
     working,
     onInsertText,
     insertLabel,
@@ -299,9 +386,22 @@ export default function AgentChat({
     const t = useT()
     // Etiqueta y explicación de un modo en el idioma activo. Un modo que el
     // backend agregue y esta tabla no conozca se muestra con su id crudo.
+    // Un servidor de modelos no es un CLI: sus modos gobiernan herramientas de
+    // archivos y comandos que corren en ESTA máquina, y lo que cada uno permite
+    // es otra cosa (`edit` sí corre comandos, pero preguntando; `auto` no
+    // pregunta salvo en los de riesgo). Los textos son propios.
+    const isLLM = isModelServerAgent(agentId)
+    // Salud del servidor mientras este chat está a la vista (a un CLI no se lo
+    // sondea). `refresh` salta la caché del backend: se usa tras un fallo de
+    // envío para que el aviso refleje lo que acaba de pasar.
+    const serverHealth = useModelServerHealth(agentId, active)
+    const refreshHealthRef = useRef<(() => void) | undefined>(undefined)
+    refreshHealthRef.current = serverHealth?.refresh
     const modeLabel = (m: string) => {
         const key = MODE_KEYS[m]
-        return key ? {...t.agent.chat.modes[key], danger: DANGER_MODES.has(m)} : undefined
+        if (!key) return undefined
+        const table = isLLM ? t.agent.chat.llmModes : t.agent.chat.modes
+        return {...table[key], danger: (isLLM ? DANGER_MODES_LLM : DANGER_MODES).has(m)}
     }
     const [turns, setTurns] = useState<Turn[]>([])
     // Hay recurso que nombrar en el encabezado y en el estado vacío.
@@ -330,7 +430,8 @@ export default function AgentChat({
         const last = turns[turns.length - 1]
         const tool = last && last.role === 'agent' ? last.tools?.[last.tools.length - 1] : undefined
         if (!tool) return t.agent.chat.thinking({agent: agentLabel})
-        return tool.summary ? `${tool.name} · ${tool.summary}` : `${tool.name}…`
+        const name = canonicalToolName(tool.name)
+        return tool.summary ? `${name} · ${tool.summary}` : `${name}…`
     }, [turns, agentLabel, t])
 
     const sessionUsage = useMemo(
@@ -352,6 +453,11 @@ export default function AgentChat({
 
     const [input, setInput] = useState('')
     const [busy, setBusy] = useState(false)
+    const onBusyChangeRef = useRef(onBusyChange)
+    onBusyChangeRef.current = onBusyChange
+    useEffect(() => {
+        onBusyChangeRef.current?.(busy)
+    }, [busy])
     // Segundos que lleva el turno en curso. Un agente puede tardar minutos
     // leyendo archivos, y sin un número en pantalla no hay forma de
     // distinguir "está pensando" de "se colgó" — que es la duda que hace que
@@ -375,8 +481,15 @@ export default function AgentChat({
     // modelo que cuesta distinto, no es algo que nadie haya pedido.
     const [mode, setMode] = useState('')
     const [effort, setEffort] = useState('')
-    const [model, setModel] = useState('')
+    const [modelLocal, setModelLocal] = useState('')
+    const modelControlled = modelProp !== undefined && !!onModelChange
+    const model = modelControlled ? modelProp : modelLocal
+    const setModel = (m: string) => (modelControlled ? onModelChange?.(m) : setModelLocal(m))
     const [modes, setModes] = useState<string[]>([''])
+    // Repositorio sobre el que el agente puede tocar archivos y correr comandos.
+    // Mientras `repoId` es solo el del módulo Git, este incluye el elegido en la
+    // cabecera del Chat de IA.
+    const workRepo = workRepoIdOf(context)
     // Catálogo del agente: modelos y niveles de esfuerzo, sacados del propio
     // CLI. Ver backend/agentmodels para por qué no está escrito a mano.
     const [catalog, setCatalog] = useState<agentmodels.Catalog | null>(null)
@@ -396,6 +509,51 @@ export default function AgentChat({
     // bloqueado esperando, así que mandar dos veredictos contradictorios no es
     // un detalle cosmético.
     const answeredRef = useRef('')
+    // --- Servidor de modelos: remoto, sin repositorio ---------------------
+    //
+    // Un servidor remoto recibe todo lo que el agente lee: el contenido de los
+    // archivos y la salida de los comandos viajan en el mensaje de la
+    // herramienta. Se averigua una vez por agente (`isLocal` lo calcula Go) y se
+    // avisa antes del primer envío con herramientas, una sola vez por sesión.
+    const [serverRemote, setServerRemote] = useState<{name: string; baseUrl: string} | null>(null)
+    const [remoteAck, setRemoteAck] = useState(false)
+    useEffect(() => {
+        if (!isLLM) {
+            setServerRemote(null)
+            return
+        }
+        let cancelled = false
+        ListModelServers()
+            .then((list) => {
+                const srv = (list ?? []).find((x) => MODEL_SERVER_PREFIX + x.id === agentId)
+                if (!cancelled) setServerRemote(srv && !srv.isLocal ? {name: srv.name, baseUrl: srv.baseUrl} : null)
+            })
+            .catch(() => !cancelled && setServerRemote(null))
+        return () => {
+            cancelled = true
+        }
+    }, [agentId, isLLM])
+    const [noRepoDismissed, setNoRepoDismissed] = useState(false)
+
+    // --- Cerebro ----------------------------------------------------------
+    //
+    // «Guardar en mi cerebro» es un interruptor POR CONVERSACIÓN: apagado por
+    // defecto y recordado en la fila del historial. Solo se puede encender con
+    // el servidor MCP y el permiso de escritura de notas activos (lo que el
+    // agente escribe entra por esas herramientas), y eso se ve en
+    // Configuración → IA, no acá.
+    const [brain, setBrain] = useState(false)
+    // Lo último que se guardó con éxito en la fila. `brain` es lo que el usuario
+    // quiere; si difieren, falta persistirlo (la fila de una conversación nueva
+    // no existe hasta el primer mensaje).
+    const brainPersistedRef = useRef(false)
+    const [brainStatus, setBrainStatus] = useState<main.BrainStatus | null>(null)
+    const refreshBrain = useCallback(() => {
+        BrainStatus()
+            .then(setBrainStatus)
+            .catch(() => setBrainStatus(null))
+    }, [])
+    const brainAvailable = !!brainStatus?.mcpEnabled && !!brainStatus?.notesWrite
     // Rutas del repositorio para el selector de @. Se piden una vez al abrir
     // el chat y no en cada tecla: el árbol no cambia mientras escribís, y
     // pedirlo por pulsación haría una llamada al backend por letra.
@@ -484,22 +642,29 @@ export default function AgentChat({
     // Cambios y se descarta con un clic. Fuera de un repositorio esa vuelta
     // atrás no existe — no habría diff que mirar ni nada que descartar—, así
     // que el modo no se ofrece en vez de ofrecerse sin su red.
+    //
+    // Un servidor de modelos va un paso más allá: sin repositorio de trabajo no
+    // se declara NINGUNA herramienta de archivos ni de comandos, así que tampoco
+    // se ofrece `aprobar cada acción` (solo aprobaría herramientas MCP, que no
+    // preguntan). Los modos que quedan son consulta y plan.
     useEffect(() => {
         AgentChatModes(agentId)
             .then((m) => {
                 const all = m?.length ? m : ['']
-                const usable = repoId ? all : all.filter((x) => !PERMISSIVE.has(x))
+                const usable = workRepo
+                    ? all
+                    : all.filter((x) => !PERMISSIVE.has(x) && !(isLLM && REPO_MODES.has(x)))
                 setModes(usable.length ? usable : [''])
             })
             .catch(() => setModes(['']))
-    }, [agentId, repoId])
+    }, [agentId, workRepo, isLLM])
 
-    // Si el contexto deja de ser un repositorio con un modo permisivo activo,
-    // el modo se baja solo. Mantenerlo sería conservar un permiso que se
+    // Si el contexto deja de ser un repositorio con un modo que lo necesita
+    // activo, el modo se baja solo. Mantenerlo sería conservar un permiso que se
     // concedió para otra cosa.
     useEffect(() => {
-        if (!repoId && PERMISSIVE.has(mode)) setMode('')
-    }, [repoId, mode])
+        if (!workRepo && (PERMISSIVE.has(mode) || (isLLM && REPO_MODES.has(mode)))) setMode('')
+    }, [workRepo, mode, isLLM])
 
     // Suscripción ANTES de mandar nada: el primer evento puede llegar antes de
     // que termine el await, misma carrera que resuelven la terminal y las
@@ -550,6 +715,9 @@ export default function AgentChat({
                     case 'error':
                         last.error = ev.error
                         setBusy(false)
+                        // Si el servidor dejó de contestar a mitad de turno, el
+                        // aviso de la caja tiene que enterarse ya.
+                        refreshHealthRef.current?.()
                         break
                 }
                 return next
@@ -575,6 +743,8 @@ export default function AgentChat({
         setModel(initialSettings.model || '')
         setEffort(initialSettings.effort || '')
         setMode(PERMISSIVE.has(initialSettings.mode) ? '' : initialSettings.mode || '')
+        brainPersistedRef.current = !!initialSettings.brain
+        setBrain(!!initialSettings.brain)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId])
 
@@ -592,27 +762,40 @@ export default function AgentChat({
     // desde el propio CLI abre en blanco y sigue encadenando igual, porque eso
     // lo hace el id y no esto.
     useEffect(() => {
-        if (!resumeConversationId) return
+        if (!resumeConversationId && !resumeChatId) return
         let cancelled = false
-        AgentChatHistory(agentId, resumeConversationId)
-            .then((past) => {
-                if (cancelled || !past?.length) return
-                setTurns((prev) =>
-                    prev.length > 0
-                        ? prev
-                        : past.map((t) => ({
+        const apply = (loaded: Turn[]): boolean => {
+            if (cancelled || loaded.length === 0) return false
+            setTurns((prev) => (prev.length > 0 ? prev : loaded))
+            return true
+        }
+        const fromCli = (): Promise<boolean> =>
+            resumeConversationId
+                ? AgentChatHistory(agentId, resumeConversationId).then((past) =>
+                      apply(
+                          (past ?? []).map((t) => ({
                               role: t.role === 'user' ? ('user' as const) : ('agent' as const),
                               text: t.text,
                               tools: t.tools ?? [],
                           })),
-                )
-            })
-            .catch(() => {})
+                      ),
+                  )
+                : Promise.resolve(false)
+        // Primero lo que la app guardó: es lo único que existe para un servidor
+        // de modelos y trae el consumo de cada turno. Si no hay nada (una
+        // conversación anterior a que la app guardara mensajes) se pregunta al CLI.
+        const run = resumeChatId
+            ? AgentChatMessages(resumeChatId)
+                  .then((msgs) => apply(turnsFromStored((msgs ?? []) as StoredMessage[])))
+                  .catch(() => false)
+                  .then((ok) => ok || fromCli())
+            : fromCli()
+        run.catch(() => {})
         return () => {
             cancelled = true
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [resumeConversationId, agentId])
+    }, [resumeConversationId, resumeChatId, agentId])
 
     // Las peticiones de aprobación llegan por un evento GLOBAL y no por el de
     // la sesión: el hook corre en otro proceso y no sabe de qué chat salió.
@@ -622,15 +805,52 @@ export default function AgentChat({
     useEffect(() => {
         if (!active) return
         const off = EventsOn('agent-approval', (req: ApprovalRequest) => setApproval(req))
+        // Una pregunta que dejó de esperar respuesta (se cortó el turno o venció
+        // el plazo de 5 minutos): el diálogo se cierra solo. Contestar tarde se
+        // ignora del lado de Go, así que no hace falta responder nada.
+        const offDismiss = EventsOn('agent-approval-dismiss', (id: string) => {
+            setApproval((cur) => {
+                if (cur?.id !== id) return cur
+                answeredRef.current = id
+                return null
+            })
+        })
         return () => {
             off()
+            offDismiss()
         }
     }, [active])
 
-    // Autoscroll al final mientras llega la respuesta.
+    // El estado del cerebro se relee al entrar al chat y al volver a la ventana:
+    // el usuario enciende el servidor MCP o el permiso en Configuración y vuelve.
+    useEffect(() => {
+        if (!active) return
+        refreshBrain()
+        window.addEventListener('focus', refreshBrain)
+        return () => window.removeEventListener('focus', refreshBrain)
+    }, [active, refreshBrain])
+
+    // Autoscroll al final mientras llega la respuesta, SOLO si ya estabas al
+    // final. Quien subió a releer algo no quiere que cada fragmento nuevo lo
+    // devuelva abajo; en ese caso aparece un botón para volver cuando él quiera.
+    const stickRef = useRef(true)
+    const [atBottom, setAtBottom] = useState(true)
+    const onScrollLog = useCallback(() => {
+        const el = scrollRef.current
+        if (!el) return
+        const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+        stickRef.current = near
+        setAtBottom(near)
+    }, [])
+    const scrollToLatest = useCallback(() => {
+        const el = scrollRef.current
+        stickRef.current = true
+        setAtBottom(true)
+        if (el) el.scrollTop = el.scrollHeight
+    }, [])
     useEffect(() => {
         const el = scrollRef.current
-        if (el) el.scrollTop = el.scrollHeight
+        if (el && stickRef.current) el.scrollTop = el.scrollHeight
     }, [turns])
 
     // Lo que llega de afuera se SUMA: pisar lo que el usuario estaba
@@ -736,14 +956,65 @@ export default function AgentChat({
         return true
     }, [])
 
+    // Guarda el interruptor del cerebro de esta conversación. El backend lo
+    // acepta aunque la fila del historial todavía no exista (la conversación
+    // nace en el primer envío) y lo persiste cuando aparece; solo rechaza
+    // ENCENDERLO sin el servidor MCP o sin el permiso de escritura de notas.
+    // Devuelve el motivo del rechazo, o '' si quedó guardado.
+    const persistBrain = useCallback(
+        async (value: boolean): Promise<string> => {
+            try {
+                await SetAgentChatBrain(sessionId, value)
+                brainPersistedRef.current = value
+                return ''
+            } catch (e) {
+                return errorText(e)
+            }
+        },
+        [sessionId],
+    )
+
+    const toggleBrain = async () => {
+        // Sin servidor MCP o sin permiso de escritura no hay nada que encender:
+        // el clic lleva a donde se arregla.
+        if (!brainAvailable) {
+            requestOpenSettings('ai')
+            return
+        }
+        const next = !brain
+        setBrain(next)
+        const failure = await persistBrain(next)
+        if (failure) {
+            // El estado de los permisos cambió desde la última lectura: se
+            // vuelve al valor anterior y se dice por qué.
+            setBrain(!next)
+            refreshBrain()
+            setTurns((prev) => [
+                ...prev,
+                {role: 'agent', text: '', tools: [], error: t.agent.chat.brain.applyFailed({error: failure})},
+            ])
+        }
+    }
+
     const sendText = useCallback(
         async (raw: string) => {
         const text = raw.trim()
         if (!text) return
+        // Mandar es pedir ver la respuesta: vuelve a pegarse al final.
+        stickRef.current = true
         const blocks = contextBlocks
+        // Primer envío con herramientas contra un servidor remoto: queda
+        // asentado en la conversación, además del aviso que ya estaba sobre la
+        // caja. Una vez por sesión.
+        const remoteNotice =
+            serverRemote && (workRepo || WRITE_MODES.has(mode)) && !remoteAck
+                ? t.agent.chat.remote.recorded({server: serverRemote.name})
+                : ''
+        if (remoteNotice) setRemoteAck(true)
         setTurns((prev) => [
             ...prev,
             {role: 'user', text, tools: [], contexts: blocks.length ? blocks.map((b) => b.label) : undefined, at: Date.now()},
+            ...(remoteNotice ? [{role: 'agent' as const, text: '', tools: [], notice: remoteNotice, at: Date.now()}] : []),
         ])
         setBusy(true)
         setQueueHeld(false)
@@ -760,18 +1031,44 @@ export default function AgentChat({
         // Antes de mandar y no después: si el turno falla, la conversación
         // igual existe y se puede reintentar desde el historial.
         onSend?.(text)
+        // Si el interruptor quedó distinto de lo guardado (p. ej. una
+        // conversación retomada con el cerebro encendido cuyo permiso se apagó
+        // después), se vuelve a guardar ANTES de mandar: el mensaje que le pide
+        // al agente registrar notas se arma al enviar.
+        if (brain !== brainPersistedRef.current) {
+            const failure = await persistBrain(brain)
+            if (failure) {
+                const wanted = brain
+                setBrain(brainPersistedRef.current)
+                setTurns((prev) => [
+                    ...prev,
+                    {role: 'agent', text: '', tools: [], error: t.agent.chat.brain.applyFailed({error: failure})},
+                ])
+                // Si lo que falló fue APAGARLO, no se manda: seguir con el cerebro
+                // encendido sería escribir notas que el usuario acaba de negar.
+                if (!wanted) {
+                    setBusy(false)
+                    setQueueHeld(true)
+                    return
+                }
+            }
+        }
         try {
             await SendAgentChat(sessionId, context.kind, context.id, agentId, outgoing, mode, effort, model.trim(), attachments)
             setAttachments([])
         } catch (e) {
-            setTurns((prev) => [...prev, {role: 'agent', text: '', tools: [], error: String(e)}])
+            // errorText y no String(e): el rechazo del binding trae el prefijo
+            // «Error: » y el código invisible del backend, que no son parte del
+            // mensaje. El corte rápido por servidor caído llega por acá.
+            setTurns((prev) => [...prev, {role: 'agent', text: '', tools: [], error: errorText(e)}])
             setBusy(false)
+            refreshHealthRef.current?.()
             // Ver `queueHeld`: lo que quedaba encolado no sale solo detrás de
             // un fallo.
             setQueueHeld(true)
         }
         },
-        [sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend, attachWorking, working, contextBlocks],
+        [sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend, attachWorking, working, contextBlocks, serverRemote, workRepo, remoteAck, brain, persistBrain, t],
     )
 
     // Los turnos que se muestran. Se conserva el índice REAL de cada uno: los
@@ -854,6 +1151,16 @@ export default function AgentChat({
                     </span>
                 )}
                 {info?.model && <span className="truncate font-mono text-ui-10 text-on-surface-variant">{info.model}</span>}
+                {serverRemote && (
+                    <span
+                        data-remote-chip
+                        title={t.agent.chat.remote.chipTitle({server: serverRemote.name, url: serverRemote.baseUrl})}
+                        className="flex shrink-0 items-center gap-1 rounded-full border border-tertiary/40 bg-tertiary/10 px-1.5 py-px text-ui-10 text-tertiary"
+                    >
+                        <Icon name="cloud" size={11} />
+                        {t.agent.chat.remote.chip}
+                    </span>
+                )}
                 {info && info.mcp.length > 0 && (
                     <span
                         className="truncate text-on-surface-variant"
@@ -879,7 +1186,9 @@ export default function AgentChat({
                 <button
                     onClick={() => setSearch((v) => (v === null ? '' : null))}
                     title={t.agent.chat.searchTitle}
-                    className={`shrink-0 rounded p-0.5 ${
+                    aria-label={t.agent.chat.a11y.search}
+                    aria-pressed={search !== null}
+                    className={`shrink-0 rounded p-0.5 ${FOCUS} ${
                         search !== null ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                     } ${onValidateWithAnother ? '' : 'ml-auto'}`}
                 >
@@ -898,7 +1207,8 @@ export default function AgentChat({
                         setQueueHeld(false)
                     }}
                     title={t.agent.chat.resetTitle}
-                    className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    aria-label={t.agent.chat.a11y.reset}
+                    className={`shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface ${FOCUS}`}
                 >
                     <Icon name="restart_alt" size={14} />
                 </button>
@@ -933,9 +1243,20 @@ export default function AgentChat({
                 </div>
             )}
 
-            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-xs">
+            <div className="relative min-h-0 flex-1">
+            <div
+                ref={scrollRef}
+                onScroll={onScrollLog}
+                role="log"
+                // `off`: un log anuncia cada adición, y una respuesta que llega
+                // a pedazos lo convertiría en una ráfaga. Lo que se anuncia es
+                // el indicador de trabajo de abajo.
+                aria-live="off"
+                aria-label={t.agent.chat.a11y.messages}
+                className="h-full overflow-y-auto px-2 py-1.5 text-xs"
+            >
                 {turns.length === 0 && (
-                    <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-ui-11 text-on-surface-variant">
+                    <div className="flex min-h-full flex-col items-center justify-center gap-2 px-4 py-8 text-center text-ui-11 text-on-surface-variant">
                         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                             <Icon name="auto_awesome" size={22} />
                         </span>
@@ -951,10 +1272,40 @@ export default function AgentChat({
                         <p className="opacity-70">
                             {rich(t.agent.chat.emptyHint({paste: navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'}))}
                         </p>
+                        {/* Sugerencias para empezar. Frente a una caja en blanco
+                            uno no sabe por dónde arrancar, y tres o cuatro
+                            preguntas del módulo lo resuelven mejor que un
+                            párrafo. Viven en el estado vacío y no pegadas a la
+                            caja: se ven mientras no hay nada que leer, y se
+                            van con el primer mensaje. */}
+                        {!busy && !input.trim() && (
+                            <div role="group" aria-label={t.agent.chat.startersLabel} className="mt-2 flex w-full max-w-sm flex-col gap-1.5">
+                                {(t.agent.chat.starters[context.kind] ?? t.agent.chat.starters.none).map((st, si) => (
+                                    <button
+                                        key={st}
+                                        onClick={() => {
+                                            setInput(st)
+                                            inputRef.current?.focus()
+                                        }}
+                                        title={t.agent.chat.starterTitle}
+                                        className={`flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container px-3 py-1.5 text-left text-ui-11 text-on-surface-variant hover:border-primary/50 hover:bg-surface-container-high hover:text-on-surface ${FOCUS}`}
+                                    >
+                                        <Icon
+                                            name={(STARTER_ICONS[context.kind] ?? STARTER_ICONS.none)[si] ?? 'chat'}
+                                            size={14}
+                                            className="shrink-0 text-primary"
+                                        />
+                                        <span className="min-w-0 flex-1">{st}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
-                {visibleTurns.map(({t: turn, i}) => (
+                {visibleTurns.map(({t: turn, i}) => {
+                    const lead = turn.role === 'agent' ? splitLeadingNotice(turn.text) : {notice: '', rest: turn.text}
+                    return (
                     <div key={i} className={`group mb-3 flex flex-col ${turn.role === 'user' ? 'items-end' : 'items-stretch'}`}>
                         <div
                             className={`mb-1 flex w-full items-center gap-1.5 text-ui-10 text-on-surface-variant ${
@@ -977,7 +1328,11 @@ export default function AgentChat({
                                 renderizado— que es lo que sirve para pegar o
                                 reescribir. */}
                             {turn.text && (
-                                <span className={`hidden shrink-0 items-center gap-1 group-hover:flex ${turn.role === 'user' ? 'mr-auto' : 'ml-auto'}`}>
+                                <span
+                                    // Siempre en el árbol (opacidad 0) y no `display:none`: así
+                                    // se llega con Tab, y al enfocar uno aparece la barra.
+                                    className={`flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none ${turn.role === 'user' ? 'mr-auto' : 'ml-auto'}`}
+                                >
                                     {/* Volver a mandar algo que ya preguntaste,
                                         casi siempre con un cambio. **No rebobina
                                         la conversación**: el hilo vive en el CLI.
@@ -1016,33 +1371,35 @@ export default function AgentChat({
                             por defecto: de un vistazo importa la secuencia, no
                             el argumento entero. */}
                         {turn.tools.map((tool, j) => (
-                            <details key={j} className="group/tool mb-1.5 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low">
-                                <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1 text-ui-11 hover:bg-surface-variant/50">
-                                    <Icon name="terminal" size={12} className="shrink-0 text-primary" />
-                                    <span className="shrink-0 font-mono font-medium text-on-surface">{tool.name}</span>
-                                    {tool.summary && (
-                                        <span className="min-w-0 flex-1 truncate font-mono text-on-surface-variant" title={tool.summary}>
-                                            {tool.summary}
-                                        </span>
-                                    )}
-                                    {tool.detail && (
-                                        <span className="shrink-0 rounded bg-surface-variant px-1 font-mono text-ui-10 text-on-surface-variant">
-                                            {tool.detail}
-                                        </span>
-                                    )}
-                                    <Icon
-                                        name="expand_more"
-                                        size={14}
-                                        className="ml-auto shrink-0 text-on-surface-variant transition-transform group-open/tool:rotate-180"
-                                    />
-                                </summary>
-                                <pre className="overflow-x-auto border-t border-outline-variant px-2 py-1.5 font-mono text-ui-10 whitespace-pre-wrap break-words text-on-surface-variant">
-                                    {tool.input}
-                                </pre>
-                            </details>
+                            <ToolCallCard key={j} tool={tool} />
                         ))}
 
-                        {turn.text && (
+                        {/* Aviso de la propia app al comienzo del turno (hoy: el
+                            servidor es remoto y lo que lea el agente viaja). */}
+                        {turn.notice && (
+                            <p
+                                data-turn-notice
+                                className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-tertiary/40 bg-tertiary/10 px-2 py-1 text-ui-11 text-on-surface"
+                            >
+                                <Icon name="cloud_upload" size={13} className="mt-px shrink-0 text-tertiary" />
+                                <span className="min-w-0 flex-1 break-words">{turn.notice}</span>
+                            </p>
+                        )}
+
+                        {/* El «no admite herramientas» del backend llega como
+                            texto en cursiva al comienzo de la respuesta: acá se
+                            separa y se dibuja como aviso de la app. */}
+                        {lead.notice && (
+                            <p
+                                data-turn-notice
+                                className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-tertiary/40 bg-tertiary/10 px-2 py-1 text-ui-11 text-on-surface"
+                            >
+                                <Icon name="warning" size={13} className="mt-px shrink-0 text-tertiary" />
+                                <span className="min-w-0 flex-1 break-words">{lead.notice}</span>
+                            </p>
+                        )}
+
+                        {lead.rest && (
                             // Lo propio es una burbuja a la derecha; lo del
                             // agente, una tarjeta a todo el ancho. Quién habla se
                             // distingue por la forma, sin leer el encabezado.
@@ -1075,7 +1432,7 @@ export default function AgentChat({
                                     </>
                                 ) : (
                                     <MarkdownPreview
-                                        source={turn.text}
+                                        source={lead.rest}
                                         // Los bloques de código llevan su
                                         // propia barra: copiar y mandar al
                                         // editor. Ver ChatCodeBlock.
@@ -1110,7 +1467,8 @@ export default function AgentChat({
                             </p>
                         )}
                     </div>
-                ))}
+                    )
+                })}
 
                 {/* Mientras el turno corre. Antes lo único que cambiaba era el
                     botón de mandar, que pasaba a ser un stop: había que
@@ -1130,17 +1488,35 @@ export default function AgentChat({
                             {[0, 1, 2].map((i) => (
                                 <span
                                     key={i}
-                                    className="size-1 animate-bounce rounded-full bg-primary"
+                                    className="size-1 animate-bounce rounded-full bg-primary motion-reduce:animate-none"
                                     // Desfasados: los tres al unísono se leen
                                     // como un parpadeo, no como progreso.
                                     style={{animationDelay: `${i * 150}ms`, animationDuration: '900ms'}}
                                 />
                             ))}
                         </span>
-                        <span className="min-w-0 flex-1 truncate">{workingLabel}</span>
-                        <span className="shrink-0 tabular-nums opacity-70">{formatElapsed(elapsed)}</span>
+                        {/* Solo la etiqueta se anuncia: el contador cambia cada
+                            segundo y leerlo sería una ráfaga. */}
+                        <span role="status" className="min-w-0 flex-1 truncate">
+                            {workingLabel}
+                        </span>
+                        <span className="shrink-0 tabular-nums opacity-70" aria-hidden>
+                            {formatElapsed(elapsed)}
+                        </span>
                     </div>
                 )}
+            </div>
+            {!atBottom && turns.length > 0 && (
+                <button
+                    onClick={scrollToLatest}
+                    title={t.agent.chat.jumpLatestTitle}
+                    aria-label={t.agent.chat.a11y.jumpLatest}
+                    className={`absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-outline-variant bg-surface-container-high px-2.5 py-1 text-ui-11 text-on-surface shadow-md hover:border-primary/60 ${FOCUS}`}
+                >
+                    <Icon name="arrow_downward" size={13} />
+                    {busy && <span className="tabular-nums">{formatElapsed(elapsed)}</span>}
+                </button>
+            )}
             </div>
 
             {mention !== null && (
@@ -1291,6 +1667,50 @@ export default function AgentChat({
                 </div>
             )}
 
+            {/* Avisos de un servidor de modelos. Van arriba de los controles y
+                no en el encabezado porque dependen de lo que se elige ahí
+                abajo: el modo y el repositorio. */}
+            {isLLM && !workRepo && context.kind === 'utilities' && !noRepoDismissed && (
+                <div
+                    data-no-repo-notice
+                    className="flex shrink-0 items-start gap-2 border-t border-outline-variant bg-surface-container-low px-2 py-1.5 text-ui-11 text-on-surface-variant"
+                >
+                    <Icon name="folder_off" size={14} className="mt-px shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1">
+                        {rich(brainStatus && !brainStatus.mcpEnabled ? t.agent.chat.noRepo.noTools : t.agent.chat.noRepo.onlyMcp)}
+                    </span>
+                    <button
+                        onClick={() => setNoRepoDismissed(true)}
+                        title={t.agent.chat.noRepo.dismissTitle}
+                        aria-label={t.agent.chat.noRepo.dismissTitle}
+                        className={`shrink-0 rounded p-0.5 hover:bg-surface-variant hover:text-on-surface ${FOCUS}`}
+                    >
+                        <Icon name="close" size={13} />
+                    </button>
+                </div>
+            )}
+            {isLLM && serverHealth && serverHealth.health.error !== '' && (serverHealth.health.status === 'error' || serverHealth.health.status === 'checking') && (
+                <HealthBanner health={serverHealth.health} server={agentLabel} onRetry={serverHealth.refresh} />
+            )}
+            {serverRemote && (workRepo || WRITE_MODES.has(mode)) && !remoteAck && (
+                <div
+                    data-remote-warning
+                    className="flex shrink-0 items-start gap-2 border-t border-tertiary/40 bg-tertiary/10 px-2 py-1.5 text-ui-11 text-on-surface"
+                >
+                    <Icon name="cloud_upload" size={14} className="mt-px shrink-0 text-tertiary" />
+                    <span className="min-w-0 flex-1">
+                        {rich(t.agent.chat.remote.banner({server: serverRemote.name, url: serverRemote.baseUrl}))}
+                    </span>
+                    <button
+                        onClick={() => setRemoteAck(true)}
+                        title={t.agent.chat.remote.ackTitle}
+                        className={`shrink-0 rounded border border-outline-variant px-1.5 py-0.5 text-on-surface-variant hover:text-on-surface ${FOCUS}`}
+                    >
+                        {t.agent.chat.remote.ack}
+                    </button>
+                </div>
+            )}
+
             {/* Controles del turno. Van pegados a la caja de texto y no en un
                 menú escondido porque cambian lo que el agente TIENE PERMITIDO
                 hacer: es lo último que hay que mirar antes de mandar. */}
@@ -1314,6 +1734,37 @@ export default function AgentChat({
                         icon: <Icon name={MODE_ICONS[m] ?? 'visibility'} size={14} />,
                     }))}
                 />
+
+                {/* Cerebro: el agente anota solo lo que valga la pena conservar.
+                    Es un interruptor y no un modo: se combina con cualquiera. */}
+                <button
+                    type="button"
+                    data-brain-toggle
+                    onClick={() => void toggleBrain()}
+                    aria-pressed={brain}
+                    title={
+                        !brainAvailable
+                            ? brainStatus && !brainStatus.mcpEnabled
+                                ? t.agent.chat.brain.blockedMcp
+                                : t.agent.chat.brain.blockedNotes
+                            : brain
+                              ? t.agent.chat.brain.titleOn({root: brainStatus?.root || 'Cerebro'})
+                              : t.agent.chat.brain.titleOff({root: brainStatus?.root || 'Cerebro'})
+                    }
+                    className={`flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-xs ${FOCUS} ${
+                        !brainAvailable
+                            ? brain
+                                ? 'border-tertiary/60 text-tertiary'
+                                : 'border-dashed border-outline-variant text-on-surface-variant/70 hover:text-on-surface-variant'
+                            : brain
+                              ? 'border-primary bg-primary/15 text-primary'
+                              : 'border-outline-variant bg-surface text-on-surface-variant hover:border-primary/60 hover:text-on-surface'
+                    }`}
+                >
+                    <Icon name="psychology" size={14} filled={brain && brainAvailable} />
+                    {t.agent.chat.brain.label}
+                    {!brainAvailable && <Icon name="lock" size={11} />}
+                </button>
 
                 {/* Esfuerzo como puntos y no como lista: es una escala, y una
                     escala se entiende mejor viéndola entera que abriendo un
@@ -1381,32 +1832,44 @@ export default function AgentChat({
                 {/* Lista y no campo libre: la lista la arma cada CLI (alias
                     en Claude Code, su cache de modelos en Codex, `agy models`
                     en Antigravity), así que no envejece como una escrita a
-                    mano — que era el motivo por el que antes era texto libre. */}
-<Select
-                    value={model}
-                    onChange={setModel}
-                    title={
-                        catalog?.models.find((m) => m.id === model)?.description ||
-                        t.agent.chat.modelTitle
-                    }
-                    size="sm"
-                    leadingIcon="memory"
-                    menuMinWidth={260}
-                    className="max-w-52 min-w-0 rounded-lg"
-                    options={(catalog?.models ?? [{id: '', label: t.agent.chat.modelDefault, description: '', efforts: []}]).map((m) => ({
-                        value: m.id,
-                        label: m.label,
-                        description: m.description || undefined,
-                    }))}
-                />
+                    mano — que era el motivo por el que antes era texto libre.
+                    Con el modelo controlado desde afuera no se dibuja. */}
+                {!modelControlled && (
+                    <Select
+                        value={model}
+                        onChange={setModel}
+                        title={
+                            catalog?.models.find((m) => m.id === model)?.description ||
+                            t.agent.chat.modelTitle
+                        }
+                        size="sm"
+                        leadingIcon="memory"
+                        menuMinWidth={260}
+                        className="max-w-52 min-w-0 rounded-lg"
+                        options={(catalog?.models ?? [{id: '', label: t.agent.chat.modelDefault, description: '', efforts: []}]).map((m) => ({
+                            value: m.id,
+                            label: m.label,
+                            description: m.description || undefined,
+                        }))}
+                    />
+                )}
 
                 {/* Mientras el modo permisivo está activo se avisa en todos
                     los turnos, no solo al activarlo: una sesión larga hace
                     olvidar en qué modo quedó. */}
                 {PERMISSIVE.has(mode) && (
-                    <span className={`flex items-center gap-1 ${mode === 'edit' ? 'text-error' : 'text-on-surface-variant'}`} title={modeLabel(mode)?.hint}>
+                    <span
+                        className={`flex items-center gap-1 ${isLLM || mode === 'edit' ? 'text-error' : 'text-on-surface-variant'}`}
+                        title={modeLabel(mode)?.hint}
+                    >
                         <Icon name="warning" size={12} />
-                        {mode === 'edit' ? t.agent.chat.willEditFiles : t.agent.chat.actsAlone}
+                        {isLLM
+                            ? mode === 'edit'
+                                ? t.agent.chat.willEditFilesLlm
+                                : t.agent.chat.actsAloneLlm
+                            : mode === 'edit'
+                              ? t.agent.chat.willEditFiles
+                              : t.agent.chat.actsAlone}
                     </span>
                 )}
 
@@ -1468,24 +1931,20 @@ export default function AgentChat({
             )}
 
             {approval && (
-                <ConfirmDialog
-                    title={t.agent.chat.approvalTitle({tool: approval.tool})}
-                    description={t.agent.chat.approvalDescription({
-                        agent: agentLabel,
-                        tool: approval.tool,
-                        summary: approval.summary,
-                        detail: approval.detail,
-                    })}
-                    confirmLabel={t.agent.chat.allow}
-                    onConfirm={() => {
+                <AgentApprovalDialog
+                    request={approval}
+                    agentLabel={agentLabel}
+                    onAllow={() => {
                         answeredRef.current = approval.id
                         void RespondAgentApproval(approval.id, true, '')
+                        setApproval(null)
                     }}
                     // Cerrar es DENEGAR, no descartar: del otro lado hay un
                     // proceso bloqueado esperando, y no contestar lo colgaría
                     // hasta que venza el tiempo.
-                    onClose={() => {
+                    onDeny={() => {
                         if (answeredRef.current !== approval.id) {
+                            answeredRef.current = approval.id
                             void RespondAgentApproval(approval.id, false, t.agent.approvalDeniedReason)
                         }
                         setApproval(null)
@@ -1498,41 +1957,18 @@ export default function AgentChat({
                     title={pendingMode === 'edit' ? t.agent.chat.allowEditsTitle : t.agent.chat.allowAutoTitle}
                     description={
                         pendingMode === 'edit'
-                            ? t.agent.chat.allowEditsDescription({agent: agentLabel})
-                            : t.agent.chat.allowAutoDescription({agent: agentLabel})
+                            ? isLLM
+                                ? t.agent.chat.allowEditsDescriptionLlm({agent: agentLabel})
+                                : t.agent.chat.allowEditsDescription({agent: agentLabel})
+                            : isLLM
+                              ? t.agent.chat.allowAutoDescriptionLlm({agent: agentLabel})
+                              : t.agent.chat.allowAutoDescription({agent: agentLabel})
                     }
                     confirmLabel={pendingMode === 'edit' ? t.agent.chat.allowEdits : t.agent.chat.allow}
-                    danger={pendingMode === 'edit'}
+                    danger={pendingMode === 'edit' || (isLLM && pendingMode === 'auto')}
                     onConfirm={() => setMode(pendingMode)}
                     onClose={() => setPendingMode(null)}
                 />
-            )}
-
-            {/* Sugerencias arriba de la caja mientras la conversación está
-                vacía: frente a una caja en blanco uno no sabe por dónde
-                empezar, y tres preguntas del módulo lo resuelven mejor que un
-                párrafo de instrucciones. */}
-            {turns.length === 0 && !busy && !input.trim() && (
-                <div className="flex shrink-0 flex-wrap gap-1.5 px-2 pt-1.5">
-                    {(t.agent.chat.starters[context.kind] ?? t.agent.chat.starters.none).map((st, si) => (
-                        <button
-                            key={st}
-                            onClick={() => {
-                                setInput(st)
-                                inputRef.current?.focus()
-                            }}
-                            title={t.agent.chat.starterTitle}
-                            className="flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container px-2 py-1 text-ui-11 text-on-surface-variant hover:border-primary/50 hover:text-on-surface"
-                        >
-                            <Icon
-                                name={(STARTER_ICONS[context.kind] ?? STARTER_ICONS.none)[si] ?? 'chat'}
-                                size={13}
-                                className="shrink-0 text-primary"
-                            />
-                            {st}
-                        </button>
-                    ))}
-                </div>
             )}
 
             <div className="m-2 flex shrink-0 flex-col rounded-xl border border-outline-variant bg-surface-container-low transition-colors focus-within:border-primary">
@@ -1611,6 +2047,8 @@ export default function AgentChat({
                         if (attachFromClipboard(e.clipboardData)) e.preventDefault()
                     }}
                     onKeyDown={(e) => {
+                        // Enter que confirma una composición (IME) no es «enviar».
+                        if (e.key === 'Enter' && e.nativeEvent.isComposing) return
                         if (e.key === 'Escape' && mention !== null) {
                             e.preventDefault()
                             setMention(null)
@@ -1634,6 +2072,7 @@ export default function AgentChat({
                         }
                     }}
                     rows={2}
+                    aria-label={t.agent.chat.a11y.composer}
                     placeholder={
                         busy
                             ? t.agent.chat.busyPlaceholder({agent: agentLabel})
@@ -1651,7 +2090,8 @@ export default function AgentChat({
                             onClick={send}
                             disabled={!input.trim()}
                             title={t.agent.chat.enqueueTitle}
-                            className="shrink-0 rounded-lg border border-outline-variant p-1.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+                            aria-label={t.agent.chat.a11y.enqueue}
+                            className={`shrink-0 rounded-lg border border-outline-variant p-1.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40 ${FOCUS}`}
                         >
                             <Icon name="schedule_send" size={14} />
                         </button>
@@ -1666,7 +2106,8 @@ export default function AgentChat({
                                 setQueueHeld(true)
                             }}
                             title={t.agent.chat.stopTitle}
-                            className="shrink-0 rounded-lg bg-error p-1.5 text-on-error"
+                            aria-label={t.agent.chat.a11y.stop}
+                            className={`shrink-0 rounded-lg bg-error p-1.5 text-on-error ${FOCUS}`}
                         >
                             <Icon name="stop" size={14} />
                         </button>
@@ -1676,8 +2117,9 @@ export default function AgentChat({
                         onClick={send}
                         disabled={!input.trim()}
                         title={t.agent.chat.sendTitle}
+                        aria-label={t.agent.chat.a11y.send}
                         data-chat-send
-                        className="shrink-0 rounded-lg bg-primary p-1.5 text-on-primary disabled:opacity-40"
+                        className={`shrink-0 rounded-lg bg-primary p-1.5 text-on-primary disabled:opacity-40 ${FOCUS}`}
                     >
                         <Icon name="send" size={14} />
                     </button>

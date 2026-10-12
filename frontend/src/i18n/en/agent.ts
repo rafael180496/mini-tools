@@ -13,12 +13,14 @@ const en: Messages<typeof es> = {
     context: {
         prefixDb: 'Database',
         prefixNote: 'Note',
+        prefixRepo: 'Repository',
         nouns: {
             git: 'the repository',
             db: 'the connection',
             ssh: 'the server',
             note: 'the note',
             http: 'the request',
+            utilities: 'the repository',
         },
     },
     chat: {
@@ -121,15 +123,110 @@ const en: Messages<typeof es> = {
         allowAutoDescription: (p) =>
             `${p.agent} will approve on its own the actions that pass its own safety check, and stop only on what it considers risky — that judgment is the CLI's, not this app's. It applies to this whole chat session.`,
         allowEdits: 'Allow edits',
+        llmModes: {
+            query: {
+                label: 'Read-only',
+                hint: 'Reads and reasons. With a working repository it can read, list and search files; it also uses the MCP tools when the server is on. It changes nothing.',
+            },
+            plan: {
+                label: 'Plan',
+                hint: 'Explores (reads files and searches) and drafts a plan, without writing files or running commands.',
+            },
+            approve: {
+                label: 'Approve each action',
+                hint: 'It can write and edit files and run commands in the working repository, but asks you before EACH one. MCP tools (notes, databases) do not ask.',
+            },
+            auto: {
+                label: 'Automatic',
+                hint: 'Edits files and runs commands in the repository without asking, except risky ones (rm -rf, git push --force, sudo…), which always ask. A command runs with your permissions and can touch things outside the repository.',
+            },
+            edit: {
+                label: 'Apply edits',
+                hint: 'Creates and edits repository files without asking. Commands ask every time. Changes land in the working tree: you see them in Changes and discard them from there.',
+            },
+        },
+        willEditFilesLlm: 'Edits files; commands ask first',
+        actsAloneLlm: 'Edits and runs commands without asking',
+        allowEditsDescriptionLlm: (p) =>
+            `${p.agent} will create and edit files in the working repository without asking you again, for this whole chat session. Every command it wants to run will still ask you first. Changes stay in the working tree: you see them in Changes and discard them from there.`,
+        allowAutoDescriptionLlm: (p) =>
+            `${p.agent} will edit files and run commands in the working repository without asking you, for this whole chat session. Only risky commands (rm -rf, git push --force, git reset --hard, sudo…) ask for your permission. Files are confined to the repository, but a command runs with your permissions and can affect things outside it.`,
+        approval: {
+            title: (p) => `Allow ${p.tool}?`,
+            titleRisky: (p) => `Risky command (${p.tool})`,
+            riskyReason: (p) => `Reason: ${p.reason}`,
+            intro: (p) => `${p.agent} wants to run ${p.tool}:`,
+            waiting: "The agent is waiting for your answer. If you deny, it won't do it and will be told why.",
+            riskyHint:
+                'It can delete or overwrite data with no way back. These commands always ask, in every mode: review it before allowing.',
+            deny: 'Deny',
+            denyTitle: "Doesn't run it and tells the agent you didn't authorize it",
+            allow: 'Allow',
+            allowTitle: 'Lets the agent run this action, once',
+            allowRisky: 'Allow anyway',
+            allowRiskyTitle: 'Runs this risky command at your own risk. It only applies this once.',
+        },
+        toolCard: {
+            openNote: 'Open note',
+            openNoteTitle: (p) => `Opens the note «${p.title}» in a tab`,
+        },
+        noRepo: {
+            onlyMcp:
+                'Without a working repository, this model only has the **MCP tools** (notes, databases, SSH, Git). To let it read or edit files and run commands, pick a repository in the header.',
+            noTools:
+                'With no working repository and the MCP server off, this model has **no tools**: it only chats. Pick a repository in the header, or turn the MCP server on in Settings → AI.',
+            dismissTitle: 'Hide this notice',
+        },
+        remote: {
+            banner: (p) =>
+                `**«${p.server}» is a remote server** (${p.url}). With file or command tools, what the agent reads — file contents, command output — is sent to that server.`,
+            ack: 'Got it',
+            ackTitle: 'Hides this notice in this conversation',
+            recorded: (p) =>
+                `Notice: «${p.server}» is a remote server. What the agent reads from your repository (files, command output) is sent to that server.`,
+            chip: 'remote',
+            chipTitle: (p) =>
+                `«${p.server}» is on another machine (${p.url}). What you send it, and what the agent reads with its tools, travels over the network.`,
+        },
+        brain: {
+            label: 'Save to my brain',
+            titleOn: (p) =>
+                `On for this conversation: the agent leaves what is worth keeping in your brain («${p.root}»), in notes by project or topic. Click to turn it off.`,
+            titleOff: (p) =>
+                `Off. If you turn it on, the agent notes down on its own what is worth keeping in your brain («${p.root}»). Every note is visible and marked as created by an agent. It is remembered in this conversation.`,
+            blockedMcp: 'Not available: the MCP server is off. Turn it on in Settings → AI. Click to open it.',
+            blockedNotes:
+                'Not available: note writing is not allowed yet. Grant it in Settings → AI → AI access. Click to open it.',
+            applyFailed: (p) => `Could not save the “Save to my brain” setting: ${p.error}`,
+        },
         starters: {
             db: ['Explain this query', 'Optimize this query', 'What tables does this connection have?'],
             ssh: ['What failed here?', 'Explain this log', 'How do I check disk usage?'],
             http: ['Explain this response', 'Why is this request failing?', 'Write tests for this endpoint'],
             note: ['Summarize this note', 'Does this procedure still make sense?', 'Expand the last step'],
             git: ['What changed on this branch?', 'Review the staged changes', 'Write the commit message'],
+            utilities: [
+                'Explain a technical concept',
+                'Help me debug an error',
+                'Write a script that automates a task',
+                'Review this code and suggest improvements',
+            ],
             none: ['What can you do in mini-tools?'],
         },
         starterTitle: 'Types this into the message box. You can edit it before sending.',
+        startersLabel: 'Suggestions to get started',
+        a11y: {
+            messages: 'Conversation',
+            composer: 'Message for the agent',
+            send: 'Send message',
+            stop: 'Stop the turn',
+            enqueue: 'Queue the message',
+            search: 'Search the conversation',
+            reset: 'Reset the conversation',
+            jumpLatest: 'Jump to the latest message',
+            copyMessage: 'Copy the message',
+        },
+        jumpLatestTitle: "Goes back to the end of the conversation. While you were reading further up, the reply that keeps arriving didn't move you.",
         blockChipTitle: (p) => `${p.label} — ${p.n} lines. Click to read exactly what will be sent.`,
         removeBlockTitle: "Remove this context — it won't be sent",
         attachmentTitle: (p) =>
@@ -143,7 +240,7 @@ const en: Messages<typeof es> = {
     },
     host: {
         agent: 'Agent',
-        noneInstalledTitle: 'No agentic CLI is installed on this machine. Set them up in Settings → Agents.',
+        noneInstalledTitle: 'No agentic CLI is installed and no model server has been added. Set them up in Settings → AI.',
         pickerTitle:
             "Which agent you're talking to. Changing it starts a new conversation: each CLI keeps its own history, so another one can't continue the previous one.",
         noneInstalled: 'None installed',
@@ -160,7 +257,7 @@ const en: Messages<typeof es> = {
         closeTitle: 'Closes the panel. The conversation stays as it is: reopening it picks it up.',
         emptyNoAgent: 'No agent installed',
         emptyNoAgentHint:
-            'mini-tools uses the CLIs you already have: Claude Code, Codex or Antigravity. Install one and it will show up here — each CLI still handles its own sign-in.',
+            'mini-tools uses the CLIs you already have (Claude Code, Codex or Antigravity) or a model server (Ollama or any OpenAI-compatible one). Install a CLI or add a server in Settings → AI and it will show up here.',
         emptyPick: 'Pick an agent above to get started.',
         resizeTitle: 'Drag to resize the panel — it is remembered',
         renameTitle: 'Rename the conversation',
@@ -193,6 +290,7 @@ const en: Messages<typeof es> = {
             ssh: 'Servers',
             note: 'Notes',
             http: 'HTTP requests',
+            utilities: 'AI Chat',
             none: 'No module',
         },
         searchPlaceholder: (p) => `Search ${p.n} conversations…`,
@@ -280,6 +378,28 @@ const en: Messages<typeof es> = {
         footer:
             "The **limit bars** are the percentage each provider's server calculated and its CLI cached on this machine: they're read as is, with the time they were measured — they aren't live. The **usage** percentages (model, cache) are shares of what was spent, not of a cap. For the current figure, each CLI answers with its own command (`/status`, `/usage`).",
     },
+    // Health of a model server (status dot, chat banner).
+    health: {
+        statusOk: 'Responding',
+        statusError: 'Not responding',
+        statusChecking: 'Checking',
+        statusUnknown: 'Not checked',
+        agoNow: 'just now',
+        ago: (p) => (p.sec < 5 ? 'just now' : p.sec < 60 ? `${p.sec} s ago` : `${Math.floor(p.sec / 60)} min ago`),
+        dotOk: (p) => `"${p.server}" is responding · ${p.latency} ms · checked ${p.ago}`,
+        dotError: (p) => `"${p.server}" is not responding: ${p.error}`,
+        dotChecking: (p) => `Checking whether "${p.server}" responds…`,
+        dotUnknown: (p) => `"${p.server}" has not been checked yet`,
+        badgeOk: (p) => `${p.latency} ms`,
+        badgeError: 'no response',
+        badgeChecking: 'checking…',
+        bannerTitle: (p) => `"${p.server}" is not responding`,
+        bannerHint: 'You can keep typing, but sending will fail right away until the server answers.',
+        serverGone: 'This server is no longer in the list',
+        retry: 'Retry',
+        retrying: 'Checking…',
+        retryTitle: 'Asks the server again right now whether it responds, without waiting for the next automatic check (every 60 s while the chat is in view)',
+    },
     askPicker: {
         title: "Which provider runs THIS analysis. It doesn't change the app's active agent: use it to ask another model the same question and compare.",
         activeAgent: 'Active agent',
@@ -297,6 +417,34 @@ const en: Messages<typeof es> = {
         copy: 'Copy',
         copied: 'Copied',
     },
+    brainPanel: {
+        heading: 'Brain',
+        title: 'Notes the agent writes',
+        intro:
+            'With **Save to my brain** on in a conversation, the agent notes down on its own what is worth keeping — a procedure, a diagnosis, a decision — as notes of yours, organized by project and topic. It is **off by default** and turned on conversation by conversation.',
+        reqMcp: 'MCP server on',
+        reqMcpHint: 'Turn it on above, in “AI access”: notes come in through its tools.',
+        reqNotes: 'Note writing allowed',
+        reqNotesHint: 'Grant it above, in “AI access”: without that permission the agent can only read your notes.',
+        reqChat: 'In each conversation: the **Save to my brain** switch, next to the mode selector.',
+        rootLabel: 'Brain folder',
+        rootTitle: 'Folder of your notes where the agent writes. “Cerebro” by default; it is created with the first note.',
+        rootHint: (p) =>
+            `Path inside your notes, with \`/\` for subfolders (e.g. \`Work/Brain\`). Default \`${p.def}\`. Changing it does not move notes that already exist.`,
+        rootInvalid: 'Invalid path: no empty folders or “..”, up to 80 characters.',
+        save: 'Save',
+        saved: 'Saved',
+        saveTitle: 'Saves the root folder. It applies to the next notes the agent writes.',
+        structureHeading: 'How it is organized',
+        exampleProjectNote: 'Cache decision',
+        exampleTopicNote: 'Oracle indexes',
+        structureBody:
+            'With context (a repository, a connection, an SSH server) it writes to **Proyectos/<project>**; without context, to **Temas/<topic>**. Before creating it searches, so it can **extend** a note with `vault_append_to_note` instead of duplicating it; it links with `[[Title]]` and tags with `#tag`.',
+        indexBody:
+            'Each project and each topic has an **_Índice** note (a map of content, as in Obsidian) that links to its notes: the notes graph shows it as a navigable brain.',
+        rules:
+            'The usual rules still hold: it does not touch private notes, does not rewrite your notes, and everything is logged in the access log.',
+    },
     aiAccess: {
         tools: {
             vault_search_notes: 'Searched your notes',
@@ -308,6 +456,9 @@ const en: Messages<typeof es> = {
             git_status: "Checked a repository's status",
             vault_create_note: 'Created a note',
             vault_update_note: 'Rewrote one of its notes',
+            vault_append_to_note: 'Extended one of its notes',
+            vault_list_folders: 'Listed the note folders',
+            vault_list_notes: 'Listed the notes in a folder',
         },
         examplePath: '/path/to/mini-tools',
         claudeHow: 'In a terminal, just once:',
