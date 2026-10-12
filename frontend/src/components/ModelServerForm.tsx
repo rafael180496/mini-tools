@@ -50,6 +50,9 @@ import {notifyModelServersChanged} from '../lib/appBus'
 
 export const LOCAL_OLLAMA_URL = 'http://localhost:11434'
 const MODELS_SHOWN = 6
+export const DEFAULT_OLLAMA_CONTEXT = 16384
+// Valores que se ofrecen como atajo junto al campo de ventana de contexto.
+const CONTEXT_CHOICES = [4096, 8192, 16384, 32768, 65536]
 
 type Kind = 'ollama' | 'openai'
 
@@ -68,6 +71,9 @@ interface Form {
     hasToken: boolean
     // No verificar el certificado HTTPS (autofirmado). Solo tiene efecto con https.
     insecureTls: boolean
+    // Ventana de contexto pedida a Ollama, como texto (el campo admite vacío).
+    // Vacío o 0 = la que traiga el servidor. Solo viaja con un servidor Ollama.
+    contextTokens: string
     // Filas del editor de cabeceras; solo se mandan si el editor está activo.
     headers: HeaderRow[]
     // Nombres de las cabeceras ya guardadas (los valores no vuelven).
@@ -90,6 +96,9 @@ function emptyForm(): Form {
         clearToken: false,
         hasToken: false,
         insecureTls: false,
+        // Un Ollama nuevo arranca con 16k: el de fábrica (2k-4k) recorta en
+        // silencio el prompt de un proyecto con instrucciones y skills.
+        contextTokens: String(DEFAULT_OLLAMA_CONTEXT),
         headers: [],
         storedHeaders: [],
         replaceHeaders: false,
@@ -141,6 +150,7 @@ function fromServer(s: main.ModelServer): Form {
         clearToken: false,
         hasToken: s.hasToken,
         insecureTls: s.insecureTls,
+        contextTokens: s.contextTokens > 0 ? String(s.contextTokens) : '',
         headers: [],
         storedHeaders: s.headerNames ?? [],
         replaceHeaders: false,
@@ -201,6 +211,9 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
         setForm((f) => ({
             ...f,
             kind: pr.kind,
+            // Los atajos de Ollama piden 16k; los compatibles con OpenAI no
+            // llevan el campo (el servidor la fija al cargar el modelo).
+            contextTokens: pr.kind === 'ollama' ? String(DEFAULT_OLLAMA_CONTEXT) : '',
             baseUrl: pr.hostPort ? composeUrl(pr, host, nextPort) : pr.fixedUrl,
             name: nameTouched ? f.name : presetName(key, host),
         }))
@@ -256,6 +269,8 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                     // «sí» que no significa nada y se activaría solo si algún
                     // día la dirección pasa a https.
                     insecureTls: form.insecureTls && isHttps(form.baseUrl),
+                    // Solo Ollama la admite; el backend igual la descarta en otro tipo.
+                    contextTokens: form.kind === 'ollama' ? contextValue : 0,
                     headerNames: form.storedHeaders,
                     createdAt: form.createdAt,
                     updatedAt: form.updatedAt,
@@ -302,6 +317,7 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
     const hasStoredHeaders = form.id !== '' && form.storedHeaders.length > 0
     const editingHeaders = !hasStoredHeaders || form.replaceHeaders
     const headersError = editingHeaders ? headersProblem(form.headers, m) : ''
+    const contextValue = Math.min(Number(form.contextTokens.replace(/\D/g, '')) || 0, 4194304)
     const tlsBlocked = form.baseUrl.trim() !== '' && !isHttps(form.baseUrl)
     // Nada acá depende de `formProbe`: guardar sin probar, o tras una prueba
     // fallida, es válido a propósito (ver el encabezado del archivo).
@@ -437,7 +453,14 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                     <Select
                         value={form.kind}
                         onChange={(v) => {
-                            setForm({...form, kind: v === 'openai' ? 'openai' : 'ollama'})
+                            const nextKind = v === 'openai' ? 'openai' : 'ollama'
+                            // Al pasar a Ollama un servidor nuevo sin ventana puesta
+                            // toma el default; el campo no se pisa si ya tenía un valor.
+                            setForm({
+                                ...form,
+                                kind: nextKind,
+                                contextTokens: nextKind === 'ollama' && isNew && form.contextTokens === '' ? String(DEFAULT_OLLAMA_CONTEXT) : form.contextTokens,
+                            })
                             if (preset) {
                                 if (guideOpen === null) setGuideOpen(preset === 'ollamaRemote')
                                 setPreset(null)
@@ -643,6 +666,67 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                     title={tlsBlocked ? m.insecureTlsOnlyHttps : m.insecureTlsTitle}
                     ariaLabel={m.insecureTls}
                 />
+            </div>
+
+            <div data-context-tokens className="flex flex-col gap-1.5 rounded-md border border-outline-variant bg-surface px-2.5 py-2">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-on-surface" title={m.contextTitle}>
+                    <Icon name="memory" size={13} className="text-on-surface-variant" />
+                    {m.context}
+                    {form.kind === 'ollama' && <span className="font-normal text-on-surface-variant">{m.optional}</span>}
+                </span>
+                {form.kind === 'ollama' ? (
+                    <>
+                        <p className="text-ui-11 text-on-surface-variant">{m.contextDescription}</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <input
+                                data-context-input
+                                value={form.contextTokens}
+                                onChange={(e) => {
+                                    setForm({...form, contextTokens: e.target.value.replace(/\D/g, '').slice(0, 7)})
+                                    setFormProbe(null)
+                                }}
+                                inputMode="numeric"
+                                placeholder={m.contextPlaceholder}
+                                title={m.contextTitle}
+                                aria-label={m.context}
+                                className="w-28 rounded-md border border-outline-variant bg-surface px-2 py-1 font-mono text-xs text-on-surface outline-none focus:border-primary"
+                            />
+                            <span className="text-ui-11 text-on-surface-variant">{m.contextUnit}</span>
+                            {CONTEXT_CHOICES.map((n) => (
+                                <button
+                                    key={n}
+                                    type="button"
+                                    data-context-choice={n}
+                                    onClick={() => setForm({...form, contextTokens: String(n)})}
+                                    title={m.contextChoiceTitle({n: n.toLocaleString()})}
+                                    className={`rounded border px-1.5 py-0.5 font-mono text-ui-10 ${
+                                        contextValue === n
+                                            ? 'border-primary bg-primary/10 text-primary'
+                                            : 'border-outline-variant text-on-surface-variant hover:border-primary/60 hover:bg-surface-variant'
+                                    }`}
+                                >
+                                    {n / 1024}k
+                                </button>
+                            ))}
+                            <button
+                                type="button"
+                                data-context-default
+                                onClick={() => setForm({...form, contextTokens: ''})}
+                                title={m.contextServerDefaultTitle}
+                                className={`rounded border px-1.5 py-0.5 text-ui-10 ${
+                                    contextValue === 0
+                                        ? 'border-primary bg-primary/10 text-primary'
+                                        : 'border-outline-variant text-on-surface-variant hover:border-primary/60 hover:bg-surface-variant'
+                                }`}
+                            >
+                                {m.contextServerDefault}
+                            </button>
+                        </div>
+                        <p className="text-ui-10 text-on-surface-variant/80">{m.contextCost}</p>
+                    </>
+                ) : (
+                    <p className="text-ui-11 text-on-surface-variant">{m.contextOpenai}</p>
+                )}
             </div>
 
             {formProbe && formProbe.state !== 'testing' && <ProbeResult probe={formProbe} />}

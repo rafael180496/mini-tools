@@ -375,6 +375,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li><a href="#utilidades-activity-monitor">Activity Monitor</a></li>
     <li><a href="#utilidades-docker">Docker</a></li>
     <li><a href="#utilidades-chat-ia">AI Chat</a></li>
+    <li><a href="#utilidades-modelos">Models</a></li>
   </ul>
 
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>AI agents</button>
@@ -382,6 +383,7 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li><a href="#ia-chat">The chat, in every module</a></li>
     <li><a href="#ia-modelos">Model servers: Ollama and OpenAI-compatible</a></li>
     <li><a href="#ia-agente-local">Local code agent: files and commands</a></li>
+    <li><a href="#ia-proyectos">Projects, folders and automatic context</a></li>
     <li><a href="#ia-cerebro">Brain: notes the agent writes</a></li>
     <li><a href="#ia-referencias">The @ system</a></li>
     <li><a href="#ia-mcp">Embedded MCP server</a></li>
@@ -1637,8 +1639,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   there's no second chat over the same thing.</p>
 
   <figure>
-    <div class="shot"><img src="docs/screenshots/utilities-ai-chat-conversation.png" alt="AI Chat tab: the conversation list grouped by day on the left, and on the right the provider, model and repository selectors above a resumed conversation with a SQL block, its Copy button and the tokens spent in each turn"></div>
-    <figcaption>History on the left, the conversation in the middle, and who answers —provider, model, repository— at the top.</figcaption>
+    <div class="shot"><img src="docs/screenshots/utilities-ai-chat-conversation.png" alt="AI Chat tab: the conversation list grouped by day on the left, and on the right the provider, model and project selectors above a resumed conversation with a SQL block, its Copy button and the tokens spent in each turn"></div>
+    <figcaption>History on the left, the conversation in the middle, and who answers —provider, model, project— at the top.</figcaption>
   </figure>
 
   <h2 id="utilidades-chat-ia--empezar">Start a conversation</h2>
@@ -1677,11 +1679,11 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <figcaption>Dragging the history edge: the width shows while it moves and is remembered.</figcaption>
   </figure>
 
-  <h2 id="utilidades-chat-ia--cabecera">Provider, model and repository</h2>
+  <h2 id="utilidades-chat-ia--cabecera">Provider, model and project</h2>
   <ul>
     <li><strong>Provider</strong> — the installed CLIs and the model servers you added in <em>Settings → AI</em>. The last menu option, <em>Add model server (Ollama / OpenAI)…</em>, opens the form right there and, on save, picks the new server: <a href="#ia-modelos--desde-el-chat">nothing needs installing</a>. Switching it in a conversation that already started opens a <em>new</em> one: each provider keeps its own thread, and there's no honest way to continue with another what one was doing.</li>
     <li><strong>Model</strong> — the list is reported by the provider itself, and <em>Default</em> uses whichever it has configured. It applies from the next message on.</li>
-    <li><strong>Repository</strong> — one of the repositories you added in the Git module, or none. The conversation records it, and its name and location travel as a chip with your messages so the agent knows which one you mean; the chip can be dropped from the message. A conversation that started in another module (a connection, a note) shows its origin here and can't change repositories. With a <a href="#ia-modelos">model server</a>, it is also the <strong>working repository</strong> of its <a href="#ia-agente-local">file and command tools</a>; without one, the chat says that only the MCP tools are available.</li>
+    <li><strong>Project</strong> — one of the repositories you added in the Git module, a <strong>folder</strong> you opened, or none. The conversation records it, and its name and location travel as a chip with your messages so the agent knows which one you mean; the chip can be dropped from the message. A conversation that started in another module (a connection, a note) shows its origin here and can't change project. With a <a href="#ia-modelos">model server</a>, it is also the <strong>working project</strong> of its <a href="#ia-agente-local">file and command tools</a>, and the app loads its instructions and skills by itself: see <a href="#ia-proyectos">Projects, folders and automatic context</a>. Without one, the chat says that only the MCP tools are available.</li>
   </ul>
 
   <h2 id="utilidades-chat-ia--historial">History and search</h2>
@@ -1718,6 +1720,96 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <div class="note tip"><span class="lbl">Where the data lives</span>
   The conversations are stored in the app's encrypted vault. Search happens on your machine; the only thing that leaves
   it is what you send to the provider you picked.</div>
+</article>
+
+<article class="topic" id="utilidades-modelos" data-title="Models">
+  <h1>Models</h1>
+  <p class="lead">See which models a <a href="#ia-modelos">model server</a> has, pull new ones and delete the ones you no longer
+  use —on this machine or on another one— without opening a terminal or typing <code>ollama pull</code>.</p>
+
+  <p>It's in the <strong>Utilities</strong> module and opens in <strong>its own tab</strong>. It works with the servers you
+  already added in <em>Settings → AI</em>: it uses their address, token, headers and certificate option, so an Ollama behind a
+  proxy with an <code>X-Api-Key</code> header is managed exactly like a local one.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models.png" alt="Models tab: the server selector with its status dot, the Ollama and local badges, the pull field with example chips, and a table of installed models with family, parameters, quantization, size and date; the loaded model shows an In memory badge with its VRAM and when it unloads, and the details, unload and delete buttons on each row"></div>
+    <figcaption>The models of a local Ollama. The green badge marks the one loaded in memory right now.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--servidor">Pick the server</h2>
+  <p>The selector at the top lists every model server you saved, each with its <strong>status dot</strong> (green it answers, red it
+  doesn't). The badges say its type —<em>Ollama</em> or <em>OpenAI-compatible</em>— and whether it is <em>local</em> or
+  <em>remote</em>; next to them, the latency of the last check. The last option, <strong>Add server…</strong>, opens the same
+  form as Settings in a dialog and selects the new server when you save it. The last one you used is remembered.</p>
+
+  <h2 id="utilidades-modelos--lista">The list of models</h2>
+  <p>For an Ollama server the table shows name, family, <strong>parameter size</strong> (7.6B), <strong>quantization</strong> (Q4_K_M),
+  size on disk, and when it was modified. Click a header to sort by name, size or date; a second click reverses the order. The search
+  box filters by any of those fields. In a narrow tab the less important columns fold away first.</p>
+  <p>A model that is <strong>loaded in memory</strong> carries an <em>In memory</em> badge with how much VRAM it takes and when the
+  server will unload it if nobody uses it. That list refreshes by itself every few seconds while the tab is in view.</p>
+
+  <h2 id="utilidades-modelos--descargar">Pull a model</h2>
+  <ol class="steps">
+    <li>Type the name in the <strong>Pull a model</strong> field: <code>name</code> or <code>name:tag</code>, for example <code>qwen2.5-coder:7b</code>.
+    Paths such as <code>hf.co/user/repo:Q4_K_M</code> work too. The example chips fill the field with real names, and <em>Browse the library</em> opens Ollama's catalog in your browser.</li>
+    <li>Click <strong>Pull</strong> (or press <kbd>Enter</kbd>). A row appears under the form with a <strong>progress bar</strong>, the percentage, the status (“Fetching the manifest”, “Downloading”, “Verifying”) and the bytes downloaded out of the total.</li>
+    <li>Keep working: the download runs in the background, and you can start <strong>several at once</strong>. When it ends, the table refreshes and the model is available in the chat's model selector (the chat reads the list from the server when you pick it as provider).</li>
+  </ol>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models-pull.png" alt="Models tab with three downloads listed under the pull field: one at 42.4% with 2.2 GB of 5.2 GB and a Cancel button, one fetching the manifest, and one that failed with the server's error and a Remove button"></div>
+    <figcaption>Downloads in progress: progress bar, bytes, and a Cancel button on each. A failed one keeps the server's error until you remove it.</figcaption>
+  </figure>
+
+  <div class="note warn"><span class="lbl">Where it downloads</span>
+  The model is downloaded <strong>to the disk of the machine where the server runs</strong>. With a remote server that is not your machine,
+  and the tab says so under the field. Models weigh several GB: check the free space there first.</div>
+
+  <p><strong>Cancel</strong> stops the download but <strong>keeps what was already downloaded</strong>: asking for the same model
+  again resumes where it stopped. Closing the tab doesn't cancel anything either; when you come back the downloads are still listed.
+  A name that doesn't exist fails in a few seconds with the server's message.</p>
+
+  <h2 id="utilidades-modelos--detalle">Details of a model</h2>
+  <p>The <strong>info</strong> button on a row opens a panel with what Ollama knows about it: family, parameters, quantization,
+  format, size, <strong>context window</strong>, digest (with a copy button), its <strong>capabilities</strong> (<code>completion</code>,
+  <code>tools</code>, <code>vision</code>…), the <strong>default parameters</strong> from its Modelfile, the <strong>prompt template</strong> and the
+  start of its <strong>license</strong>. Template and license are shown truncated when they are very long. In a wide tab the panel opens on
+  the right; in a narrow one it covers the list. <kbd>Esc</kbd> closes it.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models-detail.png" alt="Models tab with the details panel open on the right: facts grid (family, parameters, quantization, format, size, 32,768-token context window, date, digest), capability chips, the default parameters and the prompt template"></div>
+    <figcaption>Details of a model: context window, capabilities, parameters and template.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--descargar-memoria">Unload from memory and delete</h2>
+  <ul>
+    <li><strong>Unload from memory</strong> (eject icon, only enabled for a loaded model) frees the RAM/VRAM it occupies <strong>without deleting it from disk</strong>. It loads again on its own the next time it's used.</li>
+    <li><strong>Delete</strong> (trash icon) asks for confirmation and removes the model's files <strong>from the server's disk</strong>. The dialog names the server and, if it is remote, says it is another machine and nothing is deleted from yours. To use the model again it has to be pulled again.</li>
+  </ul>
+
+  <h2 id="utilidades-modelos--openai">Servers that aren't Ollama</h2>
+  <p>An <em>OpenAI-compatible</em> server (LM Studio, vLLM, the llama.cpp server…) only knows how to <strong>list</strong> its models:
+  its API has no endpoint to pull or delete. The tab shows the list in <strong>read-only</strong> mode, with a note, and hides the pull
+  field and the buttons instead of offering actions that would fail. Manage those models with the server's own tool.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models-readonly.png" alt="Models tab on an OpenAI-compatible server: a Read-only note and a plain list with three model names"></div>
+    <figcaption>An OpenAI-compatible server: read-only list.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--remoto">Remote servers</h2>
+  <p>A server on another machine is managed the same way —it is the same API—, with two differences you should keep in mind: pulling and deleting act on
+  <strong>that machine's disk</strong>, and if it doesn't answer the tab shows the error with the reason (refused connection, certificate, token) and a
+  <em>Retry</em> button. To reach a server across the network, see
+  <a href="#ia-modelos--acceso-remoto">Reaching a server on another machine</a>.</p>
+
+  <h2 id="utilidades-modelos--ejemplo">Example: bring a coding model to the GPU machine</h2>
+  <ol class="steps">
+    <li>Open <strong>Utilities → Models</strong> and pick <em>Ollama on the GPU server</em> in the selector.</li>
+    <li>Click the <code>qwen2.5-coder:7b</code> chip and then <strong>Pull</strong>. Watch the bar reach 100%.</li>
+    <li>Open <strong>Utilities → AI Chat</strong>, pick that server as the provider: the new model is in the model selector, ready to use.</li>
+  </ol>
 </article>
 
 <!-- ----------------------------------------------------------------- IA -->
@@ -1874,6 +1966,23 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   you edit a server, an empty token field means <strong>keep the current one</strong>; to delete it, use
   <strong>Remove token</strong>.</p>
 
+  <h2 id="ia-modelos--contexto">Context window</h2>
+  <p>An <strong>Ollama</strong> server loads each model with a small context window (2k to 4k tokens) and, when the prompt doesn't fit, <strong>silently drops the beginning</strong>:
+  with a <a href="#ia-proyectos">project</a>'s instructions and skills (up to ~32,000 characters) plus the history, your own message can get pushed out, and the model answers something else with no error.
+  That's why the server form has a <strong>Context window</strong> field with quick picks from 4k to 64k tokens and <em>Server default</em> (ask for nothing). A <strong>new</strong> Ollama server starts at <strong>16,384</strong>;
+  the app sends it as <code>num_ctx</code> with every conversation.</p>
+  <ul>
+    <li><strong>More context costs memory.</strong> The model takes more RAM or VRAM when it loads and answers more slowly: raise it only if you need it. The model's own limit is shown in the details panel of <a href="#utilidades-modelos">Utilities → Models</a>.</li>
+    <li><strong>The chat warns you.</strong> If the prompt (estimated at about 4 characters per token) doesn't fit in the configured window, a line in italics appears <strong>once per conversation</strong> suggesting to raise it. It doesn't block or cut anything.</li>
+    <li><strong>OpenAI-compatible servers don't have the field.</strong> LM Studio, vLLM and llama.cpp set the window when the model is loaded, and their API doesn't let you ask for it per conversation: change it in the server itself.</li>
+    <li>Servers you already had stay on <em>Server default</em>.</li>
+  </ul>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/model-servers-context.png" alt="The Add server form for a new local Ollama: the Context window box with 16384 tokens, quick picks from 4k to 64k, Server default and the note about the memory cost"></div>
+    <figcaption>A new Ollama server starts with a 16,384-token context window.</figcaption>
+  </figure>
+
   <h2 id="ia-modelos--usar">Where it shows up</h2>
   <p>Each server is an agent more, with the name you gave it. You can pick it in the chat's agent selector, as the
   provider of the AI buttons (write or fix SQL, analyze a plan, explain an HTTP response, draft a commit, explain
@@ -1970,6 +2079,10 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   It doesn't stop you from typing, but <strong>sending fails immediately</strong> with a clear error —shown as an error of the app, not as something the model
   said— instead of leaving you waiting. Before every send the app checks the server, and if the connection drops before the first word arrives it retries once.</p>
 
+  <h2 id="ia-modelos--administrar">Manage a server's models</h2>
+  <p>To see which models a server has, pull new ones or delete the ones you don't use, open <strong>Utilities → Models</strong>: it works with
+  these same servers, local or remote. See <a href="#utilidades-modelos">Models</a>. The model selector of an open chat refreshes by itself when you pull or delete a model there.</p>
+
   <h2 id="ia-modelos--borrar">Delete a server</h2>
   <p>The trash icon asks for confirmation, removes the server from the list and deletes its stored token. The
   server itself isn't touched, and conversations you already had stay in the history.</p>
@@ -1977,7 +2090,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 
 <article class="topic" id="ia-agente-local" data-title="Local code agent: files and commands">
   <h1>Local code agent: files and commands</h1>
-  <p class="lead">A <a href="#ia-modelos">model server</a> can read and edit files and run commands in your repository,
+  <p class="lead">A <a href="#ia-modelos">model server</a> can read and edit files and run commands in your project (a repository or a folder),
   <strong>with the permissions you choose</strong>. The model may be on another machine; the tools always run on yours.</p>
 
   <figure>
@@ -1991,15 +2104,18 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td><code>read_file</code></td><td>Reads a file (a line range, if it asks)</td><td>read</td></tr>
     <tr><td><code>list_dir</code></td><td>Lists a folder</td><td>read</td></tr>
     <tr><td><code>search</code></td><td>Searches text or a regex across the tree, respecting <code>.gitignore</code></td><td>read</td></tr>
+    <tr><td><code>glob</code></td><td>Finds files by name pattern (for example <code>**/*.go</code>)</td><td>read</td></tr>
+    <tr><td><code>skill</code></td><td>Loads the full instructions of one of the project's <a href="#ia-proyectos--skills">skills</a></td><td>read</td></tr>
+    <tr><td><code>read_skill_file</code></td><td>Reads a file that ships with a skill (template, script)</td><td>read</td></tr>
     <tr><td><code>write_file</code></td><td>Creates or replaces a file</td><td>write</td></tr>
     <tr><td><code>edit_file</code></td><td>Replaces one exact, unique fragment</td><td>write</td></tr>
-    <tr><td><code>run_command</code></td><td>Runs a command in the working repository, with a time limit and trimmed output</td><td>command</td></tr>
+    <tr><td><code>run_command</code></td><td>Runs a command in the working project, with a time limit and trimmed output</td><td>command</td></tr>
   </table></div>
   <p>On top of these it can use the <a href="#ia-mcp">MCP server tools</a> (your notes, schemas, SSH logs…) when that server is on.</p>
 
-  <h2 id="ia-agente-local--repositorio">The working repository</h2>
-  <p>The tools act on <strong>one repository</strong>: the one open in the chat of a Git tab, or the one you choose in the
-  <em>Repository</em> selector of the <a href="#utilidades-chat-ia">AI Chat</a>. Paths are confined to it (symlinks are resolved,
+  <h2 id="ia-agente-local--repositorio">The working project</h2>
+  <p>The tools act on <strong>one project</strong>: the repository open in the chat of a Git tab, or the repository or <a href="#ia-proyectos--carpetas">folder</a> you choose in the
+  <em>Project</em> selector of the <a href="#utilidades-chat-ia">AI Chat</a>. Paths are confined to it (symlinks are resolved,
   and a path that escapes is rejected) and <code>.git/</code> is never written.</p>
   <figure>
     <div class="shot"><img src="docs/screenshots/ai-code-agent-norepo.png" alt="AI Chat with a remote model server and no repository selected: a notice above the message box explains that without a working repository the model only has the MCP tools"></div>
@@ -2018,7 +2134,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td>Automatic</td><td>yes</td><td>without asking</td><td>without asking, except risky ones</td></tr>
   </table></div>
   <p><em>Apply edits</em> and <em>Automatic</em> need your explicit confirmation before they become active, and while one is
-  active the chat shows a warning in every turn. Without a working repository only <em>Read-only</em> and <em>Plan</em> are offered:
+  active the chat shows a warning in every turn. Without a working project only <em>Read-only</em> and <em>Plan</em> are offered:
   there would be nothing to touch.</p>
 
   <h2 id="ia-agente-local--riesgo">Risky commands always ask</h2>
@@ -2055,10 +2171,100 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 
   <h2 id="ia-agente-local--ejemplo">Example: have it fix a failing test</h2>
   <ol class="steps">
-    <li>Open <strong>Utilities → AI Chat</strong>, pick your model server and, in <em>Repository</em>, your project.</li>
+    <li>Open <strong>Utilities → AI Chat</strong>, pick your model server and, in <em>Project</em>, your repository or folder.</li>
     <li>Choose <strong>Approve each action</strong> in the mode selector.</li>
     <li>Type <code>TestCursorPage fails in CI, find out why and fix it</code>. For every write or command, a dialog asks first.</li>
     <li>When it finishes, review the diff in the Git module and discard whatever you don't want.</li>
+  </ol>
+</article>
+
+<article class="topic" id="ia-proyectos" data-title="Projects, folders and automatic context">
+  <h1>Projects, folders and automatic context</h1>
+  <p class="lead">Give a <a href="#ia-modelos">model server</a> a <strong>project</strong> —a git repository <em>or any folder</em>— and it works like a code assistant:
+  it reads the project's instructions and skills by itself, and in <strong>Automatic</strong> mode it edits and creates files and runs commands without asking.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-project-picker.png" alt="AI Chat with the Project menu open: No project, the git repositories, three granted folders (one greyed out as missing) and, at the bottom, Open folder and Manage folders"></div>
+    <figcaption>The Project selector: repositories, folders you opened, and the two actions at the end.</figcaption>
+  </figure>
+
+  <h2 id="ia-proyectos--elegir">Pick a project</h2>
+  <p>In the header of the <a href="#utilidades-chat-ia">AI Chat</a>, the <strong>Project</strong> selector lists:</p>
+  <ul>
+    <li><strong>No project</strong> — a general conversation. With a model server it only has the <a href="#ia-mcp">MCP tools</a>.</li>
+    <li><strong>Your git repositories</strong> — the ones from the Git module. Conversations that already used a repository keep working.</li>
+    <li><strong>Folders</strong> (with a folder icon) — any folder you've opened. A folder that no longer exists on disk shows greyed out and can't be picked; hovering it says why.</li>
+    <li><strong>Open folder…</strong> and <strong>Manage folders…</strong>, at the end.</li>
+  </ul>
+  <p>The CLIs (Claude Code, Codex, Antigravity) also run <em>inside</em> that folder. A conversation remembers its project: when you resume it from the history, its project is the one you see.</p>
+
+  <h2 id="ia-proyectos--carpetas">Folders: open and manage</h2>
+  <p><strong>Open folder…</strong> shows the system's folder picker. The app only remembers the <strong>path</strong>; it copies nothing. The filesystem root and your home folder
+  are rejected, with the reason: giving an agent access to everything is not what a project is for.</p>
+  <p><strong>Manage folders…</strong> lists the folders you granted, with a button to remove each one. <strong>Removing a folder revokes the app's access to it and deletes or modifies nothing on disk</strong>, and you can open it again whenever you want.
+  It does, however, <strong>delete from the app's history the conversations held in that folder</strong> (same as removing a repository): the confirmation says how many. Git repositories aren't listed there; they're managed in the Git module.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-project-folders.png" alt="The Folders with access dialog: the granted folders with their paths, one marked as missing, a note that removing revokes access and also deletes that folder's conversations, and the Open folder and Close buttons"></div>
+    <figcaption>Manage folders: removing one takes it off the app's list and asks for confirmation.</figcaption>
+  </figure>
+
+  <h2 id="ia-proyectos--contexto">Automatic context: instruction files</h2>
+  <p>With a project selected, a strip appears under the header: <code>Context: AGENTS.md · CLAUDE.md · 6 skills</code>. It is what the app reads by itself from the project, and it shows
+  nothing it didn't actually load. Click it to see the list: each file's path, whether it comes from the <strong>project</strong> or is <strong>global</strong> (your home folder),
+  its size, and a <em>Truncated</em> flag when it exceeded the limit and the model only gets its beginning. It refreshes when you change project and when you come back to the window, so you can edit <code>AGENTS.md</code> elsewhere and see it here.</p>
+  <ul>
+    <li><strong>Project</strong> — <code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>CLAUDE.local.md</code>, <code>GEMINI.md</code>, <code>.github/copilot-instructions.md</code>, <code>.cursorrules</code> and Cursor's always-apply rules. A file that imports others with <code>@file.md</code> brings them in; one that is a copy of another is only loaded once.</li>
+    <li><strong>Global</strong> — <code>~/.claude/CLAUDE.md</code>, <code>~/.config/opencode/AGENTS.md</code> and <code>~/.codex/AGENTS.md</code>, if they exist.</li>
+  </ul>
+  <p><strong>With a model server</strong> the instructions are loaded automatically and travel with every message, up to a total limit (what doesn't fit is reported, not cut silently).
+  <strong>With a CLI</strong> the app injects nothing: Claude Code, Codex and the like read their own files from the folder, and the strip only shows what they will find.</p>
+  <div class="note tip"><span class="lbl">Large instructions? Check the context window</span>
+  Instructions and skills travel in the system message of every conversation. With an <strong>Ollama</strong> server, if they are large (the limit is ~32,000 characters) and its
+  <a href="#ia-modelos--contexto">context window</a> is the default 2k to 4k tokens, the server silently cuts the beginning and your message may not even arrive. Raise the
+  <strong>Context window</strong> of that server (a new one starts at 16,384): the chat warns you once if the estimated prompt doesn't fit.</div>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-project-context.png" alt="The Context popover: the instruction files with their scope, size and a Truncated badge, and the skills with their description"></div>
+    <figcaption>The context popover: what is loaded, from where, and how much of it.</figcaption>
+  </figure>
+
+  <h2 id="ia-proyectos--skills">Skills and progressive loading</h2>
+  <p>Skills are folders with a <code>SKILL.md</code> (in <code>.claude/skills</code>, <code>.github/skills</code>, <code>.opencode/skills</code> or <code>.agents/skills</code>, in the project or in your home folder).
+  They are <strong>loaded progressively</strong>: the model starts out seeing only each skill's <em>name and description</em>, and when one fits the task it calls the <code>skill</code> tool to read its full instructions —
+  and <code>read_skill_file</code> for a template or script that ships with it. That keeps a small model's context free until a skill is actually needed. If the project and your home folder
+  have a skill with the same name, the project's wins.</p>
+  <p>Besides <code>skill</code> and <code>read_skill_file</code>, the model also has <code>glob</code> to find files by pattern (for example <code>**/*.go</code>). All three are read-only and appear as cards in the conversation.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-project-skills.png" alt="A conversation over a folder: tool cards for skill, read_skill_file, glob, read_file and write_file above the answer, with the Context strip under the header"></div>
+    <figcaption>The agent used the project's skill, listed files with glob and wrote the report.</figcaption>
+  </figure>
+
+  <h2 id="ia-proyectos--automatico">Automatic mode</h2>
+  <p>With a project selected and a model server as the provider, the mode selector offers <strong>Automatic</strong>: the agent <strong>edits and creates files and runs commands without asking</strong>.
+  <strong>Risky commands</strong> —<code>rm -rf</code>, <code>git push</code>, <code>sudo</code>…— still ask, in every mode. The first time, a chat with a project shows a suggestion above the message box to switch to it;
+  it never switches by itself.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-project-hint.png" alt="A new chat over a repository in Read-only mode: a notice above the message box suggests the Automatic mode, with a Use Automatic button"></div>
+    <figcaption>The suggestion on a new chat: it offers Automatic, it doesn't switch to it.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>The first time you pick it in a project, the app asks you to confirm</strong> and explains the risk. After you accept, it doesn't ask again for that project.</li>
+    <li><strong>The mode is remembered per project</strong>: a new chat on a project goes back to the last mode you chose there. A project you've never picked a mode for starts, as always, in <em>Read-only</em>. A conversation you resume from the history doesn't re-enable a permissive mode by itself.</li>
+    <li>While Automatic is on, the chat shows a warning in every turn.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-project-auto.png" alt="Chat over a folder with Automatic mode selected: the mode in red, the warning that it edits and runs commands without asking and the Context strip"></div>
+    <figcaption>Automatic mode on a folder: the warning stays visible in every turn.</figcaption>
+  </figure>
+  <div class="note warn"><span class="lbl">A folder is not a repository</span>
+  In a git repository, what the agent writes lands in the working tree and you can review and discard it from Changes. In a <strong>folder without git</strong> there is no history to go back to:
+  the strip says so, and the confirmation says so too. A command, moreover, runs with your permissions and can touch things outside the folder.</div>
+
+  <h2 id="ia-proyectos--ejemplo">Example: write the weekly report from a folder</h2>
+  <ol class="steps">
+    <li>Open <strong>Utilities → AI Chat</strong>, pick your model server and, in <em>Project</em>, choose <strong>Open folder…</strong> and select the folder with your tickets.</li>
+    <li>Check the <em>Context</em> strip: your <code>AGENTS.md</code> and the report skill should be there.</li>
+    <li>Choose <strong>Automatic</strong> in the mode selector and accept the confirmation.</li>
+    <li>Type <code>Write this week's report</code>. The agent loads the skill, reads the files and writes the result in the folder.</li>
   </ol>
 </article>
 

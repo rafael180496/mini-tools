@@ -24,9 +24,12 @@ import {agents} from '../models';
 import {portkill} from '../models';
 import {localterm} from '../models';
 import {mcpserver} from '../models';
+import {llm} from '../models';
 import {procmon} from '../models';
 
 export function ActiveConnectionIds():Promise<Array<string>>;
+
+export function AddAgentWorkspace(arg1:string,arg2:string):Promise<main.AgentWorkspace>;
 
 export function AddRedisSetMember(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -83,6 +86,8 @@ export function AgentResolveRefs(arg1:string,arg2:string,arg3:string):Promise<Ar
 export function AgentUsageAll(arg1:number):Promise<agentusage.Usage>;
 
 export function AgentUsageLimits():Promise<Array<agentlimits.AgentLimits>>;
+
+export function AgentWorkspaceContext(arg1:string,arg2:string):Promise<main.WorkspaceContextInfo>;
 
 export function AnalyzeRedisPrefixes(arg1:string,arg2:string,arg3:number,arg4:boolean):Promise<db.RedisPrefixReport>;
 
@@ -610,6 +615,8 @@ export function KillProcessElevated(arg1:number,arg2:boolean):Promise<boolean>;
 
 export function ListAgentChats(arg1:string):Promise<Array<vault.AgentChat>>;
 
+export function ListAgentWorkspaces():Promise<Array<main.AgentWorkspace>>;
+
 export function ListAgents():Promise<Array<agents.Agent>>;
 
 export function ListAllAgentChats():Promise<Array<vault.AgentChat>>;
@@ -662,7 +669,25 @@ export function MakeSftpDir(arg1:string,arg2:string):Promise<void>;
 
 export function MergeNotes(arg1:string,arg2:string):Promise<void>;
 
+export function ModelServerCancelPull(arg1:string):Promise<void>;
+
+export function ModelServerDeleteModel(arg1:string,arg2:string):Promise<void>;
+
+export function ModelServerDismissPull(arg1:string):Promise<void>;
+
 export function ModelServerHealth(arg1:string):Promise<main.ModelServerProbe>;
+
+export function ModelServerModels(arg1:string):Promise<Array<llm.ManagedModel>>;
+
+export function ModelServerPull(arg1:string,arg2:string):Promise<string>;
+
+export function ModelServerPulls():Promise<Array<main.ModelPullEvent>>;
+
+export function ModelServerRunning(arg1:string):Promise<Array<llm.RunningModel>>;
+
+export function ModelServerShowModel(arg1:string,arg2:string):Promise<llm.ModelDetails>;
+
+export function ModelServerUnload(arg1:string,arg2:string):Promise<void>;
 
 export function ModelServerUsage(arg1:number):Promise<main.ModelServerUsageReport>;
 
@@ -706,6 +731,8 @@ export function OpenSftpBrowse(arg1:string,arg2:string):Promise<string>;
 
 export function PersistRedisKey(arg1:string,arg2:string):Promise<void>;
 
+export function PickAgentWorkspaceFolder():Promise<string>;
+
 export function PickAutoBackupFolder():Promise<string>;
 
 export function PickSQLiteFile():Promise<string>;
@@ -733,6 +760,8 @@ export function RedisTransactionStatus(arg1:string):Promise<Record<string, any>>
 export function RegenerateProjectDocs(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function ReleasePagedResult(arg1:string):Promise<void>;
+
+export function RemoveAgentWorkspace(arg1:string):Promise<void>;
 
 export function RemoveRedisListIndex(arg1:string,arg2:string,arg3:number):Promise<void>;
 

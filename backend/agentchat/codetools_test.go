@@ -56,8 +56,8 @@ func declared(c *CodeTools) string {
 }
 
 const (
-	readsOnly = "list_dir,read_file,search"
-	allTools  = "edit_file,list_dir,read_file,run_command,search,write_file"
+	readsOnly = "glob,list_dir,read_file,search"
+	allTools  = "edit_file,glob,list_dir,read_file,run_command,search,write_file"
 )
 
 func TestDeclaredToolsPerMode(t *testing.T) {
@@ -257,7 +257,7 @@ func TestCancelledContextDenies(t *testing.T) {
 	}
 }
 
-func TestOwnsAndSystemNote(t *testing.T) {
+func TestOwnsAndModeRule(t *testing.T) {
 	c, _ := newCodeTools(t, ModeAsk, nil)
 	if !c.Owns("run_command") || !c.Owns("read_file") || c.Owns("vault_read_note") {
 		t.Error("Owns despacha mal")
@@ -265,17 +265,62 @@ func TestOwnsAndSystemNote(t *testing.T) {
 	notes := map[string]bool{}
 	for _, m := range []Mode{ModeAsk, ModePlan, ModeApprove, ModeEdit, ModeAuto} {
 		cc, _ := newCodeTools(t, m, nil)
-		n := cc.SystemNote()
-		if !strings.Contains(n, "edit_file") {
-			t.Errorf("%q: la nota debe explicar edit_file: %q", m, n)
-		}
-		notes[n] = true
+		notes[cc.ModeRule()] = true
 	}
 	if len(notes) != 5 {
-		t.Errorf("cada modo tiene que decir su regla: %d notas distintas", len(notes))
+		t.Errorf("cada modo tiene que decir su regla: %d reglas distintas", len(notes))
 	}
 	// Una herramienta fuera del catálogo se rechaza.
 	if _, err := c.Run(context.Background(), "hack", nil); err == nil {
 		t.Error("herramienta desconocida")
+	}
+}
+
+// Las herramientas de skills solo se declaran si hay skills, y son de lectura:
+// valen en todos los modos, también en ask y plan.
+func TestSkillToolsDeclaredOnlyWithSkillsAndInEveryMode(t *testing.T) {
+	skillDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# guía\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws, err := workspace.New(t.TempDir(), workspace.Options{Skills: []workspace.SkillRef{{Name: "guia", Dir: skillDir}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []Mode{ModeAsk, ModePlan, ModeApprove, ModeEdit, ModeAuto} {
+		c := NewCodeTools(ws, mode, nil)
+		got := declared(c)
+		if !strings.Contains(got, "skill") || !strings.Contains(got, "read_skill_file") {
+			t.Errorf("modo %q con skills declara %s", mode, got)
+		}
+		// Sin approver y sin preguntar: son de lectura.
+		out, err := c.Run(context.Background(), "skill", map[string]any{"name": "guia"})
+		if err != nil || !strings.Contains(out, "# guía") {
+			t.Errorf("modo %q: skill = %q, %v", mode, out, err)
+		}
+	}
+	// Sin skills no figuran, y llamarlas igual falla con un mensaje claro.
+	c, _ := newCodeTools(t, ModeAuto, &fakeApprover{})
+	if got := declared(c); strings.Contains(got, "skill") {
+		t.Errorf("sin skills no se declaran: %s", got)
+	}
+	if _, err := c.Run(context.Background(), "skill", map[string]any{"name": "x"}); err == nil {
+		t.Error("skill sin skills debe fallar")
+	}
+}
+
+func TestModeRuleAndCapabilities(t *testing.T) {
+	for mode, w := range map[Mode][2]bool{
+		ModeAsk: {false, false}, ModePlan: {false, false},
+		ModeApprove: {true, true}, ModeEdit: {true, true}, ModeAuto: {true, true},
+	} {
+		c, _ := newCodeTools(t, mode, nil)
+		if c.CanWrite() != w[0] || c.CanRun() != w[1] || c.ModeRule() == "" {
+			t.Errorf("modo %q: CanWrite=%v CanRun=%v", mode, c.CanWrite(), c.CanRun())
+		}
+	}
+	c, _ := newCodeTools(t, ModeAuto, nil)
+	if !strings.Contains(c.ModeRule(), "git push") {
+		t.Errorf("auto debe mencionar que lo riesgoso (git push) pregunta: %q", c.ModeRule())
 	}
 }

@@ -41,6 +41,10 @@ func (f *fakeChatLLM) Chat(_ context.Context, req llm.ChatRequest, on func(llm.D
 func newChatApp(t *testing.T) (*App, chan agentchat.Event) {
 	t.Helper()
 	t.Setenv(appdata.OverrideEnv, t.TempDir())
+	// Las instrucciones y skills globales (~/.claude…) no se leen del home real
+	// de quien corre las pruebas.
+	llmProjectHome = t.TempDir()
+	t.Cleanup(func() { llmProjectHome = "" })
 	gate := vaultgate.New()
 	store, err := vault.Open(gate)
 	if err != nil {

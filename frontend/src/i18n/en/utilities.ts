@@ -32,6 +32,10 @@ const en: Messages<typeof es> = {
             name: 'AI Chat',
             hint: 'talk to Claude, Codex, Antigravity or a local model, with history and search',
         },
+        modelManager: {
+            name: 'Models',
+            hint: "see, pull and delete a model server's models (Ollama, local or remote)",
+        },
     },
     // «AI Chat» tab: history on the left, conversation in the middle.
     aiChat: {
@@ -98,16 +102,94 @@ const en: Messages<typeof es> = {
             providerPlaceholder: 'Pick a provider',
             modelLabel: 'Model',
             modelTitle: "Model that answers from now on. The provider reports the list itself; «Default» uses whichever it has configured.",
-            repoLabel: 'Repository',
+            repoLabel: 'Project',
             repoTitle:
-                "This conversation's working repository. Its name and location travel with your messages so the agent knows which one you mean (you can drop it from the message). With no repository, the conversation is general.",
-            noRepo: 'No repository',
+                "This conversation's working project: a git repository or any folder you've given the app access to. The agent works there: it reads files and, depending on the mode, edits them and runs commands; with a model server the app loads the project's instructions (AGENTS.md, CLAUDE.md…) and skills by itself. Its name and location travel with your messages. With no project, the conversation is general.",
+            noRepo: 'No project',
             repoModuleTitle: (p) =>
-                `This conversation started in ${p.where} and stays tied to that resource: its repository can't be changed.`,
+                `This conversation started in ${p.where} and stays tied to that resource: its project can't be changed.`,
         },
         repoBlock: {
-            label: 'Working repository',
+            label: 'Working project',
             text: (p) => `${p.name}\n${p.path}`,
+        },
+        project: {
+            missing: 'Missing',
+            missingTitle: (p) =>
+                `The folder ${p.path} no longer exists on disk (moved, deleted or unmounted). It can't be picked while it's missing; you can remove it from «Manage folders…».`,
+            removed: 'Removed',
+            removedTitle:
+                "This conversation worked in a folder that is no longer in the app's list. Pick another project so the agent has file access again.",
+            openFolder: 'Open folder…',
+            openFolderTitle:
+                "Pick any folder on disk — it doesn't have to be a git repository — for the agent to work in. The app only remembers its path.",
+            manage: 'Manage folders…',
+            manageTitle: 'Shows the folders the app has access to and lets you remove them from the list',
+            openFailed: (p) => `That folder can't be used: ${p.error}`,
+            dismissTitle: 'Hide this notice',
+        },
+        context: {
+            label: 'Context',
+            loading: 'reading…',
+            unavailable: 'unavailable',
+            none: 'no instruction files or skills',
+            moreFiles: (p) => `+${p.n}`,
+            skillsCount: (p) => (p.n === 1 ? '1 skill' : `${p.n} skills`),
+            chipTitle:
+                'What the app reads by itself from this project: instruction files (AGENTS.md, CLAUDE.md…) and skills. Click to see the full list.',
+            branchTitle: (p) => `Repository's current branch: ${p.branch}`,
+            notGit: 'Folder, no git',
+            notGitTitle:
+                "This folder isn't a git repository: the agent can edit files, but there's no history to go back to and no diff to review what changed.",
+            missing: "Folder doesn't exist",
+            missingTitle: 'The folder is no longer on disk (moved, deleted or unmounted). Pick another project or open it again.',
+            popoverTitle: 'Project context',
+            reload: 'Read again',
+            reloadTitle:
+                'Reads the instruction files and skills from disk again. It happens by itself when you change project and when you come back to this window.',
+            closeTitle: 'Close (Esc)',
+            explainModelServer:
+                'Loaded automatically in chats with model servers: the instructions travel with every message, and the model sees each skill\'s name and description and reads the one it needs when it needs it.',
+            explainCli: (p) =>
+                `${p.agent} is a CLI: it reads its own instruction files from the project folder by itself. This list shows what it will find; the app doesn't inject it.`,
+            loadFailed: (p) => `Couldn't read the context: ${p.error}`,
+            instructionsTitle: 'Instruction files',
+            noInstructions: 'There is no AGENTS.md, CLAUDE.md or equivalent in this project or in your home folder.',
+            scopeProject: 'Project',
+            scopeGlobal: 'Global',
+            scopeProjectTitle: "It's inside the project folder: it applies to this project only.",
+            scopeGlobalTitle: "It's in your home folder: it applies to all your projects.",
+            chars: (p) => `${p.n} characters`,
+            truncated: 'Truncated',
+            truncatedTitle: 'It exceeds the size limit: the model only receives the beginning of the file, or nothing if the total limit was already used up by the previous ones.',
+            total: (p) => `Total sent with every message: ${p.n} characters`,
+            skillsTitle: 'Skills',
+            noSkills: 'There are no skills in this project or in your home folder.',
+            skillsExplain:
+                "Progressive loading: the model sees only each skill's name and description, and reads the full content — with the skill tool — when it decides it's useful.",
+        },
+        folders: {
+            title: 'Folders with access',
+            intro:
+                "These are the folders you've given the app so agents can work in them. Git repositories aren't listed here: they're managed in the Git module.",
+            removeNote:
+                "Removing a folder revokes the app's access to it and deletes or modifies nothing on disk. It also deletes from the app's history the conversations held in that folder.",
+            empty: "You haven't opened any folder yet. Use «Open folder…» to give one to the app.",
+            missing: 'Missing',
+            missingTitle: (p) => `${p.path} no longer exists on disk (moved, deleted or unmounted)`,
+            removeTitle: (p) => `Removes «${p.name}» from the app's list and deletes its conversations from the history. The folder and its files are not deleted.`,
+            removeAria: (p) => `Remove ${p.name}`,
+            addTitle: 'Pick another folder on disk so agents can work in it',
+            close: 'Close',
+            closeTitle: 'Closes this dialog (Esc)',
+            confirmTitle: 'Remove the folder from the list',
+            confirmDescription: (p) =>
+                `«${p.name}» (${p.path}) stops being available as a project for agents. The folder and its files are not touched on disk and you can open it again whenever you want.${
+                    p.chats > 0
+                        ? ` The ${p.chats === 1 ? '1 conversation' : `${p.chats} conversations`} held in that folder will also be deleted from the app's history, and cannot be recovered.`
+                        : ''
+                }`,
+            confirm: 'Remove',
         },
     },
     portKiller: {

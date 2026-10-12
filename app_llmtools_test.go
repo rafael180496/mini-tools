@@ -164,7 +164,7 @@ func TestWorkspaceRootAndAgentCwd(t *testing.T) {
 func TestBuildLLMToolsGating(t *testing.T) {
 	a, _ := newChatApp(t)
 	id, _ := addRepo(t, a)
-	const reads = "list_dir,read_file,search"
+	const reads = "glob,list_dir,read_file,search"
 
 	// Sin repositorio y con MCP apagado: sin herramientas, el chat es el de siempre.
 	if set := a.buildLLMTools("utilities", "", agentchat.ModeAuto); len(set.Tools) != 0 {
@@ -174,7 +174,7 @@ func TestBuildLLMToolsGating(t *testing.T) {
 	if got := toolNames(a.buildLLMTools("git", id, agentchat.ModeAsk)); got != reads {
 		t.Errorf("ask = %s", got)
 	}
-	if got := toolNames(a.buildLLMTools("utilities", id, agentchat.ModeEdit)); got != "edit_file,list_dir,read_file,run_command,search,write_file" {
+	if got := toolNames(a.buildLLMTools("utilities", id, agentchat.ModeEdit)); got != "edit_file,glob,list_dir,read_file,run_command,search,write_file" {
 		t.Errorf("edit = %s", got)
 	}
 
@@ -328,7 +328,7 @@ loop:
 	// El modelo recibió las herramientas del modo edit (sin MCP, que está apagado)
 	// y la respuesta tool correlacionada por nombre.
 	first := srv.reqs[0]["tools"].([]any)
-	if len(first) != 6 {
+	if len(first) != 7 {
 		t.Errorf("herramientas declaradas = %d", len(first))
 	}
 	msgs := srv.reqs[1]["messages"].([]any)
@@ -420,7 +420,7 @@ func TestSendAgentChatLLMNoRepoOnlyOffersMCPAndAskModeIsReadOnly(t *testing.T) {
 		names = append(names, tl.(map[string]any)["function"].(map[string]any)["name"].(string))
 	}
 	sort.Strings(names)
-	if strings.Join(names, ",") != "list_dir,read_file,search" {
+	if strings.Join(names, ",") != "glob,list_dir,read_file,search" {
 		t.Errorf("ask declara %v", names)
 	}
 }

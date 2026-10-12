@@ -8,7 +8,7 @@
 // Los textos NO viven acá: un texto guardado en una constante de módulo se
 // queda en el idioma con el que arrancó la app. Se leen de
 // `t.utilities.tools[id]` al dibujar.
-export type UtilityId = 'portKiller' | 'activityMonitor' | 'docker' | 'aiChat'
+export type UtilityId = 'portKiller' | 'activityMonitor' | 'docker' | 'aiChat' | 'modelManager'
 
 export interface UtilityDef {
     id: UtilityId
@@ -21,4 +21,5 @@ export const UTILITIES: UtilityDef[] = [
     {id: 'activityMonitor', icon: 'monitor_heart'},
     {id: 'docker', icon: 'deployed_code'},
     {id: 'aiChat', icon: 'forum'},
+    {id: 'modelManager', icon: 'model_training'},
 ]

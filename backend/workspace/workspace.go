@@ -71,9 +71,14 @@ const (
 	ToolReadFile   = "read_file"
 	ToolListDir    = "list_dir"
 	ToolSearch     = "search"
+	ToolGlob       = "glob"
 	ToolWriteFile  = "write_file"
 	ToolEditFile   = "edit_file"
 	ToolRunCommand = "run_command"
+	// Las dos de skills leen archivos de la carpeta de un skill, que puede
+	// estar FUERA del proyecto (~/.claude/skills): ver skills.go.
+	ToolSkill         = "skill"
+	ToolReadSkillFile = "read_skill_file"
 )
 
 // Topes. Ver el doc del paquete: están pensados para el contexto del modelo,
@@ -124,6 +129,9 @@ type Options struct {
 	ShellID string
 	// CommandTimeout es el tope por defecto de run_command (0 = 2 minutos).
 	CommandTimeout time.Duration
+	// Skills son los skills que se pueden cargar con las herramientas skill y
+	// read_skill_file. Vacío = esas herramientas no se declaran.
+	Skills []SkillRef
 }
 
 // Workspace son las herramientas atadas a un directorio.
@@ -174,6 +182,12 @@ func (w *Workspace) Run(ctx context.Context, name string, args map[string]any) (
 		return w.listDir(args)
 	case ToolSearch:
 		return w.search(ctx, args)
+	case ToolGlob:
+		return w.glob(ctx, args)
+	case ToolSkill:
+		return w.skill(args)
+	case ToolReadSkillFile:
+		return w.readSkillFile(args)
 	case ToolWriteFile:
 		return w.writeFile(args)
 	case ToolEditFile:

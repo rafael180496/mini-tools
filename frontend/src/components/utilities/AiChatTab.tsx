@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
+    AddAgentWorkspace,
     AgentActive,
     AgentModelCatalog,
     CancelAgentChat,
@@ -7,16 +8,18 @@ import {
     DeleteAgentChat,
     GitListRepos,
     ListAgents,
+    ListAgentWorkspaces,
     ListAllAgentChats,
     ListConnections,
+    PickAgentWorkspaceFolder,
     RenameAgentChat,
     ResumeAgentChat,
     SetAgentChatContext,
     TouchAgentChat,
 } from '../../../wailsjs/go/main/App'
-import {agentmodels, agents as agentsModel, vault} from '../../../wailsjs/go/models'
+import {agentmodels, agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
-import Select from '../Select'
+import Select, {type SelectOption} from '../Select'
 import ResizeHandle from '../ResizeHandle'
 import ModelServerDialog from '../ModelServerDialog'
 import ConfirmDialog from '../ConfirmDialog'
@@ -28,10 +31,13 @@ import {HealthBadge, ProviderIconWithHealth} from '../agent/HealthIndicators'
 import {isModelServerAgent} from '../../lib/modelServers'
 import {useModelServerHealth, useModelServersHealth} from '../../lib/modelServerHealth'
 import {CONTEXT_ICONS, describeContext, repoIdOf, type WorkContext, type WorkContextKind} from '../agent/workContext'
-import {useT} from '../../i18n'
+import {errorText, useT} from '../../i18n'
 import {onModelServersChanged} from '../../lib/appBus'
 import {useElementWidth} from '../../hooks/useElementWidth'
 import AiChatHistory from './aichat/AiChatHistory'
+import ProjectContextBar from './aichat/ProjectContextBar'
+import ManageFoldersDialog from './aichat/ManageFoldersDialog'
+import {onModelsChangedFor} from '../../lib/modelsChanged'
 import {
     CHAT_MIN,
     COMPACT_BELOW,
@@ -52,7 +58,10 @@ import {
 //               Su ancho se arrastra (como la barra lateral) y se recuerda
 //   centro      el mismo `AgentChat` de los demás módulos (módulo «utilities»),
 //               a TODO el ancho que le quede a la pestaña
-//   cabecera    proveedor + modelo + repositorio de trabajo
+//   cabecera    proveedor + modelo + proyecto de trabajo (un repositorio git o
+//               cualquier carpeta que se le haya dado a la app)
+//   franja      bajo la cabecera, lo que la app lee sola del proyecto: archivos de
+//               instrucciones (AGENTS.md, CLAUDE.md…) y skills
 //
 // **Se adapta al ancho de la pestaña, no al de la ventana.** La pestaña puede
 // quedar angosta con la ventana enorme (barra lateral abierta, panel del agente
@@ -77,6 +86,14 @@ const MODEL_DEFAULT = ''
 // Valor de la opción de cierre del selector de proveedor. No es un agente: al
 // elegirla se abre el diálogo de alta y el proveedor elegido no cambia.
 const ADD_SERVER = '__add_model_server__'
+// Valores de las dos acciones del final del selector de proyecto. Como ADD_SERVER,
+// no son un proyecto: al elegirlas no cambia el proyecto de la conversación.
+const OPEN_FOLDER = '__open_folder__'
+const MANAGE_FOLDERS = '__manage_folders__'
+// Id de contexto de una carpeta: `ws:<id>`. Un repositorio git va con su id a secas.
+const WORKSPACE_PREFIX = 'ws:'
+
+const baseName = (path: string) => path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? path
 
 interface Session {
     id: string
@@ -109,6 +126,14 @@ export default function AiChatTab({visible}: Props) {
     const [agentsLoaded, setAgentsLoaded] = useState(false)
     const [defaultAgentId, setDefaultAgentId] = useState('')
     const [repos, setRepos] = useState<vault.GitRepo[]>([])
+    // Carpetas a las que el usuario le dio acceso a la app (no son repos git).
+    const [workspaces, setWorkspaces] = useState<main.AgentWorkspace[]>([])
+    const [manageFolders, setManageFolders] = useState(false)
+    // Los repos y las carpetas ya se leyeron (evita marcar «quitada» una carpeta
+    // que solo todavía no llegó).
+    const [projectsLoaded, setProjectsLoaded] = useState(false)
+    // Por qué no se pudo abrir una carpeta (la raíz del disco, el home…).
+    const [projectError, setProjectError] = useState('')
     const [history, setHistory] = useState<vault.AgentChat[]>([])
     const [resourceNames, setResourceNames] = useState<Record<string, string>>({})
     const [sessions, setSessions] = useState<Session[]>([])
@@ -138,6 +163,8 @@ export default function AiChatTab({visible}: Props) {
     const [deleting, setDeleting] = useState<vault.AgentChat | null>(null)
     const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
     const [catalog, setCatalog] = useState<agentmodels.Catalog | null>(null)
+    // Sube cuando cambian los modelos del servidor elegido: relee el catálogo.
+    const [catalogTick, setCatalogTick] = useState(0)
 
     const sessionsRef = useRef(sessions)
     sessionsRef.current = sessions
@@ -165,13 +192,16 @@ export default function AiChatTab({visible}: Props) {
     // Los nombres se resuelven contra lo que existe HOY: una conexión renombrada
     // tiene que verse con su nombre nuevo, y una borrada simplemente sin recurso.
     const loadNames = useCallback(() => {
-        Promise.all([ListConnections().catch(() => []), GitListRepos().catch(() => [])])
-            .then(([conns, rs]) => {
+        Promise.all([ListConnections().catch(() => []), GitListRepos().catch(() => []), ListAgentWorkspaces().catch(() => [])])
+            .then(([conns, rs, ws]) => {
                 const map: Record<string, string> = {}
                 for (const c of conns ?? []) map[c.id] = c.name
                 for (const r of rs ?? []) map[r.id] = r.name
+                for (const w of ws ?? []) map[WORKSPACE_PREFIX + w.id] = w.name
                 setResourceNames(map)
                 setRepos(rs ?? [])
+                setWorkspaces(ws ?? [])
+                setProjectsLoaded(true)
             })
             .catch(() => {})
     }, [])
@@ -205,6 +235,14 @@ export default function AiChatTab({visible}: Props) {
         }
     }, [visible, loadHistory, loadNames])
 
+    // Una carpeta se mueve o se desmonta con la app abierta: al volver a la
+    // ventana se vuelve a comprobar cuáles existen.
+    useEffect(() => {
+        if (!visible) return
+        window.addEventListener('focus', loadNames)
+        return () => window.removeEventListener('focus', loadNames)
+    }, [visible, loadNames])
+
     // Catálogo de modelos del proveedor vigente.
     const currentAgentId = current?.agentId ?? ''
     useEffect(() => {
@@ -219,7 +257,11 @@ export default function AiChatTab({visible}: Props) {
         return () => {
             cancelled = true
         }
-    }, [currentAgentId])
+    }, [currentAgentId, catalogTick])
+
+    // Se bajó o se borró un modelo en «Modelos»: el selector relee la lista de
+    // ESTE servidor sin esperar a que se cambie de proveedor.
+    useEffect(() => onModelsChangedFor(currentAgentId, () => setCatalogTick((n) => n + 1)), [currentAgentId])
 
     // El cajón solo existe en una pestaña angosta; Esc lo cierra.
     useEffect(() => {
@@ -236,11 +278,19 @@ export default function AiChatTab({visible}: Props) {
 
     // --- Sesiones ----------------------------------------------------------
 
-    const repoName = useCallback((id: string) => repos.find((r) => r.id === id)?.name ?? resourceNames[id] ?? '', [repos, resourceNames])
+    // Nombre del proyecto de trabajo: el de un repositorio o el de una carpeta.
+    const projectName = useCallback(
+        (id: string) =>
+            repos.find((r) => r.id === id)?.name ??
+            workspaces.find((w) => WORKSPACE_PREFIX + w.id === id)?.name ??
+            resourceNames[id] ??
+            '',
+        [repos, workspaces, resourceNames],
+    )
 
     const utilitiesContext = useCallback(
-        (repoId: string): WorkContext => ({kind: 'utilities', id: repoId, label: repoId ? repoName(repoId) : ''}),
-        [repoName],
+        (projectId: string): WorkContext => ({kind: 'utilities', id: projectId, label: projectId ? projectName(projectId) : ''}),
+        [projectName],
     )
 
     const focusComposer = useCallback(() => {
@@ -402,33 +452,63 @@ export default function AiChatTab({visible}: Props) {
         setSessions((prev) => (prev.some((s) => s.id === sessionId && s.model !== model) ? prev.map((s) => (s.id === sessionId ? {...s, model} : s)) : prev))
     }, [])
 
-    const changeRepo = useCallback(
-        (repoId: string) => {
+    const changeProject = useCallback(
+        (projectId: string) => {
             if (!current) return
-            const context = utilitiesContext(repoId)
+            const context = utilitiesContext(projectId)
             setSessions((prev) => prev.map((s) => (s.id === current.id ? {...s, context} : s)))
             // La conversación ya guardada se reasigna: si no, al retomarla desde
-            // el historial volvería con el repositorio con el que nació.
-            if (current.chatId) void SetAgentChatContext(current.id, 'utilities', repoId).then(loadHistory).catch(() => {})
+            // el historial volvería con el proyecto con el que nació.
+            if (current.chatId) void SetAgentChatContext(current.id, 'utilities', projectId).then(loadHistory).catch(() => {})
         },
         [current, loadHistory, utilitiesContext],
     )
 
-    // El nombre del repositorio puede resolverse después de crear la sesión
-    // (los repos llegan por una llamada aparte): se rellena la etiqueta.
+    // «Abrir carpeta…»: diálogo nativo → alta (el backend rechaza la raíz del
+    // disco y el home, y dice por qué) → devuelve el contexto de la carpeta, o ''
+    // si se canceló o falló.
+    const openFolder = useCallback(async (): Promise<string> => {
+        try {
+            const path = await PickAgentWorkspaceFolder()
+            if (!path) return ''
+            const w = await AddAgentWorkspace(path, baseName(path))
+            setProjectError('')
+            setWorkspaces((prev) => (prev.some((x) => x.id === w.id) ? prev.map((x) => (x.id === w.id ? w : x)) : [...prev, w]))
+            setResourceNames((prev) => ({...prev, [WORKSPACE_PREFIX + w.id]: w.name}))
+            return WORKSPACE_PREFIX + w.id
+        } catch (e) {
+            setProjectError(errorText(e))
+            return ''
+        }
+    }, [])
+
+    const onProjectChange = useCallback(
+        (value: string) => {
+            if (value === MANAGE_FOLDERS) setManageFolders(true)
+            else if (value === OPEN_FOLDER) void openFolder().then((id) => id && changeProject(id))
+            else {
+                setProjectError('')
+                changeProject(value)
+            }
+        },
+        [changeProject, openFolder],
+    )
+
+    // El nombre del proyecto puede resolverse después de crear la sesión (los
+    // repos y las carpetas llegan por una llamada aparte): se rellena la etiqueta.
     useEffect(() => {
         setSessions((prev) => {
             let changed = false
             const next = prev.map((s) => {
                 if (s.context.kind !== 'utilities' || !s.context.id) return s
-                const label = repoName(s.context.id)
+                const label = projectName(s.context.id)
                 if (label === s.context.label) return s
                 changed = true
                 return {...s, context: {...s.context, label}}
             })
             return changed ? next : prev
         })
-    }, [repoName])
+    }, [projectName])
 
     // --- Historial ---------------------------------------------------------
 
@@ -511,17 +591,47 @@ export default function AiChatTab({visible}: Props) {
         description: m.description || undefined,
     }))
 
-    const repoOptions = [
-        {value: '', label: ta.header.noRepo, separatorAfter: repos.length > 0},
-        ...repos.map((r) => ({value: r.id, label: r.name, hint: r.path})),
+    // Selector de proyecto: «Sin proyecto», los repositorios git, las carpetas
+    // concedidas y, al final, las dos acciones. Una carpeta que ya no existe se
+    // ve apagada y no se puede elegir (el tooltip dice por qué).
+    const projectOf = (id: string) => {
+        const repo = repos.find((r) => r.id === id)
+        if (repo) return {name: repo.name, path: repo.path}
+        const w = workspaces.find((x) => WORKSPACE_PREFIX + x.id === id)
+        return w ? {name: w.name, path: w.path} : null
+    }
+    const currentProjectId = current?.context.id ?? ''
+    const projectOptions: SelectOption[] = [{value: '', label: ta.header.noRepo, icon: <Icon name="chat_bubble_outline" size={14} />}]
+    const withSeparator = (list: SelectOption[]) => list.map((o, i) => (i === list.length - 1 ? {...o, separatorAfter: true} : o))
+    const repoOptions = repos.map((r) => ({value: r.id, label: r.name, hint: r.path, icon: <Icon name="account_tree" size={14} />}))
+    const folderOptions = workspaces.map((w): SelectOption => ({
+        value: WORKSPACE_PREFIX + w.id,
+        label: w.name,
+        // La ruta va en el tooltip: junto al nombre le quitaba lugar a lo que se busca.
+        hint: w.exists ? undefined : ta.project.missing,
+        disabled: !w.exists,
+        title: w.exists ? w.path : ta.project.missingTitle({path: w.path}),
+        icon: <Icon name={w.exists ? 'folder' : 'folder_off'} size={14} />,
+    }))
+    // Una conversación retomada puede apuntar a una carpeta que ya se quitó.
+    const orphan =
+        projectsLoaded && currentProjectId && !repos.some((r) => r.id === currentProjectId) && !workspaces.some((w) => WORKSPACE_PREFIX + w.id === currentProjectId)
+            ? [{value: currentProjectId, label: current?.context.label || ta.project.removed, hint: ta.project.removed, icon: <Icon name="folder_off" size={14} />, title: ta.project.removedTitle} as SelectOption]
+            : []
+    const groups = [withSeparator(projectOptions), ...(orphan.length ? [withSeparator(orphan)] : []), ...(repoOptions.length ? [withSeparator(repoOptions)] : []), ...(folderOptions.length ? [withSeparator(folderOptions)] : [])]
+    const allProjectOptions: SelectOption[] = [
+        ...groups.flat(),
+        {value: OPEN_FOLDER, label: ta.project.openFolder, title: ta.project.openFolderTitle, tone: 'text-primary', icon: <Icon name="create_new_folder" size={14} className="text-primary" />},
+        {value: MANAGE_FOLDERS, label: ta.project.manage, title: ta.project.manageTitle, icon: <Icon name="folder_managed" size={14} />},
     ]
 
     const moduleOwned = current && current.context.kind !== 'utilities'
     const workingOf = (s: Session) => {
         if (s.context.kind !== 'utilities' || !s.context.id) return null
-        const repo = repos.find((r) => r.id === s.context.id)
-        return repo ? {label: ta.repoBlock.label, text: ta.repoBlock.text({name: repo.name, path: repo.path})} : null
+        const p = projectOf(s.context.id)
+        return p ? {label: ta.repoBlock.label, text: ta.repoBlock.text({name: p.name, path: p.path})} : null
     }
+    const currentFolder = workspaces.find((w) => WORKSPACE_PREFIX + w.id === currentProjectId)
 
     const shortcut = navigator.platform.includes('Mac') ? '⌘N' : 'Ctrl+N'
     const activeChatId = current?.chatId || null
@@ -702,14 +812,15 @@ export default function AiChatTab({visible}: Props) {
                             ) : (
                                 <Select
                                     value={current.context.id}
-                                    onChange={changeRepo}
+                                    onChange={onProjectChange}
                                     title={ta.header.repoTitle}
                                     ariaLabel={ta.header.repoLabel}
                                     size="sm"
-                                    leadingIcon="account_tree"
-                                    menuMinWidth={280}
+                                    leadingIcon="folder_open"
+                                    menuMinWidth={300}
+                                    menuMaxHeight={380}
                                     className={`${fieldCls} rounded-lg`}
-                                    options={repoOptions}
+                                    options={allProjectOptions}
                                 />
                             )}
                         </>
@@ -740,6 +851,36 @@ export default function AiChatTab({visible}: Props) {
                         {!compact && <kbd className="rounded bg-on-primary/20 px-1 font-sans text-ui-10">{shortcut}</kbd>}
                     </button>
                 </header>
+
+                {projectError && (
+                    <div
+                        role="alert"
+                        data-project-error
+                        className="flex shrink-0 items-start gap-2 border-b border-error/40 bg-error-container/30 px-3 py-1.5 text-ui-11 text-error"
+                    >
+                        <Icon name="error" size={14} className="mt-px shrink-0" />
+                        <span className="min-w-0 flex-1">{ta.project.openFailed({error: projectError})}</span>
+                        <button
+                            type="button"
+                            onClick={() => setProjectError('')}
+                            title={ta.project.dismissTitle}
+                            aria-label={ta.project.dismissTitle}
+                            className="shrink-0 rounded p-0.5 hover:bg-error-container/50"
+                        >
+                            <Icon name="close" size={13} />
+                        </button>
+                    </div>
+                )}
+
+                {body === 'chat' && current && !moduleOwned && current.context.id && (
+                    <ProjectContextBar
+                        contextId={current.context.id}
+                        isModelServer={isModelServerAgent(current.agentId)}
+                        agentLabel={current.agentLabel}
+                        visible={visible}
+                        missing={!!currentFolder && !currentFolder.exists}
+                    />
+                )}
 
                 {body === 'usage' && (
                     <div data-aichat-usage className="min-h-0 flex-1 overflow-y-auto bg-surface-container-low">
@@ -803,6 +944,21 @@ export default function AiChatTab({visible}: Props) {
                     })}
                 </div>
             </section>
+
+            {manageFolders && (
+                <ManageFoldersDialog
+                    workspaces={workspaces}
+                    onOpenFolder={() =>
+                        void openFolder().then((id) => {
+                            if (!id) return
+                            changeProject(id)
+                            setManageFolders(false)
+                        })
+                    }
+                    onRemoved={() => loadNames()}
+                    onClose={() => setManageFolders(false)}
+                />
+            )}
 
             {serverDialog && <ModelServerDialog onSaved={onServerSaved} onClose={() => setServerDialog(false)} />}
 

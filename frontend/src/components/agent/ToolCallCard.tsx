@@ -24,7 +24,6 @@ export interface ToolCall {
 const CLI_ALIASES: Record<string, string> = {
     read: 'read_file',
     ls: 'list_dir',
-    glob: 'search',
     grep: 'search',
     write: 'write_file',
     edit: 'edit_file',
@@ -41,6 +40,9 @@ const ICONS: Record<string, string> = {
     read_file: 'description',
     list_dir: 'folder_open',
     search: 'manage_search',
+    glob: 'travel_explore',
+    skill: 'psychology',
+    read_skill_file: 'menu_book',
     write_file: 'edit_document',
     edit_file: 'edit',
     run_command: 'terminal',
@@ -70,6 +72,11 @@ const CHANGING = new Set([
     'vault_update_note',
 ])
 
+// Herramientas de skills: `skill` carga las instrucciones de una skill por su
+// nombre y `read_skill_file` lee un archivo que esa skill trae al lado. Ninguna
+// toca nada: solo leen, pero conviene que la tarjeta diga de qué se trata.
+const SKILL_TOOLS = new Set(['skill', 'read_skill_file'])
+
 // Las tres que dejan una nota escrita por el agente: son las que ofrecen abrirla.
 const NOTE_WRITERS = new Set(['vault_create_note', 'vault_append_to_note', 'vault_update_note'])
 
@@ -89,6 +96,19 @@ function noteTitle(tool: ToolCall): string {
     }
 }
 
+// Nombre de la skill sobre la que actuó la herramienta: el resumen del backend o,
+// si faltara, el campo `name` (o `skill`) del argumento.
+function skillName(tool: ToolCall): string {
+    if (tool.summary.trim()) return tool.summary.trim()
+    try {
+        const parsed = JSON.parse(tool.input) as {name?: unknown; skill?: unknown}
+        const v = typeof parsed.name === 'string' ? parsed.name : typeof parsed.skill === 'string' ? parsed.skill : ''
+        return v.trim()
+    } catch {
+        return ''
+    }
+}
+
 export default function ToolCallCard({tool}: {tool: ToolCall}) {
     const t = useT()
     const canonical = canonicalToolName(tool.name)
@@ -96,13 +116,24 @@ export default function ToolCallCard({tool}: {tool: ToolCall}) {
     const title = NOTE_WRITERS.has(canonical) ? noteTitle(tool) : ''
     // Un comando se lee mejor con su prompt: distingue «lo que corrió» de una
     // ruta o un patrón sin tener que mirar el nombre de la herramienta.
-    const summary = canonical === 'run_command' && tool.summary ? `$ ${tool.summary}` : tool.summary
+    const isSkill = SKILL_TOOLS.has(canonical)
+    const summary =
+        canonical === 'run_command' && tool.summary ? `$ ${tool.summary}` : canonical === 'skill' ? skillName(tool) : tool.summary
+    const toolHint = isSkill
+        ? canonical === 'skill'
+            ? t.agent.chat.toolCard.skillTitle
+            : t.agent.chat.toolCard.skillFileTitle
+        : canonical === 'glob'
+          ? t.agent.chat.toolCard.globTitle
+          : undefined
 
     return (
         <details className="group/tool mb-1.5 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low">
             <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1 text-ui-11 hover:bg-surface-variant/50">
                 <Icon name={toolIcon(tool.name)} size={12} className={`shrink-0 ${changing ? 'text-tertiary' : 'text-primary'}`} />
-                <span className="shrink-0 font-mono font-medium text-on-surface">{canonical}</span>
+                <span className="shrink-0 font-mono font-medium text-on-surface" title={toolHint}>
+                    {canonical}
+                </span>
                 {summary && (
                     <span className="min-w-0 flex-1 truncate font-mono text-on-surface-variant" title={summary}>
                         {summary}

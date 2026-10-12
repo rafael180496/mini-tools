@@ -6,6 +6,10 @@ export function ActiveConnectionIds() {
   return window['go']['main']['App']['ActiveConnectionIds']();
 }
 
+export function AddAgentWorkspace(arg1, arg2) {
+  return window['go']['main']['App']['AddAgentWorkspace'](arg1, arg2);
+}
+
 export function AddRedisSetMember(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddRedisSetMember'](arg1, arg2, arg3);
 }
@@ -116,6 +120,10 @@ export function AgentUsageAll(arg1) {
 
 export function AgentUsageLimits() {
   return window['go']['main']['App']['AgentUsageLimits']();
+}
+
+export function AgentWorkspaceContext(arg1, arg2) {
+  return window['go']['main']['App']['AgentWorkspaceContext'](arg1, arg2);
 }
 
 export function AnalyzeRedisPrefixes(arg1, arg2, arg3, arg4) {
@@ -1170,6 +1178,10 @@ export function ListAgentChats(arg1) {
   return window['go']['main']['App']['ListAgentChats'](arg1);
 }
 
+export function ListAgentWorkspaces() {
+  return window['go']['main']['App']['ListAgentWorkspaces']();
+}
+
 export function ListAgents() {
   return window['go']['main']['App']['ListAgents']();
 }
@@ -1274,8 +1286,44 @@ export function MergeNotes(arg1, arg2) {
   return window['go']['main']['App']['MergeNotes'](arg1, arg2);
 }
 
+export function ModelServerCancelPull(arg1) {
+  return window['go']['main']['App']['ModelServerCancelPull'](arg1);
+}
+
+export function ModelServerDeleteModel(arg1, arg2) {
+  return window['go']['main']['App']['ModelServerDeleteModel'](arg1, arg2);
+}
+
+export function ModelServerDismissPull(arg1) {
+  return window['go']['main']['App']['ModelServerDismissPull'](arg1);
+}
+
 export function ModelServerHealth(arg1) {
   return window['go']['main']['App']['ModelServerHealth'](arg1);
+}
+
+export function ModelServerModels(arg1) {
+  return window['go']['main']['App']['ModelServerModels'](arg1);
+}
+
+export function ModelServerPull(arg1, arg2) {
+  return window['go']['main']['App']['ModelServerPull'](arg1, arg2);
+}
+
+export function ModelServerPulls() {
+  return window['go']['main']['App']['ModelServerPulls']();
+}
+
+export function ModelServerRunning(arg1) {
+  return window['go']['main']['App']['ModelServerRunning'](arg1);
+}
+
+export function ModelServerShowModel(arg1, arg2) {
+  return window['go']['main']['App']['ModelServerShowModel'](arg1, arg2);
+}
+
+export function ModelServerUnload(arg1, arg2) {
+  return window['go']['main']['App']['ModelServerUnload'](arg1, arg2);
 }
 
 export function ModelServerUsage(arg1) {
@@ -1362,6 +1410,10 @@ export function PersistRedisKey(arg1, arg2) {
   return window['go']['main']['App']['PersistRedisKey'](arg1, arg2);
 }
 
+export function PickAgentWorkspaceFolder() {
+  return window['go']['main']['App']['PickAgentWorkspaceFolder']();
+}
+
 export function PickAutoBackupFolder() {
   return window['go']['main']['App']['PickAutoBackupFolder']();
 }
@@ -1416,6 +1468,10 @@ export function RegenerateProjectDocs(arg1, arg2, arg3) {
 
 export function ReleasePagedResult(arg1) {
   return window['go']['main']['App']['ReleasePagedResult'](arg1);
+}
+
+export function RemoveAgentWorkspace(arg1) {
+  return window['go']['main']['App']['RemoveAgentWorkspace'](arg1);
 }
 
 export function RemoveRedisListIndex(arg1, arg2, arg3) {

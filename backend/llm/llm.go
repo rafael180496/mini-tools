@@ -137,6 +137,11 @@ type Options struct {
 	// InsecureTLS desactiva la verificación del certificado SOLO para este
 	// servidor. Ver newHTTPClient por el riesgo.
 	InsecureTLS bool
+	// ContextTokens es la ventana de contexto que se le pide a Ollama
+	// (`options.num_ctx`) en cada /api/chat. 0 = no mandarla y dejar la que
+	// traiga el servidor. Un servidor compatible con OpenAI la ignora: la fija
+	// al cargar el modelo y su API no la admite por petición.
+	ContextTokens int
 }
 
 // New arma el cliente del tipo pedido.
@@ -148,7 +153,7 @@ func New(kind, baseURL string, opt Options) (Client, error) {
 	r := requester{base: base, token: opt.Token, headers: opt.Headers, insecure: opt.InsecureTLS, http: newHTTPClient(opt.InsecureTLS)}
 	switch kind {
 	case KindOllama:
-		return &ollamaClient{requester: r}, nil
+		return &ollamaClient{requester: r, numCtx: opt.ContextTokens}, nil
 	case KindOpenAI:
 		return &openaiClient{requester: r}, nil
 	}

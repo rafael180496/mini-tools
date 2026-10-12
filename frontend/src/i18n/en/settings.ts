@@ -282,6 +282,19 @@ const en: Messages<typeof es> = {
             'Does NOT verify the server\'s HTTPS certificate: it accepts a self-signed, expired or wrong-name one. That is what a private server without a public certificate needs, but anyone in the middle of the network can impersonate it and read the token and everything you send. Use it only on a network you control.',
         insecureTlsDescription: 'Risk: the server\'s identity is not verified. Use it only on a trusted network.',
         insecureTlsOnlyHttps: 'Only applies to https:// addresses. This one uses http, which encrypts nothing, so there is no certificate to accept.',
+        context: 'Context window',
+        contextTitle:
+            'How many context tokens mini-tools asks Ollama for in each conversation (options.num_ctx). It is what fits between the project instructions, the history and your message.',
+        contextDescription:
+            'Ollama starts with a small window (2k to 4k tokens) and silently truncates the prompt: with a project\'s instructions and skills, your message can get pushed out with no error at all.',
+        contextPlaceholder: 'Server default',
+        contextUnit: 'tokens',
+        contextChoiceTitle: (p) => `Ask for ${p.n} context tokens`,
+        contextServerDefault: 'Server default',
+        contextServerDefaultTitle: 'Ask for nothing: the window Ollama loaded the model with is used (usually 2k to 4k tokens).',
+        contextCost: 'More context uses more RAM or VRAM when the model loads and makes it slower: raise it only if you need it.',
+        contextOpenai:
+            'An OpenAI-compatible server does not let you ask for the window per conversation: it is fixed when the model loads (LM Studio, vLLM or llama.cpp set it on the server side).',
         insecureTlsBadge: 'TLS unverified',
         insecureTlsBadgeTitle: 'This server is used WITHOUT verifying its HTTPS certificate (self-signed accepted). Someone in the middle of the network could impersonate it.',
         healthChecking: 'Checking…',

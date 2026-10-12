@@ -19,6 +19,7 @@ import terminal from './terminal'
 import notes from './notes'
 import agent from './agent'
 import utilities from './utilities'
+import models from './models'
 
 const en: Messages<typeof es> = {
     common,
@@ -40,5 +41,6 @@ const en: Messages<typeof es> = {
     notes,
     agent,
     utilities,
+    models,
 }
 export default en

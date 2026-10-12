@@ -34,6 +34,8 @@ import {isModelServerAgent, MODEL_SERVER_PREFIX} from '../../lib/modelServers'
 import {useModelServerHealth} from '../../lib/modelServerHealth'
 import {HealthBanner} from './HealthIndicators'
 import {requestOpenSettings} from '../../lib/appBus'
+import {onModelsChangedFor} from '../../lib/modelsChanged'
+import {ackProjectMode, isProjectModeAcked, readProjectPrefs, writeProjectPrefs} from '../../lib/projectPrefs'
 
 // Espeja ChatEvent / Usage (backend/agentchat/types.go); ToolCall vive en
 // ToolCallCard.tsx.
@@ -507,6 +509,8 @@ export default function AgentChat({
     const model = modelControlled ? modelProp : modelLocal
     const setModel = (m: string) => (modelControlled ? onModelChange?.(m) : setModelLocal(m))
     const [modes, setModes] = useState<string[]>([''])
+    // Proyecto para el que se calculó `modes` (la lista cambia al elegir uno).
+    const [modesFor, setModesFor] = useState('')
     // Repositorio sobre el que el agente puede tocar archivos y correr comandos.
     // Mientras `repoId` es solo el del módulo Git, este incluye el elegido en la
     // cabecera del Chat de IA.
@@ -514,6 +518,8 @@ export default function AgentChat({
     // Catálogo del agente: modelos y niveles de esfuerzo, sacados del propio
     // CLI. Ver backend/agentmodels para por qué no está escrito a mano.
     const [catalog, setCatalog] = useState<agentmodels.Catalog | null>(null)
+    // Sube cuando cambian los modelos del servidor elegido: relee el catálogo.
+    const [catalogTick, setCatalogTick] = useState(0)
     // Modo permisivo elegido y todavía SIN aprobar. Hasta que el usuario
     // confirme, el modo activo sigue siendo el anterior.
     const [pendingMode, setPendingMode] = useState<string | null>(null)
@@ -555,6 +561,8 @@ export default function AgentChat({
         }
     }, [agentId, isLLM])
     const [noRepoDismissed, setNoRepoDismissed] = useState(false)
+    // Sugerencia «usar Automático» sobre un proyecto: se descarta POR PROYECTO.
+    const [autoHintGone, setAutoHintGone] = useState(false)
 
     // --- Cerebro ----------------------------------------------------------
     //
@@ -654,7 +662,11 @@ export default function AgentChat({
         AgentModelCatalog(agentId)
             .then(setCatalog)
             .catch(() => setCatalog(null))
-    }, [agentId])
+    }, [agentId, catalogTick])
+
+    // Se bajó o se borró un modelo en «Modelos»: el selector relee la lista de
+    // ESTE servidor sin esperar a que se cambie de proveedor.
+    useEffect(() => onModelsChangedFor(agentId, () => setCatalogTick((n) => n + 1)), [agentId])
 
     // Los modos permisivos se ofrecen SOLO sobre un repositorio.
     //
@@ -676,6 +688,7 @@ export default function AgentChat({
                     ? all
                     : all.filter((x) => !PERMISSIVE.has(x) && !(isLLM && REPO_MODES.has(x)))
                 setModes(usable.length ? usable : [''])
+                setModesFor(workRepo)
             })
             .catch(() => setModes(['']))
     }, [agentId, workRepo, isLLM])
@@ -686,6 +699,48 @@ export default function AgentChat({
     useEffect(() => {
         if (!workRepo && (PERMISSIVE.has(mode) || (isLLM && REPO_MODES.has(mode)))) setMode('')
     }, [workRepo, mode, isLLM])
+
+    // Elegir un modo a mano lo recuerda POR PROYECTO. Solo pasa por acá lo que el
+    // usuario eligió (y aprobó, si era permisivo): las bajadas automáticas de
+    // arriba —quitar el proyecto, cambiar de proveedor— no escriben nada.
+    const chooseMode = (next: string) => {
+        setMode(next)
+        if (workRepo) writeProjectPrefs(workRepo, {mode: next})
+    }
+    // Un modo permisivo pide su confirmación la PRIMERA vez que se elige en un
+    // proyecto; después de aceptarla ahí no se vuelve a preguntar en cada chat.
+    const requestMode = (next: string) => {
+        if (PERMISSIVE.has(next) && !(workRepo && isProjectModeAcked(workRepo, next))) setPendingMode(next)
+        else chooseMode(next)
+    }
+    const acceptPendingMode = () => {
+        if (!pendingMode) return
+        if (workRepo) ackProjectMode(workRepo, pendingMode)
+        chooseMode(pendingMode)
+    }
+
+    // En un chat NUEVO sobre un proyecto se vuelve al último modo que se eligió
+    // ahí. No aplica a una conversación retomada (ya trae sus ajustes, y un modo
+    // permisivo guardado no se reactiva solo, ver más abajo) ni a una que ya tiene
+    // mensajes; y no pisa lo que el usuario ya eligió en esta ventana. Sin
+    // memoria el modo sigue siendo el de siempre: solo consulta.
+    const modeRestoredFor = useRef('')
+    useEffect(() => {
+        if (!workRepo) {
+            modeRestoredFor.current = ''
+            setAutoHintGone(false)
+            return
+        }
+        if (modeRestoredFor.current === workRepo) return
+        // Hasta que no lleguen los modos de ESTE proyecto la lista es la anterior.
+        if (modesFor !== workRepo) return
+        modeRestoredFor.current = workRepo
+        setAutoHintGone(readProjectPrefs(workRepo).autoHintDismissed === true)
+        if (initialSettings || turns.length > 0 || mode !== '') return
+        const saved = readProjectPrefs(workRepo).mode
+        if (saved && modes.includes(saved)) setMode(saved)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [workRepo, modes, modesFor])
 
     // Suscripción ANTES de mandar nada: el primer evento puede llegar antes de
     // que termine el await, misma carrera que resuelven la terminal y las
@@ -1285,10 +1340,13 @@ export default function AgentChat({
                             {hasContext
                                 ? // El primer resaltado es el nombre del recurso,
                                   // que va con el color del texto y no en negrita.
-                                  rich(t.agent.chat.emptyWithContext({noun: contextNoun(context.kind), label: context.label}), (s, n) =>
-                                      n === 0 ? <span className="text-on-surface">{s}</span> : <strong>{s}</strong>,
+                                  rich(
+                                      mode
+                                          ? t.agent.chat.emptyWithContextMode({noun: contextNoun(context.kind), label: context.label, mode: modeLabel(mode)?.label ?? mode})
+                                          : t.agent.chat.emptyWithContext({noun: contextNoun(context.kind), label: context.label}),
+                                      (s, n) => (n === 0 ? <span className="text-on-surface">{s}</span> : <strong>{s}</strong>),
                                   )
-                                : rich(t.agent.chat.empty)}
+                                : rich(mode ? t.agent.chat.emptyMode({mode: modeLabel(mode)?.label ?? mode}) : t.agent.chat.empty)}
                         </p>
                         <p className="opacity-70">
                             {rich(t.agent.chat.emptyHint({paste: navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'}))}
@@ -1713,6 +1771,40 @@ export default function AgentChat({
                     </button>
                 </div>
             )}
+            {/* Sugerencia del modo Automático sobre un proyecto. Es una oferta, no
+                una decisión: el modo no cambia hasta que se acepta la
+                confirmación de siempre. Se ve solo con el chat vacío y en
+                «solo consulta», que es donde nadie sabe todavía que existe. */}
+            {isLLM && workRepo && modes.includes('auto') && !PERMISSIVE.has(mode) && turns.length === 0 && !autoHintGone && (
+                <div
+                    data-auto-hint
+                    className="flex shrink-0 items-start gap-2 border-t border-outline-variant bg-surface-container-low px-2 py-1.5 text-ui-11 text-on-surface-variant"
+                >
+                    <Icon name="bolt" size={14} className="mt-px shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1">{rich(t.agent.chat.autoHint.text)}</span>
+                    <button
+                        type="button"
+                        data-auto-hint-use
+                        onClick={() => requestMode('auto')}
+                        title={t.agent.chat.autoHint.useTitle}
+                        className={`shrink-0 rounded border border-primary/40 px-1.5 py-0.5 text-primary hover:bg-primary/10 ${FOCUS}`}
+                    >
+                        {t.agent.chat.autoHint.use}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setAutoHintGone(true)
+                            writeProjectPrefs(workRepo, {autoHintDismissed: true})
+                        }}
+                        title={t.agent.chat.autoHint.dismissTitle}
+                        aria-label={t.agent.chat.autoHint.dismissTitle}
+                        className={`shrink-0 rounded p-0.5 hover:bg-surface-variant hover:text-on-surface ${FOCUS}`}
+                    >
+                        <Icon name="close" size={13} />
+                    </button>
+                </div>
+            )}
             {isLLM && serverHealth && serverHealth.health.error !== '' && (serverHealth.health.status === 'error' || serverHealth.health.status === 'checking') && (
                 <HealthBanner health={serverHealth.health} server={agentLabel} onRetry={serverHealth.refresh} />
             )}
@@ -1741,10 +1833,7 @@ export default function AgentChat({
             <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-outline-variant px-2 pt-1.5 text-ui-11">
 <Select
                     value={mode}
-                    onChange={(next) => {
-                        if (PERMISSIVE.has(next)) setPendingMode(next)
-                        else setMode(next)
-                    }}
+                    onChange={requestMode}
                     title={modeLabel(mode)?.hint}
                     size="sm"
                     leadingIcon={MODE_ICONS[mode] ?? 'visibility'}
@@ -1990,7 +2079,7 @@ export default function AgentChat({
                     }
                     confirmLabel={pendingMode === 'edit' ? t.agent.chat.allowEdits : t.agent.chat.allow}
                     danger={pendingMode === 'edit' || (isLLM && pendingMode === 'auto')}
-                    onConfirm={() => setMode(pendingMode)}
+                    onConfirm={acceptPendingMode}
                     onClose={() => setPendingMode(null)}
                 />
             )}

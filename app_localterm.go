@@ -529,6 +529,9 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 			Model:     model,
 			Mode:      llmMode,
 			LLM:       client,
+			// Ventana de contexto del servidor, solo para avisar si el prompt
+			// estimado no entra (agentchat.noticeContextOverflow).
+			ContextTokens: a.llmContextTokens(agentID),
 			// Si la app se reinició y este chat se retoma, el Manager no
 			// tiene su memoria: se la arma desde lo guardado.
 			History: agentchat.SeedHistory(a.llmSeedHistory(sessionID), llmSeedMessages, llmSeedChars),

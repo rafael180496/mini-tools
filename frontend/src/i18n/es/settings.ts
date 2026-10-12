@@ -284,6 +284,19 @@ export default {
             'NO verifica el certificado HTTPS del servidor: acepta uno autofirmado, vencido o emitido para otro nombre. Es lo que hace falta con un servidor propio sin certificado público, pero cualquiera que esté en medio de la red puede hacerse pasar por él y leer el token y todo lo que mandes. Usalo solo en una red que controlás.',
         insecureTlsDescription: 'Riesgo: no se verifica la identidad del servidor. Usalo solo en una red de confianza.',
         insecureTlsOnlyHttps: 'Solo aplica a direcciones https://. Esta usa http, que no cifra nada, así que no hay certificado que aceptar.',
+        context: 'Ventana de contexto',
+        contextTitle:
+            'Cuántos tokens de contexto le pide mini-tools a Ollama en cada conversación (options.num_ctx). Es lo que cabe entre las instrucciones del proyecto, el historial y tu mensaje.',
+        contextDescription:
+            'Ollama arranca con una ventana chica (2k a 4k tokens) y recorta el prompt en silencio: con las instrucciones y los skills de un proyecto, tu mensaje puede quedar afuera sin ningún error.',
+        contextPlaceholder: 'Del servidor',
+        contextUnit: 'tokens',
+        contextChoiceTitle: (p: {n: string}) => `Pedir ${p.n} tokens de contexto`,
+        contextServerDefault: 'Del servidor',
+        contextServerDefaultTitle: 'No pedir nada: se usa la ventana con la que Ollama cargó el modelo (suele ser de 2k a 4k tokens).',
+        contextCost: 'Más contexto usa más RAM o VRAM al cargar el modelo y lo hace más lento: subilo solo si lo necesitás.',
+        contextOpenai:
+            'Un servidor compatible con OpenAI no permite pedir la ventana por conversación: se fija al cargar el modelo (LM Studio, vLLM o llama.cpp la configuran del lado del servidor).',
         insecureTlsBadge: 'TLS sin verificar',
         insecureTlsBadgeTitle: 'Este servidor se usa SIN verificar su certificado HTTPS (autofirmado aceptado). Quien esté en medio de la red podría hacerse pasar por él.',
         healthChecking: 'Comprobando…',

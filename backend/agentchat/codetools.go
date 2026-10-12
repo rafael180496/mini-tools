@@ -95,6 +95,12 @@ func (c *CodeTools) Defs() []llm.ToolDef {
 		if PermissionFor(c.mode, t.Kind) == PermNone {
 			continue
 		}
+		// Las de skills solo se declaran si el proyecto (o el home) tiene
+		// alguno: una herramienta que figura y siempre falla invita a
+		// intentarla.
+		if (t.Name == workspace.ToolSkill || t.Name == workspace.ToolReadSkillFile) && !c.ws.HasSkills() {
+			continue
+		}
 		out = append(out, llm.ToolDef{Name: t.Name, Description: t.Description, Parameters: t.Parameters})
 	}
 	return out
@@ -107,10 +113,20 @@ func (c *CodeTools) Owns(name string) bool {
 	return ok
 }
 
-// SystemNote es lo que se suma al mensaje de sistema cuando hay herramientas
-// de archivos: dónde trabajan y qué modo rige, para que el modelo no insista
-// con lo que el modo no le deja.
-func (c *CodeTools) SystemNote() string {
+// CanWrite y CanRun dicen si el modo declara las herramientas de escritura y
+// de comandos: es lo que la guía de trabajo del proyecto necesita saber para no
+// prometer lo que el modo no deja.
+func (c *CodeTools) CanWrite() bool {
+	return PermissionFor(c.mode, workspace.KindWrite) != PermNone
+}
+
+func (c *CodeTools) CanRun() bool {
+	return PermissionFor(c.mode, workspace.KindCommand) != PermNone
+}
+
+// ModeRule es la frase que dice qué pasa en este modo con las escrituras y los
+// comandos (cuándo se pregunta al usuario).
+func (c *CodeTools) ModeRule() string {
 	var rule i18n.Msg
 	switch c.mode {
 	case ModeApprove:
@@ -118,16 +134,13 @@ func (c *CodeTools) SystemNote() string {
 	case ModeEdit:
 		rule = i18n.Msg{ES: "Las ediciones de archivos se aplican directo; los comandos le piden permiso al usuario.", EN: "File edits are applied directly; commands ask the user for permission."}
 	case ModeAuto:
-		rule = i18n.Msg{ES: "Las ediciones y los comandos se aplican directo, salvo los riesgosos, que piden permiso al usuario.", EN: "Edits and commands are applied directly, except risky ones, which ask the user for permission."}
+		rule = i18n.Msg{ES: "Las ediciones y los comandos se aplican directo, salvo los riesgosos (por ejemplo git push), que piden permiso al usuario.", EN: "Edits and commands are applied directly, except risky ones (for example git push), which ask the user for permission."}
 	case ModePlan:
 		rule = i18n.Msg{ES: "Solo podés leer y buscar. Explorá el código y proponé un plan; no cambies nada.", EN: "You can only read and search. Explore the code and propose a plan; do not change anything."}
 	default:
 		rule = i18n.Msg{ES: "Solo podés leer y buscar: no modificás nada.", EN: "You can only read and search: you do not modify anything."}
 	}
-	return i18n.T(i18n.Msg{
-		ES: "Tenés herramientas para trabajar en el repositorio abierto (rutas relativas a su raíz). Leé el código antes de editarlo; para cambiar un archivo existente usá edit_file con un fragmento exacto y único. %s",
-		EN: "You have tools to work in the open repository (paths relative to its root). Read the code before editing it; to change an existing file use edit_file with an exact, unique fragment. %s",
-	}, i18n.T(rule))
+	return i18n.T(rule)
 }
 
 // Run ejecuta una llamada aplicando el permiso del modo. Un error vuelve al

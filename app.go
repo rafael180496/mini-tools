@@ -120,6 +120,9 @@ type App struct {
 	// modelHealth es el caché del chequeo previo de los servidores de modelos
 	// (app_modelserver_health.go). Su valor cero ya sirve.
 	modelHealth modelHealthCache
+	// modelPulls lleva las descargas de modelos en curso y las recién terminadas
+	// (app_modelserver_admin.go). Su valor cero ya sirve.
+	modelPulls modelPullRegistry
 	// noteEmit sustituye a runtime.EventsEmit en los avisos de nota creada o
 	// cambiada por un agente (app_mcp_notes.go); solo lo fijan los tests, que
 	// no tienen el contexto de Wails.

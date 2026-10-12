@@ -20,6 +20,7 @@ import terminal from './terminal'
 import notes from './notes'
 import agent from './agent'
 import utilities from './utilities'
+import models from './models'
 
 export default {
     common,
@@ -41,4 +42,5 @@ export default {
     notes,
     agent,
     utilities,
+    models,
 }

@@ -150,6 +150,9 @@ const aiChats = [
     // Respuesta larga con prosa, tabla y una línea de código muy ancha: la que se usa
     // para mirar cómo aprovecha el ancho el chat de ancho completo.
     {id: 'ac-10', repoId: '', agentId: 'claude', title: 'B-tree o BRIN para una tabla de eventos', conversationId: 'conv-ac-10', createdAt: aiNow - 900, updatedAt: aiNow - 300, model: 'sonnet', effort: '', mode: '', module: 'utilities', contextId: '', brain: false},
+    // Servidor de modelos trabajando sobre una CARPETA (no un repo git) en modo
+    // automático, con skills: la conversación de las capturas de proyecto.
+    {id: 'ac-11', repoId: '', agentId: 'llm:ms1', title: 'Armá el informe semanal de soporte', conversationId: '', createdAt: aiNow - 2 * 86400, updatedAt: aiNow - 86400 - 7000, model: '', effort: '', mode: 'auto', module: 'utilities', contextId: 'ws:w1', brain: false},
 ]
 // Mensajes guardados de la primera conversación (AgentChatMessages): lo que se
 // dibuja al retomarla, con el consumo de cada turno.
@@ -181,6 +184,27 @@ const aiChatMessages: Record<string, unknown[]> = {
             toolName: '',
             usage: {input: 612, output: 538, cacheRead: 0, thinking: 0, total: 1150, costUsd: 0.0092},
             createdAt: aiNow - 860,
+        },
+    ],
+    // Carpeta con skills: `skill`, `read_skill_file` y `glob` junto a las de siempre.
+    'ac-11': [
+        {seq: 1, role: 'user', content: 'Armá el informe semanal de soporte con lo que haya en la carpeta, siguiendo nuestra plantilla.', toolName: '', createdAt: aiNow - 2 * 86400 + 100},
+        {seq: 2, role: 'tool', content: 'informe-semanal', toolName: 'skill', createdAt: aiNow - 2 * 86400 + 110},
+        {seq: 3, role: 'tool', content: 'informe-semanal/plantilla.md', toolName: 'read_skill_file', createdAt: aiNow - 2 * 86400 + 115},
+        {seq: 4, role: 'tool', content: 'tickets/**/*.md\n14 archivos', toolName: 'glob', createdAt: aiNow - 2 * 86400 + 120},
+        {seq: 5, role: 'tool', content: 'tickets/2026-W41/resumen.md', toolName: 'read_file', createdAt: aiNow - 2 * 86400 + 125},
+        {seq: 6, role: 'tool', content: 'informes/2026-W41.md\n42 líneas', toolName: 'write_file', createdAt: aiNow - 2 * 86400 + 140},
+        {
+            seq: 7,
+            role: 'assistant',
+            content: [
+                'Listo. Seguí la skill `informe-semanal`: leí la plantilla, recorrí los 14 archivos de `tickets/` y escribí el informe en `informes/2026-W41.md` (42 líneas).',
+                '',
+                'Quedó con las tres secciones de la plantilla —resumen, incidentes y pendientes—. Los incidentes salen ordenados por severidad.',
+            ].join('\n'),
+            toolName: '',
+            usage: {input: 1840, output: 212, cacheRead: 0, thinking: 0, total: 2052, costUsd: 0},
+            createdAt: aiNow - 2 * 86400 + 150,
         },
     ],
     // Una fila `tool` guarda «resumen\ndetalle» (backend/agentchat/record.go).
@@ -303,11 +327,11 @@ const fixtures: Record<string, unknown> = {
         {id: 'llm:ms3', label: 'LM Studio del laboratorio', vendor: 'OpenAI-compatible', command: '', defaultCommand: '', path: '', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
     ],
     ListModelServers: [
-        {id: 'ms1', name: 'Ollama local', kind: 'ollama', baseUrl: 'http://localhost:11434', hasToken: false, isLocal: true, insecureTls: false, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms1', name: 'Ollama local', kind: 'ollama', baseUrl: 'http://localhost:11434', hasToken: false, isLocal: true, insecureTls: false, contextTokens: 16384, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
         // Detrás de Cloudflare Access: token más dos cabeceras (solo los nombres viajan).
-        {id: 'ms2', name: 'vLLM en el servidor GPU', kind: 'openai', baseUrl: 'https://gpu.example.com/v1', hasToken: true, isLocal: false, insecureTls: false, headerNames: ['CF-Access-Client-Id', 'CF-Access-Client-Secret'], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms2', name: 'vLLM en el servidor GPU', kind: 'openai', baseUrl: 'https://gpu.example.com/v1', hasToken: true, isLocal: false, insecureTls: false, contextTokens: 0, headerNames: ['CF-Access-Client-Id', 'CF-Access-Client-Secret'], createdAt: 1786741440, updatedAt: 1786741440},
         // Servidor propio con certificado autofirmado.
-        {id: 'ms3', name: 'LM Studio del laboratorio', kind: 'openai', baseUrl: 'https://192.168.1.50:1234/v1', hasToken: false, isLocal: false, insecureTls: true, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms3', name: 'LM Studio del laboratorio', kind: 'openai', baseUrl: 'https://192.168.1.50:1234/v1', hasToken: false, isLocal: false, insecureTls: true, contextTokens: 0, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
     ],
     // Salud por servidor (cacheada 30 s en el backend). `checkedAt` sale del
     // reloj de la captura para que el «comprobado hace Xs» sea creíble.
@@ -402,6 +426,52 @@ const fixtures: Record<string, unknown> = {
     },
     AgentChatMessages: (chatID: string) => aiChatMessages[chatID] ?? [],
     AgentChatSupported: true,
+    // Proyectos del Chat de IA: carpetas concedidas (una con la ruta perdida) y
+    // el contexto que la app lee de cada proyecto.
+    ListAgentWorkspaces: [
+        {id: 'w1', name: 'soporte-semanal', path: '/Users/ana/trabajo/soporte-semanal', isGit: false, exists: true},
+        {id: 'w2', name: 'infra-scripts', path: '/Users/ana/trabajo/infra-scripts', isGit: true, exists: true},
+        {id: 'w3', name: 'prototipo-2024', path: '/Volumes/Respaldo/prototipo-2024', isGit: false, exists: false},
+    ],
+    PickAgentWorkspaceFolder: '/Users/ana/trabajo/soporte-semanal',
+    AddAgentWorkspace: (path: string, name: string) => ({id: 'w1', name, path, isGit: false, exists: true}),
+    RemoveAgentWorkspace: null,
+    AgentWorkspaceContext: (_module: string, contextId: string) =>
+        contextId === 'ws:w1'
+            ? {
+                  root: '/Users/ana/trabajo/soporte-semanal',
+                  isGit: false,
+                  branch: '',
+                  instructions: [
+                      {path: 'AGENTS.md', scope: 'project', chars: 1980, truncated: false},
+                      {path: '~/.claude/CLAUDE.md', scope: 'global', chars: 640, truncated: false},
+                  ],
+                  skills: [
+                      {name: 'informe-semanal', description: 'Arma el informe semanal de soporte a partir de la carpeta de tickets, con la plantilla del equipo.', scope: 'project', path: '.claude/skills/informe-semanal/SKILL.md'},
+                      {name: 'triaje-tickets', description: 'Clasifica tickets nuevos por severidad y producto.', scope: 'project', path: '.claude/skills/triaje-tickets/SKILL.md'},
+                  ],
+                  totalChars: 2620,
+              }
+            : {
+                  root: '/repos/mini-tools',
+                  isGit: true,
+                  branch: 'develop',
+                  instructions: [
+                      {path: 'AGENTS.md', scope: 'project', chars: 3412, truncated: false},
+                      {path: 'CLAUDE.md', scope: 'project', chars: 9120, truncated: false},
+                      {path: '~/.claude/CLAUDE.md', scope: 'global', chars: 640, truncated: false},
+                      {path: 'claude/03-backend.md', scope: 'project', chars: 7428, truncated: true},
+                  ],
+                  skills: [
+                      {name: 'mini-tools-patterns', description: 'Patrones de conectores de base de datos y de ejecución de queries.', scope: 'project', path: '.claude/skills/mini-tools-patterns/SKILL.md'},
+                      {name: 'migrar-batch', description: 'Migrar un batch legacy a PL/SQL Oracle 19c siguiendo el flujo SDD del repo.', scope: 'project', path: '.claude/skills/migrar-batch/SKILL.md'},
+                      {name: 'consultar-legacy', description: 'Resolver dudas del comportamiento del iSGL leyendo los fuentes originales.', scope: 'project', path: '.claude/skills/consultar-legacy/SKILL.md'},
+                      {name: 'golang-performance', description: 'Optimización de rendimiento en Go: perfilado, asignaciones y concurrencia.', scope: 'global', path: '~/.claude/skills/golang-performance/SKILL.md'},
+                      {name: 'frontend-design', description: 'Diseño visual intencional al construir o rehacer interfaces.', scope: 'global', path: '~/.claude/skills/frontend-design/SKILL.md'},
+                      {name: 'write-swift', description: 'Cómo escribir Swift moderno: valores, concurrencia y protocolos.', scope: 'global', path: '~/.claude/skills/write-swift/SKILL.md'},
+                  ],
+                  totalChars: 32000,
+              },
     AgentChatModes: ['', 'plan', 'approve', 'auto', 'edit'],
     // Cerebro: servidor MCP y escritura de notas encendidos (la vista
     // `braindisabled` los apaga), con la carpeta por defecto.
@@ -1450,6 +1520,7 @@ const {default: PortKillerTab} = await import('./components/utilities/PortKiller
 const {default: ActivityMonitorTab} = await import('./components/utilities/ActivityMonitorTab')
 const {default: DockerTab} = await import('./components/utilities/DockerTab')
 const {default: AiChatTab} = await import('./components/utilities/AiChatTab')
+const {default: ModelManagerTab} = await import('./components/utilities/ModelManagerTab')
 const {default: HttpTree} = await import('./components/http/HttpTree')
 const {default: HttpRequestTab} = await import('./components/http/HttpRequestTab')
 const {default: GitReflogPanel} = await import('./components/git/GitReflogPanel')
@@ -1977,6 +2048,7 @@ views.modelserveredit = settingsInSection('ai')
 // la IP y un puerto distinto del habitual (11435) y la guía de exposición abierta.
 views.modelserverpresets = settingsInSection('ai')
 views.modelserverremote = settingsInSection('ai')
+views.modelservercontext = settingsInSection('ai')
 
 // Agente de código local y cerebro (spec ia-ollama-chat-utilidades, fases 4-6).
 // Todas montan el Chat de IA y retoman una conversación del historial, que es el
@@ -2020,6 +2092,35 @@ views.aichatadd = views.aichat
 views.aichataddfail = views.aichat
 views.aichatnoserver = views.aichat
 views.aichatusage = views.aichat
+// Proyectos del Chat de IA (carpetas, contexto y modo Automático). Todas parten
+// de un servidor de modelos, que es con el que la app carga el contexto sola.
+//   projectpicker   selector de proyecto abierto: repos, carpetas y acciones
+//   projecthint     proyecto elegido en un chat nuevo: la sugerencia de Automático
+//   projectauto     una carpeta con el modo Automático recordado de otra vez
+//   projectcontext  la franja «Contexto» abierta (archivos y skills)
+//   projectchat     conversación sobre una carpeta, con tarjetas de skill y glob
+//   projectmanage   «Administrar carpetas…»
+//   projectremove   la confirmación al quitar una carpeta (cuenta sus conversaciones)
+//   modelservercontext   alta de un Ollama nuevo: ventana de contexto en 16384
+views.projectpicker = views.aichat
+views.projecthint = views.aichat
+views.projectauto = views.aichat
+views.projectcontext = views.aichat
+views.projectchat = views.aichat
+views.projectmanage = views.aichat
+views.projectremove = views.aichat
+if (['projectpicker', 'projecthint', 'projectauto', 'projectcontext', 'projectchat', 'projectmanage', 'projectremove'].includes(view)) {
+    fixtures.AgentActive = {id: 'llm:ms1', label: 'Ollama local', available: true, model: '', effort: '', chatSupported: true}
+    // Sin memoria de otras corridas: el mismo navegador puede haber guardado modos.
+    try {
+        localStorage.clear()
+        if (view === 'projectauto') {
+            localStorage.setItem('mini-tools:aiChat:project:ws:w1', JSON.stringify({mode: 'auto', acked: ['auto']}))
+        }
+    } catch {
+        // sin almacenamiento: la vista se ve igual, sin el modo recordado
+    }
+}
 if (view === 'aichatnoserver') {
     fixtures.ListAgents = (fixtures.ListAgents as {id: string}[]).filter((a) => !a.id.startsWith('llm:'))
     fixtures.ListModelServers = []
@@ -2134,6 +2235,40 @@ if (view === 'aichatresize') {
         handle.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, clientX: x, clientY: r.top + 200}))
         window.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: x + 170, clientY: r.top + 200}))
     }, 1600)
+}
+// Selector de proyecto del Chat de IA, manejado como lo haría una persona: se
+// abre el menú y se elige una opción por su texto.
+const openProjectMenu = () => {
+    const label = t().utilities.aiChat.header.repoLabel
+    document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)?.click()
+}
+const pickProjectOption = (text: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent?.includes(text))?.click()
+if (view === 'projectpicker') setTimeout(openProjectMenu, 1100)
+if (view === 'projecthint') {
+    setTimeout(openProjectMenu, 1100)
+    setTimeout(() => pickProjectOption('mini-tools'), 1400)
+}
+if (view === 'projectauto') {
+    setTimeout(openProjectMenu, 1100)
+    setTimeout(() => pickProjectOption('soporte-semanal'), 1400)
+}
+if (view === 'projectmanage' || view === 'projectremove') {
+    setTimeout(openProjectMenu, 1100)
+    setTimeout(() => pickProjectOption(t().utilities.aiChat.project.manage), 1400)
+}
+if (view === 'projectremove') {
+    // Quitar la primera carpeta (soporte-semanal, con una conversación): la
+    // confirmación tiene que decir que esa conversación se va con ella.
+    setTimeout(() => document.querySelector<HTMLButtonElement>('[data-folder-remove]')?.click(), 1900)
+}
+if (view === 'projectcontext') {
+    setTimeout(openProjectMenu, 1100)
+    setTimeout(() => pickProjectOption('mini-tools'), 1400)
+    setTimeout(() => document.querySelector<HTMLButtonElement>('[data-context-chip]')?.click(), 2000)
+}
+if (view === 'projectchat') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-11"]') ?? undefined)
 }
 if (view === 'aichatadd' || view === 'aichataddfail') {
     autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-10"]') ?? undefined)
@@ -2362,6 +2497,14 @@ if (view === 'modelserverheaders' || view === 'modelserveredit') {
         setTimeout(() => document.querySelector('[data-headers-editor]')?.scrollIntoView({block: 'center'}), 2500)
     }
 }
+if (view === 'modelservercontext') {
+    // Un Ollama NUEVO con el atajo «en esta máquina»: la ventana de contexto
+    // arranca en 16384 y el campo se trae a la vista.
+    autoClick(() => document.querySelector<HTMLButtonElement>('button[role="tab"][data-section="ai"]') ?? undefined)
+    setTimeout(() => autoClick(() => document.querySelector<HTMLButtonElement>('[data-model-server-add]') ?? undefined), 1200)
+    setTimeout(() => document.querySelector<HTMLButtonElement>('[data-model-preset="ollamaLocal"]')?.click(), 2400)
+    setTimeout(() => document.querySelector('[data-context-tokens]')?.scrollIntoView({block: 'center'}), 2700)
+}
 if (view === 'modelserverpresets' || view === 'modelserverremote') {
     autoClick(() => document.querySelector<HTMLButtonElement>('button[role="tab"][data-section="ai"]') ?? undefined)
     setTimeout(() => autoClick(() => document.querySelector<HTMLButtonElement>('[data-model-server-add]') ?? undefined), 1200)
@@ -2493,6 +2636,104 @@ if (view === 'chatmode') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Chat · Claude Code')))
 }
 
+// Utilidad «Modelos» (administrar los modelos de un servidor).
+//   models         Ollama local: tabla con un modelo cargado en memoria
+//   modelspull     descargas en curso: una con avance, una arrancando y una que falló
+//   modelsdetail   el panel de detalle abierto sobre un modelo
+//   modelsopenai   servidor compatible con OpenAI: solo lectura
+//   modelsdelete   Ollama remoto, con la confirmación de borrado abierta
+//   modelsnarrow   la misma tabla en un panel angosto
+const modelsNow = Date.now()
+const modelsAgo = (days: number) => new Date(modelsNow - days * 86400000).toISOString()
+const OLLAMA_MODELS = [
+    {name: 'llama3.2:3b', size: 2019393189, modifiedAt: modelsAgo(3), digest: 'sha256:a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72', family: 'llama', parameterSize: '3.2B', quantizationLevel: 'Q4_K_M', format: 'gguf'},
+    {name: 'qwen2.5-coder:7b', size: 4683087332, modifiedAt: modelsAgo(1), digest: 'sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364', family: 'qwen2', parameterSize: '7.6B', quantizationLevel: 'Q4_K_M', format: 'gguf'},
+    {name: 'gemma3:4b', size: 3338801804, modifiedAt: modelsAgo(12), digest: 'sha256:a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f25', family: 'gemma3', parameterSize: '4.3B', quantizationLevel: 'Q4_K_M', format: 'gguf'},
+    {name: 'nomic-embed-text:latest', size: 274302450, modifiedAt: modelsAgo(40), digest: 'sha256:0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f', family: 'nomic-bert', parameterSize: '137M', quantizationLevel: 'F16', format: 'gguf'},
+    {name: 'deepseek-r1:14b', size: 8988124069, modifiedAt: modelsAgo(21), digest: 'sha256:6e9f90f02bb3b39b59e81916e8cfce9deb45aeaeb9a54a5be4414486b907dc1e', family: 'qwen2', parameterSize: '14.8B', quantizationLevel: 'Q4_K_M', format: 'gguf'},
+    {name: 'mistral:7b-instruct', size: 4113301824, modifiedAt: modelsAgo(95), digest: 'sha256:f974a74358d62a017b37c6f424fcdf2951643b5c3d8a1f5ab9abd84ea5f3b1d1', family: 'llama', parameterSize: '7.2B', quantizationLevel: 'Q4_0', format: 'gguf'},
+]
+const OPENAI_MODELS = [
+    {name: 'Qwen/Qwen2.5-Coder-32B-Instruct-AWQ', size: 0, modifiedAt: '', digest: '', family: '', parameterSize: '', quantizationLevel: '', format: ''},
+    {name: 'meta-llama/Llama-3.1-8B-Instruct', size: 0, modifiedAt: '', digest: '', family: '', parameterSize: '', quantizationLevel: '', format: ''},
+    {name: 'text-embedding-nomic-embed-text-v1.5', size: 0, modifiedAt: '', digest: '', family: '', parameterSize: '', quantizationLevel: '', format: ''},
+]
+const modelsView = new URLSearchParams(location.search).get('view') ?? ''
+if (modelsView.startsWith('models')) {
+    const remoteOllama = {id: 'ms4', name: 'Ollama del servidor GPU', kind: 'ollama', baseUrl: 'http://10.0.4.20:11434', hasToken: true, isLocal: false, insecureTls: false, contextTokens: 8192, headerNames: ['X-Api-Key'], createdAt: 1786741440, updatedAt: 1786741440}
+    if (modelsView === 'modelsdelete') {
+        fixtures.ListModelServers = [remoteOllama, ...(fixtures.ListModelServers as object[])]
+    }
+    try {
+        localStorage.setItem('mini-tools:modelManager:server', modelsView === 'modelsopenai' ? 'ms2' : modelsView === 'modelsdelete' ? 'ms4' : 'ms1')
+    } catch {
+        // sin almacenamiento: arranca con el primer servidor
+    }
+    Object.assign(fixtures, {
+        ModelServerModels: (id: string) => (id === 'ms2' || id === 'ms3' ? OPENAI_MODELS : OLLAMA_MODELS),
+        ModelServerRunning: (id: string) =>
+            id === 'ms1' || id === 'ms4'
+                ? [{name: 'qwen2.5-coder:7b', size: 6234578944, sizeVram: 6234578944, expiresAt: new Date(modelsNow + 4.6 * 60000).toISOString(), contextLength: 4096}]
+                : [],
+        ModelServerShowModel: (_id: string, name: string) => ({
+            name,
+            family: 'qwen2',
+            parameterSize: '7.6B',
+            quantizationLevel: 'Q4_K_M',
+            format: 'gguf',
+            parameters: 'repeat_penalty 1.05\nstop "<|im_start|>"\nstop "<|im_end|>"\ntemperature 0.7\ntop_k 20\ntop_p 0.8',
+            template:
+                '{{- if .Suffix }}<|fim_prefix|>{{ .Prompt }}<|fim_suffix|>{{ .Suffix }}<|fim_middle|>\n{{- else if .Messages }}\n{{- range $i, $_ := .Messages }}\n<|im_start|>{{ .Role }}\n{{ .Content }}<|im_end|>\n{{ end }}<|im_start|>assistant\n{{ end }}',
+            license: 'Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION…',
+            contextLength: 32768,
+            capabilities: ['completion', 'tools', 'insert'],
+        }),
+        ModelServerPulls:
+            modelsView === 'modelspull'
+                ? [
+                      {pullId: 'p1', serverId: 'ms1', model: 'qwen3:8b', status: 'pulling a3de86cd1c13', completed: 2214592512, total: 5225376768, percent: 42.4, done: false, error: '', cancelled: false, startedAt: modelsNow - 40000},
+                      {pullId: 'p2', serverId: 'ms1', model: 'gemma3:12b', status: 'pulling manifest', completed: 0, total: 0, percent: 0, done: false, error: '', cancelled: false, startedAt: modelsNow - 3000},
+                      {
+                          pullId: 'p3',
+                          serverId: 'ms1',
+                          model: 'qwen9:70b',
+                          status: 'pulling manifest',
+                          completed: 0,
+                          total: 0,
+                          percent: 0,
+                          done: true,
+                          error: uiLang === 'es' ? 'el servidor http://localhost:11434 no pudo descargar el modelo: pull model manifest: file does not exist' : 'the server http://localhost:11434 could not pull the model: pull model manifest: file does not exist',
+                          cancelled: false,
+                          startedAt: modelsNow - 60000,
+                      },
+                  ]
+                : [],
+        ModelServerPull: 'p1',
+        ModelServerCancelPull: null,
+        ModelServerDismissPull: null,
+        ModelServerDeleteModel: null,
+        ModelServerUnload: null,
+    })
+    if (modelsView === 'modelsdetail') {
+        autoClick(() => document.querySelector<HTMLElement>('tr[data-model="qwen2.5-coder:7b"] button[aria-pressed]') ?? undefined)
+    }
+    if (modelsView === 'modelsdelete') {
+        autoClick(() => {
+            const row = document.querySelector('tr[data-model="gemma3:4b"]')
+            return row ? [...row.querySelectorAll<HTMLElement>('button')].pop() : undefined
+        })
+    }
+}
+views.models = (
+    <div className="h-full">
+        <ModelManagerTab visible />
+    </div>
+)
+views.modelspull = views.models
+views.modelsdetail = views.models
+views.modelsopenai = views.models
+views.modelsdelete = views.models
+views.modelsnarrow = views.models
 views.pullnoticeopen = views.pullnotice
 // sidebarmenu: la barra (con UISHOT_MODULE) con todo desplegado y el menú
 // contextual abierto sobre una fila — sirve para cualquier árbol hecho con

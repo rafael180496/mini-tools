@@ -65,6 +65,40 @@ func Catalog() []Tool {
 			}, "pattern"),
 		},
 		{
+			Name: ToolGlob, Kind: KindRead,
+			Description: i18n.T(i18n.Msg{
+				ES: "Busca ARCHIVOS por nombre con un patrón glob (por ejemplo «**/*.go», «src/**/test_*.py», «*.{ts,tsx}»). «**» cruza carpetas; un patrón sin «/» se busca en todas las carpetas. Respeta .gitignore. Devuelve rutas relativas a la raíz, listas para read_file.",
+				EN: "Finds FILES by name with a glob pattern (for example “**/*.go”, “src/**/test_*.py”, “*.{ts,tsx}”). “**” crosses folders; a pattern without “/” is searched in every folder. Respects .gitignore. Returns paths relative to the root, ready for read_file.",
+			}),
+			Parameters: obj(map[string]any{
+				"pattern": str(i18n.T(i18n.Msg{ES: "Patrón glob de las rutas a buscar.", EN: "Glob pattern of the paths to find."})),
+				"path":    str(i18n.T(i18n.Msg{ES: "Carpeta desde donde buscar; el patrón se evalúa relativo a ella. Vacío = la raíz.", EN: "Folder to search from; the pattern is evaluated relative to it. Empty = the root."})),
+			}, "pattern"),
+		},
+		{
+			Name: ToolSkill, Kind: KindRead,
+			Description: i18n.T(i18n.Msg{
+				ES: "Carga un skill: devuelve su SKILL.md completo y la lista de archivos de su carpeta. Usala cuando la tarea coincida con la descripción de uno de los skills disponibles, ANTES de empezar. Los archivos auxiliares se leen con read_skill_file.",
+				EN: "Loads a skill: returns its full SKILL.md and the list of files in its folder. Use it when the task matches the description of one of the available skills, BEFORE starting. Auxiliary files are read with read_skill_file.",
+			}),
+			Parameters: obj(map[string]any{
+				"name": str(i18n.T(i18n.Msg{ES: "Nombre del skill, tal como figura en la lista de skills disponibles.", EN: "Name of the skill, as it appears in the list of available skills."})),
+			}, "name"),
+		},
+		{
+			Name: ToolReadSkillFile, Kind: KindRead,
+			Description: i18n.T(i18n.Msg{
+				ES: "Lee un archivo de la carpeta de un skill (guías, plantillas, scripts). Solo funciona dentro de la carpeta de ese skill, aunque esté fuera del proyecto. Para un directorio devuelve su contenido.",
+				EN: "Reads a file from a skill's folder (guides, templates, scripts). It only works inside that skill's folder, even if it lives outside the project. For a directory it returns its entries.",
+			}),
+			Parameters: obj(map[string]any{
+				"skill":      str(i18n.T(i18n.Msg{ES: "Nombre del skill.", EN: "Name of the skill."})),
+				"path":       str(i18n.T(i18n.Msg{ES: "Ruta relativa a la carpeta del skill (por ejemplo «references/api.md»).", EN: "Path relative to the skill's folder (for example “references/api.md”)."})),
+				"start_line": num(i18n.T(i18n.Msg{ES: "Primera línea a leer (empieza en 1). Opcional.", EN: "First line to read (starts at 1). Optional."})),
+				"end_line":   num(i18n.T(i18n.Msg{ES: "Última línea a leer, incluida. Opcional.", EN: "Last line to read, inclusive. Optional."})),
+			}, "skill", "path"),
+		},
+		{
 			Name: ToolWriteFile, Kind: KindWrite,
 			Description: i18n.T(i18n.Msg{
 				ES: "Crea un archivo o REEMPLAZA su contenido entero. Crea las carpetas que falten. Para cambiar una parte de un archivo existente usá edit_file.",
@@ -104,7 +138,7 @@ func Catalog() []Tool {
 // KindOf devuelve la clase de una herramienta del catálogo.
 func KindOf(name string) (Kind, bool) {
 	switch name {
-	case ToolReadFile, ToolListDir, ToolSearch:
+	case ToolReadFile, ToolListDir, ToolSearch, ToolGlob, ToolSkill, ToolReadSkillFile:
 		return KindRead, true
 	case ToolWriteFile, ToolEditFile:
 		return KindWrite, true

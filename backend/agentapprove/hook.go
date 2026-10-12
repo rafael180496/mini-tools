@@ -154,6 +154,14 @@ func Describe(raw string) (summary, detail string) {
 		return ""
 	}
 
+	// Las herramientas de skills (skill, read_skill_file) nombran un skill:
+	// «skill/ruta» dice más que la ruta sola, que es relativa a su carpeta.
+	if sk := str("skill"); sk != "" {
+		if p := str("path"); p != "" {
+			return sk + "/" + p, ""
+		}
+		return sk, ""
+	}
 	if p := str("file_path", "filePath", "path", "notebook_path"); p != "" {
 		if content := str("content", "new_string", "newString", "new_str"); content != "" {
 			return p, i18n.T(i18n.Msg{ES: "%d líneas", EN: "%d lines"}, strings.Count(content, "\n")+1)
@@ -172,5 +180,5 @@ func Describe(raw string) (summary, detail string) {
 	if u := str("url", "uri"); u != "" {
 		return u, ""
 	}
-	return str("description", "prompt"), ""
+	return str("name", "description", "prompt"), ""
 }

@@ -148,6 +148,11 @@ func TestDescribeForApproval(t *testing.T) {
 		{`{"command":"rm -rf build"}`, "rm -rf build", ""},
 		{`{"url":"https://ejemplo.com"}`, "https://ejemplo.com", ""},
 		{`{}`, "", ""},
+		// Herramientas de skills y glob del chat con un servidor de modelos.
+		{`{"name":"deploy"}`, "deploy", ""},
+		{`{"skill":"deploy","path":"references/api.md"}`, "deploy/references/api.md", ""},
+		{`{"skill":"deploy"}`, "deploy", ""},
+		{`{"pattern":"**/*.go"}`, "**/*.go", ""},
 	}
 	for _, c := range cases {
 		s, d := Describe(c.raw)

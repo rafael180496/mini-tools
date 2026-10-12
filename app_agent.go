@@ -174,7 +174,13 @@ func (a *App) agentEnv(agent agents.Agent) ([]string, error) {
 // log), no en el disco: un agente que no encuentra nada donde está parado es
 // exactamente el comportamiento correcto.
 func (a *App) agentCwd(module, contextID string) (string, error) {
-	if module == "git" && contextID != "" {
+	// Una carpeta de trabajo (`ws:<id>`) vale en cualquier módulo. Si ya no
+	// existe cae al directorio de consultas como un id desconocido.
+	if _, isFolder := parseWorkspaceContext(contextID); isFolder {
+		if path := a.workspaceRoot(module, contextID); path != "" {
+			return path, nil
+		}
+	} else if module == "git" && contextID != "" {
 		return a.gitRepo(contextID)
 	}
 	// El chat de Utilidades puede elegir un repositorio de trabajo: su

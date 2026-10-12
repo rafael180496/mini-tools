@@ -938,12 +938,46 @@ sigue montado (oculto por CSS) cuando se cierra.
 | --- | --- |
 | `ModelServer.isLocal` | `true` si el host de `baseUrl` es de loopback (`localhost`, `127.x`, `::1`, `0.0.0.0`). Lo calcula Go; no se guarda. Un servidor remoto lo dice también en la `Note` del agente. Para advertir antes de usar herramientas de archivos |
 | `AgentChatModes("llm:<id>")` | Siempre `["", "plan", "approve", "edit", "auto"]`: la aprobación de un servidor de modelos es en proceso y no depende del canal de los CLIs |
-| `SendAgentChat(..., module, contextId, ...)` con `llm:` | Respeta `mode`. Herramientas del turno = MCP (si el servidor MCP está encendido; mismo catálogo y auditoría que el puente) + archivos/comandos si hay raíz de trabajo. Raíz: `module "git"` con `contextId` = id de repo, o `module "utilities"` con `contextId` = id del repo elegido (si no es un repo conocido, no hay herramientas de archivos y el cwd es el de consultas) |
-| Modos → herramientas | `""`/`plan`: `read_file`, `list_dir`, `search`. `approve`: + `write_file`, `edit_file`, `run_command`, y las tres preguntan cada vez. `edit`: escritura sin preguntar, comandos preguntan. `auto`: todo sin preguntar salvo la lista de riesgo (`workspace.Risk`), que pregunta en todos los modos |
+| `SendAgentChat(..., module, contextId, ...)` con `llm:` | Respeta `mode`. Herramientas del turno = MCP (si el servidor MCP está encendido; mismo catálogo y auditoría que el puente) + archivos/comandos si hay raíz de trabajo. Raíz: `module "git"` con `contextId` = id de repo, o `module "utilities"` con `contextId` = id del repo elegido, o **`ws:<id>` de una carpeta de trabajo en cualquier módulo** (si no es un proyecto conocido o la carpeta ya no existe, no hay herramientas de archivos y el cwd es el de consultas) |
+| Modos → herramientas | `""`/`plan`: `read_file`, `list_dir`, `search`, `glob` (y `skill`/`read_skill_file` si hay skills). `approve`: + `write_file`, `edit_file`, `run_command`, y las tres preguntan cada vez. `edit`: escritura sin preguntar, comandos preguntan. `auto`: todo sin preguntar salvo la lista de riesgo (`workspace.Risk`), que pregunta en todos los modos |
 | Eventos `tool` | Mismo `agentchat.Event{kind:"tool", tool:{name,input,summary,detail}}` que los CLIs, emitido antes de ejecutar. `summary` = ruta / comando / patrón / título; `detail` = «N líneas» en escrituras |
 | `agent-approval` | Mismo evento y mismo `RespondAgentApproval(id, allow, reason)` que el canal de los CLIs; los ids de estas preguntas empiezan con `llm-approve-`. Vence a los 5 min (deniega) y también al cancelar el turno |
 | `agent-approval-dismiss` | **Nuevo.** Payload: el `id` (string) de una pregunta que ya no espera respuesta (turno cancelado o plazo vencido). La UI puede cerrar su diálogo; responder tarde se ignora de todos modos |
 | Aviso «sin herramientas» | Si el servidor rechaza las herramientas («does not support tools»), el turno sigue sin ellas y se emite **una línea `text`** en cursiva (`_⚠ …_`) al comienzo de la respuesta, una vez por sesión y modelo |
+
+**Proyectos, carpetas, instrucciones y skills** (spec `ia-ollama-chat-utilidades` → «Proyectos y carpetas, instrucciones y skills (estilo OpenCode)»; migración 61). Todos pasan por `requireUnlocked`:
+
+```go
+type AgentWorkspace struct {          // solo CARPETAS; los repos git siguen viniendo de GitListRepos
+    ID     string `json:"id"`
+    Name   string `json:"name"`
+    Path   string `json:"path"`
+    IsGit  bool   `json:"isGit"`      // la carpeta tiene .git
+    Exists bool   `json:"exists"`     // sigue en el disco (si no, se lista igual para poder quitarla)
+}
+type WorkspaceContextInfo struct {
+    Root         string                     `json:"root"`         // ruta real; "" si el chat no tiene proyecto
+    IsGit        bool                       `json:"isGit"`
+    Branch       string                     `json:"branch"`       // "" si no es repo; "HEAD@abc1234" si está desacoplado
+    Instructions []agentctx.InstructionInfo `json:"instructions"` // siempre arreglo
+    Skills       []agentctx.SkillInfo       `json:"skills"`       // siempre arreglo
+    TotalChars   int                        `json:"totalChars"`   // caracteres de instrucciones que entraron (tope 32000)
+}
+// agentctx.InstructionInfo: {path, scope, chars, truncated}   path relativo a la raíz, o "~/…" si es global
+// agentctx.SkillInfo:       {name, description, scope, path}  path del SKILL.md, relativo o "~/…"
+// scope: "project" | "global"
+```
+
+| Contrato | Detalle |
+| --- | --- |
+| `ListAgentWorkspaces()` | Carpetas registradas, en el orden en que se agregaron |
+| `PickAgentWorkspaceFolder()` | Diálogo nativo de carpeta. `""` si se cancela. No valida ni guarda |
+| `AddAgentWorkspace(path, name)` | `path` absoluta, existente y carpeta. Rechaza (error i18n con el motivo) la raíz del disco, el home y cualquier ancestro del home («demasiado amplia»). Idempotente: la misma carpeta (ruta limpia o real) devuelve la ya registrada. `name` vacío = nombre de la carpeta (máx. 80) |
+| `RemoveAgentWorkspace(id)` | La quita **y borra sus chats y mensajes** (`context_id = "ws:<id>"`), como un repo. No toca el disco |
+| `contextId` | `<id de repo>` (módulos `git`/`utilities`) o `ws:<id>` (cualquier módulo). Es lo que se manda en `SendAgentChat`, `CreateAgentChat`, `AgentWorkspaceContext`… |
+| `AgentWorkspaceContext(module, contextId)` | Qué se le pasa al modelo del proyecto, sin texto. Sin proyecto → todo vacío (`instructions: []`, `skills: []`), no error. Las instrucciones omitidas por el tope viajan con `chars: 0, truncated: true` |
+| `AgentChatModes("llm:<id>")` | **No cambia** y no depende del contexto: `["", "plan", "approve", "edit", "auto"]` |
+| Herramientas nuevas | `glob(pattern, path?)`, `skill(name)`, `read_skill_file(skill, path, start_line?, end_line?)`; eventos `tool` con `summary` = patrón / nombre del skill / `skill/ruta` |
 
 **Servidores remotos: chequeo previo, cabeceras y TLS** (spec `ia-ollama-chat-utilidades` → «Servidores remotos»; migración 60):
 
@@ -954,6 +988,15 @@ sigue montado (oculto por CSS) cuando se cierra.
 | `ModelServerHealth(id)` | Devuelve `ModelServerProbe`. Usa el caché de chequeos (30 s); vencido, hace uno nuevo con 4 s de plazo. Un servidor caído o un id inexistente viajan en `error` con `ok:false`, no como excepción. Los fallos no se cachean |
 | `ModelServer.insecureTls` / `headerNames` | `insecureTls`: no verificar el certificado de ese servidor. `headerNames`: solo nombres, siempre arreglo (nunca `null`); los valores no cruzan nunca hacia el frontend, igual que el token |
 | `ModelServerProbe.latencyMs` / `checkedAt` | Lo que tardó el chequeo (ms) y cuándo se hizo (unix ms); con el caché, `checkedAt` dice cuán vieja es la respuesta. `models` es siempre arreglo |
+| `ModelServer.contextTokens` (migración 62) | Ventana de contexto que se le pide a Ollama (`options.num_ctx` en `/api/chat`). `0` = la del servidor (no se manda `options`). Solo vale para `kind: "ollama"`: en un servidor OpenAI se guarda siempre 0. `SaveModelServer` lo persiste (un negativo queda en 0; el tope es 4 194 304). Un Ollama nuevo arranca en 16384 desde el formulario. Si el prompt estimado (caracteres / 4) la supera, el turno emite **una línea `text`** `_⚠ …_` por sesión sugiriendo subirla (mismo mecanismo que el aviso «sin herramientas»); no bloquea nada |
+| `ModelServerModels(serverId)` | `llm.ManagedModel[]`: `{name, size, modifiedAt, digest, family, parameterSize, quantizationLevel, format}`. En un servidor OpenAI devuelve la lista de `/models` con los campos que no informa vacíos |
+| `ModelServerRunning(serverId)` | `llm.RunningModel[]`: `{name, size, sizeVram, expiresAt, contextLength}` (modelos cargados en memoria). Lista vacía —no error— si el servidor no lo informa (OpenAI) |
+| `ModelServerShowModel(serverId, model)` | `llm.ModelDetails`: `{name, family, parameterSize, quantizationLevel, format, parameters, template, license, contextLength, capabilities}`. `contextLength` es la ventana con la que se entrenó (0 = no se sabe). Solo Ollama |
+| `ModelServerPull(serverId, model)` | Devuelve el `pullId` (string) y descarga en segundo plano; no se corta al cerrar la pestaña. Solo Ollama. Progreso por el evento de Wails **`model-pull:<pullId>`** con un `ModelPullEvent` `{pullId, serverId, model, status, completed, total, percent, done, error, cancelled, startedAt}` (máx. ~10 por segundo; `percent` 0..100 no retrocede; el último trae `done: true`, con `error` vacío y `cancelled` falso si terminó bien) |
+| `ModelServerPulls()` | `ModelPullEvent[]` con el último estado de las descargas en curso y de las terminadas hace menos de 10 min (para quien abre la pestaña después) |
+| `ModelServerCancelPull(pullId)` / `ModelServerDismissPull(pullId)` | Corta una descarga en curso (lo ya bajado queda en el servidor) / olvida una terminada |
+| `ModelServerDeleteModel(serverId, model)` / `ModelServerUnload(serverId, model)` | Borra el modelo del disco del servidor / lo descarga de la memoria sin borrarlo. Solo Ollama; ambos invalidan el caché de salud. En un servidor OpenAI devuelven un `UnsupportedError` con el motivo (la interfaz ya esconde las acciones: Utilidades → Modelos es **solo lectura** para OpenAI) |
+| Evento `window` `mini-tools:models-changed` | `{serverId}`. Lo publica Utilidades → Modelos tras bajar o borrar un modelo (`frontend/src/lib/modelsChanged.ts`). Los selectores de modelo del chat (`AiChatTab`, `AgentChat`) relean `AgentModelCatalog` si el `serverId` coincide con el agente `llm:<serverId>` elegido |
 | Error de `SendAgentChat` / `AgentAsk*` / `AskAgentOnce` con `llm:` | Si el servidor no responde al chequeo previo (4 s), la llamada **devuelve el error** y el turno no empieza: ni eventos ni fila de chat. Texto: `No se pudo usar el servidor «nombre» (host:puerto): <causa>. Revisá que esté encendido y accesible desde esta máquina.` (un fallo de certificado lleva en su lugar la sugerencia «Aceptar certificado autofirmado») |
 | Tope de vueltas | 25 por turno (`agentchat.DefaultToolRounds`). Al llegar: evento `error` con el motivo y `usage` acumulado; lo ya hecho queda hecho |
 | `AgentAsk*` / `AskAgentOnce` | **Sin herramientas** a propósito: los botones de un turno son de solo texto y rápidos |

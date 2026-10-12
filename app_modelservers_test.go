@@ -369,3 +369,50 @@ func TestTestModelServerSelfSignedTLS(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// La ventana de contexto guardada llega al servidor como options.num_ctx en el
+// chat; y llmContextTokens la expone para el aviso del chat.
+func TestModelServerContextTokensReachChat(t *testing.T) {
+	a, _ := newChatApp(t)
+	id, _ := addRepo(t, a)
+	var mu sync.Mutex
+	var chats []map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/version":
+			fmt.Fprint(w, `{"version":"0.9.1"}`)
+		case "/api/tags":
+			fmt.Fprint(w, `{"models":[{"name":"llama3"}]}`)
+		case "/api/chat":
+			var b map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&b)
+			mu.Lock()
+			chats = append(chats, b)
+			mu.Unlock()
+			fmt.Fprint(w, `{"model":"llama3","message":{"role":"assistant","content":"hola"},"done":false}`+"\n"+`{"model":"llama3","message":{"content":""},"done":true}`+"\n")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	srv, err := a.SaveModelServer(ModelServer{Name: "Ctx", Kind: "ollama", BaseURL: ts.URL, ContextTokens: 16384}, "", false, nil, false)
+	if err != nil || srv.ContextTokens != 16384 {
+		t.Fatalf("SaveModelServer = %+v, %v", srv, err)
+	}
+	agentID := agentchat.LLMPrefix + srv.ID
+	if got := a.llmContextTokens(agentID); got != 16384 {
+		t.Errorf("llmContextTokens = %d", got)
+	}
+	if _, err := a.AgentAskWith(agentID, "hola", "git", id); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(chats) != 1 {
+		t.Fatalf("chats = %d", len(chats))
+	}
+	if opts, _ := chats[0]["options"].(map[string]any); opts["num_ctx"] != float64(16384) {
+		t.Errorf("options = %v", chats[0]["options"])
+	}
+}

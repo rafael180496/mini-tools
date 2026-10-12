@@ -23,7 +23,7 @@ export default {
         // son nombres técnicos y no se traducen.
         prefixDb: 'Base',
         prefixNote: 'Nota',
-        prefixRepo: 'Repositorio',
+        prefixRepo: 'Proyecto',
         // Cómo se nombra el recurso en una frase ("sobre repositorio «x»").
         nouns: {
             git: 'repositorio',
@@ -31,7 +31,7 @@ export default {
             ssh: 'servidor',
             note: 'nota',
             http: 'petición',
-            utilities: 'repositorio',
+            utilities: 'proyecto',
         },
     },
     chat: {
@@ -55,6 +55,10 @@ export default {
         emptyWithContext: (p: {noun: string; label: string}) =>
             `Sobre ${p.noun} **«${p.label}»**. Empieza en **solo consulta**: lee y propone, no toca nada.`,
         empty: 'Empieza en **solo consulta**: lee y propone, no toca nada.',
+        // Con otro modo ya elegido (por ejemplo el que se recordó de este proyecto).
+        emptyWithContextMode: (p: {noun: string; label: string; mode: string}) =>
+            `Sobre ${p.noun} **«${p.label}»**. Modo **${p.mode}**: el selector de abajo dice qué puede hacer sin preguntar.`,
+        emptyMode: (p: {mode: string}) => `Modo **${p.mode}**: el selector de abajo dice qué puede hacer sin preguntar.`,
         emptyHint: (p: {paste: string}) => `**@** referencia tablas, notas y terminales · ${p.paste} pega una captura`,
         you: 'Vos',
         reuseTitle:
@@ -142,7 +146,7 @@ export default {
         llmModes: {
             query: {
                 label: 'Solo consulta',
-                hint: 'Lee y razona. Con un repositorio de trabajo puede leer, listar y buscar archivos; usa también las herramientas MCP si el servidor está encendido. No modifica nada.',
+                hint: 'Lee y razona. Con un proyecto de trabajo puede leer, listar y buscar archivos y consultar sus skills; usa también las herramientas MCP si el servidor está encendido. No modifica nada.',
             },
             plan: {
                 label: 'Plan',
@@ -150,23 +154,23 @@ export default {
             },
             approve: {
                 label: 'Aprobar cada acción',
-                hint: 'Puede escribir y editar archivos y correr comandos en el repositorio de trabajo, pero te pregunta antes de CADA una. Las herramientas MCP (notas, bases) no preguntan.',
+                hint: 'Puede escribir y editar archivos y correr comandos en el proyecto de trabajo, pero te pregunta antes de CADA una. Las herramientas MCP (notas, bases) no preguntan.',
             },
             auto: {
                 label: 'Automático',
-                hint: 'Edita archivos y corre comandos del repositorio sin preguntar, salvo los de riesgo (rm -rf, git push --force, sudo…), que siempre preguntan. Un comando corre con tus permisos y puede tocar cosas fuera del repositorio.',
+                hint: 'Trabaja solo, como un asistente de código: edita y crea archivos y corre comandos del proyecto sin preguntar. Los comandos de riesgo (rm -rf, git push, sudo…) siempre preguntan. Un comando corre con tus permisos y puede tocar cosas fuera del proyecto.',
             },
             edit: {
                 label: 'Aplicar ediciones',
-                hint: 'Crea y edita archivos del repositorio sin preguntar. Los comandos le preguntan cada vez. Los cambios caen en el árbol de trabajo: se ven en Cambios y se descartan desde ahí.',
+                hint: 'Crea y edita archivos del proyecto sin preguntar. Los comandos le preguntan cada vez. En un repositorio git los cambios caen en el árbol de trabajo: se ven en Cambios y se descartan desde ahí.',
             },
         },
         willEditFilesLlm: 'Edita archivos; los comandos preguntan',
         actsAloneLlm: 'Edita y corre comandos sin preguntar',
         allowEditsDescriptionLlm: (p: {agent: string}) =>
-            `${p.agent} va a crear y editar archivos del repositorio de trabajo sin volver a preguntarte, durante toda esta sesión de chat. Cada comando que quiera correr sí te lo va a preguntar. Los cambios quedan en el árbol de trabajo: los ves en Cambios y los descartás desde ahí.`,
+            `${p.agent} va a crear y editar archivos del proyecto de trabajo sin volver a preguntarte, durante toda esta sesión de chat. Cada comando que quiera correr sí te lo va a preguntar. En un repositorio git los cambios quedan en el árbol de trabajo: los ves en Cambios y los descartás desde ahí; en una carpeta sin git no hay vuelta atrás automática.`,
         allowAutoDescriptionLlm: (p: {agent: string}) =>
-            `${p.agent} va a editar archivos y correr comandos del repositorio de trabajo sin preguntarte, durante toda esta sesión de chat. Solo los comandos de riesgo (rm -rf, git push --force, git reset --hard, sudo…) piden tu permiso. Los archivos están confinados al repositorio, pero un comando corre con tus permisos y puede afectar cosas fuera de él.`,
+            `${p.agent} va a editar y crear archivos y correr comandos del proyecto de trabajo sin preguntarte, durante toda esta sesión de chat. Solo los comandos de riesgo (rm -rf, git push, git reset --hard, sudo…) piden tu permiso. Los archivos están confinados al proyecto, pero un comando corre con tus permisos y puede afectar cosas fuera de él. Si el proyecto es una carpeta sin git, no hay vuelta atrás automática. Se te pregunta esta vez; después queda recordado para este proyecto.`,
         // Diálogo de aprobación de UNA acción (herramienta) del agente.
         approval: {
             title: (p: {tool: string}) => `¿Permitir ${p.tool}?`,
@@ -186,13 +190,23 @@ export default {
         toolCard: {
             openNote: 'Abrir nota',
             openNoteTitle: (p: {title: string}) => `Abre la nota «${p.title}» en una pestaña`,
+            skillTitle: 'Carga las instrucciones completas de una skill del proyecto, que el modelo eligió por su nombre y descripción',
+            skillFileTitle: 'Lee un archivo que acompaña a una skill (una plantilla, un script, una referencia). Solo lectura.',
+            globTitle: 'Busca archivos del proyecto por patrón de nombre (por ejemplo **/*.go). Solo lectura.',
+        },
+        // Sugerencia del modo Automático sobre un proyecto (servidores de modelos).
+        autoHint: {
+            text: 'Para que trabaje como un asistente de código —**edita y crea archivos y corre comandos sin preguntar**; los de riesgo (rm -rf, git push, sudo…) siempre preguntan— elegí el modo **Automático**.',
+            use: 'Usar Automático',
+            useTitle: 'Cambia al modo Automático, con la confirmación de siempre la primera vez en este proyecto. Queda recordado para la próxima.',
+            dismissTitle: 'No volver a sugerirlo en este proyecto',
         },
         // Servidor de modelos sin repositorio de trabajo (Chat de IA).
         noRepo: {
             onlyMcp:
-                'Sin repositorio de trabajo, este modelo solo dispone de las **herramientas MCP** (notas, bases, SSH, Git). Para que lea o edite archivos y corra comandos, elegí un repositorio en la cabecera.',
+                'Sin proyecto de trabajo, este modelo solo dispone de las **herramientas MCP** (notas, bases, SSH, Git). Para que lea o edite archivos y corra comandos, elegí un proyecto —un repositorio o una carpeta— en la cabecera.',
             noTools:
-                'Sin repositorio de trabajo y con el servidor MCP apagado, este modelo **no tiene herramientas**: solo conversa. Elegí un repositorio en la cabecera, o encendé el servidor MCP en Configuración → IA.',
+                'Sin proyecto de trabajo y con el servidor MCP apagado, este modelo **no tiene herramientas**: solo conversa. Elegí un proyecto en la cabecera, o encendé el servidor MCP en Configuración → IA.',
             dismissTitle: 'Ocultar este aviso',
         },
         // Servidor de modelos remoto con herramientas de archivos o comandos.
@@ -202,7 +216,7 @@ export default {
             ack: 'Entendido',
             ackTitle: 'Oculta este aviso en esta conversación',
             recorded: (p: {server: string}) =>
-                `Aviso: «${p.server}» es un servidor remoto. Lo que el agente lea de tu repositorio (archivos, salida de comandos) se envía a ese servidor.`,
+                `Aviso: «${p.server}» es un servidor remoto. Lo que el agente lea de tu proyecto (archivos, salida de comandos) se envía a ese servidor.`,
             chip: 'remoto',
             chipTitle: (p: {server: string; url: string}) =>
                 `«${p.server}» está en otra máquina (${p.url}). Lo que le mandes, y lo que el agente lea con sus herramientas, viaja por la red.`,

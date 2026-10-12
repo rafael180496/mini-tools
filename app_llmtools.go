@@ -12,6 +12,7 @@ import (
 
 	"mini-tools/backend/agentapprove"
 	"mini-tools/backend/agentchat"
+	"mini-tools/backend/agentctx"
 	"mini-tools/backend/i18n"
 	"mini-tools/backend/llm"
 	"mini-tools/backend/workspace"
@@ -30,8 +31,11 @@ import (
 //     registro de accesos y mismo cortafuegos (`CallTool` es EXACTAMENTE lo que
 //     llama el puente MCP), y solo si el servidor MCP está encendido. Sin
 //     aprobación por llamada: el permiso de MCP es el interruptor.
-//   - **Archivos y comandos solo con un repositorio.** El directorio de trabajo
-//     es el repositorio del chat; sin él no se declaran. Los modos deciden qué
+//   - **Archivos y comandos solo con un proyecto.** El directorio de trabajo
+//     es el repositorio git o la carpeta del chat (workspaceRoot); sin él no se
+//     declaran. Con proyecto, el mensaje de sistema lleva además su entorno, sus
+//     instrucciones (AGENTS.md, CLAUDE.md…) y el índice de sus skills
+//     (backend/agentctx/projectctx.go). Los modos deciden qué
 //     se declara y cuándo se pregunta (agentchat.PermissionFor).
 //   - **Ask no usa herramientas.** Los botones de un solo turno (generar SQL,
 //     analizar un plan, redactar un commit) son rápidos y de solo texto a
@@ -111,22 +115,34 @@ func (a *App) mcpToolDefs() []llm.ToolDef {
 }
 
 // workspaceRoot es el directorio de trabajo de las herramientas de archivos y
-// comandos: el repositorio del chat, o "" si el chat no tiene uno.
+// comandos: el proyecto del chat, o "" si el chat no tiene uno.
 //
-//   - módulo `git`: contextId es el id del repositorio.
-//   - módulo `utilities`: contextId es el id del repositorio que el chat de
-//     Utilidades eligió como de trabajo (si no eligió ninguno, o el id no es
-//     un repositorio conocido, no hay raíz).
+// El contextId nombra al proyecto de dos formas:
+//
+//   - `ws:<id>`: una carpeta registrada (AddAgentWorkspace). Vale en cualquier
+//     módulo.
+//   - un id de repositorio git, sin prefijo — solo en los módulos `git` y
+//     `utilities`. En `utilities` es el repositorio que el chat eligió como de
+//     trabajo (si no eligió ninguno, o el id no es un repositorio conocido, no
+//     hay raíz).
 //
 // Cualquier otro módulo (un editor SQL, una terminal SSH) trabaja en el
 // directorio vacío de consultas (agentCwd): ahí no hay nada que leer ni
 // escribir, y darle herramientas de archivos a esa carpeta sería ofrecer algo
-// que no sirve.
+// que no sirve. Un proyecto cuya carpeta ya no existe tampoco es una raíz.
 func (a *App) workspaceRoot(module, contextID string) string {
-	if contextID == "" || (module != "git" && module != "utilities") {
+	if contextID == "" {
 		return ""
 	}
-	path, err := a.gitRepo(contextID)
+	var path string
+	var err error
+	if id, ok := parseWorkspaceContext(contextID); ok {
+		path, err = a.agentWorkspacePath(id)
+	} else if module == "git" || module == "utilities" {
+		path, err = a.gitRepo(contextID)
+	} else {
+		return ""
+	}
 	if err != nil || path == "" {
 		return ""
 	}
@@ -134,6 +150,15 @@ func (a *App) workspaceRoot(module, contextID string) string {
 		return ""
 	}
 	return path
+}
+
+// skillRefs pasa los skills descubiertos al formato de backend/workspace.
+func skillRefs(skills []agentctx.SkillInfo) []workspace.SkillRef {
+	out := make([]workspace.SkillRef, 0, len(skills))
+	for _, s := range skills {
+		out = append(out, workspace.SkillRef{Name: s.Name, Dir: s.Dir})
+	}
+	return out
 }
 
 // llmToolSet es lo que se le pasa al Turn.
@@ -157,7 +182,10 @@ func (a *App) buildLLMTools(module, contextID string, mode agentchat.Mode) llmTo
 		if s, err := a.vault.GetSettings(); err == nil {
 			shellID = s.LocalShell
 		}
-		ws, err := workspace.New(root, workspace.Options{ShellID: shellID})
+		// Instrucciones del proyecto y skills (estilo OpenCode): se descubren en
+		// cada turno, así un AGENTS.md editado entre dos mensajes se nota.
+		pc := a.projectContext(root)
+		ws, err := workspace.New(root, workspace.Options{ShellID: shellID, Skills: skillRefs(pc.Skills)})
 		if err != nil {
 			// El chat sigue sin herramientas de archivos en vez de fallar: el
 			// directorio pudo borrarse entre que se eligió y ahora.
@@ -165,7 +193,7 @@ func (a *App) buildLLMTools(module, contextID string, mode agentchat.Mode) llmTo
 		} else {
 			code = agentchat.NewCodeTools(ws, mode, a.askApprovalCtx)
 			set.Tools = append(set.Tools, code.Defs()...)
-			set.System = code.SystemNote()
+			set.System = pc.Prompt(agentctx.Guidance{CanWrite: code.CanWrite(), CanRun: code.CanRun(), ModeRule: code.ModeRule()})
 			set.HasCode = true
 		}
 	}

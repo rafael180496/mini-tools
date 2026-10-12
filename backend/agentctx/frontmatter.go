@@ -51,36 +51,80 @@ func frontmatter(path string) (name, description string) {
 		return "", ""
 	}
 
+	// cur es la clave (name o description) cuyo valor sigue en las líneas
+	// indentadas de abajo: YAML permite partir un valor en varias líneas, sea
+	// con un indicador de bloque (`description: >` / `|`) o sin él, y los
+	// skills largos lo usan. Se unen con un espacio: para un catálogo da igual
+	// si el original era plegado o literal.
+	cur := ""
+	set := func(key, value string) {
+		switch key {
+		case "name":
+			name = value
+		case "description":
+			description = value
+		}
+	}
+	get := func(key string) string {
+		if key == "name" {
+			return name
+		}
+		return description
+	}
+
 	for {
 		line, err := r.ReadString('\n')
 		if line == "" && err != nil {
-			return name, description
+			break
 		}
 		trimmed := strings.TrimRight(line, "\r\n")
 		if strings.TrimSpace(trimmed) == "---" {
-			return name, description
+			break
 		}
-		// Solo claves de primer nivel: una línea indentada pertenece a una
-		// estructura anidada que este lector no interpreta.
-		if trimmed == "" || strings.HasPrefix(trimmed, " ") || strings.HasPrefix(trimmed, "\t") {
+		if trimmed == "" {
+			if err != nil {
+				break
+			}
+			continue
+		}
+		// Una línea indentada continúa el valor de la clave anterior si era
+		// name/description; si no, pertenece a una estructura anidada que este
+		// lector no interpreta.
+		if strings.HasPrefix(trimmed, " ") || strings.HasPrefix(trimmed, "\t") {
+			if cur != "" {
+				if cont := strings.TrimSpace(trimmed); cont != "" {
+					if prev := get(cur); prev != "" {
+						set(cur, prev+" "+cont)
+					} else {
+						set(cur, cont)
+					}
+				}
+			}
+			if err != nil {
+				break
+			}
 			continue
 		}
 
+		cur = ""
 		key, value, found := strings.Cut(trimmed, ":")
-		if !found {
-			continue
+		if found {
+			k := strings.ToLower(strings.TrimSpace(key))
+			if k == "name" || k == "description" {
+				cur = k
+				v := strings.TrimSpace(value)
+				// Indicador de bloque (>, |, >-, |+…): el texto está abajo.
+				if v != "" && strings.Trim(v, ">|+-") == "" {
+					v = ""
+				}
+				set(k, v)
+			}
 		}
-		switch strings.ToLower(strings.TrimSpace(key)) {
-		case "name":
-			name = unquote(value)
-		case "description":
-			description = unquote(value)
-		}
-
 		if err != nil {
-			return name, description
+			break
 		}
 	}
+	return unquote(name), unquote(description)
 }
 
 // unquote limpia el valor: espacios, comillas simples o dobles envolventes, y

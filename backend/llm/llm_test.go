@@ -576,3 +576,48 @@ func TestServerClosingConnectionIsReset(t *testing.T) {
 		t.Fatalf("err = %v, debería ser reintentable", err)
 	}
 }
+
+// options.num_ctx viaja solo con Ollama y solo si hay una ventana configurada.
+func TestOllamaSendsNumCtxOnlyWhenSet(t *testing.T) {
+	chat := func(ctxTokens int) map[string]any {
+		var sent map[string]any
+		srv := httptest.NewServer(ollamaHandler(t, func(b map[string]any) { sent = b }))
+		defer srv.Close()
+		c, err := New(KindOllama, srv.URL, Options{ContextTokens: ctxTokens})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Chat(context.Background(), ChatRequest{Model: "m", Messages: []Message{{Role: RoleUser, Content: "hola"}}}, nil); err != nil {
+			t.Fatalf("Chat: %v", err)
+		}
+		return sent
+	}
+
+	with := chat(16384)
+	opts, _ := with["options"].(map[string]any)
+	if opts["num_ctx"] != float64(16384) {
+		t.Errorf("options = %v, debía llevar num_ctx 16384", with["options"])
+	}
+	if _, has := chat(0)["options"]; has {
+		t.Error("con 0 no debe mandarse options: el servidor usa la suya")
+	}
+}
+
+// Un servidor OpenAI no admite la ventana por petición: aunque la opción
+// llegue, no viaja nada parecido a num_ctx.
+func TestOpenAIIgnoresContextTokens(t *testing.T) {
+	var sent map[string]any
+	srv := httptest.NewServer(openaiHandler(t, new(string), func(b map[string]any) { sent = b }))
+	defer srv.Close()
+	c, err := New(KindOpenAI, srv.URL+"/v1", Options{ContextTokens: 16384})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Chat(context.Background(), ChatRequest{Model: "m", Messages: []Message{{Role: RoleUser, Content: "hola"}}}, nil); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	raw, _ := json.Marshal(sent)
+	if strings.Contains(string(raw), "num_ctx") {
+		t.Errorf("el request OpenAI no debe llevar la ventana: %s", raw)
+	}
+}

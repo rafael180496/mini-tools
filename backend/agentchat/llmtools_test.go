@@ -458,3 +458,37 @@ func TestAskDoesNotUseTools(t *testing.T) {
 		t.Fatal("Ask (los botones de un turno) no declara herramientas")
 	}
 }
+
+// El aviso de contexto sale una sola vez por sesión, solo si se conoce la
+// ventana y el prompt estimado (~4 caracteres por token) no entra.
+func TestContextOverflowNoticedOnce(t *testing.T) {
+	big := strings.Repeat("x", 4000*4) // ~4000 tokens
+	newTurn := func(session string, ctxTokens int, prompt string) Turn {
+		f := &scriptLLM{steps: []func(llm.ChatRequest, func(llm.Delta)) (llm.ChatResult, error){say("ok", 1, 1), say("ok", 1, 1)}}
+		return Turn{SessionID: session, AgentID: "llm:x", Prompt: prompt, LLM: f, ContextTokens: ctxTokens}
+	}
+	col := newCollector()
+	m := NewManager(col.emit)
+
+	turn := newTurn("s", 2048, big)
+	evs := runTurn(t, m, col, turn)
+	if txt := textOf(evs); !strings.Contains(txt, "⚠") || !strings.Contains(txt, "2048") {
+		t.Fatalf("falta el aviso de contexto: %q", txt)
+	}
+	if last := evs[len(evs)-1]; last.Kind != KindDone {
+		t.Fatalf("el aviso no debe bloquear el turno: %+v", last)
+	}
+	// Segundo turno de la misma sesión: no se repite.
+	turn.Prompt = big
+	if txt := textOf(runTurn(t, m, col, turn)); strings.Contains(txt, "⚠") {
+		t.Errorf("el aviso se repitió: %q", txt)
+	}
+
+	// Sin ventana conocida, o con una que alcanza, no dice nada.
+	if txt := textOf(runTurn(t, m, col, newTurn("s2", 0, big))); strings.Contains(txt, "⚠") {
+		t.Errorf("sin ventana conocida no hay aviso: %q", txt)
+	}
+	if txt := textOf(runTurn(t, m, col, newTurn("s3", 32768, big))); strings.Contains(txt, "⚠") {
+		t.Errorf("entra en la ventana: %q", txt)
+	}
+}

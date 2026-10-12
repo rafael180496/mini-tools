@@ -17,6 +17,8 @@ import (
 // NDJSON: una línea JSON por trozo, la última con `done: true`.
 type ollamaClient struct {
 	requester
+	// numCtx es la ventana de contexto a pedir; 0 = la del servidor.
+	numCtx int
 }
 
 func (c *ollamaClient) Version(ctx context.Context) (string, error) {
@@ -99,6 +101,14 @@ type ollamaChatRequest struct {
 	Messages []ollamaMessage `json:"messages"`
 	Tools    []ollamaTool    `json:"tools,omitempty"`
 	Stream   bool            `json:"stream"`
+	Options  *ollamaOptions  `json:"options,omitempty"`
+}
+
+// ollamaOptions son los parámetros del modelo que acepta /api/chat. Hoy solo
+// la ventana de contexto: Ollama arranca con 2k-4k tokens y recorta el prompt
+// sin avisar, así que sin esto un system prompt largo se come el mensaje.
+type ollamaOptions struct {
+	NumCtx int `json:"num_ctx,omitempty"`
 }
 
 type ollamaChunk struct {
@@ -115,6 +125,9 @@ func (c *ollamaClient) Chat(ctx context.Context, req ChatRequest, onDelta func(D
 		return ChatResult{}, i18n.Errorf(i18n.Msg{ES: "llm: falta el modelo", EN: "llm: the model is missing"})
 	}
 	body := ollamaChatRequest{Model: req.Model, Stream: true}
+	if c.numCtx > 0 {
+		body.Options = &ollamaOptions{NumCtx: c.numCtx}
+	}
 	for _, m := range req.Messages {
 		om := ollamaMessage{Role: m.Role, Content: m.Content}
 		for _, img := range m.Images {

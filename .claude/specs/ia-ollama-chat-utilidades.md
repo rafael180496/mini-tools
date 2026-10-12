@@ -115,6 +115,26 @@ Un servidor no deja transcripts en disco como un CLI, así que `AgentUsageAll` (
 - **Sin costo**: un servidor propio u OpenAI-compatible no informa precio; el panel lo dice y no inventa un monto.
 - **UI**: `components/agent/AgentModelServersUsage.tsx`, dentro de `AgentUsagePanel` (los CLIs no cambian).
 
+### Gestor de modelos (Utilidades → Modelos)
+
+Pestaña de Utilidades para ver y administrar los modelos de un servidor guardado (`frontend/src/components/utilities/ModelManagerTab.tsx` y `utilities/models/`; backend en `app_modelserver_admin.go` y `backend/llm/ollama_admin.go`). Usa el mismo cliente que el chat (`llmServer`): token, cabeceras propias y preferencia de TLS salen del vault y no cruzan hacia el frontend. Todo pasa por `requireUnlocked`.
+
+- **Solo Ollama administra.** La API de Ollama expone `/api/tags` (lista), `/api/ps` (cargados en memoria), `/api/show` (detalle), `/api/pull`, `/api/delete` y la descarga de memoria con `keep_alive: 0`. Un servidor **compatible con OpenAI es solo lectura**: lista `/models` y nada más; LM Studio, vLLM y llama.cpp cargan sus modelos con su propia herramienta. Las demás operaciones contestan un `*llm.UnsupportedError` con el motivo y la interfaz esconde esas acciones en vez de dejar que se prueben y fallen.
+- **Detalle.** `ModelServerShowModel` trae familia, tamaño de parámetros, cuantización, plantilla, parámetros del Modelfile, el comienzo de la licencia y **`contextLength`: la ventana con la que se entrenó el modelo** (0 si no la informa). Es el tope útil al configurar la ventana de contexto del servidor (ver abajo).
+- **Descargas.** `ModelServerPull(serverId, model)` devuelve un `pullId` y sigue por su cuenta en un registro del backend (no se corta al cerrar la pestaña). El progreso viaja por el evento de Wails **`model-pull:<pullId>`** con un `ModelPullEvent` (`pullId, serverId, model, status, completed, total, percent, done, error, cancelled, startedAt`), emitido como mucho cada 100 ms; el porcentaje no retrocede aunque cambie la capa. `ModelServerPulls()` devuelve el último estado de las descargas en curso y de las terminadas hace menos de 10 minutos, para quien abre la pestaña después. `ModelServerCancelPull(pullId)` corta (lo ya descargado queda en el servidor) y `ModelServerDismissPull(pullId)` olvida una terminada.
+- **Aviso de cambios.** Tras bajar o borrar un modelo la pestaña publica en `window` el evento `mini-tools:models-changed` (`{serverId}`, `frontend/src/lib/modelsChanged.ts`). Los selectores de modelo del chat (cabecera de `AiChatTab` y `AgentChat`) lo escuchan y releen `AgentModelCatalog` si el `serverId` es el del agente `llm:<serverId>` elegido: el modelo recién bajado aparece sin cambiar de proveedor.
+- Borrar y descargar de memoria invalidan el caché de salud del servidor; borrar pide confirmación con `ConfirmDialog`.
+
+### Ventana de contexto (`contextTokens`, migración 62)
+
+Ollama arranca cada modelo con una ventana chica (2k a 4k tokens según la versión) y **recorta el prompt en silencio por el principio**. Con un proyecto con instrucciones y skills (hasta ~32 000 caracteres en el mensaje de sistema) más el historial, lo primero que se pierde es justamente lo que se vino a decir. No hay error: el modelo contesta otra cosa.
+
+- **Columna** `model_servers.context_tokens INTEGER NOT NULL DEFAULT 0` (migración 62, aditiva). `0` = no pedir nada y dejar la ventana del servidor, que es lo que hacían todos los servidores existentes: ningún comportamiento cambia al migrar.
+- **Campo** `contextTokens` (int) en `vault.ModelServer` y en `main.ModelServer`; `SaveModelServer` lo persiste (la firma no cambia: es un campo de `s`). Solo vale para `kind = ollama`: en uno OpenAI se descarta a 0 al guardar. Un negativo queda en 0 y un valor sobre `vault.MaxContextTokens` (4 194 304) se acota.
+- **Envío.** `llm.Options.ContextTokens` llega al `ollamaClient`, que manda `options: {"num_ctx": N}` en `POST /api/chat` **solo si N > 0**. Con 0 el cuerpo no lleva `options`. El cliente OpenAI lo ignora: ese protocolo no admite pedir la ventana por petición y los servidores la fijan al cargar el modelo. Como es del cliente, vale para el chat, `AgentAsk*` y los botones de un solo turno.
+- **Aviso en el chat.** `agentchat.Turn.ContextTokens` lleva la ventana configurada; antes de cada pedido el runner estima el prompt (mensajes + llamadas + definiciones de herramientas, **caracteres / 4**) y, si supera la ventana, emite **una línea `text`** en cursiva (`_⚠ …_`) — el mismo mecanismo que el aviso «sin herramientas» — **una vez por sesión**, sugiriendo subirla en el servidor. **No bloquea ni recorta.** Sin ventana conocida (0) no dice nada: no hay contra qué comparar.
+- **Formulario** (`ModelServerForm`): para Ollama, campo numérico con atajos 4k/8k/16k/32k/64k y «Del servidor» (0), con la explicación del recorte silencioso y del costo (más contexto = más RAM/VRAM y más lento al cargar). Un Ollama **nuevo** arranca con **16384**, y los atajos de Ollama lo fijan; los de OpenAI lo dejan en 0 y el formulario **oculta el campo** con una nota (el servidor decide al cargar el modelo). Ofrecer «usar el máximo del modelo» desde `contextLength` queda como mejora opcional: pide elegir un modelo en el formulario.
+
 ### Herramientas MCP
 
 Si el servidor MCP está habilitado, el runner recibe `a.mcpTools()` convertidas al formato de herramientas del servidor (es el mismo `{type: "function", function: {…}}` en Ollama y en OpenAI). El bucle es este:
@@ -127,13 +147,16 @@ Cada llamada se emite como evento `tool` y queda en el historial. Si el modelo n
 
 ### Agente de código local: archivos y comandos con permisos
 
-El modelo puede estar en otra máquina, pero **las herramientas corren siempre en la del usuario**, dentro del directorio de trabajo del chat (`agentCwd`: el repositorio abierto). Sin repositorio no hay herramientas de archivos ni de comandos.
+El modelo puede estar en otra máquina, pero **las herramientas corren siempre en la del usuario**, dentro del directorio de trabajo del chat (`agentCwd`: el repositorio git o la carpeta de trabajo elegida, ver «Proyectos y carpetas»). Sin proyecto no hay herramientas de archivos ni de comandos.
 
 | Herramienta | Qué hace | Tipo |
 | --- | --- | --- |
 | `read_file` | lee un archivo (con rango de líneas) | lectura |
 | `list_dir` | lista un directorio | lectura |
 | `search` | busca texto o regex en el árbol (respeta `.gitignore`) | lectura |
+| `glob` | busca archivos por nombre con un patrón (`**/*.go`, `*.{ts,tsx}`); respeta `.gitignore` | lectura |
+| `skill` | carga un skill: su `SKILL.md` y la lista de archivos de su carpeta (solo si hay skills) | lectura |
+| `read_skill_file` | lee un archivo dentro de la carpeta de un skill, aunque esté fuera del proyecto (solo si hay skills) | lectura |
 | `write_file` | crea o reemplaza un archivo | escritura |
 | `edit_file` | reemplaza un fragmento exacto y único | escritura |
 | `run_command` | ejecuta un comando en el directorio de trabajo, con timeout y salida acotada | comando |
@@ -156,13 +179,60 @@ El modelo puede estar en otra máquina, pero **las herramientas corren siempre e
 - **Servidor remoto**: el contenido de los archivos que se leen viaja a ese servidor. La primera vez que se usa un modo con herramientas contra un servidor remoto, el chat lo advierte una vez.
 - Lo que el agente escribe queda en el árbol de trabajo del repositorio y se ve en el diff del módulo Git, igual que con los CLIs.
 
+### Proyectos y carpetas, instrucciones y skills (estilo OpenCode)
+
+Un chat con un servidor de modelos (`llm:<id>`) que tiene un proyecto trabaja como OpenCode: en modo `auto` edita y crea archivos y corre comandos sin preguntar (salvo la lista de riesgo, `git push` incluido), y **lee solo** las instrucciones y los skills del proyecto. Un modelo detrás de Ollama no lee nada que no le pasen, así que se lo pasamos en el mensaje de sistema.
+
+**Carpetas, no solo repositorios.** Migración 61: `agent_workspaces (id TEXT PK, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL)`. Los repositorios siguen viniendo de `GitListRepos`; esto es para cualquier otra carpeta. El `contextId` del chat nombra el proyecto así:
+
+| `contextId` | Proyecto |
+| --- | --- |
+| `<id de repo git>` | el repositorio (solo en los módulos `git` y `utilities`, como hasta ahora) |
+| `ws:<id>` | una carpeta registrada (en cualquier módulo) |
+
+`workspaceRoot()` y `agentCwd()` aceptan los dos, así que los CLIs (Claude Code, Codex…) también corren en esa carpeta. Una carpeta desconocida o ya inexistente no es una raíz: el chat trabaja en el directorio de consultas y sin herramientas de archivos, igual que un id de repo desconocido. El confinamiento no cambia: la raíz de las herramientas es esa carpeta.
+
+`AddAgentWorkspace` rechaza lo que no es una ruta absoluta y existente, y **lo demasiado amplio**: la raíz del disco, el home del usuario y cualquier carpeta que lo contenga (`/Users`). Se comprueba también con la ruta real, para que un enlace al home no lo esquive. Es idempotente por ruta limpia o real. Quitar una carpeta borra sus chats (como un repo) y **nunca** toca el disco.
+
+**El mensaje de sistema del proyecto** (`agentctx.LoadProject(...).Prompt(...)`, función pura y probada; se arma en cada turno, así que editar un `AGENTS.md` entre dos mensajes se nota). Secciones, en este orden —si un modelo con poco contexto pierde algo, que sea lo último—:
+
+1. **Entorno**: sistema operativo, raíz del proyecto, si es repositorio git y la rama (lee `.git/HEAD`, sin lanzar `git`; entiende worktrees), fecha de hoy, herramientas del modo y la regla del modo («las ediciones se aplican directo, salvo los riesgosos…»).
+2. **Cómo trabajar**: pautas con su motivo (explorar antes de editar, cambios chicos con `edit_file`, correr pruebas/build tras cambiar, seguir las instrucciones del proyecto, no inventar, reportar). En los modos de solo lectura reemplaza «editá» por «proponé el archivo, el fragmento y el motivo», y sin comandos aclara que no se prueba nada.
+3. **Instrucciones del proyecto**: ver abajo.
+4. **Skills disponibles**: índice `- nombre (global): descripción` y cómo cargarlos.
+
+**Archivos de instrucciones**, en orden de prioridad (si el tope no alcanza, quedan afuera los últimos):
+
+| Alcance | Archivos |
+| --- | --- |
+| proyecto | `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursorrules`, `.cursor/rules/*.mdc` (solo las `alwaysApply: true`; las condicionales por glob se omiten) |
+| global | `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, `~/.codex/AGENTS.md` |
+
+- **Imports** `@ruta.md` al estilo CLAUDE.md: solo `.md`, relativos al archivo que los importa (o `~/…`), con la ruta REAL dentro de la raíz del proyecto —o de la carpeta del archivo global—, hasta 3 saltos, sin ciclos. Un `@` pegado a una palabra (un correo), dentro de un bloque de código o de código en línea no es un import. Cada import entra como su propia entrada («importado desde X»).
+- **Sin duplicados**: el mismo archivo por otro nombre (`CLAUDE.md` → `AGENTS.md` por symlink) o el mismo texto bajo dos nombres entra una sola vez.
+- **Tope total de 32000 caracteres** (`agentctx.MaxInstructionChars`). El archivo que cruza el tope se corta y se marca; los que ya no entran se omiten. Una nota explícita al final dice qué se truncó y qué no se incluyó. Cada archivo va entre `--- ruta (proyecto|global) ---` y `--- fin de ruta ---`. Si una global choca con una del proyecto, vale la del proyecto.
+
+**Skills.** Directorios del proyecto: `.claude/skills`, `.github/skills`, `.opencode/skill`, `.opencode/skills`, `.agents/skills`; globales: `~/.claude/skills`, `~/.config/opencode/skill`, `~/.config/opencode/skills`, `~/.agents/skills`. Un skill es una subcarpeta con `SKILL.md` (una subcarpeta que es un **enlace** a un clon también cuenta: es la forma habitual de instalarlos). Nombre y descripción salen del frontmatter (acepta valores en varias líneas y bloques `>` / `|`; sin `name` cae al nombre de la carpeta). Se deduplica por nombre sin distinguir mayúsculas y gana el del proyecto. Tope de 100 skills en el índice y 220 caracteres por descripción. `GitAgentContext` (el panel del módulo Git) usa los mismos directorios.
+
+**Herramientas nuevas, todas de lectura** (valen en `ask` y `plan`; `skill` y `read_skill_file` solo se declaran si hay skills):
+
+- `skill(name)`: el `SKILL.md` completo (tope 64 KB, con aviso) y la lista de archivos de la carpeta del skill (hasta 100, 4 niveles, sin `.git`/`node_modules`, sin seguir enlaces a carpetas).
+- `read_skill_file(skill, path, start_line?, end_line?)`: lee un archivo **dentro de la carpeta de ese skill**, con el mismo confinamiento que el workspace (`../`, rutas absolutas y symlinks que salen se rechazan con un mensaje del skill). Es la única forma de leer un skill global, que está fuera de la raíz. Una carpeta devuelve su listado. Que la carpeta del skill sea ella misma un enlace está permitido; un enlace *dentro* del skill que sale, no.
+- `glob(pattern, path?)`: archivos que coinciden (`**` cruza carpetas, `{a,b}`, `?`, `[a-z]`); un patrón sin `/` se busca a cualquier profundidad. Usa los mismos candidatos que `search` (`git ls-files` en un repo, así respeta `.gitignore`; sin git, un recorrido que salta `node_modules`, `vendor`, `dist`…), solo archivos regulares, hasta 200 resultados con aviso. Devuelve rutas relativas a la raíz, listas para `read_file`.
+
+**Modos.** `AgentChatModes("llm:<id>")` sigue siendo por agente (`["", "plan", "approve", "edit", "auto"]`), no por contexto: el frontend no necesita saber si el chat tiene proyecto. Sin proyecto, los modos que editan siguen siendo válidos pero el runner solo declara las herramientas del MCP. El modo `auto` hace lo especificado: escritura sin preguntar y comandos sin preguntar, salvo `workspace.Risk` (que incluye `git push`), que pregunta en todos los modos.
+
+**Qué se carga, a la vista.** `AgentWorkspaceContext(module, contextId)` devuelve, sin texto, lo que se le está pasando al modelo (raíz, git, rama, instrucciones con su peso y si se truncaron, skills y el total de caracteres). Vacío —no error— si el chat no tiene proyecto.
+
+**Advertencia de contexto.** 32000 caracteres son unos 8k tokens: un modelo local con la ventana por defecto de Ollama (2k–4k) no los ve enteros. Por eso las instrucciones van después del entorno y la guía, y un `AGENTS.md` corto rinde más que uno de 30 KB.
+
 ### Chat en Utilidades
 
 Herramienta nueva `aiChat` (ícono `forum`) en `utilities.ts`, con su pestaña en `Workspace.tsx`:
 
 - **Izquierda**: el historial de todas las conversaciones, con buscador, agrupado por fecha y filtrable por proveedor.
 - **Centro**: el `AgentChat` existente con `module = "utilities"`. Las mejoras de UX van en ese componente y valen para el chat de todos los módulos.
-- **Cabecera**: selector de proveedor + modelo (CLIs y servidores), y selector de repositorio de trabajo para el agente de código local.
+- **Cabecera**: selector de proveedor + modelo (CLIs y servidores), y selector de proyecto de trabajo (repositorio git o carpeta) para el agente de código local.
 
 La UX se define corriendo `ui-ux-pro-max` para una app de chat de escritorio. Como mínimo:
 
@@ -223,6 +293,7 @@ type ModelServer struct {
     HasToken  bool   `json:"hasToken"`
     IsLocal   bool   `json:"isLocal"`
     InsecureTLS bool     `json:"insecureTls"`  // migración 60
+    ContextTokens int    `json:"contextTokens"` // migración 62; 0 = la ventana del servidor; solo Ollama
     HeaderNames []string `json:"headerNames"` // solo nombres; los valores nunca viajan
     CreatedAt int64  `json:"createdAt"`
     UpdatedAt int64  `json:"updatedAt"`
@@ -250,10 +321,36 @@ func (a *App) TestModelServer(kind, baseURL, token, serverID string, insecureTLS
 func (a *App) ModelServerHealth(id string) (ModelServerProbe, error)
 func (a *App) DetectLocalOllama() (bool, error)
 
+// Gestor de modelos (Utilidades → Modelos). Solo Ollama escribe; OpenAI lista y el resto
+// devuelve *llm.UnsupportedError. Detalle en «Gestor de modelos».
+func (a *App) ModelServerModels(serverID string) ([]llm.ManagedModel, error)
+func (a *App) ModelServerRunning(serverID string) ([]llm.RunningModel, error) // vacío si el servidor no lo informa
+func (a *App) ModelServerShowModel(serverID, model string) (llm.ModelDetails, error) // incluye contextLength
+func (a *App) ModelServerPull(serverID, model string) (string, error)         // pullId; progreso por el evento "model-pull:<pullId>"
+func (a *App) ModelServerCancelPull(pullID string) error
+func (a *App) ModelServerPulls() ([]ModelPullEvent, error)
+func (a *App) ModelServerDismissPull(pullID string) error
+func (a *App) ModelServerDeleteModel(serverID, model string) error
+func (a *App) ModelServerUnload(serverID, model string) error
+
 // Fase 2
 type AgentChatMessage struct { Seq int; Role, Content, ToolName string; Usage *agentchat.Usage; CreatedAt int64 }
 func (a *App) AgentChatMessages(chatID string) ([]AgentChatMessage, error)
 func (a *App) SearchAgentChats(query string) ([]vault.AgentChat, error)
+
+// Proyectos y carpetas (ver «Proyectos y carpetas, instrucciones y skills»; migración 61)
+type AgentWorkspace struct { ID, Name, Path string; IsGit, Exists bool } // json: id, name, path, isGit, exists
+type WorkspaceContextInfo struct {
+    Root string; IsGit bool; Branch string
+    Instructions []agentctx.InstructionInfo // {path, scope: "project"|"global", chars, truncated}
+    Skills       []agentctx.SkillInfo       // {name, description, scope, path}
+    TotalChars   int
+} // json camelCase
+func (a *App) ListAgentWorkspaces() ([]AgentWorkspace, error)
+func (a *App) PickAgentWorkspaceFolder() (string, error)          // "" si se cancela
+func (a *App) AddAgentWorkspace(path, name string) (AgentWorkspace, error)
+func (a *App) RemoveAgentWorkspace(id string) error
+func (a *App) AgentWorkspaceContext(module, contextID string) (WorkspaceContextInfo, error)
 
 // Fase 6 (detalle en go-react-contract.md → «Cerebro»)
 type BrainStatus struct { MCPEnabled, NotesWrite bool; Root string } // json: mcpEnabled, notesWrite, root

@@ -41,6 +41,7 @@ func run(t *testing.T, w *Workspace, name string, args map[string]any) (string, 
 func TestCatalogKinds(t *testing.T) {
 	want := map[string]Kind{
 		ToolReadFile: KindRead, ToolListDir: KindRead, ToolSearch: KindRead,
+		ToolGlob: KindRead, ToolSkill: KindRead, ToolReadSkillFile: KindRead,
 		ToolWriteFile: KindWrite, ToolEditFile: KindWrite, ToolRunCommand: KindCommand,
 	}
 	cat := Catalog()

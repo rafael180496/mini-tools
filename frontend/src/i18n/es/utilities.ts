@@ -31,6 +31,10 @@ export default {
             name: 'Chat de IA',
             hint: 'conversar con Claude, Codex, Antigravity o un modelo local, con historial y buscador',
         },
+        modelManager: {
+            name: 'Modelos',
+            hint: 'ver, descargar y borrar los modelos de un servidor Ollama, local o remoto',
+        },
     },
     // Pestaña «Chat de IA»: historial a la izquierda, conversación al centro.
     aiChat: {
@@ -99,16 +103,97 @@ export default {
             providerPlaceholder: 'Elegí un proveedor',
             modelLabel: 'Modelo',
             modelTitle: 'Modelo que contesta de acá en adelante. La lista la informa el propio proveedor; «Por defecto» usa el que tenga configurado.',
-            repoLabel: 'Repositorio',
+            repoLabel: 'Proyecto',
             repoTitle:
-                'Repositorio de trabajo de esta conversación. Su nombre y ubicación viajan con tus mensajes para que el agente sepa de cuál hablás (podés quitarlo del mensaje). Sin repositorio, la conversación es general.',
-            noRepo: 'Sin repositorio',
+                'Proyecto de trabajo de esta conversación: un repositorio git o cualquier carpeta a la que le hayas dado acceso a la app. El agente trabaja ahí: lee archivos y, según el modo, los edita y corre comandos; con un servidor de modelos la app carga sola las instrucciones del proyecto (AGENTS.md, CLAUDE.md…) y sus skills. Su nombre y ubicación viajan con tus mensajes. Sin proyecto, la conversación es general.',
+            noRepo: 'Sin proyecto',
             repoModuleTitle: (p: {where: string}) =>
-                `Esta conversación nació en ${p.where} y queda ligada a ese recurso: no se le puede cambiar el repositorio.`,
+                `Esta conversación nació en ${p.where} y queda ligada a ese recurso: no se le puede cambiar el proyecto.`,
         },
         repoBlock: {
-            label: 'Repositorio de trabajo',
+            label: 'Proyecto de trabajo',
             text: (p: {name: string; path: string}) => `${p.name}\n${p.path}`,
+        },
+        // Selector de proyecto: carpetas concedidas y sus acciones.
+        project: {
+            missing: 'No existe',
+            missingTitle: (p: {path: string}) =>
+                `La carpeta ${p.path} ya no existe en el disco (se movió, se borró o está desmontada). No se puede elegir mientras falte; podés quitarla desde «Administrar carpetas…».`,
+            removed: 'Quitada',
+            removedTitle:
+                'Esta conversación trabajaba en una carpeta que ya no está en la lista de la app. Elegí otro proyecto para que el agente vuelva a tener acceso a archivos.',
+            openFolder: 'Abrir carpeta…',
+            openFolderTitle:
+                'Elegí cualquier carpeta del disco —no hace falta que sea un repositorio git— para que el agente trabaje ahí. La app solo recuerda su ruta.',
+            manage: 'Administrar carpetas…',
+            manageTitle: 'Muestra las carpetas a las que la app tiene acceso y permite quitarlas de la lista',
+            openFailed: (p: {error: string}) => `No se pudo usar esa carpeta: ${p.error}`,
+            dismissTitle: 'Ocultar este aviso',
+        },
+        // Franja «Contexto» bajo la cabecera: lo que la app lee sola del proyecto.
+        context: {
+            label: 'Contexto',
+            loading: 'leyendo…',
+            unavailable: 'no disponible',
+            none: 'sin archivos de instrucciones ni skills',
+            moreFiles: (p: {n: number}) => `+${p.n}`,
+            skillsCount: (p: {n: number}) => (p.n === 1 ? '1 skill' : `${p.n} skills`),
+            chipTitle:
+                'Lo que la app lee sola de este proyecto: archivos de instrucciones (AGENTS.md, CLAUDE.md…) y skills. Hacé clic para ver la lista completa.',
+            branchTitle: (p: {branch: string}) => `Rama actual del repositorio: ${p.branch}`,
+            notGit: 'Carpeta sin git',
+            notGitTitle:
+                'Esta carpeta no es un repositorio git: el agente puede editar archivos, pero no hay historial al que volver ni un diff para revisar lo que cambió.',
+            missing: 'La carpeta no existe',
+            missingTitle: 'La carpeta ya no está en el disco (se movió, se borró o está desmontada). Elegí otro proyecto o volvé a abrirla.',
+            popoverTitle: 'Contexto del proyecto',
+            reload: 'Volver a leer',
+            reloadTitle:
+                'Vuelve a leer del disco los archivos de instrucciones y las skills. Se hace solo al cambiar de proyecto y al volver a esta ventana.',
+            closeTitle: 'Cerrar (Esc)',
+            explainModelServer:
+                'Se carga automáticamente en los chats con servidores de modelos: las instrucciones viajan con cada mensaje, y el modelo ve el nombre y la descripción de cada skill y lee la que necesita cuando la necesita.',
+            explainCli: (p: {agent: string}) =>
+                `${p.agent} es un CLI: lee por su cuenta sus propios archivos de instrucciones desde la carpeta del proyecto. Esta lista muestra lo que va a encontrar; la app no se lo inyecta.`,
+            loadFailed: (p: {error: string}) => `No se pudo leer el contexto: ${p.error}`,
+            instructionsTitle: 'Archivos de instrucciones',
+            noInstructions: 'No hay AGENTS.md, CLAUDE.md ni equivalentes en este proyecto ni en tu carpeta personal.',
+            scopeProject: 'Proyecto',
+            scopeGlobal: 'Global',
+            scopeProjectTitle: 'Está dentro de la carpeta del proyecto: vale solo para este proyecto.',
+            scopeGlobalTitle: 'Está en tu carpeta personal: vale para todos tus proyectos.',
+            chars: (p: {n: string}) => `${p.n} caracteres`,
+            truncated: 'Recortado',
+            truncatedTitle: 'Pasa del límite de tamaño: el modelo recibe solo el comienzo del archivo, o nada si el límite total ya se había agotado con los anteriores.',
+            total: (p: {n: string}) => `Total que viaja con cada mensaje: ${p.n} caracteres`,
+            skillsTitle: 'Skills',
+            noSkills: 'No hay skills en este proyecto ni en tu carpeta personal.',
+            skillsExplain:
+                'Carga progresiva: el modelo ve solo el nombre y la descripción de cada skill, y lee el contenido completo —con la herramienta skill— cuando decide que le sirve.',
+        },
+        // «Administrar carpetas…»
+        folders: {
+            title: 'Carpetas con acceso',
+            intro:
+                'Son las carpetas que le diste a la app para que los agentes trabajen en ellas. Los repositorios git no figuran acá: se administran en el módulo Git.',
+            removeNote:
+                'Quitar una carpeta revoca el acceso de la app a ella y no borra ni modifica nada en el disco. También elimina del historial de la app las conversaciones hechas en esa carpeta.',
+            empty: 'Todavía no abriste ninguna carpeta. Usá «Abrir carpeta…» para darle una a la app.',
+            missing: 'No existe',
+            missingTitle: (p: {path: string}) => `${p.path} ya no existe en el disco (se movió, se borró o está desmontada)`,
+            removeTitle: (p: {name: string}) => `Quita «${p.name}» de la lista de la app y borra sus conversaciones del historial. No borra la carpeta ni sus archivos.`,
+            removeAria: (p: {name: string}) => `Quitar ${p.name}`,
+            addTitle: 'Elegí otra carpeta del disco para que los agentes puedan trabajar en ella',
+            close: 'Cerrar',
+            closeTitle: 'Cierra este diálogo (Esc)',
+            confirmTitle: 'Quitar la carpeta de la lista',
+            confirmDescription: (p: {name: string; path: string; chats: number}) =>
+                `«${p.name}» (${p.path}) deja de estar disponible como proyecto para los agentes. La carpeta y sus archivos no se tocan en el disco y podés volver a abrirla cuando quieras.${
+                    p.chats > 0
+                        ? ` Además se eliminan del historial de la app ${p.chats === 1 ? 'la 1 conversación' : `las ${p.chats} conversaciones`} de esa carpeta, y no se pueden recuperar.`
+                        : ''
+                }`,
+            confirm: 'Quitar',
         },
     },
     portKiller: {

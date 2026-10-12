@@ -13,14 +13,14 @@ const en: Messages<typeof es> = {
     context: {
         prefixDb: 'Database',
         prefixNote: 'Note',
-        prefixRepo: 'Repository',
+        prefixRepo: 'Project',
         nouns: {
             git: 'the repository',
             db: 'the connection',
             ssh: 'the server',
             note: 'the note',
             http: 'the request',
-            utilities: 'the repository',
+            utilities: 'the project',
         },
     },
     chat: {
@@ -43,6 +43,9 @@ const en: Messages<typeof es> = {
         emptyWithContext: (p) =>
             `About ${p.noun} **«${p.label}»**. Starts in **read-only**: it reads and proposes, touches nothing.`,
         empty: 'Starts in **read-only**: it reads and proposes, touches nothing.',
+        emptyWithContextMode: (p) =>
+            `About ${p.noun} **«${p.label}»**. **${p.mode}** mode: the selector below says what it can do without asking.`,
+        emptyMode: (p) => `**${p.mode}** mode: the selector below says what it can do without asking.`,
         emptyHint: (p) => `**@** references tables, notes and terminals · ${p.paste} pastes a screenshot`,
         you: 'You',
         reuseTitle:
@@ -126,7 +129,7 @@ const en: Messages<typeof es> = {
         llmModes: {
             query: {
                 label: 'Read-only',
-                hint: 'Reads and reasons. With a working repository it can read, list and search files; it also uses the MCP tools when the server is on. It changes nothing.',
+                hint: 'Reads and reasons. With a working project it can read, list and search files and look up its skills; it also uses the MCP tools when the server is on. It changes nothing.',
             },
             plan: {
                 label: 'Plan',
@@ -134,23 +137,23 @@ const en: Messages<typeof es> = {
             },
             approve: {
                 label: 'Approve each action',
-                hint: 'It can write and edit files and run commands in the working repository, but asks you before EACH one. MCP tools (notes, databases) do not ask.',
+                hint: 'It can write and edit files and run commands in the working project, but asks you before EACH one. MCP tools (notes, databases) do not ask.',
             },
             auto: {
                 label: 'Automatic',
-                hint: 'Edits files and runs commands in the repository without asking, except risky ones (rm -rf, git push --force, sudo…), which always ask. A command runs with your permissions and can touch things outside the repository.',
+                hint: 'Works on its own, like a coding assistant: edits and creates files and runs commands in the project without asking. Risky commands (rm -rf, git push, sudo…) always ask. A command runs with your permissions and can touch things outside the project.',
             },
             edit: {
                 label: 'Apply edits',
-                hint: 'Creates and edits repository files without asking. Commands ask every time. Changes land in the working tree: you see them in Changes and discard them from there.',
+                hint: 'Creates and edits project files without asking. Commands ask every time. In a git repository changes land in the working tree: you see them in Changes and discard them from there.',
             },
         },
         willEditFilesLlm: 'Edits files; commands ask first',
         actsAloneLlm: 'Edits and runs commands without asking',
         allowEditsDescriptionLlm: (p) =>
-            `${p.agent} will create and edit files in the working repository without asking you again, for this whole chat session. Every command it wants to run will still ask you first. Changes stay in the working tree: you see them in Changes and discard them from there.`,
+            `${p.agent} will create and edit files in the working project without asking you again, for this whole chat session. Every command it wants to run will still ask you first. In a git repository changes stay in the working tree: you see them in Changes and discard them from there; in a folder without git there is no automatic way back.`,
         allowAutoDescriptionLlm: (p) =>
-            `${p.agent} will edit files and run commands in the working repository without asking you, for this whole chat session. Only risky commands (rm -rf, git push --force, git reset --hard, sudo…) ask for your permission. Files are confined to the repository, but a command runs with your permissions and can affect things outside it.`,
+            `${p.agent} will edit and create files and run commands in the working project without asking you, for this whole chat session. Only risky commands (rm -rf, git push, git reset --hard, sudo…) ask for your permission. Files are confined to the project, but a command runs with your permissions and can affect things outside it. If the project is a folder without git there is no automatic way back. You're asked this time; after that it's remembered for this project.`,
         approval: {
             title: (p) => `Allow ${p.tool}?`,
             titleRisky: (p) => `Risky command (${p.tool})`,
@@ -169,12 +172,21 @@ const en: Messages<typeof es> = {
         toolCard: {
             openNote: 'Open note',
             openNoteTitle: (p) => `Opens the note «${p.title}» in a tab`,
+            skillTitle: "Loads the full instructions of a project skill, picked by the model from its name and description",
+            skillFileTitle: 'Reads a file that ships with a skill (a template, a script, a reference). Read-only.',
+            globTitle: 'Finds project files by name pattern (for example **/*.go). Read-only.',
+        },
+        autoHint: {
+            text: 'To have it work like a coding assistant — **it edits and creates files and runs commands without asking**; risky ones (rm -rf, git push, sudo…) always ask — pick the **Automatic** mode.',
+            use: 'Use Automatic',
+            useTitle: "Switches to Automatic mode, with the usual confirmation the first time in this project. It's remembered for next time.",
+            dismissTitle: "Don't suggest it again in this project",
         },
         noRepo: {
             onlyMcp:
-                'Without a working repository, this model only has the **MCP tools** (notes, databases, SSH, Git). To let it read or edit files and run commands, pick a repository in the header.',
+                'Without a working project, this model only has the **MCP tools** (notes, databases, SSH, Git). To let it read or edit files and run commands, pick a project — a repository or a folder — in the header.',
             noTools:
-                'With no working repository and the MCP server off, this model has **no tools**: it only chats. Pick a repository in the header, or turn the MCP server on in Settings → AI.',
+                'With no working project and the MCP server off, this model has **no tools**: it only chats. Pick a project in the header, or turn the MCP server on in Settings → AI.',
             dismissTitle: 'Hide this notice',
         },
         remote: {
@@ -183,7 +195,7 @@ const en: Messages<typeof es> = {
             ack: 'Got it',
             ackTitle: 'Hides this notice in this conversation',
             recorded: (p) =>
-                `Notice: «${p.server}» is a remote server. What the agent reads from your repository (files, command output) is sent to that server.`,
+                `Notice: «${p.server}» is a remote server. What the agent reads from your project (files, command output) is sent to that server.`,
             chip: 'remote',
             chipTitle: (p) =>
                 `«${p.server}» is on another machine (${p.url}). What you send it, and what the agent reads with its tools, travels over the network.`,

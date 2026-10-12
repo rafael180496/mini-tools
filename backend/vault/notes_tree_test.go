@@ -318,6 +318,8 @@ func TestMigration59AddsBrainColumns(t *testing.T) {
 		`ALTER TABLE model_servers DROP COLUMN encrypted_headers`,
 		`ALTER TABLE model_servers DROP COLUMN headers_nonce`,
 		`ALTER TABLE model_servers DROP COLUMN insecure_tls`,
+		// La 62 se vuelve a aplicar con las demás: su columna tiene que faltar.
+		`ALTER TABLE model_servers DROP COLUMN context_tokens`,
 		`DELETE FROM schema_migrations WHERE version >= 59`,
 	} {
 		if _, err := s.db.Exec(q); err != nil {

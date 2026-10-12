@@ -187,6 +187,10 @@ type Turn struct {
 	// Exec, Env y los campos de aprobación no aplican. Lo arma quien llama
 	// para que este paquete no conozca el vault.
 	LLM llm.Client
+	// ContextTokens es la ventana de contexto configurada en el servidor
+	// (Ollama: options.num_ctx). 0 = no se conoce. Solo sirve para avisar en
+	// el chat cuando el prompt estimado no entra; no recorta nada.
+	ContextTokens int
 	// History son los mensajes previos del chat (sin el mensaje de sistema),
 	// leídos del historial guardado. Solo los usa un agente `llm:` y **solo si
 	// la sesión no tiene historial en memoria**: después de reiniciar la app el

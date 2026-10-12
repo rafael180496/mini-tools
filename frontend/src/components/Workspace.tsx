@@ -143,6 +143,7 @@ const PortKillerTab = lazy(() => import('./utilities/PortKillerTab'))
 const ActivityMonitorTab = lazy(() => import('./utilities/ActivityMonitorTab'))
 const DockerTab = lazy(() => import('./utilities/DockerTab'))
 const AiChatTab = lazy(() => import('./utilities/AiChatTab'))
+const ModelManagerTab = lazy(() => import('./utilities/ModelManagerTab'))
 
 interface QueryEvent {
     type: 'columns' | 'rows' | 'page' | 'done' | 'cancelled' | 'error'
@@ -4285,6 +4286,7 @@ export default function Workspace({
                                 {t.utilityId === 'activityMonitor' && <ActivityMonitorTab visible={activeTabId === t.id} />}
                                 {t.utilityId === 'docker' && <DockerTab visible={activeTabId === t.id} section={dockerSection} onCounts={setDockerCounts} />}
                                 {t.utilityId === 'aiChat' && <AiChatTab visible={activeTabId === t.id} />}
+                                {t.utilityId === 'modelManager' && <ModelManagerTab visible={activeTabId === t.id} />}
                             </Suspense>
                         </div>
                     ))}

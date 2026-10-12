@@ -221,7 +221,11 @@ func TestMigration60AddsHeadersAndInsecureTLS(t *testing.T) {
 		`ALTER TABLE model_servers DROP COLUMN encrypted_headers`,
 		`ALTER TABLE model_servers DROP COLUMN headers_nonce`,
 		`ALTER TABLE model_servers DROP COLUMN insecure_tls`,
-		`DELETE FROM schema_migrations WHERE version = 60`,
+		// >= y no =: applyMigrations retoma desde la versión máxima aplicada, y las
+		// migraciones posteriores (61) la dejarían saltear la 60.
+		// La 62 se vuelve a aplicar con las demás: su columna tiene que faltar.
+		`ALTER TABLE model_servers DROP COLUMN context_tokens`,
+		`DELETE FROM schema_migrations WHERE version >= 60`,
 	} {
 		if _, err := store.db.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
@@ -239,5 +243,77 @@ func TestMigration60AddsHeadersAndInsecureTLS(t *testing.T) {
 	}
 	if err := applyMigrations(store.db); err != nil {
 		t.Errorf("segunda pasada: %v", err)
+	}
+}
+
+// context_tokens se guarda solo para Ollama, se acota y se conserva al editar.
+func TestModelServerContextTokens(t *testing.T) {
+	store, _ := openTestStore(t)
+	if err := store.Initialize("correct-horse"); err != nil {
+		t.Fatal(err)
+	}
+	oll, err := store.SaveModelServer(ModelServer{Name: "o", Kind: ModelServerOllama, BaseURL: "http://x", ContextTokens: 16384}, "", false, nil, false)
+	if err != nil || oll.ContextTokens != 16384 {
+		t.Fatalf("alta Ollama: %+v, %v", oll, err)
+	}
+	got, _ := store.GetModelServer(oll.ID)
+	if got.ContextTokens != 16384 {
+		t.Errorf("no persistió: %+v", got)
+	}
+	oll.ContextTokens = 32768
+	if upd, err := store.SaveModelServer(oll, "", false, nil, false); err != nil || upd.ContextTokens != 32768 {
+		t.Errorf("edición: %+v, %v", upd, err)
+	}
+	oll.ContextTokens = -5
+	if upd, _ := store.SaveModelServer(oll, "", false, nil, false); upd.ContextTokens != 0 {
+		t.Errorf("negativo debe quedar en 0: %d", upd.ContextTokens)
+	}
+	oll.ContextTokens = MaxContextTokens * 10
+	if upd, _ := store.SaveModelServer(oll, "", false, nil, false); upd.ContextTokens != MaxContextTokens {
+		t.Errorf("tope: %d", upd.ContextTokens)
+	}
+
+	// Un servidor OpenAI no la guarda, venga lo que venga.
+	oa, err := store.SaveModelServer(ModelServer{Name: "oa", Kind: ModelServerOpenAI, BaseURL: "http://y/v1", ContextTokens: 8192}, "", false, nil, false)
+	if err != nil || oa.ContextTokens != 0 {
+		t.Errorf("OpenAI: %+v, %v", oa, err)
+	}
+}
+
+// Migración 62 sobre un vault con servidores guardados: la columna nace en 0
+// (no mandar num_ctx, como hasta ahora) y la fila queda intacta.
+func TestMigration62AddsContextTokens(t *testing.T) {
+	store, _ := openTestStore(t)
+	if err := store.Initialize("correct-horse"); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.SaveModelServer(ModelServer{Name: "viejo", Kind: ModelServerOllama, BaseURL: "http://x"}, "tok", false, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`ALTER TABLE model_servers DROP COLUMN context_tokens`,
+		`DELETE FROM schema_migrations WHERE version >= 62`,
+	} {
+		if _, err := store.db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := applyMigrations(store.db); err != nil {
+		t.Fatalf("applyMigrations: %v", err)
+	}
+	got, err := store.GetModelServer(saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ContextTokens != 0 || !got.HasToken || got.Name != "viejo" {
+		t.Errorf("después de migrar: %+v", got)
+	}
+	if err := applyMigrations(store.db); err != nil {
+		t.Errorf("segunda pasada: %v", err)
+	}
+	var max int
+	if err := store.db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&max); err != nil || max != 62 {
+		t.Errorf("versión = %d, %v", max, err)
 	}
 }

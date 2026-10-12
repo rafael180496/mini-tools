@@ -38,12 +38,17 @@ type ModelServer struct {
 	// InsecureTLS: no verificar el certificado de este servidor (certificado
 	// propio o autofirmado). Preferencia en claro, apagada por defecto.
 	InsecureTLS bool
-	HeaderNames []string
-	CreatedAt   int64
-	UpdatedAt   int64
+	// ContextTokens: ventana de contexto (en tokens) que se le pide a un
+	// servidor Ollama como options.num_ctx. 0 = la que traiga el servidor.
+	// Un servidor compatible con OpenAI la decide al cargar el modelo y no
+	// admite pedirla por petición.
+	ContextTokens int
+	HeaderNames   []string
+	CreatedAt     int64
+	UpdatedAt     int64
 }
 
-const modelServerColumns = `id, name, kind, base_url, encrypted_token IS NOT NULL, insecure_tls, encrypted_headers, headers_nonce, created_at, updated_at`
+const modelServerColumns = `id, name, kind, base_url, encrypted_token IS NOT NULL, insecure_tls, context_tokens, encrypted_headers, headers_nonce, created_at, updated_at`
 
 // scanModelServer lee una fila. Los nombres de las cabeceras salen de
 // descifrar el JSON guardado; si eso falla (clave distinta, fila dañada) se
@@ -52,7 +57,7 @@ const modelServerColumns = `id, name, kind, base_url, encrypted_token IS NOT NUL
 func (s *Store) scanModelServer(sc interface{ Scan(...any) error }) (ModelServer, error) {
 	var m ModelServer
 	var encH, nonceH []byte
-	err := sc.Scan(&m.ID, &m.Name, &m.Kind, &m.BaseURL, &m.HasToken, &m.InsecureTLS, &encH, &nonceH, &m.CreatedAt, &m.UpdatedAt)
+	err := sc.Scan(&m.ID, &m.Name, &m.Kind, &m.BaseURL, &m.HasToken, &m.InsecureTLS, &m.ContextTokens, &encH, &nonceH, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return m, err
 	}
@@ -246,6 +251,11 @@ func (s *Store) SaveModelServer(in ModelServer, token string, clearToken bool, h
 		}
 	}
 
+	// Solo Ollama la admite; en un servidor OpenAI se descarta para que no quede
+	// un valor viejo guardado de cuando el servidor era de otro tipo. Un valor
+	// negativo o absurdo se acota en vez de rechazarse.
+	ctxTokens := normalizeContextTokens(in.Kind, in.ContextTokens)
+
 	now := time.Now().Unix()
 	if in.ID == "" {
 		id, err := newID()
@@ -253,9 +263,9 @@ func (s *Store) SaveModelServer(in ModelServer, token string, clearToken bool, h
 			return ModelServer{}, err
 		}
 		if _, err := s.db.Exec(
-			`INSERT INTO model_servers (id, name, kind, base_url, encrypted_token, token_nonce, encrypted_headers, headers_nonce, insecure_tls, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, name, in.Kind, baseURL, enc, nonce, encH, nonceH, in.InsecureTLS, now, now,
+			`INSERT INTO model_servers (id, name, kind, base_url, encrypted_token, token_nonce, encrypted_headers, headers_nonce, insecure_tls, context_tokens, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, name, in.Kind, baseURL, enc, nonce, encH, nonceH, in.InsecureTLS, ctxTokens, now, now,
 		); err != nil {
 			return ModelServer{}, i18n.Errorf(i18n.Msg{ES: "vault: guardando el servidor de modelos: %w", EN: "vault: saving the model server: %w"}, err)
 		}
@@ -264,8 +274,8 @@ func (s *Store) SaveModelServer(in ModelServer, token string, clearToken bool, h
 
 	// Una sola sentencia armada según qué hacer con el token y las cabeceras,
 	// para no pisar lo guardado cuando no se pidió tocarlo.
-	set := []string{"name = ?", "kind = ?", "base_url = ?", "insecure_tls = ?", "updated_at = ?"}
-	args := []any{name, in.Kind, baseURL, in.InsecureTLS, now}
+	set := []string{"name = ?", "kind = ?", "base_url = ?", "insecure_tls = ?", "context_tokens = ?", "updated_at = ?"}
+	args := []any{name, in.Kind, baseURL, in.InsecureTLS, ctxTokens, now}
 	switch {
 	case token != "":
 		set = append(set, "encrypted_token = ?", "token_nonce = ?")
@@ -287,6 +297,21 @@ func (s *Store) SaveModelServer(in ModelServer, token string, clearToken bool, h
 		return ModelServer{}, i18n.Errorf(i18n.Msg{ES: "vault: el servidor de modelos no existe", EN: "vault: the model server does not exist"})
 	}
 	return s.GetModelServer(in.ID)
+}
+
+// MaxContextTokens es el tope de la ventana que se acepta guardar: ningún
+// modelo local la pasa de unos pocos millones y un valor mayor es un error de
+// tipeo que haría reservar memoria de más.
+const MaxContextTokens = 4_194_304
+
+func normalizeContextTokens(kind string, n int) int {
+	if kind != ModelServerOllama || n < 0 {
+		return 0
+	}
+	if n > MaxContextTokens {
+		return MaxContextTokens
+	}
+	return n
 }
 
 // DeleteModelServer borra un servidor. Los chats que lo usaron conservan su

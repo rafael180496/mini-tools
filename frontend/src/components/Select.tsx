@@ -34,6 +34,9 @@ export interface SelectOption {
     // si puede tocar archivos—; en una lista de conexiones el `hint` de una
     // línea sigue siendo lo correcto.
     description?: string
+    // Tooltip de la fila del menú. Sirve sobre todo en una opción deshabilitada,
+    // donde es la única forma de decir POR QUÉ no se puede elegir.
+    title?: string
     // Opción peligrosa: se pinta en el color de error, en el menú y en el
     // disparador cuando queda elegida.
     danger?: boolean
@@ -62,6 +65,10 @@ interface SelectProps {
     // Ancho mínimo del menú en px. Por defecto el del disparador; un disparador
     // compacto con opciones descriptas necesita más que su propio ancho.
     menuMinWidth?: number
+    // Alto máximo del menú en px antes de que se desplace (por defecto 288). Un
+    // menú con acciones al final —«Abrir carpeta…»— no puede dejarlas bajo el
+    // desplazamiento.
+    menuMaxHeight?: number
 }
 
 // Themed dropdown replacing the native <select> everywhere in the app — the
@@ -86,6 +93,7 @@ export default function Select({
     title,
     leadingIcon,
     menuMinWidth,
+    menuMaxHeight,
 }: SelectProps) {
     const sizeClasses = size === 'sm' ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'
     const variantClasses =
@@ -182,7 +190,7 @@ export default function Select({
                                 }
                             }}
                             role="listbox"
-                            style={{position: 'fixed', top: pos.top, left: pos.left, minWidth: Math.max(pos.width, menuMinWidth ?? 0)}}
+                            style={{position: 'fixed', top: pos.top, left: pos.left, minWidth: Math.max(pos.width, menuMinWidth ?? 0), ...(menuMaxHeight ? {maxHeight: menuMaxHeight} : {})}}
                             onPointerDown={(e) => e.stopPropagation()}
                             className="z-50 max-h-72 min-w-52 max-w-[22rem] overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-highest p-1 text-on-surface shadow-lg"
                         >
@@ -195,6 +203,7 @@ export default function Select({
                                         role="option"
                                         aria-selected={selected}
                                         disabled={o.disabled}
+                                        title={o.title}
                                         onClick={() => {
                                             onChange(o.value)
                                             setOpen(false)

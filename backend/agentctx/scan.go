@@ -99,9 +99,24 @@ var instructionFiles = []struct {
 // repositorio. `.claude/skills` es el de Claude Code; `.github/skills` aparece
 // en repos que los publican junto al resto de la configuración de GitHub, y
 // omitirlo haría que esos proyectos se vieran como si no tuvieran ninguno.
+//
+// `.opencode/skill(s)` y `.agents/skills` son los de OpenCode y el estándar
+// compartido de agentes: el chat con un servidor de modelos (projectctx.go)
+// carga los mismos que cualquiera de esos CLIs cargaría en este repositorio.
 var skillDirs = []string{
 	filepath.Join(".claude", "skills"),
 	filepath.Join(".github", "skills"),
+	filepath.Join(".opencode", "skill"),
+	filepath.Join(".opencode", "skills"),
+	filepath.Join(".agents", "skills"),
+}
+
+// userSkillDirs son los mismos layouts, pero relativos al home del usuario.
+var userSkillDirs = []string{
+	filepath.Join(".claude", "skills"),
+	filepath.Join(".config", "opencode", "skill"),
+	filepath.Join(".config", "opencode", "skills"),
+	filepath.Join(".agents", "skills"),
 }
 
 // Scan recorre el repositorio y el home del usuario.
@@ -133,7 +148,9 @@ func Scan(repoRoot string) Context {
 	// así que se suma acá y se marca como tal en vez de mezclarse sin
 	// distinción con lo que viaja en el proyecto.
 	if home, err := os.UserHomeDir(); err == nil {
-		ctx.Skills = append(ctx.Skills, scanSkills(filepath.Join(home, ".claude", "skills"), "", ScopeUser)...)
+		for _, dir := range userSkillDirs {
+			ctx.Skills = append(ctx.Skills, scanSkills(filepath.Join(home, dir), "", ScopeUser)...)
+		}
 		ctx.Agents = append(ctx.Agents, scanDocs(filepath.Join(home, ".claude", "agents"), "", ScopeUser)...)
 		ctx.Commands = append(ctx.Commands, scanDocs(filepath.Join(home, ".claude", "commands"), "", ScopeUser)...)
 	}
@@ -146,34 +163,57 @@ func Scan(repoRoot string) Context {
 	return ctx
 }
 
-// scanSkills lee un directorio de skills. Cada skill es un subdirectorio con
-// un SKILL.md adentro — la carpeta suelta sin SKILL.md no es un skill, es una
-// carpeta, y listarla daría entradas que ningún CLI va a cargar.
-func scanSkills(dir, relTo string, scope Scope) []Entry {
+// skillFolder es un skill hallado en disco: el nombre de su carpeta, la
+// carpeta y la ruta de su SKILL.md.
+type skillFolder struct {
+	dirName string
+	dir     string
+	file    string
+}
+
+// listSkillFolders devuelve los subdirectorios de dir que tienen un SKILL.md.
+//
+// Una subcarpeta que es un ENLACE a un directorio cuenta: enlazar
+// ~/.claude/skills/x a un clon del skill es la forma habitual de instalarlos, y
+// os.ReadDir informa esa entrada como symlink, no como directorio, así que un
+// `it.IsDir()` los descartaba todos. Por eso se mira el destino con os.Stat.
+func listSkillFolders(dir string) []skillFolder {
 	items, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
-
-	out := make([]Entry, 0, len(items))
+	out := make([]skillFolder, 0, len(items))
 	for _, it := range items {
 		if len(out) >= maxEntries {
 			break
 		}
-		if !it.IsDir() {
+		sub := filepath.Join(dir, it.Name())
+		if fi, err := os.Stat(sub); err != nil || !fi.IsDir() {
 			continue
 		}
-		skillPath := filepath.Join(dir, it.Name(), "SKILL.md")
-		if _, err := os.Stat(skillPath); err != nil {
+		skillPath := filepath.Join(sub, "SKILL.md")
+		if fi, err := os.Stat(skillPath); err != nil || fi.IsDir() {
 			continue
 		}
-		name, desc := frontmatter(skillPath)
+		out = append(out, skillFolder{dirName: it.Name(), dir: sub, file: skillPath})
+	}
+	return out
+}
+
+// scanSkills lee un directorio de skills. Cada skill es un subdirectorio con
+// un SKILL.md adentro — la carpeta suelta sin SKILL.md no es un skill, es una
+// carpeta, y listarla daría entradas que ningún CLI va a cargar.
+func scanSkills(dir, relTo string, scope Scope) []Entry {
+	folders := listSkillFolders(dir)
+	out := make([]Entry, 0, len(folders))
+	for _, f := range folders {
+		name, desc := frontmatter(f.file)
 		if name == "" {
 			// El nombre del directorio es el fallback correcto: es lo que el
 			// CLI usa para referirse al skill cuando el frontmatter no lo dice.
-			name = it.Name()
+			name = f.dirName
 		}
-		out = append(out, Entry{Name: name, Description: desc, Path: displayPath(skillPath, relTo), Scope: scope})
+		out = append(out, Entry{Name: name, Description: desc, Path: displayPath(f.file, relTo), Scope: scope})
 	}
 	return out
 }

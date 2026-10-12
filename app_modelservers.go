@@ -43,6 +43,10 @@ type ModelServer struct {
 	// propio o autofirmado de una red interna). Apagado por defecto; es una
 	// preferencia que sí viaja y se guarda.
 	InsecureTLS bool `json:"insecureTls"`
+	// ContextTokens: ventana de contexto que se le pide a un servidor Ollama
+	// (options.num_ctx). 0 = la que traiga el servidor. Un servidor OpenAI no
+	// la admite por petición: se guarda siempre 0.
+	ContextTokens int `json:"contextTokens"`
 	// HeaderNames son los NOMBRES de las cabeceras propias configuradas
 	// (X-Api-Key…). Los valores nunca cruzan hacia el frontend, igual que el
 	// token. Siempre un arreglo, nunca null.
@@ -74,7 +78,7 @@ func toModelServer(m vault.ModelServer) ModelServer {
 	return ModelServer{
 		ID: m.ID, Name: m.Name, Kind: m.Kind, BaseURL: m.BaseURL,
 		HasToken: m.HasToken, IsLocal: isLoopbackURL(m.BaseURL),
-		InsecureTLS: m.InsecureTLS, HeaderNames: names,
+		InsecureTLS: m.InsecureTLS, ContextTokens: m.ContextTokens, HeaderNames: names,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
@@ -124,7 +128,7 @@ func (a *App) SaveModelServer(s ModelServer, token string, clearToken bool, head
 	if err := a.requireUnlocked(); err != nil {
 		return ModelServer{}, err
 	}
-	saved, err := a.vault.SaveModelServer(vault.ModelServer{ID: s.ID, Name: s.Name, Kind: s.Kind, BaseURL: s.BaseURL, InsecureTLS: s.InsecureTLS}, token, clearToken, headers, replaceHeaders)
+	saved, err := a.vault.SaveModelServer(vault.ModelServer{ID: s.ID, Name: s.Name, Kind: s.Kind, BaseURL: s.BaseURL, InsecureTLS: s.InsecureTLS, ContextTokens: s.ContextTokens}, token, clearToken, headers, replaceHeaders)
 	if err != nil {
 		return ModelServer{}, err
 	}
@@ -333,11 +337,25 @@ func (a *App) llmServer(agentID string) (vault.ModelServer, llm.Client, error) {
 	if err != nil {
 		return vault.ModelServer{}, nil, err
 	}
-	client, err := llm.New(m.Kind, m.BaseURL, llm.Options{Token: token, Headers: headers, InsecureTLS: m.InsecureTLS})
+	client, err := llm.New(m.Kind, m.BaseURL, llm.Options{Token: token, Headers: headers, InsecureTLS: m.InsecureTLS, ContextTokens: m.ContextTokens})
 	if err != nil {
 		return vault.ModelServer{}, nil, err
 	}
 	return m, client, nil
+}
+
+// llmContextTokens es la ventana de contexto configurada del servidor de un
+// agente `llm:<id>` (0 si no hay o no se pudo leer). Solo alimenta el aviso del
+// chat; un fallo acá no debe tumbar el turno.
+func (a *App) llmContextTokens(agentID string) int {
+	if !agentchat.IsLLM(agentID) {
+		return 0
+	}
+	m, err := a.vault.GetModelServer(agentID[len(agentchat.LLMPrefix):])
+	if err != nil {
+		return 0
+	}
+	return m.ContextTokens
 }
 
 // llmClientFor es el cliente SIN chequeo previo: para el selector de modelos,

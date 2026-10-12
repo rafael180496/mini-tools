@@ -178,6 +178,24 @@ export namespace agentctx {
 	}
 	
 	
+	export class InstructionInfo {
+	    path: string;
+	    scope: string;
+	    chars: number;
+	    truncated: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstructionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.scope = source["scope"];
+	        this.chars = source["chars"];
+	        this.truncated = source["truncated"];
+	    }
+	}
 	export class Policy {
 	    kind: string;
 	    syntax: string;
@@ -220,6 +238,24 @@ export namespace agentctx {
 	        this.body = source["body"];
 	        this.err = source["err"];
 	        this.blocked = source["blocked"];
+	    }
+	}
+	export class SkillInfo {
+	    name: string;
+	    description: string;
+	    scope: string;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SkillInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.scope = source["scope"];
+	        this.path = source["path"];
 	    }
 	}
 
@@ -2698,6 +2734,87 @@ export namespace httpclient {
 
 }
 
+export namespace llm {
+	
+	export class ManagedModel {
+	    name: string;
+	    size: number;
+	    modifiedAt: string;
+	    digest: string;
+	    family: string;
+	    parameterSize: string;
+	    quantizationLevel: string;
+	    format: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ManagedModel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.size = source["size"];
+	        this.modifiedAt = source["modifiedAt"];
+	        this.digest = source["digest"];
+	        this.family = source["family"];
+	        this.parameterSize = source["parameterSize"];
+	        this.quantizationLevel = source["quantizationLevel"];
+	        this.format = source["format"];
+	    }
+	}
+	export class ModelDetails {
+	    name: string;
+	    family: string;
+	    parameterSize: string;
+	    quantizationLevel: string;
+	    format: string;
+	    parameters: string;
+	    template: string;
+	    license: string;
+	    contextLength: number;
+	    capabilities: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelDetails(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.family = source["family"];
+	        this.parameterSize = source["parameterSize"];
+	        this.quantizationLevel = source["quantizationLevel"];
+	        this.format = source["format"];
+	        this.parameters = source["parameters"];
+	        this.template = source["template"];
+	        this.license = source["license"];
+	        this.contextLength = source["contextLength"];
+	        this.capabilities = source["capabilities"];
+	    }
+	}
+	export class RunningModel {
+	    name: string;
+	    size: number;
+	    sizeVram: number;
+	    expiresAt: string;
+	    contextLength: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunningModel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.size = source["size"];
+	        this.sizeVram = source["sizeVram"];
+	        this.expiresAt = source["expiresAt"];
+	        this.contextLength = source["contextLength"];
+	    }
+	}
+
+}
+
 export namespace localterm {
 	
 	export class Shell {
@@ -2788,6 +2905,26 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class AgentWorkspace {
+	    id: string;
+	    name: string;
+	    path: string;
+	    isGit: boolean;
+	    exists: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentWorkspace(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.isGit = source["isGit"];
+	        this.exists = source["exists"];
+	    }
 	}
 	export class AskAgent {
 	    id: string;
@@ -3366,6 +3503,38 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ModelPullEvent {
+	    pullId: string;
+	    serverId: string;
+	    model: string;
+	    status: string;
+	    completed: number;
+	    total: number;
+	    percent: number;
+	    done: boolean;
+	    error: string;
+	    cancelled: boolean;
+	    startedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelPullEvent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pullId = source["pullId"];
+	        this.serverId = source["serverId"];
+	        this.model = source["model"];
+	        this.status = source["status"];
+	        this.completed = source["completed"];
+	        this.total = source["total"];
+	        this.percent = source["percent"];
+	        this.done = source["done"];
+	        this.error = source["error"];
+	        this.cancelled = source["cancelled"];
+	        this.startedAt = source["startedAt"];
+	    }
+	}
 	export class ModelServer {
 	    id: string;
 	    name: string;
@@ -3374,6 +3543,7 @@ export namespace main {
 	    hasToken: boolean;
 	    isLocal: boolean;
 	    insecureTls: boolean;
+	    contextTokens: number;
 	    headerNames: string[];
 	    createdAt: number;
 	    updatedAt: number;
@@ -3391,6 +3561,7 @@ export namespace main {
 	        this.hasToken = source["hasToken"];
 	        this.isLocal = source["isLocal"];
 	        this.insecureTls = source["insecureTls"];
+	        this.contextTokens = source["contextTokens"];
 	        this.headerNames = source["headerNames"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
@@ -3681,6 +3852,46 @@ export namespace main {
 	        this.dstDir = source["dstDir"];
 	        this.items = this.convertValues(source["items"], sftpx.Item);
 	        this.onConflict = source["onConflict"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class WorkspaceContextInfo {
+	    root: string;
+	    isGit: boolean;
+	    branch: string;
+	    instructions: agentctx.InstructionInfo[];
+	    skills: agentctx.SkillInfo[];
+	    totalChars: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceContextInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.root = source["root"];
+	        this.isGit = source["isGit"];
+	        this.branch = source["branch"];
+	        this.instructions = this.convertValues(source["instructions"], agentctx.InstructionInfo);
+	        this.skills = this.convertValues(source["skills"], agentctx.SkillInfo);
+	        this.totalChars = source["totalChars"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

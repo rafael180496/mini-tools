@@ -1410,6 +1410,41 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 61,
+		desc:    "crea agent_workspaces: carpetas de trabajo (no repositorios git) para los chats con un servidor de modelos",
+		apply: func(tx *sql.Tx) error {
+			// Un chat con herramientas de archivos y comandos necesita una
+			// raíz, y hasta ahora solo podía ser un repositorio de git_repos.
+			// Una carpeta cualquiera (un proyecto sin git, una carpeta de
+			// documentos) tiene su propia tabla en vez de forzarla a git_repos:
+			// esa alimenta la pestaña Git, y una carpeta que no es un
+			// repositorio ahí aparecería con todas sus acciones rotas.
+			//
+			// El contexto del chat las nombra como `ws:<id>`. path es UNIQUE:
+			// agregar la misma carpeta dos veces no duplica la entrada.
+			_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS agent_workspaces (
+				id         TEXT PRIMARY KEY,
+				name       TEXT NOT NULL,
+				path       TEXT NOT NULL UNIQUE,
+				created_at INTEGER NOT NULL
+			)`)
+			return err
+		},
+	},
+	{
+		version: 62,
+		desc:    "agrega model_servers.context_tokens: ventana de contexto que se le pide a Ollama (0 = la del servidor)",
+		apply: func(tx *sql.Tx) error {
+			// Ollama arranca con una ventana chica (2k-4k tokens) y recorta el
+			// prompt sin avisar; el system prompt de un proyecto más el historial
+			// la desbordan fácil. Se guarda por servidor y viaja como
+			// options.num_ctx. 0 = no mandarlo y dejar la del servidor, que es lo
+			// que hacían todos los servidores existentes hasta ahora.
+			_, err := tx.Exec(`ALTER TABLE model_servers ADD COLUMN context_tokens INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

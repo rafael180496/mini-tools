@@ -2,7 +2,9 @@ package agentchat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -157,6 +159,8 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 			}
 		}
 
+		m.noticeContextOverflow(t, msgs, tools)
+
 		callStart := time.Now()
 		res, err := chatRetry(ctx, t.LLM, llm.ChatRequest{Model: model, Messages: msgs, Tools: tools}, onDelta)
 		if err != nil && len(tools) > 0 && ctx.Err() == nil && llm.IsToolsUnsupported(err) {
@@ -227,6 +231,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 var (
 	msgToolRoundsLimit  = i18n.Msg{ES: "el modelo llegó al tope de %d vueltas de herramientas sin terminar; lo que ya hizo quedó hecho. Pedile que siga, o dividí la tarea", EN: "the model reached the limit of %d tool rounds without finishing; what it already did stays done. Ask it to continue, or split the task"}
 	msgToolRoundsNotRun = i18n.Msg{ES: "se alcanzó el tope de vueltas de herramientas: esta llamada no se ejecutó", EN: "the tool round limit was reached: this call was not run"}
+	msgContextNotice    = i18n.Msg{ES: "_⚠ El mensaje, con las instrucciones del proyecto y el historial, pesa unos %d tokens y la ventana de contexto del servidor es de %d: el servidor puede recortar el principio sin avisar. Subila en Utilidades → Servidores de modelos._", EN: "_⚠ The message, with the project instructions and the history, weighs about %d tokens and the server's context window is %d: the server may silently cut off the start. Raise it in Utilities → Model servers._"}
 	msgNoToolsNotice    = i18n.Msg{ES: "_⚠ Este modelo no admite herramientas: sigo sin ellas._", EN: "_⚠ This model does not support tools: continuing without them._"}
 )
 
@@ -300,6 +305,54 @@ func (m *Manager) noticeNoTools(sessionID, key string) {
 	m.mu.Unlock()
 	if !seen {
 		m.emit(sessionID, Event{Kind: KindText, Text: i18n.T(msgNoToolsNotice) + "\n\n"})
+	}
+}
+
+// estimateTokens aproxima los tokens de lo que se va a enviar con la regla
+// común de ~4 caracteres por token. Es una estimación a propósito: un
+// tokenizador exacto es por modelo y acá solo hace falta saber si el orden de
+// magnitud ya no entra.
+func estimateTokens(msgs []llm.Message, tools []llm.ToolDef) int {
+	chars := 0
+	for _, m := range msgs {
+		chars += len(m.Content)
+		for _, c := range m.ToolCalls {
+			chars += len(c.Name)
+			for k, v := range c.Arguments {
+				chars += len(k) + len(fmt.Sprint(v))
+			}
+		}
+	}
+	for _, td := range tools {
+		chars += len(td.Name) + len(td.Description)
+		if td.Parameters != nil {
+			if b, err := json.Marshal(td.Parameters); err == nil {
+				chars += len(b)
+			}
+		}
+	}
+	return chars / 4
+}
+
+// noticeContextOverflow avisa UNA vez por sesión que el prompt estimado supera
+// la ventana de contexto configurada del servidor. No bloquea ni recorta: es
+// información para que la persona suba el valor. Sin ventana conocida
+// (ContextTokens = 0) no hay contra qué comparar y no dice nada.
+func (m *Manager) noticeContextOverflow(t Turn, msgs []llm.Message, tools []llm.ToolDef) {
+	if t.ContextTokens <= 0 {
+		return
+	}
+	est := estimateTokens(msgs, tools)
+	if est <= t.ContextTokens {
+		return
+	}
+	k := t.SessionID + "|ctx"
+	m.mu.Lock()
+	seen := m.llmNoticed[k]
+	m.llmNoticed[k] = true
+	m.mu.Unlock()
+	if !seen {
+		m.emit(t.SessionID, Event{Kind: KindText, Text: i18n.T(msgContextNotice, est, t.ContextTokens) + "\n\n"})
 	}
 }
 
