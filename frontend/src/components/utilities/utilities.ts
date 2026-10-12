@@ -21,5 +21,5 @@ export const UTILITIES: UtilityDef[] = [
     {id: 'activityMonitor', icon: 'monitor_heart'},
     {id: 'docker', icon: 'deployed_code'},
     {id: 'aiChat', icon: 'forum'},
-    {id: 'modelManager', icon: 'model_training'},
+    {id: 'modelManager', icon: 'hub'},
 ]

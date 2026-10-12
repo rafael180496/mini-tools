@@ -31,7 +31,11 @@ type Manager struct {
 	mu         sync.Mutex
 	convos     map[string]string
 	llmHistory map[string][]llm.Message
-	cancels    map[string]context.CancelFunc
+	// llmHistoryAgent es qué proveedor produjo llmHistory de cada sesión: si el
+	// chat cambia de proveedor, lo que llevan los mensajes de otro (Message.Raw)
+	// no se reenvía. Ver sendLLM.
+	llmHistoryAgent map[string]string
+	cancels         map[string]context.CancelFunc
 	// llmNoTools recuerda qué modelos (agente|modelo) rechazaron las
 	// herramientas, para no reintentar —y fallar— en cada turno; llmNoticed,
 	// en qué sesiones ya se avisó. Ver llmrunner.go.
@@ -42,12 +46,13 @@ type Manager struct {
 
 func NewManager(emit EmitFunc) *Manager {
 	return &Manager{
-		convos:     map[string]string{},
-		llmHistory: map[string][]llm.Message{},
-		cancels:    map[string]context.CancelFunc{},
-		llmNoTools: map[string]bool{},
-		llmNoticed: map[string]bool{},
-		emit:       emit,
+		convos:          map[string]string{},
+		llmHistory:      map[string][]llm.Message{},
+		llmHistoryAgent: map[string]string{},
+		cancels:         map[string]context.CancelFunc{},
+		llmNoTools:      map[string]bool{},
+		llmNoticed:      map[string]bool{},
+		emit:            emit,
 	}
 }
 
@@ -182,6 +187,15 @@ type Turn struct {
 	// así que alcanza con nombrarle el archivo. Verificado en el `--help` de
 	// cada uno, no supuesto.
 	Images []string
+	// PDFs son rutas de PDF adjuntos. Anthropic los recibe como bloques
+	// `document`; Claude Code, nombrados en el prompt. Quien arma el Turn ya
+	// comprobó que el destino los admite (PrepareAttachments).
+	PDFs []string
+	// Attachments son TODOS los adjuntos del mensaje (también los de texto, ya
+	// pegados en Prompt): sirven para el nombre original de cada ruta, para el
+	// registro del historial y para dejar solo sus nombres en la memoria de la
+	// sesión cuando el turno termina.
+	Attachments []Attachment
 	// LLM es el cliente HTTP de un servidor de modelos, ya configurado con su
 	// URL y su token. Solo se usa con agentes `llm:<id>`; en ese caso Command,
 	// Exec, Env y los campos de aprobación no aplican. Lo arma quien llama
@@ -388,6 +402,7 @@ func (m *Manager) Reset(sessionID string) {
 	m.mu.Lock()
 	delete(m.convos, sessionID)
 	delete(m.llmHistory, sessionID)
+	delete(m.llmHistoryAgent, sessionID)
 	m.mu.Unlock()
 }
 
@@ -502,17 +517,7 @@ func (m *Manager) run(ctx context.Context, t Turn, args []string, adapt adapter)
 // withImagePaths nombra las imágenes adjuntas dentro del prompt, para los
 // CLIs que no tienen una bandera propia.
 func withImagePaths(prompt string, images []string) string {
-	if len(images) == 0 {
-		return prompt
-	}
-	var b strings.Builder
-	b.WriteString(prompt)
-	b.WriteString("\n\n" + i18n.T(i18n.Msg{ES: "Imágenes adjuntas (abrilas para verlas):", EN: "Attached images (open them to see them):"}))
-	for _, img := range images {
-		b.WriteString("\n- ")
-		b.WriteString(img)
-	}
-	return b.String()
+	return withAttachmentPaths(prompt, images, nil, nil)
 }
 
 // buildArgs arma la línea de comandos del turno.
@@ -558,7 +563,7 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 		// en el prompt y los abre con su propia herramienta de lectura, que
 		// soporta imágenes. Nombrar la ruta es además lo mismo que hace el
 		// selector de @: el agente lee, la app no le pega bytes.
-		args := append(base, "-p", withImagePaths(t.Prompt, t.Images), "--output-format", "stream-json", "--verbose")
+		args := append(base, "-p", withAttachmentPaths(t.Prompt, t.Images, t.PDFs, attachmentNames(t.Attachments)), "--output-format", "stream-json", "--verbose")
 		if conversation != "" {
 			args = append(args, "--resume", conversation)
 		}
@@ -634,7 +639,7 @@ func buildArgs(t Turn, conversation string) ([]string, error) {
 		// prompt, igual que con Claude Code. Si el CLI no sabe abrirlas, lo va
 		// a decir él — que es mejor que una bandera inventada que lo haga
 		// fallar al arrancar.
-		args := append(base, "--print", withImagePaths(t.Prompt, t.Images), "--output-format", "stream-json")
+		args := append(base, "--print", withAttachmentPaths(t.Prompt, t.Images, nil, attachmentNames(t.Attachments)), "--output-format", "stream-json")
 		if conversation != "" {
 			args = append(args, "--conversation", conversation)
 		}

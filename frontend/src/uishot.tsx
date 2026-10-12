@@ -157,6 +157,29 @@ const aiChats = [
 // Mensajes guardados de la primera conversación (AgentChatMessages): lo que se
 // dibuja al retomarla, con el consumo de cada turno.
 const aiChatMessages: Record<string, unknown[]> = {
+    // Adjuntos (fase 8): `attachments` trae nombre, tipo y tamaño de cada
+    // archivo —nunca contenido ni rutas— y se dibuja como fichas sobre el
+    // mensaje del usuario. Un mensaje puede ser solo archivos (sin texto).
+    'chat-att': [
+        {seq: 1, role: 'user', content: 'No me deja entrar y sale este error. ¿Qué pasó? Te paso también el informe del trimestre por si ayuda.', toolName: '', attachments: [{name: 'captura-login.png', kind: 'image', size: 184320}, {name: 'informe-q3.pdf', kind: 'pdf', size: 1843200}], createdAt: aiNow - 900},
+        {
+            seq: 2,
+            role: 'assistant',
+            content: 'En la captura se ve un **401** justo después de renovar la sesión: el token expira antes de que el refresh termine. El informe confirma que los picos de login coinciden con los reinicios de las 02:00.',
+            toolName: '',
+            usage: {input: 2410, output: 96, cacheRead: 0, thinking: 0, total: 2506, costUsd: 0.0071},
+            createdAt: aiNow - 880,
+        },
+        {seq: 3, role: 'user', content: '', toolName: '', attachments: [{name: 'accounts_controller.go', kind: 'text', size: 2481}], createdAt: aiNow - 600},
+        {
+            seq: 4,
+            role: 'assistant',
+            content: 'Con el archivo a la vista: `Validate` compara contra `time.Now()` sin margen. Le agregaría un colchón de 30 s.',
+            toolName: '',
+            usage: {input: 3120, output: 54, cacheRead: 0, thinking: 0, total: 3174, costUsd: 0.0049},
+            createdAt: aiNow - 590,
+        },
+    ],
     'ac-10': [
         {seq: 1, role: 'user', content: '¿Conviene un índice B-tree o BRIN para la tabla de eventos, que crece unos 40 millones de filas por mes y se consulta casi siempre por rango de fecha?', toolName: '', createdAt: aiNow - 880},
         {
@@ -293,6 +316,81 @@ const aiChatMessages: Record<string, unknown[]> = {
     ],
 }
 
+// Las vistas `gitsidebar*` fotografían el módulo Git de la barra lateral con un
+// repositorio de verdad: ramas con carpetas (`feature/`, `claude/`), una ancla,
+// remotos, tags por versión y un stash. Los demás cuadros siguen con el
+// repositorio chico de siempre.
+const gitSidebarShot = (new URLSearchParams(location.search).get('view') ?? '').startsWith('gitsidebar')
+// Las vistas `gitwork*` fotografían la pestaña de un repositorio con su columna
+// de trabajo (Historial / Cambios / Stash / Archivos). Llevan stashes de
+// ejemplo para que la solapa Stash tenga qué mostrar.
+const gitWorkShot = (new URLSearchParams(location.search).get('view') ?? '').startsWith('gitwork')
+const gitWorkStashes = [
+    {ref: 'stash@{0}', index: 0, branch: 'develop', message: 'WIP: barra única y columna de trabajo', date: '2026-10-11'},
+    {ref: 'stash@{1}', index: 1, branch: 'feat/diff-compacto', message: 'prueba del diff con medianiles', date: '2026-10-08'},
+    {ref: 'stash@{2}', index: 2, branch: 'main', message: 'On main: ajustes de la ayuda', date: '2026-09-30'},
+]
+const gitWorkStashPatch = [
+    'diff --git a/frontend/src/components/git/GitToolbar.tsx b/frontend/src/components/git/GitToolbar.tsx',
+    'index 3f2a1c4..9b7d0e2 100644',
+    '--- a/frontend/src/components/git/GitToolbar.tsx',
+    '+++ b/frontend/src/components/git/GitToolbar.tsx',
+    '@@ -18,6 +18,10 @@ export default function GitToolbar(p: Props) {',
+    '     const ref = useRef<HTMLDivElement>(null)',
+    '     const [width, setWidth] = useState(1200)',
+    ' ',
+    '+    const labels = width >= WIDE',
+    '+    const repoActionsInline = width >= MEDIUM',
+    '+    const rightExtrasInline = width >= NARROW',
+    '+',
+    '     useLayoutEffect(() => {',
+    '         const el = ref.current',
+    '         if (!el) return',
+    'diff --git a/CHANGELOG.md b/CHANGELOG.md',
+    'index 1a2b3c4..5d6e7f8 100644',
+    '--- a/CHANGELOG.md',
+    '+++ b/CHANGELOG.md',
+    '@@ -3,4 +3,5 @@',
+    ' ## [Unreleased]',
+    ' ',
+    '-### Agregado',
+    '+### Mejorado',
+    '+- La pestaña Git tiene una barra única.',
+    ' ',
+].join('\n')
+const gitSidebarBranch = (name: string, extra: Partial<Record<string, unknown>> = {}) => ({
+    name, current: false, remote: false, isCurrent: false, isRemote: name.startsWith('origin/') || name.startsWith('upstream/'),
+    upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: '', ...extra,
+})
+const gitSidebarBranches = [
+    gitSidebarBranch('develop', {isCurrent: true, current: true, upstream: 'origin/develop', ahead: 8}),
+    gitSidebarBranch('main', {upstream: 'origin/main'}),
+    gitSidebarBranch('feature/TIGOCHAT-11607', {upstream: 'origin/feature/TIGOCHAT-11607', ahead: 2, behind: 1}),
+    gitSidebarBranch('feature/vault-notes', {upstream: 'origin/feature/vault-notes'}),
+    gitSidebarBranch('feature/git-sidebar'),
+    gitSidebarBranch('claude/fix-tree-filter'),
+    gitSidebarBranch('claude/agent-chat-attachments'),
+    gitSidebarBranch('claude/oracle-explain'),
+    gitSidebarBranch('fix/123/null-pointer'),
+    gitSidebarBranch('release/2026-07'),
+    gitSidebarBranch('origin/develop'),
+    gitSidebarBranch('origin/main'),
+    gitSidebarBranch('origin/feature/TIGOCHAT-11607'),
+    gitSidebarBranch('origin/feature/vault-notes'),
+    gitSidebarBranch('origin/release/2026-07'),
+    gitSidebarBranch('upstream/main'),
+]
+const gitSidebarTag = (name: string, hash: string, taggerDate: string, annotated = false) => ({name, hash, annotated, message: annotated ? `Versión ${name}` : '', taggerDate})
+const gitSidebarTags = [
+    gitSidebarTag('v1.3.1', '76d8575', '2026-08-15T10:00:00Z', true),
+    gitSidebarTag('v1.3.0', '7334bc1', '2026-08-14T10:00:00Z', true),
+    gitSidebarTag('v1.2.0', '3b24744', '2026-08-11T10:00:00Z'),
+    gitSidebarTag('v1.1.0', '3ffd8cf', '2026-08-03T10:00:00Z'),
+    gitSidebarTag('v0.5.2', '847a366', '2026-07-23T10:00:00Z'),
+    gitSidebarTag('v0.5.1', 'fe25341', '2026-07-22T10:00:00Z'),
+    gitSidebarTag('produccion-final', '83d5c41', '2026-07-22T09:00:00Z'),
+]
+
 const fixtures: Record<string, unknown> = {
     GitListWorkTree: {files: repoFiles, truncated: false},
     GitStatus: {
@@ -327,11 +425,11 @@ const fixtures: Record<string, unknown> = {
         {id: 'llm:ms3', label: 'LM Studio del laboratorio', vendor: 'OpenAI-compatible', command: '', defaultCommand: '', path: '', available: true, keyEnv: '', hasKey: false, loginHint: '', note: '', docsUrl: ''},
     ],
     ListModelServers: [
-        {id: 'ms1', name: 'Ollama local', kind: 'ollama', baseUrl: 'http://localhost:11434', hasToken: false, isLocal: true, insecureTls: false, contextTokens: 16384, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms1', name: 'Ollama local', kind: 'ollama', baseUrl: 'http://localhost:11434', hasToken: false, isLocal: true, insecureTls: false, contextTokens: 16384, enabled: true, defaultModel: '', sortOrder: 0, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
         // Detrás de Cloudflare Access: token más dos cabeceras (solo los nombres viajan).
-        {id: 'ms2', name: 'vLLM en el servidor GPU', kind: 'openai', baseUrl: 'https://gpu.example.com/v1', hasToken: true, isLocal: false, insecureTls: false, contextTokens: 0, headerNames: ['CF-Access-Client-Id', 'CF-Access-Client-Secret'], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms2', name: 'vLLM en el servidor GPU', kind: 'openai', baseUrl: 'https://gpu.example.com/v1', hasToken: true, isLocal: false, insecureTls: false, contextTokens: 0, enabled: true, defaultModel: '', sortOrder: 0, headerNames: ['CF-Access-Client-Id', 'CF-Access-Client-Secret'], createdAt: 1786741440, updatedAt: 1786741440},
         // Servidor propio con certificado autofirmado.
-        {id: 'ms3', name: 'LM Studio del laboratorio', kind: 'openai', baseUrl: 'https://192.168.1.50:1234/v1', hasToken: false, isLocal: false, insecureTls: true, contextTokens: 0, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms3', name: 'LM Studio del laboratorio', kind: 'openai', baseUrl: 'https://192.168.1.50:1234/v1', hasToken: false, isLocal: false, insecureTls: true, contextTokens: 0, enabled: true, defaultModel: '', sortOrder: 0, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
     ],
     // Salud por servidor (cacheada 30 s en el backend). `checkedAt` sale del
     // reloj de la captura para que el «comprobado hace Xs» sea creíble.
@@ -654,13 +752,13 @@ const fixtures: Record<string, unknown> = {
         {id: 1, command: 'tar -xzf backup-2026-08-14.tar.gz', ranAt: 1786700000},
     ],
     GitProbe: {available: true, version: '2.45.0', path: '/usr/bin/git', error: ''},
-    GitBranches: [
+    GitBranches: gitSidebarShot ? gitSidebarBranches : [
         {name: 'develop', current: true, remote: false, isCurrent: true, isRemote: false, upstream: 'origin/develop', ahead: 8, behind: 0, hash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release'},
         {name: 'main', current: false, remote: false, isCurrent: false, isRemote: false, upstream: 'origin/main', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
         {name: 'origin/develop', current: false, remote: true, isCurrent: false, isRemote: true, upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
         {name: 'origin/main', current: false, remote: true, isCurrent: false, isRemote: true, upstream: '', ahead: 0, behind: 0, hash: '76d8575', subject: ''},
     ],
-    GitTags: [
+    GitTags: gitSidebarShot ? gitSidebarTags : [
         {name: 'v1.3.1', hash: '76d8575', message: '', date: '2026-08-15'},
         {name: 'v1.3.0', hash: '7334bc1', message: '', date: '2026-08-14'},
         {name: 'v1.2.0', hash: '3b24744', message: '', date: '2026-08-11'},
@@ -679,6 +777,7 @@ const fixtures: Record<string, unknown> = {
             fetchUrl: 'https://ghp_EjEmPl0N0Us4bl3T0k3nDeMuestra@github.com/rafael180496/mini-tools.git',
             pushUrl: 'https://ghp_EjEmPl0N0Us4bl3T0k3nDeMuestra@github.com/rafael180496/mini-tools.git',
         },
+        ...(gitSidebarShot ? [{name: 'upstream', fetchUrl: 'https://github.com/otro-equipo/mini-tools.git', pushUrl: 'https://github.com/otro-equipo/mini-tools.git'}] : []),
     ],
     // Lo mismo, pero con la URL de push vacía: así se ve un remoto sin
     // override, que es el caso normal.
@@ -706,7 +805,7 @@ const fixtures: Record<string, unknown> = {
         ],
     },
     GitListCredentials: [{id: 'gc1', host: 'github.com', username: 'rafael180496', createdAt: 1786400000}],
-    GitStashes: [],
+    GitStashes: gitWorkShot ? gitWorkStashes : gitSidebarShot ? [{ref: 'stash@{0}', index: 0, branch: 'develop', message: 'WIP: filtro de ramas en la barra', date: '2026-10-11'}] : [],
     GitLog: [
         {hash: '76d8575000000000000000000000000000000000', shortHash: '76d8575', subject: 'Add macOS and Windows binaries for mini-tools v1.3.1 release', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-15', body: '', parents: ['7334bc1000000000000000000000000000000000'], branches: ['develop', 'main', 'origin/develop', 'origin/main', 'origin/HEAD'], tags: ['v1.3.1'], isHead: true, stats: {added: 0, removed: 0, files: 0}},
         {hash: '7334bc1000000000000000000000000000000000', shortHash: '7334bc1', subject: 'feat: Add agent chat functionalities and models', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-08-14', body: '', parents: ['74e1525000000000000000000000000000000000'], branches: [], tags: ['v1.3.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
@@ -726,6 +825,7 @@ const fixtures: Record<string, unknown> = {
         {hash: '65da206000000000000000000000000000000000', shortHash: '65da206', subject: 'feat: implement automatic backup feature with scheduler', author: 'rafael', email: 'rafael@ejemplo.dev', date: '2026-07-20', body: '', parents: [], branches: [], tags: ['v0.3.0'], isHead: false, stats: {added: 0, removed: 0, files: 0}},
     ],
     GitInProgress: '',
+    GitStashDiff: gitWorkStashPatch,
     GitForgeInfo: {provider: 'github', webUrl: 'https://github.com/rafael180496/mini-tools', compareUrl: 'https://github.com/rafael180496/mini-tools/compare/develop'},
     GitCommandLog: [],
     GitWorktrees: [],
@@ -750,10 +850,10 @@ const fixtures: Record<string, unknown> = {
         {path: '/consultas/facturacion-pendiente.sql', connId: 'c1', language: 'sql', kind: 'editor'},
         {path: '/consultas/contactos-duplicados.sql', connId: 'c5', language: 'sql', kind: 'editor'},
         {path: '', connId: 'c3', language: 'redis-cli', kind: 'redis-browser'},
-    ], sidebarModule: new URLSearchParams(location.search).get('module') || 'connections', gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
+    ], sidebarModule: new URLSearchParams(location.search).get('module') || (gitSidebarShot ? 'git' : 'connections'), gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
     // que solo existe con el panel CERRADO — de ahí que la fixture dependa de
     // la vista.
-    gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' ? '' : 'agents', gitSideHidden: false, gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
+    gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' || gitWorkShot ? '' : 'agents', gitSideHidden: new URLSearchParams(location.search).get('view') === 'gitworkcollapsed', gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
     // Los archivos de un commit, con su churn: es lo que dibuja el resumen del
     // commit (metadatos + archivos desplegables). Vacío se fotografiaba como un
     // commit que no tocó nada.
@@ -787,9 +887,19 @@ const fixtures: Record<string, unknown> = {
             ' \tsort.Slice(list, func(i, j int) bool { return list[i].UpdatedAt > list[j].UpdatedAt })',
             ' \treturn list, nil',
             ' }',
+            '@@ -48,6 +52,9 @@ func readAll(agentID string) ([]Conversation, error) {',
+            ' \tentries, err := os.ReadDir(dir)',
+            ' \tif err != nil {',
+            '-\t\treturn nil, err',
+            '+\t\tif errors.Is(err, fs.ErrNotExist) {',
+            '+\t\t\treturn nil, nil',
+            '+\t\t}',
+            '+\t\treturn nil, fmt.Errorf("agentchat: leyendo %s: %w", dir, err)',
+            ' \t}',
+            ' \tout := make([]Conversation, 0, len(entries))',
         ].join('\n'),
         isBinary: false,
-        stat: {added: 4, removed: 1},
+        stat: {added: 9, removed: 2},
     },
     // Conversaciones que el propio CLI ya tiene del repositorio: la respuesta
     // depende del agente que se pregunte.
@@ -896,7 +1006,7 @@ const fixtures: Record<string, unknown> = {
         {id: 'f-notes-guardia', name: 'Guardia', parentId: '', sortOrder: 1, createdAt: 0, scope: 'note'},
     ],
     GitListRepos: [
-        {id: 'r1', name: 'chatwoot-clone', path: '/repos/chatwoot-clone', folderId: 'f-git-trabajo', sortOrder: 0, createdAt: 0, pinnedBranches: []},
+        {id: 'r1', name: 'chatwoot-clone', path: '/repos/chatwoot-clone', folderId: 'f-git-trabajo', sortOrder: 0, createdAt: 0, pinnedBranches: gitSidebarShot ? ['develop', 'feature/vault-notes'] : []},
         {id: 'r2', name: 'ISGL_WEB', path: '/repos/ISGL_WEB', folderId: 'f-git-trabajo', sortOrder: 1, createdAt: 0, pinnedBranches: []},
         {id: 'r3', name: 'ISGL_BATCH', path: '/repos/ISGL_BATCH', folderId: 'f-git-trabajo', sortOrder: 2, createdAt: 0, pinnedBranches: []},
         {id: 'r4', name: 'mini-tools', path: '/repos/mini-tools', folderId: '', sortOrder: 3, createdAt: 0, pinnedBranches: []},
@@ -1111,6 +1221,21 @@ const fixtures: Record<string, unknown> = {
                     totals: {input: 41200, output: 13800, total: 55000, turns: 9, conversations: 3},
                     byModel: [{model: 'Qwen/Qwen2.5-72B-Instruct', totals: {input: 41200, output: 13800, total: 55000, turns: 9, conversations: 3}, percent: 100, tokensPerSec: 22.1}],
                     byDay: series(remote), tokensPerSec: 22.1, lastUsedAt: 1786780800,
+                },
+                {
+                    agentId: 'llm:mc2', name: 'Anthropic', kind: 'anthropic', isLocal: false, deleted: false,
+                    totals: {input: 318400, output: 96200, total: 414600, turns: 87, conversations: 14},
+                    byModel: [
+                        {model: 'claude-opus-5-5', totals: {input: 201300, output: 71400, total: 272700, turns: 49, conversations: 9}, percent: 65.8, tokensPerSec: 54.2},
+                        {model: 'claude-haiku-4-5', totals: {input: 117100, output: 24800, total: 141900, turns: 38, conversations: 8}, percent: 34.2, tokensPerSec: 142.6},
+                    ],
+                    byDay: series(remote.map((n, i) => (i % 3 === 0 ? n * 4 + 9000 : i % 5 === 0 ? 21000 : 0))), tokensPerSec: 71.3, lastUsedAt: 1786798800,
+                },
+                {
+                    agentId: 'llm:mc1', name: 'OpenRouter', kind: 'openai', isLocal: false, deleted: false,
+                    totals: {input: 22100, output: 6900, total: 29000, turns: 6, conversations: 2},
+                    byModel: [{model: 'anthropic/claude-sonnet-4.5', totals: {input: 22100, output: 6900, total: 29000, turns: 6, conversations: 2}, percent: 100, tokensPerSec: 0}],
+                    byDay: series(remote.map((n) => (n > 0 ? 5800 : 0))), tokensPerSec: 0, lastUsedAt: 1786780800,
                 },
                 {
                     agentId: 'llm:viejo', name: 'Servidor eliminado (viejo)', kind: '', isLocal: false, deleted: true,
@@ -1592,7 +1717,7 @@ const views_repo = (
         repoName="mini-tools"
         editorThemeId="auto"
         appearance={DEFAULT_EDITOR_APPEARANCE}
-        appTheme="dark"
+        appTheme={new URLSearchParams(location.search).get('theme') === 'light' ? 'light' : 'dark'}
         terminalThemeId="Dracula"
         onChangeTerminalTheme={() => {}}
         terminalFontSize={13}
@@ -1742,6 +1867,10 @@ const views: Record<string, React.ReactNode> = {
     //
     //     ./scripts/uishot.sh sidebar          # conexiones
     //     UISHOT_MODULE=git ./scripts/uishot.sh sidebar
+    gitsidebar: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    gitsidebarfilter: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    gitsidebartag: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
+    gitsidebarmenu: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     sidebar: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     tabs: <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />,
     // La búsqueda global escrita, que es lo único que hace aparecer los
@@ -1814,6 +1943,14 @@ const views: Record<string, React.ReactNode> = {
         />
     ),
     agentmode: views_repo,
+    gitworkhistory: views_repo,
+    gitworkchanges: views_repo,
+    gitworkdiff: views_repo,
+    gitworkstash: views_repo,
+    gitworkfiles: views_repo,
+    gitworkcollapsed: views_repo,
+    gitworkswitcher: views_repo,
+    gitworknarrow: views_repo,
     chatmode: views_repo,
     panelagents: views_repo,
     newmenu: views_repo,
@@ -2022,6 +2159,25 @@ const views: Record<string, React.ReactNode> = {
 
 const view = new URLSearchParams(location.search).get('view') ?? 'files'
 
+// La solapa de la columna de trabajo se recuerda por repositorio en el
+// almacenamiento del navegador (GitRepoTab): para fotografiar cada una basta
+// dejarla escrita antes de montar la pestaña.
+if (gitWorkShot) {
+    const stored =
+        view === 'gitworkchanges' || view === 'gitworkdiff'
+            ? 'changes'
+            : view === 'gitworkstash'
+              ? 'stash'
+              : view === 'gitworkfiles'
+                ? 'files'
+                : 'commits'
+    try {
+        localStorage.setItem('mt.git.work.r1', JSON.stringify({view: stored}))
+    } catch {
+        // sin almacenamiento: la vista arranca en Historial
+    }
+}
+
 // Servidores de modelos: la sección vive en Configuración → IA. Estas vistas
 // montan el mismo modal y le pegan los clics que daría una persona.
 // La sección se pasa por prop (initialSection) y no con un clic sobre la barra
@@ -2092,6 +2248,12 @@ views.aichatadd = views.aichat
 views.aichataddfail = views.aichat
 views.aichatnoserver = views.aichat
 views.aichatusage = views.aichat
+//   aichatlost       conversación de un proveedor apagado: se abre, la caja queda bloqueada y la franja ofrece seguir con otro
+//   aichatlostcontinue  lo mismo después de «Continuar con otro proveedor»: el aviso del cambio
+//   aichatswitch     cambio de proveedor de modelos en una conversación abierta, sin perder el hilo
+views.aichatlost = views.aichat
+views.aichatlostcontinue = views.aichat
+views.aichatswitch = views.aichat
 // Proyectos del Chat de IA (carpetas, contexto y modo Automático). Todas parten
 // de un servidor de modelos, que es con el que la app carga el contexto sola.
 //   projectpicker   selector de proyecto abierto: repos, carpetas y acciones
@@ -2189,6 +2351,13 @@ if (view === 'agentmode') {
     // que textContent es "smart_toyAgente" y nunca matchea "Agente".
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.hasAttribute('data-agent-mode-toggle')))
 }
+if (view === 'gitworkchanges' || view === 'gitworkdiff') {
+    // Elegir un archivo de la lista de Cambios: el diff pasa al área principal.
+    autoClick(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('GitRepoTab.tsx') && !b.hasAttribute('aria-label')))
+}
+if (view === 'gitworkswitcher') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]') ?? undefined)
+}
 if (view === 'panelagents') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.hasAttribute('data-open-agents')))
 }
@@ -2209,6 +2378,34 @@ const typeInto = (el: HTMLInputElement | null | undefined, value: string) => {
     el.dispatchEvent(new Event('input', {bubbles: true}))
 }
 const clickChat = (id: string) => document.querySelector<HTMLButtonElement>(`[data-chat-id="${id}"]`)?.click()
+if (view === 'aichatlost' || view === 'aichatlostcontinue' || view === 'aichatswitch') {
+    if (view !== 'aichatswitch') {
+        // El laboratorio se apagó (sigue guardado) y otro proveedor se eliminó: sus
+        // conversaciones siguen en el historial.
+        fixtures.ListAgents = (fixtures.ListAgents as {id: string}[]).filter((a) => a.id !== 'llm:ms3')
+        fixtures.ListModelServers = (fixtures.ListModelServers as {id: string}[]).map((x) => (x.id === 'ms3' ? {...x, enabled: false} : x))
+        fixtures.ListAllAgentChats = [
+            {id: 'ac-12', repoId: '', agentId: 'llm:ms3', title: 'Revisá el plan de despliegue del jueves', conversationId: '', createdAt: aiNow - 5400, updatedAt: aiNow - 3600, model: '', effort: '', mode: '', module: 'utilities', contextId: '', brain: false},
+            {id: 'ac-13', repoId: '', agentId: 'llm:viejo', title: 'Resumen de la reunión de soporte', conversationId: '', createdAt: aiNow - 86400, updatedAt: aiNow - 80000, model: '', effort: '', mode: '', module: 'utilities', contextId: '', brain: false},
+            ...aiChats,
+        ]
+        const msgs = {
+            'ac-12': [
+                {seq: 1, role: 'user', content: 'Revisá el plan de despliegue del jueves y decime qué riesgos ves.', toolName: '', createdAt: aiNow - 5300},
+                {seq: 2, role: 'assistant', content: 'Dos riesgos principales: la migración de la tabla de eventos corre en la misma ventana que el cambio de índices, y no hay un paso de vuelta atrás para el segundo. Separaría las dos ventanas o agregaría un `DROP INDEX CONCURRENTLY` preparado.', toolName: '', usage: {input: 410, output: 96, cacheRead: 0, thinking: 0, total: 506, costUsd: 0}, createdAt: aiNow - 5200},
+            ],
+        }
+        const prev = fixtures.AgentChatMessages as (id: string) => unknown[]
+        fixtures.AgentChatMessages = (id: string) => (msgs as Record<string, unknown[]>)[id] ?? prev(id)
+        autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-12"]') ?? undefined)
+        if (view === 'aichatlostcontinue') setTimeout(() => document.querySelector<HTMLButtonElement>('[data-continue-with-another]')?.click(), 1500)
+    } else {
+        // Un chat de Ollama local que sigue con el vLLM del servidor GPU.
+        autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-11"]') ?? undefined)
+        setTimeout(() => document.querySelector<HTMLButtonElement>(`button[aria-label="${t().utilities.aiChat.header.providerLabel}"]`)?.click(), 1500)
+        setTimeout(() => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent?.includes('vLLM en el servidor GPU'))?.click(), 1800)
+    }
+}
 if (view === 'aichatusage') {
     autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-10"]') ?? undefined)
     setTimeout(() => document.querySelector<HTMLButtonElement>('[data-usage-toggle]')?.click(), 1400)
@@ -2428,7 +2625,7 @@ if (view === 'modelserverform' || view === 'modelservertest' || view === 'models
                         ? '[data-model-server-add]'
                         : view === 'modelserverdetected'
                           ? '[data-model-servers]'
-                          : '[data-model-server-test]',
+                          : '[data-manage-in-utilities]',
                 )
                 // La sección queda debajo del panel de acceso: se trae a la vista
                 // DESPUÉS del clic, porque el formulario o el resultado la alargan.
@@ -2442,6 +2639,45 @@ if (view === 'modelserverform' || view === 'modelservertest' || view === 'models
 const fillInput = (el: HTMLInputElement, value: string) => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, value)
     el.dispatchEvent(new Event('input', {bubbles: true}))
+}
+if (view.startsWith('gitsidebar')) {
+    // Se recorre el árbol como lo haría una persona: carpeta «Trabajo», el
+    // repositorio, las carpetas de ramas y el grupo de remotos. Por texto de la
+    // fila y no por tooltip, que cambia con el idioma.
+    const row = (re: RegExp) => [...document.querySelectorAll<HTMLElement>('[data-tree-row]')].find((r) => r.getClientRects().length > 0 && re.test(r.textContent ?? ''))
+    const open = (re: RegExp) => row(re)?.querySelector<HTMLButtonElement>('[data-tree-toggle="closed"]')?.click()
+    setTimeout(() => open(/Trabajo/), 1100)
+    setTimeout(() => open(/chatwoot-clone/), 1400)
+    setTimeout(() => open(/feature\d/), 2200)
+    setTimeout(() => open(/claude\d/), 2400)
+    setTimeout(() => open(/(Remotos|Remotes)\d/), 2600)
+    setTimeout(() => open(/Tags\d/), 2800)
+    setTimeout(() => open(/1\.3\d/), 3000)
+    if (view === 'gitsidebarfilter') {
+        setTimeout(() => {
+            // La lupa de la fila del repositorio: es el primer botón de acción.
+            const btns = [...(row(/chatwoot-clone/)?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+            btns[2]?.click()
+        }, 3200)
+        setTimeout(() => {
+            const input = document.querySelector<HTMLInputElement>('input[placeholder^="Filtrar ramas"], input[placeholder^="Filter branches"]')
+            if (input) fillInput(input, 'vault')
+        }, 3600)
+    }
+    if (view === 'gitsidebartag') {
+        setTimeout(() => {
+            const r = row(/v1\.3\.1/)
+            const box = r?.getBoundingClientRect()
+            r?.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: (box?.left ?? 0) + 90, clientY: (box?.top ?? 0) + 14}))
+        }, 3400)
+    }
+    if (view === 'gitsidebarmenu') {
+        setTimeout(() => {
+            const r = row(/TIGOCHAT-11607/)
+            const box = r?.getBoundingClientRect()
+            r?.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: (box?.left ?? 0) + 90, clientY: (box?.top ?? 0) + 14}))
+        }, 3400)
+    }
 }
 if (view === 'modelserverheaders' || view === 'modelserveredit') {
     autoClick(() => document.querySelector<HTMLButtonElement>('button[role="tab"][data-section="ai"]') ?? undefined)
@@ -2636,13 +2872,31 @@ if (view === 'chatmode') {
     autoClick(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Chat · Claude Code')))
 }
 
-// Utilidad «Modelos» (administrar los modelos de un servidor).
+// Utilidad «Proveedores de IA» (antes «Modelos»): servidores propios y APIs en la nube.
 //   models         Ollama local: tabla con un modelo cargado en memoria
 //   modelspull     descargas en curso: una con avance, una arrancando y una que falló
 //   modelsdetail   el panel de detalle abierto sobre un modelo
 //   modelsopenai   servidor compatible con OpenAI: solo lectura
 //   modelsdelete   Ollama remoto, con la confirmación de borrado abierta
 //   modelsnarrow   la misma tabla en un panel angosto
+// Y la columna de servidores (cuatro: dos locales, dos remotos, uno caído):
+//   modelsservers          columna con varios servidores y la prueba de conexión en línea
+//   modelsserverdown       el servidor caído elegido: error en la tabla y punto rojo
+//   modelsserveredit       diálogo de edición abierto desde la pestaña
+//   modelsserverduplicate  diálogo de duplicado (nombre «… (copia)», sin token)
+//   modelsserverdelete     confirmación de eliminar un servidor
+//   modelsserversmenu      el menú ⋯ de una fila abierto
+//   modelsserversempty     sin servidores: la explicación y los atajos
+//   modelsserversnarrow    pestaña angosta con el cajón de servidores abierto
+//   modelsserversmany      nueve servidores: aparece el buscador
+// Y la versión de proveedores (tres grupos: locales, remotos y nube; uno apagado):
+//   (modelservertest usa la misma lista en el resumen de Configuración → IA)
+//   modelsproviders          la lista con Anthropic elegido (modelos, solo lectura)
+//   modelsprovidersoff       el proveedor apagado elegido: fila atenuada y aviso
+//   modelsprovidersusage     la pestaña Consumo del proveedor elegido
+//   modelsprovidersconfig    la pestaña Configuración
+//   modelsprovidersform      alta con el atajo de OpenRouter: API key obligatoria
+//   modelsprovidersformkey   lo mismo con la API key escrita y el modelo por defecto
 const modelsNow = Date.now()
 const modelsAgo = (days: number) => new Date(modelsNow - days * 86400000).toISOString()
 const OLLAMA_MODELS = [
@@ -2660,17 +2914,98 @@ const OPENAI_MODELS = [
 ]
 const modelsView = new URLSearchParams(location.search).get('view') ?? ''
 if (modelsView.startsWith('models')) {
-    const remoteOllama = {id: 'ms4', name: 'Ollama del servidor GPU', kind: 'ollama', baseUrl: 'http://10.0.4.20:11434', hasToken: true, isLocal: false, insecureTls: false, contextTokens: 8192, headerNames: ['X-Api-Key'], createdAt: 1786741440, updatedAt: 1786741440}
-    if (modelsView === 'modelsdelete') {
-        fixtures.ListModelServers = [remoteOllama, ...(fixtures.ListModelServers as object[])]
+    const remoteOllama = {id: 'ms4', name: 'Ollama del servidor GPU', kind: 'ollama', baseUrl: 'http://10.0.4.20:11434', hasToken: true, isLocal: false, insecureTls: false, contextTokens: 8192, enabled: true, defaultModel: '', sortOrder: 0, headerNames: ['X-Api-Key'], createdAt: 1786741440, updatedAt: 1786741440}
+    // Cuatro servidores: dos locales (un Ollama y un LM Studio) y dos remotos (un
+    // vLLM detrás de Cloudflare Access y un LM Studio del laboratorio, apagado).
+    const serversBase = [
+        {id: 'ms1', name: 'Ollama local', kind: 'ollama', baseUrl: 'http://localhost:11434', hasToken: false, isLocal: true, insecureTls: false, contextTokens: 16384, enabled: true, defaultModel: '', sortOrder: 0, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms5', name: 'LM Studio', kind: 'openai', baseUrl: 'http://localhost:1234/v1', hasToken: false, isLocal: true, insecureTls: false, contextTokens: 0, enabled: true, defaultModel: '', sortOrder: 0, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms2', name: 'vLLM en el servidor GPU', kind: 'openai', baseUrl: 'https://gpu.example.com/v1', hasToken: true, isLocal: false, insecureTls: false, contextTokens: 0, enabled: true, defaultModel: '', sortOrder: 0, headerNames: ['CF-Access-Client-Id', 'CF-Access-Client-Secret'], createdAt: 1786741440, updatedAt: 1786741440},
+        {id: 'ms3', name: 'LM Studio del laboratorio', kind: 'openai', baseUrl: 'https://192.168.1.50:1234/v1', hasToken: false, isLocal: false, insecureTls: true, contextTokens: 0, enabled: true, defaultModel: '', sortOrder: 0, headerNames: [], createdAt: 1786741440, updatedAt: 1786741440},
+    ]
+    // Proveedores mezclados: dos locales, dos remotos (uno apagado) y tres de la nube.
+    const mk = (o: Record<string, unknown>) => ({createdAt: 1786741440, updatedAt: 1786741440, headerNames: [] as string[], contextTokens: 0, insecureTls: false, defaultModel: '', enabled: true, sortOrder: 0, ...o})
+    const providers = [
+        mk({id: 'ms1', name: 'Ollama local', kind: 'ollama', baseUrl: 'http://localhost:11434', hasToken: false, isLocal: true, contextTokens: 16384, sortOrder: 0}),
+        mk({id: 'ms5', name: 'LM Studio', kind: 'openai', baseUrl: 'http://localhost:1234/v1', hasToken: false, isLocal: true, sortOrder: 1}),
+        mk({id: 'ms2', name: 'vLLM en el servidor GPU', kind: 'openai', baseUrl: 'https://gpu.example.com/v1', hasToken: true, isLocal: false, headerNames: ['CF-Access-Client-Id', 'CF-Access-Client-Secret'], sortOrder: 2}),
+        mk({id: 'ms3', name: 'LM Studio del laboratorio', kind: 'openai', baseUrl: 'https://192.168.1.50:1234/v1', hasToken: false, isLocal: false, insecureTls: true, enabled: false, sortOrder: 3}),
+        mk({id: 'mc1', name: 'OpenRouter', kind: 'openai', baseUrl: 'https://openrouter.ai/api/v1', hasToken: true, isLocal: false, defaultModel: 'anthropic/claude-sonnet-4.5', sortOrder: 4}),
+        mk({id: 'mc2', name: 'Anthropic', kind: 'anthropic', baseUrl: 'https://api.anthropic.com', hasToken: true, isLocal: false, defaultModel: 'claude-opus-5-5', sortOrder: 5}),
+        mk({id: 'mc3', name: 'OpenAI', kind: 'openai', baseUrl: 'https://api.openai.com/v1', hasToken: true, isLocal: false, sortOrder: 6}),
+    ]
+    const extraServers = Array.from({length: 5}, (_, i) => ({
+        id: `mx${i}`,
+        name: ['Ollama del portátil de Ana', 'Ollama del NAS', 'llama.cpp del rack', 'vLLM de pruebas', 'Ollama de la nube'][i],
+        kind: i === 2 || i === 3 ? 'openai' : 'ollama',
+        baseUrl: i === 4 ? 'https://models.example.com' : `http://10.0.4.${30 + i}:11434`,
+        hasToken: i === 4,
+        isLocal: false,
+        insecureTls: false,
+        contextTokens: 0,
+        enabled: true, defaultModel: '', sortOrder: 0, headerNames: [],
+        createdAt: 1786741440,
+        updatedAt: 1786741440,
+    }))
+    fixtures.ListModelServers =
+        modelsView === 'modelsserversempty'
+            ? []
+            : modelsView.startsWith('modelsproviders') || modelsView === 'modelservertest'
+              ? providers
+              : modelsView === 'modelsdelete'
+              ? [remoteOllama, ...serversBase]
+              : modelsView === 'modelsserversmany'
+                ? [...serversBase, ...extraServers]
+                : serversBase
+    const CLOUD_MODELS = (names: string[]) => names.map((name) => ({name, size: 0, modifiedAt: '', digest: '', family: '', parameterSize: '', quantizationLevel: '', format: ''}))
+    const ANTHROPIC_MODELS = CLOUD_MODELS(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-opus-4-8'])
+    const OPENROUTER_MODELS = CLOUD_MODELS(['anthropic/claude-sonnet-4.5', 'openai/gpt-5', 'google/gemini-2.5-pro', 'meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-r1'])
+    const OPENAI_CLOUD_MODELS = CLOUD_MODELS(['gpt-5', 'gpt-5-mini', 'gpt-4o', 'o4-mini'])
+    const cloudModels = (id: string) => (id === 'mc2' ? ANTHROPIC_MODELS : id === 'mc1' ? OPENROUTER_MODELS : id === 'mc3' ? OPENAI_CLOUD_MODELS : null)
+    if (modelsView.startsWith('modelsproviders')) {
+        // El backend simulado guarda el orden y el estado, como el real: sin eso, el
+        // «releer la lista» que sigue a cada cambio devolvería siempre la de fábrica.
+        let state = providers as unknown as {id: string; sortOrder: number; enabled: boolean}[]
+        fixtures.ListModelServers = () => state
+        fixtures.ReorderModelServers = (ids: string[]) => {
+            state = ids.map((id, i) => ({...state.find((x) => x.id === id)!, sortOrder: i}))
+        }
+        fixtures.SetModelServerEnabled = (id: string, enabled: boolean) => {
+            state = state.map((x) => (x.id === id ? {...x, enabled} : x))
+        }
+        fixtures.TestModelServer = {ok: true, version: '', models: OPENROUTER_MODELS.map((m) => m.name), error: '', latencyMs: 241, checkedAt: Date.now()}
     }
+    fixtures.ModelServerHealth = (id: string) => ({
+        ok: id !== 'ms3',
+        version: id === 'ms1' || id === 'ms4' ? '0.5.7' : '',
+        models: cloudModels(id)?.map((m) => m.name) ?? (id === 'ms1' || id === 'ms4' ? OLLAMA_MODELS.map((m) => m.name) : id === 'ms3' ? [] : OPENAI_MODELS.map((m) => m.name)),
+        error: id === 'ms3' ? 'dial tcp 192.168.1.50:1234: connect: connection refused' : '',
+        latencyMs: id === 'ms1' ? 38 : id === 'ms5' ? 22 : id === 'ms2' ? 142 : id === 'ms3' ? 0 : id === 'mc2' ? 187 : id === 'mc1' ? 241 : id === 'mc3' ? 203 : 64,
+        checkedAt: Date.now() - 12000,
+    })
     try {
-        localStorage.setItem('mini-tools:modelManager:server', modelsView === 'modelsopenai' ? 'ms2' : modelsView === 'modelsdelete' ? 'ms4' : 'ms1')
+        localStorage.setItem(
+            'mini-tools:modelManager:server',
+            modelsView === 'modelsopenai' || modelsView.startsWith('modelsserveredit') || modelsView === 'modelsserverduplicate' || modelsView === 'modelsserverdelete' || modelsView === 'modelsserversmenu'
+                ? 'ms2'
+                : modelsView === 'modelsdelete'
+                  ? 'ms4'
+                  : modelsView === 'modelsserverdown' || modelsView === 'modelsprovidersoff'
+                    ? 'ms3'
+                    : modelsView.startsWith('modelsproviders')
+                      ? 'mc2'
+                      : 'ms1',
+        )
+        localStorage.removeItem('mini-tools:modelManager:serversWidth')
+        localStorage.removeItem('mini-tools:modelManager:serversOpen')
     } catch {
         // sin almacenamiento: arranca con el primer servidor
     }
     Object.assign(fixtures, {
-        ModelServerModels: (id: string) => (id === 'ms2' || id === 'ms3' ? OPENAI_MODELS : OLLAMA_MODELS),
+        ModelServerModels: (id: string) => {
+            if (id === 'ms3') throw new Error(uiLang === 'es' ? 'no se pudo conectar a https://192.168.1.50:1234: la conexión fue rechazada (¿está el servidor en marcha?)' : 'could not connect to https://192.168.1.50:1234: connection refused (is the server running?)')
+            return cloudModels(id) ?? (id === 'ms2' || id === 'ms5' || id === 'mx2' || id === 'mx3' ? OPENAI_MODELS : OLLAMA_MODELS)
+        },
         ModelServerRunning: (id: string) =>
             id === 'ms1' || id === 'ms4'
                 ? [{name: 'qwen2.5-coder:7b', size: 6234578944, sizeVram: 6234578944, expiresAt: new Date(modelsNow + 4.6 * 60000).toISOString(), contextLength: 4096}]
@@ -2723,6 +3058,53 @@ if (modelsView.startsWith('models')) {
             return row ? [...row.querySelectorAll<HTMLElement>('button')].pop() : undefined
         })
     }
+    // La columna de servidores: cada vista aprieta el botón que una persona
+    // apretaría.
+    const serverAction = (key: string) => () => document.querySelector<HTMLElement>(`[data-server-action="${key}"]`) ?? undefined
+    // Editar, duplicar y eliminar viven en la pestaña «Configuración»: se va
+    // ahí y se aprieta el botón, como lo haría una persona.
+    const configAction = (key: string) => {
+        autoClick(() => document.querySelector<HTMLElement>('[data-provider-tab="config"]') ?? undefined)
+        setTimeout(() => autoClick(() => document.querySelector<HTMLElement>(`[data-config-action="${key}"]`) ?? undefined), 1300)
+    }
+    if (modelsView === 'modelsservers') autoClick(serverAction('test'))
+    if (modelsView === 'modelsserveredit') configAction('edit')
+    if (modelsView === 'modelsserverduplicate') configAction('duplicate')
+    if (modelsView === 'modelsserverdelete') configAction('delete')
+    if (modelsView === 'modelsserversmenu') autoClick(() => document.querySelector<HTMLElement>('[data-server-menu="ms2"]') ?? undefined)
+    if (modelsView === 'modelsserversnarrow') autoClick(() => document.querySelector<HTMLElement>('[data-servers-toggle]') ?? undefined)
+    if (modelsView === 'modelsprovidersreorder') {
+        // Alt+↓ sobre «Ollama local» lo pasa detrás de «LM Studio» (dentro de Locales) y el
+        // interruptor de «OpenAI» lo apaga: el orden y el estado se pintan al instante.
+        setTimeout(() => {
+            const row = document.querySelector<HTMLElement>('[data-server-row="ms1"]')
+            row?.focus()
+            row?.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', altKey: true, bubbles: true}))
+        }, 1400)
+        setTimeout(() => document.querySelector<HTMLElement>('[data-server-id="mc3"] button[role="switch"]')?.click(), 1800)
+    }
+    if (modelsView === 'modelsprovidersusage') autoClick(() => document.querySelector<HTMLElement>('[data-provider-tab="usage"]') ?? undefined)
+    if (modelsView === 'modelsprovidersconfig') autoClick(() => document.querySelector<HTMLElement>('[data-provider-tab="config"]') ?? undefined)
+    if (modelsView === 'modelsprovidersform' || modelsView === 'modelsprovidersformkey') {
+        autoClick(() => document.querySelector<HTMLElement>('[data-model-server-add]') ?? undefined)
+        const fill = (el: HTMLInputElement | null | undefined, value: string) => {
+            if (!el) return
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, value)
+            el.dispatchEvent(new Event('input', {bubbles: true}))
+        }
+        setTimeout(() => document.querySelector<HTMLElement>('[data-model-preset="openrouter"]')?.click(), 1500)
+        if (modelsView === 'modelsprovidersformkey') {
+            setTimeout(() => fill(document.querySelector<HTMLInputElement>('[data-token-input]'), 'sk-or-v1-0a1b2c3d4e5f6a7b8c9d'), 1800)
+            setTimeout(() => {
+                const m = t().settings.modelServers
+                ;[...document.querySelectorAll<HTMLButtonElement>('[data-model-server-dialog] button')].find((b) => b.title === m.formTestTitle)?.click()
+            }, 2100)
+        }
+        setTimeout(() => {
+            const dlg = document.querySelector<HTMLElement>('[data-model-server-dialog]')
+            if (dlg) dlg.scrollTop = modelsView === 'modelsprovidersformkey' ? dlg.scrollHeight : 280
+        }, 2600)
+    }
 }
 views.models = (
     <div className="h-full">
@@ -2734,6 +3116,22 @@ views.modelsdetail = views.models
 views.modelsopenai = views.models
 views.modelsdelete = views.models
 views.modelsnarrow = views.models
+views.modelsservers = views.models
+views.modelsserverdown = views.models
+views.modelsserveredit = views.models
+views.modelsserverduplicate = views.models
+views.modelsserverdelete = views.models
+views.modelsserversmenu = views.models
+views.modelsserversempty = views.models
+views.modelsserversnarrow = views.models
+views.modelsserversmany = views.models
+views.modelsproviders = views.models
+views.modelsprovidersoff = views.models
+views.modelsprovidersusage = views.models
+views.modelsprovidersreorder = views.models
+views.modelsprovidersconfig = views.models
+views.modelsprovidersform = views.models
+views.modelsprovidersformkey = views.models
 views.pullnoticeopen = views.pullnotice
 // sidebarmenu: la barra (con UISHOT_MODULE) con todo desplegado y el menú
 // contextual abierto sobre una fila — sirve para cualquier árbol hecho con
@@ -2748,6 +3146,181 @@ views.sidebaropen = views.sidebar
 const {default: UnlockScreen} = await import('./components/lock/UnlockScreen')
 views.unlock = <UnlockScreen isInitialized theme="dark" onToggleTheme={() => {}} onInitialize={async () => {}} onUnlock={async () => {}} onRestore={async () => {}} />
 views.unlockcreate = <UnlockScreen isInitialized={false} theme="dark" onToggleTheme={() => {}} onInitialize={async () => {}} onUnlock={async () => {}} onRestore={async () => {}} />
+// --- Adjuntos del chat (fase 8) --------------------------------------------
+//
+// Vistas del compositor con archivos adjuntos. No hay forma de elegir un
+// archivo del sistema en un navegador sin intervención, así que estas vistas
+// hacen lo que haría una persona arrastrando: disparan los eventos de arrastre
+// con archivos de verdad (un PNG dibujado en un canvas, un PDF, código) sobre
+// el chat, y pasan por el mismo código que la app real.
+//
+//   attachchips      Claude: imagen con miniatura, PDF y código, listos
+//   attachescape     arrastre y Escape: el velo desaparece y soltar después no adjunta
+//   attachpaste      lo mismo, pero pegando (⌘V) una captura con el nombre genérico `image.png`
+//   attachwarn       Ollama sin visión: la imagen no se puede leer (Enviar apagado)
+//   attachwarnpdf    servidor OpenAI-compatible: imagen dudosa y PDF no soportado
+//   attachdrop       el velo de «soltá los archivos» durante un arrastre
+//   attacherror      imagen demasiado grande y binario rechazado por Go
+//   attachsent       el mensaje enviado con sus fichas (con miniatura)
+//   attachresumed    una conversación retomada: fichas con ícono, sin miniatura
+const attachViews = ['attachescape', 'attachpaste', 'attachchips', 'attachwarn', 'attachwarnpdf', 'attachdrop', 'attacherror', 'attachsent', 'attachresumed']
+if (attachViews.includes(view)) {
+    const es = uiLang === 'es'
+    const mb = 1024 * 1024
+    fixtures.AgentAttachmentCapabilities = (agentId: string) => {
+        const base = {text: true, maxImageBytes: 5 * mb, maxPdfBytes: 24 * mb, maxTextBytes: 512 * 1024, maxCount: 10}
+        if (agentId === 'llm:ms1') {
+            return {
+                ...base,
+                images: false,
+                pdf: false,
+                known: true,
+                note: es
+                    ? 'El modelo qwen2.5-coder:7b de Ollama no tiene visión (no informa la capacidad «vision») y Ollama no lee PDF.'
+                    : 'Ollama model qwen2.5-coder:7b has no vision (it does not report the "vision" capability) and Ollama does not read PDFs.',
+            }
+        }
+        if (agentId === 'llm:ms2') {
+            return {
+                ...base,
+                images: true,
+                pdf: false,
+                known: false,
+                note: es
+                    ? 'No se pudo comprobar qué admite este servidor: se supone que lee imágenes. Un servidor compatible con OpenAI no lee PDF.'
+                    : 'Could not check what this server supports: images are assumed to work. An OpenAI-compatible server does not read PDFs.',
+            }
+        }
+        return {...base, images: true, pdf: true, known: true, note: ''}
+    }
+    const sizeByName: Record<string, number> = {'captura-login.png': 184320}
+    fixtures.SaveChatFile = (name: string, data: string) => {
+        const ext = (name.split('.').pop() ?? '').toLowerCase()
+        if (ext === 'exe') {
+            throw new Error(
+                es
+                    ? `«${name}»: es un binario y no se puede adjuntar (solo imágenes, PDF y texto en UTF-8).`
+                    : `«${name}»: it is a binary and can't be attached (only images, PDFs and UTF-8 text).`,
+            )
+        }
+        const decoded = Math.floor(((data.length - data.indexOf(',') - 1) * 3) / 4)
+        return {
+            path: `/Users/demo/Library/Application Support/mini-tools/adjuntos/adjunto-3f9a1c_${name}`,
+            name,
+            kind: ext === 'png' ? 'image' : ext === 'pdf' ? 'pdf' : 'text',
+            mime: ext === 'png' ? 'image/png' : ext === 'pdf' ? 'application/pdf' : 'text/plain',
+            size: sizeByName[name] ?? decoded,
+        }
+    }
+    const pngFile = () =>
+        new Promise<File>((resolve) => {
+            const c = document.createElement('canvas')
+            c.width = 360
+            c.height = 220
+            const g = c.getContext('2d')!
+            const grad = g.createLinearGradient(0, 0, 360, 220)
+            grad.addColorStop(0, '#1e3a5f')
+            grad.addColorStop(1, '#0f172a')
+            g.fillStyle = grad
+            g.fillRect(0, 0, 360, 220)
+            g.fillStyle = '#e2e8f0'
+            g.fillRect(100, 50, 160, 120)
+            g.fillStyle = '#cbd5e1'
+            g.fillRect(116, 70, 128, 16)
+            g.fillRect(116, 98, 128, 16)
+            g.fillStyle = '#ef4444'
+            g.fillRect(116, 130, 128, 24)
+            g.fillStyle = '#ffffff'
+            g.font = 'bold 14px sans-serif'
+            g.fillText('401', 168, 147)
+            c.toBlob((b) => resolve(new File([b!], 'captura-login.png', {type: 'image/png'})), 'image/png')
+        })
+    const pdfFile = () => new File([new Uint8Array(1_843_200).fill(37)], 'informe-q3.pdf', {type: 'application/pdf'})
+    const goFile = () =>
+        new File([('func Validate(tok Token) bool {\n\treturn tok.ExpiresAt.After(time.Now())\n}\n').repeat(40)], 'accounts_controller.go', {type: 'text/x-go'})
+    const dt = (files: File[]) => {
+        const d = new DataTransfer()
+        for (const f of files) d.items.add(f)
+        return d
+    }
+    const chatEl = () => document.querySelector('textarea')
+    const fire = (type: string, files: File[]) =>
+        chatEl()?.dispatchEvent(new DragEvent(type, {bubbles: true, cancelable: true, dataTransfer: dt(files)}))
+    const whenChat = (fn: () => void) => {
+        const go = () => (chatEl() ? fn() : setTimeout(go, 120))
+        setTimeout(go, 900)
+    }
+    const dropFiles = (files: File[]) => {
+        fire('dragenter', files)
+        fire('drop', files)
+    }
+    const agent = view === 'attachwarn' ? 'llm:ms1' : view === 'attachwarnpdf' ? 'llm:ms2' : 'claude'
+    const label = view === 'attachwarn' ? 'Ollama local' : view === 'attachwarnpdf' ? 'vLLM en el servidor GPU' : 'Claude Code'
+    views[view] = (
+        <AgentChat
+            sessionId={`chat-${view}`}
+            context={{kind: 'db', id: 'c1', label: 'chatwoot_dev'}}
+            agentId={agent}
+            agentLabel={label}
+            resumeChatId={view === 'attachresumed' ? 'chat-att' : 'chat-att-base'}
+        />
+    )
+    aiChatMessages['chat-att-base'] = [
+        {seq: 1, role: 'user', content: '¿Por qué falla el login de SGCPRO?', toolName: '', createdAt: aiNow - 900},
+        {
+            seq: 2,
+            role: 'assistant',
+            content: 'El problema está en la **validación del token**: expira antes de que se renueve la sesión.\n\nSi me pasás una captura del error o el archivo del controlador, lo confirmo.',
+            toolName: '',
+            usage: {input: 612, output: 64, cacheRead: 0, thinking: 0, total: 676, costUsd: 0.002},
+            createdAt: aiNow - 880,
+        },
+    ]
+    if (view === 'attachchips' || view === 'attachwarn') whenChat(async () => dropFiles([await pngFile(), ...(view === 'attachchips' ? [pdfFile()] : []), goFile()]))
+    if (view === 'attachwarnpdf') whenChat(async () => dropFiles([await pngFile(), pdfFile(), goFile()]))
+    if (view === 'attachescape') {
+        whenChat(async () => {
+            const png = await pngFile()
+            fire('dragenter', [png])
+            setTimeout(() => {
+                window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))
+                setTimeout(() => fire('drop', [png]), 200)
+            }, 300)
+        })
+    }
+    if (view === 'attachpaste') {
+        whenChat(async () => {
+            const png = await pngFile()
+            const shot = new File([png], 'image.png', {type: 'image/png'})
+            chatEl()?.dispatchEvent(new ClipboardEvent('paste', {bubbles: true, cancelable: true, clipboardData: dt([shot])}))
+        })
+    }
+    if (view === 'attachdrop') whenChat(async () => fire('dragenter', [await pngFile()]))
+    if (view === 'attacherror') {
+        whenChat(() =>
+            dropFiles([
+                new File([new Uint8Array(6 * mb)], 'pantalla-4k.png', {type: 'image/png'}),
+                new File([new Uint8Array(2048).fill(77)], 'setup.exe', {type: 'application/x-msdownload'}),
+                new File(['# Notas\n\n- revisar el refresh del token\n'], 'notas.md', {type: 'text/markdown'}),
+            ]),
+        )
+    }
+    if (view === 'attachsent') {
+        whenChat(async () => {
+            dropFiles([await pngFile(), pdfFile()])
+            setTimeout(() => {
+                const ta = chatEl()
+                if (!ta) return
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+                    ta,
+                    es ? 'No me deja entrar y sale este error. Te paso también el informe del trimestre.' : "I can't log in and this error shows up. Here's the quarterly report too.",
+                )
+                ta.dispatchEvent(new Event('input', {bubbles: true}))
+                setTimeout(() => document.querySelector<HTMLElement>('[data-chat-send]')?.click(), 250)
+            }, 700)
+        })
+    }
+}
 // El idioma se fija antes de montar, igual que App.tsx lo carga antes de
 // dibujar: UISHOT_LANG=es|en (por defecto, el de la app).
 setLanguage(normalizeLang(new URLSearchParams(location.search).get('lang')))

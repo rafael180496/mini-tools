@@ -320,6 +320,13 @@ func TestMigration59AddsBrainColumns(t *testing.T) {
 		`ALTER TABLE model_servers DROP COLUMN insecure_tls`,
 		// La 62 se vuelve a aplicar con las demás: su columna tiene que faltar.
 		`ALTER TABLE model_servers DROP COLUMN context_tokens`,
+		// Y la 63 también: sus tres columnas tienen que faltar para reaplicarla.
+		`ALTER TABLE model_servers DROP COLUMN enabled`,
+		`ALTER TABLE model_servers DROP COLUMN default_model`,
+		`ALTER TABLE model_servers DROP COLUMN sort_order`,
+		// Y la 64: sus dos columnas de agent_chat_messages tienen que faltar para reaplicarla.
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta`,
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta_nonce`,
 		`DELETE FROM schema_migrations WHERE version >= 59`,
 	} {
 		if _, err := s.db.Exec(q); err != nil {

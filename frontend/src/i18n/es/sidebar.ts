@@ -331,6 +331,85 @@ export default {
         branchFolderExpand: (p: {path: string; count: number}) =>
             `Desplegar "${p.path}" — tiene ${p.count} ${p.count === 1 ? 'rama' : 'ramas'}`,
     },
+    // Ramas, remotos, tags y stashes de cada repositorio en la barra lateral.
+    // Es el único lugar donde se ven (la pestaña del repositorio solo muestra el
+    // grafo), así que acá viven también el filtro, las anclas y las acciones que
+    // antes eran del árbol interno de la pestaña.
+    gitRefs: {
+        filterPlaceholder: 'Filtrar ramas y tags…',
+        filterTitle: 'Filtra por texto las ramas locales, las remotas y los tags de este repositorio. Con un filtro escrito, todas las carpetas se despliegan.',
+        filterMenu: 'Filtrar ramas y tags…',
+        filterButton: (p: {name: string}) => `Filtrar las ramas y tags de ${p.name}`,
+        filterButtonActive: (p: {name: string; filter: string}) => `Filtro activo en ${p.name}: "${p.filter}". Clic para editarlo`,
+        clearFilter: 'Borrar el filtro (Esc)',
+        noMatch: (p: {filter: string}) => `Ninguna rama ni tag coincide con "${p.filter}"`,
+        // Ramas ancladas.
+        pinned: 'Ancladas',
+        pinnedTitle: 'Las ramas que anclaste, siempre arriba y sin carpetas. Las anclas se guardan por repositorio y también definen el Modo foco del grafo.',
+        pin: (p: {name: string}) => `Anclar "${p.name}" arriba de la lista`,
+        unpin: (p: {name: string}) => `Quitar el ancla de "${p.name}"`,
+        pinMenu: 'Anclar arriba',
+        unpinMenu: 'Quitar ancla',
+        pinMenuTitle: 'Deja la rama arriba de todo en la lista y la incluye en el Modo foco del grafo',
+        // Ramas.
+        branchesHint: 'Clic en una rama para verla en el grafo; doble clic hace checkout. Las ancladas van arriba.',
+        folderOptions: 'Opciones de la carpeta de ramas',
+        currentBranchTitle: (p: {name: string; upstream: string}) =>
+            `"${p.name}" es la rama actual${p.upstream ? ` — sigue a ${p.upstream}` : ' — sin upstream'}. Clic: verla en el grafo. Clic derecho: más acciones`,
+        branchTitle: (p: {name: string; upstream: string}) =>
+            `Clic: ver "${p.name}" en el grafo. Doble clic: checkout${p.upstream ? ` — sigue a ${p.upstream}` : ' — sin upstream'}. Clic derecho: más acciones`,
+        remoteBranchTitle: (p: {name: string}) =>
+            `Clic: ver "${p.name}" en el grafo. Doble clic: checkout (si no tenés la rama local, se crea siguiendo a esta)`,
+        showInGraph: 'Ver en el grafo',
+        showInGraphTitle: 'Abre la pestaña del repositorio y lleva el grafo al último commit de esta rama',
+        createLocalFrom: 'Crear rama local',
+        createLocalFromTitle: (p: {name: string}) => `Crea la rama local "${p.name}" siguiendo a esta remota y hace checkout`,
+        localExists: 'Ya existe una rama local con ese nombre',
+        theCurrent: 'la rama actual',
+        mergeInto: (p: {into: string}) => `Mergear en ${p.into}`,
+        mergeTitle: (p: {name: string; into: string}) => `Trae los commits de "${p.name}" a ${p.into}. Si hay conflictos se abre la pestaña del repositorio para resolverlos.`,
+        rebaseOnto: (p: {current: string}) => `Rebasar ${p.current} sobre esta`,
+        rebaseTitle: (p: {current: string; name: string}) => `Reescribe ${p.current} encima de "${p.name}" — la rama ACTUAL cambia, no la que tocaste`,
+        rebaseConfirmTitle: 'Rebasar la rama actual',
+        rebaseConfirmDesc: (p: {current: string; name: string}) =>
+            `Esto reescribe los commits de ${p.current} para que cuelguen del último commit de "${p.name}". Cambia sus hashes: si ya la publicaste, el próximo push va a necesitar --force. Con conflictos se detiene y se resuelve en la pestaña.`,
+        rebaseConfirm: 'Rebasar',
+        searchIn: 'Buscar en esta rama…',
+        searchInTitle: (p: {name: string}) => `Acota el buscador del grafo a la historia de "${p.name}"`,
+        setUpstream: 'Configurar upstream…',
+        setUpstreamTitle: (p: {name: string}) => `Elige qué rama remota sigue "${p.name}": de ahí salen el push, el pull y los contadores ↑↓`,
+        upstreamNow: (p: {upstream: string}) => `ahora: ${p.upstream}`,
+        noUpstream: 'sin upstream',
+        upstreamPromptTitle: (p: {name: string}) => `Upstream de "${p.name}"`,
+        remoteBranchLabel: 'Rama remota',
+        upstreamPlaceholder: 'origin/rama',
+        upstreamDesc: (p: {remotes: string}) => `Rama remota a seguir. Disponibles: ${p.remotes}`,
+        none: 'ninguna',
+        unsetUpstream: 'Quitar upstream',
+        unsetUpstreamTitle: 'La rama deja de seguir a su remota: sin contadores ↑↓ ni push/pull automáticos',
+        deleteRemoteBranch: 'Borrar del remoto…',
+        deleteRemoteBranchTitle: 'Borra la rama en el servidor (git push --delete). No se puede deshacer desde acá.',
+        deleteRemoteBranchConfirmTitle: 'Borrar rama remota',
+        deleteRemoteBranchConfirmDesc: (p: {name: string}) =>
+            `Esto borra "${p.name}" del servidor. Quien la tenga traída la conserva hasta que la limpie. Tu copia local, si la hay, no se toca.`,
+        deleteFromRemote: 'Borrar del remoto',
+        // Carpetas de ramas.
+        branchInFolder: (p: {folder: string}) => `Crear rama en "${p.folder}/"…`,
+        branchInFolderTitle: 'Arranca el nombre con este prefijo para sostener la convención del equipo',
+        branchInFolderPromptTitle: (p: {prefix: string}) => `Crear rama en "${p.prefix}/"`,
+        copyPrefix: (p: {folder: string}) => `Copiar "${p.folder}/"`,
+        // Remotos.
+        remoteFetchTitle: (p: {remote: string}) => `Trae lo nuevo de ${p.remote} sin tocar tus ramas locales`,
+        // Tags.
+        tagsHint: 'Clic en un tag para ver su commit en el grafo.',
+        tagTitle: (p: {name: string; hash: string; annotated: boolean; message: string}) =>
+            `${p.name} → ${p.hash} · ${p.annotated ? 'tag anotado' : 'tag liviano'}${p.message ? `\n${p.message}` : ''}\nClic: ver el commit en el grafo. Clic derecho: crear rama, checkout, push o borrar`,
+        tagGroupCollapse: (p: {group: string; count: number}) => `Plegar "${p.group}" — ${p.count} tags`,
+        tagGroupExpand: (p: {group: string; count: number}) => `Desplegar "${p.group}" — ${p.count} tags`,
+        copyCommit: (p: {hash: string}) => `Copiar hash del commit (${p.hash})`,
+        branchFromTag: 'Crear rama desde el tag…',
+        branchFromTagTitle: 'Recomendado: crea una rama en el commit del tag y hace checkout: lo que casi siempre se quiere al mirar un release, sin quedar en HEAD desacoplado',
+    },
     notes: {
         title: 'Notas',
         untitled: 'Sin título',

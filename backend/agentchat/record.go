@@ -146,6 +146,9 @@ type HistoryMessage struct {
 	Role     string
 	Content  string
 	ToolName string
+	// Attachments son los adjuntos de una fila de usuario (solo nombre, tipo y
+	// tamaño: el contenido nunca se guardó).
+	Attachments []AttachmentMeta
 }
 
 // SeedHistory arma los mensajes previos de un servidor de modelos a partir de
@@ -153,6 +156,9 @@ type HistoryMessage struct {
 // app (el historial en memoria del Manager no sobrevive).
 //
 //   - Solo van el usuario y el asistente: las herramientas no se reenvían.
+//   - Los adjuntos de un mensaje NO se reenvían: queda una línea con sus
+//     nombres (AttachmentNote). El contenido no está guardado, y los archivos
+//     se borran al día.
 //   - Un turno que terminó en error se descarta entero (su mensaje del usuario
 //     incluido), igual que hace el historial en memoria con un turno fallido.
 //   - Se conservan los últimos maxMsgs mensajes y, como mucho, maxChars
@@ -172,7 +178,11 @@ func SeedHistory(stored []HistoryMessage, maxMsgs, maxChars int) []llm.Message {
 	for _, m := range stored {
 		switch m.Role {
 		case "user":
-			turns = append(turns, &turn{msgs: []llm.Message{{Role: llm.RoleUser, Content: m.Content}}})
+			content := m.Content
+			if note := AttachmentNote(m.Attachments); note != "" {
+				content = WithText(content, note)
+			}
+			turns = append(turns, &turn{msgs: []llm.Message{{Role: llm.RoleUser, Content: content}}})
 		case "assistant":
 			if len(turns) == 0 {
 				continue
@@ -232,7 +242,7 @@ func PastTurnsFromStored(stored []HistoryMessage) []PastTurn {
 		switch m.Role {
 		case "user":
 			flush()
-			out = append(out, PastTurn{Role: "user", Text: m.Content, Tools: []ToolCall{}})
+			out = append(out, PastTurn{Role: "user", Text: m.Content, Tools: []ToolCall{}, Attachments: m.Attachments})
 		case "tool":
 			if cur == nil {
 				cur = &PastTurn{Role: "agent", Tools: []ToolCall{}}

@@ -572,3 +572,136 @@ los mensajes inyectados sigue siendo heurística.
   y de sus CLIs; la app los edita donde viven.
 - Un cuarto agente. El catálogo admite uno nuevo con una entrada en
   `registry.go`, pero cada agente agregado multiplica el trabajo de S4 y S6-B.
+
+## Rediseño UX Git (unificación)
+
+> Estado: **implementado** (columna interna sin árbol, barra única, panel de trabajo, diff compacto; canal barra → pestaña por `lib/gitBus.ts`, ver abajo). Quita de la columna interna de la pestaña del
+> repositorio (`GitRepoTab.tsx`) el árbol RAMAS / REMOTAS / TAGS, porque ya
+> existe el árbol de la barra lateral principal (`sidebar` → repo → Ramas,
+> Remotos, Tags, Stashes; `GitRepoTree.tsx`). **Esta sección es el inventario
+> de lo que el árbol interno hacía**, escrito ANTES de borrarlo para que quien
+> porta a la barra lateral (Dev B1) pueda verificar cobertura punto por punto.
+> Cuando B1 termina, cada fila de la tabla debe tener su destino marcado en la
+> última columna.
+
+### Qué es "el árbol interno"
+
+El bloque que `GitRepoTab.tsx` dibuja bajo las solapas, entre la caja
+«Filtrar ramas y tags…» y el final de la columna: `SectionLabel` (Ramas,
+Remotas, Tags) + `BranchTree`/`BranchFolderRow`/`BranchRow`/`TagRow` +
+`branchMenuItems` + `tagMenuItems` + `openFolderMenu` + `openRemoteFolderMenu`.
+
+### Inventario de funciones (árbol interno → estado en la barra lateral al momento de escribir esto)
+
+| # | Función del árbol interno | ¿Ya en la barra lateral? | Destino final |
+|---|---|---|---|
+| 1 | **Clic en una rama** revela su punta en el grafo (`selectBranch`: selecciona el commit, scroll, y si está fuera de la página cargada lo trae con `GitLog rev:` y avisa) | NO (la barra lateral no tiene acceso al grafo) | canal «Revelar» hacia la pestaña (ver «Canal barra → pestaña») |
+| 2 | **Doble clic** = checkout (en remotas, crea/obtiene la local) | Sí (`onDoubleClick → checkout`) | barra lateral |
+| 3 | Rama seleccionada resaltada (barra de acento) distinta de la rama actual (`bg-primary-container`) | Parcial (solo la actual) | opcional: la barra no sabe qué mira el grafo; se queda el marcador de «actual» |
+| 4 | **Marcador de rama actual** (✓) y **ahead/behind por rama** (`↑n ↓n`) | Sí (`AheadBehind`) | barra lateral |
+| 5 | **Anclar/desanclar rama** (estrella al hover; `togglePinned` → `GitSetPinnedBranches`/`pinnedBranches`): las ancladas van planas arriba de su sección y entran al «Solo mi trabajo» | NO | **B1 porta**: estrella + ancladas arriba |
+| 6 | **Filtro de texto de ramas y tags** (`branchFilter`, subcadena sin mayúsculas, expande todas las carpetas mientras filtra, mensaje «sin resultados») | Parcial (la búsqueda global de la barra filtra repos/nodos, no ramas por repo) | B1 verifica que la búsqueda global alcance ramas/tags/remotas |
+| 7 | **Árbol de carpetas por `/`** (`feature/x` cuelga de `feature`, contador por carpeta) con **siembra**: abre solo las carpetas que llevan a la rama actual, una vez por pestaña | Sí (`buildBranchTree`); la siembra NO | B1: sembrar carpetas hacia la rama actual |
+| 8 | **Secciones plegables con contador** (Ramas, Remotas, Tags) y **botón de alta** en la cabecera (`+` nueva rama desde la actual / `+` nuevo tag en la actual / engranaje = administrar remotos) | Sí | barra lateral |
+| 9 | Menú de **rama local**: Checkout · Merge en la actual · **Rebase de la actual SOBRE esta** (confirmación, peligro) · **Buscar en esta rama…** (prellena `hash:<rama> ` en el buscador de commits y enfoca) · Renombrar · **Set upstream** (prompt con candidatas) · **Unset upstream** · Copiar nombre · Borrar (`-D`, confirma; deshabilitado en la actual) | Parcial: checkout, rama desde aquí, renombrar, copiar, borrar | **B1 porta**: Merge, Rebase onto, Set/Unset upstream; «Buscar en esta rama» usa el canal |
+| 10 | Menú de **rama remota**: Checkout (hint: crea local) · **Crear local «x» desde esta** (deshabilitado si ya existe) · Merge · Rebase onto · Buscar en esta rama · Copiar nombre · **Borrar en el remoto** (`push --delete`, confirma) | Parcial: checkout, copiar | **B1 porta**: crear local, merge, rebase onto, borrar remota |
+| 11 | Menú de **carpeta local**: **Crear rama en «carpeta/»** (prefijo prellenado, `promptCreateBranch(folder)`) · Copiar prefijo | NO | **B1 porta** |
+| 12 | Menú de **carpeta de remota**: nivel 1 (es el remoto) → **Fetch de «origin»** · **Editar remoto** (abre Ajustes en Remotos) · **Copiar URL** (`GitRemoteURLForCopy`); niveles más adentro → Copiar prefijo | Parcial: fetch/editar/copiar URL/quitar en el nivel remoto; carpetas internas NO | B1 verifica |
+| 13 | **Tags**: agrupados por prefijo (`groupTags`: `v1.2.*` en grupo, sueltos aparte), fecha del tagger, tooltip con anotado/liviano y mensaje | Parcial (lista plana con tooltip) | B1: agrupar es opcional; el clic es lo importante |
+| 14 | **Clic en un tag** revela el commit que marca en el grafo (`revealCommit`, también fuera de la página cargada) | NO | canal «Revelar» |
+| 15 | Menú de **tag**: **Crear rama desde el tag** (primero, evita detached HEAD) · Checkout · Copiar nombre · Copiar commit · **Push a origin** · Borrar local · **Borrar en origin** | Casi todo; falta **Copiar commit** | B1 agrega «Copiar commit» |
+| 16 | **Alta de rama**: «Nueva rama desde la actual» y «desde la carpeta» (`promptCreateBranch`) · **alta de tag** en la actual (`promptCreateTag`, con mensaje opcional) | Sí (rama y tag) | barra lateral |
+| 17 | Mensaje al revelar una punta fuera de la ventana cargada (`branchTipOutside`, `commitOutside`) | NO | lo emite la pestaña al recibir el canal |
+
+Estados que NO migran (viven en la pestaña, no en un árbol): `collapsedSections`,
+`expandedFolders`, `branchFilter` y `selectedBranch` dejan de existir en
+`GitRepoTab`. `pinned` SÍ sigue en la pestaña (alimenta «Solo mi trabajo»
+—`focusRefsOf`— y la barra de ramas rápidas).
+
+### Canal barra → pestaña (propuesta, para #1, #9 «Buscar en esta rama» y #14)
+
+El grafo vive en la pestaña y la barra lateral no tiene acceso a él. Para no
+perder «clic en rama/tag → verla en el grafo» y «Buscar en esta rama…», la
+pestaña acepta una prop **opcional nueva** (no cambia ninguna existente):
+
+```ts
+// GitRepoTab.tsx
+interface GitRevealRequest {
+    id: number                                   // monótono: mismo pedido dos veces = dos reveals
+    kind: 'branch' | 'tag' | 'commit' | 'search' // 'search' prellena el buscador de commits
+    name?: string                                // rama/tag
+    hash?: string                                // commit
+    text?: string                                // para 'search' (p. ej. `hash:feature/x `)
+}
+revealRequest?: GitRevealRequest | null
+```
+
+`Workspace.tsx`/`Sidebar` (alcance de B1) guarda el último pedido por `repoId`,
+abre o enfoca la pestaña del repo y se lo pasa. `GitRepoTab` lo consume en un
+efecto por `id` (lo ya consumido no se repite) y llama a `selectBranch` /
+`revealCommit` / al prellenado de búsqueda. **Si B1 prefiere otro mecanismo,
+avisar**: lo único que necesita la pestaña es poder ejecutar esas tres acciones.
+
+### Qué queda en la columna interna después del rediseño
+
+La columna deja de ser «solapas + buscadores + árbol de ramas» y pasa a ser el
+**panel de trabajo** gobernado por las 4 solapas: Historial (búsqueda de commits,
+«Solo mi trabajo», filtros), Cambios (staging + caja de commit), Stash y
+Archivos. La barra de ramas rápidas (ancladas) y el cambio rápido de rama van en
+la barra única de arriba (chip de rama → selector rápido).
+
+### Canal barra → pestaña — IMPLEMENTADO por B1 (reemplaza la propuesta de `revealRequest`)
+
+Se eligió un **bus de eventos de ventana** en vez de la prop `revealRequest`: no
+toca `Workspace.tsx` ni la firma de `GitRepoTab`, y es el mismo patrón que
+`lib/appBus.ts`. Archivo: [`frontend/src/lib/gitBus.ts`](../../frontend/src/lib/gitBus.ts).
+
+```ts
+import {onGitRequest, takePendingGit, type GitRequest} from '../../lib/gitBus'
+
+type GitRequest =
+  | {repoId; kind: 'reveal-branch'; name: string; hash: string} // clic en rama (hash = punta) → selectBranch
+  | {repoId; kind: 'reveal-commit'; hash: string}               // clic en tag → revealCommit(hash)
+  | {repoId; kind: 'search-branch'; name: string}               // «Buscar en esta rama…» → searchText = `hash:${name} `
+  | {repoId; kind: 'pinned-changed'; pinned: string[]}          // la barra anclo/soltó una rama → setPinned(pinned)
+```
+
+Lo que **GitRepoTab (B2) tiene que hacer**:
+
+1. Suscribirse una vez por pestaña: `useEffect(() => onGitRequest(repoId, handler), [repoId, ...])`.
+   El `handler` recibe solo los pedidos de SU repo (el bus filtra por `repoId` y
+   marca el evento como atendido con `preventDefault`).
+   - `reveal-branch` → lo que hoy hace `selectBranch(b)` (la rama puede construirse a partir de
+     `{name, hash}`; si hace falta el objeto `git.Branch`, buscarlo en `branches` por nombre).
+   - `reveal-commit` → `revealCommit(req.hash)`.
+   - `search-branch` → el prellenado y foco de `searchInBranchItem`.
+   - `pinned-changed` → `setPinned(req.pinned)` (alimenta «Solo mi trabajo» y las ramas rápidas).
+     La fuente de verdad sigue siendo el vault: la barra ya llamó a `GitSetPinnedBranches`.
+2. **Al montarse** (después de la primera carga de ramas/commits, para que el reveal encuentre el
+   commit en la ventana cargada), recoger lo que quedó esperando: `takePendingGit(repoId)` devuelve
+   los pedidos de navegación hechos mientras la pestaña todavía no existía (un clic en una rama de
+   un repo cuya pestaña no estaba abierta). Caducan a los 10 s y se devuelven una sola vez.
+3. La barra ya abre/enfoca la pestaña (`onOpenRepo`) **antes** de emitir el pedido; la pestaña no
+   tiene que hacerlo.
+
+Tras un merge/rebase de la barra que deja conflictos, la barra abre la pestaña del repo: el
+resolvedor y el aviso «continuar / abortar» (`inProgress`) ya existen allí y se actualizan con el
+polling de estado.
+
+### Mapa de lo movido (implementado)
+
+| Antes (columna interna / barra de la pestaña) | Ahora |
+|---|---|
+| Árbol RAMAS / REMOTAS / TAGS y su filtro | Barra lateral principal (B1) + **selector rápido** del chip de rama en la barra de la pestaña (`GitBranchSwitcher`: buscador único, cambiar, revelar, anclar, menú completo con clic derecho, nueva rama / tag, remotos) |
+| Clic en rama / tag → grafo; «Buscar en esta rama…» | `lib/gitBus.ts` (`reveal-branch`, `reveal-commit`, `search-branch`, `pinned-changed`); en la pestaña, `gitRequestRef` + `takePendingGit` |
+| Menú de carpeta remota → *Fetch de «origin»* | Menú de Fetch de la barra (un ítem por remoto cuando hay más de uno) |
+| Estrella / ramas ancladas arriba | Estrella del selector y de «Ramas rápidas» (Historial); `pinned` sigue alimentando «Solo mi trabajo» |
+| Buscador de commits + «Solo mi trabajo» | Solapa **Historial** (`HistoryPanel`) |
+| ChangesPanel en el centro | Solapa **Cambios** de la columna (`ChangesPanel`, caja de commit arriba, Enmendar, acciones por grupo); el diff pasa al área principal |
+| GitStashPanel (centro) | Solapa **Stash**: lista en la columna (`StashPanel`) + parche en el centro (`StashPreview`) |
+| Árbol de archivos dentro del editor | Columna de la solapa **Archivos** (el editor lo dibuja por portal con `treeHost`) |
+| Dos filas de botones | `GitToolbar` (una barra; íconos; «⋯» en angosto; Abrir en… agrupa editor / carpeta / terminal) |
+| DiffViewer (lista de bloques, bloques en una tira) | Cabecera fija con ruta + estadísticas + íconos; botones por bloque en el propio encabezado `@@`; medianiles de número viejo / nuevo y blame |
+
+Preferencias por repositorio (solapa y ancho de la columna): `localStorage` bajo
+`mt.git.work.<repoId>`; el plegado de la columna sigue siendo global (vault, `gitSideHidden`).

@@ -359,6 +359,8 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>Git</button>
   <ul>
     <li><a href="#git-repositorio">El repositorio: grafo y diff</a></li>
+    <li><a href="#git-trabajo">Barra y panel de trabajo</a></li>
+    <li><a href="#git-barra">El árbol de Git en la barra lateral</a></li>
     <li><a href="#git-config">Identidad, remotos y tokens</a></li>
     <li><a href="#git-reflog">Recuperar con el reflog</a></li>
   </ul>
@@ -375,13 +377,14 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li><a href="#utilidades-activity-monitor">Monitor de actividad</a></li>
     <li><a href="#utilidades-docker">Docker</a></li>
     <li><a href="#utilidades-chat-ia">Chat de IA</a></li>
-    <li><a href="#utilidades-modelos">Modelos</a></li>
+    <li><a href="#utilidades-modelos">Proveedores de IA</a></li>
   </ul>
 
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>Agentes de IA</button>
   <ul>
     <li><a href="#ia-chat">El chat, en todos los módulos</a></li>
-    <li><a href="#ia-modelos">Servidores de modelos: Ollama y compatibles con OpenAI</a></li>
+    <li><a href="#ia-adjuntos">Adjuntos: imágenes, PDF y archivos</a></li>
+    <li><a href="#ia-modelos">Proveedores de IA: servidores propios y APIs en la nube</a></li>
     <li><a href="#ia-agente-local">Agente de código local: archivos y comandos</a></li>
     <li><a href="#ia-proyectos">Proyectos, carpetas y contexto automático</a></li>
     <li><a href="#ia-cerebro">Cerebro: notas que escribe el agente</a></li>
@@ -1198,11 +1201,8 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   </figure>
 
   <h2 id="git-repositorio--ramas">Ramas y tags</h2>
-  <ul>
-    <li><strong>Carpetas por prefijo</strong>: <code>feature/…</code> se pliega como una sola entrada.</li>
-    <li><strong>Anclado</strong> de las ramas que usás siempre, para que queden arriba.</li>
-    <li>Alta de ramas y tags desde el propio panel.</li>
-  </ul>
+  <p>Las ramas, remotos y tags están en el <a href="#git-barra">árbol de la barra lateral</a> (carpetas por prefijo, anclado, filtro, menús con clic derecho).
+  En la pestaña, el <strong>chip de rama</strong> de la barra es el selector rápido — mirá <a href="#git-trabajo">Barra y panel de trabajo</a>.</p>
 
   <h2 id="git-repositorio--operaciones">Operaciones</h2>
   <ul>
@@ -1217,6 +1217,119 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <h2 id="git-repositorio--log">El log de comandos</h2>
   <p>Cada acción deja registrado el <strong>comando exacto</strong> que la app ejecutó por debajo, con su
   salida y cuánto tardó. Sirve para aprender qué hace el botón, y para pegar el comando en un ticket.</p>
+</article>
+
+<article class="topic" id="git-trabajo" data-title="Barra y panel de trabajo">
+  <h1>Barra y panel de trabajo</h1>
+  <p class="lead">Una sola barra arriba para saber dónde estás y cómo sincronizás, y un <strong>panel de trabajo</strong> a la
+  izquierda con cuatro solapas — Historial, Cambios, Stash y Archivos. Lo que muestra cada una (el grafo, el diff, el parche
+  del stash, el editor) se abre en el área principal.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-work-history.png" alt="Pestaña Git: barra única con el nombre del repositorio, el chip de rama, botones de ícono y los botones partidos Fetch, Pull y Push; a la izquierda el panel de trabajo en su solapa Historial con el buscador de commits, los chips de prefijos, el interruptor Solo mi trabajo y las ramas rápidas; al centro el grafo"></div>
+    <figcaption>La solapa Historial: búsqueda y filtros a la izquierda, el grafo en el área principal.</figcaption>
+  </figure>
+
+  <h2 id="git-trabajo--barra">La barra</h2>
+  <ul>
+    <li><strong>El chip de rama</strong> dice dónde estás. Un clic abre el <strong>selector rápido</strong>: una caja que filtra ramas locales, remotas y tags a la vez. <kbd>Enter</kbd> cambia a la primera coincidencia, el ícono de <strong>mira</strong> muestra la punta de la rama en el grafo, la estrella la ancla y el botón derecho abre el menú completo (merge, rebase, renombrar, upstream, borrar). Las ramas, remotos y tags también están en el <a href="#git-barra">árbol de la barra lateral</a>.</li>
+    <li><strong>Fetch, Pull y Push</strong> son botones partidos: la parte izquierda hace la acción de siempre y la flecha abre las variantes (<code>--force-with-lease</code>, <code>--rebase</code>, fetch de un solo remoto…). <strong>Pull</strong> y <strong>Push</strong> llevan un contador con los commits por detrás / por delante.</li>
+    <li>El resto son íconos con tooltip: crear el pull request y pedirle al agente que lo describa, el modo agente, el menú <em>Vista</em>, recargar, <strong>Abrir en…</strong> (tu editor, el explorador de archivos, una terminal), el panel de agentes y los ajustes del repositorio.</li>
+    <li>En una pestaña angosta, la barra pliega lo que no entra en un menú <strong>⋯</strong>.</li>
+  </ul>
+
+  <h2 id="git-trabajo--panel">El panel de trabajo</h2>
+  <ul>
+    <li><strong>Historial</strong>: búsqueda de commits (<code>autor:</code>, <code>mensaje:</code>, <code>archivo:</code>, <code>desde:</code>, <code>hasta:</code> — los chips agregan el prefijo por vos) y <em>Solo mi trabajo</em>, que deja solo la rama actual, los troncos y las ancladas. Debajo, las <strong>ramas rápidas</strong>: clic para verla en el grafo, doble clic para cambiar a ella.</li>
+    <li><strong>Cambios</strong>: más abajo. <strong>Stash</strong>: la lista, con la vista previa del elegido en el área principal. <strong>Archivos</strong>: el árbol de archivos del editor.</li>
+    <li>Arrastrá su borde para cambiar el ancho: se recuerda <strong>por repositorio</strong>, igual que la solapa en la que estabas. El botón a la derecha de las solapas lo pliega a una barra de íconos; un clic en cualquier ícono lo vuelve a abrir.</li>
+  </ul>
+
+  <h2 id="git-trabajo--cambios">Cambios y el commit</h2>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-work-changes.png" alt="Solapa Cambios: la caja del mensaje con el botón de redactar, el tipo de commit, los botones Commit y Enmendar, las listas Preparados y Cambios y, en el área principal, el diff del archivo elegido con números de línea y botones de preparar y descartar en cada bloque"></div>
+    <figcaption>La caja de commit va arriba, como en Source Control; el diff del archivo elegido ocupa el área principal.</figcaption>
+  </figure>
+  <ul>
+    <li>Escribí el mensaje y apretá <strong>Commit</strong> (<kbd>Cmd</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd> hace lo mismo). El botón ✨ lo redacta con el agente a partir del diff preparado.</li>
+    <li><strong>Enmendar</strong> reescribe el último commit con el mensaje y lo que esté en el stage — te precarga el mensaje anterior. Usalo solo si ese commit todavía no está publicado.</li>
+    <li>Cada archivo tiene botones de preparar / quitar y descartar (aparecen al pasar el mouse); cada grupo tiene los suyos para <strong>todos</strong>. Un clic en un archivo muestra su diff; la flecha de su izquierda despliega el diff dentro de la lista.</li>
+  </ul>
+
+  <h2 id="git-trabajo--diff">El diff</h2>
+  <ul>
+    <li>Usa la <strong>letra y el tamaño del editor</strong> de Configuración, con el número de línea viejo y nuevo a la izquierda, un verde y un rojo suaves y un encabezado chico por bloque. La cabecera de arriba lleva la ruta, <code>+n −m</code>, si está preparado o no y las acciones en íconos, todas con tooltip.</li>
+    <li><strong>En cada bloque</strong>, los botones a la derecha de su encabezado lo preparan (o quitan) y lo descartan. Para preparar <strong>algunas líneas</strong>, seleccionalas y apretá el ícono de lista con tilde.</li>
+    <li>Bloque anterior / siguiente, unificado o lado a lado, ignorar espacios, ajustar líneas, contexto <strong>−/+</strong>, blame, editar el archivo y preguntarle al agente son los otros íconos.</li>
+  </ul>
+
+  <h2 id="git-trabajo--stash">Stash</h2>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-work-stash.png" alt="Solapa Stash: lista de stashes a la izquierda con su mensaje, rama y fecha; en el área principal el parche del stash elegido, archivo por archivo, con los botones Aplicar, Aplicar y quitar y borrar"></div>
+    <figcaption>Elegís un stash y ves qué guarda antes de aplicarlo.</figcaption>
+  </figure>
+  <p><strong>Guardar cambios</strong> aparta lo que tenés sin commitear. En cada fila (al pasar el mouse) y arriba de la vista previa: <strong>Aplicar</strong> (deja el stash), <strong>Aplicar y quitar</strong> (pop) y borrar, que pide confirmación porque un stash borrado no se recupera.</p>
+
+  <div class="note tip"><span class="lbl">Consejo</span>
+  La misma pestaña entra en una ventana angosta: el panel derecho del commit cede antes que el grafo.
+  <div class="shot"><img src="../docs/screenshots/es/git-work-narrow.png" alt="La pestaña Git con poco ancho: botones de la barra solo con ícono y el panel de trabajo a la izquierda"></div></div>
+</article>
+
+<article class="topic" id="git-barra" data-title="El árbol de Git en la barra lateral">
+  <h1>El árbol de Git en la barra lateral</h1>
+  <p class="lead">Las ramas, los remotos, los tags y los stashes de cada repositorio viven en <strong>un solo
+  lugar</strong>: el módulo Git de la barra lateral. La pestaña del repositorio se queda con el grafo y el trabajo;
+  este árbol es donde encontrás las cosas, las filtrás y actuás sobre ellas.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-sidebar.png" alt="Módulo Git de la barra lateral: un repositorio abierto con sus ramas ancladas arriba, carpetas de ramas (feature, claude, fix, release) con su contador, remotos con sus ramas, tags agrupados por versión y stashes; la rama actual está resaltada y muestra 8 commits por delante"></div>
+    <figcaption>Las ramas ancladas arriba, el resto en carpetas por prefijo, y la actual resaltada con sus contadores de adelante / atrás.</figcaption>
+  </figure>
+
+  <h2 id="git-barra--leer">Cómo se lee el árbol</h2>
+  <ul>
+    <li><strong>Clic</strong> en un repositorio lo despliega y <strong>doble clic</strong> abre su pestaña. Debajo están <strong>Ramas</strong>, <strong>Remotos</strong>, <strong>Tags</strong> y <strong>Stashes</strong>, cada uno con su contador. Las ramas arrancan abiertas, con las carpetas que llevan a la rama actual ya desplegadas.</li>
+    <li>La <strong>rama actual</strong> va en negrita y con un tinte, y la fila del repositorio muestra su nombre. <code>↑n ↓n</code> son los commits por delante / por detrás de su upstream.</li>
+    <li>Las <strong>carpetas por prefijo</strong> (<code>feature/…</code>, <code>claude/…</code>) agrupan las ramas y dicen cuántas tiene cada una. Los tags se agrupan por versión (<code>1.31.*</code>) y muestran su fecha.</li>
+    <li>La <strong>estrella</strong> ancla una rama: pasa plana arriba de la lista, fuera de su carpeta. Las anclas se guardan por repositorio y además definen el <em>Modo foco</em> del grafo.</li>
+  </ul>
+
+  <h2 id="git-barra--grafo">Llevar el grafo a una rama o un tag</h2>
+  <p><strong>Un clic</strong> en una rama o en un tag abre (o trae al frente) la pestaña del repositorio y lleva el grafo a su
+  commit, aunque sea más viejo que la página cargada. El <strong>doble clic</strong> en una rama hace el checkout.
+  <em>Buscar en esta rama…</em> (clic derecho) acota el buscador del grafo a la historia de esa rama.</p>
+
+  <h2 id="git-barra--filtrar">Filtrar ramas y tags</h2>
+  <p>La <strong>lupa</strong> de la fila de un repositorio (o <em>Filtrar ramas y tags…</em> en su menú) abre una caja que
+  filtra a la vez las ramas locales, las remotas y los tags de ese repositorio. Con texto escrito todas las carpetas se
+  despliegan, así que una coincidencia nunca queda escondida dentro de un prefijo plegado. <kbd>Esc</kbd> borra el texto y,
+  con la caja vacía, la cierra.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-sidebar-filter.png" alt="Barra lateral con la caja de filtro abierta bajo el repositorio, escribiendo 'vault': solo quedan las ramas que coinciden, en Ramas y bajo origin"></div>
+    <figcaption>Un solo filtro para ramas y tags: escribís <code>vault</code> y queda solo lo que coincide.</figcaption>
+  </figure>
+
+  <h2 id="git-barra--menus">Qué hace el clic derecho</h2>
+  <ul>
+    <li><strong>Rama local</strong>: checkout, verla en el grafo, crear una rama desde ella, <strong>mergear en la actual</strong>, <strong>rebasar la actual sobre ella</strong> (pregunta antes), buscar en ella, anclar, renombrar, <strong>configurar / quitar el upstream</strong>, copiar el nombre y borrar.</li>
+    <li><strong>Rama remota</strong>: checkout, verla en el grafo, <strong>crear la rama local</strong> que la sigue, mergear, rebasar, buscar, anclar, copiar y <strong>borrar del remoto</strong> (<code>push --delete</code>, pregunta antes).</li>
+    <li><strong>Carpeta de ramas</strong>: <em>Crear rama en "feature/"…</em> (el nombre arranca con el prefijo) y copiar el prefijo.</li>
+    <li><strong>Remoto</strong>: fetch, editar (nombre y URLs), copiar la URL y quitarlo. <strong>Tag</strong>: verlo en el grafo, <strong>crear una rama desde el tag</strong> (lo habitual para trabajar desde un release), checkout, copiar el nombre o el hash del commit, push a origin, borrarlo local y borrarlo de origin.</li>
+    <li><strong>Stash</strong>: aplicar, hacer pop y descartar.</li>
+  </ul>
+  <div class="note"><span class="lbl">Dato</span>
+  Si un merge o un rebase iniciado acá se detiene por conflictos, la pestaña del repositorio se abre sola: ahí están el
+  resolutor de conflictos y el aviso de <em>continuar / abortar</em>.</div>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/git-sidebar-menu.png" alt="Menú del clic derecho sobre una rama local: checkout, ver en el grafo, crear rama desde acá, mergear en develop, rebasar develop sobre esta, buscar en esta rama, anclar arriba, cambiar nombre, configurar upstream, quitar upstream, copiar nombre y borrar rama"></div>
+    <figcaption>Todo lo que se puede hacer con una rama está a un clic derecho.</figcaption>
+  </figure>
+
+  <h2 id="git-barra--teclado">Teclado</h2>
+  <p>Cada fila es un botón con foco: <kbd>Tab</kbd> se mueve entre ellas y <kbd>Enter</kbd> activa. Cuando una fila tiene el
+  foco aparecen sus botones de acción (anclar, <strong>⋯</strong>) sin necesidad del mouse. El menú contextual se maneja con las flechas, <kbd>Enter</kbd> y <kbd>Esc</kbd>.</p>
 </article>
 
 <article class="topic" id="git-config" data-title="Identidad, remotos y tokens">
@@ -1677,7 +1790,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     acoplado, la pestaña puede quedar chica aunque la ventana sea enorme. Por debajo de unos 760 px el historial deja de ser una columna y el botón de la
     cabecera lo abre como un <strong>cajón sobre el chat</strong> (elegir una conversación o <kbd>Esc</kbd> lo cierra), y la cabecera se compacta: los selectores se reparten el renglón y
     <em>Nuevo chat</em> queda solo con su icono. Al ensanchar de nuevo, el historial vuelve solo.</li>
-    <li><strong>Consumo</strong> — el botón del gráfico de la cabecera cambia el cuerpo al panel de <a href="#ia-modelos--consumo">consumo de tokens</a> por agente y servidor de modelos; el chat sigue corriendo detrás.</li>
+    <li><strong>Consumo</strong> — el botón del gráfico de la cabecera cambia el cuerpo al panel de <a href="#ia-modelos--consumo">consumo de tokens</a> por agente y proveedor de IA; el chat sigue corriendo detrás.</li>
   </ul>
   <figure>
     <div class="shot"><img src="../docs/screenshots/es/utilities-ai-chat-wide.png" alt="Chat de IA en una ventana ancha: la respuesta con una tabla y un bloque de SQL usa todo el ancho disponible, con el texto corrido limitado a una línea legible"></div>
@@ -1694,10 +1807,28 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 
   <h2 id="utilidades-chat-ia--cabecera">Proveedor, modelo y proyecto</h2>
   <ul>
-    <li><strong>Proveedor</strong> — los CLIs instalados y los servidores de modelos que agregaste en <em>Configuración → IA</em>. La última opción del menú, <em>Agregar servidor de modelos (Ollama / OpenAI)…</em>, abre el alta ahí mismo y, al guardar, elige el servidor nuevo: <a href="#ia-modelos--desde-el-chat">no hace falta instalar nada</a>. Cambiarlo en una conversación ya empezada abre una <em>nueva</em>: cada proveedor guarda su propio hilo, y no hay forma honesta de que uno continúe lo que venía haciendo otro.</li>
+    <li><strong>Proveedor</strong> — los CLIs instalados y los <a href="#utilidades-modelos">proveedores de IA</a> que activaste (servidores propios y APIs en la nube). La última opción del menú, <em>Agregar proveedor de IA…</em>, abre el alta ahí mismo y, al guardar, elige el proveedor nuevo: <a href="#ia-modelos--desde-el-chat">no hace falta instalar nada</a>. Entre proveedores de modelos podés <a href="#utilidades-chat-ia--cambiar-proveedor">cambiar a mitad de una conversación</a> y sigue siendo la misma; cambiar hacia o desde un CLI abre una conversación <em>nueva</em>, porque un CLI guarda su propio hilo.</li>
     <li><strong>Modelo</strong> — la lista la informa el propio proveedor, y <em>Por defecto</em> usa el que tenga configurado. Rige desde el mensaje siguiente.</li>
     <li><strong>Proyecto</strong> — uno de los repositorios que agregaste en el módulo Git, una <strong>carpeta</strong> que abriste, o ninguno. La conversación lo registra, y su nombre y ubicación viajan como una ficha junto a tus mensajes para que el agente sepa de cuál hablás; la ficha se puede quitar del mensaje. Una conversación que nació en otro módulo (una conexión, una nota) muestra acá su origen y no puede cambiar de proyecto. Con un <a href="#ia-modelos">servidor de modelos</a>, es además el <strong>proyecto de trabajo</strong> de sus <a href="#ia-agente-local">herramientas de archivos y comandos</a>, y la app carga sola sus instrucciones y skills: mirá <a href="#ia-proyectos">Proyectos, carpetas y contexto automático</a>. Sin uno, el chat avisa que solo están las herramientas MCP.</li>
   </ul>
+
+  <h2 id="utilidades-chat-ia--cambiar-proveedor">Cambiar de proveedor a mitad de una conversación</h2>
+  <p>Entre <a href="#utilidades-modelos">proveedores de IA</a> (servidores propios y APIs en la nube) podés cambiar quién contesta <strong>sin empezar otra conversación</strong>: elegí el otro proveedor en la cabecera y
+  la conversación conserva su historial, su proyecto y su lugar en la lista. Lo que no conserva es la «memoria» del proveedor: el nuevo recibe los mensajes anteriores <strong>como contexto</strong> y nada más, y su ventana de contexto puede ser distinta.
+  Un aviso bajo la cabecera dice quién contesta ahora y quién lo hacía antes; las respuestas anteriores siguen firmadas por quien las escribió. Rige desde tu próximo mensaje.</p>
+  <p><strong>Continuar con otro proveedor.</strong> Si el proveedor de una conversación se <strong>desactivó</strong> o se <strong>eliminó</strong>, su fila en el historial se marca en naranja con el nombre del proveedor (o <em>Proveedor eliminado</em>) y igual se abre: podés leer todo lo que se habló, la caja de mensajes queda bloqueada y una franja encima ofrece
+  <strong>Continuar con otro proveedor</strong>. Elegí uno de los activos y la conversación sigue ahí, sin abrir otra. Si no hay otro proveedor de modelos activo, la franja ofrece agregar uno.</p>
+  <div class="note"><span class="lbl">Los CLIs son distintos</span>
+  Un CLI (Claude Code, Codex, Antigravity) guarda su hilo en su propio almacenamiento, y no hay forma honesta de que otro proveedor continúe lo que venía haciendo. Cambiar hacia o desde un CLI abre una conversación nueva, como antes.</div>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ai-chat-lost.png" alt="Chat de IA abierto en una conversación cuyo proveedor se desactivó: la fila del historial marcada en naranja, una franja bajo la cabecera dice que el proveedor está desactivado y ofrece un selector con Continuar con otro proveedor, y la caja de mensajes bloqueada"></div>
+    <figcaption>Una conversación cuyo proveedor ya no está disponible: se puede leer, con una franja para seguir con otro.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ai-chat-switched.png" alt="La misma conversación después de seguir con Ollama local: la franja desapareció, un aviso dice quién contesta ahora y quién lo hacía antes, y la caja de mensajes vuelve a estar habilitada"></div>
+    <figcaption>Después de continuar: misma conversación, otro proveedor y un aviso que dice qué cambió.</figcaption>
+  </figure>
 
   <h2 id="utilidades-chat-ia--historial">Historial y búsqueda</h2>
   <p>La lista de la izquierda tiene <strong>todas las conversaciones de todos los módulos y proveedores</strong>, agrupadas en <em>Hoy</em>,
@@ -1719,6 +1850,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <li><strong>Detener</strong> — mientras corre un turno, el botón de enviar pasa a ser un <em>Detener</em> rojo. Lo que escribas mientras tanto queda en cola y sale cuando termine.</li>
     <li><strong>Copiar</strong> — cada mensaje tiene su botón Copiar (aparece al pasar el mouse o al llegar con Tab), y cada bloque de código tiene su propia barra con Copiar.</li>
     <li><strong>Tokens</strong> — bajo cada respuesta, los tokens de ese turno; al pie, el acumulado de la conversación.</li>
+    <li><strong>Adjuntar</strong> — el clip junto al selector de modelo suma imágenes, PDF y archivos de texto o código (también se pueden arrastrar sobre el chat o pegar con <kbd>⌘V</kbd>); una ficha avisa si el modelo no puede leer alguno. Ver <a href="#ia-adjuntos">Adjuntos</a>.</li>
     <li><strong>Vos elegís dónde leer</strong> — si subís a releer mientras la respuesta sigue llegando, no te arrastra de vuelta al final: aparece un botón para <em>ir al último mensaje</em>.</li>
   </ul>
 
@@ -1735,32 +1867,158 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   él es lo que mandás al proveedor que elegiste.</div>
 </article>
 
-<article class="topic" id="utilidades-modelos" data-title="Modelos">
-  <h1>Modelos</h1>
-  <p class="lead">Mirá qué modelos tiene un <a href="#ia-modelos">servidor de modelos</a>, descargá nuevos y borrá los que ya no usás
-  —en esta máquina o en otra— sin abrir una terminal ni escribir <code>ollama pull</code>.</p>
+<article class="topic" id="utilidades-modelos" data-title="Proveedores de IA">
+  <h1>Proveedores de IA</h1>
+  <p class="lead">Tus servidores propios y las APIs en la nube en un solo lugar: activalos y apagalos, ordenalos, probalos, y mirá qué modelos tiene cada uno
+  y cuánto lo usaste —sin abrir una terminal ni la consola del proveedor.</p>
 
-  <p>Está en el módulo <strong>Utilidades</strong> y se abre en <strong>su propia pestaña</strong>. Trabaja con los servidores que ya
-  agregaste en <em>Configuración → IA</em>: usa su dirección, token, cabeceras y la opción de certificado, así que un Ollama detrás de un
-  proxy con una cabecera <code>X-Api-Key</code> se administra igual que uno local.</p>
+  <p>Está en el módulo <strong>Utilidades</strong> y se abre en <strong>su propia pestaña</strong> (antes se llamaba <em>Modelos</em>; una pestaña que ya tenías abierta sigue andando).
+  A la izquierda lista <strong>todos los proveedores</strong> en tres grupos —<strong>Locales</strong>, <strong>Remotos</strong> y <strong>Nube</strong>— y a la derecha muestra el elegido en tres
+  secciones: <a href="#utilidades-modelos--secciones"><strong>Modelos</strong>, <strong>Consumo</strong> y <strong>Configuración</strong></a>. Es la misma lista de <em>Configuración → IA</em>, que muestra un resumen, así que un cambio en una aparece en la otra.
+  Un proveedor es un <a href="#ia-modelos">servidor propio</a> (Ollama, LM Studio, vLLM…) o una <a href="#utilidades-modelos--nube">API alojada</a> que se usa con una API key (OpenRouter, OpenAI, Anthropic, Groq…).
+  La pestaña usa la dirección, el token o la API key, las cabeceras y la opción de certificado de cada proveedor, así que un Ollama detrás de un proxy con una cabecera <code>X-Api-Key</code> se administra igual que uno local.</p>
 
   <figure>
-    <div class="shot"><img src="../docs/screenshots/es/utilities-models.png" alt="Pestaña Modelos: el selector de servidor con su punto de estado, las insignias Ollama y local, el campo para descargar con chips de ejemplo, y una tabla de modelos instalados con familia, parámetros, cuantización, tamaño y fecha; el modelo cargado muestra una insignia En memoria con su VRAM y cuándo se libera, y los botones de detalle, descargar de memoria y borrar en cada fila"></div>
-    <figcaption>Los modelos de un Ollama local. La insignia verde marca el que está cargado en memoria ahora mismo.</figcaption>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-providers.png" alt="Pestaña Proveedores de IA: a la izquierda la columna de proveedores en tres grupos — Locales con Ollama y LM Studio, Remotos con un servidor vLLM y un LM Studio desactivado, Nube con OpenRouter, Anthropic y OpenAI — cada fila con su ícono, nombre, host, interruptor de activo, punto de estado con latencia y cantidad de modelos; a la derecha Anthropic elegido, con las secciones Modelos, Consumo y Configuración, una nota de solo lectura y su lista de modelos"></div>
+    <figcaption>La columna de proveedores en tres grupos y los modelos del elegido (una API alojada: lista de solo lectura).</figcaption>
   </figure>
 
-  <h2 id="utilidades-modelos--servidor">Elegir el servidor</h2>
-  <p>El selector de arriba lista todos los servidores de modelos que guardaste, cada uno con su <strong>punto de estado</strong> (verde
-  responde, rojo no). Las insignias dicen su tipo —<em>Ollama</em> o <em>Compatible con OpenAI</em>— y si es <em>local</em> o
-  <em>remoto</em>; al lado, la latencia de la última comprobación. La última opción, <strong>Agregar servidor…</strong>, abre el mismo
-  formulario de Configuración en un diálogo y deja elegido el servidor nuevo al guardarlo. Se recuerda el último que usaste.</p>
+  <h2 id="utilidades-modelos--servidor">La columna de proveedores</h2>
+  <p>La columna de la izquierda lista <strong>todos los proveedores que guardaste</strong>, agrupados por dónde corren:</p>
+  <ul>
+    <li><strong>Locales</strong> — corren en esta máquina: una dirección loopback (<code>localhost</code>, <code>127.0.0.1</code>). Lo que les mandás no sale de la computadora.</li>
+    <li><strong>Remotos</strong> — un servidor propio en otra máquina de tu red.</li>
+    <li><strong>Nube</strong> — una API alojada: OpenRouter, OpenAI, Anthropic, Groq, DeepSeek, Mistral, Together, xAI o Google Gemini. Lo que les mandás sale a internet.</li>
+  </ul>
+  <p>El grupo sale de la <strong>dirección</strong>, no de un ajuste: nunca lo elegís. Cada fila muestra un ícono genérico de su tipo, el <strong>nombre</strong>, el host, el
+  <a href="#utilidades-modelos--activar"><strong>interruptor de activo</strong></a>, el tipo (<em>Ollama</em>, <em>API OpenAI</em> o <em>Anthropic</em>), el <strong>punto de estado con la latencia</strong> de la última comprobación (verde responde, rojo no)
+  y cuántos modelos informó. Un clic en la fila —o <kbd>Enter</kbd> sobre ella— muestra ese proveedor: la cabecera pasa a mostrar su nombre, insignias y estado.
+  <kbd>↑</kbd> <kbd>↓</kbd> pasan de una fila a otra, y con más de seis proveedores aparece un buscador. Se recuerda el último que usaste.</p>
+  <p>Arrastrá el borde de la columna para cambiar su ancho (con el foco en él, <kbd>←</kbd> <kbd>→</kbd> hacen lo mismo y el doble clic vuelve al ancho
+  original); queda guardado. El botón de la izquierda de la cabecera oculta la columna. En una <strong>pestaña angosta</strong> la columna deja de ocupar
+  lugar y se abre como un <strong>cajón</strong> sobre la tabla; al elegir un proveedor se cierra.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-models-servers.png" alt="Pestaña Proveedores de IA después de pulsar Probar conexión: bajo la cabecera del proveedor elegido una línea verde dice que responde, con la versión, la cantidad de modelos y la latencia, y la lista de nombres de modelo"></div>
+    <figcaption>Probar conexión muestra el resultado bajo la cabecera, y el punto y la latencia de la columna se ponen al día con él.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--administrar">Agregar, editar, duplicar y probar un proveedor</h2>
+  <p>Todas las acciones están en la sección <strong>Configuración</strong> del proveedor elegido y en el menú <strong>⋯</strong> de cada fila (también con clic derecho), así que no hace
+  falta elegir un proveedor para actuar sobre él. <strong>Probar conexión</strong> está también en la cabecera.</p>
+  <ul>
+    <li><strong>Agregar proveedor</strong> (arriba de la columna) abre el formulario de alta con los <a href="#ia-modelos--atajos">atajos</a>: los de la <a href="#utilidades-modelos--nube">nube</a>, que solo piden una API key, y <em>Ollama</em>, <em>LM Studio</em>, <em>vLLM</em>… para servidores propios. Al guardar, el proveedor nuevo queda elegido.</li>
+    <li><strong>Editar</strong> abre el formulario del proveedor guardado en un diálogo. El token o la API key y las cabeceras adicionales no se muestran —nunca salen del vault—: dejarlos como están los conserva, y <em>Quitar token</em> / <em>Quitar API key</em> y <em>Reemplazar cabeceras</em> son acciones explícitas.</li>
+    <li><strong>Probar conexión</strong> comprueba el proveedor ahora mismo con su token o key y sus cabeceras guardados, y muestra el resultado bajo la cabecera: versión y modelos, o el error exacto. El punto de estado y la latencia de la columna también se actualizan.</li>
+    <li><strong>Duplicar</strong> abre un formulario nuevo con el tipo, la dirección, la opción de certificado y la ventana de contexto del proveedor, con el nombre «… (copia)». El <strong>token, la API key y las cabeceras no se copian</strong> —la app no puede leerlos de vuelta—, así que escribilos otra vez si el nuevo los necesita. Sirve para registrar la misma máquina con otra dirección, o un segundo proveedor configurado casi igual.</li>
+  </ul>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-models-server-edit.png" alt="Pestaña Proveedores de IA con el diálogo de edición abierto sobre un servidor remoto compatible con OpenAI: una nota sobre el token y las cabeceras guardados, nombre, tipo, dirección, las cabeceras guardadas listadas solo por nombre con un botón Reemplazar cabeceras, el interruptor de certificado autofirmado y la ventana de contexto, y los botones Probar conexión, Cancelar y Guardar"></div>
+    <figcaption>Editar un proveedor guardado desde la pestaña: las cabeceras guardadas aparecen solo por nombre, nunca sus valores.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--eliminar">Eliminar un proveedor</h2>
+  <p><strong>Eliminar</strong> pide confirmación y explica qué hace y qué no:</p>
+  <ul>
+    <li><strong>Quita la conexión de la app</strong>: el proveedor desaparece de la lista y de los selectores de proveedor del chat, y se borran su token o API key y sus cabeceras guardados.</li>
+    <li><strong>No toca el servidor, los modelos ni tu cuenta</strong>: siguen donde estaban. (Borrar un <em>modelo</em> desde su fila es lo que elimina archivos de un servidor; una API key filtrada se revoca en la consola del proveedor.)</li>
+    <li>Las <strong>conversaciones que lo usaban se conservan en el historial</strong>, con todos sus mensajes. Se pueden abrir y <a href="#utilidades-chat-ia--cambiar-proveedor">seguir con otro proveedor</a>: los mensajes anteriores le llegan como contexto. Agregar de nuevo el mismo proveedor no las vuelve a enlazar: para la app es otro.</li>
+  </ul>
+  <p>Después de eliminar queda elegido el siguiente proveedor de la lista.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-models-server-delete.png" alt="Confirmación de Eliminar proveedor: el nombre y el host del proveedor y tres puntos — no se toca el servidor ni sus modelos, las conversaciones que lo usaban quedan en el historial y se pueden seguir con otro proveedor, y agregarlo de nuevo se trata como uno distinto"></div>
+    <figcaption>La confirmación detalla las consecuencias, incluido qué pasa con los chats.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--varios">Varios proveedores, locales, remotos y en la nube</h2>
+  <p>Nada te limita a uno. Un arreglo típico: el Ollama de tu máquina para pruebas rápidas, un LM Studio en la misma máquina, un vLLM u otro Ollama en el
+  servidor con GPU y, en la nube, Anthropic y OpenRouter para lo pesado. Cada uno es su propia fila con su propio estado: uno caído (punto rojo, «sin respuesta») no estorba a los demás, y al elegirlo se ve el
+  error con su motivo y un botón <em>Reintentar</em>. Sin ningún proveedor, la pestaña explica qué es un proveedor y lista los atajos para empezar, los de la nube primero.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-models-servers-empty.png" alt="Pestaña Proveedores de IA sin proveedores: una explicación de qué es un proveedor, un botón Agregar proveedor y los atajos en dos grupos — nube (OpenRouter, OpenAI, Groq, DeepSeek, Mistral, Together, xAI, Google Gemini, Anthropic) y local (Ollama en esta máquina y en otra, LM Studio, vLLM, llama.cpp, otro compatible con OpenAI)"></div>
+    <figcaption>Sin proveedores: qué es un proveedor y los atajos que vas a encontrar en el formulario de alta.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-models-servers-narrow.png" alt="Pestaña Proveedores de IA angosta con el cajón de proveedores abierto sobre la tabla, con los proveedores en sus grupos y el botón Agregar proveedor"></div>
+    <figcaption>En una pestaña angosta la columna de proveedores se abre como un cajón sobre la tabla.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--nube">Proveedores en la nube y API keys</h2>
+  <p>Un proveedor en la nube no necesita servidor ni instalación: elegís su atajo y pegás una <strong>API key</strong>. El formulario de alta agrupa los atajos en
+  <strong>Nube (API key)</strong> —OpenRouter, OpenAI, Groq, DeepSeek, Mistral, Together, xAI, Google Gemini y Anthropic— y <strong>Local / otra máquina</strong>.</p>
+  <ol class="steps">
+    <li>Tocá <strong>Agregar proveedor</strong> y elegí la tarjeta, por ejemplo <em>OpenRouter</em>: completa el nombre, el tipo y la dirección.</li>
+    <li>Tocá <strong>Conseguir una API key</strong>: abre en el navegador la página del proveedor donde se genera la clave (la app no la crea por vos). Copiala.</li>
+    <li>Pegala en <strong>API key</strong> —acá es obligatoria— y tocá <strong>Probar conexión</strong>: lista los modelos que tu clave puede usar.</li>
+    <li>Si querés, elegí el <a href="#utilidades-modelos--modelo-defecto">modelo por defecto</a> de esa lista y <strong>Guardar</strong>. El proveedor aparece enseguida en el selector del chat.</li>
+  </ol>
+  <div class="note"><span class="lbl">Dónde se guarda la clave</span>
+  La API key se guarda <strong>cifrada en el vault</strong>, bajo tu clave maestra, y solo se manda a la dirección de ese proveedor. Una vez guardada <strong>no se vuelve a mostrar nunca</strong> —ni en el formulario,
+  ni en Configuración, ni en la pestaña—: las pantallas solo dicen <em>Guardada, cifrada en el vault</em>. Al editar, dejar el campo vacío conserva la clave guardada; pegá otra para reemplazarla, y <em>Quitar API key</em> la borra.
+  <strong>Duplicar</strong> no la copia.</div>
+  <p>Para un proveedor en la nube el formulario esconde lo que no aplica —la ventana de contexto, la opción de certificado autofirmado y las guías para exponer un servidor— y avisa que
+  lo que le mandes, incluidos el código y las tablas que adjuntes, sale hacia el proveedor y se factura por uso de su lado.</p>
+  <ul>
+    <li><strong>Anthropic</strong> usa su propia API (el tipo <em>Anthropic</em>) y trae un modelo por defecto recomendado, <code>claude-opus-5-5</code>.</li>
+    <li>Los otros ocho hablan la API <em>compatible con OpenAI</em>. También podés llegar a cualquier servicio alojado con la tarjeta <em>Otro compatible con OpenAI</em> y su dirección a mano: si la dirección es de un proveedor alojado conocido, el formulario la trata como nube y pide la clave.</li>
+    <li>Una API alojada lista sus modelos pero no los descarga ni los borra: la sección Modelos es de <a href="#utilidades-modelos--openai">solo lectura</a>.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-providers-form.png" alt="Diálogo Agregar proveedor de IA con la tarjeta de OpenRouter elegida: los atajos en dos grupos (Nube con API key y Local / otra máquina), el nombre, el tipo compatible con OpenAI, la dirección, un aviso de que los datos salen de esta máquina, el campo obligatorio API key con un enlace Conseguir una API key y una nota de que se guarda cifrada, y el campo opcional de modelo por defecto"></div>
+    <figcaption>El formulario de alta con un atajo de la nube: la dirección ya viene puesta y la API key es obligatoria.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--activar">Activar, desactivar y ordenar</h2>
+  <ul>
+    <li><strong>Interruptor</strong> — cada fila tiene uno, y también la cabecera y la sección Configuración. <strong>Desactivado</strong>, un proveedor desaparece de los selectores de IA (el del chat y el de los botones de IA) pero queda guardado con su
+    configuración, su API key y sus conversaciones; su fila se atenúa y dice <em>Desactivado</em>. Encendelo y vuelve. Es la forma de dejar de usar un proveedor un tiempo sin borrarlo, o de evitar que se elija por error una API paga. Un proveedor desactivado tampoco se sondea.</li>
+    <li><strong>Orden</strong> — arrastrá una fila del asa (aparece a la izquierda al pasar el mouse o enfocar la fila) para moverla <strong>dentro de su grupo</strong>. Con el teclado, <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd> sobre la fila, y un lector de pantalla anuncia la posición nueva.
+    El orden es el que usan los selectores de IA y queda guardado. Mientras buscás, el orden está apagado.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-providers-off.png" alt="Pestaña Proveedores de IA con un proveedor desactivado elegido: su fila está atenuada y dice Desactivado, la cabecera muestra el interruptor apagado y una nota bajo las secciones dice que no aparece en los selectores de IA, con un botón Activar"></div>
+    <figcaption>Un proveedor desactivado: fila atenuada, interruptor apagado y una nota con un botón Activar.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--secciones">Modelos, Consumo y Configuración</h2>
+  <p>El proveedor elegido tiene tres secciones bajo su cabecera:</p>
+  <ul>
+    <li><strong>Modelos</strong> — la lista que se describe <a href="#utilidades-modelos--lista">más abajo</a>: descargar y borrar en Ollama, solo lectura en el resto.</li>
+    <li><strong>Consumo</strong> — tokens de entrada y de salida, turnos, conversaciones y velocidad de <em>ese</em> proveedor según el historial de chats de la app, con el gráfico por día y el reparto por modelo.
+    <strong>No se muestra costo</strong>: ningún proveedor le informa a la app un precio por token, y calcularlo sería inventarlo. El gasto real está en la consola del proveedor.</li>
+    <li><strong>Configuración</strong> — un panorama de cómo está armado (tipo, grupo, dirección, si hay una API key o un token guardado —nunca su valor—, cabeceras, certificado, estado) y sus acciones:
+    <em>Editar</em>, <em>Probar conexión</em>, <em>Duplicar</em> y <em>Eliminar</em>, además del interruptor de activo y el <a href="#utilidades-modelos--modelo-defecto">modelo por defecto</a>.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-providers-usage.png" alt="Sección Consumo del proveedor Anthropic: una tarjeta con sus tokens totales, tokens de entrada y salida, turnos, conversaciones y velocidad, una barra por día y una barra por modelo, y una nota que explica que no se muestra costo"></div>
+    <figcaption>El consumo del proveedor elegido, solo el suyo.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-providers-config.png" alt="Sección Configuración del proveedor Anthropic: el interruptor de estado, el panorama de la conexión con tipo, grupo, dirección, una API key guardada y estado, el selector de modelo por defecto y los botones Editar, Probar conexión, Duplicar y Eliminar"></div>
+    <figcaption>Configuración: cómo está armado, con la API key mostrada solo como «guardada».</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--modelo-defecto">Modelo por defecto</h2>
+  <p>Cada proveedor puede tener un <strong>modelo por defecto</strong>: el que usa cuando una conversación o un botón de IA no elige ninguno. Se define en el formulario de alta o edición y en la sección Configuración.
+  Una vez probada la conexión (o leída la lista en la sección Modelos) lo elegís entre los modelos que informó el proveedor; sin lista, o con un modelo que no figura en ella, escribís el nombre.
+  Vacío significa «que elija el proveedor»: el primero que informe, o el recomendado en el caso de Anthropic. El selector de modelo del chat sigue permitiendo elegir otro por conversación.</p>
 
   <h2 id="utilidades-modelos--lista">La lista de modelos</h2>
-  <p>En un servidor Ollama la tabla muestra nombre, familia, <strong>tamaño de parámetros</strong> (7.6B), <strong>cuantización</strong> (Q4_K_M),
-  tamaño en disco y cuándo se modificó. Un clic en el encabezado ordena por nombre, tamaño o fecha; un segundo clic invierte el orden. El buscador
-  filtra por cualquiera de esos campos. En una pestaña angosta se pliegan primero las columnas menos importantes.</p>
+  <p>Para un servidor Ollama la tabla muestra nombre, familia, <strong>tamaño de parámetros</strong> (7.6B), <strong>cuantización</strong> (Q4_K_M),
+  tamaño en disco y cuándo se modificó. Un clic en una cabecera ordena por nombre, tamaño o fecha; un segundo clic invierte el orden. El buscador
+  filtra por cualquiera de esos campos. En una pestaña angosta las columnas menos importantes se pliegan primero.</p>
   <p>Un modelo <strong>cargado en memoria</strong> lleva una insignia <em>En memoria</em> con cuánta VRAM ocupa y cuándo lo va a liberar el
   servidor si nadie lo usa. Esa lista se actualiza sola cada pocos segundos mientras la pestaña está a la vista.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-models.png" alt="Sección Modelos de un Ollama local: el campo para descargar con chips de ejemplo y una tabla de modelos instalados con familia, parámetros, cuantización, tamaño y fecha; el modelo cargado muestra una insignia En memoria"></div>
+    <figcaption>Los modelos de un Ollama local. La insignia verde marca el que está cargado en memoria ahora mismo.</figcaption>
+  </figure>
 
   <h2 id="utilidades-modelos--descargar">Descargar un modelo</h2>
   <ol class="steps">
@@ -1800,13 +2058,13 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <li><strong>Borrar</strong> (ícono del tacho) pide confirmación y elimina los archivos del modelo <strong>del disco del servidor</strong>. El diálogo nombra el servidor y, si es remoto, aclara que es otra máquina y que no se borra nada de la tuya. Para volver a usar el modelo hay que descargarlo de nuevo.</li>
   </ul>
 
-  <h2 id="utilidades-modelos--openai">Servidores que no son Ollama</h2>
-  <p>Un servidor <em>compatible con OpenAI</em> (LM Studio, vLLM, el servidor de llama.cpp…) solo sabe <strong>listar</strong> sus modelos:
-  su API no tiene un endpoint para descargar ni borrar. La pestaña muestra la lista en modo <strong>solo lectura</strong>, con una nota, y esconde el campo
-  de descarga y los botones en vez de ofrecer acciones que van a fallar. Administrá esos modelos con la herramienta del propio servidor.</p>
+  <h2 id="utilidades-modelos--openai">Proveedores que no son Ollama</h2>
+  <p>Un servidor <em>compatible con OpenAI</em> (LM Studio, vLLM, el servidor de llama.cpp…), la API de <em>Anthropic</em> y cualquier otra API alojada solo saben <strong>listar</strong> sus modelos:
+  no tienen un endpoint para descargarlos ni borrarlos. La sección muestra la lista en modo <strong>solo lectura</strong>, con una nota, y esconde el campo de
+  descarga y los botones en vez de ofrecer acciones que van a fallar. Administrá esos modelos con la herramienta del propio servidor o en la consola del proveedor.</p>
 
   <figure>
-    <div class="shot"><img src="../docs/screenshots/es/utilities-models-readonly.png" alt="Pestaña Modelos sobre un servidor compatible con OpenAI: una nota de Solo lectura y una lista simple con tres nombres de modelo"></div>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-models-readonly.png" alt="Sección Modelos de un servidor compatible con OpenAI: una nota de Solo lectura y una lista simple con tres nombres de modelo"></div>
     <figcaption>Un servidor compatible con OpenAI: lista de solo lectura.</figcaption>
   </figure>
 
@@ -1818,9 +2076,9 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 
   <h2 id="utilidades-modelos--ejemplo">Ejemplo: traer un modelo de código a la máquina con GPU</h2>
   <ol class="steps">
-    <li>Abrí <strong>Utilidades → Modelos</strong> y elegí <em>Ollama del servidor GPU</em> en el selector.</li>
-    <li>Pulsá el chip <code>qwen2.5-coder:7b</code> y después <strong>Descargar</strong>. Mirá cómo la barra llega al 100 %.</li>
-    <li>Abrí <strong>Utilidades → Chat de IA</strong> y elegí ese servidor como proveedor: el modelo nuevo está en el selector de modelo, listo para usar.</li>
+    <li>Abrí <strong>Utilidades → Proveedores de IA</strong> y elegí <em>Ollama del servidor GPU</em> en la columna de proveedores.</li>
+    <li>En <strong>Modelos</strong>, tocá el chip <code>qwen2.5-coder:7b</code> y después <strong>Descargar</strong>. Mirá la barra llegar al 100 %.</li>
+    <li>Abrí <strong>Utilidades → Chat de IA</strong> y elegí ese proveedor: el modelo nuevo está en el selector de modelo, listo para usar. Si una conversación quedó sin su proveedor, <a href="#utilidades-chat-ia--cambiar-proveedor">seguila con este</a>.</li>
   </ol>
 </article>
 
@@ -1868,6 +2126,10 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td>Notas</td><td>Consultar tu base de conocimiento, y —con permiso explícito— dejar asentado lo que averiguó</td></tr>
   </table></div>
 
+  <h2 id="ia-chat--adjuntos">Adjuntar archivos</h2>
+  <p>El botón <strong>Adjuntar</strong>, arrastrar sobre el chat o <kbd>⌘V</kbd> suman imágenes, PDF y archivos de texto o código a tu mensaje,
+  con un aviso si el modelo elegido no puede leer alguno. Ver <a href="#ia-adjuntos">Adjuntos</a>.</p>
+
   <h2 id="ia-chat--historial">El historial de conversaciones</h2>
   <p>La solapa <strong>Historial</strong> del panel lista todas las conversaciones, agrupadas por módulo o
   por agente, con un buscador. Al abrir una se <strong>retoma en su propio contexto</strong> —una
@@ -1886,31 +2148,128 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   mostrarlo.</p>
 </article>
 
-<article class="topic" id="ia-modelos" data-title="Servidores de modelos: Ollama y compatibles con OpenAI">
-  <h1>Servidores de modelos: Ollama y compatibles con OpenAI</h1>
-  <p class="lead">Usá un modelo que corre en tu máquina o en tu red en vez de un CLI. Lo agregás una vez y aparece
+<article class="topic" id="ia-adjuntos" data-title="Adjuntos: imágenes, PDF y archivos">
+  <h1>Adjuntos: imágenes, PDF y archivos</h1>
+  <p class="lead">Mandale al agente una captura, un informe en PDF o un archivo de código junto con tu pregunta —en el
+  <a href="#utilidades-chat-ia">Chat de IA</a>, el panel lateral y los chats de Git, bases de datos y SSH— y enterate antes de
+  enviar si el modelo que elegiste puede leerlo.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ai-attach-chips.png" alt="Caja del chat con tres fichas de adjunto sobre el texto: una captura con su miniatura, un PDF y un archivo de código Go, cada una con su nombre, tamaño y botón de quitar; el botón Adjuntar en la barra"></div>
+    <figcaption>Cada archivo es una ficha sobre la caja: miniatura si es una imagen, ícono si es PDF o texto, nombre, tamaño y una ×.</figcaption>
+  </figure>
+
+  <h2 id="ia-adjuntos--adjuntar">Tres formas de adjuntar</h2>
+  <ul>
+    <li><strong>El botón <em>Adjuntar</em></strong> (el clip, junto al selector de modelo) abre el selector de archivos del sistema. Se pueden elegir varios a la vez.</li>
+    <li><strong>Arrastrarlos sobre el chat.</strong> Mientras arrastrás aparece un velo punteado que dice <em>Soltá los archivos para adjuntarlos</em>; con <kbd>Esc</kbd> se cancela y no se adjunta nada.</li>
+    <li><strong>Pegar</strong> con <kbd>⌘V</kbd> / <kbd>Ctrl+V</kbd>: una captura del portapapeles, o archivos copiados en el Finder o el Explorador. Funciona con el cursor en cualquier parte del chat, no solo en la caja.</li>
+  </ul>
+  <p>Un mensaje puede ser <strong>solo archivos</strong>: sin texto, se le pide al agente que revise lo adjunto.
+  Todo se alcanza con el teclado: el botón, cada ficha (<kbd>Supr</kbd> sobre una ficha enfocada la quita) y la zona de soltado se anuncia a los lectores de pantalla.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ai-attach-drop.png" alt="El chat cubierto por un velo punteado con un ícono de subida y el texto Soltá los archivos para adjuntarlos, los tipos admitidos y los topes de tamaño"></div>
+    <figcaption>Mientras arrastrás un archivo sobre el chat, el velo dice dónde soltarlo y cuáles son los topes.</figcaption>
+  </figure>
+
+  <h2 id="ia-adjuntos--fichas">Lo que te dicen las fichas</h2>
+  <p>Cada ficha muestra su estado, y un mensaje que no puede salir dice por qué <em>junto a la caja</em>, no solo en un tooltip:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Ficha</th><th>Significa</th><th>¿Se puede enviar?</th></tr>
+    <tr><td>Indicador sobre la miniatura</td><td>Se está subiendo a la carpeta de adjuntos de la app</td><td>Esperá un momento: <em>Enviar</em> queda apagado mientras algo se sube</td></tr>
+    <tr><td>Neutra, con su tamaño</td><td>Lista; el modelo elegido la lee</td><td>Sí</td></tr>
+    <tr><td>Ámbar — <em>Puede que no lo lea</em></td><td>El proveedor no informa qué admite su modelo. El mensaje sale igual y contesta el proveedor</td><td>Sí</td></tr>
+    <tr><td>Roja — <em>Sin visión</em> / <em>PDF no soportado</em></td><td>El modelo no puede leerla. El tooltip explica por qué y qué hacer (<em>elegí un modelo con visión</em>, <em>los PDF solo los lee Anthropic o Claude Code</em>)</td><td>No, hasta quitarla o cambiar de modelo</td></tr>
+    <tr><td>Roja — <em>No se pudo adjuntar</em></td><td>Demasiado grande, tipo no admitido o rechazada por la app; el motivo se escribe debajo de las fichas</td><td>No se envía ese archivo; el resto sí</td></tr>
+  </table></div>
+  <p>Las fichas se reevalúan cuando <strong>cambiás el agente o el modelo</strong>: pasar a un modelo con visión
+  limpia una ficha roja al instante, sin volver a adjuntar.</p>
+
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ai-attach-warn.png" alt="Caja del chat con un servidor compatible con OpenAI: la ficha de la imagen en ámbar con Puede que no lo lea, la del PDF en rojo con PDF no soportado, un archivo Go neutro, y debajo el motivo por el que Enviar está apagado"></div>
+    <figcaption>Con un servidor compatible con OpenAI: la imagen es un quizás (ámbar) y el PDF no se puede leer (rojo, Enviar apagado).</figcaption>
+  </figure>
+
+  <h2 id="ia-adjuntos--proveedores">Qué lee cada proveedor</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Proveedor</th><th>Imágenes</th><th>PDF</th><th>Texto y código</th></tr>
+    <tr><td>Ollama</td><td>Modelos con visión (el servidor lo informa)</td><td>No</td><td>Sí</td></tr>
+    <tr><td>Anthropic (API)</td><td>Según el modelo</td><td>Sí, según el modelo</td><td>Sí</td></tr>
+    <tr><td>Compatible con OpenAI: OpenRouter</td><td>Según el modelo (lo informa)</td><td>No</td><td>Sí</td></tr>
+    <tr><td>Compatible con OpenAI: cualquier otro</td><td>Supuestas, sin confirmar</td><td>No</td><td>Sí</td></tr>
+    <tr><td>Claude Code</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
+    <tr><td>Codex CLI</td><td>Sí</td><td>No</td><td>Sí</td></tr>
+    <tr><td>Antigravity CLI</td><td>Supuestas, sin verificar</td><td>No</td><td>Sí</td></tr>
+  </table></div>
+  <p><strong>El texto y el código los lee cualquiera</strong>: su contenido se pega en el mensaje, dentro de un bloque con el
+  lenguaje del archivo, también en los CLIs. <strong>Los PDF no se convierten a texto</strong>: quien no puede leerlos
+  no los recibe, y la ficha te lo dice antes de enviar. El tipo lo decide el <em>contenido</em> del archivo, no su extensión.</p>
+
+  <h2 id="ia-adjuntos--limites">Topes</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Qué</th><th>Tope</th></tr>
+    <tr><td>Imagen (PNG, JPG, GIF, WebP)</td><td>5 MB cada una</td></tr>
+    <tr><td>PDF</td><td>24 MB cada uno</td></tr>
+    <tr><td>Texto o código (UTF-8)</td><td>512 KB cada uno</td></tr>
+    <tr><td>Archivos por mensaje</td><td>10</td></tr>
+  </table></div>
+  <p>Se comprueban <strong>antes de subir</strong>, con un mensaje que nombra el archivo, y otra vez al enviar. Se rechazan los
+  binarios que la app no conoce (un <code>.exe</code>, un zip), las imágenes BMP o ICO y el texto que no es UTF-8.</p>
+
+  <h2 id="ia-adjuntos--historial">Qué se guarda y qué ve el modelo después</h2>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/ai-attach-sent.png" alt="Una conversación retomada: tus mensajes con sus fichas de adjunto arriba —una captura y un PDF, y luego un archivo Go sin texto— y las respuestas del agente"></div>
+    <figcaption>Los mensajes enviados conservan sus fichas; al retomar un chat muestran un ícono en vez de la miniatura.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>El historial guarda solo el nombre, el tipo y el tamaño</strong> de cada archivo, cifrados como el resto del mensaje. Nunca el contenido ni la ruta.</li>
+    <li><strong>Las imágenes y los PDF no se reenvían en los turnos siguientes.</strong> El modelo los ve en el mensaje donde los adjuntaste; en los que siguen recibe solo su nombre, porque reenviar megabytes en cada turno costaría tokens una y otra vez y a las 24 horas el archivo ya no existe. El tooltip de la ficha lo dice. Si necesitás que vuelva a mirarlo, adjuntalo de nuevo.</li>
+    <li><strong>El texto pegado se queda en el contexto</strong>: es parte de lo que dijiste.</li>
+  </ul>
+
+  <div class="note"><span class="lbl">Privacidad</span><p>La app solo lee archivos de <strong>su propia carpeta de adjuntos</strong>
+  (dentro de su directorio de datos, nunca dentro de tu repositorio): los que guardó cuando los adjuntaste. Nunca lee una ruta
+  cualquiera de tu equipo, y se borran a las 24 horas. Lo que sale de tu computadora es lo que adjuntás al proveedor que elegiste:
+  con un <a href="#ia-modelos">servidor remoto</a> o una API en la nube, eso incluye el archivo.</p></div>
+
+  <h2 id="ia-adjuntos--ejemplo">Ejemplo: preguntar por una captura y un informe</h2>
+  <ol class="steps">
+    <li>Abrí el chat con un proveedor que vea imágenes y PDF (Claude Code, o un proveedor Anthropic).</li>
+    <li>Arrastrá la captura del error y el PDF sobre el chat; los dos aparecen como fichas.</li>
+    <li>Escribí <code>¿Por qué falla el login? Te paso también el informe</code> y apretá <kbd>Enter</kbd>.</li>
+    <li>Más tarde adjuntás el archivo <code>.go</code> y lo mandás sin texto: el agente lo revisa, ya con la conversación anterior.</li>
+  </ol>
+</article>
+
+<article class="topic" id="ia-modelos" data-title="Proveedores de IA: servidores propios y APIs en la nube">
+  <h1>Proveedores de IA: servidores propios y APIs en la nube</h1>
+  <p class="lead">Usá un modelo que corre en tu máquina, en tu red o en la nube en vez de un CLI. Lo agregás una vez y aparece
   como un agente más en el chat y en todos los botones de IA.</p>
 
   <figure>
-    <div class="shot"><img src="../docs/screenshots/es/model-servers.png" alt="Configuración, sección IA: la lista de servidores de modelos con un Ollama local, un vLLM remoto con token y cabeceras y un servidor de la red local con certificado sin verificar, cada uno con su punto de estado y su latencia, el resultado de la prueba con la versión y los modelos, y el botón Agregar servidor"></div>
-    <figcaption>Configuración → IA → Servidores de modelos: nombre, tipo, dirección, token, cabeceras, certificado, si responde y un botón para probarlo.</figcaption>
+    <div class="shot"><img src="../docs/screenshots/es/model-servers.png" alt="Configuración, sección IA: el resumen de proveedores de IA con la cuenta por grupo (Locales, Remotos, Nube), una fila compacta por proveedor con su punto de estado y un botón de editar, el botón para administrarlos en Utilidades y el botón Agregar proveedor"></div>
+    <figcaption>Configuración → IA → Proveedores de IA: un resumen, con el camino a la administración completa en Utilidades y el botón de agregar.</figcaption>
   </figure>
 
-  <h2 id="ia-modelos--agregar">Agregar un servidor</h2>
+  <h2 id="ia-modelos--agregar">Agregar un proveedor</h2>
   <ol class="steps">
-    <li>Abrí <strong>Configuración → IA</strong> y, en <strong>Servidores de modelos</strong>, tocá <strong>Agregar servidor</strong> (o, desde el chat, elegí <em>Agregar servidor de modelos…</em> en el selector de proveedor: <a href="#ia-modelos--desde-el-chat">mismo formulario, en un diálogo</a>).</li>
-    <li>Elegí un <a href="#ia-modelos--atajos">atajo</a> arriba del formulario (<em>Ollama en esta máquina</em>, <em>LM Studio</em>…) y completa nombre, tipo y dirección. O completalos vos:</li>
-    <li>Elegí el <strong>tipo</strong>: <em>Ollama</em> para la API propia de Ollama, o <em>Compatible con OpenAI</em> para LM Studio, vLLM, el servidor de llama.cpp y cualquier otro que hable <code>/v1/chat/completions</code>.</li>
-    <li>Escribí la <strong>dirección</strong>: <code>http://localhost:11434</code> para el Ollama local, <code>http://localhost:1234/v1</code> para LM Studio, o la URL de otra máquina, como <code>https://gpu.miempresa.com/v1</code>.</li>
-    <li>Tocá <strong>Probar conexión</strong>: muestra la versión del servidor y cuántos modelos lista, o el error exacto. Después <strong>Guardar</strong>.</li>
+    <li>Abrí <strong>Configuración → IA</strong> y, en <strong>Proveedores de IA</strong>, tocá <strong>Agregar proveedor</strong> (o, desde el chat, elegí <em>Agregar proveedor de IA…</em> en el selector de proveedor: <a href="#ia-modelos--desde-el-chat">mismo formulario, en un diálogo</a>; o usá <a href="#utilidades-modelos">Utilidades → Proveedores de IA</a>).</li>
+    <li>Elegí un <a href="#ia-modelos--atajos">atajo</a> arriba del formulario —uno de la <a href="#ia-modelos--nube">nube</a> como <em>OpenRouter</em> o <em>Anthropic</em>, o <em>Ollama en esta máquina</em>, <em>LM Studio</em>…— y completa nombre, tipo y dirección. O completalos vos:</li>
+    <li>Elegí el <strong>tipo</strong>: <em>Ollama</em> para la API propia de Ollama, <em>Compatible con OpenAI</em> para LM Studio, vLLM, el servidor de llama.cpp, OpenRouter, OpenAI y cualquier otro que hable <code>/v1/chat/completions</code>, o <em>Anthropic</em> para la API de Anthropic.</li>
+    <li>Escribí la <strong>dirección</strong>: <code>http://localhost:11434</code> para el Ollama local, <code>http://localhost:1234/v1</code> para LM Studio, o la URL de otra máquina, como <code>https://gpu.miempresa.com/v1</code>. Un atajo de la nube ya la trae.</li>
+    <li>Para una API alojada, pegá la <strong>API key</strong> (ahí es obligatoria). Tocá <strong>Probar conexión</strong>: muestra la versión del servidor y cuántos modelos lista, o el error exacto. Después <strong>Guardar</strong>.</li>
   </ol>
   <div class="note tip"><span class="lbl">Un clic para Ollama</span>
   Si hay un Ollama respondiendo en <code>localhost:11434</code>, Configuración ofrece <strong>Ollama local detectado — Agregar</strong>
   y lo guarda por vos. La sugerencia desaparece cuando lo agregás o la descartás.</div>
 
+  <div class="note"><span class="lbl">Varios proveedores</span>
+  Podés tener todos los que quieras, locales, remotos y en la nube. <a href="#utilidades-modelos--servidor">Utilidades → Proveedores de IA</a> los lista en una sola
+  columna, en tres grupos, con su estado, y permite activar, ordenar, editar, probar, duplicar y eliminar cada uno desde ahí; <em>Configuración → IA</em> muestra un resumen y tiene un enlace a esa pestaña.</div>
 
-  <h2 id="ia-modelos--atajos">Atajos: empezar desde un modelo</h2>
-  <p>Al agregar un servidor, arriba del formulario hay seis tarjetas. Elegir una completa <strong>nombre, tipo y dirección</strong>; después podés editar todo.
+  <h2 id="ia-modelos--atajos">Atajos: empezar desde un proveedor</h2>
+  <p>Al agregar un proveedor, arriba del formulario están los atajos en dos grupos: <strong>Nube (API key)</strong> y <strong>Local / otra máquina</strong>. Elegir uno completa <strong>nombre, tipo y dirección</strong>; después podés editar todo.
   El formulario no recuerda nada entre aperturas: cada vez arranca sin ninguna tarjeta elegida.</p>
   <div class="tablewrap"><table>
     <thead><tr><th>Tarjeta</th><th>Tipo</th><th>Dirección</th></tr></thead>
@@ -1921,6 +2280,15 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
       <tr><td><strong>vLLM</strong></td><td>Compatible con OpenAI</td><td><code>http://&lt;IP&gt;:&lt;puerto&gt;/v1</code> — IP o nombre y puerto (8000 por defecto)</td></tr>
       <tr><td><strong>llama.cpp server</strong></td><td>Compatible con OpenAI</td><td><code>http://localhost:8080/v1</code></td></tr>
       <tr><td><strong>Otro compatible con OpenAI</strong></td><td>Compatible con OpenAI</td><td>vacía: la escribís vos</td></tr>
+      <tr><td><strong>OpenRouter</strong></td><td>Compatible con OpenAI</td><td><code>https://openrouter.ai/api/v1</code> — API key</td></tr>
+      <tr><td><strong>OpenAI</strong></td><td>Compatible con OpenAI</td><td><code>https://api.openai.com/v1</code> — API key</td></tr>
+      <tr><td><strong>Groq</strong></td><td>Compatible con OpenAI</td><td><code>https://api.groq.com/openai/v1</code> — API key</td></tr>
+      <tr><td><strong>DeepSeek</strong></td><td>Compatible con OpenAI</td><td><code>https://api.deepseek.com/v1</code> — API key</td></tr>
+      <tr><td><strong>Mistral</strong></td><td>Compatible con OpenAI</td><td><code>https://api.mistral.ai/v1</code> — API key</td></tr>
+      <tr><td><strong>Together</strong></td><td>Compatible con OpenAI</td><td><code>https://api.together.xyz/v1</code> — API key</td></tr>
+      <tr><td><strong>xAI</strong></td><td>Compatible con OpenAI</td><td><code>https://api.x.ai/v1</code> — API key</td></tr>
+      <tr><td><strong>Google Gemini</strong></td><td>Compatible con OpenAI</td><td><code>https://generativelanguage.googleapis.com/v1beta/openai</code> — API key</td></tr>
+      <tr><td><strong>Anthropic</strong></td><td>Anthropic</td><td><code>https://api.anthropic.com</code> — API key; modelo por defecto <code>claude-opus-5-5</code></td></tr>
     </tbody>
   </table></div>
   <ul>
@@ -1930,9 +2298,15 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <li>El <strong>nombre</strong> se completa solo (<em>Ollama · 192.168.1.50</em>) hasta que escribas el tuyo.</li>
   </ul>
   <figure>
-    <div class="shot"><img src="../docs/screenshots/es/model-servers-presets.png" alt="El formulario de Agregar servidor con las seis tarjetas de atajo arriba: Ollama en esta máquina, Ollama en otra máquina, LM Studio, vLLM, llama.cpp server y Otro compatible con OpenAI"></div>
+    <div class="shot"><img src="../docs/screenshots/es/model-servers-presets.png" alt="El formulario de Agregar proveedor con las tarjetas de atajo arriba en dos grupos: Nube (OpenRouter, OpenAI, Groq, DeepSeek, Mistral, Together, xAI, Google Gemini, Anthropic) y Local / otra máquina (Ollama en esta máquina y en otra, LM Studio, vLLM, llama.cpp server, Otro compatible con OpenAI)"></div>
     <figcaption>Las tarjetas de atajo, arriba del formulario de alta.</figcaption>
   </figure>
+
+  <h2 id="ia-modelos--nube">APIs alojadas (nube)</h2>
+  <p>Una API alojada —OpenRouter, OpenAI, Groq, DeepSeek, Mistral, Together, xAI, Google Gemini, Anthropic— funciona como cualquier otro proveedor, con dos diferencias: hace falta
+  una <strong>API key</strong> del proveedor (el formulario tiene un enlace <em>Conseguir una API key</em> a la página donde se genera), y lo que le mandás viaja al proveedor y se factura por uso de su lado.
+  La clave se guarda <strong>cifrada en el vault</strong> y no se vuelve a mostrar. El paso a paso completo —pasos, dónde vive la clave, modelo por defecto, activar y ordenar— está en
+  <a href="#utilidades-modelos--nube">Utilidades → Proveedores de IA</a>.</p>
 
   <h2 id="ia-modelos--exponer-ollama">Cómo exponer Ollama en la otra máquina</h2>
   <p>Con la tarjeta <em>Ollama en otra máquina</em> el formulario muestra esta guía <strong>ya abierta</strong>; con cualquier otro Ollama cuya dirección no sea local aparece plegada, a un clic.
@@ -1960,11 +2334,11 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 
   <h2 id="ia-modelos--desde-el-chat">Desde el chat, sin instalar nada</h2>
   <p>Un Ollama <strong>no se instala como un CLI</strong>: se usa por su dirección, esté en tu máquina o en otra de tu red. Por eso el selector de proveedor del
-  <a href="#utilidades-chat-ia">Chat de IA</a> (y el del panel lateral) termina con <strong>Agregar servidor de modelos (Ollama / OpenAI)…</strong>: abre el mismo
+  <a href="#utilidades-chat-ia">Chat de IA</a> (y el del panel lateral) termina con <strong>Agregar proveedor de IA…</strong>: abre el mismo
   formulario de Configuración en un diálogo y, al guardar, deja elegido el servidor nuevo. Si todavía no hay ningún servidor, el chat vacío lo propone con un botón
   («¿Tenés Ollama en otra máquina? Agregalo como servidor»), y en Configuración → IA la lista de <em>Agentes de código</em> te remite a esta sección.</p>
   <figure>
-    <div class="shot"><img src="../docs/screenshots/es/model-servers-add-dialog.png" alt="Diálogo Agregar servidor de modelos sobre el Chat de IA, con un Ollama en 192.168.1.50 cuya prueba falló: el consejo sobre OLLAMA_HOST y el botón Guardar igual"></div>
+    <div class="shot"><img src="../docs/screenshots/es/model-servers-add-dialog.png" alt="Diálogo Agregar proveedor de IA sobre el Chat de IA, con un Ollama en 192.168.1.50 cuya prueba falló: el consejo sobre OLLAMA_HOST y el botón Guardar igual"></div>
     <figcaption>El alta desde el chat. Si la prueba falla, el botón pasa a decir <em>Guardar igual</em>.</figcaption>
   </figure>
 
@@ -1986,7 +2360,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   Por eso el formulario del servidor tiene un campo <strong>Ventana de contexto</strong>, con atajos de 4k a 64k tokens y <em>Del servidor</em> (no pedir nada). Un servidor Ollama <strong>nuevo</strong> arranca en <strong>16 384</strong>;
   la app lo manda como <code>num_ctx</code> en cada conversación.</p>
   <ul>
-    <li><strong>Más contexto cuesta memoria.</strong> El modelo usa más RAM o VRAM al cargar y contesta más lento: subilo solo si lo necesitás. El límite propio del modelo se ve en el panel de detalle de <a href="#utilidades-modelos">Utilidades → Modelos</a>.</li>
+    <li><strong>Más contexto cuesta memoria.</strong> El modelo usa más RAM o VRAM al cargar y contesta más lento: subilo solo si lo necesitás. El límite propio del modelo se ve en el panel de detalle de <a href="#utilidades-modelos">Utilidades → Proveedores de IA</a>.</li>
     <li><strong>El chat te avisa.</strong> Si el prompt (estimado en unos 4 caracteres por token) no entra en la ventana configurada, aparece una línea en cursiva <strong>una vez por conversación</strong> que sugiere subirla. No bloquea ni recorta nada.</li>
     <li><strong>Los servidores compatibles con OpenAI no tienen el campo.</strong> LM Studio, vLLM y llama.cpp fijan la ventana al cargar el modelo y su API no deja pedirla por conversación: se cambia en el propio servidor.</li>
     <li>Los servidores que ya tenías quedan en <em>Del servidor</em>.</li>
@@ -2014,8 +2388,8 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <a href="#ia-cerebro">cerebro</a>. Un modelo que no admite herramientas sigue funcionando como chat simple, y el chat te lo avisa.</p>
 
   <h2 id="ia-modelos--consumo">Consumo</h2>
-  <p>El panel de consumo (el <strong>botón del gráfico</strong> en la cabecera del chat) tiene una sección <strong>Servidores de modelos</strong>
-  debajo de los CLIs: una tarjeta por servidor con su insignia <em>local</em> o <em>remoto</em>, los tokens de entrada y de salida, los turnos,
+  <p>El panel de consumo (el <strong>botón del gráfico</strong> en la cabecera del chat) tiene una sección <strong>Proveedores de IA</strong>
+  debajo de los CLIs: una tarjeta por proveedor con su insignia <em>local</em>, <em>remoto</em> o <em>nube</em>, los tokens de entrada y de salida, los turnos,
   las conversaciones, una fila por <strong>modelo</strong> con su parte del total, una <strong>barra por día</strong> de la ventana (pasá el
   mouse por una barra para ver los tokens y turnos de ese día), la <strong>velocidad media en tokens por segundo</strong> y cuándo se usó por
   última vez. Un servidor que eliminaste sigue apareciendo, como <em>Servidor eliminado</em>, mientras tenga conversaciones dentro de la ventana.</p>
@@ -2083,7 +2457,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td>Gris</td><td>Comprobando, o todavía sin comprobar.</td></tr>
   </table></div>
   <p>La app le pregunta al servidor al elegirlo y después <strong>cada 60 segundos, solo mientras ese chat está a la vista</strong>; con la ventana oculta
-  o sin foco deja de preguntar, y a un CLI no se lo consulta nunca. <strong>Configuración → IA → Servidores de modelos</strong> muestra el estado de cada uno al abrirse, y
+  o sin foco deja de preguntar, y a un CLI no se lo consulta nunca. <strong>Configuración → IA → Proveedores de IA</strong> muestra el estado de cada uno al abrirse, y
   <strong>Probar</strong> ahí actualiza el punto en todos lados.</p>
   <figure>
     <div class="shot"><img src="../docs/screenshots/es/ai-model-offline.png" alt="Chat de IA con el servidor Ollama local caído: una insignia roja de estado en la cabecera y, sobre la caja de mensaje, un aviso con el error de conexión y un botón Reintentar"></div>
@@ -2094,12 +2468,12 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   Antes de cada envío la app comprueba el servidor, y si la conexión se corta antes de la primera palabra reintenta una vez.</p>
 
   <h2 id="ia-modelos--administrar">Administrar los modelos de un servidor</h2>
-  <p>Para ver qué modelos tiene un servidor, descargar nuevos o borrar los que no usás, abrí <strong>Utilidades → Modelos</strong>: trabaja con
-  estos mismos servidores, locales o remotos. Mirá <a href="#utilidades-modelos">Modelos</a>. El selector de modelo de un chat abierto se actualiza solo cuando bajás o borrás un modelo ahí.</p>
+  <p>Para ver qué modelos tiene un servidor, descargar nuevos o borrar los que no usás, abrí <strong>Utilidades → Proveedores de IA</strong>: trabaja con
+  estos mismos servidores, locales o remotos. Mirá <a href="#utilidades-modelos">Proveedores de IA</a>. El selector de modelo de un chat abierto se actualiza solo cuando bajás o borrás un modelo ahí.</p>
 
   <h2 id="ia-modelos--borrar">Borrar un servidor</h2>
-  <p>El ícono del tacho pide confirmación, saca el servidor de la lista y borra su token guardado. El servidor en sí
-  no se toca, y las conversaciones que ya tuviste quedan en el historial.</p>
+  <p>El ícono del tacho pide confirmación, saca el proveedor de la lista y borra su token o API key guardados. El servidor en sí
+  no se toca, y las conversaciones que ya tuviste quedan en el historial: se pueden abrir y <a href="#utilidades-chat-ia--cambiar-proveedor">seguir con otro proveedor</a>.</p>
 </article>
 
 <article class="topic" id="ia-agente-local" data-title="Agente de código local: archivos y comandos">
@@ -2539,7 +2913,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <tr><td><kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd></td><td>Abrir el chat sobre lo que estés mirando</td></tr>
     <tr><td><kbd>⌘N</kbd> / <kbd>Ctrl+N</kbd></td><td>En la pestaña Chat de IA: empezar una conversación nueva</td></tr>
     <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Guardar la pestaña activa (consulta, nota, archivo, petición)</td></tr>
-    <tr><td><kbd>⌘V</kbd></td><td>Pegar una imagen dentro de una nota o del chat</td></tr>
+    <tr><td><kbd>⌘V</kbd></td><td>Pegar una imagen dentro de una nota, o una imagen o un archivo en el chat (<a href="#ia-adjuntos">adjuntos</a>)</td></tr>
     <tr><td><kbd>Ctrl+Espacio</kbd></td><td>Forzar el autocompletado, incluso donde no se abre solo</td></tr>
     <tr><td><kbd>Tab</kbd></td><td>Aceptar la sugerencia en gris, o saltar al hueco siguiente de un atajo</td></tr>
     <tr><td><kbd>F5</kbd></td><td>Refrescar el catálogo de la conexión activa</td></tr>

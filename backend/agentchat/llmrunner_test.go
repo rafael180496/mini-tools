@@ -426,3 +426,95 @@ func TestLLMDoneReportsGenerationTime(t *testing.T) {
 	}
 	waitIdle(t, m, "s1")
 }
+
+// defaultLLM es un fakeLLM que sabe qué modelo usar cuando el turno no elige
+// ninguno (lo que hace el cliente de Anthropic, o el que App arma con el
+// defaultModel del proveedor).
+type defaultLLM struct {
+	fakeLLM
+	def string
+}
+
+func (d *defaultLLM) DefaultModel() string { return d.def }
+
+func TestLLMUsesProviderDefaultModel(t *testing.T) {
+	// Turno sin modelo: manda el predeterminado del proveedor, no el primero de
+	// la lista.
+	f := &defaultLLM{fakeLLM: fakeLLM{models: []string{"primero", "otro"}, reply: "ok"}, def: "claude-opus-5-5"}
+	col := newCollector()
+	m := NewManager(col.emit)
+	if err := m.Send(Turn{SessionID: "s1", AgentID: "llm:abc", Prompt: "hola", LLM: f}); err != nil {
+		t.Fatal(err)
+	}
+	evs := col.wait(t)
+	if evs[0].Kind != KindStart || evs[0].Model != "claude-opus-5-5" || f.requests[0].Model != "claude-opus-5-5" {
+		t.Fatalf("start = %+v, request = %q", evs[0], f.requests[0].Model)
+	}
+	waitIdle(t, m, "s1")
+
+	// El modelo elegido en el turno gana al predeterminado.
+	if err := m.Send(Turn{SessionID: "s1", AgentID: "llm:abc", Prompt: "otra", Model: "otro", LLM: f}); err != nil {
+		t.Fatal(err)
+	}
+	col.wait(t)
+	if f.requests[1].Model != "otro" {
+		t.Errorf("el turno manda: %q", f.requests[1].Model)
+	}
+	waitIdle(t, m, "s1")
+
+	// Sin predeterminado (""), vale el primero que liste el servidor.
+	f2 := &defaultLLM{fakeLLM: fakeLLM{models: []string{"primero", "otro"}, reply: "ok"}}
+	if err := m.Send(Turn{SessionID: "s2", AgentID: "llm:abc", Prompt: "hola", LLM: f2}); err != nil {
+		t.Fatal(err)
+	}
+	col.wait(t)
+	if f2.requests[0].Model != "primero" {
+		t.Errorf("sin predeterminado: %q", f2.requests[0].Model)
+	}
+	waitIdle(t, m, "s2")
+}
+
+func TestLLMDoneReportsCacheTokens(t *testing.T) {
+	f := &fakeLLM{models: []string{"m"}, reply: "hola", usage: llm.Usage{Input: 135, Output: 42, CacheRead: 100, CacheWrite: 10, Thinking: 30}}
+	col := newCollector()
+	m := NewManager(col.emit)
+	if err := m.Send(Turn{SessionID: "s1", AgentID: "llm:abc", Prompt: "hola", LLM: f}); err != nil {
+		t.Fatal(err)
+	}
+	evs := col.wait(t)
+	u := evs[len(evs)-1].Usage
+	if u == nil || u.Input != 135 || u.CacheRead != 100 || u.CacheWrite != 10 || u.Thinking != 30 || u.Total != 177 {
+		t.Fatalf("usage = %+v", u)
+	}
+	waitIdle(t, m, "s1")
+}
+
+// El contenido original del asistente (Message.Raw) vuelve intacto en la vuelta
+// siguiente del bucle de herramientas, y el recorte del historial no lo toca
+// dentro del turno.
+func TestLLMToolLoopCarriesRawBack(t *testing.T) {
+	type opaque struct{ sig string }
+	raw := opaque{sig: "firma"}
+	f := &scriptLLM{steps: []func(llm.ChatRequest, func(llm.Delta)) (llm.ChatResult, error){
+		func(req llm.ChatRequest, on func(llm.Delta)) (llm.ChatResult, error) {
+			return llm.ChatResult{Message: llm.Message{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{call("c1", "read_file", map[string]any{"path": "a"})}, Raw: raw}, Model: req.Model}, nil
+		},
+		say("listo", 1, 1),
+	}}
+	col := newCollector()
+	m := NewManager(col.emit)
+	runTurn(t, m, col, Turn{SessionID: "s", AgentID: "llm:x", Prompt: "leé", LLM: f, Tools: toolDefs,
+		RunTool: func(context.Context, string, map[string]any) (string, error) { return "ok", nil }})
+	if len(f.requests) != 2 {
+		t.Fatalf("vueltas = %d", len(f.requests))
+	}
+	var found bool
+	for _, msg := range f.requests[1].Messages {
+		if msg.Role == llm.RoleAssistant && msg.Raw == raw {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Raw no volvió en la segunda vuelta: %+v", f.requests[1].Messages)
+	}
+}

@@ -52,6 +52,8 @@ const (
 type recordedTurn struct {
 	rec         agentchat.TurnRecorder
 	user        string
+	agentID     string // proveedor del turno: va en el usage de sus filas
+	attachments []agentchat.AttachmentMeta
 	userWritten bool
 }
 
@@ -138,11 +140,11 @@ func (a *App) recordChatEvent(sessionID string, ev agentchat.Event) {
 func (a *App) persistTurnLocked(sessionID string, rt *recordedTurn, msgs []agentchat.RecordedMessage) {
 	var rows []vault.NewChatMessage
 	if !rt.userWritten {
-		rows = append(rows, vault.NewChatMessage{Role: vault.ChatRoleUser, Content: rt.user})
+		rows = append(rows, vault.NewChatMessage{Role: vault.ChatRoleUser, Content: rt.user, Meta: attachmentsMeta(rt.attachments)})
 		rt.userWritten = true
 	}
 	for _, m := range msgs {
-		rows = append(rows, vault.NewChatMessage{Role: m.Role, Content: m.Content, ToolName: m.ToolName, Usage: usageJSON(m.Usage, m.Model)})
+		rows = append(rows, vault.NewChatMessage{Role: m.Role, Content: m.Content, ToolName: m.ToolName, Usage: usageJSON(m.Usage, m.Model, rt.agentID)})
 	}
 	if len(rows) == 0 || a.vault == nil {
 		return
@@ -158,13 +160,20 @@ func (a *App) persistTurnLocked(sessionID string, rt *recordedTurn, msgs []agent
 // agrega el modelo que contestó (si el evento start lo dijo): es lo que
 // permite medir el consumo por modelo sin una migración — la columna ya era
 // un JSON abierto y los lectores viejos ignoran claves que no conocen.
-func usageJSON(u *agentchat.Usage, model string) string {
+//
+// También deja el proveedor (agentID) que atendió el turno: un chat puede
+// cambiar de proveedor a mitad de camino y el consumo se atribuye por turno,
+// no por el agente que tiene el chat ahora (ver ModelServerUsage).
+func usageJSON(u *agentchat.Usage, model, agentID string) string {
 	if u == nil {
 		return ""
 	}
 	c := *u
 	if c.Model == "" {
 		c.Model = model
+	}
+	if c.AgentID == "" {
+		c.AgentID = agentID
 	}
 	b, err := json.Marshal(c)
 	if err != nil {
@@ -217,12 +226,20 @@ func chatTitleFrom(typed string) string {
 
 // sendRecorded manda el turno al Manager grabándolo en el historial.
 func (a *App) sendRecorded(module, contextID, typed string, t agentchat.Turn) error {
+	// El título sale del primer mensaje; si fue solo adjuntos, del primer archivo.
+	title := typed
+	if strings.TrimSpace(title) == "" && len(t.Attachments) > 0 {
+		title = t.Attachments[0].Name
+	}
 	// Sesión ocupada: Send va a rechazarlo, y abrir un registro nuevo pisaría
 	// el del turno que sí está corriendo.
-	if a.agentChats.Busy(t.SessionID) || !a.ensureChatRow(t.SessionID, module, contextID, t.AgentID, typed) {
+	if a.agentChats.Busy(t.SessionID) || !a.ensureChatRow(t.SessionID, module, contextID, t.AgentID, title) {
 		return a.agentChats.Send(t)
 	}
 	rt := a.beginChatTurn(t.SessionID, typed)
+	// Solo la ficha de los adjuntos —nombre, tipo, tamaño—, nunca su contenido.
+	rt.attachments = agentchat.Metas(t.Attachments)
+	rt.agentID = t.AgentID
 	if err := a.agentChats.Send(t); err != nil {
 		a.dropChatTurn(t.SessionID, rt)
 		return err
@@ -246,7 +263,39 @@ func (a *App) llmSeedHistory(chatID string) []agentchat.HistoryMessage {
 func storedToHistory(rows []vault.StoredChatMessage) []agentchat.HistoryMessage {
 	out := make([]agentchat.HistoryMessage, 0, len(rows))
 	for _, m := range rows {
-		out = append(out, agentchat.HistoryMessage{Role: m.Role, Content: m.Content, ToolName: m.ToolName})
+		out = append(out, agentchat.HistoryMessage{Role: m.Role, Content: m.Content, ToolName: m.ToolName, Attachments: attachmentsFromMeta(m.Meta)})
+	}
+	return out
+}
+
+// attachmentsMeta serializa la ficha de los adjuntos para
+// agent_chat_messages.meta ("" si no hay). El objeto externo deja lugar a otras
+// claves sin otra migración.
+func attachmentsMeta(atts []agentchat.AttachmentMeta) string {
+	if len(atts) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(struct {
+		Attachments []agentchat.AttachmentMeta `json:"attachments"`
+	}{atts})
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// attachmentsFromMeta es la inversa; una ficha ilegible o vacía es «sin
+// adjuntos» (nunca nil: el frontend la recorre con .map).
+func attachmentsFromMeta(meta string) []agentchat.AttachmentMeta {
+	out := []agentchat.AttachmentMeta{}
+	if meta == "" {
+		return out
+	}
+	var m struct {
+		Attachments []agentchat.AttachmentMeta `json:"attachments"`
+	}
+	if json.Unmarshal([]byte(meta), &m) == nil && m.Attachments != nil {
+		out = m.Attachments
 	}
 	return out
 }

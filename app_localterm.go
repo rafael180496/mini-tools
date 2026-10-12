@@ -470,6 +470,16 @@ func (a *App) AgentChatModes(agentID string) ([]string, error) {
 // a turno, nunca un default: lo que la hace aceptable es que el resultado cae
 // en el árbol de trabajo de un repositorio git, donde se ve en el diff de la
 // app y se descarta con un click.
+//
+// images lleva las rutas de TODOS los adjuntos del mensaje, sean imágenes,
+// PDF o archivos de texto (el nombre quedó por compatibilidad): las rutas que
+// devolvió SaveChatFile o SaveChatAttachment. Cada una se vuelve a clasificar
+// por su contenido y tiene que estar en la carpeta de adjuntos de la app. Se
+// validan contra AgentAttachmentCapabilities antes de llamar al proveedor:
+// imagen → como siempre; texto → pegado en el mensaje para todos los
+// proveedores; PDF → bloque `document` en Anthropic, por ruta en Claude Code, y
+// un error claro en cualquier otro. Con adjuntos y sin texto, el mensaje es
+// «Revisá los archivos adjuntos.».
 func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode, effort, model string, images []string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
@@ -488,6 +498,19 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		return err
 	}
 
+	// Los adjuntos se resuelven y validan primero: un PDF para un modelo que no
+	// lo lee tiene que fallar antes de armar nada, con el motivo.
+	prep, atts, err := a.prepareAttachments(agentID, model, images)
+	if err != nil {
+		return err
+	}
+	typed := prompt
+	if strings.TrimSpace(prompt) == "" && len(atts) > 0 {
+		// Al historial no va el mensaje por defecto: la persona no escribió nada.
+		typed = ""
+		prompt = agentchat.DefaultAttachmentPrompt()
+	}
+
 	// Las referencias `@tipo:valor` se expanden ACÁ, no en el frontend: para
 	// que el frontend las resolviera tendría que haber recibido antes el
 	// contenido, que es exactamente lo que no puede pasar (ver app_refs.go).
@@ -495,8 +518,10 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 	// agente a propósito, para que la lea él.
 	//
 	// Al historial va lo que llegó, SIN expandir (ver app_chatrecord.go).
-	typed := prompt
 	prompt, _ = a.expandRefs(prompt, module, contextID)
+	// El texto de los archivos se pega DESPUÉS de expandir las referencias: un
+	// archivo adjunto que contenga «@nota:…» es contenido, no una orden.
+	prompt = agentchat.WithText(prompt, prep.Text)
 
 	// Cerebro: si la conversación tiene "Guardar en mi cerebro" encendido, el
 	// turno lleva las instrucciones para ir dejando notas (app_brain.go). Vacío
@@ -525,10 +550,14 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 			AgentID:   agentID,
 			Cwd:       cwd,
 			Prompt:    prompt,
-			Images:    images,
-			Model:     model,
-			Mode:      llmMode,
-			LLM:       client,
+			Images:    prep.Images,
+			PDFs:      prep.PDFs,
+			// Todos los adjuntos, también los de texto (ya pegados en Prompt):
+			// de acá salen sus nombres para el historial.
+			Attachments: atts,
+			Model:       model,
+			Mode:        llmMode,
+			LLM:         client,
 			// Ventana de contexto del servidor, solo para avisar si el prompt
 			// estimado no entra (agentchat.noticeContextOverflow).
 			ContextTokens: a.llmContextTokens(agentID),
@@ -572,7 +601,9 @@ func (a *App) SendAgentChat(sessionID, module, contextID, agentID, prompt, mode,
 		Env:             env,
 		Prompt:          prompt,
 		System:          system,
-		Images:          images,
+		Images:          prep.Images,
+		PDFs:            prep.PDFs,
+		Attachments:     atts,
 		Mode:            m,
 		Effort:          effort,
 		Model:           model,
@@ -965,14 +996,17 @@ func (a *App) TouchAgentChat(id, conversationID string) error {
 // Un error del turno es una fila "assistant" cuyo Content empieza con "⚠ "
 // (agentchat.ErrorRowPrefix). Dentro de un turno las herramientas van antes de
 // la respuesta; los tokens (Usage) están en la última fila del turno.
-// CreatedAt son segundos Unix.
+// CreatedAt son segundos Unix. Attachments son los adjuntos de una fila "user"
+// (nombre, tipo, tamaño; nunca el contenido), siempre una lista —vacía si no
+// hubo—.
 type AgentChatMessage struct {
-	Seq       int              `json:"seq"`
-	Role      string           `json:"role"`
-	Content   string           `json:"content"`
-	ToolName  string           `json:"toolName"`
-	Usage     *agentchat.Usage `json:"usage"`
-	CreatedAt int64            `json:"createdAt"`
+	Seq         int                        `json:"seq"`
+	Role        string                     `json:"role"`
+	Content     string                     `json:"content"`
+	ToolName    string                     `json:"toolName"`
+	Usage       *agentchat.Usage           `json:"usage"`
+	Attachments []agentchat.AttachmentMeta `json:"attachments"`
+	CreatedAt   int64                      `json:"createdAt"`
 }
 
 // AgentChatMessages devuelve los mensajes guardados de una conversación, del
@@ -990,7 +1024,7 @@ func (a *App) AgentChatMessages(chatID string) ([]AgentChatMessage, error) {
 	}
 	out := make([]AgentChatMessage, 0, len(rows))
 	for _, m := range rows {
-		msg := AgentChatMessage{Seq: m.Seq, Role: m.Role, Content: m.Content, ToolName: m.ToolName, CreatedAt: m.CreatedAt}
+		msg := AgentChatMessage{Seq: m.Seq, Role: m.Role, Content: m.Content, ToolName: m.ToolName, Attachments: attachmentsFromMeta(m.Meta), CreatedAt: m.CreatedAt}
 		if m.Usage != "" {
 			var u agentchat.Usage
 			if json.Unmarshal([]byte(m.Usage), &u) == nil {
@@ -1166,4 +1200,46 @@ func (a *App) SetAgentChatSettings(id, model, effort, mode string) error {
 		return err
 	}
 	return a.vault.SetAgentChatSettings(id, model, effort, mode)
+}
+
+// SetAgentChatAgent pasa un chat de un proveedor de modelos a otro (estilo
+// Hermes: se empieza con uno y se sigue con otro sin perder la conversación).
+//
+// Solo entre servidores de modelos (`llm:`): la historia de un chat con un CLI
+// la guarda el propio CLI, atada a su conversación, y no se puede reasignar a
+// otro. El destino tiene que existir y estar activado.
+//
+// Cambia agent_chats.agent_id y vacía el modelo guardado (el de un proveedor no
+// existe en el otro); el historial no se toca: el contexto de los turnos
+// siguientes sale de la memoria de la sesión y, tras reiniciar, de lo guardado.
+// El consumo ya hecho queda con el proveedor que lo produjo (ver
+// vault.SetAgentChatAgent). Cambiar al mismo proveedor no hace nada.
+func (a *App) SetAgentChatAgent(chatID, agentID string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	current, ok, err := a.vault.AgentChatAgent(chatID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return i18n.Errorf(i18n.Msg{ES: "app: el chat no existe", EN: "app: the chat does not exist"})
+	}
+	if !agentchat.IsLLM(current) || !agentchat.IsLLM(agentID) {
+		return i18n.Errorf(i18n.Msg{
+			ES: "app: solo se puede cambiar de proveedor entre servidores de modelos; un chat con un CLI conserva su propio historial",
+			EN: "app: you can only switch between model servers; a CLI chat keeps its own history",
+		})
+	}
+	m, err := a.vault.GetModelServer(strings.TrimPrefix(agentID, agentchat.LLMPrefix))
+	if err != nil {
+		return err
+	}
+	if !m.Enabled {
+		return errProviderDisabled(m.Name)
+	}
+	if current == agentID {
+		return nil
+	}
+	return a.vault.SetAgentChatAgent(chatID, current, agentID)
 }

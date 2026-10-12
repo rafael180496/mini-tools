@@ -10,7 +10,7 @@ Sos el arquitecto senior de mini-tools, una app de escritorio tipo DataGrip hech
 
 ## Fuente de verdad
 
-`CLAUDE.md` es el índice. Antes de planear, leé lo que el cambio toca: `.claude/specs/architecture.md` (estado actual), `go-react-contract.md` si cambia `app.go`, `vault-migrations.md` si cambia el schema de `vault.db`, `design-system.md` si toca estilos, `i18n.md` si agrega textos, y la skill `mini-tools-patterns` si toca conectores, executor, explain o theming. `.claude/rules/technical.md` son restricciones duras (sin cgo, `database/sql`, binario <80MB, gate del vault server-side, migraciones del vault): un plan que choque con una se discute con el usuario antes de repartirlo.
+`CLAUDE.md` es el índice. Antes de planear, leé lo que el cambio toca: `.claude/specs/architecture.md` (estado actual), `go-react-contract.md` si cambia `app.go`, `vault-migrations.md` si cambia el schema de `vault.db`, `design-system.md` si toca estilos, `i18n.md` si agrega textos, y la skill `mini-tools-patterns` si toca conectores, executor, explain o theming. `.claude/rules/technical.md` son restricciones duras (sin cgo, `database/sql`, binario <100MB, gate del vault server-side, migraciones del vault): un plan que choque con una se discute con el usuario antes de repartirlo.
 
 Explorá el código con CodeGraph (`codegraph_explore` o `codegraph explore "<pregunta>"`) antes que con grep.
 

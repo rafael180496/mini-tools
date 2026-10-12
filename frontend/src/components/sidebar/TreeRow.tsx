@@ -143,8 +143,8 @@ export default function TreeRow({
                         {label}
                     </span>
                 </button>
-                {trailing && <span className={`flex shrink-0 items-center gap-1 ${actions ? 'group-hover:hidden' : ''}`}>{trailing}</span>}
-                {actions && <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">{actions}</span>}
+                {trailing && <span className={`flex shrink-0 items-center gap-1 ${actions ? 'group-hover:hidden group-has-[:focus-visible]:hidden' : ''}`}>{trailing}</span>}
+                {actions && <span className="hidden shrink-0 items-center gap-0.5 group-has-[:focus-visible]:flex group-hover:flex">{actions}</span>}
             </div>
             {below}
         </div>

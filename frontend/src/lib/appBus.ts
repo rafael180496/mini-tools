@@ -11,6 +11,8 @@
 // Si nadie escucha —una vista suelta del banco de capturas— el pedido se pierde
 // sin error: es un atajo, no una operación.
 
+import type {UtilityId} from '../components/utilities/utilities'
+
 export type SettingsSectionRequest = 'general' | 'vault' | 'terminal' | 'ai'
 
 export interface OpenNoteRequest {
@@ -21,6 +23,7 @@ export interface OpenNoteRequest {
 
 const OPEN_SETTINGS = 'mini-tools:open-settings'
 const OPEN_NOTE = 'mini-tools:open-note'
+const OPEN_UTILITY = 'mini-tools:open-utility'
 
 export function requestOpenSettings(section: SettingsSectionRequest): void {
     window.dispatchEvent(new CustomEvent<SettingsSectionRequest>(OPEN_SETTINGS, {detail: section}))
@@ -30,6 +33,19 @@ export function onOpenSettingsRequest(handler: (section: SettingsSectionRequest)
     const listener = (e: Event) => handler((e as CustomEvent<SettingsSectionRequest>).detail)
     window.addEventListener(OPEN_SETTINGS, listener)
     return () => window.removeEventListener(OPEN_SETTINGS, listener)
+}
+
+// Abrir (o llevar al frente) la pestaña de una utilidad. Lo pide, por ejemplo,
+// Configuración → IA para mandar a «Utilidades → Modelos», donde se administran
+// los servidores de modelos. Quien escucha (Workspace) cierra Configuración.
+export function requestOpenUtility(id: UtilityId): void {
+    window.dispatchEvent(new CustomEvent<UtilityId>(OPEN_UTILITY, {detail: id}))
+}
+
+export function onOpenUtilityRequest(handler: (id: UtilityId) => void): () => void {
+    const listener = (e: Event) => handler((e as CustomEvent<UtilityId>).detail)
+    window.addEventListener(OPEN_UTILITY, listener)
+    return () => window.removeEventListener(OPEN_UTILITY, listener)
 }
 
 export function requestOpenNote(req: OpenNoteRequest): void {

@@ -253,8 +253,8 @@ const en: Messages<typeof es> = {
     viewMenu: {
         label: 'View',
         title: 'Show or hide the panels of this tab. Your choice is saved and the tab reopens this way.',
-        showBranches: 'Show branches panel',
-        hideBranches: 'Hide branches panel',
+        showBranches: 'Show work panel',
+        hideBranches: 'Collapse work panel',
         nowHidden: 'Currently hidden',
         left: 'Left',
         showDiff: 'Show diff panel',
@@ -353,7 +353,7 @@ const en: Messages<typeof es> = {
         noMatch: (p) => `No branch or tag matches «${p.filter}».`,
     },
     panes: {
-        sideHandle: 'Drag to change the width of the branches panel — the size is saved',
+        sideHandle: 'Drag to change the width of the work panel — the size is saved for this repository',
         diffHandle: 'Drag to change the width of the diff panel — the size is saved',
         pickCommitThenFile: 'Pick a commit and then a file to see the diff.',
         pickFile: 'Pick a modified file to see the diff.',

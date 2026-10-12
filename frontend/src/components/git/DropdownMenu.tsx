@@ -55,6 +55,21 @@ interface DropdownMenuProps {
     items: DropdownEntry[]
     disabled?: boolean
     width?: number
+    // Variantes de la barra única del módulo Git (todas opcionales: las demás
+    // pantallas que usan este menú no cambian).
+    //
+    // iconOnly: el disparador es solo el ícono (el `title` sigue diciendo qué
+    // hace). badge: un contador chico sobre el ícono (commits por delante /
+    // por detrás). onMain: convierte el disparador en un botón PARTIDO — el
+    // lado izquierdo ejecuta la acción de siempre (`mainTitle` la describe) y
+    // el chevron de la derecha abre el menú con las variantes.
+    iconOnly?: boolean
+    badge?: number
+    onMain?: () => void
+    mainTitle?: string
+    // Alineación del menú respecto del disparador. En la barra, lo que está a
+    // la derecha abre hacia la izquierda para no recortarse contra el borde.
+    align?: 'left' | 'right'
 }
 
 // Portal-anchored dropdown for the Git toolbar's Pull/Push/Fetch command
@@ -72,10 +87,11 @@ interface DropdownMenuProps {
 // existing four were deliberately left alone — folding them in is a refactor
 // of working code that belongs in its own change, not a side effect of adding
 // a feature.
-export default function DropdownMenu({label, icon, title, items, disabled, width = 260}: DropdownMenuProps) {
+export default function DropdownMenu({label, icon, title, items, disabled, width = 260, iconOnly, badge, onMain, mainTitle, align = 'left'}: DropdownMenuProps) {
     const [open, setOpen] = useState(false)
     const [pos, setPos] = useState<{top: number; left: number} | null>(null)
     const buttonRef = useRef<HTMLButtonElement>(null)
+    const splitRef = useRef<HTMLSpanElement>(null)
 
     useEffect(() => {
         if (!open) return
@@ -92,11 +108,12 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
             setOpen(false)
             return
         }
-        const rect = buttonRef.current?.getBoundingClientRect()
+        const rect = (onMain ? splitRef.current : buttonRef.current)?.getBoundingClientRect()
         if (rect) {
             // Clamp to the viewport so a trigger near the right edge does not
             // open a menu that runs off screen.
-            const left = Math.min(rect.left, window.innerWidth - width - 8)
+            const anchor = align === 'right' ? rect.right - width : rect.left
+            const left = Math.min(anchor, window.innerWidth - width - 8)
             setPos({top: rect.bottom + 4, left: Math.max(8, left)})
         }
         setOpen(true)
@@ -164,6 +181,46 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
         )
     }
 
+    const badgeEl =
+        badge != null && badge > 0 ? (
+            <span className="rounded-full bg-primary px-1 font-mono text-ui-9 leading-4 text-on-primary">{badge}</span>
+        ) : null
+
+    // Botón partido: acción principal + chevron. Los dos comparten el mismo
+    // fondo al pasar el mouse para que se lean como UN control.
+    if (onMain) {
+        return (
+            <>
+                <span ref={splitRef} className={`flex items-stretch rounded hover:bg-surface-variant ${disabled ? 'opacity-40' : ''}`}>
+                    <button
+                        onClick={onMain}
+                        disabled={disabled}
+                        title={mainTitle ?? title}
+                        aria-label={label || title}
+                        className="flex items-center gap-1 rounded-l px-1.5 py-1 text-xs text-on-surface disabled:cursor-default"
+                    >
+                        {icon && <Icon name={icon} size={16} />}
+                        {!iconOnly && label && <span>{label}</span>}
+                        {badgeEl}
+                    </button>
+                    <button
+                        ref={buttonRef}
+                        onClick={toggle}
+                        disabled={disabled}
+                        title={title}
+                        aria-label={title}
+                        aria-haspopup="menu"
+                        aria-expanded={open}
+                        className="flex items-center rounded-r px-0 text-on-surface-variant hover:bg-surface-container-highest disabled:cursor-default"
+                    >
+                        <Icon name="arrow_drop_down" size={16} />
+                    </button>
+                </span>
+                {content}
+            </>
+        )
+    }
+
     return (
         <>
             <button
@@ -171,11 +228,15 @@ export default function DropdownMenu({label, icon, title, items, disabled, width
                 onClick={toggle}
                 disabled={disabled}
                 title={title}
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-on-surface hover:bg-surface-variant disabled:opacity-40"
+                aria-label={label || title}
+                aria-haspopup="menu"
+                aria-expanded={open}
+                className={`flex items-center gap-1 rounded text-xs text-on-surface hover:bg-surface-variant disabled:opacity-40 ${iconOnly ? 'p-1' : 'px-2 py-1'}`}
             >
-                {icon && <Icon name={icon} size={16} />}
-                <span>{label}</span>
-                <Icon name="arrow_drop_down" size={16} className="opacity-70" />
+                {icon && <Icon name={icon} size={iconOnly ? 16 : 16} />}
+                {!iconOnly && label && <span>{label}</span>}
+                {badgeEl}
+                {!iconOnly && <Icon name="arrow_drop_down" size={16} className="opacity-70" />}
             </button>
             {content}
         </>

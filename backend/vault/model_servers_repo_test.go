@@ -225,6 +225,13 @@ func TestMigration60AddsHeadersAndInsecureTLS(t *testing.T) {
 		// migraciones posteriores (61) la dejarían saltear la 60.
 		// La 62 se vuelve a aplicar con las demás: su columna tiene que faltar.
 		`ALTER TABLE model_servers DROP COLUMN context_tokens`,
+		// Y la 63 también: sus tres columnas tienen que faltar para reaplicarla.
+		`ALTER TABLE model_servers DROP COLUMN enabled`,
+		`ALTER TABLE model_servers DROP COLUMN default_model`,
+		`ALTER TABLE model_servers DROP COLUMN sort_order`,
+		// Y la 64: sus dos columnas de agent_chat_messages tienen que faltar para reaplicarla.
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta`,
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta_nonce`,
 		`DELETE FROM schema_migrations WHERE version >= 60`,
 	} {
 		if _, err := store.db.Exec(q); err != nil {
@@ -293,6 +300,13 @@ func TestMigration62AddsContextTokens(t *testing.T) {
 	}
 	for _, q := range []string{
 		`ALTER TABLE model_servers DROP COLUMN context_tokens`,
+		// Y la 63 también: sus tres columnas tienen que faltar para reaplicarla.
+		`ALTER TABLE model_servers DROP COLUMN enabled`,
+		`ALTER TABLE model_servers DROP COLUMN default_model`,
+		`ALTER TABLE model_servers DROP COLUMN sort_order`,
+		// Y la 64: sus dos columnas de agent_chat_messages tienen que faltar para reaplicarla.
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta`,
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta_nonce`,
 		`DELETE FROM schema_migrations WHERE version >= 62`,
 	} {
 		if _, err := store.db.Exec(q); err != nil {
@@ -313,7 +327,136 @@ func TestMigration62AddsContextTokens(t *testing.T) {
 		t.Errorf("segunda pasada: %v", err)
 	}
 	var max int
-	if err := store.db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&max); err != nil || max != 62 {
+	if err := store.db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&max); err != nil || max != 64 {
 		t.Errorf("versión = %d, %v", max, err)
+	}
+}
+
+// El tipo anthropic se acepta, no guarda ventana de contexto y el modelo por
+// defecto se recorta y persiste.
+func TestModelServerAnthropicKindAndDefaultModel(t *testing.T) {
+	store, _ := openTestStore(t)
+	if err := store.Initialize("correct-horse"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ValidateModelServer(ModelServerAnthropic, "https://api.anthropic.com"); err != nil {
+		t.Errorf("anthropic debe aceptarse: %v", err)
+	}
+	if _, err := ValidateModelServer("gemini", "https://x"); err == nil {
+		t.Error("un tipo desconocido debe rechazarse")
+	}
+	a, err := store.SaveModelServer(ModelServer{Name: "Claude", Kind: ModelServerAnthropic, BaseURL: "https://api.anthropic.com/", ContextTokens: 9999, DefaultModel: "  claude-opus-5-5 "}, "sk-ant", false, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.DefaultModel != "claude-opus-5-5" || a.ContextTokens != 0 || !a.Enabled || a.Kind != ModelServerAnthropic || !a.HasToken {
+		t.Errorf("alta: %+v", a)
+	}
+	a.DefaultModel = ""
+	if upd, err := store.SaveModelServer(a, "", false, nil, false); err != nil || upd.DefaultModel != "" {
+		t.Errorf("borrar el modelo por defecto: %+v, %v", upd, err)
+	}
+}
+
+// Enabled y SortOrder no los toca SaveModelServer: solo sus métodos propios.
+func TestModelServerEnabledAndReorder(t *testing.T) {
+	store, _ := openTestStore(t)
+	if err := store.Initialize("correct-horse"); err != nil {
+		t.Fatal(err)
+	}
+	mk := func(name string) ModelServer {
+		s, err := store.SaveModelServer(ModelServer{Name: name, Kind: ModelServerOllama, BaseURL: "http://x"}, "", false, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	a, b, c := mk("c-primero"), mk("b-segundo"), mk("a-tercero")
+	if !a.Enabled || a.SortOrder != 0 || b.SortOrder != 1 || c.SortOrder != 2 {
+		t.Errorf("altas: %d %d %d enabled=%v", a.SortOrder, b.SortOrder, c.SortOrder, a.Enabled)
+	}
+	order := func() string {
+		list, err := store.ListModelServers()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n []string
+		for _, s := range list {
+			n = append(n, s.Name[:1])
+		}
+		return strings.Join(n, "")
+	}
+	if got := order(); got != "cba" {
+		t.Errorf("orden = %s (sort_order manda sobre el nombre)", got)
+	}
+
+	if err := store.SetModelServerEnabled(b.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := store.GetModelServer(b.ID)
+	if got.Enabled || got.UpdatedAt != b.UpdatedAt {
+		t.Errorf("apagar no cambia updated_at: %+v vs %+v", got, b)
+	}
+	// Guardar de nuevo no lo vuelve a encender.
+	if saved, err := store.SaveModelServer(got, "", false, nil, false); err != nil || saved.Enabled {
+		t.Errorf("SaveModelServer enciende: %+v, %v", saved, err)
+	}
+	if err := store.SetModelServerEnabled("no-existe", true); err == nil {
+		t.Error("id desconocido")
+	}
+
+	if err := store.ReorderModelServers([]string{c.ID, "fantasma", c.ID, a.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(); got != "acb" {
+		t.Errorf("reordenado = %s (lo no mencionado queda al final)", got)
+	}
+	if err := store.ReorderModelServers(nil); err != nil || order() != "acb" {
+		t.Errorf("lista vacía no cambia nada: %s, %v", order(), err)
+	}
+}
+
+// Migración 63 sobre un vault con servidores: todos nacen encendidos, sin modelo
+// por defecto y con el mismo orden de siempre (por nombre).
+func TestMigration63AddsProviderManagerColumns(t *testing.T) {
+	store, _ := openTestStore(t)
+	if err := store.Initialize("correct-horse"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := store.SaveModelServer(ModelServer{Name: "b", Kind: ModelServerOllama, BaseURL: "http://x"}, "tok", false, nil, false)
+	a, _ := store.SaveModelServer(ModelServer{Name: "a", Kind: ModelServerOpenAI, BaseURL: "http://y/v1"}, "", false, nil, false)
+	for _, q := range []string{
+		`ALTER TABLE model_servers DROP COLUMN enabled`,
+		`ALTER TABLE model_servers DROP COLUMN default_model`,
+		`ALTER TABLE model_servers DROP COLUMN sort_order`,
+		// Y la 64: sus dos columnas de agent_chat_messages tienen que faltar para reaplicarla.
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta`,
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta_nonce`,
+		`DELETE FROM schema_migrations WHERE version >= 63`,
+	} {
+		if _, err := store.db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := applyMigrations(store.db); err != nil {
+		t.Fatalf("applyMigrations: %v", err)
+	}
+	list, err := store.ListModelServers()
+	if err != nil || len(list) != 2 {
+		t.Fatalf("List = %+v, %v", list, err)
+	}
+	if list[0].ID != a.ID || list[1].ID != b.ID {
+		t.Errorf("sin sort_order previo, el orden es por nombre: %s,%s", list[0].Name, list[1].Name)
+	}
+	for _, s := range list {
+		if !s.Enabled || s.DefaultModel != "" || s.SortOrder != 0 {
+			t.Errorf("%s: %+v", s.Name, s)
+		}
+	}
+	if !list[1].HasToken {
+		t.Error("la fila existente conserva su token")
+	}
+	if err := applyMigrations(store.db); err != nil {
+		t.Errorf("segunda pasada: %v", err)
 	}
 }

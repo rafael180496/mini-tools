@@ -251,8 +251,8 @@ export default {
     viewMenu: {
         label: 'Vista',
         title: 'Mostrar u ocultar los paneles de esta pestaña. Lo que elijas queda guardado y la pestaña vuelve a abrirse así.',
-        showBranches: 'Mostrar el panel de ramas',
-        hideBranches: 'Ocultar el panel de ramas',
+        showBranches: 'Mostrar el panel de trabajo',
+        hideBranches: 'Plegar el panel de trabajo',
         nowHidden: 'Ahora está oculto',
         left: 'Izquierda',
         showDiff: 'Mostrar el panel de diff',
@@ -351,7 +351,7 @@ export default {
         noMatch: (p: {filter: string}) => `Ninguna rama ni tag coincide con «${p.filter}».`,
     },
     panes: {
-        sideHandle: 'Arrastrá para cambiar el ancho del panel de ramas — el tamaño se guarda',
+        sideHandle: 'Arrastrá para cambiar el ancho del panel de trabajo — el tamaño se guarda para este repositorio',
         diffHandle: 'Arrastrá para cambiar el ancho del panel de diff — el tamaño se guarda',
         pickCommitThenFile: 'Elegí un commit y después un archivo para ver el diff.',
         pickFile: 'Elegí un archivo modificado para ver el diff.',

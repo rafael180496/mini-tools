@@ -359,6 +359,8 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>Git</button>
   <ul>
     <li><a href="#git-repositorio">The repository: graph and diff</a></li>
+    <li><a href="#git-trabajo">Toolbar and work panel</a></li>
+    <li><a href="#git-barra">The Git tree in the sidebar</a></li>
     <li><a href="#git-config">Identity, remotes and tokens</a></li>
     <li><a href="#git-reflog">Recover with the reflog</a></li>
   </ul>
@@ -375,13 +377,14 @@ summary{cursor:pointer;padding:12px 0;font-weight:600}
     <li><a href="#utilidades-activity-monitor">Activity Monitor</a></li>
     <li><a href="#utilidades-docker">Docker</a></li>
     <li><a href="#utilidades-chat-ia">AI Chat</a></li>
-    <li><a href="#utilidades-modelos">Models</a></li>
+    <li><a href="#utilidades-modelos">AI providers</a></li>
   </ul>
 
   <button class="grp" aria-expanded="true"><span class="caret">▾</span>AI agents</button>
   <ul>
     <li><a href="#ia-chat">The chat, in every module</a></li>
-    <li><a href="#ia-modelos">Model servers: Ollama and OpenAI-compatible</a></li>
+    <li><a href="#ia-adjuntos">Attachments: images, PDFs and files</a></li>
+    <li><a href="#ia-modelos">AI providers: your own servers and cloud APIs</a></li>
     <li><a href="#ia-agente-local">Local code agent: files and commands</a></li>
     <li><a href="#ia-proyectos">Projects, folders and automatic context</a></li>
     <li><a href="#ia-cerebro">Brain: notes the agent writes</a></li>
@@ -1193,11 +1196,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   </figure>
 
   <h2 id="git-repositorio--ramas">Branches and tags</h2>
-  <ul>
-    <li><strong>Folders by prefix</strong>: <code>feature/…</code> collapses into a single entry.</li>
-    <li><strong>Pinning</strong> the branches you always use, so they stay on top.</li>
-    <li>Create branches and tags from the panel itself.</li>
-  </ul>
+  <p>Branches, remotes and tags are in the <a href="#git-barra">sidebar tree</a> (folders by prefix, pinning, filter, right-click menus).
+  In the tab, the <strong>branch chip</strong> in the bar is the quick switcher — see <a href="#git-trabajo">Toolbar and work panel</a>.</p>
 
   <h2 id="git-repositorio--operaciones">Operations</h2>
   <ul>
@@ -1212,6 +1212,118 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <h2 id="git-repositorio--log">The command log</h2>
   <p>Every action records the <strong>exact command</strong> the app ran underneath, with its output and how
   long it took. It's useful for learning what the button does, and for pasting the command into a ticket.</p>
+</article>
+
+<article class="topic" id="git-trabajo" data-title="Toolbar and work panel">
+  <h1>Toolbar and work panel</h1>
+  <p class="lead">One bar on top for where you are and how you sync, and a <strong>work panel</strong> on the left
+  with four tabs — History, Changes, Stash and Files. What each tab shows (the graph, the diff, the stash patch, the
+  editor) opens in the main area.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-work-history.png" alt="Git tab: single toolbar with the repository name, the branch chip, icon buttons and the Fetch, Pull and Push split buttons; on the left the work panel on its History tab with the commit search, prefix chips, the Only my work switch and the quick branches; in the center the graph"></div>
+    <figcaption>The History tab: search and filters on the left, the graph in the main area.</figcaption>
+  </figure>
+
+  <h2 id="git-trabajo--barra">The toolbar</h2>
+  <ul>
+    <li><strong>The branch chip</strong> shows where you are. Click it for the <strong>quick switcher</strong>: one box that filters local branches, remote branches and tags at once. <kbd>Enter</kbd> switches to the first match, the <strong>target</strong> icon shows the branch tip in the graph, the star pins it and right-click opens the full menu (merge, rebase, rename, upstream, delete). Branches, remotes and tags are also in the <a href="#git-barra">sidebar tree</a>.</li>
+    <li><strong>Fetch, Pull and Push</strong> are split buttons: the left part does the usual action, the arrow opens the variants (<code>--force-with-lease</code>, <code>--rebase</code>, fetch from one remote…). <strong>Pull</strong> and <strong>Push</strong> carry a counter with the commits behind / ahead.</li>
+    <li>The rest are icons with a tooltip: create the pull request and have the agent describe it, agent mode, the <em>View</em> menu, refresh, <strong>Open in…</strong> (your editor, the file manager, a terminal), the agents panel and the repository settings.</li>
+    <li>In a narrow tab, the bar folds what does not fit into a <strong>⋯</strong> menu.</li>
+  </ul>
+
+  <h2 id="git-trabajo--panel">The work panel</h2>
+  <ul>
+    <li><strong>History</strong>: commit search (<code>author:</code>, <code>message:</code>, <code>file:</code>, <code>since:</code>, <code>until:</code> — the chips add the prefix for you) and <em>Only my work</em>, which shows just the current branch, the trunks and the pinned ones. Under them, the <strong>quick branches</strong>: click to see one in the graph, double-click to switch.</li>
+    <li><strong>Changes</strong>: see below. <strong>Stash</strong>: the list, with a preview of the selected stash in the main area. <strong>Files</strong>: the editor's file tree.</li>
+    <li>Drag its edge to resize it: the width is remembered <strong>per repository</strong>, and so is the tab you were on. The button on the right of the tabs folds it into an icon bar; one click on any icon opens it again.</li>
+  </ul>
+
+  <h2 id="git-trabajo--cambios">Changes and the commit</h2>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-work-changes.png" alt="Changes tab: the commit message box with the draft button, the commit type, the Commit and Amend buttons, the Staged and Changes lists and, in the main area, the selected file's diff with line numbers and stage and discard buttons on each hunk"></div>
+    <figcaption>The commit box is on top, as in Source Control; the diff of the selected file takes the main area.</figcaption>
+  </figure>
+  <ul>
+    <li>Write the message and press <strong>Commit</strong> (<kbd>Cmd</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd> does the same). The ✨ button drafts it with the agent from the staged diff.</li>
+    <li><strong>Amend</strong> rewrites the last commit with the message and what is staged — it loads the previous message for you. Only use it if that commit is not published yet.</li>
+    <li>Each file has stage / unstage and discard buttons (they show on hover); each group has its own for <strong>all</strong> of them. Click a file to see its diff; the arrow on its left unfolds the diff inside the list.</li>
+  </ul>
+
+  <h2 id="git-trabajo--diff">The diff</h2>
+  <ul>
+    <li>It uses the <strong>editor font and size</strong> from Settings, with the old and new line number on the left, a soft green and red, and a small header for every hunk. The header above carries the path, <code>+n −m</code>, whether it is staged and the icon actions, all with a tooltip.</li>
+    <li><strong>On each hunk</strong>, the buttons at the right of its header stage (or unstage) and discard it. To stage <strong>some lines</strong>, select them and press the list-check icon.</li>
+    <li>Previous / next hunk, unified or side-by-side, ignore whitespace, wrap lines, <strong>−/+</strong> context, blame, edit the file and ask the agent are the other icons.</li>
+  </ul>
+
+  <h2 id="git-trabajo--stash">Stash</h2>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-work-stash.png" alt="Stash tab: list of stashes on the left with their message, branch and date; in the main area the selected stash's patch, file by file, with the Apply, Apply and remove and delete buttons"></div>
+    <figcaption>Pick a stash and see what it holds before applying it.</figcaption>
+  </figure>
+  <p><strong>Stash changes</strong> sets aside what you have uncommitted. On each row (on hover) and above the preview: <strong>Apply</strong> (keeps the stash), <strong>Apply and remove</strong> (pop) and delete, which asks first because a dropped stash cannot be recovered.</p>
+
+  <div class="note tip"><span class="lbl">Tip</span>
+  The same tab fits a narrow window: the right-hand commit panel gives way before the graph does.
+  <div class="shot"><img src="docs/screenshots/git-work-narrow.png" alt="The Git tab at a narrow width: icon-only toolbar buttons and a work panel on the left"></div></div>
+</article>
+
+<article class="topic" id="git-barra" data-title="The Git tree in the sidebar">
+  <h1>The Git tree in the sidebar</h1>
+  <p class="lead">Branches, remotes, tags and stashes of every repository live in <strong>one place</strong>: the
+  Git module of the sidebar. The repository tab keeps the graph and the work; this tree is where you find
+  things, filter them and act on them.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-sidebar.png" alt="Git module of the sidebar: a repository open with its pinned branches on top, branch folders (feature, claude, fix, release) with their counters, remotes with their branches, tags grouped by version and stashes; the current branch is highlighted and shows 8 commits ahead"></div>
+    <figcaption>Pinned branches on top, the rest in folders by prefix, the current one highlighted with its ahead / behind counters.</figcaption>
+  </figure>
+
+  <h2 id="git-barra--leer">Reading the tree</h2>
+  <ul>
+    <li><strong>Click</strong> a repository to expand it, and <strong>double-click</strong> to open its tab. Under it you find <strong>Branches</strong>, <strong>Remotes</strong>, <strong>Tags</strong> and <strong>Stashes</strong>, each with its counter. Branches start open, with the folders that lead to the current branch already unfolded.</li>
+    <li>The <strong>current branch</strong> is bold, with a tint, and the repository row shows its name. <code>↑n ↓n</code> are the commits ahead of / behind its upstream.</li>
+    <li><strong>Folders by prefix</strong> (<code>feature/…</code>, <code>claude/…</code>) group the branches and show how many each holds. Tags group by version (<code>1.31.*</code>) and show their date.</li>
+    <li>The <strong>star</strong> pins a branch: it goes flat to the top of the list, outside its folder. Pins are stored per repository and also define the graph's <em>Focus mode</em>.</li>
+  </ul>
+
+  <h2 id="git-barra--grafo">Take the graph to a branch or a tag</h2>
+  <p><strong>One click</strong> on a branch or on a tag opens (or brings forward) the repository's tab and takes the graph
+  to its commit, even if it's older than the loaded page. <strong>Double-click</strong> on a branch does the checkout.
+  <em>Search in this branch…</em> (right-click) narrows the graph's search box to that branch's history.</p>
+
+  <h2 id="git-barra--filtrar">Filter branches and tags</h2>
+  <p>The <strong>magnifier</strong> on a repository's row (or <em>Filter branches and tags…</em> in its menu) opens a box that
+  filters that repository's local branches, remote branches and tags at once. While there is text every folder
+  opens, so a match is never hidden inside a collapsed prefix. <kbd>Esc</kbd> clears it, and pressing it again closes the box.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-sidebar-filter.png" alt="Sidebar with the filter box open under the repository, typing 'vault': only the matching branches remain, in Branches and under origin"></div>
+    <figcaption>One filter for branches and tags: type <code>vault</code> and only what matches is left.</figcaption>
+  </figure>
+
+  <h2 id="git-barra--menus">What the right-click does</h2>
+  <ul>
+    <li><strong>Local branch</strong>: checkout, show in graph, create a branch from it, <strong>merge into the current one</strong>, <strong>rebase the current one onto it</strong> (asks first), search in it, pin, rename, <strong>set / unset upstream</strong>, copy name and delete.</li>
+    <li><strong>Remote branch</strong>: checkout, show in graph, <strong>create the local branch</strong> that tracks it, merge, rebase, search, pin, copy and <strong>delete from the remote</strong> (<code>push --delete</code>, asks first).</li>
+    <li><strong>Branch folder</strong>: <em>Create branch in "feature/"…</em> (the name starts with the prefix) and copy the prefix.</li>
+    <li><strong>Remote</strong>: fetch, edit (name and URLs), copy the URL and remove. <strong>Tag</strong>: show in graph, <strong>create a branch from the tag</strong> (the usual way to work from a release), checkout, copy the name or the commit hash, push to origin, delete locally and delete from origin.</li>
+    <li><strong>Stash</strong>: apply, pop and drop.</li>
+  </ul>
+  <div class="note"><span class="lbl">Note</span>
+  If a merge or a rebase started here stops on conflicts, the repository's tab opens by itself: that's where the conflict
+  resolver and the <em>continue / abort</em> notice are.</div>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/git-sidebar-menu.png" alt="Right-click menu on a local branch: checkout, show in graph, create branch from here, merge into develop, rebase develop onto this one, search in this branch, pin to top, rename, set upstream, unset upstream, copy name and delete"></div>
+    <figcaption>Everything you can do with a branch is one right-click away.</figcaption>
+  </figure>
+
+  <h2 id="git-barra--teclado">Keyboard</h2>
+  <p>Every row is a focusable button: <kbd>Tab</kbd> moves between them and <kbd>Enter</kbd> activates. When a row has
+  focus its action buttons (pin, <strong>⋯</strong>) show up without needing the mouse. The context menu moves with the arrows, <kbd>Enter</kbd> and <kbd>Esc</kbd>.</p>
 </article>
 
 <article class="topic" id="git-config" data-title="Identity, remotes and tokens">
@@ -1664,7 +1776,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <li><strong>Narrow tab</strong> — what counts is the width of the <em>tab</em>, not the window: with the sidebar open or the agent panel docked, the tab can get small
     even in a huge window. Below about 760 px the history stops being a column and the header button opens it as a <strong>drawer over the chat</strong> (picking a
     conversation or <kbd>Esc</kbd> closes it), and the header compacts: the selectors share the row and <em>New chat</em> keeps only its icon. When the tab widens again, the history comes back by itself.</li>
-    <li><strong>Usage</strong> — the chart button in the header swaps the body for the <a href="#ia-modelos--consumo">token usage</a> panel by agent and model server; the chat keeps running behind.</li>
+    <li><strong>Usage</strong> — the chart button in the header swaps the body for the <a href="#ia-modelos--consumo">token usage</a> panel by agent and AI provider; the chat keeps running behind.</li>
   </ul>
   <figure>
     <div class="shot"><img src="docs/screenshots/utilities-ai-chat-wide.png" alt="AI Chat in a wide window: the reply with a table and a SQL block uses all the available width, with the running text limited to a readable line"></div>
@@ -1681,10 +1793,28 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 
   <h2 id="utilidades-chat-ia--cabecera">Provider, model and project</h2>
   <ul>
-    <li><strong>Provider</strong> — the installed CLIs and the model servers you added in <em>Settings → AI</em>. The last menu option, <em>Add model server (Ollama / OpenAI)…</em>, opens the form right there and, on save, picks the new server: <a href="#ia-modelos--desde-el-chat">nothing needs installing</a>. Switching it in a conversation that already started opens a <em>new</em> one: each provider keeps its own thread, and there's no honest way to continue with another what one was doing.</li>
+    <li><strong>Provider</strong> — the installed CLIs and the <a href="#utilidades-modelos">AI providers</a> you enabled (servers of your own and cloud APIs). The last menu option, <em>Add AI provider…</em>, opens the form right there and, on save, picks the new provider: <a href="#ia-modelos--desde-el-chat">nothing needs installing</a>. Between providers of models you can <a href="#utilidades-chat-ia--cambiar-proveedor">switch in the middle of a conversation</a> and it stays the same one; switching to or from a CLI opens a <em>new</em> conversation, because a CLI keeps its own thread.</li>
     <li><strong>Model</strong> — the list is reported by the provider itself, and <em>Default</em> uses whichever it has configured. It applies from the next message on.</li>
     <li><strong>Project</strong> — one of the repositories you added in the Git module, a <strong>folder</strong> you opened, or none. The conversation records it, and its name and location travel as a chip with your messages so the agent knows which one you mean; the chip can be dropped from the message. A conversation that started in another module (a connection, a note) shows its origin here and can't change project. With a <a href="#ia-modelos">model server</a>, it is also the <strong>working project</strong> of its <a href="#ia-agente-local">file and command tools</a>, and the app loads its instructions and skills by itself: see <a href="#ia-proyectos">Projects, folders and automatic context</a>. Without one, the chat says that only the MCP tools are available.</li>
   </ul>
+
+  <h2 id="utilidades-chat-ia--cambiar-proveedor">Switch provider mid-conversation</h2>
+  <p>Between <a href="#utilidades-modelos">AI providers</a> (your own servers and cloud APIs) you can change who answers <strong>without starting another conversation</strong>: pick the other provider in the header and
+  the conversation keeps its history, its project and its place in the list. What it doesn't keep is the provider's “memory”: the new one receives the earlier messages <strong>as context</strong> and nothing else, and its context window may be different.
+  A notice under the header says who answers now and who did before; the earlier answers stay signed by whoever wrote them. It applies from your next message.</p>
+  <p><strong>Continue with another provider.</strong> If a conversation's provider was <strong>disabled</strong> or <strong>deleted</strong>, its row in the history is marked in orange with the provider's name (or <em>Deleted provider</em>) and it still opens: you can read everything that was said, the message box stays locked and a strip above it offers
+  <strong>Continue with another provider</strong>. Pick one of the enabled ones and the conversation carries on there, with no new conversation. If no other provider of models is enabled, the strip offers to add one.</p>
+  <div class="note"><span class="lbl">CLIs are different</span>
+  A CLI (Claude Code, Codex, Antigravity) keeps its thread in its own storage, and there is no honest way for another provider to continue what it was doing. Switching to or from a CLI opens a new conversation, as before.</div>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-chat-lost.png" alt="AI Chat open on a conversation whose provider was disabled: the history row is marked in orange, a strip under the header says the provider is disabled and offers a selector with Continue with another provider, and the message box is locked"></div>
+    <figcaption>A conversation whose provider is no longer available: readable, with a strip to continue with another one.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-chat-switched.png" alt="The same conversation after continuing with Ollama local: the strip is gone, a notice says who answers now and who did before, and the message box is enabled again"></div>
+    <figcaption>After continuing: same conversation, new provider, and a notice that says what changed.</figcaption>
+  </figure>
 
   <h2 id="utilidades-chat-ia--historial">History and search</h2>
   <p>The list on the left holds <strong>every conversation from every module and provider</strong>, grouped by <em>Today</em>,
@@ -1706,6 +1836,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <li><strong>Stop</strong> — while a turn runs, the send button becomes a red <em>Stop</em>. What you type in the meantime is queued and goes out when it ends.</li>
     <li><strong>Copy</strong> — every message has its Copy button (it shows up when you hover it or tab to it), and every code block has its own bar with Copy.</li>
     <li><strong>Tokens</strong> — under each answer, the tokens of that turn; at the bottom, the running total of the conversation.</li>
+    <li><strong>Attach</strong> — the paperclip next to the model selector adds images, PDFs and text or code files (you can also drag them onto the chat or paste them with <kbd>⌘V</kbd>); a chip warns if the model can't read one. See <a href="#ia-adjuntos">Attachments</a>.</li>
     <li><strong>You choose where to read</strong> — if you scroll up to re-read while the answer keeps arriving, it won't drag you back down: a <em>jump to the latest message</em> button shows up.</li>
   </ul>
 
@@ -1722,25 +1853,147 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   it is what you send to the provider you picked.</div>
 </article>
 
-<article class="topic" id="utilidades-modelos" data-title="Models">
-  <h1>Models</h1>
-  <p class="lead">See which models a <a href="#ia-modelos">model server</a> has, pull new ones and delete the ones you no longer
-  use —on this machine or on another one— without opening a terminal or typing <code>ollama pull</code>.</p>
+<article class="topic" id="utilidades-modelos" data-title="AI providers">
+  <h1>AI providers</h1>
+  <p class="lead">Your own servers and cloud APIs in one place: turn them on and off, put them in order, test them, and see the models
+  each one has and how much you have used it —without opening a terminal or a provider's console.</p>
 
-  <p>It's in the <strong>Utilities</strong> module and opens in <strong>its own tab</strong>. It works with the servers you
-  already added in <em>Settings → AI</em>: it uses their address, token, headers and certificate option, so an Ollama behind a
-  proxy with an <code>X-Api-Key</code> header is managed exactly like a local one.</p>
+  <p>It's in the <strong>Utilities</strong> module and opens in <strong>its own tab</strong> (it used to be called <em>Models</em>; a tab you already had open keeps working).
+  On the left it lists <strong>every provider</strong> in three groups —<strong>Local</strong>, <strong>Remote</strong> and <strong>Cloud</strong>— and on the right it shows the selected one in three
+  sections: <a href="#utilidades-modelos--secciones"><strong>Models</strong>, <strong>Usage</strong> and <strong>Settings</strong></a>. It is the same list as <em>Settings → AI</em>, which shows a summary of it, so a change in one shows up in the other.
+  A provider is a <a href="#ia-modelos">server of your own</a> (Ollama, LM Studio, vLLM…) or a <a href="#utilidades-modelos--nube">hosted API</a> used with an API key (OpenRouter, OpenAI, Anthropic, Groq…).
+  The tab uses each provider's address, token or API key, headers and certificate option, so an Ollama behind a proxy with an <code>X-Api-Key</code> header is managed exactly like a local one.</p>
 
   <figure>
-    <div class="shot"><img src="docs/screenshots/utilities-models.png" alt="Models tab: the server selector with its status dot, the Ollama and local badges, the pull field with example chips, and a table of installed models with family, parameters, quantization, size and date; the loaded model shows an In memory badge with its VRAM and when it unloads, and the details, unload and delete buttons on each row"></div>
-    <figcaption>The models of a local Ollama. The green badge marks the one loaded in memory right now.</figcaption>
+    <div class="shot"><img src="docs/screenshots/utilities-providers.png" alt="AI providers tab: on the left the providers column in three groups — Local with Ollama and LM Studio, Remote with a vLLM server and a disabled LM Studio, Cloud with OpenRouter, Anthropic and OpenAI — each row with its icon, name, host, enabled switch, status dot with latency and model count; on the right Anthropic selected, with the Models, Usage and Settings sections, a read-only note and its list of models"></div>
+    <figcaption>The providers column in three groups, and the models of the selected one (a hosted API: read-only list).</figcaption>
   </figure>
 
-  <h2 id="utilidades-modelos--servidor">Pick the server</h2>
-  <p>The selector at the top lists every model server you saved, each with its <strong>status dot</strong> (green it answers, red it
-  doesn't). The badges say its type —<em>Ollama</em> or <em>OpenAI-compatible</em>— and whether it is <em>local</em> or
-  <em>remote</em>; next to them, the latency of the last check. The last option, <strong>Add server…</strong>, opens the same
-  form as Settings in a dialog and selects the new server when you save it. The last one you used is remembered.</p>
+  <h2 id="utilidades-modelos--servidor">The providers column</h2>
+  <p>The left column lists <strong>every provider you saved</strong>, grouped by where it runs:</p>
+  <ul>
+    <li><strong>Local</strong> — it runs on this machine: a loopback address (<code>localhost</code>, <code>127.0.0.1</code>). What you send it never leaves the computer.</li>
+    <li><strong>Remote</strong> — a server of your own on another machine of your network.</li>
+    <li><strong>Cloud</strong> — a hosted API: OpenRouter, OpenAI, Anthropic, Groq, DeepSeek, Mistral, Together, xAI or Google Gemini. What you send it goes out to the internet.</li>
+  </ul>
+  <p>The group comes from the <strong>address</strong>, not from a setting: you never pick it. Each row shows a generic icon for its type, the <strong>name</strong>, the host, the
+  <a href="#utilidades-modelos--activar"><strong>enabled switch</strong></a>, the type (<em>Ollama</em>, <em>OpenAI API</em> or <em>Anthropic</em>), the <strong>status dot with the latency</strong> of the last check (green it answers, red it doesn't)
+  and how many models it reported. Click a row —or press <kbd>Enter</kbd> on it— to see that provider: the header shows its name, badges and status.
+  <kbd>↑</kbd> <kbd>↓</kbd> move between rows, and with more than six providers a search box appears. The last one you used is remembered.</p>
+  <p>Drag the column's edge to change its width (with the focus on it, <kbd>←</kbd> <kbd>→</kbd> do the same, and a double-click goes back to the
+  original width); it is remembered. The button at the left of the header hides the column. In a <strong>narrow tab</strong> the column stops taking
+  space and opens as a <strong>drawer</strong> over the table instead; picking a provider closes it.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models-servers.png" alt="AI providers tab after clicking Test connection: under the header of the selected provider a green result line says it answers, with the version, the model count and the latency, and the list of model names"></div>
+    <figcaption>Test connection shows its result under the header, and the dot and latency in the column update with it.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--administrar">Add, edit, duplicate and test a provider</h2>
+  <p>Every action is in the <strong>Settings</strong> section of the selected provider and in the <strong>⋯</strong> menu of each row (also on right-click), so you don't
+  have to select a provider to act on it. <strong>Test connection</strong> is in the header too.</p>
+  <ul>
+    <li><strong>Add provider</strong> (top of the column) opens the add form with the <a href="#ia-modelos--atajos">shortcuts</a>: the <a href="#utilidades-modelos--nube">cloud</a> ones, which only ask for an API key, and <em>Ollama</em>, <em>LM Studio</em>, <em>vLLM</em>… for servers of your own. When you save, the new provider is selected.</li>
+    <li><strong>Edit</strong> opens the saved provider's form in a dialog. The token or API key and the extra headers are not shown —they never leave the vault—: leaving them as they are keeps them, and <em>Remove token</em> / <em>Remove API key</em> and <em>Replace headers</em> are explicit actions.</li>
+    <li><strong>Test connection</strong> checks the provider right now with its saved token or key and headers, and shows the result under the header: version and models, or the exact error. The status dot and latency in the column update too.</li>
+    <li><strong>Duplicate</strong> opens a new form with the type, address, certificate option and context window of the provider, named “… (copy)”. The <strong>token, API key and headers are not copied</strong> —the app can't read them back—, so type them again if the new one needs them. Handy to register the same machine under another address, or a second provider that is configured almost the same.</li>
+  </ul>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models-server-edit.png" alt="AI providers tab with the edit dialog open on a remote OpenAI-compatible server: a note about the saved token and headers, name, type, address, the saved headers listed by name only with a Replace headers button, the self-signed certificate switch and the context window, and Test connection, Cancel and Save buttons"></div>
+    <figcaption>Editing a saved provider from the tab: the saved headers appear by name only, never their values.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--eliminar">Delete a provider</h2>
+  <p><strong>Delete</strong> asks for confirmation and explains what it does and what it doesn't:</p>
+  <ul>
+    <li>It <strong>removes the connection from the app</strong>: the provider disappears from the list and from the chat's provider selectors, and its saved token or API key and headers are erased.</li>
+    <li>It <strong>doesn't touch the server, the models or your account</strong>: they stay where they were. (Deleting a <em>model</em> from its row is what removes files from a server; a leaked API key is revoked in the provider's console.)</li>
+    <li>The <strong>conversations that used it stay in the history</strong>, with all their messages. You can open them and <a href="#utilidades-chat-ia--cambiar-proveedor">carry on with another provider</a>: the earlier messages reach it as context. Adding the same provider again doesn't link them back: for the app it is a different one.</li>
+  </ul>
+  <p>After deleting, the next provider in the list is selected.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models-server-delete.png" alt="Delete provider confirmation: the provider's name and host, and three points — the server and its models are not touched, the conversations that used it stay in the history and can be continued with another provider, and adding it again is treated as a different one"></div>
+    <figcaption>The confirmation spells out the consequences, including what happens to the chats.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--varios">Several providers, local, remote and cloud</h2>
+  <p>Nothing limits you to one. A typical setup: the Ollama on your machine for quick tests, an LM Studio on the same machine, a vLLM or
+  another Ollama on the GPU server and, in the cloud, Anthropic and OpenRouter for the heavy lifting. Each one is its own row with its own status: one that is down (red dot, “no response”) doesn't get in the way of
+  the others, and selecting it shows the error with its reason and a <em>Retry</em> button. With no providers at all, the tab explains what a provider is and
+  lists the shortcuts to start from, cloud ones first.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models-servers-empty.png" alt="AI providers tab with no providers: an explanation of what a provider is, an Add provider button, and the shortcuts in two groups — cloud (OpenRouter, OpenAI, Groq, DeepSeek, Mistral, Together, xAI, Google Gemini, Anthropic) and local (Ollama on this machine and on another machine, LM Studio, vLLM, llama.cpp, other OpenAI-compatible)"></div>
+    <figcaption>Without providers: what a provider is, and the shortcuts you will find in the add form.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models-servers-narrow.png" alt="Narrow AI providers tab with the providers drawer open over the table, listing the providers in their groups and the Add provider button"></div>
+    <figcaption>In a narrow tab the providers column opens as a drawer over the table.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--nube">Cloud providers and API keys</h2>
+  <p>A cloud provider needs no server and no installation: you pick its shortcut and paste an <strong>API key</strong>. The add form groups the shortcuts as
+  <strong>Cloud (API key)</strong> —OpenRouter, OpenAI, Groq, DeepSeek, Mistral, Together, xAI, Google Gemini and Anthropic— and <strong>Local / another machine</strong>.</p>
+  <ol class="steps">
+    <li>Click <strong>Add provider</strong> and pick the card, for example <em>OpenRouter</em>: it fills in the name, the type and the address.</li>
+    <li>Click <strong>Get an API key</strong>: it opens in your browser the provider's page where the key is generated (the app doesn't create it for you). Copy it.</li>
+    <li>Paste it in <strong>API key</strong> —it is required here— and click <strong>Test connection</strong>: it lists the models your key can use.</li>
+    <li>Optionally pick the <a href="#utilidades-modelos--modelo-defecto">default model</a> from that list, and <strong>Save</strong>. The provider shows up in the chat's selector right away.</li>
+  </ol>
+  <div class="note"><span class="lbl">Where the key is stored</span>
+  The API key is stored <strong>encrypted in the vault</strong>, under your master password, and it is sent only to that provider's address. After saving it is <strong>never shown again</strong> —not in the form,
+  not in Settings, not in the tab—: the screens only say <em>Stored, encrypted in the vault</em>. When you edit, leaving the field empty keeps the saved key; paste another one to replace it, and <em>Remove API key</em> deletes it.
+  <strong>Duplicate</strong> doesn't copy it.</div>
+  <p>For a cloud provider the form hides what doesn't apply —the context window, the self-signed certificate option and the guides for exposing a server— and warns that
+  whatever you send, including the code and tables you attach, goes out to the provider and is billed by use on its side.</p>
+  <ul>
+    <li><strong>Anthropic</strong> uses its own API (the <em>Anthropic</em> type) and comes with a recommended default model, <code>claude-opus-5-5</code>.</li>
+    <li>The other eight speak the <em>OpenAI-compatible</em> API. You can also reach any hosted service with the <em>Other OpenAI-compatible</em> card and its address by hand: if the address belongs to a known hosted provider, the form treats it as cloud and asks for the key.</li>
+    <li>A hosted API lists its models but doesn't pull or delete them: the Models section is <a href="#utilidades-modelos--openai">read-only</a>.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-providers-form.png" alt="Add AI provider dialog with the OpenRouter card picked: the shortcuts in two groups (Cloud with API key and Local / another machine), the name, the OpenAI-compatible type, the address, a warning that the data leaves this machine, the required API key field with a Get an API key link and a note that it is stored encrypted, and the optional default model field"></div>
+    <figcaption>The add form with a cloud shortcut: the address is already filled in and the API key is required.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--activar">Enable, disable and order</h2>
+  <ul>
+    <li><strong>Switch</strong> — every row has one, and so do the header and the Settings section. <strong>Disabled</strong>, a provider disappears from the AI selectors (the chat's and the AI buttons') but stays saved with its
+    configuration, its API key and its conversations; its row is dimmed and says <em>Disabled</em>. Turn it on and it comes back. It's the way to stop using a provider for a while without deleting it, or to keep a paid API from being picked by mistake. A disabled provider isn't probed either.</li>
+    <li><strong>Order</strong> — drag a row by its handle (it appears at the left when you hover or focus the row) to move it <strong>inside its group</strong>. With the keyboard, <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>Alt</kbd>+<kbd>↓</kbd> on the row, and a screen reader announces the new position.
+    The order is the one the AI selectors use, and it is remembered. While you search, ordering is off.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-providers-off.png" alt="AI providers tab with a disabled provider selected: its row is dimmed and shows Disabled, the header shows the switch off, and a note under the sections says it does not show up in the AI selectors, with an Enable button"></div>
+    <figcaption>A disabled provider: dimmed row, switch off, and a note with an Enable button.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--secciones">Models, Usage and Settings</h2>
+  <p>The selected provider has three sections under its header:</p>
+  <ul>
+    <li><strong>Models</strong> — the list described <a href="#utilidades-modelos--lista">below</a>: pull and delete for Ollama, read-only for the rest.</li>
+    <li><strong>Usage</strong> — tokens in and out, turns, conversations and speed of <em>that</em> provider according to the app's chat history, with the per-day chart and the split by model.
+    <strong>No cost is shown</strong>: no provider reports a price per token to the app, and computing one would be making it up. The real spend is in the provider's console.</li>
+    <li><strong>Settings</strong> — an overview of how it is set up (type, group, address, whether an API key or token is stored —never its value—, headers, certificate, status) and its actions:
+    <em>Edit</em>, <em>Test connection</em>, <em>Duplicate</em> and <em>Delete</em>, plus the enabled switch and the <a href="#utilidades-modelos--modelo-defecto">default model</a>.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-providers-usage.png" alt="Usage section of the Anthropic provider: a card with its total tokens, tokens in and out, turns, conversations and speed, a bar per day and a bar per model, and a note explaining that no cost is shown"></div>
+    <figcaption>Usage of the selected provider only.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-providers-config.png" alt="Settings section of the Anthropic provider: the state switch, the connection overview with type, group, address, a stored API key and status, the default model selector, and the Edit, Test connection, Duplicate and Delete buttons"></div>
+    <figcaption>Settings: how it is set up, with the API key shown only as “stored”.</figcaption>
+  </figure>
+
+  <h2 id="utilidades-modelos--modelo-defecto">Default model</h2>
+  <p>Each provider can have a <strong>default model</strong>: the one it uses when a conversation or an AI button doesn't pick one. Set it in the add/edit form or in the Settings section.
+  Once the connection has been tested (or the Models section has read the list) you pick it from the models the provider reported; with no list, or with a model that isn't in it, you type the name.
+  Empty means “let the provider choose”: the first one it reports, or the recommended one for Anthropic. The chat's model selector still lets you pick another one per conversation.</p>
 
   <h2 id="utilidades-modelos--lista">The list of models</h2>
   <p>For an Ollama server the table shows name, family, <strong>parameter size</strong> (7.6B), <strong>quantization</strong> (Q4_K_M),
@@ -1748,6 +2001,11 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   box filters by any of those fields. In a narrow tab the less important columns fold away first.</p>
   <p>A model that is <strong>loaded in memory</strong> carries an <em>In memory</em> badge with how much VRAM it takes and when the
   server will unload it if nobody uses it. That list refreshes by itself every few seconds while the tab is in view.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-models.png" alt="Models section of a local Ollama: the pull field with example chips and a table of installed models with family, parameters, quantization, size and date; the loaded model shows an In memory badge"></div>
+    <figcaption>The models of a local Ollama. The green badge marks the one loaded in memory right now.</figcaption>
+  </figure>
 
   <h2 id="utilidades-modelos--descargar">Pull a model</h2>
   <ol class="steps">
@@ -1788,13 +2046,13 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <li><strong>Delete</strong> (trash icon) asks for confirmation and removes the model's files <strong>from the server's disk</strong>. The dialog names the server and, if it is remote, says it is another machine and nothing is deleted from yours. To use the model again it has to be pulled again.</li>
   </ul>
 
-  <h2 id="utilidades-modelos--openai">Servers that aren't Ollama</h2>
-  <p>An <em>OpenAI-compatible</em> server (LM Studio, vLLM, the llama.cpp server…) only knows how to <strong>list</strong> its models:
-  its API has no endpoint to pull or delete. The tab shows the list in <strong>read-only</strong> mode, with a note, and hides the pull
-  field and the buttons instead of offering actions that would fail. Manage those models with the server's own tool.</p>
+  <h2 id="utilidades-modelos--openai">Providers that aren't Ollama</h2>
+  <p>An <em>OpenAI-compatible</em> server (LM Studio, vLLM, the llama.cpp server…), the <em>Anthropic</em> API and every other hosted API only know how to <strong>list</strong> their models:
+  they have no endpoint to pull or delete. The section shows the list in <strong>read-only</strong> mode, with a note, and hides the pull
+  field and the buttons instead of offering actions that would fail. Manage those models with the server's own tool, or in the provider's console.</p>
 
   <figure>
-    <div class="shot"><img src="docs/screenshots/utilities-models-readonly.png" alt="Models tab on an OpenAI-compatible server: a Read-only note and a plain list with three model names"></div>
+    <div class="shot"><img src="docs/screenshots/utilities-models-readonly.png" alt="Models section of an OpenAI-compatible server: a Read-only note and a plain list with three model names"></div>
     <figcaption>An OpenAI-compatible server: read-only list.</figcaption>
   </figure>
 
@@ -1806,9 +2064,9 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 
   <h2 id="utilidades-modelos--ejemplo">Example: bring a coding model to the GPU machine</h2>
   <ol class="steps">
-    <li>Open <strong>Utilities → Models</strong> and pick <em>Ollama on the GPU server</em> in the selector.</li>
-    <li>Click the <code>qwen2.5-coder:7b</code> chip and then <strong>Pull</strong>. Watch the bar reach 100%.</li>
-    <li>Open <strong>Utilities → AI Chat</strong>, pick that server as the provider: the new model is in the model selector, ready to use.</li>
+    <li>Open <strong>Utilities → AI providers</strong> and pick <em>Ollama on the GPU server</em> in the providers column.</li>
+    <li>In <strong>Models</strong>, click the <code>qwen2.5-coder:7b</code> chip and then <strong>Pull</strong>. Watch the bar reach 100%.</li>
+    <li>Open <strong>Utilities → AI Chat</strong>, pick that provider: the new model is in the model selector, ready to use. If a conversation was left without its provider, <a href="#utilidades-chat-ia--cambiar-proveedor">continue it with this one</a>.</li>
   </ol>
 </article>
 
@@ -1855,6 +2113,10 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td>Notes</td><td>Query your knowledge base, and —with explicit permission— write down what it found out</td></tr>
   </table></div>
 
+  <h2 id="ia-chat--adjuntos">Attach files</h2>
+  <p>The <strong>Attach</strong> button, dragging onto the chat or <kbd>⌘V</kbd> add images, PDFs and text or code files to your message,
+  with a warning when the model you picked can't read one. See <a href="#ia-adjuntos">Attachments</a>.</p>
+
   <h2 id="ia-chat--historial">Conversation history</h2>
   <p>The panel's <strong>History</strong> tab lists every conversation, grouped by module or by agent, with a
   search box. Opening one <strong>resumes it in its own context</strong> —a conversation belongs to the resource
@@ -1871,31 +2133,129 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   estimate, not a parallel count by the app: making the number up would be worse than not showing it.</p>
 </article>
 
-<article class="topic" id="ia-modelos" data-title="Model servers: Ollama and OpenAI-compatible">
-  <h1>Model servers: Ollama and OpenAI-compatible</h1>
-  <p class="lead">Use a model that runs on your machine or on your network instead of a CLI. Add it once and it
+<article class="topic" id="ia-adjuntos" data-title="Attachments: images, PDFs and files">
+  <h1>Attachments: images, PDFs and files</h1>
+  <p class="lead">Send the agent a screenshot, a PDF report or a source file along with your question —in the
+  <a href="#utilidades-chat-ia">AI Chat</a>, the side panel and the Git, database and SSH chats— and know before
+  sending whether the model you picked can read it.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-attach-chips.png" alt="Chat composer with three attachment chips above the text box: a screenshot with its thumbnail, a PDF and a Go source file, each with its name, size and a remove button; the Attach button in the toolbar"></div>
+    <figcaption>Each file is a chip above the box: thumbnail for images, icon for PDFs and text, name, size and an ×.</figcaption>
+  </figure>
+
+  <h2 id="ia-adjuntos--adjuntar">Three ways to attach</h2>
+  <ul>
+    <li><strong>The <em>Attach</em> button</strong> (the paperclip, next to the model selector) opens your system's file picker. Pick several at once.</li>
+    <li><strong>Drag them onto the chat.</strong> While you drag, a dashed overlay says <em>Drop the files to attach them</em>; press <kbd>Esc</kbd> and nothing is attached.</li>
+    <li><strong>Paste</strong> with <kbd>⌘V</kbd> / <kbd>Ctrl+V</kbd>: a screenshot from the clipboard, or files you copied in Finder or Explorer. It works with the cursor anywhere in the chat, not only in the text box.</li>
+  </ul>
+  <p>A message can be <strong>only files</strong>: with no text, the agent is asked to review what you attached.
+  Everything is keyboard-reachable: the button, every chip (<kbd>Delete</kbd> on a focused chip removes it) and the drop zone is announced to screen readers.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-attach-drop.png" alt="The chat covered by a dashed overlay with an upload icon and the text Drop the files to attach them, the types accepted and the size limits"></div>
+    <figcaption>While you drag a file over the chat, the overlay says where to drop it and what the limits are.</figcaption>
+  </figure>
+
+  <h2 id="ia-adjuntos--fichas">What the chips tell you</h2>
+  <p>Each chip shows its state, and a message that can't go out says why <em>next to the box</em>, not only in a tooltip:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Chip</th><th>Meaning</th><th>Can you send?</th></tr>
+    <tr><td>Spinner over the thumbnail</td><td>Uploading to the app's attachments folder</td><td>Wait a moment: <em>Send</em> is off while anything uploads</td></tr>
+    <tr><td>Neutral, with its size</td><td>Ready; the model you picked reads it</td><td>Yes</td></tr>
+    <tr><td>Amber — <em>May not read it</em></td><td>The provider doesn't say what its model supports. The message goes out anyway and the provider answers</td><td>Yes</td></tr>
+    <tr><td>Red — <em>No vision</em> / <em>PDF not supported</em></td><td>The model can't read it. The tooltip explains why and what to do (<em>pick a model with vision</em>, <em>only Anthropic or Claude Code read PDFs</em>)</td><td>No, until you remove it or switch model</td></tr>
+    <tr><td>Red — <em>Could not attach</em></td><td>Too big, an unsupported type, or the app rejected it; the reason is written under the chips</td><td>It isn't sent; the rest is</td></tr>
+  </table></div>
+  <p>Chips are re-evaluated when you <strong>change the agent or the model</strong>: switching to a model with vision
+  clears a red chip right away, no need to attach again.</p>
+
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-attach-warn.png" alt="Composer attached to an OpenAI-compatible server: the image chip in amber with May not read it, the PDF chip in red with PDF not supported, a Go file in neutral, and under them the reason why Send is off"></div>
+    <figcaption>With an OpenAI-compatible server: the image is a maybe (amber) and the PDF can't be read (red, Send off).</figcaption>
+  </figure>
+
+  <h2 id="ia-adjuntos--proveedores">What each provider reads</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Provider</th><th>Images</th><th>PDF</th><th>Text and code</th></tr>
+    <tr><td>Ollama</td><td>Models with vision (the server reports it)</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Anthropic (API)</td><td>Per model</td><td>Yes, per model</td><td>Yes</td></tr>
+    <tr><td>OpenAI-compatible: OpenRouter</td><td>Per model (it reports it)</td><td>No</td><td>Yes</td></tr>
+    <tr><td>OpenAI-compatible: any other</td><td>Assumed, unconfirmed</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Claude Code</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+    <tr><td>Codex CLI</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Antigravity CLI</td><td>Assumed, not verified</td><td>No</td><td>Yes</td></tr>
+  </table></div>
+  <p><strong>Text and code are read by everyone</strong>: their contents are pasted into the message inside a block with
+  the file's language, even for the CLIs. <strong>PDFs aren't converted to text</strong>: whoever can't read them
+  can't receive them, and the chip tells you before you hit Send. The type is decided by the file's
+  <em>content</em>, not its extension.</p>
+
+  <h2 id="ia-adjuntos--limites">Limits</h2>
+  <div class="tablewrap"><table>
+    <tr><th>What</th><th>Limit</th></tr>
+    <tr><td>Image (PNG, JPG, GIF, WebP)</td><td>5 MB each</td></tr>
+    <tr><td>PDF</td><td>24 MB each</td></tr>
+    <tr><td>Text or code (UTF-8)</td><td>512 KB each</td></tr>
+    <tr><td>Files per message</td><td>10</td></tr>
+  </table></div>
+  <p>They're checked <strong>before uploading</strong>, with a message naming the file, and again when sending. Binaries
+  the app doesn't know (an <code>.exe</code>, a zip), BMP or ICO images, and text that isn't UTF-8 are rejected.</p>
+
+  <h2 id="ia-adjuntos--historial">What's stored, and what the model sees later</h2>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ai-attach-sent.png" alt="A resumed conversation: your messages with their attachment chips on top —a screenshot and a PDF, then a Go file with no text— and the agent's answers"></div>
+    <figcaption>Sent messages keep their chips; in a resumed chat they show an icon instead of the thumbnail.</figcaption>
+  </figure>
+  <ul>
+    <li><strong>The history keeps only the name, type and size</strong> of each file, encrypted like the rest of the message. Never the content or the path.</li>
+    <li><strong>Images and PDFs aren't re-sent in later turns.</strong> The model sees them in the message where you attached them; in the following ones it only receives their name, because resending megabytes on every turn would cost tokens each time and the file is deleted after 24 hours. The chip's tooltip says so. If you need it to look again, attach it again.</li>
+    <li><strong>Pasted text stays in the context</strong>: it's part of what you said.</li>
+  </ul>
+
+  <div class="note"><span class="lbl">Privacy</span><p>The app only reads files from <strong>its own attachments folder</strong>
+  (inside its data directory, never inside your repository): the ones it saved when you attached them. It never reads an
+  arbitrary path of your machine, and they're deleted after 24 hours. What leaves your computer is what you attach to the
+  provider you picked: with a <a href="#ia-modelos">remote server</a> or a cloud API, that includes the file.</p></div>
+
+  <h2 id="ia-adjuntos--ejemplo">Example: ask about a screenshot and a report</h2>
+  <ol class="steps">
+    <li>Open the chat with a provider that sees images and PDFs (Claude Code, or an Anthropic provider).</li>
+    <li>Drag the screenshot of the error and the PDF onto the chat; both appear as chips.</li>
+    <li>Type <code>Why does the login fail? The report is attached too</code> and press <kbd>Enter</kbd>.</li>
+    <li>Later you attach the <code>.go</code> file and send it with no text: the agent reviews it, already knowing the earlier conversation.</li>
+  </ol>
+</article>
+
+<article class="topic" id="ia-modelos" data-title="AI providers: your own servers and cloud APIs">
+  <h1>AI providers: your own servers and cloud APIs</h1>
+  <p class="lead">Use a model that runs on your machine, on your network or in the cloud instead of a CLI. Add it once and it
   appears as one more agent in the chat and in every AI button.</p>
 
   <figure>
-    <div class="shot"><img src="docs/screenshots/model-servers.png" alt="Settings, AI section: the Model servers list with a local Ollama, a remote vLLM with a token and headers and a LAN server with an unverified certificate, each with its status dot and latency, the test result showing the version and the models, and the Add server button"></div>
-    <figcaption>Settings → AI → Model servers: name, type, address, token, headers, certificate, whether it responds, and a test button.</figcaption>
+    <div class="shot"><img src="docs/screenshots/model-servers.png" alt="Settings, AI section: the AI providers summary with the count per group (Local, Remote, Cloud), one compact row per provider with its status dot and an edit button, the button to manage them in Utilities and the Add provider button"></div>
+    <figcaption>Settings → AI → AI providers: a summary, with the way to the full management in Utilities and the add button.</figcaption>
   </figure>
 
-  <h2 id="ia-modelos--agregar">Add a server</h2>
+  <h2 id="ia-modelos--agregar">Add a provider</h2>
   <ol class="steps">
-    <li>Open <strong>Settings → AI</strong> and, under <strong>Model servers</strong>, click <strong>Add server</strong> (or, from the chat, pick <em>Add model server…</em> in the provider selector: <a href="#ia-modelos--desde-el-chat">the same form, in a dialog</a>).</li>
-    <li>Pick a <a href="#ia-modelos--atajos">shortcut</a> at the top of the form (<em>Ollama on this machine</em>, <em>LM Studio</em>…) and it fills in name, type and address. Or fill them in yourself:</li>
-    <li>Pick the <strong>type</strong>: <em>Ollama</em> for Ollama's own API, or <em>OpenAI-compatible</em> for LM Studio, vLLM, the llama.cpp server and anything else that speaks <code>/v1/chat/completions</code>.</li>
-    <li>Type the <strong>address</strong>: <code>http://localhost:11434</code> for the local Ollama, <code>http://localhost:1234/v1</code> for LM Studio, or the URL of a remote machine such as <code>https://gpu.mycompany.com/v1</code>.</li>
-    <li>Click <strong>Test connection</strong>: it shows the server version and how many models it lists, or the exact error. Then <strong>Save</strong>.</li>
+    <li>Open <strong>Settings → AI</strong> and, under <strong>AI providers</strong>, click <strong>Add provider</strong> (or, from the chat, pick <em>Add AI provider…</em> in the provider selector: <a href="#ia-modelos--desde-el-chat">the same form, in a dialog</a>; or use <a href="#utilidades-modelos">Utilities → AI providers</a>).</li>
+    <li>Pick a <a href="#ia-modelos--atajos">shortcut</a> at the top of the form —a <a href="#ia-modelos--nube">cloud</a> one such as <em>OpenRouter</em> or <em>Anthropic</em>, or <em>Ollama on this machine</em>, <em>LM Studio</em>…— and it fills in name, type and address. Or fill them in yourself:</li>
+    <li>Pick the <strong>type</strong>: <em>Ollama</em> for Ollama's own API, <em>OpenAI-compatible</em> for LM Studio, vLLM, the llama.cpp server, OpenRouter, OpenAI and anything else that speaks <code>/v1/chat/completions</code>, or <em>Anthropic</em> for Anthropic's API.</li>
+    <li>Type the <strong>address</strong>: <code>http://localhost:11434</code> for the local Ollama, <code>http://localhost:1234/v1</code> for LM Studio, or the URL of a remote machine such as <code>https://gpu.mycompany.com/v1</code>. A cloud shortcut already brings it.</li>
+    <li>For a hosted API, paste the <strong>API key</strong> (it is required there). Click <strong>Test connection</strong>: it shows the server version and how many models it lists, or the exact error. Then <strong>Save</strong>.</li>
   </ol>
   <div class="note tip"><span class="lbl">One click for Ollama</span>
   When there is an Ollama answering on <code>localhost:11434</code>, Settings offers <strong>Local Ollama detected — Add</strong>
   and saves it for you. The suggestion goes away once you add it or dismiss it.</div>
 
+  <div class="note"><span class="lbl">Several providers</span>
+  You can have as many as you want, local, remote and cloud. <a href="#utilidades-modelos--servidor">Utilities → AI providers</a> lists them all in one
+  column, in three groups, with their status, and lets you enable, order, edit, test, duplicate and delete each one from there; <em>Settings → AI</em> shows a summary and links to it.</div>
 
-  <h2 id="ia-modelos--atajos">Shortcuts: start from a model</h2>
-  <p>When you add a server, the top of the form offers six cards. Picking one fills in <strong>name, type and address</strong>; you can still edit everything afterwards.
+  <h2 id="ia-modelos--atajos">Shortcuts: start from a provider</h2>
+  <p>When you add a provider, the top of the form offers the shortcuts in two groups: <strong>Cloud (API key)</strong> and <strong>Local / another machine</strong>. Picking one fills in <strong>name, type and address</strong>; you can still edit everything afterwards.
   The form remembers nothing between openings: each time it starts with no card picked.</p>
   <div class="tablewrap"><table>
     <thead><tr><th>Card</th><th>Type</th><th>Address</th></tr></thead>
@@ -1906,6 +2266,15 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
       <tr><td><strong>vLLM</strong></td><td>OpenAI-compatible</td><td><code>http://&lt;IP&gt;:&lt;port&gt;/v1</code> — IP or name and port (8000 by default)</td></tr>
       <tr><td><strong>llama.cpp server</strong></td><td>OpenAI-compatible</td><td><code>http://localhost:8080/v1</code></td></tr>
       <tr><td><strong>Other OpenAI-compatible</strong></td><td>OpenAI-compatible</td><td>empty: you type it</td></tr>
+      <tr><td><strong>OpenRouter</strong></td><td>OpenAI-compatible</td><td><code>https://openrouter.ai/api/v1</code> — API key</td></tr>
+      <tr><td><strong>OpenAI</strong></td><td>OpenAI-compatible</td><td><code>https://api.openai.com/v1</code> — API key</td></tr>
+      <tr><td><strong>Groq</strong></td><td>OpenAI-compatible</td><td><code>https://api.groq.com/openai/v1</code> — API key</td></tr>
+      <tr><td><strong>DeepSeek</strong></td><td>OpenAI-compatible</td><td><code>https://api.deepseek.com/v1</code> — API key</td></tr>
+      <tr><td><strong>Mistral</strong></td><td>OpenAI-compatible</td><td><code>https://api.mistral.ai/v1</code> — API key</td></tr>
+      <tr><td><strong>Together</strong></td><td>OpenAI-compatible</td><td><code>https://api.together.xyz/v1</code> — API key</td></tr>
+      <tr><td><strong>xAI</strong></td><td>OpenAI-compatible</td><td><code>https://api.x.ai/v1</code> — API key</td></tr>
+      <tr><td><strong>Google Gemini</strong></td><td>OpenAI-compatible</td><td><code>https://generativelanguage.googleapis.com/v1beta/openai</code> — API key</td></tr>
+      <tr><td><strong>Anthropic</strong></td><td>Anthropic</td><td><code>https://api.anthropic.com</code> — API key; default model <code>claude-opus-5-5</code></td></tr>
     </tbody>
   </table></div>
   <ul>
@@ -1915,9 +2284,15 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <li>The <strong>name</strong> is filled in for you (<em>Ollama · 192.168.1.50</em>) until you type your own.</li>
   </ul>
   <figure>
-    <div class="shot"><img src="docs/screenshots/model-servers-presets.png" alt="The Add server form with the six shortcut cards at the top: Ollama on this machine, Ollama on another machine, LM Studio, vLLM, llama.cpp server and Other OpenAI-compatible"></div>
+    <div class="shot"><img src="docs/screenshots/model-servers-presets.png" alt="The Add provider form with the shortcut cards at the top in two groups: Cloud (OpenRouter, OpenAI, Groq, DeepSeek, Mistral, Together, xAI, Google Gemini, Anthropic) and Local / another machine (Ollama on this machine and on another machine, LM Studio, vLLM, llama.cpp server, Other OpenAI-compatible)"></div>
     <figcaption>The shortcut cards at the top of the add form.</figcaption>
   </figure>
+
+  <h2 id="ia-modelos--nube">Hosted APIs (cloud)</h2>
+  <p>A hosted API —OpenRouter, OpenAI, Groq, DeepSeek, Mistral, Together, xAI, Google Gemini, Anthropic— works like any other provider, with two differences: you
+  need an <strong>API key</strong> from the provider (the form has a <em>Get an API key</em> link to the page where it is generated), and what you send travels to the provider and is billed by use on its side.
+  The key is stored <strong>encrypted in the vault</strong> and never shown again. The full walkthrough —steps, where the key lives, default model, enabling and ordering— is in
+  <a href="#utilidades-modelos--nube">Utilities → AI providers</a>.</p>
 
   <h2 id="ia-modelos--exponer-ollama">How to expose Ollama on the other machine</h2>
   <p>With the <em>Ollama on another machine</em> card the form shows this guide <strong>already open</strong>; with any other Ollama whose address isn't local it appears folded, one click away.
@@ -1945,11 +2320,11 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 
   <h2 id="ia-modelos--desde-el-chat">From the chat, nothing to install</h2>
   <p>Ollama is <strong>not installed like a CLI</strong>: it is used through its address, whether it runs on your machine or another one of your network. That is why the provider
-  selector of the <a href="#utilidades-chat-ia">AI Chat</a> (and the side panel's) ends with <strong>Add model server (Ollama / OpenAI)…</strong>: it opens the same form
+  selector of the <a href="#utilidades-chat-ia">AI Chat</a> (and the side panel's) ends with <strong>Add AI provider…</strong>: it opens the same form
   as Settings in a dialog and, on save, leaves the new server picked. If there is no server yet, the empty chat suggests it with a button
   (“Is Ollama on another machine? Add it as a server”), and in Settings → AI the <em>Coding agents</em> list points you to this section.</p>
   <figure>
-    <div class="shot"><img src="docs/screenshots/model-servers-add-dialog.png" alt="Add model server dialog over the AI Chat, with an Ollama at 192.168.1.50 whose test failed: the OLLAMA_HOST advice and the Save anyway button"></div>
+    <div class="shot"><img src="docs/screenshots/model-servers-add-dialog.png" alt="Add AI provider dialog over the AI Chat, with an Ollama at 192.168.1.50 whose test failed: the OLLAMA_HOST advice and the Save anyway button"></div>
     <figcaption>Adding from the chat. If the test fails, the button changes to <em>Save anyway</em>.</figcaption>
   </figure>
 
@@ -1972,7 +2347,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   That's why the server form has a <strong>Context window</strong> field with quick picks from 4k to 64k tokens and <em>Server default</em> (ask for nothing). A <strong>new</strong> Ollama server starts at <strong>16,384</strong>;
   the app sends it as <code>num_ctx</code> with every conversation.</p>
   <ul>
-    <li><strong>More context costs memory.</strong> The model takes more RAM or VRAM when it loads and answers more slowly: raise it only if you need it. The model's own limit is shown in the details panel of <a href="#utilidades-modelos">Utilities → Models</a>.</li>
+    <li><strong>More context costs memory.</strong> The model takes more RAM or VRAM when it loads and answers more slowly: raise it only if you need it. The model's own limit is shown in the details panel of <a href="#utilidades-modelos">Utilities → AI providers</a>.</li>
     <li><strong>The chat warns you.</strong> If the prompt (estimated at about 4 characters per token) doesn't fit in the configured window, a line in italics appears <strong>once per conversation</strong> suggesting to raise it. It doesn't block or cut anything.</li>
     <li><strong>OpenAI-compatible servers don't have the field.</strong> LM Studio, vLLM and llama.cpp set the window when the model is loaded, and their API doesn't let you ask for it per conversation: change it in the server itself.</li>
     <li>Servers you already had stay on <em>Server default</em>.</li>
@@ -2000,8 +2375,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <a href="#ia-cerebro">brain</a>. A model that doesn't support tools keeps working as plain chat, and the chat tells you so.</p>
 
   <h2 id="ia-modelos--consumo">Usage</h2>
-  <p>The usage panel (the <strong>chart button</strong> in the chat's header) has a <strong>Model servers</strong> section below the
-  CLIs: one card per server with its <em>local</em> or <em>remote</em> badge, the tokens in and out, the turns, the conversations,
+  <p>The usage panel (the <strong>chart button</strong> in the chat's header) has an <strong>AI providers</strong> section below the
+  CLIs: one card per provider with its <em>local</em>, <em>remote</em> or <em>cloud</em> badge, the tokens in and out, the turns, the conversations,
   one row per <strong>model</strong> with its share, a <strong>bar per day</strong> of the window (hover a bar for that day's tokens and turns),
   the average <strong>speed in tokens per second</strong> and when it was last used. A server you deleted still shows up, as <em>Deleted server</em>,
   while it has conversations inside the window.</p>
@@ -2069,7 +2444,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td>Grey</td><td>Checking, or not checked yet.</td></tr>
   </table></div>
   <p>The app asks the server when you pick it and then <strong>every 60 seconds, only while that chat is in view</strong>; with the window hidden
-  or out of focus it stops asking, and a CLI is never checked. <strong>Settings → AI → Model servers</strong> shows each server's state when it opens, and
+  or out of focus it stops asking, and a CLI is never checked. <strong>Settings → AI → AI providers</strong> shows each provider's state when it opens, and
   <strong>Test</strong> there updates the dot everywhere.</p>
   <figure>
     <div class="shot"><img src="docs/screenshots/ai-model-offline.png" alt="AI Chat with the local Ollama server down: a red status badge in the header and, above the message box, a banner with the connection error and a Retry button"></div>
@@ -2080,12 +2455,12 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   said— instead of leaving you waiting. Before every send the app checks the server, and if the connection drops before the first word arrives it retries once.</p>
 
   <h2 id="ia-modelos--administrar">Manage a server's models</h2>
-  <p>To see which models a server has, pull new ones or delete the ones you don't use, open <strong>Utilities → Models</strong>: it works with
-  these same servers, local or remote. See <a href="#utilidades-modelos">Models</a>. The model selector of an open chat refreshes by itself when you pull or delete a model there.</p>
+  <p>To see which models a server has, pull new ones or delete the ones you don't use, open <strong>Utilities → AI providers</strong>: it works with
+  these same servers, local or remote. See <a href="#utilidades-modelos">AI providers</a>. The model selector of an open chat refreshes by itself when you pull or delete a model there.</p>
 
   <h2 id="ia-modelos--borrar">Delete a server</h2>
-  <p>The trash icon asks for confirmation, removes the server from the list and deletes its stored token. The
-  server itself isn't touched, and conversations you already had stay in the history.</p>
+  <p>The trash icon asks for confirmation, removes the provider from the list and deletes its stored token or API key. The
+  server itself isn't touched, and conversations you already had stay in the history: you can open them and <a href="#utilidades-chat-ia--cambiar-proveedor">continue them with another provider</a>.</p>
 </article>
 
 <article class="topic" id="ia-agente-local" data-title="Local code agent: files and commands">
@@ -2523,7 +2898,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <tr><td><kbd>⌘L</kbd> / <kbd>Ctrl+L</kbd></td><td>Open the chat on whatever you're looking at</td></tr>
     <tr><td><kbd>⌘N</kbd> / <kbd>Ctrl+N</kbd></td><td>In the AI Chat tab: start a new conversation</td></tr>
     <tr><td><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd></td><td>Save the active tab (query, note, file, request)</td></tr>
-    <tr><td><kbd>⌘V</kbd></td><td>Paste an image into a note or the chat</td></tr>
+    <tr><td><kbd>⌘V</kbd></td><td>Paste an image into a note, or an image or file into the chat (<a href="#ia-adjuntos">attachments</a>)</td></tr>
     <tr><td><kbd>Ctrl+Space</kbd></td><td>Force autocomplete, even where it doesn't open on its own</td></tr>
     <tr><td><kbd>Tab</kbd></td><td>Accept the grey suggestion, or jump to a shortcut's next placeholder</td></tr>
     <tr><td><kbd>F5</kbd></td><td>Refresh the active connection's catalog</td></tr>

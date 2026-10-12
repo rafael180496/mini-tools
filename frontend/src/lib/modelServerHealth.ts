@@ -35,9 +35,12 @@ export interface Health {
     checkedAt: number
     error: string
     version: string
+    // Cuántos modelos informó el servidor en esa lectura; null si no la hubo o
+    // falló. Alimenta el conteo de la lista de servidores de «Modelos».
+    modelCount: number | null
 }
 
-const UNKNOWN: Health = {status: 'unknown', latencyMs: 0, checkedAt: 0, error: '', version: ''}
+const UNKNOWN: Health = {status: 'unknown', latencyMs: 0, checkedAt: 0, error: '', version: '', modelCount: null}
 
 interface Entry {
     health: Health
@@ -72,6 +75,7 @@ function fromProbe(p: main.ModelServerProbe): Health {
         checkedAt: p.checkedAt || Date.now(),
         error: p.ok ? '' : p.error,
         version: p.version ?? '',
+        modelCount: p.ok ? (p.models ?? []).length : null,
     }
 }
 
@@ -105,7 +109,7 @@ function check(id: string, force: boolean): Promise<void> {
             }
             publish(id, fromProbe(probe))
         } catch (err) {
-            publish(id, {status: 'error', latencyMs: 0, checkedAt: Date.now(), error: errorText(err), version: ''})
+            publish(id, {status: 'error', latencyMs: 0, checkedAt: Date.now(), error: errorText(err), version: '', modelCount: null})
         } finally {
             const cur = entryOf(id)
             if (cur.inflight === run) cur.inflight = null

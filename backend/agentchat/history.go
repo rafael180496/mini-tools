@@ -42,6 +42,10 @@ type PastTurn struct {
 	Role  string     `json:"role"`
 	Text  string     `json:"text"`
 	Tools []ToolCall `json:"tools"`
+	// Attachments son los adjuntos de un turno del usuario, para dibujar sus
+	// chips al retomar el chat. Solo los tiene el historial que guarda la app
+	// (PastTurnsFromStored); los transcripts de los CLIs no los distinguen.
+	Attachments []AttachmentMeta `json:"attachments,omitempty"`
 }
 
 // History devuelve los turnos de una conversación anterior.

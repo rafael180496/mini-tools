@@ -4,6 +4,7 @@ import {agents as agentsModel, vault} from '../../../../wailsjs/go/models'
 import Icon from '../../Icon'
 import {agentIconName} from '../../agent/agentIcon'
 import {CONTEXT_ICONS, type WorkContextKind} from '../../agent/workContext'
+import {isModelServerAgent} from '../../../lib/modelServers'
 import {formatDateTime, useT} from '../../../i18n'
 import {DATE_GROUP_ORDER, dateGroupOf, type DateGroupId} from './dateGroups'
 
@@ -22,6 +23,9 @@ const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visi
 interface Props {
     chats: vault.AgentChat[]
     agents: agentsModel.Agent[]
+    // Cómo se llama cada proveedor de modelos que ya no está disponible (apagado o
+    // eliminado). Sus conversaciones se pueden abrir para seguir con otro.
+    lostLabels: Record<string, string>
     // Nombre visible del recurso de cada conversación, resuelto AHORA.
     resourceNames: Record<string, string>
     // Conversación que se está mirando, para resaltar su fila.
@@ -33,7 +37,7 @@ interface Props {
     onDelete: (chat: vault.AgentChat) => void
 }
 
-export default function AiChatHistory({chats, agents, resourceNames, activeChatId, busyChatIds, onOpen, onRename, onDelete}: Props) {
+export default function AiChatHistory({chats, agents, lostLabels, resourceNames, activeChatId, busyChatIds, onOpen, onRename, onDelete}: Props) {
     const t = useT()
     const ta = t.utilities.aiChat
     const [query, setQuery] = useState('')
@@ -83,9 +87,9 @@ export default function AiChatHistory({chats, agents, resourceNames, activeChatI
         const counts = new Map<string, number>()
         for (const c of chats) counts.set(c.agentId, (counts.get(c.agentId) ?? 0) + 1)
         return [...counts.entries()]
-            .map(([id, n]) => ({id, n, label: agents.find((a) => a.id === id)?.label ?? id}))
+            .map(([id, n]) => ({id, n, label: agents.find((a) => a.id === id)?.label ?? lostLabels[id] ?? id}))
             .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
-    }, [chats, agents])
+    }, [chats, agents, lostLabels])
 
     // Si el proveedor filtrado ya no tiene conversaciones (se borró la última),
     // el filtro se suelta en vez de dejar una lista vacía sin explicación.
@@ -205,6 +209,9 @@ export default function AiChatHistory({chats, agents, resourceNames, activeChatI
                         </h3>
                         {g.items.map((c) => {
                             const agent = agents.find((a) => a.id === c.agentId)
+                            // Un proveedor de modelos perdido no bloquea la fila: se abre
+                            // para leerla y seguir con otro. Un CLI que no está, sí.
+                            const lost = !agent && isModelServerAgent(c.agentId)
                             const where = whereOf(c)
                             const active = c.id === activeChatId
                             const kind = (c.module || 'none') as WorkContextKind
@@ -220,12 +227,15 @@ export default function AiChatHistory({chats, agents, resourceNames, activeChatI
                                     <button
                                         onClick={() => onOpen(c)}
                                         data-chat-id={c.id}
-                                        disabled={!agent}
+                                        disabled={!agent && !lost}
+                                        data-lost-provider={lost ? '' : undefined}
                                         aria-current={active ? 'true' : undefined}
                                         title={
                                             agent
                                                 ? ta.openTitle({agent: agent.label, where})
-                                                : ta.notInstalledTitle({agent: providers.find((p) => p.id === c.agentId)?.label ?? c.agentId})
+                                                : lost
+                                                  ? ta.lost.openTitle({agent: lostLabels[c.agentId] ?? c.agentId})
+                                                  : ta.notInstalledTitle({agent: providers.find((p) => p.id === c.agentId)?.label ?? c.agentId})
                                         }
                                         className={`flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 text-left disabled:opacity-50 ${FOCUS}`}
                                     >
@@ -241,8 +251,8 @@ export default function AiChatHistory({chats, agents, resourceNames, activeChatI
                                             </span>
                                         </span>
                                         <span className="flex min-w-0 items-center gap-1 text-ui-10 text-on-surface-variant">
-                                            <Icon name={agentIconName(c.agentId)} size={11} className="shrink-0 opacity-70" />
-                                            <span className="shrink-0">{agent?.label ?? c.agentId}</span>
+                                            <Icon name={lost ? 'link_off' : agentIconName(c.agentId)} size={11} className={`shrink-0 ${lost ? 'text-tertiary' : 'opacity-70'}`} />
+                                            <span className={`min-w-0 truncate ${lost ? 'text-tertiary' : 'shrink-0'}`}>{agent?.label ?? lostLabels[c.agentId] ?? c.agentId}</span>
                                             {kind !== 'utilities' && kind !== 'none' && (
                                                 <Icon name={CONTEXT_ICONS[kind]} size={11} className="shrink-0 opacity-70" />
                                             )}

@@ -45,6 +45,8 @@ export function AgentAskAgents():Promise<Array<main.AskAgent>>;
 
 export function AgentAskWith(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
+export function AgentAttachmentCapabilities(arg1:string,arg2:string):Promise<agentchat.AttachmentCaps>;
+
 export function AgentCLIConversations(arg1:string,arg2:string):Promise<Array<agentchat.Conversation>>;
 
 export function AgentChatHistory(arg1:string,arg2:string):Promise<Array<agentchat.PastTurn>>;
@@ -781,6 +783,8 @@ export function RenameSftpPath(arg1:string,arg2:string,arg3:string):Promise<void
 
 export function ReorderFolder(arg1:string,arg2:string):Promise<void>;
 
+export function ReorderModelServers(arg1:Array<string>):Promise<void>;
+
 export function ReplaceMongoDocument(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function ResetAgentChat(arg1:string):Promise<void>;
@@ -817,6 +821,8 @@ export function SampleMongoFields(arg1:string,arg2:string,arg3:string):Promise<A
 
 export function SaveChatAttachment(arg1:string,arg2:string):Promise<string>;
 
+export function SaveChatFile(arg1:string,arg2:string):Promise<agentchat.Attachment>;
+
 export function SaveConnection(arg1:main.ConnectionInput,arg2:boolean):Promise<vault.ConnectionSummary>;
 
 export function SaveDDLToFile(arg1:string,arg2:string):Promise<string>;
@@ -838,6 +844,8 @@ export function SearchNotesSmart(arg1:string,arg2:number):Promise<Array<vault.No
 export function SendAgentChat(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:Array<string>):Promise<void>;
 
 export function SetAgentActive(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function SetAgentChatAgent(arg1:string,arg2:string):Promise<void>;
 
 export function SetAgentChatBrain(arg1:string,arg2:boolean):Promise<void>;
 
@@ -880,6 +888,8 @@ export function SetLocalShell(arg1:string):Promise<void>;
 export function SetMCPNotesWrite(arg1:boolean):Promise<void>;
 
 export function SetMCPServerEnabled(arg1:boolean):Promise<void>;
+
+export function SetModelServerEnabled(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetNoteFolder(arg1:string,arg2:string):Promise<void>;
 

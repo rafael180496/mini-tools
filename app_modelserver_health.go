@@ -19,7 +19,8 @@ import (
 // sin chequeo lo que se ve es un turno que arranca, gira un buen rato y falla
 // con un mensaje de red. Por eso antes de CADA turno contra un `llm:<id>`
 // (SendAgentChat, AgentAsk*, AskAgentOnce) se hace una pregunta barata —
-// Ollama: GET /api/version; compatibles con OpenAI: GET {base}/models— con
+// Ollama: GET /api/version; compatibles con OpenAI y Anthropic: la lista de
+// modelos (GET {base}/models)— con
 // 4s de plazo. Si falla, el turno ni empieza: no hay evento de inicio ni fila
 // en el historial, solo el error con el nombre del servidor, su host y la
 // causa.
@@ -211,6 +212,20 @@ type healthTrackedClient struct {
 	id    string
 	gen   uint64
 	cache *modelHealthCache
+	// defaultModel es el predeterminado del proveedor ("" = el del cliente o el
+	// primero que liste el servidor). Lo lee agentchat (defaultModeler).
+	defaultModel string
+}
+
+// DefaultModel es el modelo para un turno que no eligió ninguno.
+func (c *healthTrackedClient) DefaultModel() string {
+	if c.defaultModel != "" {
+		return c.defaultModel
+	}
+	if d, ok := c.Client.(interface{ DefaultModel() string }); ok {
+		return d.DefaultModel()
+	}
+	return ""
 }
 
 func (c *healthTrackedClient) Chat(ctx context.Context, req llm.ChatRequest, onDelta func(llm.Delta)) (llm.ChatResult, error) {
@@ -233,6 +248,9 @@ func (a *App) llmClientForTurn(agentID string) (llm.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !m.Enabled {
+		return nil, errProviderDisabled(m.Name)
+	}
 	gen := a.modelHealth.begin(m.ID)
 	if _, ok := a.modelHealth.get(m.ID, false); !ok {
 		ctx, cancel := context.WithTimeout(context.Background(), modelHealthTimeout)
@@ -243,7 +261,7 @@ func (a *App) llmClientForTurn(agentID string) (llm.Client, error) {
 		}
 		a.modelHealth.put(m.ID, gen, probe, false)
 	}
-	return &healthTrackedClient{Client: client, id: m.ID, gen: gen, cache: &a.modelHealth}, nil
+	return &healthTrackedClient{Client: client, id: m.ID, gen: gen, cache: &a.modelHealth, defaultModel: m.DefaultModel}, nil
 }
 
 // ModelServerHealth dice cómo está un servidor guardado, usando el caché: un

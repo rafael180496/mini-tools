@@ -46,7 +46,7 @@ const en: Messages<typeof es> = {
         emptyWithContextMode: (p) =>
             `About ${p.noun} **«${p.label}»**. **${p.mode}** mode: the selector below says what it can do without asking.`,
         emptyMode: (p) => `**${p.mode}** mode: the selector below says what it can do without asking.`,
-        emptyHint: (p) => `**@** references tables, notes and terminals · ${p.paste} pastes a screenshot`,
+        emptyHint: (p) => `**@** references tables, notes and terminals · ${p.paste} pastes a screenshot or a file`,
         you: 'You',
         reuseTitle:
             "Brings this message back to the box to send it again, edited if needed. It doesn't erase what you've already typed or undo the conversation: the previous answer stays.",
@@ -92,8 +92,6 @@ const en: Messages<typeof es> = {
         effortTitle: 'Reasoning effort for this turn',
         effort: 'Effort',
         effortDefault: 'Whatever the CLI has configured',
-        imageTitle: 'Attach an image from your computer. You can also paste it straight into the text box.',
-        image: 'Image',
         modelTitle: 'Model for this turn. The list comes from the CLI itself.',
         modelDefault: 'Default',
         willEditFiles: 'Will modify files',
@@ -241,9 +239,59 @@ const en: Messages<typeof es> = {
         jumpLatestTitle: "Goes back to the end of the conversation. While you were reading further up, the reply that keeps arriving didn't move you.",
         blockChipTitle: (p) => `${p.label} — ${p.n} lines. Click to read exactly what will be sent.`,
         removeBlockTitle: "Remove this context — it won't be sent",
-        attachmentTitle: (p) =>
-            `${p.path} — passed to the agent by its path; the file lives in the app's data, not in the repository`,
-        removeAttachmentTitle: 'Remove from the message',
+        // Attachments (spec ia-ollama-chat-utilidades, phase 8): picker, drag,
+        // paste and the chips in the composer and in messages.
+        attach: {
+            button: 'Attach',
+            buttonAria: 'Attach files',
+            buttonTitle: (p) =>
+                `Attach files to the message: images, PDFs and text or code. You can also drag them onto the chat or paste them with ${p.paste}. ${p.limits}`,
+            limits: (p) =>
+                `Up to ${p.count} files per message; at most ${p.image} per image, ${p.pdf} per PDF and ${p.text} per text file.`,
+            listLabel: 'Files attached to the message',
+            dropTitle: 'Drop the files to attach them',
+            dropHint: 'Images, PDFs and text or code · Escape cancels',
+            dropAnnounce: 'File drop zone active. Drop the files to attach them to the message; Escape cancels.',
+            dropCancelled: 'Drag cancelled: nothing was attached.',
+            kinds: {image: 'Image', pdf: 'PDF', text: 'Text'},
+            kindPlural: {image: 'images', pdf: 'PDFs', text: 'text files'},
+            uploading: 'Uploading…',
+            chipTitle: (p) => `${p.name} — ${p.kind}, ${p.size}`,
+            removeTitle: (p) => `Remove «${p.name}» from the message: it won't be sent`,
+            short: {
+                noVision: 'No vision',
+                noPdf: 'PDF not supported',
+                maybe: 'May not read it',
+                failed: 'Could not attach',
+            },
+            hint: {
+                imageBlocked: 'Pick a model with vision so it can see the image, or remove the file.',
+                pdfBlocked: 'Only Anthropic or Claude Code read PDFs. With any other target, paste the text or remove the file.',
+                maybe: "We couldn't confirm this model supports it. It is sent anyway and the provider answers: if it doesn't accept it, you'll see its error.",
+            },
+            uploadingReason: 'Wait for the attachments to finish uploading before sending.',
+            blockedReason: (p) =>
+                p.n === 1
+                    ? "One attached file can't be read by this model: remove it or switch model to send."
+                    : `${p.n} attached files can't be read by this model: remove them or switch model to send.`,
+            problems: 'Could not attach',
+            errors: {
+                tooBig: (p) => `«${p.name}» is ${p.size} and the limit for ${p.kind} is ${p.max}.`,
+                unknownBig: (p) =>
+                    `«${p.name}» is ${p.size} and is not a known type: only text files up to ${p.max}, images and PDFs are accepted.`,
+                tooMany: (p) => `«${p.name}» doesn't fit: the limit is ${p.max} files per message.`,
+                unsupportedImage: (p) => `«${p.name}»: only PNG, JPG, GIF and WebP images are supported.`,
+                unsupported: (p) => `«${p.name}» is not a file type that can be attached (images, PDFs and text or code).`,
+                empty: (p) => `«${p.name}» is empty.`,
+            },
+            sent: {
+                listLabel: 'Files attached to this message',
+                image: 'The model saw it in this message. In later turns it only receives the name: if it needs to see it again, attach it again.',
+                pdf: 'The model read it in this message. In later turns it only receives the name: if it needs to read it again, attach it again.',
+                text: 'Its text was pasted into this message and stays in the conversation context.',
+            },
+        },
+        blockedPlaceholder: 'This provider is no longer available. Pick another one above to carry on with this conversation.',
         busyPlaceholder: (p) => `${p.agent} is working — type and Enter queues it for when it finishes`,
         placeholder: (p) => `Ask ${p.agent}… (Enter sends, Shift+Enter adds a line)`,
         enqueueTitle: 'Queues this message: it goes out on its own when the current turn ends',
@@ -392,10 +440,13 @@ const en: Messages<typeof es> = {
         // Model servers (Ollama, OpenAI-compatible): their usage comes from the
         // app's chat history, not from a CLI's files.
         servers: {
-            title: 'Model servers',
-            reading: 'Reading the servers\' history…',
+            title: 'Model providers',
+            reading: 'Reading the providers\' history…',
+            noneForProvider: (p) => `There are no conversations with "${p.name}" in the app's history yet, so there is no usage to show.`,
             local: 'Local',
             remote: 'Remote',
+            cloud: 'Cloud',
+            cloudTitle: 'Hosted API: what you send it goes out to the internet and the provider bills it by use',
             localTitle: 'Runs on this machine: what you send it never leaves it',
             remoteTitle: 'Runs on another machine: what you send it travels over the network',
             deletedTitle: 'This server is no longer in the list, but conversations with it remain inside the window',
@@ -418,8 +469,8 @@ const en: Messages<typeof es> = {
             dayBar: (p: {day: string; tokens: string; turns: number}) => `${p.day}: ${p.tokens} tokens · ${p.turns === 1 ? '1 turn' : `${p.turns} turns`}`,
             lastUsed: (p: {date: string}) => `last used: ${p.date}`,
             costNote:
-                'Cost is not shown: a self-hosted or OpenAI-compatible server does not report a price per token, and computing one here would be making it up. What you see is tokens, turns and speed.',
-            tokensNote: 'Tokens are what each server reported; one that does not report them shows turns but no tokens.',
+                'Cost is not shown: neither a self-hosted server nor a hosted API reports a price per token to the app, and computing one here would be making it up. What you see is tokens, turns and speed; the real spend is in the provider\'s console.',
+            tokensNote: 'Tokens are what each provider reported; one that does not report them shows turns but no tokens.',
         },
     },
     // Health of a model server (status dot, chat banner).

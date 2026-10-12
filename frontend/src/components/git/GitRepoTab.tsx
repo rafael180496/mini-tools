@@ -32,7 +32,6 @@ import {
     GitDiff,
     GitDiscard,
     GitFetch,
-    GitRemoteURLForCopy,
     GitForgeInfo,
     GitOpenInBrowser,
     GitRemoveWorktree,
@@ -80,24 +79,9 @@ import {agentchat, agents as agentsModel, git, main, vault} from '../../../wails
 import type {Theme} from '../../hooks/useTheme'
 import type {TerminalThemeId} from '../../xterm/terminalThemes'
 import InlineDiff, {type InlineDiffState} from './InlineDiff'
-import {buildBranchTree, countBranches, expandedForBranch, leafLabel, type BranchTreeNode} from '../../lib/branchTree'
-import {groupTags} from '../../lib/tagGroups'
+import {applyPrefix, buildCommitPrefix, currentPrefixOf} from '../../lib/gitCommitMessage'
 import {isModelServerAgent} from '../../lib/modelServers'
-import {
-    applyPrefix,
-    buildCommitPrefix,
-    COMMIT_TYPES,
-    currentPrefixOf,
-    extractTicket,
-} from '../../lib/gitCommitMessage'
-import {
-    describeSearch,
-    EMPTY_SEARCH,
-    GIT_SEARCH_HELP,
-    isEmptySearch,
-    parseGitSearch,
-    type GitSearch,
-} from '../../lib/gitSearch'
+import {EMPTY_SEARCH, parseGitSearch, type GitSearch} from '../../lib/gitSearch'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import CommitGraph from './CommitGraph'
@@ -110,7 +94,13 @@ import GitConflictResolver from './GitConflictResolver'
 import GitCommandLogDrawer from './GitCommandLog'
 import GitReflogPanel from './GitReflogPanel'
 import GitRebaseDialog from './GitRebaseDialog'
-import GitStashPanel from './GitStashPanel'
+import StashPanel from './StashPanel'
+import StashPreview from './StashPreview'
+import ChangesPanel from './ChangesPanel'
+import HistoryPanel from './HistoryPanel'
+import GitWorkPanel from './GitWorkPanel'
+import GitToolbar from './GitToolbar'
+import {onGitRequest, takePendingGit, type GitRequest} from '../../lib/gitBus'
 import GitFileEditor from './GitFileEditor'
 import GitAgentPanel from './GitAgentPanel'
 import GitOutputNotice from './GitOutputNotice'
@@ -194,6 +184,33 @@ interface GitRepoTabProps {
 // "changes" is the working tree — the same Commits/Files split the sidebar of
 // a Sublime Merge tab has.
 type CenterView = 'commits' | 'changes' | 'stash' | 'conflicts' | 'files'
+
+// Preferencias de la columna de trabajo POR repositorio (solapa y ancho). Van
+// al almacenamiento del navegador y no al vault: son comodidades de quien mira
+// esta máquina, y un repo con un árbol enorme quiere una columna ancha sin que
+// eso le cambie el ancho a los demás. Cualquier fallo (almacenamiento bloqueado,
+// JSON roto) cae en los valores por defecto.
+const WORK_KEY = 'mt.git.work.'
+const WORK_VIEWS: CenterView[] = ['commits', 'changes', 'stash', 'files']
+function loadWorkPrefs(repoId: string): {view?: CenterView; width?: number} {
+    try {
+        const raw = JSON.parse(localStorage.getItem(WORK_KEY + repoId) ?? '{}')
+        return {
+            view: WORK_VIEWS.includes(raw.view) ? raw.view : undefined,
+            width: typeof raw.width === 'number' ? clampSide(raw.width) : undefined,
+        }
+    } catch {
+        return {}
+    }
+}
+function saveWorkPrefs(repoId: string, patch: {view?: CenterView; width?: number}) {
+    try {
+        const cur = JSON.parse(localStorage.getItem(WORK_KEY + repoId) ?? '{}')
+        localStorage.setItem(WORK_KEY + repoId, JSON.stringify({...cur, ...patch}))
+    } catch {
+        // sin almacenamiento: se vuelve a los valores por defecto la próxima vez
+    }
+}
 
 // Dónde va anclado el panel de la terminal, y qué solapa muestra. Espejan
 // settings.git_term_dock/git_panel_tab (migración 27); null es la solapa
@@ -296,7 +313,21 @@ export default function GitRepoTab({
 }: GitRepoTabProps) {
     const t = useT()
     const g = t.git.tab
-    const [view, setView] = useState<CenterView>('commits')
+    // La solapa y el ancho de la columna de trabajo se recuerdan por repositorio.
+    const storedWork = useMemo(() => loadWorkPrefs(repoId), [repoId])
+    const [view, setViewState] = useState<CenterView>(storedWork.view ?? 'commits')
+    const setView = useCallback(
+        (v: CenterView | ((prev: CenterView) => CenterView)) => {
+            setViewState((prev) => {
+                const next = typeof v === 'function' ? v(prev) : v
+                // 'conflicts' no es una solapa: no se recuerda.
+                if (next !== 'conflicts') saveWorkPrefs(repoId, {view: next})
+                return next
+            })
+        },
+        [repoId],
+    )
+    const hasStoredWidth = useRef(storedWork.width != null)
     // Contexto de trabajo que esta pestaña le da al chat: el chat es uno solo
     // para toda la app (components/agent/) y lo que lo ancla a este
     // repositorio es esto, no un prop suelto. Memoizado porque va como prop a
@@ -364,26 +395,6 @@ export default function GitRepoTab({
     // branch twice scrolls again after the user has scrolled away.
     const [reveal, setReveal] = useState<{hash: string; token: number} | null>(null)
     const revealSeq = useRef(0)
-    const [branchFilter, setBranchFilter] = useState('')
-    // Carpetas del árbol de ramas que están abiertas. Arranca vacío y se
-    // siembra con las que llevan a la rama actual (ver el efecto más abajo):
-    // en un repositorio con 364 remotas, abrir todo por defecto sería la lista
-    // plana de antes con indentación extra.
-    // Secciones plegadas del panel de ramas. Se guarda lo CERRADO y no lo
-    // abierto: el estado natural es todo desplegado, y así una sección nueva
-    // aparece visible en vez de escondida.
-    const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
-    const toggleSection = useCallback((key: string) => {
-        setCollapsedSections((prev) => {
-            const next = new Set(prev)
-            if (next.has(key)) next.delete(key)
-            else next.add(key)
-            return next
-        })
-    }, [])
-
-    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
-    const seededFoldersRef = useRef(false)
     // Commit search. Parsed into real git log filters (author/grep/path/
     // date/rev) rather than filtering the loaded page: the graph pages a few
     // hundred commits at a time, so a client-side filter would only ever
@@ -394,7 +405,6 @@ export default function GitRepoTab({
     // ("en esta rama"), lo que falta escribir es el término.
     const searchInputRef = useRef<HTMLInputElement>(null)
     const [search, setSearch] = useState<GitSearch>(EMPTY_SEARCH)
-    const [showSearchHelp, setShowSearchHelp] = useState(false)
     // Focus mode walks only the current branch plus the trunks, instead of
     // every ref. On a repository with 350 remote branches that is the
     // difference between a readable graph and a wall of lanes.
@@ -469,20 +479,6 @@ export default function GitRepoTab({
     // shell (el id es además el nombre del evento de Wails, ver
     // LocalTerminalPanel).
     const termSessionIdRef = useRef(`git-term-${repoId}-${nextTerminalSeq()}`)
-
-    const toggleFolder = useCallback((path: string) => {
-        setExpandedFolders((prev) => {
-            const next = new Set(prev)
-            if (next.has(path)) next.delete(path)
-            else next.add(path)
-            return next
-        })
-    }, [])
-
-    // Con filtro escrito, todo se muestra abierto: buscar una rama y que el
-    // resultado quede escondido dentro de una carpeta plegada haría parecer
-    // que no existe. Sin filtro manda lo que el usuario abrió a mano.
-    const filtering = branchFilter.trim() !== ''
 
     // The forge link depends on the checked-out branch, so it is resolved
     // whenever the branch changes rather than on every render.
@@ -603,18 +599,29 @@ export default function GitRepoTab({
     // Pane widths, restored from the vault and written back on drag end.
     // Seeded with the same defaults migration 20 uses so the first paint
     // matches the stored layout instead of jumping when settings arrive.
-    const [sideWidth, setSideWidth] = useState(224)
+    const [sideWidth, setSideWidth] = useState(storedWork.width ?? 288)
     const [diffWidth, setDiffWidth] = useState(520)
     const [dragging, setDragging] = useState<'side' | 'diff' | null>(null)
     const [diffContext, setDiffContext] = useState(3)
     const [diffIgnoreWs, setDiffIgnoreWs] = useState(false)
     const [diffWrap, setDiffWrap] = useState(true)
     const layoutRef = useRef<HTMLDivElement>(null)
+    // Ancho real del área de trabajo, para que el panel derecho ceda cuando la
+    // pestaña es angosta en vez de dejar el grafo en una rendija.
+    const [layoutW, setLayoutW] = useState(0)
+    useEffect(() => {
+        const el = layoutRef.current
+        if (!el) return
+        setLayoutW(el.clientWidth)
+        const ro = new ResizeObserver(() => setLayoutW(el.clientWidth))
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
 
     useEffect(() => {
         GetSettings()
             .then((st) => {
-                if (st.gitSideWidth) setSideWidth(st.gitSideWidth)
+                if (st.gitSideWidth && !hasStoredWidth.current) setSideWidth(clampSide(st.gitSideWidth))
                 if (st.gitDiffWidth) setDiffWidth(st.gitDiffWidth)
                 if (st.gitDiffContext) setDiffContext(st.gitDiffContext)
                 setDiffIgnoreWs(st.gitDiffIgnoreWs)
@@ -1256,7 +1263,7 @@ export default function GitRepoTab({
             const box = layoutRef.current?.getBoundingClientRect()
             if (!box) return
             if (dragging === 'side') {
-                setSideWidth(clampPane(e.clientX - box.left))
+                setSideWidth(clampSide(e.clientX - box.left))
             } else {
                 // The diff pane is anchored to the right edge, so its width
                 // grows as the pointer moves left.
@@ -1268,6 +1275,8 @@ export default function GitRepoTab({
             // Persist only on release: writing on every mousemove would hit
             // SQLite hundreds of times per drag for one final value.
             void GitSetPaneWidths(sideWidth, diffWidth).catch(() => {})
+            // Y el ancho de ESTE repositorio, que es el que manda al reabrirlo.
+            saveWorkPrefs(repoId, {width: sideWidth})
         }
         window.addEventListener('mousemove', onMove)
         window.addEventListener('mouseup', onUp)
@@ -1281,7 +1290,7 @@ export default function GitRepoTab({
             document.body.style.userSelect = ''
             document.body.style.cursor = ''
         }
-    }, [dragging, sideWidth, diffWidth])
+    }, [dragging, sideWidth, diffWidth, repoId])
 
     // reload refetches everything the toolbar can invalidate. Every mutating
     // action funnels through run() below, which calls this on success, so the
@@ -2072,11 +2081,28 @@ export default function GitRepoTab({
     const current = branches.find((b) => b.isCurrent)
     const upstream = current?.upstream ?? ''
 
-    const fetchItems: DropdownItem[] = [
+    const remoteNames = [...new Set(branches.filter((b) => b.isRemote).map((b) => b.name.split('/')[0]))].filter(Boolean)
+    const fetchItems: (DropdownItem | 'separator')[] = [
         {label: CMD.fetch, hint: g.fetch.fetchHint, icon: 'cloud_download', onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({}), new git.AuthConfig({})))},
         {label: CMD.fetchAll, hint: g.fetch.allHint, onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({all: true}), new git.AuthConfig({})))},
         {label: CMD.fetchTags, hint: g.fetch.tagsHint, onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({tags: true}), new git.AuthConfig({})))},
         {label: CMD.fetchPrune, hint: g.fetch.pruneHint, onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({prune: true}), new git.AuthConfig({})))},
+        // Fetch de UN remoto. Estaba en el menú de cada remoto del árbol de
+        // ramas que se fue de esta pestaña; con varios remotos sigue siendo la
+        // forma de traer solo uno.
+        ...(remoteNames.length > 1
+            ? ([
+                  'separator',
+                  ...remoteNames.map(
+                      (r): DropdownItem => ({
+                          label: g.folderMenu.fetchFrom({remote: r}),
+                          icon: 'cloud_download',
+                          hint: g.folderMenu.fetchFromHint,
+                          onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({remote: r}), new git.AuthConfig({}))),
+                      }),
+                  ),
+              ] as (DropdownItem | 'separator')[])
+            : []),
     ]
 
     const pullItems: DropdownItem[] = [
@@ -2169,71 +2195,6 @@ export default function GitRepoTab({
         [repoId, current?.name, run],
     )
 
-    const openFolderMenu = useCallback(
-        (folderPath: string, e: React.MouseEvent) => {
-            e.preventDefault()
-            e.stopPropagation()
-            setMenu({
-                x: e.clientX,
-                y: e.clientY,
-                items: [
-                    {
-                        label: i18n().git.tab.folderMenu.branchIn({folder: folderPath}),
-                        icon: 'account_tree',
-                        hint: i18n().git.tab.folderMenu.branchInHint,
-                        onSelect: () => promptCreateBranch(folderPath),
-                    },
-                    {label: i18n().git.tab.folderMenu.copyPrefix({folder: folderPath}), icon: 'content_copy', onSelect: () => copy(`${folderPath}/`)},
-                ],
-            })
-        },
-        // `copy` se define nueva en cada render (no está memoizada), así que
-        // ponerla acá anularía el useCallback sin ganar nada: no cierra sobre
-        // ningún estado que cambie.
-        [promptCreateBranch],
-    )
-
-    // Click derecho sobre una carpeta del árbol de remotas. El primer nivel es
-    // el remoto en sí (origin, upstream…), así que ahí el menú habla del
-    // remoto —fetch, editar su URL, copiarla— y no de un prefijo de nombres;
-    // más adentro son carpetas comunes y solo se ofrece copiar el prefijo.
-    const openRemoteFolderMenu = useCallback(
-        (folderPath: string, e: React.MouseEvent) => {
-            e.preventDefault()
-            e.stopPropagation()
-            const isRemote = !folderPath.includes('/')
-            setMenu({
-                x: e.clientX,
-                y: e.clientY,
-                items: isRemote
-                    ? [
-                          {
-                              label: i18n().git.tab.folderMenu.fetchFrom({remote: folderPath}),
-                              icon: 'cloud_download',
-                              hint: i18n().git.tab.folderMenu.fetchFromHint,
-                              onSelect: () => run('fetch', () => GitFetch(repoId, new git.FetchOptions({remote: folderPath}), new git.AuthConfig({}))),
-                          },
-                          'separator',
-                          {
-                              label: i18n().git.tab.folderMenu.editRemote,
-                              icon: 'edit',
-                              hint: i18n().git.tab.folderMenu.editRemoteHint,
-                              onSelect: () => openSettings('remotes'),
-                          },
-                          {
-                              label: i18n().git.tab.folderMenu.copyUrl,
-                              icon: 'content_copy',
-                              onSelect: () => void GitRemoteURLForCopy(repoId, folderPath).then(copy).catch((err) => setError(String(err))),
-                          },
-                      ]
-                    : [{label: i18n().git.tab.folderMenu.copyPrefix({folder: folderPath}), icon: 'content_copy', onSelect: () => copy(`${folderPath}/`)}],
-            })
-        },
-        // Igual que openFolderMenu: `copy` se define nueva en cada render y
-        // ponerla en las dependencias anularía el useCallback sin ganar nada.
-        [repoId, run, openSettings],
-    )
-
     // Git Flow, nativo: solo escribe la configuración y crea ramas.
     //
     // El menú cambia de forma según el estado porque son dos preguntas
@@ -2298,19 +2259,7 @@ export default function GitRepoTab({
         label: g.branchMenu.searchIn({name: b.name}),
         icon: 'manage_search',
         hint: g.branchMenu.searchInHint,
-        onSelect: () => {
-            const text = `hash:${b.name} `
-            setSearchText(text)
-            setSearch(parseGitSearch(text))
-            // Después del frame en que se cierra el menú contextual: enfocar
-            // mientras se está desmontando pierde el foco.
-            requestAnimationFrame(() => {
-                const el = searchInputRef.current
-                if (!el) return
-                el.focus()
-                el.setSelectionRange(text.length, text.length)
-            })
-        },
+        onSelect: () => prefillSearch(`hash:${b.name} `),
     })
 
     // "Rebase la rama actual SOBRE esta" — el rebase plano, que hasta ahora
@@ -2396,90 +2345,240 @@ export default function GitRepoTab({
         {label: CMD.pushNoVerify, hint: g.push.noVerifyHint, danger: true, onSelect: () => void pushWith({noVerify: true}, 'push --no-verify')},
     ]
 
+    // La acción de siempre de un menú partido (Fetch / Pull / Push): su primer
+    // ítem. El menú ofrece las variantes; el clic en el botón hace la normal.
+    const firstAction = (items: (DropdownItem | 'separator')[]): (() => void) => {
+        const first = items.find((i): i is DropdownItem => i !== 'separator')
+        return first ? first.onSelect : () => {}
+    }
+
+    // El panel derecho nunca se come el grafo: deja al centro al menos 300px.
+    const effDiffWidth =
+        layoutW > 0 ? Math.max(200, Math.min(diffWidth, layoutW - (sideHidden ? 36 : sideWidth) - 300)) : diffWidth
+
     const staged = status?.files?.filter((f) => f.staged) ?? []
     const unstaged = status?.files?.filter((f) => !f.staged) ?? []
 
-    // Case-insensitive substring — a branch filter is for finding "9595" or
-    // "hotfix" in a list of a hundred, not for pattern matching.
-    const branchQuery = branchFilter.trim().toLowerCase()
-    const matchesFilter = (b: git.Branch) => !branchQuery || b.name.toLowerCase().includes(branchQuery)
-    // Pinned branches float to the top of their section. Sorting rather than
-    // a separate list keeps one place to look for a branch — a pinned
-    // "develop" moving out of "Ramas" into a third section is exactly the
-    // kind of thing that makes people scroll looking for it.
-    const pinnedFirst = (list: git.Branch[]) =>
-        [...list].sort((a, b) => Number(pinned.includes(b.name)) - Number(pinned.includes(a.name)))
-
-    // Umbral medido contra el contenido real de la fila: ícono (14) + texto
-    // (~45 a 11px) + relleno, por tres, más los separadores. Por debajo de eso
-    // los tres botones no entran y hay que quedarse con los íconos.
-    // Cinco solapas (Commits, Cambios, Stash, Archivos, Agente) no entran con
-    // texto ni siquiera en una columna de 260px: quedaban recortadas a
-    // "C…"/"St…"/"Ar…", que ocupa casi lo mismo y encima no se entiende. El
-    // umbral sube para pasar a solo íconos antes de llegar a ese punto — los
-    // cinco íconos son distintos entre sí y el tooltip sigue diciendo qué hace
-    // cada uno.
-    const compactTabs = sideWidth < 340
-
-    const localBranches = pinnedFirst(branches.filter((b) => !b.isRemote && matchesFilter(b)))
-    const remoteBranches = pinnedFirst(branches.filter((b) => b.isRemote && matchesFilter(b)))
-
-    // Las ancladas se dibujan planas arriba de la sección, no dentro del árbol
-    // (ver el comentario en el render). El resto va agrupado por los segmentos
-    // del nombre: `feature/TIGOCHAT-11607` cuelga de una carpeta `feature`.
-    const isPinnedBranch = (b: git.Branch) => pinned.includes(b.name)
-    const pinnedLocal = localBranches.filter(isPinnedBranch)
-    const pinnedRemote = remoteBranches.filter(isPinnedBranch)
-    // El filtro de la caja de arriba es uno solo a propósito: buscar "1.31" o
-    // "TIGOCHAT" sin tener que decidir de antemano si eso es una rama o un tag
-    // es justamente lo que uno quiere de un buscador de referencias.
-    const visibleTags = useMemo(
-        () => tags.filter((t) => !branchQuery || t.name.toLowerCase().includes(branchQuery)),
-        [tags, branchQuery],
-    )
-    const tagGroups = useMemo(() => groupTags(visibleTags), [visibleTags])
-
-    const localTree = useMemo(
-        () => buildBranchTree(localBranches.filter((b) => !isPinnedBranch(b))),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [localBranches, pinned],
-    )
-    const remoteTree = useMemo(
-        () => buildBranchTree(remoteBranches.filter((b) => !isPinnedBranch(b))),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [remoteBranches, pinned],
+    // Las ramas que entran en «Solo mi trabajo» (la actual, los troncos que
+    // existen y las ancladas), en ese orden. La columna de Historial las ofrece
+    // como saltos rápidos; el resto de las ramas se busca desde el chip de la
+    // barra.
+    const quickRefs = useMemo(
+        () => focusRefsOf(branches, pinned).map((n) => branches.find((b) => b.name === n)).filter((b): b is git.Branch => !!b),
+        [branches, pinned],
     )
 
-    // Props comunes de cada fila de rama. Están acá y no repetidas en los
-    // cuatro puntos donde se dibuja una (ancladas locales, árbol local,
-    // ancladas remotas, árbol remoto) para que un cambio de comportamiento no
-    // tenga que aplicarse cuatro veces.
-    const branchRowProps = (b: git.Branch) => ({
-        branch: b,
-        isPinned: isPinnedBranch(b),
-        onTogglePin: () => void togglePinned(b.name),
-        selected: selectedBranch === b.name,
-        disabled: !!busy,
-        onSelect: () => void selectBranch(b),
-        onCheckout: () =>
-            void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => {
-                if (ok) void selectBranch(b)
-            }),
-        onContextMenu: (e: ReactMouseEvent) => setMenu({x: e.clientX, y: e.clientY, items: branchMenuItems(b)}),
-    })
+    // El mensaje del commit al que apunta HEAD, para precargar «Enmendar».
+    const lastCommitMessage = useMemo(() => {
+        const head = commits.find((c) => c.isHead)
+        return head ? (head.body ? `${head.subject}\n\n${head.body}` : head.subject) : ''
+    }, [commits])
 
-    // Abre de entrada solo las carpetas que llevan a la rama actual, una vez
-    // por pestaña. Si se recalculara en cada render volvería a abrirlas
-    // después de que las cierres a mano, que es la clase de "ayuda" que
-    // termina peleando con el usuario.
+    // Stash elegido en la lista. Se mantiene apuntando a uno que exista: el
+    // más nuevo es el que casi siempre se quiere, y borrar el elegido no debe
+    // dejar la vista previa colgada de una referencia que ya no está.
+    const [selectedStash, setSelectedStash] = useState<string | null>(null)
     useEffect(() => {
-        if (seededFoldersRef.current) return
-        const current = branches.find((b) => b.isCurrent)
-        if (!current) return
-        seededFoldersRef.current = true
-        const paths = expandedForBranch(buildBranchTree(branches.filter((b) => !b.isRemote)), current.name)
-        if (paths.length > 0) setExpandedFolders((prev) => new Set([...prev, ...paths]))
-    }, [branches])
+        if (!stashes.some((x) => x.ref === selectedStash)) setSelectedStash(stashes[0]?.ref ?? null)
+    }, [stashes, selectedStash])
+
+    // Contenedor, dentro de la columna de trabajo, donde el editor de archivos
+    // dibuja su árbol (portal). Estado y no ref: el editor tiene que enterarse
+    // cuando aparece.
+    const [filesHost, setFilesHost] = useState<HTMLDivElement | null>(null)
+
+    // Prellena el buscador de commits y deja el cursor adentro: lo que se
+    // prellena es el ÁMBITO («en esta rama»), lo que falta escribir es el
+    // término. El buscador vive en la columna de Historial, así que primero se
+    // pasa a esa solapa.
+    const prefillSearch = (text: string) => {
+        setView('commits')
+        setSearchText(text)
+        setSearch(parseGitSearch(text))
+        // Dos frames: el primero monta la columna de Historial, el segundo ya
+        // tiene el input para enfocar.
+        requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+                const el = searchInputRef.current
+                if (!el) return
+                el.focus()
+                el.setSelectionRange(text.length, text.length)
+            }),
+        )
+    }
+
+    // Pedidos de la barra lateral principal (lib/gitBus.ts): revelar una rama o
+    // un tag en el grafo, buscar en una rama, y el aviso de ramas ancladas
+    // cambiadas. El handler se lee de un ref para suscribirse UNA vez por
+    // pestaña sin quedar atado a las funciones de un render viejo.
+    const gitRequestRef = useRef<(r: GitRequest) => void>(() => {})
+    gitRequestRef.current = (r) => {
+        if (r.kind === 'reveal-branch') {
+            const b = branches.find((x) => x.name === r.name) ?? new git.Branch({name: r.name, hash: r.hash})
+            void selectBranch(b)
+        } else if (r.kind === 'reveal-commit') void revealCommit(r.hash)
+        else if (r.kind === 'search-branch') prefillSearch(`hash:${r.name} `)
+        else if (r.kind === 'pinned-changed') setPinned(r.pinned)
+    }
+    useEffect(() => onGitRequest(repoId, (r) => gitRequestRef.current(r)), [repoId])
+
+    // Los pedidos hechos antes de que la pestaña existiera (la barra abre la
+    // pestaña y después pide) se recogen una sola vez, cuando ya hay ramas y
+    // commits contra los que resolverlos.
+    const pendingTaken = useRef(false)
+    useEffect(() => {
+        if (pendingTaken.current || loadingLog || branches.length === 0 || commits.length === 0) return
+        pendingTaken.current = true
+        for (const r of takePendingGit(repoId)) gitRequestRef.current(r)
+    }, [repoId, loadingLog, branches, commits])
+
+    const checkoutBranch = (b: git.Branch) =>
+        void run(`checkout ${b.name}`, () => GitCheckout(repoId, b.name)).then((ok) => {
+            if (ok) void selectBranch(b)
+        })
+
+    // Cambiar/atajar la vista de paneles. Los mismos ítems viven en el menú de
+    // la barra y, cuando no entran, en su «⋯».
+    const viewItems: (DropdownItem | 'separator')[] = [
+        {
+            label: sideHidden ? g.viewMenu.showBranches : g.viewMenu.hideBranches,
+            icon: sideHidden ? 'visibility' : 'visibility_off',
+            hint: sideHidden ? g.viewMenu.nowHidden : g.viewMenu.left,
+            onSelect: toggleSide,
+        },
+        {
+            label: diffHidden ? g.viewMenu.showDiff : g.viewMenu.hideDiff,
+            icon: diffHidden ? 'visibility' : 'visibility_off',
+            hint: diffHidden ? g.viewMenu.nowHidden : g.viewMenu.right,
+            onSelect: toggleDiff,
+        },
+        'separator',
+        {
+            label: showWorktrees ? g.viewMenu.hideWorktrees : g.viewMenu.showWorktrees,
+            icon: 'dashboard',
+            hint: g.viewMenu.worktreesHint,
+            onSelect: () => setShowWorktrees((v) => !v),
+        },
+        {
+            label: showSubmodules ? g.viewMenu.hideSubmodules : g.viewMenu.showSubmodules,
+            icon: 'account_tree',
+            hint: g.viewMenu.submodulesHint,
+            onSelect: () => setShowSubmodules((v) => !v),
+        },
+        'separator',
+        // Los dos archivos de configuración que se editan a mano y viven en la
+        // raíz del repositorio. El editor ya abre como NUEVO y vacío un archivo
+        // que no existe, así que «crear» y «editar» son lo mismo acá.
+        ...gitFlowItems(),
+        'separator',
+        {
+            label: g.viewMenu.editFile({file: '.gitignore'}),
+            icon: 'rule',
+            hint: g.viewMenu.gitignoreHint,
+            onSelect: () => {
+                setEditRequest({path: '.gitignore', token: Date.now()})
+                setView('files')
+            },
+        },
+        {
+            label: g.viewMenu.editFile({file: '.gitattributes'}),
+            icon: 'tune',
+            hint: g.viewMenu.gitattributesHint,
+            onSelect: () => {
+                setEditRequest({path: '.gitattributes', token: Date.now()})
+                setView('files')
+            },
+        },
+    ]
+
+    // El diff del archivo elegido. Se arma una vez y se coloca donde toque: en
+    // el área principal cuando se trabaja en Cambios (donde es el protagonista),
+    // en el panel derecho cuando se mira el historial.
+    const diffViewer = selectedPath ? (
+        <DiffViewer
+            patch={diff?.patch ?? ''}
+            isBinary={diff?.isBinary ?? false}
+            path={selectedPath}
+            loading={loadingDiff}
+            error={diffError}
+            editorThemeId={editorThemeId}
+            appTheme={appTheme}
+            appearance={appearance}
+            context={diffContext}
+            ignoreWs={diffIgnoreWs}
+            wrap={diffWrap}
+            onChangePrefs={persistDiffPrefs}
+            // Only the working-tree/index views can be staged from. A commit's
+            // diff is history: there is nothing to prepare.
+            staged={view === 'changes' && stagedPaths(status).includes(selectedPath)}
+            blame={blame ?? undefined}
+            // A commit's diff is blamed AT that commit, so its added lines
+            // belong to it and map to the new side. A working-tree diff is
+            // blamed at HEAD, where the added lines do not exist yet.
+            blameSide={view === 'commits' ? 'new' : 'old'}
+            onToggleBlame={() => {
+                if (blame) {
+                    setBlame(null)
+                    return
+                }
+                if (!selectedPath) return
+                GitBlame(repoId, selectedPath, view === 'commits' ? (selectedCommit?.hash ?? '') : '')
+                    .then((b) => setBlame(b ?? []))
+                    .catch((e) => setError(String(e)))
+            }}
+            // Solo desde el working tree. En el diff de un commit «editar»
+            // llevaría al archivo de HOY, que puede no tener nada que ver con
+            // las líneas que se están mirando.
+            onEdit={
+                view === 'changes'
+                    ? () => {
+                          setEditRequest({path: selectedPath, token: Date.now()})
+                          setView('files')
+                      }
+                    : undefined
+            }
+            onAsk={
+                view === 'changes'
+                    ? () =>
+                          askAgentPicking(
+                              // Se nombra el archivo y se le pide al agente que
+                              // mire el diff él mismo: `git diff` es una
+                              // herramienta que los tres tienen, y pegar el
+                              // parche entero en el prompt gasta contexto y
+                              // rompe el pegado del PTY.
+                              g.ask.diffPrompt({path: selectedPath}),
+                              g.ask.diffAbout({path: selectedPath}),
+                          )
+                    : undefined
+            }
+            onApplyPatch={
+                view === 'changes'
+                    ? (patch, action) => {
+                          if (action === 'discard') {
+                              setConfirmDiscardPatch(patch)
+                              return
+                          }
+                          // stage = apply to the index; unstage = the same
+                          // patch, applied to the index in reverse.
+                          void run(action === 'stage' ? 'apply --cached' : 'apply --cached --reverse', () =>
+                              GitApplyPatch(repoId, patch, true, action === 'unstage'),
+                          )
+                      }
+                    : undefined
+            }
+        />
+    ) : null
+
+    const stashToConfirmDrop = (ref: string) => {
+        const st = stashes.find((x) => x.ref === ref)
+        setConfirm({
+            title: t.git.stash.confirmTitle,
+            description: t.git.stash.confirmBody({message: st?.message ?? ref}),
+            confirmLabel: t.git.stash.drop,
+            command: 'stash drop',
+            run: () => GitStashDrop(repoId, ref),
+        })
+    }
 
     return (
         // min-w-0 is load-bearing, not cosmetic: without it this root's
@@ -2490,55 +2589,60 @@ export default function GitRepoTab({
         // diff" bug. Every level of a nested flex chain that must shrink needs
         // this; the layout row below carries it for the same reason.
         <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-surface">
-            {/* Toolbar */}
-            <div className="flex shrink-0 items-center gap-1 border-b border-outline-variant bg-surface-container-low px-2 py-1.5">
-                <span className="flex items-center gap-1 pr-2 text-xs font-medium text-on-surface">
-                    <Icon name="folder_open" size={16} className="opacity-70" />
-                    {repoName}
-                </span>
-                <span className="flex items-center gap-1 rounded bg-primary-container px-2 py-0.5 text-ui-11 text-on-primary-container" title={upstream ? g.toolbar.currentBranchTracking({upstream}) : g.toolbar.currentBranchNoUpstream}>
-                    <Icon name="account_tree" size={13} />
-                    {status?.detached ? g.toolbar.detached : (current?.name ?? status?.branch ?? '—')}
-                </span>
-                {!!current && (current.ahead > 0 || current.behind > 0) && (
-                    <span className="flex items-center gap-1 text-ui-11 text-on-surface-variant" title={g.toolbar.aheadBehind({ahead: current.ahead, behind: current.behind})}>
-                        {current.ahead > 0 && <span className="flex items-center"><Icon name="arrow_upward" size={12} />{current.ahead}</span>}
-                        {current.behind > 0 && <span className="flex items-center"><Icon name="arrow_downward" size={12} />{current.behind}</span>}
-                    </span>
-                )}
-
-                {hidden.size > 0 && (
-                    <button
-                        onClick={() => setHidden(new Set())}
-                        title={g.toolbar.unhideTitle({names: [...hidden].join(', ')})}
-                        className="ml-2 flex items-center gap-1 rounded bg-tertiary-container px-2 py-0.5 text-ui-11 text-on-tertiary-container hover:opacity-90"
-                    >
-                        <Icon name="visibility_off" size={13} />
-                        {g.toolbar.hiddenCount(hidden.size)}
-                    </button>
-                )}
-
-                <div className="ml-auto flex items-center gap-0.5">
-                    <DropdownMenu label={g.toolbar.fetch} icon="cloud_download" title={g.toolbar.fetchTitle} items={fetchItems} disabled={!!busy} />
-                    <DropdownMenu label={g.toolbar.pull} icon="download" title={g.toolbar.pullTitle} items={pullItems} disabled={!!busy} />
-                    <DropdownMenu label={g.toolbar.push} icon="upload" title={g.toolbar.pushTitle} items={pushItems} disabled={!!busy} />
-                    <button
-                        onClick={() => void reload()}
-                        disabled={!!busy}
-                        title={g.toolbar.reloadTitle}
-                        className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface disabled:opacity-40"
-                    >
-                        <Icon name="refresh" size={16} />
-                    </button>
-                    <button
-                        onClick={() => openSettings('identity')}
-                        title={g.toolbar.settingsTitle}
-                        className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                    >
-                        <Icon name="settings" size={16} />
-                    </button>
-                </div>
-            </div>
+            {/* Barra única: repo + rama a la izquierda, sincronizar / abrir /
+                ajustes a la derecha. Ver GitToolbar. */}
+            <GitToolbar
+                repoName={repoName}
+                branchLabel={status?.detached ? g.toolbar.detached : (current?.name ?? status?.branch ?? '—')}
+                detached={!!status?.detached}
+                branchTitle={upstream ? g.toolbar.currentBranchTracking({upstream}) : g.toolbar.currentBranchNoUpstream}
+                ahead={current?.ahead ?? 0}
+                behind={current?.behind ?? 0}
+                branches={branches}
+                tags={tags}
+                pinned={pinned}
+                onCheckout={checkoutBranch}
+                onRevealBranch={(b) => void selectBranch(b)}
+                onTogglePin={(name) => void togglePinned(name)}
+                onBranchMenu={(b, e) => setMenu({x: e.clientX, y: e.clientY, items: branchMenuItems(b)})}
+                onRevealTag={(tg) => void revealCommit(tg.hash)}
+                onTagMenu={(tg, e) => setMenu({x: e.clientX, y: e.clientY, items: tagMenuItems(tg)})}
+                onCreateBranch={() => promptCreateBranch('')}
+                onCreateTag={promptCreateTag}
+                onManageRemotes={() => openSettings('remotes')}
+                hiddenNames={[...hidden]}
+                onUnhide={() => setHidden(new Set())}
+                busy={!!busy}
+                fetchItems={fetchItems}
+                pullItems={pullItems}
+                pushItems={pushItems}
+                onFetch={firstAction(fetchItems)}
+                onPull={firstAction(pullItems)}
+                onPush={firstAction(pushItems)}
+                onReload={() => void reload()}
+                onSettings={() => openSettings('identity')}
+                forge={forge?.compareUrl ? {provider: forge.provider, compareUrl: forge.compareUrl} : null}
+                onCreatePr={() => forge && void GitOpenInBrowser(forge.compareUrl)}
+                onDescribePr={() =>
+                    askAgentPicking(
+                        g.bar.describePrPrompt({branch: status?.branch ?? ''}),
+                        g.bar.describePrAbout({branch: status?.branch ?? g.bar.thisBranch}),
+                    )
+                }
+                agentMode={agentMode}
+                onToggleAgentMode={toggleAgentMode}
+                viewItems={viewItems}
+                editors={editors}
+                onOpenEditor={(id) => {
+                    void OpenRepoInEditor(repoId, id).catch((e) => setError(String(e)))
+                }}
+                onOpenFolder={() => {
+                    void OpenRepoInFileManager(repoId).catch((e) => setError(String(e)))
+                }}
+                onOpenTerminal={() => openPanel('terminal')}
+                panelOpen={panelTab !== null}
+                onOpenAgentsPanel={() => openPanel('agents')}
+            />
 
             {busy && (
                 <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant bg-primary-container px-3 py-1.5 text-ui-11 font-medium text-on-primary-container">
@@ -2573,180 +2677,6 @@ export default function GitRepoTab({
                     </button>
                 </div>
             )}
-            <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-outline-variant bg-surface-container-lowest px-2 py-0.5 text-ui-11">
-                {forge?.compareUrl && (
-                    <button
-                        onClick={() => void GitOpenInBrowser(forge.compareUrl)}
-                        title={g.bar.createPrTitle({provider: forge.provider, branch: status?.branch ?? ''})}
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-primary hover:bg-surface-variant"
-                    >
-                        <Icon name="call_merge" size={13} />
-                        {g.bar.createPr}
-                    </button>
-                )}
-                {/* Describir el PR va al lado de crearlo, que es donde uno se
-                    queda mirando el formulario vacío. Abre el chat con el
-                    prompt escrito: el título y el cuerpo los pega el usuario
-                    en la página del forge, esta app no tiene token de nadie. */}
-                {forge?.compareUrl && (
-                    <button
-                        onClick={() =>
-                            askAgentPicking(
-                                g.bar.describePrPrompt({branch: status?.branch ?? ''}),
-                                g.bar.describePrAbout({branch: status?.branch ?? g.bar.thisBranch}),
-                            )
-                        }
-                        title={g.bar.describePrTitle}
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                    >
-                        <Icon name="smart_toy" size={13} />
-                        {g.bar.describePr}
-                    </button>
-                )}
-                {/* Modo agente: deja archivos + conversación y esconde ramas,
-                    grafo y diff.
-
-                    Va en la barra de arriba y NO en la columna de ramas: el
-                    modo oculta esa columna, así que el botón que lo apaga se
-                    escondía junto con ella y no había forma de volver más que
-                    reabrir el panel a mano. Un interruptor tiene que
-                    sobrevivir a lo que apaga. */}
-                <button
-                    onClick={toggleAgentMode}
-                    data-agent-mode-toggle
-                    title={agentMode ? g.bar.agentModeOff : g.bar.agentModeOn}
-                    className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
-                        agentMode
-                            ? 'bg-primary text-on-primary'
-                            : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-                    }`}
-                >
-                    <Icon name="smart_toy" size={14} />
-                    {g.bar.agent}
-                </button>
-                {/* Los interruptores de paneles viven en un menú y no como
-                    botones sueltos: la fila ya tenía "Crear pull request",
-                    Terminal y Comandos, y tres botones más la desbordaban en
-                    una ventana angosta. Además, un botón permanentemente
-                    resaltado (el estado normal de Ramas y Diff, que están
-                    visibles casi siempre) compite visualmente con los que
-                    marcan algo abierto de verdad. */}
-                <DropdownMenu
-                    label={g.viewMenu.label}
-                    icon="visibility"
-                    title={g.viewMenu.title}
-                    width={300}
-                    items={[
-                        {
-                            label: sideHidden ? g.viewMenu.showBranches : g.viewMenu.hideBranches,
-                            icon: sideHidden ? 'visibility' : 'visibility_off',
-                            hint: sideHidden ? g.viewMenu.nowHidden : g.viewMenu.left,
-                            onSelect: toggleSide,
-                        },
-                        {
-                            label: diffHidden ? g.viewMenu.showDiff : g.viewMenu.hideDiff,
-                            icon: diffHidden ? 'visibility' : 'visibility_off',
-                            hint: diffHidden ? g.viewMenu.nowHidden : g.viewMenu.right,
-                            onSelect: toggleDiff,
-                        },
-                        'separator',
-                        {
-                            label: showWorktrees ? g.viewMenu.hideWorktrees : g.viewMenu.showWorktrees,
-                            icon: 'dashboard',
-                            hint: g.viewMenu.worktreesHint,
-                            onSelect: () => setShowWorktrees((v) => !v),
-                        },
-                        {
-                            label: showSubmodules ? g.viewMenu.hideSubmodules : g.viewMenu.showSubmodules,
-                            icon: 'account_tree',
-                            hint: g.viewMenu.submodulesHint,
-                            onSelect: () => setShowSubmodules((v) => !v),
-                        },
-                        'separator',
-                        // Los dos archivos de configuración que se editan a
-                        // mano y viven en la raíz del repositorio. Estaban a
-                        // tiro solo si te acordabas de buscarlos en el árbol
-                        // de archivos — y .gitattributes ni siquiera existe
-                        // en la mayoría de los repos, así que no aparecía.
-                        // El editor ya abre como NUEVO y vacío un archivo que
-                        // no existe, así que "crear" y "editar" son lo mismo
-                        // acá y no hace falta distinguirlos en el menú.
-                        ...gitFlowItems(),
-                        'separator',
-                        {
-                            label: g.viewMenu.editFile({file: '.gitignore'}),
-                            icon: 'rule',
-                            hint: g.viewMenu.gitignoreHint,
-                            onSelect: () => {
-                                setEditRequest({path: '.gitignore', token: Date.now()})
-                                setView('files')
-                            },
-                        },
-                        {
-                            label: g.viewMenu.editFile({file: '.gitattributes'}),
-                            icon: 'tune',
-                            hint: g.viewMenu.gitattributesHint,
-                            onSelect: () => {
-                                setEditRequest({path: '.gitattributes', token: Date.now()})
-                                setView('files')
-                            },
-                        },
-                    ]}
-                />
-                {/* Salir de la app sin copiar la ruta a mano: el editor de
-                    siempre —con sus extensiones y su configuración— y el
-                    explorador de archivos del sistema. Son las dos cosas que
-                    esta pestaña no puede hacer y que se necesitan todos los
-                    días. */}
-                {editors.length > 0 && (
-                    <button
-                        onClick={() => {
-                            void OpenRepoInEditor(repoId, editors[0].id).catch((e) => setError(String(e)))
-                        }}
-                        title={g.bar.openInEditor({editor: editors[0].label})}
-                        className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
-                    >
-                        <Icon name="code_blocks" size={13} />
-                        {editors[0].label}
-                    </button>
-                )}
-                <button
-                    onClick={() => {
-                        void OpenRepoInFileManager(repoId).catch((e) => setError(String(e)))
-                    }}
-                    title={g.bar.folderTitle}
-                    className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant ${
-                        editors.length > 0 ? '' : 'ml-auto'
-                    }`}
-                >
-                    <Icon name="folder_open" size={13} />
-                    {g.bar.folder}
-                </button>
-                {panelTab === null && <button
-                    onClick={() => openPanel('terminal')}
-                    title={g.bar.terminalTitle}
-                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
-                >
-                    <Icon name="terminal" size={13} />
-                    {g.session.terminal}
-                </button>}
-                {/* Antes acá había un botón "Comandos" que repetía una solapa
-                    del panel de abajo. Se reemplazó por el acceso a lo
-                    agéntico, que es lo que de verdad no se encontraba: los
-                    chats, los skills del repo, los servidores MCP y el consumo
-                    estaban todos detrás de una solapa chica sin nada que
-                    anunciara qué había adentro. */}
-                {panelTab === null && <button
-                    onClick={() => openPanel('agents')}
-                    data-open-agents
-                    title={g.bar.agentsTitle}
-                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-on-surface-variant hover:bg-surface-variant"
-                >
-                    <Icon name="smart_toy" size={13} />
-                    {g.bar.agents}
-                </button>}
-            </div>
-
             {showWorktrees && (
                 <div className="shrink-0 border-b border-outline-variant bg-surface-container-low px-2 py-1 text-ui-11">
                     {worktrees.length === 0 ? (
@@ -2938,269 +2868,89 @@ export default function GitRepoTab({
                           }
                 }
             >
-                {/* Left: view switch + branches.
-
-                    overflow-hidden no es cosmético: `width` fija el ancho de
-                    la columna, pero sus hijos siguen teniendo min-width:auto,
-                    así que cualquier fila cuyo contenido no pueda encogerse
-                    (la de Commits/Cambios/Stash es la que lo hacía) se
-                    dibujaba PASADO el borde, encima del grafo. Clipear acá lo
-                    vuelve imposible; el min-w-0 de las filas es lo que además
-                    hace que se degraden bien en vez de quedar cortadas. */}
-                {!sideHidden && (
-                <div style={{width: sideWidth}} className="flex shrink-0 flex-col overflow-hidden border-r border-outline-variant bg-surface-container-lowest">
-                    <div className="flex shrink-0 gap-0.5 border-b border-outline-variant p-1">
-                        <ViewTab
-                            active={view === 'commits'}
-                            onClick={() => setView('commits')}
-                            icon="history"
-                            label={g.views.commits}
-                            compact={compactTabs}
-                            title={g.views.commitsTitle}
-                        />
-                        <ViewTab
-                            compact={compactTabs}
-                            active={view === 'changes'}
-                            onClick={() => setView('changes')}
-                            icon="edit_note"
-                            label={g.views.changes}
-                            // Live count, updated by the status poll — this is
-                            // what makes uncommitted changes made outside the app
-                            // visible without leaving the Commits view.
-                            badge={status?.files.length ?? 0}
-                            title={g.views.changesTitle}
-                        />
-                        <ViewTab
-                            compact={compactTabs}
-                            active={view === 'stash'}
-                            onClick={() => setView('stash')}
-                            icon="inventory_2"
-                            label={g.views.stash}
-                            badge={stashes.length}
-                            title={g.views.stashTitle}
-                        />
-                        <ViewTab
-                            compact={compactTabs}
-                            active={view === 'files'}
-                            onClick={() => setView('files')}
-                            icon="edit_document"
-                            label={g.views.files}
-                            title={g.views.filesTitle}
-                        />
-                    </div>
-                    {/* Commit search. Distinct from the branch filter below:
-                        this one goes to git and narrows the HISTORY, that one
-                        narrows the branch list on screen. Keeping them apart
-                        matters — confusing the two means concluding a commit
-                        does not exist when it simply is not on this page. */}
-                    <div className="shrink-0 border-b border-outline-variant p-1">
-                        <div className="flex items-center gap-1 rounded bg-surface-container px-1.5 py-1 focus-within:ring-1 focus-within:ring-primary">
-                            <Icon name="manage_search" size={13} className="shrink-0 text-on-surface-variant/60" />
-                            <input
-                                ref={searchInputRef}
-                                value={searchText}
-                                onChange={(e) => setSearchText(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') setSearch(parseGitSearch(searchText))
-                                    if (e.key === 'Escape') {
-                                        setSearchText('')
-                                        setSearch(EMPTY_SEARCH)
-                                    }
-                                }}
-                                onBlur={() => setSearch(parseGitSearch(searchText))}
-                                placeholder={g.search.placeholder}
-                                title={g.search.inputTitle({help: GIT_SEARCH_HELP()})}
-                                className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                {/* Izquierda: la columna de TRABAJO. Cuatro solapas —Historial,
+                    Cambios, Stash, Archivos— y lo que cada una opera. El árbol
+                    de ramas/remotas/tags que vivía acá repetía el de la barra
+                    lateral principal y se fue; el cambio rápido de rama está en
+                    el chip de la barra de arriba. */}
+                {(!sideHidden || !agentMode) && (
+                    <GitWorkPanel
+                        view={view === 'conflicts' ? 'conflicts' : view}
+                        onView={(v) => setView(v)}
+                        changesCount={status?.files.length ?? 0}
+                        stashCount={stashes.length}
+                        width={sideWidth}
+                        collapsed={sideHidden}
+                        onToggleCollapsed={toggleSide}
+                        onFilesHost={setFilesHost}
+                    >
+                        {view === 'commits' ? (
+                            <HistoryPanel
+                                searchText={searchText}
+                                onSearchText={setSearchText}
+                                search={search}
+                                onSearch={setSearch}
+                                inputRef={searchInputRef}
+                                focusMode={focusMode}
+                                onFocusMode={setFocusMode}
+                                commitCount={commits.length}
+                                loading={loadingLog}
+                                quickRefs={quickRefs}
+                                pinned={pinned}
+                                selectedBranch={selectedBranch}
+                                busy={!!busy}
+                                onRevealBranch={(b) => void selectBranch(b)}
+                                onCheckout={checkoutBranch}
+                                onTogglePin={(name) => void togglePinned(name)}
                             />
-                            <button
-                                onClick={() => setShowSearchHelp((v) => !v)}
-                                title={g.search.helpTitle}
-                                className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
-                            >
-                                <Icon name="help" size={13} />
-                            </button>
-                            {searchText && (
-                                <button
-                                    onClick={() => {
-                                        setSearchText('')
-                                        setSearch(EMPTY_SEARCH)
-                                    }}
-                                    title={g.search.clearTitle}
-                                    className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface"
-                                >
-                                    <Icon name="close" size={13} />
-                                </button>
-                            )}
-                        </div>
-
-                        {showSearchHelp && (
-                            <pre className="mt-1 whitespace-pre-wrap rounded bg-surface-container px-1.5 py-1 text-ui-10 leading-relaxed text-on-surface-variant">
-                                {GIT_SEARCH_HELP()}
-                            </pre>
-                        )}
-
-                        {/* The active filter, spelled out. A search that
-                            silently narrows history is how people conclude a
-                            commit disappeared. */}
-                        {!isEmptySearch(search) && (
-                            <p className="mt-1 px-0.5 text-ui-10 text-tertiary">{g.search.filteredBy({filter: describeSearch(search)})}</p>
-                        )}
-
-                        <label
-                            className="mt-1 flex items-center gap-1 px-0.5 text-ui-10 text-on-surface-variant"
-                            title={g.search.focusTitle}
-                        >
-                            <input type="checkbox" checked={focusMode} onChange={(e) => setFocusMode(e.target.checked)} className="accent-primary" />
-                            {g.search.focus}
-                        </label>
-                    </div>
-
-                    {/* A repository with a hundred remote branches (the normal
-                        case on a shared repo) makes the list unusable without a
-                        filter — and finding a branch is now the entry point to
-                        jumping around the graph, not just to checkout. */}
-                    <div className="shrink-0 border-b border-outline-variant p-1">
-                        <div className="flex items-center gap-1 rounded bg-surface-container px-1.5 py-1 focus-within:ring-1 focus-within:ring-primary">
-                            <Icon name="search" size={13} className="shrink-0 text-on-surface-variant/60" />
-                            <input
-                                value={branchFilter}
-                                onChange={(e) => setBranchFilter(e.target.value)}
-                                placeholder={g.refs.filterPlaceholder}
-                                title={g.refs.filterTitle}
-                                className="min-w-0 flex-1 bg-transparent text-ui-11 text-on-surface outline-none placeholder:text-on-surface-variant/50"
+                        ) : view === 'stash' ? (
+                            <StashPanel
+                                stashes={stashes}
+                                selected={selectedStash}
+                                onSelect={setSelectedStash}
+                                busy={!!busy}
+                                onPush={() => void run('stash push', () => GitStashPush(repoId, '', true))}
+                                onApply={(ref, drop) => void run(drop ? 'stash pop' : 'stash apply', () => GitStashApply(repoId, ref, drop))}
+                                onDrop={stashToConfirmDrop}
                             />
-                            {branchFilter && (
-                                <button onClick={() => setBranchFilter('')} title={g.refs.clearFilter} className="shrink-0 rounded text-on-surface-variant/60 hover:text-on-surface">
-                                    <Icon name="close" size={13} />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto p-1">
-                        <SectionLabel
-                            count={localBranches.length}
-                            open={!collapsedSections.has('local')}
-                            onToggle={() => toggleSection('local')}
-                            action={{
-                                title: current?.name ? g.refs.newBranchFrom({branch: current.name}) : g.refs.newBranchHere,
-                                onSelect: () => promptCreateBranch(''),
-                            }}
-                        >
-                            {g.refs.branches}
-                        </SectionLabel>
-                        {/* Las ancladas van planas y arriba de todo: anclarlas
-                            existe justamente para sacarlas del montón, así que
-                            volver a meterlas dentro de su carpeta anularía la
-                            función. */}
-                        {!collapsedSections.has('local') && pinnedLocal.map((b) => (
-                            <BranchRow {...branchRowProps(b)} key={b.name} />
-                        ))}
-                        {!collapsedSections.has('local') && (
-                            <BranchTree
-                                node={localTree}
-                                depth={0}
-                                expanded={expandedFolders}
-                                expandAll={filtering}
-                                onToggleFolder={toggleFolder}
-                                onFolderMenu={openFolderMenu}
-                                renderBranch={(b, folderPath) => (
-                                    <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
-                                )}
+                        ) : (
+                            <ChangesPanel
+                                staged={staged}
+                                unstaged={unstaged}
+                                selectedPath={selectedPath}
+                                busy={!!busy}
+                                commitMessage={commitMessage}
+                                lastCommitMessage={lastCommitMessage}
+                                branchName={status?.branch ?? ''}
+                                onSelectPath={setSelectedPath}
+                                onStage={(paths) => run('add', () => GitStage(repoId, paths))}
+                                onStageAll={() => run('add --all', () => GitStageAll(repoId))}
+                                onUnstage={(paths) => run('restore --staged', () => GitUnstage(repoId, paths))}
+                                onDiscard={(paths) => setConfirmDiscard(paths)}
+                                onChangeMessage={setCommitMessage}
+                                inlineDiffs={inlineDiffs}
+                                onToggleDiff={toggleInlineDiff}
+                                drafting={drafting}
+                                draft={draft}
+                                onDraftMessage={draftables.length > 0 ? () => void draftCommitMessage() : undefined}
+                                onPickDraftAgent={draftables.length > 1 ? pickDraftAgent : undefined}
+                                onCommit={(amend) =>
+                                    run(amend ? 'commit --amend' : 'commit', async () => {
+                                        await GitCommit(repoId, commitMessage, amend)
+                                        setCommitMessage('')
+                                    })
+                                }
                             />
                         )}
-
-                        <SectionLabel
-                            count={remoteBranches.length}
-                            open={!collapsedSections.has('remote')}
-                            onToggle={() => toggleSection('remote')}
-                            action={{
-                                icon: 'settings',
-                                title: g.refs.manageRemotes,
-                                onSelect: () => openSettings('remotes'),
-                            }}
-                        >
-                            {g.refs.remotes}
-                        </SectionLabel>
-                        {!collapsedSections.has('remote') && pinnedRemote.map((b) => (
-                            <BranchRow {...branchRowProps(b)} key={b.name} />
-                        ))}
-                        {!collapsedSections.has('remote') && (
-                            <BranchTree
-                                node={remoteTree}
-                                depth={0}
-                                expanded={expandedFolders}
-                                expandAll={filtering}
-                                onToggleFolder={toggleFolder}
-                                onFolderMenu={openRemoteFolderMenu}
-                                renderBranch={(b, folderPath) => (
-                                    <BranchRow {...branchRowProps(b)} key={b.name} label={leafLabel(b, folderPath)} depth={folderDepth(folderPath)} />
-                                )}
-                            />
-                        )}
-
-                        {/* Tags. Hasta ahora solo estaban en el árbol de la
-                            barra lateral, que no puede llevar el grafo a
-                            ningún lado: para mirar qué entró en una versión
-                            había que buscar el tag ahí, copiar el nombre y
-                            filtrar el log a mano. Acá un click lo revela en
-                            el grafo, igual que una rama. */}
-                        {tags.length > 0 && (
-                            <>
-                                <SectionLabel
-                                    count={visibleTags.length}
-                                    open={!collapsedSections.has('tags')}
-                                    onToggle={() => toggleSection('tags')}
-                                    action={{
-                                        title: current?.name ? g.refs.newTagOn({branch: current.name}) : g.refs.newTagHere,
-                                        onSelect: promptCreateTag,
-                                    }}
-                                >
-                                    {g.refs.tags}
-                                </SectionLabel>
-                                {!collapsedSections.has('tags') && tagGroups.groups.map((group) => {
-                                    const key = `tag:${group.key}`
-                                    const open = filtering || expandedFolders.has(key)
-                                    return (
-                                        <div key={key}>
-                                            <button
-                                                onClick={() => toggleFolder(key)}
-                                                title={
-                                                    open
-                                                        ? g.refs.collapseGroup({group: group.key, count: group.tags.length})
-                                                        : g.refs.expandGroup({group: group.key, count: group.tags.length})
-                                                }
-                                                className="flex w-full items-center gap-1 rounded py-1 pl-2 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
-                                            >
-                                                <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
-                                                <Icon name="sell" size={13} className="shrink-0 opacity-60" />
-                                                <span className="truncate">{group.key}</span>
-                                                <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-50">{group.tags.length}</span>
-                                            </button>
-                                            {open &&
-                                                group.tags.map((t) => (
-                                                    <TagRow key={t.name} tag={t} depth={1} onSelect={() => revealCommit(t.hash)} onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: tagMenuItems(t)})} />
-                                                ))}
-                                        </div>
-                                    )
-                                })}
-                                {!collapsedSections.has('tags') && tagGroups.loose.map((t) => (
-                                    <TagRow key={t.name} tag={t} depth={0} onSelect={() => revealCommit(t.hash)} onContextMenu={(e) => setMenu({x: e.clientX, y: e.clientY, items: tagMenuItems(t)})} />
-                                ))}
-                            </>
-                        )}
-
-                        {branchFilter && localBranches.length === 0 && remoteBranches.length === 0 && visibleTags.length === 0 && (
-                            <p className="px-2 py-3 text-ui-11 text-on-surface-variant/70">{g.refs.noMatch({filter: branchFilter})}</p>
-                        )}
-                    </div>
-                </div>
+                    </GitWorkPanel>
                 )}
 
                 {!sideHidden && (
                     <PaneHandle onStart={() => setDragging('side')} title={g.panes.sideHandle} />
                 )}
 
-                {/* Center: graph or working-tree changes */}
+                {/* Centro: lo que muestra la solapa activa — el grafo, el diff
+                    del archivo elegido, el parche del stash, el editor. */}
                 <div className="flex min-w-0 flex-1 flex-col">
                     {view === 'conflicts' ? (
                         <GitConflictResolver
@@ -3219,16 +2969,17 @@ export default function GitRepoTab({
                             onClose={() => setView('commits')}
                         />
                     ) : view === 'stash' ? (
-                        <GitStashPanel
+                        <StashPreview
                             repoId={repoId}
-                            stashes={stashes}
+                            stash={stashes.find((x) => x.ref === selectedStash) ?? null}
                             busy={!!busy}
+                            appearance={appearance}
                             onApply={(ref, drop) => void run(drop ? 'stash pop' : 'stash apply', () => GitStashApply(repoId, ref, drop))}
-                            onDrop={(ref) => void run('stash drop', () => GitStashDrop(repoId, ref))}
-                            onPush={() => void run('stash push', () => GitStashPush(repoId, '', true))}
-                            onClose={() => setView('commits')}
+                            onDrop={stashToConfirmDrop}
                         />
                     ) : view === 'files' ? (
+                        // Con la columna plegada no hay dónde montar el árbol:
+                        // el editor lo dibuja a su izquierda, como antes.
                         <GitFileEditor
                             repoId={repoId}
                             editorThemeId={editorThemeId}
@@ -3249,6 +3000,7 @@ export default function GitRepoTab({
                             // al siguiente poll para verlo en Cambios.
                             onSaved={() => void reload()}
                             onClose={() => setView('commits')}
+                            treeHost={sideHidden ? null : filesHost}
                         />
                     ) : view === 'commits' ? (
                         <CommitGraph
@@ -3270,155 +3022,62 @@ export default function GitRepoTab({
                             loading={loadingLog}
                         />
                     ) : (
-                        <ChangesPanel
-                            staged={staged}
-                            unstaged={unstaged}
-                            selectedPath={selectedPath}
-                            busy={!!busy}
-                            commitMessage={commitMessage}
-                            branchName={status?.branch ?? ''}
-                            onSelectPath={setSelectedPath}
-                            onStage={(paths) => run('add', () => GitStage(repoId, paths))}
-                            onStageAll={() => run('add --all', () => GitStageAll(repoId))}
-                            onUnstage={(paths) => run('restore --staged', () => GitUnstage(repoId, paths))}
-                            onDiscard={(paths) => setConfirmDiscard(paths)}
-                            onChangeMessage={setCommitMessage}
-                            inlineDiffs={inlineDiffs}
-                            onToggleDiff={toggleInlineDiff}
-                            drafting={drafting}
-                            draft={draft}
-                            onDraftMessage={draftables.length > 0 ? () => void draftCommitMessage() : undefined}
-                            onPickDraftAgent={draftables.length > 1 ? pickDraftAgent : undefined}
-                            onCommit={() =>
-                                run('commit', async () => {
-                                    await GitCommit(repoId, commitMessage, false)
-                                    setCommitMessage('')
-                                })
-                            }
-                        />
+                        // Cambios: el diff del archivo elegido ocupa el área
+                        // principal. Es lo que se REVISA mientras en la columna
+                        // se prepara y se escribe el commit.
+                        <div className="min-h-0 flex-1 overflow-hidden">
+                            {diffViewer ?? (
+                                <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+                                    <Icon name="difference" size={32} className="text-on-surface-variant/40" />
+                                    <p className="text-ui-13 font-medium text-on-surface">{t.git.workbench.changes.pickFileTitle}</p>
+                                    <p className="max-w-xs text-ui-11 text-on-surface-variant/80">{t.git.workbench.changes.pickFileBody}</p>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
 
-                {!diffHidden && (
-                    <PaneHandle onStart={() => setDragging('diff')} title={g.panes.diffHandle} />
-                )}
-
-                {/* Right: commit detail + file list + diff.
+                {/* Derecha: detalle del commit + su diff. Solo en el Historial:
+                    en Cambios el diff pasó al área principal, y en Stash y
+                    Archivos este panel no tenía nada que mostrar.
 
                     overflow-hidden por el mismo motivo que la columna de
-                    ramas: ancho fijo + hijos con min-width:auto = contenido
+                    trabajo: ancho fijo + hijos con min-width:auto = contenido
                     dibujado fuera del panel. */}
-                {!diffHidden && (
-                <div style={{width: diffWidth}} className="flex shrink-0 flex-col overflow-hidden">
-                    {view === 'commits' && selectedCommit && (
-                        <CommitDetail
-                            commit={selectedCommit}
-                            files={changedFiles}
-                            selectedPath={selectedPath}
-                            onSelectPath={setSelectedPath}
-                            diffs={commitDiffs}
-                            onToggleDiff={toggleCommitDiff}
-                            onExpandAll={expandAllCommitDiffs}
-                            onCollapseAll={() => setCommitDiffs({})}
-                            full={!selectedPath}
-                        />
-                    )}
-                    {/* El visor solo ocupa lugar cuando hay algo que ver: con un
-                        commit elegido y ningún archivo abierto, el resumen se
-                        queda con el panel entero en vez de repartirlo con un
-                        cartel que dice "elegí un archivo". */}
-                    {!(view === 'commits' && selectedCommit && !selectedPath) && (
-                    <div className="min-h-0 flex-1 overflow-hidden border-t border-outline-variant">
-                        {selectedPath ? (
-                            <DiffViewer
-                                patch={diff?.patch ?? ''}
-                                isBinary={diff?.isBinary ?? false}
-                                path={selectedPath}
-                                loading={loadingDiff}
-                                error={diffError}
-                                editorThemeId={editorThemeId}
-                                appTheme={appTheme}
-                                context={diffContext}
-                                ignoreWs={diffIgnoreWs}
-                                wrap={diffWrap}
-                                onChangePrefs={persistDiffPrefs}
-                                // Only the working-tree/index views can be
-                                // staged from. A commit's diff is history:
-                                // there is nothing to prepare.
-                                staged={view === 'changes' && stagedPaths(status).includes(selectedPath)}
-                                blame={blame ?? undefined}
-                                // A commit's diff is blamed AT that commit, so
-                                // its added lines belong to it and map to the
-                                // new side. A working-tree diff is blamed at
-                                // HEAD, where the added lines do not exist yet.
-                                blameSide={view === 'commits' ? 'new' : 'old'}
-                                onToggleBlame={() => {
-                                    if (blame) {
-                                        setBlame(null)
-                                        return
-                                    }
-                                    if (!selectedPath) return
-                                    GitBlame(repoId, selectedPath, view === 'commits' ? (selectedCommit?.hash ?? '') : '')
-                                        .then((b) => setBlame(b ?? []))
-                                        .catch((e) => setError(String(e)))
-                                }}
-                                // Solo desde el working tree. En el diff de un
-                                // commit "editar" llevaría al archivo de HOY,
-                                // que puede no tener nada que ver con las
-                                // líneas que se están mirando.
-                                onEdit={
-                                    view === 'changes' && selectedPath
-                                        ? () => {
-                                              setEditRequest({path: selectedPath, token: Date.now()})
-                                              setView('files')
-                                          }
-                                        : undefined
-                                }
-                                onAsk={
-                                    view === 'changes' && selectedPath
-                                        ? () =>
-                                              askAgentPicking(
-                                                  // Se nombra el archivo y se
-                                                  // le pide al agente que mire
-                                                  // el diff él mismo: `git
-                                                  // diff` es una herramienta
-                                                  // que los tres tienen, y
-                                                  // pegar el parche entero en
-                                                  // el prompt gasta contexto y
-                                                  // rompe el pegado del PTY.
-                                                  g.ask.diffPrompt({path: selectedPath}),
-                                                  g.ask.diffAbout({path: selectedPath}),
-                                              )
-                                        : undefined
-                                }
-                                onApplyPatch={
-                                    view === 'changes'
-                                        ? (patch, action) => {
-                                              if (action === 'discard') {
-                                                  setConfirmDiscardPatch(patch)
-                                                  return
-                                              }
-                                              // stage = apply to the index;
-                                              // unstage = the same patch,
-                                              // applied to the index in reverse.
-                                              void run(action === 'stage' ? 'apply --cached' : 'apply --cached --reverse', () =>
-                                                  GitApplyPatch(repoId, patch, true, action === 'unstage'),
-                                              )
-                                          }
-                                        : undefined
-                                }
-                            />
-                        ) : (
-                            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-                                <Icon name="difference" size={28} className="text-on-surface-variant/40" />
-                                <p className="text-xs text-on-surface-variant/70">
-                                    {view === 'commits' ? g.panes.pickCommitThenFile : g.panes.pickFile}
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                    )}
-                </div>
+                {view === 'commits' && !diffHidden && (
+                    <>
+                        <PaneHandle onStart={() => setDragging('diff')} title={g.panes.diffHandle} />
+                        <div style={{width: effDiffWidth}} className="flex shrink-0 flex-col overflow-hidden">
+                            {selectedCommit && (
+                                <CommitDetail
+                                    commit={selectedCommit}
+                                    files={changedFiles}
+                                    selectedPath={selectedPath}
+                                    onSelectPath={setSelectedPath}
+                                    diffs={commitDiffs}
+                                    onToggleDiff={toggleCommitDiff}
+                                    onExpandAll={expandAllCommitDiffs}
+                                    onCollapseAll={() => setCommitDiffs({})}
+                                    full={!selectedPath}
+                                />
+                            )}
+                            {/* El visor solo ocupa lugar cuando hay algo que ver:
+                                con un commit elegido y ningún archivo abierto, el
+                                resumen se queda con el panel entero en vez de
+                                repartirlo con un cartel que dice «elegí un
+                                archivo». */}
+                            {!(selectedCommit && !selectedPath) && (
+                                <div className="min-h-0 flex-1 overflow-hidden border-t border-outline-variant">
+                                    {diffViewer ?? (
+                                        <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+                                            <Icon name="difference" size={28} className="text-on-surface-variant/40" />
+                                            <p className="text-xs text-on-surface-variant/70">{g.panes.pickCommitThenFile}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -4211,6 +3870,15 @@ function clampPane(w: number): number {
     return Math.max(MIN_PANE, Math.min(MAX_PANE, Math.round(w)))
 }
 
+// La columna de trabajo tiene piso propio: con menos de ~220px la caja de
+// commit y las filas de archivos dejan de ser legibles, y las cuatro solapas
+// no entran ni como íconos. El tope evita que se coma el grafo.
+const MIN_SIDE = 220
+const MAX_SIDE = 720
+function clampSide(w: number): number {
+    return Math.max(MIN_SIDE, Math.min(MAX_SIDE, Math.round(w)))
+}
+
 // A 4px grab strip with a wider invisible hit area — a splitter exactly as
 // wide as its visible line is genuinely hard to grab.
 function PaneHandle({onStart, title}: {onStart: () => void; title: string}) {
@@ -4250,355 +3918,6 @@ function Banner({kind, text, onClose}: {kind: 'error' | 'info'; text: string; on
                 <Icon name="close" size={14} />
             </button>
         </div>
-    )
-}
-
-function ViewTab({
-    active,
-    onClick,
-    icon,
-    label,
-    title,
-    badge,
-    compact,
-}: {
-    active: boolean
-    onClick: () => void
-    icon: string
-    label: string
-    title: string
-    badge?: number
-    // Con la columna angosta se muestra solo el ícono. Es mejor que recortar
-    // el texto a "Comm…"/"Camb…", que ocupa casi lo mismo y encima no se
-    // entiende; los tres íconos son distintos entre sí y el tooltip sigue
-    // diciendo qué hace cada uno.
-    compact?: boolean
-}) {
-    return (
-        <button
-            onClick={onClick}
-            title={title}
-            // min-w-0 anula el min-width:auto que traen los ítems flex por
-            // defecto — sin él `flex-1` no sirve de nada: el botón se niega a
-            // bajar del ancho de su propio contenido y los tres desbordan la
-            // columna en vez de repartirse lo que hay.
-            className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-ui-11 ${
-                active ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant'
-            }`}
-        >
-            <Icon name={icon} size={14} className="shrink-0" />
-            {!compact && <span className="truncate">{label}</span>}
-            {/* secondary is the commit/success role — a live count of pending
-                changes reads as "there is work here", not as an error. */}
-            {badge != null && badge > 0 && (
-                <span className="shrink-0 rounded-full bg-secondary px-1.5 text-ui-10 font-medium leading-4 text-on-secondary">{badge}</span>
-            )}
-        </button>
-    )
-}
-
-// SectionLabel es la cabecera PLEGABLE de cada bloque del panel de ramas.
-//
-// Antes era un título fijo: con muchas ramas remotas o muchos tags, encontrar
-// las locales obligaba a scrollear todo lo demás sin poder sacarlo de en
-// medio. Ahora cada bloque se pliega, y el contador queda a la vista cuando
-// está cerrado — que es lo que hace que plegarlo no sea perder de vista que
-// hay algo ahí.
-function SectionLabel({
-    children,
-    count,
-    open,
-    onToggle,
-    action,
-}: {
-    children: React.ReactNode
-    count?: number
-    open?: boolean
-    onToggle?: () => void
-    // Acción de ALTA de la sección: crear una rama en "Ramas", crear un tag
-    // en "Tags". Va en la cabecera y no en un menú porque era lo único que
-    // el panel no dejaba hacer — se podían listar, filtrar, plegar, borrar y
-    // publicar ramas y tags, pero crear uno obligaba a ir al grafo y buscar
-    // un commit. Se ve siempre (atenuada, no escondida detrás de un hover):
-    // una acción que no se descubre es la que motivó agregarla.
-    // El ícono es parte de la acción: en "Ramas" y "Tags" es un alta ("add"),
-    // en "Remotas" es administrar lo que ya existe — un "+" ahí prometería
-    // otra cosa.
-    action?: {title: string; onSelect: () => void; icon?: string}
-}) {
-    const t = useT()
-    const label = (
-        <>
-            <Icon
-                name={open === false ? 'chevron_right' : 'expand_more'}
-                size={12}
-                className="shrink-0 opacity-70"
-            />
-            {children}
-            {count != null && <span className="font-mono text-ui-9 font-normal tabular-nums opacity-70">{count}</span>}
-        </>
-    )
-    if (!onToggle) {
-        return (
-            <p className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60">
-                {label}
-            </p>
-        )
-    }
-    // El botón de alta es hermano del de plegar, no hijo: un <button> adentro
-    // de otro <button> es HTML inválido y el click interno no llega.
-    return (
-        <div className="flex w-full items-center pb-1 pt-2 pr-1">
-            <button
-                onClick={onToggle}
-                title={open === false ? t.git.tab.section.expand : t.git.tab.section.collapse}
-                className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 text-left text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/60 hover:bg-surface-variant hover:text-on-surface-variant"
-            >
-                {label}
-            </button>
-            {action && (
-                <button
-                    onClick={action.onSelect}
-                    title={action.title}
-                    className="shrink-0 rounded p-0.5 text-on-surface-variant/50 hover:bg-surface-variant hover:text-on-surface"
-                >
-                    <Icon name={action.icon ?? 'add'} size={14} />
-                </button>
-            )}
-        </div>
-    )
-}
-
-// folderDepth es cuántos niveles de indentación le tocan a una rama según la
-// carpeta de la que cuelga. Vive acá porque la comparten el árbol y las filas.
-function folderDepth(folderPath: string): number {
-    return folderPath === '' ? 0 : folderPath.split('/').length
-}
-
-// Fila de carpeta del árbol de ramas: plegable, con el nombre del segmento y
-// cuántas ramas hay adentro (el contador es lo que permite decidir si vale la
-// pena abrirla sin abrirla).
-function BranchFolderRow({
-    node,
-    depth,
-    open,
-    onToggle,
-    onContextMenu,
-}: {
-    node: BranchTreeNode
-    depth: number
-    open: boolean
-    onToggle: () => void
-    // Botón derecho sobre la carpeta: crear una rama YA dentro de ella, con
-    // el prefijo puesto. Es la diferencia entre "feature/" escrito a mano
-    // cada vez y una convención de nombres que se sostiene sola.
-    onContextMenu?: (e: React.MouseEvent) => void
-}) {
-    const total = countBranches(node)
-    const t = useT()
-    return (
-        <button
-            onClick={onToggle}
-            onContextMenu={onContextMenu}
-            title={
-                open
-                    ? t.git.tab.tree.collapseFolder({folder: node.path, count: total})
-                    : t.git.tab.tree.expandFolder({folder: node.path, count: total})
-            }
-            style={{paddingLeft: 8 + depth * 12}}
-            className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
-        >
-            <Icon name={open ? 'expand_more' : 'chevron_right'} size={13} className="shrink-0 opacity-60" />
-            <Icon name={open ? 'folder_open' : 'folder'} size={13} className="shrink-0 opacity-60" />
-            <span className="truncate">{node.label}</span>
-            <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-50">{total}</span>
-        </button>
-    )
-}
-
-// BranchTree dibuja carpetas y ramas recursivamente. No sabe cómo es una fila
-// de rama —la recibe por renderBranch— para que el mismo árbol sirva en la
-// barra lateral de la pestaña y en cualquier otra vista sin arrastrar el
-// diseño de la fila con él.
-function BranchTree({
-    node,
-    depth,
-    expanded,
-    expandAll,
-    onToggleFolder,
-    onFolderMenu,
-    renderBranch,
-}: {
-    node: BranchTreeNode
-    depth: number
-    expanded: Set<string>
-    // Fuerza todo abierto (el caso del filtro de texto), sin tocar el conjunto
-    // de carpetas que el usuario abrió a mano.
-    expandAll?: boolean
-    onToggleFolder: (path: string) => void
-    // Menú contextual de una carpeta. Opcional para que el árbol siga
-    // sirviendo en una vista que no ofrezca acciones.
-    onFolderMenu?: (folderPath: string, e: React.MouseEvent) => void
-    renderBranch: (branch: git.Branch, folderPath: string) => React.ReactNode
-}) {
-    return (
-        <>
-            {node.folders.map((folder) => {
-                const open = expandAll || expanded.has(folder.path)
-                return (
-                    <div key={folder.path}>
-                        <BranchFolderRow
-                            node={folder}
-                            depth={depth}
-                            open={open}
-                            onToggle={() => onToggleFolder(folder.path)}
-                            onContextMenu={onFolderMenu ? (e) => onFolderMenu(folder.path, e) : undefined}
-                        />
-                        {open && (
-                            <BranchTree
-                                node={folder}
-                                depth={depth + 1}
-                                expanded={expanded}
-                                expandAll={expandAll}
-                                onToggleFolder={onToggleFolder}
-                                onFolderMenu={onFolderMenu}
-                                renderBranch={renderBranch}
-                            />
-                        )}
-                    </div>
-                )
-            })}
-            {node.branches.map((b) => renderBranch(b, node.path))}
-        </>
-    )
-}
-
-// Fila de tag. Más chata que la de rama a propósito: un tag no tiene estado
-// (no es la actual, no está adelante ni atrás, no se ancla), así que lo único
-// que aporta además del nombre es a qué commit apunta y de cuándo es.
-function TagRow({
-    tag,
-    depth,
-    onSelect,
-    onContextMenu,
-}: {
-    tag: git.Tag
-    depth: number
-    onSelect: () => void
-    onContextMenu: (e: ReactMouseEvent) => void
-}) {
-    const date = tag.taggerDate ? tag.taggerDate.slice(0, 10) : ''
-    const tr = useT().git.tab.tree
-    return (
-        <button
-            onClick={onSelect}
-            onContextMenu={(e) => {
-                e.preventDefault()
-                onContextMenu(e)
-            }}
-            title={[
-                tr.tagTitle({name: tag.name, hash: tag.hash.slice(0, 8)}),
-                tag.annotated ? tr.annotated : tr.lightweight,
-                tag.message ? `\n${tag.message}` : '',
-                tr.tagHelp,
-            ]
-                .filter(Boolean)
-                .join(' · ')}
-            style={{paddingLeft: 8 + depth * 12}}
-            className="flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 text-on-surface-variant hover:bg-surface-variant"
-        >
-            <Icon name="sell" size={13} className="shrink-0 opacity-50" />
-            <span className="truncate">{tag.name}</span>
-            {date && <span className="ml-auto shrink-0 font-mono text-ui-9 tabular-nums opacity-45">{date}</span>}
-        </button>
-    )
-}
-
-function BranchRow({
-    branch,
-    label,
-    depth,
-    selected,
-    disabled,
-    onSelect,
-    onCheckout,
-    onContextMenu,
-    isPinned,
-    onTogglePin,
-}: {
-    branch: git.Branch
-    // Texto a mostrar. Dentro del árbol es el nombre sin el prefijo de su
-    // carpeta; suelto (una rama anclada, o una sin barras) es el nombre
-    // completo. El checkout siempre usa branch.name, nunca esto.
-    label?: string
-    // Nivel de indentación heredado de la carpeta contenedora.
-    depth?: number
-    selected: boolean
-    disabled: boolean
-    onSelect: () => void
-    onCheckout: () => void
-    onContextMenu: (e: React.MouseEvent) => void
-    // Pinning keeps a branch at the top of its section and includes it in
-    // Focus Mode. Optional so the row still renders in contexts that do not
-    // offer pinning.
-    isPinned?: boolean
-    onTogglePin?: () => void
-}) {
-    const tr = useT().git.tab.tree
-    return (
-        <button
-            onClick={onSelect}
-            onDoubleClick={onCheckout}
-            onContextMenu={(e) => {
-                e.preventDefault()
-                onContextMenu(e)
-            }}
-            disabled={disabled}
-            title={tr.branchTitle({
-                name: branch.name,
-                middle: branch.isCurrent ? tr.alreadyCurrent : branch.isRemote ? tr.doubleClickRemote : tr.doubleClick,
-            })}
-            style={{paddingLeft: 10 + (depth ?? 0) * 12}}
-            className={`group relative flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-ui-11 transition-colors disabled:opacity-40 ${
-                // Three states that must stay distinguishable at a glance:
-                // checked out (primary), pointed at by the graph (a secondary
-                // tint + accent bar, quiet enough for a long list), and plain.
-                // isCurrent wins the background so checking out a branch you
-                // had just clicked (the common double-click path — the click
-                // half fires first and sets `selected`) still visibly flips to
-                // "you are here" instead of staying stuck on the selection
-                // tint; the accent bar below still marks `selected` on its own.
-                branch.isCurrent ? 'bg-primary-container/60 text-on-primary-container' : selected ? 'bg-secondary-container/25 text-on-surface' : 'text-on-surface hover:bg-surface-variant'
-            }`}
-        >
-            {selected && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-secondary" />}
-            <span
-                role="button"
-                tabIndex={-1}
-                onClick={(e) => {
-                    e.stopPropagation()
-                    onTogglePin?.()
-                }}
-                title={
-                    isPinned ? tr.unpin({name: branch.name}) : tr.pin({name: branch.name})
-                }
-                className={`shrink-0 ${isPinned ? 'text-tertiary' : 'text-on-surface-variant/30 opacity-0 group-hover:opacity-100'}`}
-            >
-                <Icon name="star" size={12} filled={isPinned} />
-            </span>
-            <Icon name={branch.isRemote ? 'cloud' : 'account_tree'} size={13} className="shrink-0 opacity-70" />
-            <span className="truncate">{label ?? branch.name}</span>
-            {/* The checked-out branch keeps a marker of its own even when
-                another branch is the one selected in the graph — otherwise
-                clicking around the sidebar loses track of where HEAD is. */}
-            {branch.isCurrent && <Icon name="check" size={12} className="ml-auto shrink-0 opacity-80" />}
-            {(branch.ahead > 0 || branch.behind > 0) && (
-                <span className={`shrink-0 font-mono text-ui-9 opacity-70 ${branch.isCurrent ? '' : 'ml-auto'}`}>
-                    {branch.ahead > 0 && `↑${branch.ahead}`}
-                    {branch.behind > 0 && `↓${branch.behind}`}
-                </span>
-            )}
-        </button>
     )
 }
 
@@ -4762,344 +4081,6 @@ function CommitDetail({
                 })}
             </div>
         </div>
-    )
-}
-
-function ChangesPanel({
-    staged,
-    unstaged,
-    selectedPath,
-    busy,
-    commitMessage,
-    branchName,
-    onSelectPath,
-    onStage,
-    onStageAll,
-    onUnstage,
-    onDiscard,
-    onChangeMessage,
-    onCommit,
-    inlineDiffs,
-    onToggleDiff,
-    onDraftMessage,
-    onPickDraftAgent,
-    drafting,
-    draft,
-}: {
-    staged: git.FileStatus[]
-    unstaged: git.FileStatus[]
-    selectedPath: string | null
-    busy: boolean
-    commitMessage: string
-    // The checked-out branch, used only to read the ticket id out of its
-    // name for the commit helper.
-    branchName: string
-    onSelectPath: (p: string) => void
-    onStage: (paths: string[]) => void
-    onStageAll: () => void
-    onUnstage: (paths: string[]) => void
-    onDiscard: (paths: string[]) => void
-    onChangeMessage: (m: string) => void
-    onCommit: () => void
-    // Diffs desplegados dentro de la lista, por ruta. Ausente = plegado.
-    inlineDiffs: Record<string, InlineDiffState>
-    onToggleDiff: (path: string, staged: boolean) => void
-    // Ausente cuando no hay ningún agente instalado con chat verificado: la
-    // acción no se ofrece en vez de ofrecerla y fallar al tocarla.
-    onDraftMessage?: () => void
-    // Ausente con un solo agente instalado: un menú de una sola opción es
-    // ruido, y el único que hay ya es el que usa el botón.
-    onPickDraftAgent?: (e: {clientX: number; clientY: number}) => void
-    drafting?: boolean
-    // La última redacción del agente, mientras el campo siga siendo la suya.
-    draft?: main.CommitDraft | null
-}) {
-    const t = useT()
-    const c = t.git.tab.changes
-    return (
-        <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto">
-                <FileGroup
-                    title={c.staged}
-                    files={staged}
-                    selectedPath={selectedPath}
-                    onSelectPath={onSelectPath}
-                    action={{icon: 'remove', title: c.unstage, onClick: (p) => onUnstage([p])}}
-                    empty={c.stagedEmpty}
-                    inlineDiffs={inlineDiffs}
-                    onToggleDiff={onToggleDiff}
-                    staged
-                />
-                <FileGroup
-                    title={c.unstaged}
-                    files={unstaged}
-                    selectedPath={selectedPath}
-                    onSelectPath={onSelectPath}
-                    action={{icon: 'add', title: c.stage, onClick: (p) => onStage([p])}}
-                    secondaryAction={{icon: 'undo', title: c.discardFile, danger: true, onClick: (p) => onDiscard([p])}}
-                    empty={c.unstagedEmpty}
-                    inlineDiffs={inlineDiffs}
-                    onToggleDiff={onToggleDiff}
-                />
-            </div>
-
-            <div className="shrink-0 space-y-1.5 border-t border-outline-variant bg-surface-container-lowest p-2">
-                <button
-                    onClick={onStageAll}
-                    disabled={busy || unstaged.length === 0}
-                    title={unstaged.length === 0 ? c.nothingToStage : c.stageAllTitle({count: unstaged.length})}
-                    className="flex w-full items-center justify-center gap-1.5 rounded bg-surface-variant px-2 py-1 text-ui-11 text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40"
-                >
-                    <Icon name="add" size={13} />
-                    {c.stageAll}
-                </button>
-
-                {/* Commit helper. The ticket half is what actually saves
-                    typing: the branch already states which ticket the work
-                    belongs to, and re-typing it into every message is both
-                    tedious and the thing people forget — which is exactly
-                    when the traceability the convention exists for breaks. */}
-                <div className="flex items-center gap-1">
-                    <select
-                        value={currentPrefixOf(commitMessage).type}
-                        onChange={(e) => {
-                            const type = e.target.value
-                            const scope = currentPrefixOf(commitMessage).scope || extractTicket(branchName)
-                            onChangeMessage(type ? applyPrefix(commitMessage, buildCommitPrefix(type, scope)) : commitMessage)
-                        }}
-                        title={c.typeTitle}
-                        className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-container px-1 py-0.5 text-ui-11 text-on-surface"
-                    >
-                        <option value="">{c.typePlaceholder}</option>
-                        {COMMIT_TYPES.map((ct) => (
-                            <option key={ct.value} value={ct.value} title={ct.hint}>
-                                {ct.label}
-                            </option>
-                        ))}
-                    </select>
-                    {!!extractTicket(branchName) && (
-                        <button
-                            onClick={() => {
-                                const {type} = currentPrefixOf(commitMessage)
-                                onChangeMessage(applyPrefix(commitMessage, buildCommitPrefix(type || 'feat', extractTicket(branchName))))
-                            }}
-                            title={c.ticketTitle({ticket: extractTicket(branchName), branch: branchName})}
-                            className="shrink-0 rounded border border-outline-variant px-1.5 py-0.5 font-mono text-ui-10 text-on-surface-variant hover:text-on-surface"
-                        >
-                            {extractTicket(branchName)}
-                        </button>
-                    )}
-                </div>
-
-                {/* El campo del mensaje con el botón de redactar ADENTRO, en la
-                    esquina: la acción pertenece a lo que se está escribiendo,
-                    y una fila más de botones arriba del campo ya empujaba la
-                    lista de archivos hacia arriba sin decir nada nuevo. */}
-                <div className="relative rounded bg-surface-container-highest focus-within:ring-1 focus-within:ring-primary">
-                    <textarea
-                        value={commitMessage}
-                        onChange={(e) => onChangeMessage(e.target.value)}
-                        placeholder={c.messagePlaceholder}
-                        rows={3}
-                        title={c.messageTitle}
-                        className="w-full resize-none rounded border-none bg-transparent px-2 py-1.5 pr-14 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/50"
-                    />
-                    {onDraftMessage && (
-                        <div className="absolute right-1 top-1 flex items-center rounded bg-surface-container-highest">
-                            <button
-                                onClick={onDraftMessage}
-                                disabled={busy || staged.length === 0 || drafting}
-                                title={
-                                    drafting ? c.draftingTitle : staged.length === 0 ? c.draftNeedsStaged : c.draftTitle
-                                }
-                                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-primary hover:bg-primary-container/50 disabled:opacity-40"
-                            >
-                                {drafting ? (
-                                    <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-t-transparent border-primary" />
-                                ) : (
-                                    <Icon name="auto_awesome" size={14} />
-                                )}
-                                {/* El ícono solo alcanza cuando ya se sabe qué
-                                    hace. Con el campo vacío —que es cuando la
-                                    acción sirve— va con la palabra al lado, y
-                                    se calla apenas hay texto para no taparlo. */}
-                                {(!commitMessage.trim() || drafting) && (
-                                    <span className="text-ui-10">{drafting ? c.drafting : c.draft}</span>
-                                )}
-                            </button>
-                            {onPickDraftAgent && (
-                                <button
-                                    onClick={(e) => onPickDraftAgent({clientX: e.clientX, clientY: e.clientY})}
-                                    disabled={busy || staged.length === 0 || drafting}
-                                    title={c.draftOtherTitle}
-                                    className="rounded px-0.5 py-0.5 text-on-surface-variant hover:text-on-surface disabled:opacity-40"
-                                >
-                                    <Icon name="expand_more" size={13} />
-                                </button>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* Qué se le mandó al agente y quién contestó. "¿Qué le pasaste
-                    de mi repositorio?" tiene que poder contestarse, igual que
-                    en el asistente de consultas. */}
-                {draft && (
-                    <p
-                        title={c.draftInfoTitle({count: draft.files.length, truncated: draft.diffTruncated})}
-                        className="flex items-center gap-1 px-0.5 text-ui-10 text-on-surface-variant/70"
-                    >
-                        <Icon name="auto_awesome" size={11} className="shrink-0 text-primary" />
-                        <span className="truncate">
-                            {draft.agentLabel} · {t.git.tab.detail.fileCount(draft.files.length)} · +{draft.insertions}/−{draft.deletions}
-                        </span>
-                        {draft.diffTruncated && (
-                            <span className="shrink-0 text-tertiary" title={c.truncatedTitle}>
-                                · {c.truncated}
-                            </span>
-                        )}
-                    </p>
-                )}
-
-                <button
-                    onClick={onCommit}
-                    disabled={busy || staged.length === 0 || !commitMessage.trim()}
-                    title={
-                        staged.length === 0
-                            ? c.commitNeedsStaged
-                            : !commitMessage.trim()
-                              ? c.commitNeedsMessage
-                              : c.commitTitle({count: staged.length})
-                    }
-                    className="flex w-full items-center justify-center gap-1.5 rounded bg-secondary px-2 py-1.5 text-xs font-medium text-on-secondary hover:opacity-90 disabled:opacity-40"
-                >
-                    <Icon name="check" size={14} />
-                    {c.commitButton(staged.length)}
-                </button>
-            </div>
-        </div>
-    )
-}
-
-function FileGroup({
-    title,
-    files,
-    selectedPath,
-    onSelectPath,
-    action,
-    secondaryAction,
-    empty,
-    inlineDiffs,
-    onToggleDiff,
-    staged,
-}: {
-    title: string
-    files: git.FileStatus[]
-    selectedPath: string | null
-    onSelectPath: (p: string) => void
-    action: {icon: string; title: string; onClick: (path: string) => void}
-    secondaryAction?: {icon: string; title: string; danger?: boolean; onClick: (path: string) => void}
-    empty: string
-    inlineDiffs: Record<string, InlineDiffState>
-    onToggleDiff: (path: string, staged: boolean) => void
-    // Si este es el grupo que entra en el próximo commit. Decide el punto del
-    // encabezado —la distinción que más se mira en este panel, y la que un
-    // título en gris no alcanza a dar— y de qué lado se lee el diff de cada
-    // archivo: preparado se lee contra el índice, sin preparar contra el
-    // working tree, y confundirlos muestra el parche equivocado.
-    staged?: boolean
-}) {
-    const c = useT().git.tab.changes
-    return (
-        <div>
-            <p className="sticky top-0 z-10 flex items-center gap-1.5 bg-surface-container-low px-3 py-1 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/70">
-                {staged && <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary" />}
-                {title}
-                {files.length > 0 && (
-                    <span className="rounded-full bg-surface-variant px-1.5 py-px text-ui-9 font-semibold normal-case tracking-normal text-on-surface-variant">
-                        {files.length}
-                    </span>
-                )}
-            </p>
-            {files.length === 0 && <p className="px-3 py-1.5 text-ui-11 text-on-surface-variant/50">{empty}</p>}
-            {files.map((f) => {
-                // Nombre y carpeta separados: en un repositorio real la ruta
-                // entera no entra en la columna, y truncar a la izquierda deja
-                // ver justo la parte que no distingue un archivo de otro.
-                const slash = f.path.lastIndexOf('/')
-                const name = slash < 0 ? f.path : f.path.slice(slash + 1)
-                const dir = f.origPath ? `← ${f.origPath}` : slash < 0 ? '' : f.path.slice(0, slash)
-                const diff = inlineDiffs[f.path]
-                return (
-                    <div key={f.path}>
-                    <div
-                        className={`group flex items-center gap-1.5 py-1 pl-1 pr-3 text-ui-11 ${
-                            selectedPath === f.path ? 'bg-primary-container/50' : 'hover:bg-surface-variant/50'
-                        }`}
-                    >
-                        {/* Desplegar el diff acá mismo. Es lo que permite
-                            repasar el commit entero de arriba hacia abajo antes
-                            de escribirlo, sin ir y volver al panel derecho. */}
-                        <button
-                            onClick={() => onToggleDiff(f.path, !!staged)}
-                            title={diff ? c.hideFileChanges({name}) : c.showFileChanges({name})}
-                            className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                        >
-                            <Icon name={diff ? 'expand_more' : 'chevron_right'} size={13} />
-                        </button>
-                        <button
-                            onClick={() => onSelectPath(f.path)}
-                            title={f.origPath ? c.viewDiffRenamed({path: f.path, from: f.origPath}) : c.viewDiff({path: f.path})}
-                            className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left"
-                        >
-                            <span className="shrink-0 truncate text-on-surface">{name}</span>
-                            {!!dir && <span className="min-w-0 flex-1 truncate font-mono text-ui-10 text-on-surface-variant/60">{dir}</span>}
-                        </button>
-                        {secondaryAction && (
-                            <button
-                                onClick={() => secondaryAction.onClick(f.path)}
-                                title={secondaryAction.title}
-                                className={`shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 ${secondaryAction.danger ? 'text-error hover:bg-error-container/40' : 'text-on-surface-variant hover:bg-surface-variant'}`}
-                            >
-                                <Icon name={secondaryAction.icon} size={13} />
-                            </button>
-                        )}
-                        <button
-                            onClick={() => action.onClick(f.path)}
-                            title={action.title}
-                            className="shrink-0 rounded p-0.5 text-on-surface-variant opacity-0 hover:bg-surface-variant group-hover:opacity-100"
-                        >
-                            <Icon name={action.icon} size={13} />
-                        </button>
-                        <StatusChip file={f} />
-                    </div>
-                    {diff && <InlineDiff state={diff} onOpenFull={() => onSelectPath(f.path)} />}
-                    </div>
-                )
-            })}
-        </div>
-    )
-}
-
-// StatusChip renders git's porcelain code with a color carrying its meaning.
-// The untracked case is called out separately because "?" is the one a new
-// user most often misreads as an error.
-function StatusChip({file}: {file: git.FileStatus}) {
-    const code = file.untracked ? '?' : file.staged ? file.indexStatus : file.workStatus
-    const s = useT().git.tab.status
-    const meaning: Record<string, {label: string; cls: string}> = {
-        M: {label: s.modified, cls: 'text-tertiary'},
-        A: {label: s.added, cls: 'text-secondary'},
-        D: {label: s.deleted, cls: 'text-error'},
-        R: {label: s.renamed, cls: 'text-primary'},
-        C: {label: s.copied, cls: 'text-primary'},
-        '?': {label: s.untracked, cls: 'text-on-surface-variant/60'},
-    }
-    const m = meaning[code] ?? {label: code, cls: 'text-on-surface-variant'}
-    return (
-        <span title={m.label} className={`w-3 shrink-0 text-center font-mono ${m.cls}`}>
-            {code}
-        </span>
     )
 }
 

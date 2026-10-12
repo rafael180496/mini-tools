@@ -1,3 +1,4 @@
+import {createPortal} from 'react-dom'
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {EditorState, Compartment, type Extension} from '@codemirror/state'
 import {EditorView, keymap} from '@codemirror/view'
@@ -83,6 +84,9 @@ interface GitFileEditorProps {
     // que aparecer en Cambios sin esperar al siguiente poll de estado.
     onSaved: () => void
     onClose: () => void
+    // Contenedor (en la columna de trabajo de la pestaña) donde dibujar el árbol
+    // de archivos. Sin él, el árbol va a la izquierda del editor, como antes.
+    treeHost?: HTMLElement | null
 }
 
 const languageCompartment = new Compartment()
@@ -154,6 +158,7 @@ export default function GitFileEditor({
     status,
     onSaved,
     onClose,
+    treeHost,
 }: GitFileEditorProps) {
     const tf = useT().git.fileEditor
     const [tree, setTree] = useState<git.WorkTree | null>(null)
@@ -535,21 +540,174 @@ export default function GitFileEditor({
     const isMarkdown = active?.language === 'markdown'
     const showPreview = isMarkdown && mdView !== 'code'
 
+    const treeNode = (
+        <>
+            {/* En la columna de trabajo, el árbol lleva su propia cabecera: el
+                título y el recuento ya no están en la barra del editor. */}
+            {treeHost && (
+                <div className="flex shrink-0 items-center gap-1 border-b border-outline-variant px-2 py-1.5">
+                    <span className="text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant/80">{tf.title}</span>
+                    {tree && (
+                        <span className="rounded-full bg-surface-variant px-1.5 py-px text-ui-9 font-semibold text-on-surface-variant">{tree.files.length}</span>
+                    )}
+                    <button
+                        onClick={reloadTree}
+                        title={tf.reloadTitle}
+                        aria-label={tf.reloadTitle}
+                        className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="refresh" size={14} />
+                    </button>
+                </div>
+            )}
+            <div className="shrink-0 border-b border-outline-variant p-1">
+                <div className="flex items-center gap-1 rounded bg-surface-container px-1.5 py-1 focus-within:ring-1 focus-within:ring-primary">
+                    <Icon name="search" size={13} className="shrink-0 text-on-surface-variant" />
+                    <input
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        placeholder={tf.filterPlaceholder}
+                        title={tf.filterTitle}
+                        className="min-w-0 flex-1 bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
+                    />
+                </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+                {treeError && <p className="p-3 text-xs text-error">{treeError}</p>}
+                {!treeError && !searchResults && rows.length === 0 && (
+                    <p className="p-3 text-xs text-on-surface-variant">{tf.noFiles}</p>
+                )}
+                {searchResults && searchResults.rows.length === 0 && (
+                    <p className="p-3 text-xs text-on-surface-variant">{tf.noMatch}</p>
+                )}
+
+                {/* Buscando: resultados planos con la ruta, porque lo
+                    que importa es encontrarlo, no ubicarlo. */}
+                {searchResults?.rows.map((path) => (
+                    <button
+                        key={path}
+                        onClick={() => void openFile(path)}
+                        title={path}
+                        className={`flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs ${
+                            path === activePath ? 'bg-primary/15 text-primary' : 'text-on-surface hover:bg-surface-container-high'
+                        }`}
+                    >
+                        <Icon name="description" size={12} className="shrink-0 text-on-surface-variant" />
+                        <span className="shrink-0">{path.split('/').pop()}</span>
+                        <span className="min-w-0 flex-1 truncate text-ui-10 text-on-surface-variant/70">{path}</span>
+                        {dirtyPaths.has(path) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
+                    </button>
+                ))}
+
+                {/* Navegando: el árbol. La sangría es la que dice
+                    dónde está uno parado — con rutas planas había que
+                    leer cada fila entera para saberlo. */}
+                {!searchResults &&
+                    rows.map(({node, depth}) => (
+                        <button
+                            key={node.path}
+                            onClick={() => (node.dir ? toggleDir(node.path) : void openFile(node.path))}
+                            title={node.path}
+                            style={{paddingLeft: 6 + depth * 12}}
+                            className={`flex w-full items-center gap-1 py-0.5 pr-2 text-left text-xs ${
+                                node.path === activePath
+                                    ? 'bg-primary/15 text-primary'
+                                    : 'text-on-surface hover:bg-surface-container-high'
+                            }`}
+                        >
+                            {node.dir ? (
+                                <>
+                                    <Icon
+                                        name={expanded.has(node.path) ? 'expand_more' : 'chevron_right'}
+                                        size={13}
+                                        className="shrink-0 text-on-surface-variant"
+                                    />
+                                    <Icon
+                                        name={expanded.has(node.path) ? 'folder_open' : 'folder'}
+                                        size={13}
+                                        className="shrink-0 text-primary/70"
+                                    />
+                                </>
+                            ) : (
+                                // El hueco del chevron mantiene alineados los
+                                // nombres de archivos y carpetas del mismo
+                                // nivel; sin él la sangría se lee torcida.
+                                <>
+                                    <span className="w-[13px] shrink-0" />
+                                    <Icon name="description" size={13} className="shrink-0 text-on-surface-variant" />
+                                </>
+                            )}
+                            <span
+                                className={`min-w-0 flex-1 truncate ${
+                                    node.dir
+                                        ? fileStatus.dirs.has(node.path)
+                                            ? 'text-on-surface'
+                                            : ''
+                                        : statusColor(fileStatus.byPath.get(node.path))
+                                }`}
+                            >
+                                {node.name}
+                            </span>
+                            {/* En una carpeta, cuántos cambios tiene
+                                adentro; en un archivo, qué le pasó. */}
+                            {node.dir && fileStatus.dirs.has(node.path) && (
+                                <span
+                                    title={tf.dirChanges({n: fileStatus.dirs.get(node.path) ?? 0})}
+                                    className="shrink-0 rounded-full bg-tertiary/20 px-1 font-mono text-ui-10 text-tertiary"
+                                >
+                                    {fileStatus.dirs.get(node.path)}
+                                </span>
+                            )}
+                            {/* La letra de git, como en VSCode: M
+                                modificado, A agregado, ? sin rastrear.
+                                Dice QUÉ le pasó al archivo, que el
+                                color solo insinúa. */}
+                            {!node.dir && fileStatus.byPath.get(node.path) && (
+                                <span
+                                    title={statusTitle(fileStatus.byPath.get(node.path))}
+                                    className={`shrink-0 font-mono text-ui-10 ${statusColor(fileStatus.byPath.get(node.path))}`}
+                                >
+                                    {fileStatus.byPath.get(node.path)}
+                                </span>
+                            )}
+                            {!node.dir && dirtyPaths.has(node.path) && (
+                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" title={tf.unsaved} />
+                            )}
+                        </button>
+                    ))}
+
+                {searchResults && searchResults.total > searchResults.rows.length && (
+                    <p className="p-2 text-center text-ui-11 text-on-surface-variant">
+                        {tf.moreFiles({n: searchResults.total - searchResults.rows.length})}
+                    </p>
+                )}
+                {tree?.truncated && (
+                    <p className="p-2 text-center text-ui-11 text-on-surface-variant">
+                        {tf.truncated}
+                    </p>
+                )}
+            </div>
+        </>
+    )
+
     return (
         <div className="flex h-full min-h-0 flex-col">
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-3 py-1.5 text-xs">
                 <Icon name="edit_document" size={15} className="shrink-0 text-primary" />
                 <span className="font-semibold text-on-surface">{tf.title}</span>
-                {tree && <span className="text-on-surface-variant">{tree.files.length}</span>}
+                {!treeHost && tree && <span className="text-on-surface-variant">{tree.files.length}</span>}
                 {saving && <span className="text-on-surface-variant">{tf.saving}</span>}
-                <button
-                    onClick={reloadTree}
-                    title={tf.reloadTitle}
-                    className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                >
-                    <Icon name="refresh" size={15} />
-                </button>
-                <button onClick={onClose} title={tf.closeTitle} className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
+                {!treeHost && (
+                    <button
+                        onClick={reloadTree}
+                        title={tf.reloadTitle}
+                        className="ml-auto shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                    >
+                        <Icon name="refresh" size={15} />
+                    </button>
+                )}
+                <button onClick={onClose} title={tf.closeTitle} className={`${treeHost ? 'ml-auto ' : ''}shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface`}>
                     <Icon name="close" size={16} />
                 </button>
             </div>
@@ -562,136 +720,14 @@ export default function GitFileEditor({
                     en modo agente el panel de la conversación se come parte de
                     la pantalla, y un árbol proporcional se volvería ilegible
                     justo cuando más se lo usa. */}
-                <div className="flex w-56 shrink-0 flex-col border-r border-outline-variant">
-                    <div className="shrink-0 border-b border-outline-variant p-1">
-                        <div className="flex items-center gap-1 rounded bg-surface-container px-1.5 py-1 focus-within:ring-1 focus-within:ring-primary">
-                            <Icon name="search" size={13} className="shrink-0 text-on-surface-variant" />
-                            <input
-                                value={filter}
-                                onChange={(e) => setFilter(e.target.value)}
-                                placeholder={tf.filterPlaceholder}
-                                title={tf.filterTitle}
-                                className="min-w-0 flex-1 bg-transparent text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                        {treeError && <p className="p-3 text-xs text-error">{treeError}</p>}
-                        {!treeError && !searchResults && rows.length === 0 && (
-                            <p className="p-3 text-xs text-on-surface-variant">{tf.noFiles}</p>
-                        )}
-                        {searchResults && searchResults.rows.length === 0 && (
-                            <p className="p-3 text-xs text-on-surface-variant">{tf.noMatch}</p>
-                        )}
-
-                        {/* Buscando: resultados planos con la ruta, porque lo
-                            que importa es encontrarlo, no ubicarlo. */}
-                        {searchResults?.rows.map((path) => (
-                            <button
-                                key={path}
-                                onClick={() => void openFile(path)}
-                                title={path}
-                                className={`flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs ${
-                                    path === activePath ? 'bg-primary/15 text-primary' : 'text-on-surface hover:bg-surface-container-high'
-                                }`}
-                            >
-                                <Icon name="description" size={12} className="shrink-0 text-on-surface-variant" />
-                                <span className="shrink-0">{path.split('/').pop()}</span>
-                                <span className="min-w-0 flex-1 truncate text-ui-10 text-on-surface-variant/70">{path}</span>
-                                {dirtyPaths.has(path) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
-                            </button>
-                        ))}
-
-                        {/* Navegando: el árbol. La sangría es la que dice
-                            dónde está uno parado — con rutas planas había que
-                            leer cada fila entera para saberlo. */}
-                        {!searchResults &&
-                            rows.map(({node, depth}) => (
-                                <button
-                                    key={node.path}
-                                    onClick={() => (node.dir ? toggleDir(node.path) : void openFile(node.path))}
-                                    title={node.path}
-                                    style={{paddingLeft: 6 + depth * 12}}
-                                    className={`flex w-full items-center gap-1 py-0.5 pr-2 text-left text-xs ${
-                                        node.path === activePath
-                                            ? 'bg-primary/15 text-primary'
-                                            : 'text-on-surface hover:bg-surface-container-high'
-                                    }`}
-                                >
-                                    {node.dir ? (
-                                        <>
-                                            <Icon
-                                                name={expanded.has(node.path) ? 'expand_more' : 'chevron_right'}
-                                                size={13}
-                                                className="shrink-0 text-on-surface-variant"
-                                            />
-                                            <Icon
-                                                name={expanded.has(node.path) ? 'folder_open' : 'folder'}
-                                                size={13}
-                                                className="shrink-0 text-primary/70"
-                                            />
-                                        </>
-                                    ) : (
-                                        // El hueco del chevron mantiene alineados los
-                                        // nombres de archivos y carpetas del mismo
-                                        // nivel; sin él la sangría se lee torcida.
-                                        <>
-                                            <span className="w-[13px] shrink-0" />
-                                            <Icon name="description" size={13} className="shrink-0 text-on-surface-variant" />
-                                        </>
-                                    )}
-                                    <span
-                                        className={`min-w-0 flex-1 truncate ${
-                                            node.dir
-                                                ? fileStatus.dirs.has(node.path)
-                                                    ? 'text-on-surface'
-                                                    : ''
-                                                : statusColor(fileStatus.byPath.get(node.path))
-                                        }`}
-                                    >
-                                        {node.name}
-                                    </span>
-                                    {/* En una carpeta, cuántos cambios tiene
-                                        adentro; en un archivo, qué le pasó. */}
-                                    {node.dir && fileStatus.dirs.has(node.path) && (
-                                        <span
-                                            title={tf.dirChanges({n: fileStatus.dirs.get(node.path) ?? 0})}
-                                            className="shrink-0 rounded-full bg-tertiary/20 px-1 font-mono text-ui-10 text-tertiary"
-                                        >
-                                            {fileStatus.dirs.get(node.path)}
-                                        </span>
-                                    )}
-                                    {/* La letra de git, como en VSCode: M
-                                        modificado, A agregado, ? sin rastrear.
-                                        Dice QUÉ le pasó al archivo, que el
-                                        color solo insinúa. */}
-                                    {!node.dir && fileStatus.byPath.get(node.path) && (
-                                        <span
-                                            title={statusTitle(fileStatus.byPath.get(node.path))}
-                                            className={`shrink-0 font-mono text-ui-10 ${statusColor(fileStatus.byPath.get(node.path))}`}
-                                        >
-                                            {fileStatus.byPath.get(node.path)}
-                                        </span>
-                                    )}
-                                    {!node.dir && dirtyPaths.has(node.path) && (
-                                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" title={tf.unsaved} />
-                                    )}
-                                </button>
-                            ))}
-
-                        {searchResults && searchResults.total > searchResults.rows.length && (
-                            <p className="p-2 text-center text-ui-11 text-on-surface-variant">
-                                {tf.moreFiles({n: searchResults.total - searchResults.rows.length})}
-                            </p>
-                        )}
-                        {tree?.truncated && (
-                            <p className="p-2 text-center text-ui-11 text-on-surface-variant">
-                                {tf.truncated}
-                            </p>
-                        )}
-                    </div>
-                </div>
+                {treeHost ? (
+                    // El árbol se monta en la columna de trabajo de la pestaña (portal):
+                    // el estado vive acá, el árbol se DIBUJA allá. Así el editor se queda
+                    // con todo el ancho del área principal.
+                    createPortal(treeNode, treeHost)
+                ) : (
+                    <div className="flex w-56 shrink-0 flex-col border-r border-outline-variant">{treeNode}</div>
+                )}
 
                 {/* Pestañas + editor */}
                 <div className="flex min-w-0 flex-1 flex-col">

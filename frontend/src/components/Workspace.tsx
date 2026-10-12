@@ -122,7 +122,7 @@ import {statementAt} from '../lib/sqlStatementAt'
 import {lintSQL} from '../lib/linter'
 import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
-import {onOpenNoteRequest, onOpenSettingsRequest, type SettingsSectionRequest} from '../lib/appBus'
+import {onOpenNoteRequest, onOpenSettingsRequest, onOpenUtilityRequest, type SettingsSectionRequest} from '../lib/appBus'
 import {lintMongoCommands} from '../lib/mongoLinter'
 import {formatElapsed} from '../lib/formatElapsed'
 import {errorCode, formatNumber, t as tr, useT} from '../i18n'
@@ -1073,6 +1073,7 @@ export default function Workspace({
     }, [])
 
     const openNoteRef = useRef<(noteId: string, title?: string) => void>(() => {})
+    const openUtilityRef = useRef<(id: UtilityId) => void>(() => {})
     const openNote = useCallback((noteId: string, title?: string) => {
         setTabs((prev) => {
             const existing = prev.find((t) => t.kind === 'note' && t.noteId === noteId)
@@ -1106,6 +1107,16 @@ export default function Workspace({
             onOpenSettingsRequest((section) => {
                 setSettingsSection(section)
                 setShowSettingsDialog(true)
+            }),
+        [],
+    )
+    // Un componente profundo pide abrir una utilidad (Configuración → IA manda a
+    // «Modelos»): se cierra Configuración, que si no taparía la pestaña.
+    useEffect(
+        () =>
+            onOpenUtilityRequest((id) => {
+                setShowSettingsDialog(false)
+                openUtilityRef.current(id)
             }),
         [],
     )
@@ -2759,6 +2770,7 @@ export default function Workspace({
         openUtility('docker')
     }
 
+    openUtilityRef.current = openUtility
     function openUtility(id: UtilityId) {
         const existing = tabs.find((t) => t.kind === 'utility' && t.utilityId === id)
         if (existing) {

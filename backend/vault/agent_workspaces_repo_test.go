@@ -62,6 +62,13 @@ func TestMigration61CreatesAgentWorkspaces(t *testing.T) {
 		`DROP TABLE agent_workspaces`,
 		// La 62 se vuelve a aplicar con las demás: su columna tiene que faltar.
 		`ALTER TABLE model_servers DROP COLUMN context_tokens`,
+		// Y la 63 también: sus tres columnas tienen que faltar para reaplicarla.
+		`ALTER TABLE model_servers DROP COLUMN enabled`,
+		`ALTER TABLE model_servers DROP COLUMN default_model`,
+		`ALTER TABLE model_servers DROP COLUMN sort_order`,
+		// Y la 64: sus dos columnas de agent_chat_messages tienen que faltar para reaplicarla.
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta`,
+		`ALTER TABLE agent_chat_messages DROP COLUMN meta_nonce`,
 		`DELETE FROM schema_migrations WHERE version >= 61`,
 	} {
 		if _, err := s.db.Exec(q); err != nil {
@@ -81,7 +88,7 @@ func TestMigration61CreatesAgentWorkspaces(t *testing.T) {
 		t.Errorf("segunda pasada: %v", err)
 	}
 	var max int
-	if err := s.db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&max); err != nil || max != 62 {
+	if err := s.db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&max); err != nil || max != 64 {
 		t.Errorf("versión = %d, %v", max, err)
 	}
 }

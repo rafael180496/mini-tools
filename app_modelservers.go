@@ -15,11 +15,13 @@ import (
 	"mini-tools/backend/vault"
 )
 
-// Servidores de modelos: Ollama y cualquier servidor compatible con la API de
-// OpenAI (LM Studio, vLLM, llama.cpp server…), locales o remotos.
+// Proveedores de IA (llamados "servidores de modelos" en el código): Ollama,
+// cualquier servidor compatible con la API de OpenAI (LM Studio, vLLM,
+// llama.cpp server, OpenRouter, Groq…) y la API de Anthropic, locales o
+// remotos.
 //
 // Cada uno entra al catálogo de agentes con el id `llm:<serverId>` y vendor
-// "Ollama" u "OpenAI-compatible", así que aparece en todos los selectores y
+// "Ollama", "OpenAI-compatible" o "Anthropic", así que aparece en todos los selectores y
 // en AgentAsk/AgentAskWith sin cambiar ninguna firma. Lo que hacen por dentro
 // vive en backend/llm (el cliente HTTP) y backend/agentchat (el runner que
 // emite los mismos eventos que un CLI).
@@ -31,7 +33,7 @@ import (
 type ModelServer struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	Kind     string `json:"kind"` // "ollama" | "openai"
+	Kind     string `json:"kind"` // "ollama" | "openai" | "anthropic"
 	BaseURL  string `json:"baseUrl"`
 	HasToken bool   `json:"hasToken"`
 	// IsLocal es true si el servidor está en ESTA máquina (host de loopback).
@@ -47,6 +49,17 @@ type ModelServer struct {
 	// (options.num_ctx). 0 = la que traiga el servidor. Un servidor OpenAI no
 	// la admite por petición: se guarda siempre 0.
 	ContextTokens int `json:"contextTokens"`
+	// Enabled: un proveedor apagado sigue en esta lista pero no aparece en el
+	// catálogo de agentes ni en los selectores, y un chat que lo usaba falla con
+	// un mensaje claro. SaveModelServer lo IGNORA (un alta nace encendida): se
+	// cambia con SetModelServerEnabled.
+	Enabled bool `json:"enabled"`
+	// DefaultModel es el modelo que se usa cuando un turno no elige ninguno;
+	// "" = el primero que liste el servidor (Anthropic: claude-opus-5-5).
+	DefaultModel string `json:"defaultModel"`
+	// SortOrder es la posición en la lista (menor primero). SaveModelServer lo
+	// IGNORA: se cambia con ReorderModelServers.
+	SortOrder int `json:"sortOrder"`
 	// HeaderNames son los NOMBRES de las cabeceras propias configuradas
 	// (X-Api-Key…). Los valores nunca cruzan hacia el frontend, igual que el
 	// token. Siempre un arreglo, nunca null.
@@ -79,6 +92,7 @@ func toModelServer(m vault.ModelServer) ModelServer {
 		ID: m.ID, Name: m.Name, Kind: m.Kind, BaseURL: m.BaseURL,
 		HasToken: m.HasToken, IsLocal: isLoopbackURL(m.BaseURL),
 		InsecureTLS: m.InsecureTLS, ContextTokens: m.ContextTokens, HeaderNames: names,
+		Enabled: m.Enabled, DefaultModel: m.DefaultModel, SortOrder: m.SortOrder,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
@@ -118,7 +132,9 @@ func (a *App) ListModelServers() ([]ModelServer, error) {
 }
 
 // SaveModelServer crea (id vacío) o actualiza un servidor. token "" conserva
-// el guardado; clearToken lo borra.
+// el guardado; clearToken lo borra. s.DefaultModel se guarda; s.Enabled y
+// s.SortOrder se ignoran (ver SetModelServerEnabled y ReorderModelServers). Un
+// proveedor Anthropic con la URL vacía guarda la oficial.
 //
 // headers son las cabeceras propias (nombre → valor, los valores van
 // cifrados): replaceHeaders=false conserva las guardadas e ignora headers;
@@ -128,7 +144,7 @@ func (a *App) SaveModelServer(s ModelServer, token string, clearToken bool, head
 	if err := a.requireUnlocked(); err != nil {
 		return ModelServer{}, err
 	}
-	saved, err := a.vault.SaveModelServer(vault.ModelServer{ID: s.ID, Name: s.Name, Kind: s.Kind, BaseURL: s.BaseURL, InsecureTLS: s.InsecureTLS, ContextTokens: s.ContextTokens}, token, clearToken, headers, replaceHeaders)
+	saved, err := a.vault.SaveModelServer(vault.ModelServer{ID: s.ID, Name: s.Name, Kind: s.Kind, BaseURL: llm.NormalizeBaseURLFor(s.Kind, s.BaseURL), InsecureTLS: s.InsecureTLS, ContextTokens: s.ContextTokens, DefaultModel: s.DefaultModel}, token, clearToken, headers, replaceHeaders)
 	if err != nil {
 		return ModelServer{}, err
 	}
@@ -136,6 +152,26 @@ func (a *App) SaveModelServer(s ModelServer, token string, clearToken bool, head
 	// del servidor ya no vale.
 	a.modelHealth.invalidate(saved.ID)
 	return toModelServer(saved), nil
+}
+
+// SetModelServerEnabled enciende o apaga un proveedor sin tocar el resto de su
+// configuración. Apagado no aparece en el catálogo de agentes (ListAgents) ni en
+// los selectores, pero sigue en ListModelServers para poder volver a prenderlo;
+// un turno que ya estaba en vuelo termina por su cuenta.
+func (a *App) SetModelServerEnabled(id string, enabled bool) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.SetModelServerEnabled(id, enabled)
+}
+
+// ReorderModelServers fija el orden de los proveedores: los ids dados, en ese
+// orden, y detrás los que no se mencionaron. Un id desconocido se ignora.
+func (a *App) ReorderModelServers(ids []string) error {
+	if err := a.requireUnlocked(); err != nil {
+		return err
+	}
+	return a.vault.ReorderModelServers(ids)
 }
 
 // DeleteModelServer borra un servidor. Un chat que lo usaba queda apuntando a
@@ -277,9 +313,13 @@ func isLocalOllamaURL(raw string) bool {
 func modelServerAgent(m vault.ModelServer) agents.Agent {
 	vendor := "OpenAI-compatible"
 	note := i18n.Msg{ES: "Servidor de modelos compatible con la API de OpenAI.", EN: "OpenAI-compatible model server."}
-	if m.Kind == vault.ModelServerOllama {
+	switch m.Kind {
+	case vault.ModelServerOllama:
 		vendor = "Ollama"
 		note = i18n.Msg{ES: "Servidor de modelos Ollama.", EN: "Ollama model server."}
+	case vault.ModelServerAnthropic:
+		vendor = "Anthropic"
+		note = i18n.Msg{ES: "API de Anthropic (Claude).", EN: "Anthropic API (Claude)."}
 	}
 	// Un servidor remoto lo dice en la nota (el tooltip del selector): con
 	// herramientas de archivos, lo que el modelo lea viaja a esa máquina.
@@ -315,7 +355,10 @@ func (a *App) agentCatalog() ([]agents.Agent, error) {
 		return nil, err
 	}
 	for _, m := range servers {
-		list = append(list, modelServerAgent(m))
+		// Un proveedor apagado no es un agente que se pueda elegir.
+		if m.Enabled {
+			list = append(list, modelServerAgent(m))
+		}
 	}
 	return list, nil
 }
@@ -377,9 +420,14 @@ func (a *App) llmModelCatalog(agentID string) agentmodels.Catalog {
 	}
 	cat := agentmodels.Catalog{Models: []agentmodels.Model{def}}
 
-	client, err := a.llmClientFor(agentID)
+	server, client, err := a.llmServer(agentID)
 	if err != nil {
 		return cat
+	}
+	// Qué es "por defecto" lo decide el proveedor: su modelo predeterminado, o el
+	// de Anthropic, o el primero que liste.
+	if dm := providerDefaultModel(server, client); dm != "" {
+		cat.Models[0].Description = i18n.T(i18n.Msg{ES: "Modelo predeterminado del proveedor: %s", EN: "The provider's default model: %s"}, dm)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -391,4 +439,25 @@ func (a *App) llmModelCatalog(agentID string) agentmodels.Catalog {
 		cat.Models = append(cat.Models, agentmodels.Model{ID: n, Label: n})
 	}
 	return cat
+}
+
+// providerDefaultModel es el modelo que usa un turno que no eligió ninguno: el
+// `defaultModel` del proveedor y, sin él, el propio del cliente (Anthropic). ""
+// = el primero que liste el servidor.
+func providerDefaultModel(m vault.ModelServer, c llm.Client) string {
+	if m.DefaultModel != "" {
+		return m.DefaultModel
+	}
+	if d, ok := c.(interface{ DefaultModel() string }); ok {
+		return d.DefaultModel()
+	}
+	return ""
+}
+
+// errProviderDisabled es el error de un turno contra un proveedor apagado.
+func errProviderDisabled(name string) error {
+	return i18n.Errorf(i18n.Msg{
+		ES: "app: el proveedor «%s» está desactivado — activalo en la configuración de proveedores de IA",
+		EN: "app: the provider «%s» is disabled — turn it on in the AI providers settings",
+	}, name)
 }

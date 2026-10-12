@@ -4,6 +4,8 @@
 // entorno, login propio, sesión en una terminal, límites que consultar ni
 // conversaciones guardadas por un CLI. Todo lo que solo tiene sentido para un
 // CLI se apaga preguntando esto, en un solo lugar.
+import {cloudPresetForUrl, type Preset} from './modelServerPresets'
+
 export const MODEL_SERVER_PREFIX = 'llm:'
 
 export function isModelServerAgent(agentId: string): boolean {
@@ -41,4 +43,44 @@ const UNREACHABLE_RE =
 
 export function looksUnreachable(error: string): boolean {
     return UNREACHABLE_RE.test(error)
+}
+
+// Tipo de API de un proveedor. El backend guarda el texto; cualquier valor que
+// no sea «openai» ni «anthropic» se trata como Ollama, que es lo que había antes.
+export type ProviderKind = 'ollama' | 'openai' | 'anthropic'
+
+export function providerKind(kind: string): ProviderKind {
+    return kind === 'openai' ? 'openai' : kind === 'anthropic' ? 'anthropic' : 'ollama'
+}
+
+// Dónde corre un proveedor, para agrupar la lista de «Proveedores de IA»:
+// «local» (esta máquina), «remote» (un servidor propio en otra máquina) o
+// «cloud» (una API alojada que se paga con API key: OpenRouter, OpenAI,
+// Anthropic…). Anthropic es siempre nube; el resto se reconoce por el host de
+// su dirección, no por el tipo: un servidor «compatible con OpenAI» puede ser
+// LM Studio en esta máquina o api.openai.com.
+export type ProviderGroup = 'local' | 'remote' | 'cloud'
+
+interface ProviderLike {
+    kind: string
+    baseUrl: string
+    isLocal: boolean
+}
+
+export function cloudPresetOf(s: ProviderLike): Preset | null {
+    return cloudPresetForUrl(s.baseUrl)
+}
+
+export function providerGroup(s: ProviderLike): ProviderGroup {
+    if (s.kind === 'anthropic' || cloudPresetForUrl(s.baseUrl)) return 'cloud'
+    return s.isLocal ? 'local' : 'remote'
+}
+
+// Ícono genérico de Material Symbols del proveedor (la app no lleva logos de
+// marcas): el del atajo si es un proveedor alojado conocido; si no, el del tipo.
+export function providerIcon(s: ProviderLike): string {
+    const cloud = cloudPresetForUrl(s.baseUrl)
+    if (cloud) return cloud.icon
+    if (s.kind === 'anthropic') return 'psychology'
+    return s.kind === 'openai' ? 'api' : 'neurology'
 }

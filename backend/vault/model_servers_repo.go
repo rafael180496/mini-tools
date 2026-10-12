@@ -12,8 +12,9 @@ import (
 	"mini-tools/backend/i18n"
 )
 
-// Servidores de modelos (migración 57): Ollama y cualquier servidor
-// compatible con la API de OpenAI, locales o remotos.
+// Proveedores de IA (migración 57, ampliada por la 60, 62 y 63): Ollama,
+// cualquier servidor compatible con la API de OpenAI (locales o remotos, o una
+// API alojada como OpenRouter, Groq, DeepSeek…) y la API de Anthropic.
 //
 // Cada uno aparece en el catálogo de agentes con el id `llm:<id>`. El token
 // (Bearer, opcional) va cifrado por columna con la clave maestra y **nunca
@@ -24,6 +25,8 @@ import (
 const (
 	ModelServerOllama = "ollama"
 	ModelServerOpenAI = "openai"
+	// ModelServerAnthropic es la API de Anthropic (Claude), con su SDK oficial.
+	ModelServerAnthropic = "anthropic"
 )
 
 // ModelServer es un servidor de modelos guardado. No lleva el token ni los
@@ -43,12 +46,23 @@ type ModelServer struct {
 	// Un servidor compatible con OpenAI la decide al cargar el modelo y no
 	// admite pedirla por petición.
 	ContextTokens int
-	HeaderNames   []string
-	CreatedAt     int64
-	UpdatedAt     int64
+	// Enabled: un proveedor apagado sigue guardado (y listado en la
+	// configuración) pero no aparece en los selectores de agente y un chat que
+	// lo usaba falla con un mensaje claro. Se cambia con SetModelServerEnabled,
+	// no con SaveModelServer.
+	Enabled bool
+	// DefaultModel es el modelo que se usa cuando un turno no elige ninguno.
+	// "" = el primero que liste el servidor (en Anthropic, claude-opus-5-5).
+	DefaultModel string
+	// SortOrder ordena los proveedores en la configuración (menor primero, y
+	// por nombre a igualdad). Se cambia con ReorderModelServers.
+	SortOrder   int
+	HeaderNames []string
+	CreatedAt   int64
+	UpdatedAt   int64
 }
 
-const modelServerColumns = `id, name, kind, base_url, encrypted_token IS NOT NULL, insecure_tls, context_tokens, encrypted_headers, headers_nonce, created_at, updated_at`
+const modelServerColumns = `id, name, kind, base_url, encrypted_token IS NOT NULL, insecure_tls, context_tokens, enabled, default_model, sort_order, encrypted_headers, headers_nonce, created_at, updated_at`
 
 // scanModelServer lee una fila. Los nombres de las cabeceras salen de
 // descifrar el JSON guardado; si eso falla (clave distinta, fila dañada) se
@@ -57,7 +71,7 @@ const modelServerColumns = `id, name, kind, base_url, encrypted_token IS NOT NUL
 func (s *Store) scanModelServer(sc interface{ Scan(...any) error }) (ModelServer, error) {
 	var m ModelServer
 	var encH, nonceH []byte
-	err := sc.Scan(&m.ID, &m.Name, &m.Kind, &m.BaseURL, &m.HasToken, &m.InsecureTLS, &m.ContextTokens, &encH, &nonceH, &m.CreatedAt, &m.UpdatedAt)
+	err := sc.Scan(&m.ID, &m.Name, &m.Kind, &m.BaseURL, &m.HasToken, &m.InsecureTLS, &m.ContextTokens, &m.Enabled, &m.DefaultModel, &m.SortOrder, &encH, &nonceH, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return m, err
 	}
@@ -111,9 +125,10 @@ func (s *Store) ModelServerHeaders(id string) (map[string]string, error) {
 	return s.decryptHeaders(enc, nonce)
 }
 
-// ListModelServers devuelve los servidores guardados, por nombre.
+// ListModelServers devuelve los servidores guardados, en el orden elegido
+// (sort_order) y por nombre a igualdad.
 func (s *Store) ListModelServers() ([]ModelServer, error) {
-	rows, err := s.db.Query(`SELECT ` + modelServerColumns + ` FROM model_servers ORDER BY name COLLATE NOCASE`)
+	rows, err := s.db.Query(`SELECT ` + modelServerColumns + ` FROM model_servers ORDER BY sort_order, name COLLATE NOCASE`)
 	if err != nil {
 		return nil, i18n.Errorf(i18n.Msg{ES: "vault: listando los servidores de modelos: %w", EN: "vault: listing the model servers: %w"}, err)
 	}
@@ -145,8 +160,8 @@ func (s *Store) GetModelServer(id string) (ModelServer, error) {
 // ValidateModelServer comprueba el tipo y la URL y devuelve la URL ya limpia
 // (sin espacios ni barra final).
 func ValidateModelServer(kind, baseURL string) (string, error) {
-	if kind != ModelServerOllama && kind != ModelServerOpenAI {
-		return "", i18n.Errorf(i18n.Msg{ES: "vault: tipo de servidor desconocido %q (usá ollama u openai)", EN: "vault: unknown server kind %q (use ollama or openai)"}, kind)
+	if kind != ModelServerOllama && kind != ModelServerOpenAI && kind != ModelServerAnthropic {
+		return "", i18n.Errorf(i18n.Msg{ES: "vault: tipo de servidor desconocido %q (usá ollama, openai o anthropic)", EN: "vault: unknown server kind %q (use ollama, openai or anthropic)"}, kind)
 	}
 	baseURL = strings.TrimSpace(baseURL)
 	u, err := url.Parse(baseURL)
@@ -165,7 +180,11 @@ func ValidateModelServer(kind, baseURL string) (string, error) {
 // replaceHeaders=false conserva las cabeceras guardadas (headers se ignora);
 // true las reemplaza por headers, y un mapa vacío las borra todas. Se validan
 // contra el token que va a quedar: ver ValidateModelServerHeaders.
-// in.InsecureTLS se guarda tal cual.
+// in.InsecureTLS y in.DefaultModel se guardan tal cual (el modelo, sin
+// espacios en los bordes). Enabled y SortOrder NO se tocan acá: un alta nace
+// encendida y al final de la lista, y se cambian con SetModelServerEnabled y
+// ReorderModelServers; así un formulario que no los conoce no apaga ni
+// reordena nada al guardar.
 func (s *Store) SaveModelServer(in ModelServer, token string, clearToken bool, headers map[string]string, replaceHeaders bool) (ModelServer, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -255,6 +274,7 @@ func (s *Store) SaveModelServer(in ModelServer, token string, clearToken bool, h
 	// un valor viejo guardado de cuando el servidor era de otro tipo. Un valor
 	// negativo o absurdo se acota en vez de rechazarse.
 	ctxTokens := normalizeContextTokens(in.Kind, in.ContextTokens)
+	defaultModel := strings.TrimSpace(in.DefaultModel)
 
 	now := time.Now().Unix()
 	if in.ID == "" {
@@ -262,10 +282,16 @@ func (s *Store) SaveModelServer(in ModelServer, token string, clearToken bool, h
 		if err != nil {
 			return ModelServer{}, err
 		}
+		// Al final de la lista: un proveedor nuevo no se cuela delante de los que
+		// la persona ya ordenó.
+		var next int
+		if err := s.db.QueryRow(`SELECT COALESCE(MAX(sort_order), -1) + 1 FROM model_servers`).Scan(&next); err != nil {
+			return ModelServer{}, i18n.Errorf(i18n.Msg{ES: "vault: guardando el servidor de modelos: %w", EN: "vault: saving the model server: %w"}, err)
+		}
 		if _, err := s.db.Exec(
-			`INSERT INTO model_servers (id, name, kind, base_url, encrypted_token, token_nonce, encrypted_headers, headers_nonce, insecure_tls, context_tokens, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, name, in.Kind, baseURL, enc, nonce, encH, nonceH, in.InsecureTLS, ctxTokens, now, now,
+			`INSERT INTO model_servers (id, name, kind, base_url, encrypted_token, token_nonce, encrypted_headers, headers_nonce, insecure_tls, context_tokens, default_model, sort_order, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, name, in.Kind, baseURL, enc, nonce, encH, nonceH, in.InsecureTLS, ctxTokens, defaultModel, next, now, now,
 		); err != nil {
 			return ModelServer{}, i18n.Errorf(i18n.Msg{ES: "vault: guardando el servidor de modelos: %w", EN: "vault: saving the model server: %w"}, err)
 		}
@@ -274,8 +300,8 @@ func (s *Store) SaveModelServer(in ModelServer, token string, clearToken bool, h
 
 	// Una sola sentencia armada según qué hacer con el token y las cabeceras,
 	// para no pisar lo guardado cuando no se pidió tocarlo.
-	set := []string{"name = ?", "kind = ?", "base_url = ?", "insecure_tls = ?", "context_tokens = ?", "updated_at = ?"}
-	args := []any{name, in.Kind, baseURL, in.InsecureTLS, ctxTokens, now}
+	set := []string{"name = ?", "kind = ?", "base_url = ?", "insecure_tls = ?", "context_tokens = ?", "default_model = ?", "updated_at = ?"}
+	args := []any{name, in.Kind, baseURL, in.InsecureTLS, ctxTokens, defaultModel, now}
 	switch {
 	case token != "":
 		set = append(set, "encrypted_token = ?", "token_nonce = ?")
@@ -312,6 +338,62 @@ func normalizeContextTokens(kind string, n int) int {
 		return MaxContextTokens
 	}
 	return n
+}
+
+// SetModelServerEnabled enciende o apaga un proveedor. No toca updated_at: ese
+// valor es la huella de la configuración de conexión (cachés de salud) y
+// prender o apagar no la cambia.
+func (s *Store) SetModelServerEnabled(id string, enabled bool) error {
+	res, err := s.db.Exec(`UPDATE model_servers SET enabled = ? WHERE id = ?`, enabled, id)
+	if err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: cambiando el estado del servidor de modelos: %w", EN: "vault: changing the model server state: %w"}, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return i18n.Errorf(i18n.Msg{ES: "vault: el servidor de modelos no existe", EN: "vault: the model server does not exist"})
+	}
+	return nil
+}
+
+// ReorderModelServers fija el orden de los proveedores: los ids dados, en ese
+// orden, y detrás —en el orden que ya tenían— los que no se mencionaron. Un id
+// repetido o que no existe se ignora: reordenar una lista desactualizada
+// (otra ventana borró uno) no tiene por qué fallar.
+func (s *Store) ReorderModelServers(ids []string) error {
+	current, err := s.ListModelServers()
+	if err != nil {
+		return err
+	}
+	exists := make(map[string]bool, len(current))
+	for _, m := range current {
+		exists[m.ID] = true
+	}
+	order := make([]string, 0, len(current))
+	seen := make(map[string]bool, len(current))
+	for _, id := range ids {
+		if exists[id] && !seen[id] {
+			seen[id] = true
+			order = append(order, id)
+		}
+	}
+	for _, m := range current {
+		if !seen[m.ID] {
+			order = append(order, m.ID)
+		}
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: reordenando los servidores de modelos: %w", EN: "vault: reordering the model servers: %w"}, err)
+	}
+	defer tx.Rollback()
+	for i, id := range order {
+		if _, err := tx.Exec(`UPDATE model_servers SET sort_order = ? WHERE id = ?`, i, id); err != nil {
+			return i18n.Errorf(i18n.Msg{ES: "vault: reordenando los servidores de modelos: %w", EN: "vault: reordering the model servers: %w"}, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: reordenando los servidores de modelos: %w", EN: "vault: reordering the model servers: %w"}, err)
+	}
+	return nil
 }
 
 // DeleteModelServer borra un servidor. Los chats que lo usaron conservan su

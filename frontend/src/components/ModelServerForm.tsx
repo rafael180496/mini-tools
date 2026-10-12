@@ -1,14 +1,17 @@
 import {useRef, useState} from 'react'
 import {SaveModelServer, TestModelServer} from '../../wailsjs/go/main/App'
+import {BrowserOpenURL} from '../../wailsjs/runtime'
 import {main} from '../../wailsjs/go/models'
 import Icon from './Icon'
 import Select from './Select'
 import Toggle from './Toggle'
+import DefaultModelField from './DefaultModelField'
 import OllamaExposeGuide from './OllamaExposeGuide'
+import {ProbeResult, type Probe} from './ModelServerProbeResult'
 import {errorText, useT} from '../i18n'
 import type {Dict} from '../i18n'
-import {isLoopbackUrl, looksUnreachable, STORED_HEADERS} from '../lib/modelServers'
-import {composeUrl, hostPortOf, hostProblem, parseHostPortUrl, presetByKey, PRESETS, validPort, type PresetKey} from '../lib/modelServerPresets'
+import {isLoopbackUrl, looksUnreachable, providerKind, STORED_HEADERS, type ProviderKind} from '../lib/modelServers'
+import {CLOUD_PRESETS, LOCAL_PRESETS, cloudPresetForUrl, composeUrl, hostPortOf, hostProblem, parseHostPortUrl, presetByKey, presetTexts, validPort, type Preset, type PresetKey} from '../lib/modelServerPresets'
 import {recheckHealth} from '../lib/modelServerHealth'
 import {notifyModelServersChanged} from '../lib/appBus'
 
@@ -49,12 +52,11 @@ import {notifyModelServersChanged} from '../lib/appBus'
 // aviso de prueba fallida ya no repite los pasos: abre la guía.
 
 export const LOCAL_OLLAMA_URL = 'http://localhost:11434'
-const MODELS_SHOWN = 6
 export const DEFAULT_OLLAMA_CONTEXT = 16384
 // Valores que se ofrecen como atajo junto al campo de ventana de contexto.
 const CONTEXT_CHOICES = [4096, 8192, 16384, 32768, 65536]
 
-type Kind = 'ollama' | 'openai'
+type Kind = ProviderKind
 
 interface HeaderRow {
     key: string
@@ -74,6 +76,12 @@ interface Form {
     // Ventana de contexto pedida a Ollama, como texto (el campo admite vacío).
     // Vacío o 0 = la que traiga el servidor. Solo viaja con un servidor Ollama.
     contextTokens: string
+    // Modelo con el que contesta un turno que no eligió ninguno; '' = que lo elija el proveedor.
+    defaultModel: string
+    // Se conservan al editar: guardar no los cambia (el backend los ignora), pero
+    // viajan completos para que el objeto sea el mismo que el que se leyó.
+    enabled: boolean
+    sortOrder: number
     // Filas del editor de cabeceras; solo se mandan si el editor está activo.
     headers: HeaderRow[]
     // Nombres de las cabeceras ya guardadas (los valores no vuelven).
@@ -84,7 +92,6 @@ interface Form {
 }
 
 
-export type Probe = {state: 'testing'} | {state: 'done'; probe: main.ModelServerProbe} | {state: 'error'; error: string}
 
 function emptyForm(): Form {
     return {
@@ -99,6 +106,9 @@ function emptyForm(): Form {
         // Un Ollama nuevo arranca con 16k: el de fábrica (2k-4k) recorta en
         // silencio el prompt de un proyecto con instrucciones y skills.
         contextTokens: String(DEFAULT_OLLAMA_CONTEXT),
+        defaultModel: '',
+        enabled: true,
+        sortOrder: 0,
         headers: [],
         storedHeaders: [],
         replaceHeaders: false,
@@ -144,13 +154,16 @@ function fromServer(s: main.ModelServer): Form {
     return {
         id: s.id,
         name: s.name,
-        kind: s.kind === 'openai' ? 'openai' : 'ollama',
+        kind: providerKind(s.kind),
         baseUrl: s.baseUrl,
         token: '',
         clearToken: false,
         hasToken: s.hasToken,
         insecureTls: s.insecureTls,
         contextTokens: s.contextTokens > 0 ? String(s.contextTokens) : '',
+        defaultModel: s.defaultModel ?? '',
+        enabled: s.enabled,
+        sortOrder: s.sortOrder,
         headers: [],
         storedHeaders: s.headerNames ?? [],
         replaceHeaders: false,
@@ -159,9 +172,29 @@ function fromServer(s: main.ModelServer): Form {
     }
 }
 
+// Un servidor nuevo a partir de otro (Duplicar): copia tipo, dirección, TLS y
+// ventana de contexto, y nada secreto. El token y las cabeceras no viajan al
+// frontend —solo sus nombres—, así que no hay con qué copiarlos: la persona los
+// vuelve a escribir si el servidor nuevo los pide. El id queda vacío (es un
+// alta) y el nombre sale con el sufijo «(copia)».
+function fromTemplate(s: main.ModelServer, name: string): Form {
+    return {
+        ...emptyForm(),
+        name,
+        kind: providerKind(s.kind),
+        baseUrl: s.baseUrl,
+        insecureTls: s.insecureTls,
+        contextTokens: s.contextTokens > 0 ? String(s.contextTokens) : '',
+        defaultModel: s.defaultModel ?? '',
+    }
+}
+
 interface Props {
     // null = servidor nuevo.
     server: main.ModelServer | null
+    // Con `server` en null: servidor existente del que se parte para el alta
+    // (Duplicar). Sin los atajos: la dirección y el tipo ya vienen puestos.
+    template?: main.ModelServer
     onSaved: (saved: main.ModelServer) => void
     onCancel: () => void
     // Sin el marco de tarjeta ni el título: dentro de un diálogo que ya los tiene.
@@ -169,10 +202,12 @@ interface Props {
     autoFocus?: boolean
 }
 
-export default function ModelServerForm({server, onSaved, onCancel, bare, autoFocus}: Props) {
+export default function ModelServerForm({server, template, onSaved, onCancel, bare, autoFocus}: Props) {
     const t = useT()
     const m = t.settings.modelServers
-    const [form, setForm] = useState<Form>(() => (server ? fromServer(server) : emptyForm()))
+    const [form, setForm] = useState<Form>(() =>
+        server ? fromServer(server) : template ? fromTemplate(template, t.models.servers.copyName({name: template.name})) : emptyForm(),
+    )
     const [formProbe, setFormProbe] = useState<Probe | null>(null)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -182,19 +217,20 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
     const [host, setHost] = useState('')
     const [port, setPort] = useState('11434')
     // El nombre se autocompleta mientras nadie lo escribió a mano.
-    const [nameTouched, setNameTouched] = useState(false)
+    const [nameTouched, setNameTouched] = useState(template !== undefined)
     // null = automática (abierta con el atajo «Ollama en otra máquina»).
     const [guideOpen, setGuideOpen] = useState<boolean | null>(null)
     const guideRef = useRef<HTMLDivElement>(null)
     const activePreset = preset ? presetByKey(preset) : null
     const presetText = m.presets
 
-    const placeholderFor = (k: Kind) => (k === 'openai' ? 'http://localhost:1234/v1' : LOCAL_OLLAMA_URL)
+    const placeholderFor = (k: Kind) => (k === 'openai' ? 'http://localhost:1234/v1' : k === 'anthropic' ? 'https://api.anthropic.com' : LOCAL_OLLAMA_URL)
 
     // Nombre sugerido de un atajo; '' si no hay uno que valga todavía.
     function presetName(key: PresetKey, hostValue: string): string {
         const pr = presetByKey(key)
         const h = hostValue.trim()
+        if (pr.group === 'cloud') return pr.brand
         if (key === 'ollamaLocal') return m.localName
         if (key === 'openaiOther') return ''
         if (pr.hostPort) return h !== '' && !hostProblem(h) ? presetText.nameWithHost({brand: pr.brand, host: h}) : key === 'vllm' ? pr.brand : ''
@@ -216,6 +252,10 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
             contextTokens: pr.kind === 'ollama' ? String(DEFAULT_OLLAMA_CONTEXT) : '',
             baseUrl: pr.hostPort ? composeUrl(pr, host, nextPort) : pr.fixedUrl,
             name: nameTouched ? f.name : presetName(key, host),
+            // Una API key es de UN proveedor: la de OpenRouter no se arrastra al
+            // pasar a OpenAI. Y el modelo recomendado es el del proveedor elegido.
+            token: pr.group === 'cloud' || f.kind === 'anthropic' || cloudPresetForUrl(f.baseUrl) ? '' : f.token,
+            defaultModel: pr.defaultModel ?? '',
         }))
     }
 
@@ -268,9 +308,12 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                     // Con http no hay certificado que aceptar: no se guarda un
                     // «sí» que no significa nada y se activaría solo si algún
                     // día la dirección pasa a https.
-                    insecureTls: form.insecureTls && isHttps(form.baseUrl),
+                    insecureTls: !isCloud && form.insecureTls && isHttps(form.baseUrl),
                     // Solo Ollama la admite; el backend igual la descarta en otro tipo.
                     contextTokens: form.kind === 'ollama' ? contextValue : 0,
+                    defaultModel: form.defaultModel.trim(),
+                    enabled: form.enabled,
+                    sortOrder: form.sortOrder,
                     headerNames: form.storedHeaders,
                     createdAt: form.createdAt,
                     updatedAt: form.updatedAt,
@@ -303,7 +346,7 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                 form.baseUrl.trim(),
                 form.clearToken ? '' : form.token.trim(),
                 form.clearToken ? '' : form.id,
-                form.insecureTls && isHttps(form.baseUrl),
+                !isCloud && form.insecureTls && isHttps(form.baseUrl),
                 headers,
             )
             setFormProbe({state: 'done', probe})
@@ -321,7 +364,13 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
     const tlsBlocked = form.baseUrl.trim() !== '' && !isHttps(form.baseUrl)
     // Nada acá depende de `formProbe`: guardar sin probar, o tras una prueba
     // fallida, es válido a propósito (ver el encabezado del archivo).
-    const formReady = form.name.trim() !== '' && form.baseUrl.trim() !== '' && headersError === ''
+    // Un proveedor alojado no se usa sin API key: sin ella cada turno falla con
+    // un 401. Al editar, la ya guardada cuenta (vacío = conservarla).
+    const cloudInfo: Preset | null = activePreset?.group === 'cloud' ? activePreset : (cloudPresetForUrl(form.baseUrl) ?? (form.kind === 'anthropic' ? presetByKey('anthropic') : null))
+    const isCloud = cloudInfo !== null
+    const keyReady = form.token.trim() !== '' || (form.hasToken && !form.clearToken)
+    const keyMissing = isCloud && !keyReady
+    const formReady = form.name.trim() !== '' && form.baseUrl.trim() !== '' && headersError === '' && !keyMissing
 
     // Validación de IP/puerto del atajo (no bloquea por sí sola: la dirección
     // queda vacía mientras algo esté mal, y eso ya deshabilita guardar).
@@ -340,6 +389,8 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
         window.setTimeout(() => guideRef.current?.scrollIntoView({block: 'nearest', behavior: 'smooth'}), 0)
     }
 
+    // Modelos que devolvió la última prueba, para elegir el modelo por defecto de la lista.
+    const probeModels = formProbe?.state === 'done' && formProbe.probe.ok ? (formProbe.probe.models ?? []) : []
     const probeError =
         formProbe?.state === 'error' ? formProbe.error : formProbe?.state === 'done' && !formProbe.probe.ok ? formProbe.probe.error : null
     const probeFailed = probeError !== null
@@ -354,39 +405,46 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                 </p>
             )}
 
-            {isNew && (
+            {isNew && !template && (
                 <div data-model-presets className="flex flex-col gap-1.5">
                     <div>
                         <p className="text-xs font-medium text-on-surface">{presetText.title}</p>
                         <p className="text-ui-11 text-on-surface-variant">{presetText.intro}</p>
                     </div>
-                    <div role="radiogroup" aria-label={presetText.groupLabel} className="grid grid-cols-2 gap-1.5">
-                        {PRESETS.map((pr) => {
-                            const selected = preset === pr.key
-                            return (
-                                <button
-                                    key={pr.key}
-                                    type="button"
-                                    role="radio"
-                                    aria-checked={selected}
-                                    data-model-preset={pr.key}
-                                    onClick={() => applyPreset(pr.key)}
-                                    title={presetText[`${pr.key}Title` as const]}
-                                    className={`flex min-w-0 items-center gap-2 rounded-md border px-2 py-1.5 text-left ${
-                                        selected
-                                            ? 'border-primary bg-primary/10'
-                                            : 'border-outline-variant bg-surface hover:border-primary/60 hover:bg-surface-variant'
-                                    }`}
-                                >
-                                    <Icon name={pr.icon} size={16} className={selected ? 'shrink-0 text-primary' : 'shrink-0 text-on-surface-variant'} />
-                                    <span className="min-w-0">
-                                        <span className="block truncate text-xs font-medium text-on-surface">{presetText[pr.key]}</span>
-                                        <span className="block truncate font-mono text-ui-10 text-on-surface-variant">{presetText[`${pr.key}Hint` as const]}</span>
-                                    </span>
-                                </button>
-                            )
-                        })}
-                    </div>
+                    {([['cloud', CLOUD_PRESETS, presetText.groupCloud, presetText.groupCloudHint], ['local', LOCAL_PRESETS, presetText.groupLocal, presetText.groupLocalHint]] as const).map(([group, list, label, hint]) => (
+                        <div key={group} role="radiogroup" aria-label={`${presetText.groupLabel}: ${label}`} data-preset-group={group} className="flex flex-col gap-1">
+                            <p className="mt-1 flex items-baseline gap-2 text-ui-10 font-semibold uppercase tracking-wider text-on-surface-variant">
+                                {label}
+                                <span className="font-normal normal-case tracking-normal opacity-80">{hint}</span>
+                            </p>
+                            <div className="grid grid-cols-2 gap-1.5">
+                                {list.map((pr) => {
+                                    const selected = preset === pr.key
+                                    const txt = presetTexts(presetText, pr)
+                                    return (
+                                        <button
+                                            key={pr.key}
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={selected}
+                                            data-model-preset={pr.key}
+                                            onClick={() => applyPreset(pr.key)}
+                                            title={txt.title}
+                                            className={`flex min-w-0 items-center gap-2 rounded-md border px-2 py-1.5 text-left ${
+                                                selected ? 'border-primary bg-primary/10' : 'border-outline-variant bg-surface hover:border-primary/60 hover:bg-surface-variant'
+                                            }`}
+                                        >
+                                            <Icon name={pr.icon} size={16} className={selected ? 'shrink-0 text-primary' : 'shrink-0 text-on-surface-variant'} />
+                                            <span className="min-w-0">
+                                                <span className="block truncate text-xs font-medium text-on-surface">{txt.name}</span>
+                                                <span className="block truncate font-mono text-ui-10 text-on-surface-variant">{txt.hint}</span>
+                                            </span>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    ))}
 
                     {activePreset?.hostPort && (
                         <div data-preset-hostport className="grid grid-cols-[1fr_7rem] gap-3">
@@ -453,7 +511,7 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                     <Select
                         value={form.kind}
                         onChange={(v) => {
-                            const nextKind = v === 'openai' ? 'openai' : 'ollama'
+                            const nextKind = providerKind(v)
                             // Al pasar a Ollama un servidor nuevo sin ventana puesta
                             // toma el default; el campo no se pisa si ya tenía un valor.
                             setForm({
@@ -473,6 +531,7 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                         options={[
                             {value: 'ollama', label: m.kindOllama},
                             {value: 'openai', label: m.kindOpenai},
+                            {value: 'anthropic', label: m.kindAnthropic},
                         ]}
                     />
                 </div>
@@ -494,9 +553,9 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
             </label>
 
             {form.baseUrl.trim() !== '' && !isLoopbackUrl(form.baseUrl) && (
-                <p className="flex items-start gap-1.5 rounded bg-tertiary/10 px-2 py-1.5 text-ui-11 text-on-surface-variant">
-                    <Icon name="public" size={14} className="mt-px shrink-0 text-tertiary" />
-                    {m.remoteWarning}
+                <p data-remote-warning={isCloud ? 'cloud' : 'remote'} className="flex items-start gap-1.5 rounded bg-tertiary/10 px-2 py-1.5 text-ui-11 text-on-surface-variant">
+                    <Icon name={isCloud ? 'cloud_upload' : 'public'} size={14} className="mt-px shrink-0 text-tertiary" />
+                    {isCloud ? m.cloudWarning({host: hostPortOf(form.baseUrl).host}) : m.remoteWarning}
                 </p>
             )}
 
@@ -504,41 +563,88 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                 <OllamaExposeGuide ref={guideRef} open={guideExpanded} onToggle={() => setGuideOpen(!guideExpanded)} port={guidePort} host={guideHost} />
             )}
 
-            <div className="flex flex-col gap-1">
+            <div data-token-field={isCloud ? 'api-key' : 'token'} className="flex flex-col gap-1">
                 <span className="flex items-center gap-2 text-xs font-medium text-on-surface">
-                    <span title={m.tokenTitle}>
-                        {m.token} <span className="font-normal text-on-surface-variant">{m.optional}</span>
+                    <span title={isCloud ? m.apiKeyTitle : m.tokenTitle}>
+                        {isCloud ? m.apiKey : m.token}{' '}
+                        <span className={`font-normal ${isCloud ? 'text-error' : 'text-on-surface-variant'}`}>{isCloud ? m.required : m.optional}</span>
                     </span>
+                    {isCloud && cloudInfo?.keyUrl && (
+                        <button
+                            type="button"
+                            data-get-api-key
+                            onClick={() => BrowserOpenURL(cloudInfo.keyUrl ?? '')}
+                            title={m.getApiKeyTitle({brand: cloudInfo.brand, url: cloudInfo.keyUrl})}
+                            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-normal text-primary hover:bg-primary/10"
+                        >
+                            <Icon name="open_in_new" size={12} />
+                            {m.getApiKey}
+                        </button>
+                    )}
                     {form.hasToken && (
                         <button
                             type="button"
                             onClick={() => setForm({...form, clearToken: !form.clearToken, token: ''})}
-                            title={form.clearToken ? m.keepTokenTitle : m.removeTokenTitle}
+                            title={form.clearToken ? m.keepTokenTitle : isCloud ? m.removeApiKeyTitle : m.removeTokenTitle}
                             className={`ml-auto rounded px-2 py-0.5 text-xs font-normal ${
                                 form.clearToken
                                     ? 'text-primary hover:bg-primary/10'
                                     : 'text-error hover:bg-error-container/40'
                             }`}
                         >
-                            {form.clearToken ? m.keepToken : m.removeToken}
+                            {form.clearToken ? (isCloud ? m.keepApiKey : m.keepToken) : isCloud ? m.removeApiKey : m.removeToken}
                         </button>
                     )}
                 </span>
                 <input
                     type="password"
+                    data-token-input
                     value={form.token}
                     onChange={(e) => {
                         setForm({...form, token: e.target.value})
                         setFormProbe(null)
                     }}
                     disabled={form.clearToken}
-                    placeholder={form.clearToken ? m.tokenClearedPlaceholder : form.hasToken ? m.tokenKeepPlaceholder : ''}
-                    title={m.tokenTitle}
+                    placeholder={
+                        form.clearToken
+                            ? isCloud
+                                ? m.apiKeyClearedPlaceholder
+                                : m.tokenClearedPlaceholder
+                            : form.hasToken
+                              ? isCloud
+                                  ? m.apiKeyKeepPlaceholder
+                                  : m.tokenKeepPlaceholder
+                              : isCloud
+                                ? m.apiKeyPlaceholder
+                                : ''
+                    }
+                    title={isCloud ? m.apiKeyTitle : m.tokenTitle}
+                    aria-label={isCloud ? m.apiKey : m.token}
+                    aria-required={isCloud}
+                    aria-invalid={keyMissing && form.token === ''}
                     autoComplete="off"
-                    className="w-full rounded-md border border-outline-variant bg-surface px-2 py-1 font-mono text-xs text-on-surface outline-none focus:border-primary disabled:opacity-50"
+                    spellCheck={false}
+                    className={`w-full rounded-md border bg-surface px-2 py-1 font-mono text-xs text-on-surface outline-none focus:border-primary disabled:opacity-50 ${
+                        keyMissing ? 'border-error/60' : 'border-outline-variant'
+                    }`}
                 />
+                {isCloud && <p className="text-ui-10 text-on-surface-variant/80">{m.apiKeyStored}</p>}
             </div>
 
+            <div data-default-model className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-on-surface" title={m.defaultModelTitle}>
+                    {m.defaultModel} <span className="font-normal text-on-surface-variant">{m.optional}</span>
+                </span>
+                <DefaultModelField
+                    value={form.defaultModel}
+                    onChange={(v) => setForm({...form, defaultModel: v})}
+                    models={probeModels}
+                    placeholder={cloudInfo?.defaultModel ?? m.defaultModelPlaceholder}
+                />
+                <p className="text-ui-10 text-on-surface-variant/80">{probeModels.length > 0 ? m.defaultModelFromProbe : m.defaultModelNeedsTest}</p>
+            </div>
+
+            {(!isCloud || hasStoredHeaders) && (
             <div data-headers-editor className="flex flex-col gap-1.5">
                 <span className="flex items-center gap-2 text-xs font-medium text-on-surface">
                     <span title={m.headersHint}>
@@ -644,7 +750,10 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                     </>
                 )}
             </div>
+            )}
 
+            {!isCloud && (
+            <>
             <div data-insecure-tls className="flex items-start gap-3 rounded-md border border-outline-variant bg-surface px-2.5 py-2">
                 <div className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5 text-xs font-medium text-on-surface" title={tlsBlocked ? m.insecureTlsOnlyHttps : m.insecureTlsTitle}>
@@ -728,6 +837,8 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                     <p className="text-ui-11 text-on-surface-variant">{m.contextOpenai}</p>
                 )}
             </div>
+            </>
+            )}
 
             {formProbe && formProbe.state !== 'testing' && <ProbeResult probe={formProbe} />}
 
@@ -753,8 +864,8 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                 <button
                     type="button"
                     onClick={() => void testForm()}
-                    disabled={form.baseUrl.trim() === '' || formProbe?.state === 'testing'}
-                    title={form.baseUrl.trim() === '' ? m.formTestNeedsUrl : m.formTestTitle}
+                    disabled={form.baseUrl.trim() === '' || keyMissing || formProbe?.state === 'testing'}
+                    title={form.baseUrl.trim() === '' ? m.formTestNeedsUrl : keyMissing ? m.formTestNeedsKey : m.formTestTitle}
                     className="mr-auto flex items-center gap-1 rounded px-2 py-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-40"
                 >
                     <Icon name="network_check" size={14} />
@@ -772,7 +883,7 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
                     type="button"
                     onClick={() => void save()}
                     disabled={!formReady || saving}
-                    title={formReady ? (probeFailed ? m.saveAnywayTitle : m.saveTitle) : m.saveNeedsFields}
+                    title={formReady ? (probeFailed ? m.saveAnywayTitle : m.saveTitle) : keyMissing && form.name.trim() !== '' && form.baseUrl.trim() !== '' ? m.saveNeedsKey : m.saveNeedsFields}
                     className={`rounded px-3 py-1 text-xs font-medium hover:opacity-90 disabled:opacity-40 ${
                         probeFailed ? 'border border-primary text-primary' : 'bg-primary text-on-primary'
                     }`}
@@ -783,40 +894,6 @@ export default function ModelServerForm({server, onSaved, onCancel, bare, autoFo
         </div>
     )
 }
-
-// Resultado de una prueba de conexión, en línea. La lista de modelos se
-// recorta: un servidor con cuarenta modelos no tiene que empujar el resto de
-// la pantalla, y el conteo ya dice cuántos hay.
-export function ProbeResult({probe}: {probe: Exclude<Probe, {state: 'testing'}>}) {
-    const t = useT()
-    const m = t.settings.modelServers
-    if (probe.state === 'error' || (probe.state === 'done' && !probe.probe.ok)) {
-        const error = probe.state === 'error' ? probe.error : probe.probe.error
-        return (
-            <p className="flex items-start gap-1.5 rounded bg-error-container/40 px-2 py-1.5 text-ui-11 text-error">
-                <Icon name="error" size={14} className="mt-px shrink-0" />
-                <span className="min-w-0 break-words">{m.testFail({error})}</span>
-            </p>
-        )
-    }
-    if (probe.state !== 'done') return null
-    const models = probe.probe.models ?? []
-    return (
-        <div className="flex flex-col gap-0.5 rounded bg-secondary/10 px-2 py-1.5 text-ui-11">
-            <p className="flex items-center gap-1.5 text-secondary">
-                <Icon name="check_circle" size={14} className="shrink-0" />
-                {m.testOk({version: probe.probe.version, models: models.length})}
-                {probe.probe.latencyMs > 0 && m.testOkLatency({ms: probe.probe.latencyMs})}
-            </p>
-            {models.length > 0 && (
-                <p className="break-words font-mono text-ui-10 text-on-surface-variant">
-                    {m.testOkModels({list: models.slice(0, MODELS_SHOWN).join(', ') + (models.length > MODELS_SHOWN ? ', …' : '')})}
-                </p>
-            )}
-        </div>
-    )
-}
-
 
 // Aviso tras una prueba fallida contra un Ollama «remoto»: por defecto Ollama
 // escucha solo en 127.0.0.1 de SU máquina, así que desde otra la conexión se

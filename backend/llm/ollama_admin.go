@@ -117,6 +117,7 @@ type Admin interface {
 var (
 	_ Admin = (*ollamaClient)(nil)
 	_ Admin = (*openaiClient)(nil)
+	_ Admin = (*anthropicClient)(nil)
 )
 
 // AsAdmin devuelve la administración de un cliente. Los dos clientes de New la
@@ -490,6 +491,54 @@ func (c *openaiClient) DeleteModel(ctx context.Context, model string) error {
 }
 
 func (c *openaiClient) UnloadModel(ctx context.Context, model string) error {
+	return c.unsupported(i18n.Msg{ES: "descargar modelos de la memoria", EN: "unloading models"})
+}
+
+// --- Anthropic ----------------------------------------------------------------
+
+// ListModels de Anthropic: la Models API trae id, nombre y fecha de creación.
+// Como OpenAI, solo se puede listar: los modelos no se instalan ni se borran.
+func (c *anthropicClient) ListModels(ctx context.Context) ([]ManagedModel, error) {
+	infos, err := c.listModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]ManagedModel, 0, len(infos))
+	for _, m := range infos {
+		if m.ID == "" {
+			continue
+		}
+		mm := ManagedModel{Name: m.ID}
+		if !m.CreatedAt.IsZero() {
+			mm.ModifiedAt = m.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		list = append(list, mm)
+	}
+	sort.SliceStable(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
+	return list, nil
+}
+
+func (c *anthropicClient) unsupported(action i18n.Msg) error {
+	return &UnsupportedError{Kind: "Anthropic", Action: i18n.T(action)}
+}
+
+func (c *anthropicClient) RunningModels(ctx context.Context) ([]RunningModel, error) {
+	return nil, c.unsupported(i18n.Msg{ES: "ver los modelos cargados", EN: "listing the loaded models"})
+}
+
+func (c *anthropicClient) ShowModel(ctx context.Context, model string) (ModelDetails, error) {
+	return ModelDetails{}, c.unsupported(i18n.Msg{ES: "ver el detalle de un modelo", EN: "showing a model's details"})
+}
+
+func (c *anthropicClient) PullModel(ctx context.Context, model string, onProgress func(PullProgress)) error {
+	return c.unsupported(i18n.Msg{ES: "descargar modelos", EN: "pulling models"})
+}
+
+func (c *anthropicClient) DeleteModel(ctx context.Context, model string) error {
+	return c.unsupported(i18n.Msg{ES: "borrar modelos", EN: "deleting models"})
+}
+
+func (c *anthropicClient) UnloadModel(ctx context.Context, model string) error {
 	return c.unsupported(i18n.Msg{ES: "descargar modelos de la memoria", EN: "unloading models"})
 }
 

@@ -72,8 +72,11 @@ type Usage struct {
 	Input     int64 `json:"input"`
 	Output    int64 `json:"output"`
 	CacheRead int64 `json:"cacheRead"`
-	Thinking  int64 `json:"thinking"`
-	Total     int64 `json:"total"`
+	// CacheWrite son los tokens que se escribieron en la caché del prompt
+	// (Anthropic). Input ya los incluye, igual que a CacheRead.
+	CacheWrite int64 `json:"cacheWrite"`
+	Thinking   int64 `json:"thinking"`
+	Total      int64 `json:"total"`
 	// CostUSD solo lo informa Claude Code; 0 significa "no lo dice", no
 	// "gratis", y la UI tiene que distinguirlo.
 	CostUSD float64 `json:"costUsd"`
@@ -86,6 +89,12 @@ type Usage struct {
 	// no se sabe; en filas anteriores a este campo no existen.
 	Model      string `json:"model,omitempty"`
 	DurationMs int64  `json:"durationMs,omitempty"`
+	// AgentID es el agente (`llm:<id>`) que produjo el turno. También lo agrega
+	// el historial, y existe para que el consumo se atribuya al proveedor que
+	// contestó DE VERDAD: un chat puede cambiar de proveedor a mitad de camino
+	// (App.SetAgentChatAgent) y agent_chats.agent_id solo sabe el último. Las
+	// filas anteriores no lo traen y caen a agent_chats.agent_id.
+	AgentID string `json:"agentId,omitempty"`
 }
 
 // ToolCall es una llamada a herramienta ya normalizada.

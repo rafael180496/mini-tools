@@ -11,7 +11,8 @@ import (
 	"mini-tools/backend/vault"
 )
 
-// Consumo de los servidores de modelos (Ollama, compatibles con OpenAI).
+// Consumo de los proveedores de modelos (Ollama, compatibles con OpenAI,
+// Anthropic).
 //
 // Los CLIs dejan sus tokens en transcripts que lee backend/agentusage; un
 // servidor de modelos no deja nada en disco, pero cada turno guardado en el
@@ -19,9 +20,10 @@ import (
 // guarda también el modelo y cuánto tardó el servidor en generar. De ahí sale
 // este informe, sin descifrar un solo mensaje.
 //
-// **Lo que NO hay es costo.** Un servidor propio no cobra por token y uno
-// compatible con OpenAI no informa precio en su respuesta: inventar un monto
-// sería falso, así que el informe habla solo de tokens, turnos y velocidad.
+// **Lo que NO hay es costo.** Un servidor propio no cobra por token y ni uno
+// compatible con OpenAI ni la API de Anthropic informan precio en su respuesta:
+// inventar un monto sería falso, así que el informe habla solo de tokens, turnos
+// y velocidad. Con Anthropic además se ve cuánto salió de la caché del prompt.
 //
 // Lo que se sabe depende de qué reporte el servidor: uno que no devuelve
 // conteo de tokens aparece con turnos pero sin tokens. Y los turnos guardados
@@ -30,9 +32,14 @@ import (
 
 // ModelUsageTotals son los contadores de un servidor o de un modelo.
 type ModelUsageTotals struct {
+	// Input incluye CacheRead y CacheWrite: es todo lo que el modelo recibió.
 	Input  int64 `json:"input"`
 	Output int64 `json:"output"`
 	Total  int64 `json:"total"`
+	// CacheRead y CacheWrite son la parte de Input que salió de la caché del
+	// prompt o se escribió en ella (Anthropic; 0 en el resto de los proveedores).
+	CacheRead  int64 `json:"cacheRead"`
+	CacheWrite int64 `json:"cacheWrite"`
 	// Turns son los turnos que dejaron uso guardado.
 	Turns int `json:"turns"`
 	// Conversations son los chats distintos con al menos un turno.
@@ -64,7 +71,7 @@ type ModelServerUsage struct {
 	// AgentID es `llm:<id>`, el mismo que usa el catálogo de agentes.
 	AgentID string `json:"agentId"`
 	Name    string `json:"name"`
-	Kind    string `json:"kind"` // "ollama" | "openai"; "" si el servidor se eliminó
+	Kind    string `json:"kind"` // "ollama" | "openai" | "anthropic"; "" si el servidor se eliminó
 	IsLocal bool   `json:"isLocal"`
 	// Deleted: el servidor ya no existe pero quedan chats suyos. Name trae un
 	// rótulo genérico; la interfaz puede ponerle el suyo.
@@ -140,6 +147,8 @@ func (u *usageAcc) add(r vault.ChatUsageRow) {
 	}
 	u.t.Input += r.Input
 	u.t.Output += r.Output
+	u.t.CacheRead += r.CacheRead
+	u.t.CacheWrite += r.CacheWrite
 	u.t.Total += total
 	u.t.Turns++
 	if u.chats == nil {

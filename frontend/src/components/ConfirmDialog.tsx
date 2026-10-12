@@ -1,3 +1,4 @@
+import type {ReactNode} from 'react'
 import Icon from './Icon'
 import {useT} from '../i18n'
 
@@ -6,6 +7,9 @@ interface ConfirmDialogProps {
     description: string
     confirmLabel: string
     danger?: boolean
+    // Detalle extra bajo la descripción (una lista de consecuencias). Con él el
+    // diálogo se ensancha: tres párrafos en 320 px son una columna interminable.
+    children?: ReactNode
     onConfirm: () => void
     onClose: () => void
 }
@@ -16,16 +20,17 @@ interface ConfirmDialogProps {
 // SELECT * linter warning (a native confirm() got mistaken for "the app
 // isn't responding"). Any destructive click-to-confirm action should use
 // this instead of window.confirm().
-export default function ConfirmDialog({title, description, confirmLabel, danger, onConfirm, onClose}: ConfirmDialogProps) {
+export default function ConfirmDialog({title, description, confirmLabel, danger, children, onConfirm, onClose}: ConfirmDialogProps) {
     const t = useT()
     return (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/60">
-            <div className="flex w-80 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg">
+            <div className={`flex ${children ? 'w-[26rem] max-w-[calc(100vw-2rem)]' : 'w-80'} flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-high p-6 text-on-surface shadow-lg`}>
                 <h2 className="flex items-center gap-2 text-lg font-semibold">
                     <Icon name={danger ? 'warning' : 'help'} size={18} className={danger ? 'text-error' : 'text-primary'} />
                     {title}
                 </h2>
                 <p className="text-xs text-on-surface-variant">{description}</p>
+                {children}
                 <div className="mt-2 flex justify-end gap-2">
                     <button
                         type="button"

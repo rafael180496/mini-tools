@@ -1,0 +1,119 @@
+import type {ReactNode} from 'react'
+import Icon from '../Icon'
+import {useT} from '../../i18n'
+
+// La columna de trabajo de la pestaña de un repositorio.
+//
+// Antes la columna interna era «solapas + dos buscadores + árbol de ramas», y
+// el árbol repetía el de la barra lateral principal. Ahora es SOLO el panel de
+// trabajo que gobiernan sus cuatro solapas:
+//
+//   Historial  búsqueda y filtros del grafo
+//   Cambios    staging + caja de commit (como Source Control de VS Code)
+//   Stash      guardar / aplicar / quitar
+//   Archivos   el árbol del editor
+//
+// Lo que cada solapa MUESTRA (el grafo, el diff, el parche del stash, el
+// editor) va en el área principal; la columna es lo que se opera.
+
+export type WorkView = 'commits' | 'changes' | 'stash' | 'files'
+
+interface Props {
+    // 'conflicts' no es una solapa: es el resolutor, que reemplaza el área
+    // principal. La columna sigue mostrando Cambios (los archivos en conflicto
+    // son justamente los que hay que preparar).
+    view: WorkView | 'conflicts'
+    onView: (v: WorkView) => void
+    changesCount: number
+    stashCount: number
+    width: number
+    collapsed: boolean
+    onToggleCollapsed: () => void
+    // Contenido de la solapa activa (menos Archivos, que lo monta el editor
+    // dentro de `onFilesHost`).
+    children: ReactNode
+    // Contenedor donde el editor de archivos monta su árbol (portal).
+    onFilesHost: (el: HTMLDivElement | null) => void
+}
+
+export default function GitWorkPanel({view, onView, changesCount, stashCount, width, collapsed, onToggleCollapsed, children, onFilesHost}: Props) {
+    const t = useT()
+    const w = t.git.workbench.panel
+    const g = t.git.tab
+
+    const tabs: {id: WorkView; icon: string; label: string; title: string; badge?: number}[] = [
+        {id: 'commits', icon: 'history', label: w.history, title: g.views.commitsTitle},
+        {id: 'changes', icon: 'edit_note', label: g.views.changes, title: g.views.changesTitle, badge: changesCount},
+        {id: 'stash', icon: 'inventory_2', label: g.views.stash, title: g.views.stashTitle, badge: stashCount},
+        {id: 'files', icon: 'edit_document', label: g.views.files, title: g.views.filesTitle},
+    ]
+    const compact = width < 300
+
+    // Plegada: una barrita de íconos. Ocultar del todo la columna dejaba sin
+    // forma visible de volver a las solapas; la barra mantiene las cuatro a un
+    // clic y el clic además la despliega.
+    if (collapsed) {
+        return (
+            <div className="flex w-9 shrink-0 flex-col items-center gap-0.5 border-r border-outline-variant bg-surface-container-lowest py-1">
+                <button onClick={onToggleCollapsed} title={w.expand} aria-label={w.expand} className="mb-1 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
+                    <Icon name="left_panel_open" size={17} />
+                </button>
+                {tabs.map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => {
+                            onView(tab.id)
+                            onToggleCollapsed()
+                        }}
+                        title={tab.title}
+                        aria-label={tab.label}
+                        className={`relative rounded p-1.5 ${view === tab.id ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'}`}
+                    >
+                        <Icon name={tab.icon} size={17} />
+                        {!!tab.badge && tab.badge > 0 && (
+                            <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-secondary px-0.5 text-center text-ui-9 font-medium leading-3.5 text-on-secondary">{tab.badge > 99 ? '99+' : tab.badge}</span>
+                        )}
+                    </button>
+                ))}
+            </div>
+        )
+    }
+
+    return (
+        // overflow-hidden no es cosmético: `width` fija el ancho de la columna
+        // pero sus hijos conservan min-width:auto, y una fila que no pueda
+        // encogerse se dibujaría PASADO el borde, encima del grafo.
+        <div style={{width}} className="flex shrink-0 flex-col overflow-hidden border-r border-outline-variant bg-surface-container-lowest">
+            <div className="flex shrink-0 items-center gap-0.5 border-b border-outline-variant p-1">
+                {tabs.map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => onView(tab.id)}
+                        title={tab.title}
+                        aria-label={tab.label}
+                        aria-pressed={view === tab.id}
+                        // min-w-0 anula el min-width:auto de los ítems flex: sin
+                        // él `flex-1` no sirve y los cuatro desbordan la columna.
+                        className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-ui-11 transition-colors ${
+                            view === tab.id ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name={tab.icon} size={16} className="shrink-0" />
+                        {!compact && <span className="truncate">{tab.label}</span>}
+                        {/* secondary es el rol de commit/éxito: un conteo vivo de
+                            cambios pendientes se lee como «hay trabajo acá», no
+                            como un error. */}
+                        {!!tab.badge && tab.badge > 0 && (
+                            <span className="shrink-0 rounded-full bg-secondary px-1.5 text-ui-10 font-medium leading-4 text-on-secondary">{tab.badge}</span>
+                        )}
+                    </button>
+                ))}
+                <button onClick={onToggleCollapsed} title={w.collapse} aria-label={w.collapse} className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface">
+                    <Icon name="left_panel_close" size={16} />
+                </button>
+            </div>
+
+            {view === 'files' ? <div ref={onFilesHost} className="flex min-h-0 flex-1 flex-col" /> : children}
+        </div>
+    )
+}

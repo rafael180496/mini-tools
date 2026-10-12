@@ -38,6 +38,10 @@ export function AgentAskWith(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['AgentAskWith'](arg1, arg2, arg3, arg4);
 }
 
+export function AgentAttachmentCapabilities(arg1, arg2) {
+  return window['go']['main']['App']['AgentAttachmentCapabilities'](arg1, arg2);
+}
+
 export function AgentCLIConversations(arg1, arg2) {
   return window['go']['main']['App']['AgentCLIConversations'](arg1, arg2);
 }
@@ -1510,6 +1514,10 @@ export function ReorderFolder(arg1, arg2) {
   return window['go']['main']['App']['ReorderFolder'](arg1, arg2);
 }
 
+export function ReorderModelServers(arg1) {
+  return window['go']['main']['App']['ReorderModelServers'](arg1);
+}
+
 export function ReplaceMongoDocument(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ReplaceMongoDocument'](arg1, arg2, arg3, arg4);
 }
@@ -1582,6 +1590,10 @@ export function SaveChatAttachment(arg1, arg2) {
   return window['go']['main']['App']['SaveChatAttachment'](arg1, arg2);
 }
 
+export function SaveChatFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveChatFile'](arg1, arg2);
+}
+
 export function SaveConnection(arg1, arg2) {
   return window['go']['main']['App']['SaveConnection'](arg1, arg2);
 }
@@ -1624,6 +1636,10 @@ export function SendAgentChat(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, ar
 
 export function SetAgentActive(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetAgentActive'](arg1, arg2, arg3);
+}
+
+export function SetAgentChatAgent(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentChatAgent'](arg1, arg2);
 }
 
 export function SetAgentChatBrain(arg1, arg2) {
@@ -1708,6 +1724,10 @@ export function SetMCPNotesWrite(arg1) {
 
 export function SetMCPServerEnabled(arg1) {
   return window['go']['main']['App']['SetMCPServerEnabled'](arg1);
+}
+
+export function SetModelServerEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetModelServerEnabled'](arg1, arg2);
 }
 
 export function SetNoteFolder(arg1, arg2) {

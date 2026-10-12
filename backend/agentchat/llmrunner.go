@@ -45,11 +45,21 @@ func llmSystemMessage() llm.Message {
 	return llm.Message{Role: llm.RoleSystem, Content: i18n.T(replyLanguage)}
 }
 
-// resolveLLMModel devuelve el modelo del turno, o el primero que informe el
-// servidor cuando el turno no eligió ninguno.
+// defaultModeler lo implementa un cliente que sabe qué modelo usar cuando ni el
+// turno ni nadie eligió uno: el que App arma con el `defaultModel` del
+// proveedor, o el de Anthropic, que tiene uno propio y no necesita listar.
+type defaultModeler interface{ DefaultModel() string }
+
+// resolveLLMModel devuelve el modelo del turno; sin elegir, el predeterminado
+// del proveedor y, si no tiene, el primero que informe el servidor.
 func resolveLLMModel(ctx context.Context, t Turn) (string, error) {
 	if t.Model != "" {
 		return t.Model, nil
+	}
+	if d, ok := t.LLM.(defaultModeler); ok {
+		if m := d.DefaultModel(); m != "" {
+			return m, nil
+		}
 	}
 	models, err := t.LLM.Models(ctx)
 	if err != nil {
@@ -71,6 +81,14 @@ func (m *Manager) sendLLM(t Turn) error {
 		return i18n.Errorf(i18n.Msg{ES: "agentchat: esa sesión todavía está contestando", EN: "agentchat: that session is still replying"})
 	}
 	history := append([]llm.Message{}, m.llmHistory[t.SessionID]...)
+	// El chat pasó a otro proveedor (App.SetAgentChatAgent): la memoria se
+	// conserva —es lo que hace que la conversación siga— pero lo opaco que
+	// llevan los mensajes del anterior no se reenvía. Ya hoy los clientes
+	// ignoran un Raw que no es suyo y Anthropic solo reenvía el del turno
+	// abierto; esto lo hace explícito en vez de depender de eso.
+	if prev := m.llmHistoryAgent[t.SessionID]; prev != "" && prev != t.AgentID {
+		history = withoutRaw(history)
+	}
 	// Sesión sin memoria (la app se reinició y se retomó un chat guardado):
 	// se siembra con el historial que armó quien llama. Con la sesión viva
 	// manda la memoria, que ya tiene el turno anterior completo.
@@ -113,7 +131,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 	// el frontend guarda el que llegue para marcar el chat como retomable.
 	m.emit(t.SessionID, Event{Kind: KindStart, Model: model, ConversationID: t.SessionID})
 
-	msgs := append(withSystem(history, t.System), llm.Message{Role: llm.RoleUser, Content: t.Prompt, Images: t.Images})
+	msgs := append(withSystem(history, t.System), llm.Message{Role: llm.RoleUser, Content: t.Prompt, Images: t.Images, PDFs: t.PDFs})
 
 	tools := t.Tools
 	noToolsKey := t.AgentID + "|" + model
@@ -179,6 +197,9 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 		}
 		total.Input += res.Usage.Input
 		total.Output += res.Usage.Output
+		total.CacheRead += res.Usage.CacheRead
+		total.CacheWrite += res.Usage.CacheWrite
+		total.Thinking += res.Usage.Thinking
 		msgs = append(msgs, res.Message)
 
 		calls := res.Message.ToolCalls
@@ -198,7 +219,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 			for _, c := range calls {
 				msgs = append(msgs, toolMessage(c, "error: "+i18n.T(msgToolRoundsNotRun)))
 			}
-			m.saveLLMHistory(ctx, t.SessionID, msgs)
+			m.saveLLMHistory(ctx, t, forgetAttachments(msgs, t))
 			m.emit(t.SessionID, Event{Kind: KindError, Error: i18n.T(msgToolRoundsLimit, maxRounds), Usage: usageOf(total, genTime)})
 			return
 		}
@@ -224,7 +245,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 	// Se guarda recién cuando el turno terminó bien, y solo si nadie lo cortó
 	// ni reinició la sesión mientras tanto (Reset cancela antes de borrar, así
 	// que ctx.Err() bajo el candado es la comprobación completa).
-	m.saveLLMHistory(ctx, t.SessionID, msgs)
+	m.saveLLMHistory(ctx, t, forgetAttachments(msgs, t))
 	m.emit(t.SessionID, Event{Kind: KindDone, ConversationID: t.SessionID, Usage: usageOf(total, genTime)})
 }
 
@@ -270,15 +291,27 @@ func chatRetry(ctx context.Context, c llm.Client, req llm.ChatRequest, onDelta f
 }
 
 func usageOf(u llm.Usage, gen time.Duration) *Usage {
-	return &Usage{Input: u.Input, Output: u.Output, Total: u.Input + u.Output, DurationMs: gen.Milliseconds()}
+	return &Usage{Input: u.Input, Output: u.Output, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite, Thinking: u.Thinking, Total: u.Input + u.Output, DurationMs: gen.Milliseconds()}
 }
 
-func (m *Manager) saveLLMHistory(ctx context.Context, sessionID string, msgs []llm.Message) {
+func (m *Manager) saveLLMHistory(ctx context.Context, t Turn, msgs []llm.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if ctx.Err() == nil {
-		m.llmHistory[sessionID] = trimLLMHistory(msgs)
+		m.llmHistory[t.SessionID] = trimLLMHistory(msgs)
+		m.llmHistoryAgent[t.SessionID] = t.AgentID
 	}
+}
+
+// withoutRaw devuelve los mensajes sin su contenido original de proveedor
+// (Message.Raw). No toca el slice recibido.
+func withoutRaw(msgs []llm.Message) []llm.Message {
+	out := make([]llm.Message, len(msgs))
+	for i, msg := range msgs {
+		msg.Raw = nil
+		out[i] = msg
+	}
+	return out
 }
 
 func (m *Manager) knownNoTools(key string) bool {
@@ -446,7 +479,15 @@ func (m *Manager) emitLLMError(ctx context.Context, sessionID string, err error)
 
 // trimLLMHistory conserva el mensaje de sistema y la cola de la conversación:
 // hasta llmMaxHistory mensajes y llmMaxHistoryChars caracteres, siempre
-// empezando por un mensaje del usuario. Empezar en medio de un turno dejaría
+// empezando por un mensaje del usuario.
+//
+// Recortar el principio EDITA el prefijo de la conversación, y eso invalida los
+// bloques de pensamiento firmados de Anthropic de los turnos que quedan
+// ("preserved thinking"). No es un problema acá a propósito: el cliente de
+// Anthropic reenvía el contenido original del asistente (Message.Raw) solo
+// dentro del turno abierto y los turnos anteriores sin pensamiento (ver
+// backend/llm/anthropic.go), así que el recorte —como un cambio de modo, que
+// cambia el system y las herramientas— no puede romper ninguna firma. Empezar en medio de un turno dejaría
 // un resultado de herramienta (rol tool) sin la llamada que lo originó, que
 // los servidores rechazan.
 func trimLLMHistory(msgs []llm.Message) []llm.Message {
@@ -501,7 +542,7 @@ func (m *Manager) askLLM(ctx context.Context, t Turn) (string, error) {
 		Model: model,
 		Messages: []llm.Message{
 			llmSystemMessage(),
-			{Role: llm.RoleUser, Content: t.Prompt, Images: t.Images},
+			{Role: llm.RoleUser, Content: t.Prompt, Images: t.Images, PDFs: t.PDFs},
 		},
 	}, nil)
 	if err != nil {

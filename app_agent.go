@@ -134,6 +134,13 @@ func (a *App) agentByID(agentID string) (agents.Agent, error) {
 			return cand, nil
 		}
 	}
+	// Un proveedor apagado no está en el catálogo: se dice por qué, en vez de
+	// «agente desconocido» (que se leería como un chat roto).
+	if agentchat.IsLLM(agentID) {
+		if m, err := a.vault.GetModelServer(agentID[len(agentchat.LLMPrefix):]); err == nil && !m.Enabled {
+			return agents.Agent{}, errProviderDisabled(m.Name)
+		}
+	}
 	return agents.Agent{}, i18n.Errorf(i18n.Msg{ES: "app: agente desconocido %q", EN: "app: unknown agent %q"}, agentID)
 }
 

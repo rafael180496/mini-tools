@@ -33,8 +33,8 @@ const en: Messages<typeof es> = {
             hint: 'talk to Claude, Codex, Antigravity or a local model, with history and search',
         },
         modelManager: {
-            name: 'Models',
-            hint: "see, pull and delete a model server's models (Ollama, local or remote)",
+            name: 'AI providers',
+            hint: 'your own servers and cloud APIs in one place: enable, order, see their models and usage',
         },
     },
     // «AI Chat» tab: history on the left, conversation in the middle.
@@ -80,6 +80,27 @@ const en: Messages<typeof es> = {
         untitled: 'Untitled',
         openTitle: (p) =>
             `Resumes this conversation with ${p.agent}${p.where ? ` · ${p.where}` : ''}. Its messages are redrawn when you open it.`,
+        lost: {
+            disabledName: (p) => `${p.name} (disabled)`,
+            removedName: 'Deleted provider',
+            openTitle: (p) =>
+                `This conversation belonged to ${p.agent}, which is no longer available. It opens so you can read it and carry on with another provider ("Continue with another provider").`,
+            title: 'Provider unavailable',
+            titleDisabled: (p) => `"${p.name}" is disabled.`,
+            titleRemoved: "This conversation's provider was deleted.",
+            body: 'The messages are kept and shown here. To carry on, pick another provider: it receives what was said as context.',
+            pickLabel: 'Continue with',
+            pickTitle: 'Model provider to carry on this conversation with. It is the same thread: no other conversation is opened.',
+            continue: 'Continue with another provider',
+            continueTitle: (p) => `Carries on this conversation with ${p.agent}: same history, and what was said so far reaches it as context. Nothing is sent until you type.`,
+            add: 'Add provider',
+            addTitle: 'There is no other model provider available. Opens the form to add one (a server of your own or a cloud API).',
+        },
+        switched: {
+            title: (p) => `${p.to} now answers (was ${p.from}).`,
+            body: 'It is the same conversation: the new model receives the earlier messages as context, but remembers nothing on its own and may have a different context window.',
+            dismissTitle: 'Closes this notice',
+        },
         notInstalledTitle: (p) =>
             `This conversation belongs to ${p.agent}, which is no longer available on this machine. You can rename or delete it, but not resume it.`,
         renameTitle: 'Rename this conversation. The title comes from your first message, which is rarely how you will look for it.',
@@ -98,7 +119,7 @@ const en: Messages<typeof es> = {
         header: {
             providerLabel: 'Provider',
             providerTitle:
-                "Who you talk to: an installed CLI (Claude Code, Codex, Antigravity) or a model server. Changing it in a conversation that already started opens a new one: each provider keeps its own thread.",
+                "Who you talk to: an installed CLI (Claude Code, Codex, Antigravity) or a model provider (a server of your own or a cloud API). Between model providers you can switch mid-conversation: it stays the same one, and the new provider receives what was said as context. Switching to or from a CLI opens a new conversation, because a CLI's thread belongs to the CLI itself.",
             providerPlaceholder: 'Pick a provider',
             modelLabel: 'Model',
             modelTitle: "Model that answers from now on. The provider reports the list itself; «Default» uses whichever it has configured.",

@@ -1,5 +1,69 @@
 export namespace agentchat {
 	
+	export class Attachment {
+	    path: string;
+	    name: string;
+	    kind: string;
+	    mime: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Attachment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.mime = source["mime"];
+	        this.size = source["size"];
+	    }
+	}
+	export class AttachmentCaps {
+	    images: boolean;
+	    pdf: boolean;
+	    text: boolean;
+	    known: boolean;
+	    maxImageBytes: number;
+	    maxPdfBytes: number;
+	    maxTextBytes: number;
+	    maxCount: number;
+	    note: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AttachmentCaps(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.images = source["images"];
+	        this.pdf = source["pdf"];
+	        this.text = source["text"];
+	        this.known = source["known"];
+	        this.maxImageBytes = source["maxImageBytes"];
+	        this.maxPdfBytes = source["maxPdfBytes"];
+	        this.maxTextBytes = source["maxTextBytes"];
+	        this.maxCount = source["maxCount"];
+	        this.note = source["note"];
+	    }
+	}
+	export class AttachmentMeta {
+	    name: string;
+	    kind: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AttachmentMeta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.size = source["size"];
+	    }
+	}
 	export class Conversation {
 	    id: string;
 	    agent: string;
@@ -40,6 +104,7 @@ export namespace agentchat {
 	    role: string;
 	    text: string;
 	    tools: ToolCall[];
+	    attachments?: AttachmentMeta[];
 	
 	    static createFrom(source: any = {}) {
 	        return new PastTurn(source);
@@ -50,6 +115,7 @@ export namespace agentchat {
 	        this.role = source["role"];
 	        this.text = source["text"];
 	        this.tools = this.convertValues(source["tools"], ToolCall);
+	        this.attachments = this.convertValues(source["attachments"], AttachmentMeta);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -75,11 +141,13 @@ export namespace agentchat {
 	    input: number;
 	    output: number;
 	    cacheRead: number;
+	    cacheWrite: number;
 	    thinking: number;
 	    total: number;
 	    costUsd: number;
 	    model?: string;
 	    durationMs?: number;
+	    agentId?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Usage(source);
@@ -90,11 +158,13 @@ export namespace agentchat {
 	        this.input = source["input"];
 	        this.output = source["output"];
 	        this.cacheRead = source["cacheRead"];
+	        this.cacheWrite = source["cacheWrite"];
 	        this.thinking = source["thinking"];
 	        this.total = source["total"];
 	        this.costUsd = source["costUsd"];
 	        this.model = source["model"];
 	        this.durationMs = source["durationMs"];
+	        this.agentId = source["agentId"];
 	    }
 	}
 
@@ -2872,6 +2942,7 @@ export namespace main {
 	    content: string;
 	    toolName: string;
 	    usage?: agentchat.Usage;
+	    attachments: agentchat.AttachmentMeta[];
 	    createdAt: number;
 	
 	    static createFrom(source: any = {}) {
@@ -2885,6 +2956,7 @@ export namespace main {
 	        this.content = source["content"];
 	        this.toolName = source["toolName"];
 	        this.usage = this.convertValues(source["usage"], agentchat.Usage);
+	        this.attachments = this.convertValues(source["attachments"], agentchat.AttachmentMeta);
 	        this.createdAt = source["createdAt"];
 	    }
 	
@@ -3544,6 +3616,9 @@ export namespace main {
 	    isLocal: boolean;
 	    insecureTls: boolean;
 	    contextTokens: number;
+	    enabled: boolean;
+	    defaultModel: string;
+	    sortOrder: number;
 	    headerNames: string[];
 	    createdAt: number;
 	    updatedAt: number;
@@ -3562,6 +3637,9 @@ export namespace main {
 	        this.isLocal = source["isLocal"];
 	        this.insecureTls = source["insecureTls"];
 	        this.contextTokens = source["contextTokens"];
+	        this.enabled = source["enabled"];
+	        this.defaultModel = source["defaultModel"];
+	        this.sortOrder = source["sortOrder"];
 	        this.headerNames = source["headerNames"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
@@ -3645,6 +3723,8 @@ export namespace main {
 	    input: number;
 	    output: number;
 	    total: number;
+	    cacheRead: number;
+	    cacheWrite: number;
 	    turns: number;
 	    conversations: number;
 	
@@ -3657,6 +3737,8 @@ export namespace main {
 	        this.input = source["input"];
 	        this.output = source["output"];
 	        this.total = source["total"];
+	        this.cacheRead = source["cacheRead"];
+	        this.cacheWrite = source["cacheWrite"];
 	        this.turns = source["turns"];
 	        this.conversations = source["conversations"];
 	    }

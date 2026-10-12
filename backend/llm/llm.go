@@ -1,13 +1,23 @@
-// Package llm habla con servidores de modelos por HTTP: Ollama y cualquier
+// Package llm habla con proveedores de modelos por HTTP: Ollama, cualquier
 // servidor compatible con la API de OpenAI (LM Studio, vLLM, llama.cpp
-// server…).
+// server, OpenRouter, Groq, DeepSeek…) y la API de Anthropic.
 //
-// # Por qué a mano y no con un SDK
+// # Por qué a mano y no con un SDK (Ollama y OpenAI)
 //
 // Son dos protocolos chicos —Ollama transmite NDJSON y la API de OpenAI,
 // SSE— y los dos caben en `net/http` + `encoding/json`. Un SDK sumaría una
 // dependencia (regla de .claude/rules/technical.md) para ocultar lo único que
 // acá hay que mirar de cerca: qué llega en cada trozo del stream.
+//
+// # La excepción: Anthropic usa el SDK oficial
+//
+// La API de Anthropic no es chica: bloques de contenido tipados, pensamiento
+// con firmas que hay que devolver intactas, caché de prompt, `stop_reason`
+// con refusals, errores tipados y reintentos con `retry-after`. Reimplementar
+// eso a mano es el tipo de código que parece andar y se rompe con la
+// siguiente versión de la API, así que ese cliente (anthropic.go) usa
+// github.com/anthropics/anthropic-sdk-go, con la excepción a la regla 12
+// aprobada y documentada en .claude/rules/technical.md.
 //
 // # Qué NO hace
 //
@@ -39,6 +49,8 @@ import (
 const (
 	KindOllama = "ollama"
 	KindOpenAI = "openai"
+	// KindAnthropic es la API de Anthropic (Claude), con su SDK oficial.
+	KindAnthropic = "anthropic"
 )
 
 // Roles de un mensaje.
@@ -58,12 +70,25 @@ type Message struct {
 	// base64 al armar el request (Ollama las manda en `images`; OpenAI, como
 	// partes `image_url` con un data URI): quien llama no carga bytes.
 	Images []string
+	// PDFs son rutas de archivos PDF. Solo los entiende la API de Anthropic
+	// (bloques `document` en base64, antes del texto); los demás clientes los
+	// ignoran, así que quien arma el mensaje tiene que haber rechazado antes el
+	// PDF para un modelo que no lo admite (ver agentchat.PrepareAttachments).
+	PDFs []string
 	// ToolCalls son las llamadas que pidió el modelo (rol assistant).
 	ToolCalls []ToolCall
 	// ToolCallID y Name responden a una llamada (rol tool). OpenAI correlaciona
 	// por id; Ollama, por nombre de herramienta.
 	ToolCallID string
 	Name       string
+	// Raw es el mensaje del asistente tal como lo devolvió el proveedor, en su
+	// propio formato, para reenviarlo SIN tocar. Es opaco para todo el que no
+	// sea el cliente que lo produjo: el runner lo lleva de ida y vuelta sin
+	// mirarlo y los demás clientes lo ignoran. Existe por el pensamiento de
+	// Anthropic: los bloques `thinking` llevan una firma y solo valen si vuelven
+	// idénticos dentro del turno (ver anthropic.go). nil = no hay nada que
+	// preservar y el mensaje se reconstruye de Content y ToolCalls.
+	Raw any
 }
 
 // ToolCall es una llamada a herramienta pedida por el modelo.
@@ -100,8 +125,16 @@ type Delta struct {
 
 // Usage son los tokens que informó el servidor. Cero significa "no lo dijo".
 type Usage struct {
+	// Input incluye los tokens leídos y escritos en caché: es todo lo que el
+	// modelo recibió, que es lo que el resto del programa suma.
 	Input  int64
 	Output int64
+	// CacheRead y CacheWrite son la parte de Input que salió de la caché del
+	// prompt o se escribió en ella (Anthropic). Thinking es la parte de Output
+	// que fue razonamiento interno. Los tres son 0 si el proveedor no los dice.
+	CacheRead  int64
+	CacheWrite int64
+	Thinking   int64
 }
 
 // ChatResult es la respuesta ya completa.
@@ -146,6 +179,7 @@ type Options struct {
 
 // New arma el cliente del tipo pedido.
 func New(kind, baseURL string, opt Options) (Client, error) {
+	baseURL = NormalizeBaseURLFor(kind, baseURL)
 	base, err := NormalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -156,8 +190,29 @@ func New(kind, baseURL string, opt Options) (Client, error) {
 		return &ollamaClient{requester: r, numCtx: opt.ContextTokens}, nil
 	case KindOpenAI:
 		return &openaiClient{requester: r}, nil
+	case KindAnthropic:
+		return newAnthropicClient(r), nil
 	}
 	return nil, i18n.Errorf(i18n.Msg{ES: "llm: tipo de servidor desconocido %q", EN: "llm: unknown server kind %q"}, kind)
+}
+
+// DefaultAnthropicBaseURL es la API oficial de Anthropic.
+const DefaultAnthropicBaseURL = "https://api.anthropic.com"
+
+// NormalizeBaseURLFor aplica a la URL lo propio de cada tipo, antes de validarla:
+// Anthropic tiene una URL por defecto (vacía = la oficial) y el SDK agrega
+// `/v1/...` por su cuenta, así que un `/v1` final —que es como se copia la URL
+// de un proxy— se saca para no pedir `/v1/v1/messages`. Los demás tipos pasan
+// tal cual.
+func NormalizeBaseURLFor(kind, raw string) string {
+	if kind != KindAnthropic {
+		return raw
+	}
+	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	if raw == "" {
+		return DefaultAnthropicBaseURL
+	}
+	return strings.TrimRight(strings.TrimSuffix(raw, "/v1"), "/")
 }
 
 // NormalizeBaseURL valida que sea http(s) con host y le saca la barra final.
@@ -253,6 +308,20 @@ func readImage(path string) (b64, mime string, err error) {
 		return "", "", i18n.Errorf(i18n.Msg{ES: "%q no es una imagen", EN: "%q is not an image"}, filepath.Base(path))
 	}
 	return base64.StdEncoding.EncodeToString(data), mime, nil
+}
+
+// readPDF lee un PDF y lo devuelve en base64, comprobando por contenido que lo
+// es (la extensión no alcanza: lo que se manda a la API es lo que dice el
+// archivo, no su nombre).
+func readPDF(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", i18n.Errorf(i18n.Msg{ES: "no se pudo leer el PDF %q: %w", EN: "could not read the PDF %q: %w"}, filepath.Base(path), err)
+	}
+	if http.DetectContentType(data) != "application/pdf" {
+		return "", i18n.Errorf(i18n.Msg{ES: "%q no es un PDF", EN: "%q is not a PDF"}, filepath.Base(path))
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
 }
 
 // maxLine acota una línea del stream. Un trozo con razonamiento largo no se

@@ -1,6 +1,6 @@
 # IA: servidores de modelos, agente local, historial, chat en Utilidades y cerebro
 
-**Estado: aprobado, en desarrollo.** Seis fases que se pueden mergear por separado.
+**Estado: aprobado, en desarrollo.** Siete fases que se pueden mergear por separado.
 
 | Fase | Backend (Dev A) | Frontend (Dev B) |
 | --- | --- | --- |
@@ -10,6 +10,7 @@
 | 4. Herramientas MCP | hecho | hecho |
 | 5. Agente de código local | hecho | hecho |
 | 6. Cerebro | **hecho** (herramientas de notas, setting, bandera por chat, instrucciones, `git push` en la lista de riesgo, migración 59) | pendiente (control en el chat, setting en Acceso de IA, ayuda, `CHANGELOG.md`) |
+| 7. Proveedores de IA (estilo Hermes) | **hecho** (cliente Anthropic con el SDK oficial, migración 63, `SetModelServerEnabled` / `ReorderModelServers`, consumo con caché) | pendiente (gestor de proveedores en Utilidades, presets por URL, interruptor y orden) |
 
 ## Qué se pide
 
@@ -29,7 +30,7 @@
 
 ## Restricciones que aplican (`.claude/rules/technical.md`)
 
-- **Sin dependencias nuevas.** Los dos clientes son `net/http` + `encoding/json`: Ollama habla NDJSON y la API de OpenAI habla SSE, y ninguno necesita SDK.
+- **Sin dependencias nuevas para Ollama y OpenAI.** Esos dos clientes son `net/http` + `encoding/json`: Ollama habla NDJSON y la API de OpenAI habla SSE, y ninguno necesita SDK. **Excepción aprobada (fase 7): el cliente de Anthropic usa el SDK oficial** `github.com/anthropics/anthropic-sdk-go`; el porqué está en «Proveedores de IA (estilo Hermes)» y en la regla 12 de `.claude/rules/technical.md`.
 - **Toda tabla nueva va por migración** (`backend/vault/migrations.go`; la última es la 56). El token de un servidor y el contenido de los mensajes van cifrados por columna, como el título de `agent_chats`.
 - **Todo binding nuevo pasa por `requireUnlocked`.** El token nunca cruza al frontend: solo viaja `hasToken`.
 - **Textos en inglés y español**, tema de ayuda en `index.html` y entrada en `CHANGELOG.md`.
@@ -43,11 +44,13 @@ Tabla `model_servers` (migración 57):
 | Columna | Nota |
 | --- | --- |
 | `id`, `name` | nombre visible, único |
-| `kind` | `ollama` · `openai` |
+| `kind` | `ollama` · `openai` · `anthropic` (fase 7) |
 | `base_url` | `http://localhost:11434`, `http://localhost:1234/v1`, `https://gpu.empresa/…` |
 | `encrypted_token`, `token_nonce` | opcional: Bearer para servidores detrás de un proxy o con API key |
 | `encrypted_headers`, `headers_nonce` | opcional (migración 60): JSON `{nombre: valor}` de cabeceras propias, cifrado |
 | `insecure_tls` | migración 60: no verificar el certificado de este servidor (default 0) |
+| `context_tokens` | migración 62: ventana que se le pide a Ollama |
+| `enabled`, `default_model`, `sort_order` | migración 63: ver «Proveedores de IA (estilo Hermes)» |
 | `created_at`, `updated_at` | |
 
 Cada servidor aparece en el catálogo de agentes con id **`llm:<serverId>`** y vendor `Ollama` u `OpenAI-compatible`. Así entra en todos los selectores y en `AgentAsk`/`AgentAskWith` sin cambiar ninguna firma.
@@ -110,10 +113,21 @@ Tabla `agent_chat_messages` (migración 58):
 Un servidor no deja transcripts en disco como un CLI, así que `AgentUsageAll` (que lee `backend/agentusage`) no lo cubre. Su consumo sale de `agent_chat_messages.usage`, **sin migración y sin descifrar contenido**:
 
 - **Qué se guarda**: el JSON de `agentchat.Usage` de la fila que cierra cada turno gana `model` (el del evento `start`, que el recorder `TurnRecorder` retiene y entrega en `RecordedMessage.Model`; `App.usageJSON(u, model)` lo mezcla) y `durationMs` (solo el runner `llm:`: suma del tiempo de las llamadas `Chat`, **sin** la espera de aprobaciones ni la ejecución de herramientas, para que tokens/s sea del modelo). Un CLI guarda el modelo pero no la duración. Las filas anteriores no traen ninguna de las dos claves: cuentan en los totales con modelo `""` y sin velocidad.
+- **Proveedor por turno**: el usage de cada fila gana también `agentId` (`llm:<id>` que atendió el turno; `recordedTurn.agentID` → `usageJSON(u, model, agentID)`), porque un chat puede cambiar de proveedor (ver «Cambiar de proveedor a mitad de un chat»). `ModelServerUsageRows` atribuye por `COALESCE(NULLIF($.agentId,''), agent_chats.agent_id)`: las filas anteriores a la clave caen al agente del chat.
 - **Lectura**: `Store.ModelServerUsageRows(since)` — un `SELECT` sobre `agent_chats` (`agent_id LIKE 'llm:%'`) unido a los mensajes por `idx_agent_chat_messages_chat`, con `usage <> ''` y `json_valid(usage)` y `json_extract` de las claves; no selecciona `content`/`nonce`.
 - **Binding**: `App.ModelServerUsage(days int) (ModelServerUsageReport, error)`; `days <= 0` = `agentusage.DefaultDays` (30), igual que `AgentUsageAll`. La ventana son `days` días locales contando hoy. Arma el informe `buildModelServerUsage` (pura, probada). Un servidor existente sin turnos aparece con ceros; uno **eliminado** solo si dejó turnos en la ventana, agrupado por su id (`deleted: true`).
 - **Sin costo**: un servidor propio u OpenAI-compatible no informa precio; el panel lo dice y no inventa un monto.
 - **UI**: `components/agent/AgentModelServersUsage.tsx`, dentro de `AgentUsagePanel` (los CLIs no cambian).
+
+### Cambiar de proveedor a mitad de un chat (estilo Hermes)
+
+Un chat `llm:` se puede continuar con **otro** servidor de modelos sin perder la conversación. `SendAgentChat` ya aceptaba otro `llm:` agentId sobre un chat existente (la memoria está atada a la sesión); lo que faltaba era persistir el proveedor nuevo en la fila.
+
+- **Binding**: `App.SetAgentChatAgent(chatID, agentID string) error` (`app_localterm.go`). `requireUnlocked`; el chat tiene que existir; el agente actual de la fila **y** el destino deben ser `llm:` (un chat con CLI conserva su propio historial: error i18n claro); el destino tiene que ser un servidor existente (`vault.GetModelServer`) y **activado** (`errProviderDisabled`). Mismo proveedor = éxito sin cambios. El frontend lo llama antes del siguiente `SendAgentChat` con el id nuevo.
+- **Fila**: `Store.SetAgentChatAgent(id, from, to)` en una transacción: `UPDATE agent_chats SET agent_id=to, model='', updated_at=now WHERE id AND agent_id=from` (`SetAgentChatSettings` guarda `model` en la misma columna; el modelo del proveedor anterior no existe en el nuevo, así que se vacía y rige el predeterminado del nuevo hasta que el frontend fije otro con `SetAgentChatSettings`). `effort` y `mode` se conservan. `Store.AgentChatAgent(id)` lee el agente actual.
+- **Consumo por turno**: antes del `UPDATE`, la misma transacción escribe `agentId = from` en el usage de las filas del chat que no traen la clave (`json_set` donde `$.agentId IS NULL`), así el pasado queda con el proveedor que lo produjo y no migra con `agent_chats.agent_id`. Los turnos nuevos ya graban su `agentId`.
+- **Runner**: la memoria (`Manager.llmHistory`) sigue por sesión. `Manager.llmHistoryAgent` recuerda qué proveedor la produjo; si el turno viene de otro, `withoutRaw` descarta `Message.Raw` (bloques `thinking`/`tool_use` firmados de Anthropic) de lo ya guardado. Ya hoy Ollama/OpenAI ignoran `Raw` y el cliente de Anthropic solo lo reenvía dentro del turno abierto; esto lo hace explícito. El contenido, las llamadas a herramientas y sus resultados sí viajan (ids `call_*` son válidos para Anthropic). `Reset` también olvida el dueño.
+- **Tests**: `app_chatswitch_test.go` (validaciones y fila), `TestModelServerUsageFollowsProviderSwitch`, `vault` (`TestSetAgentChatAgent`, `TestModelServerUsageRowsPrefersRowProvider`), `agentchat/llmswitch_test.go` (descarte de `Raw` y un chat que empieza en un servidor OpenAI falso con herramienta y sigue en uno Anthropic falso).
 
 ### Gestor de modelos (Utilidades → Modelos)
 
@@ -282,18 +296,111 @@ Las reglas actuales no se tocan:
 
 El renglón "Escribir notas desde un agente" de `vault-notes.md` → «Lo que este módulo NO hace» se actualiza en el mismo cambio.
 
+### Proveedores de IA (estilo Hermes)
+
+El usuario quiere un gestor de proveedores de varios tipos a la vez —servidores propios o remotos **y** APIs alojadas— en vez de «un servidor de modelos» suelto. No es una tabla nueva: `model_servers` pasa a ser la lista de **proveedores**, con tres tipos y tres campos de gestión. En el código se sigue llamando `ModelServer`/`llm:<id>` para no renombrar bindings, tablas ni ids de agente ya guardados en chats.
+
+**Tipos (`kind`)**
+
+| `kind` | Qué es | Cliente |
+| --- | --- | --- |
+| `ollama` | Ollama local o remoto | `net/http` (NDJSON), administra modelos |
+| `openai` | Cualquier API compatible con OpenAI: LM Studio, vLLM, llama.cpp, **y las alojadas** (OpenRouter, Groq, DeepSeek, Together, Mistral, Gemini en su endpoint compatible…). Es lo que cubre «casi todas las APIs»: solo cambia la URL base y la clave | `net/http` (SSE), solo lista modelos |
+| `anthropic` | La API de Anthropic (Claude), o un proxy/gateway que la hable | SDK oficial `anthropic-sdk-go` v1.80.0, solo lista modelos |
+
+La etiqueta de vendor del catálogo de agentes es «Ollama», «OpenAI-compatible» o «Anthropic». Los nombres bonitos de las APIs alojadas («OpenRouter», «Groq»…) son presets del frontend por URL base; el backend no los distingue.
+
+**Campos nuevos (migración 63, aditiva)**
+
+| Columna / campo JSON | Significado |
+| --- | --- |
+| `enabled` / `enabled` (default 1) | Un proveedor apagado **sigue guardado y listado** (`ListModelServers`) pero no entra al catálogo de agentes (`ListAgents`), así que desaparece de todos los selectores y de `AgentAsk*`. Un chat que lo usaba falla con «el proveedor «X» está desactivado — activalo en la configuración de proveedores de IA» (`errProviderDisabled`, en `agentByID` y en `llmClientForTurn`, antes de cualquier pedido de red). Se cambia **solo** con `SetModelServerEnabled(id, enabled)` |
+| `default_model` / `defaultModel` (default `''`) | Modelo para un turno que no eligió ninguno. Orden de resolución: el del turno → `defaultModel` del proveedor → el propio del cliente (Anthropic: `claude-opus-5-5`) → el primero que liste el servidor. Se guarda con `SaveModelServer`. El selector «Por defecto» del chat muestra cuál es |
+| `sort_order` / `sortOrder` (default 0) | Orden en la configuración: `ORDER BY sort_order, name`. Un alta va al final. Se cambia **solo** con `ReorderModelServers(ids)` |
+
+`SaveModelServer` **ignora `enabled` y `sortOrder`** de la estructura que recibe: un formulario que no los conoce no puede apagar ni reordenar nada al guardar (guardar un proveedor apagado lo deja apagado). `ReorderModelServers` pone los ids dados en ese orden y detrás, en el orden que ya tenían, los no mencionados; un id repetido o desconocido se ignora (una lista desactualizada no falla). Prender/apagar no toca `updated_at`, que es la huella de la configuración de conexión.
+
+**URL y credenciales de Anthropic.** `baseUrl` vacío guarda `https://api.anthropic.com`; un `/v1` final se quita (el SDK lo agrega). La clave va en el token cifrado de siempre y se manda como `x-api-key`; las cabeceras propias y «aceptar certificado autofirmado» se respetan (el SDK recibe el mismo `http.Client` que los otros clientes, con `option.WithHTTPClient`). `contextTokens` se ignora (se guarda 0). **Se usa `option.WithoutEnvironmentDefaults()`**: sin eso el SDK leería `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` y los perfiles de `ant auth login` del entorno, y un proveedor guardado terminaría hablando con credenciales que no se le configuraron. Sin token no se manda ninguna clave (un gateway puede autenticar por una cabecera propia).
+
+**Salud y administración.** `Version()` devuelve `""` (no hay endpoint de versión); la prueba de conexión y el chequeo previo usan `Models()` (`GET /v1/models`). Es solo-lectura como OpenAI: `ListModels` funciona y descargar, borrar, descargar de memoria, ver cargados y ver detalle responden `UnsupportedError` («Anthropic»).
+
+**Request de Anthropic** (`backend/llm/anthropic.go`; verificado contra la guía oficial de la API, no de memoria):
+
+| Parte | Decisión |
+| --- | --- |
+| `model` | El del turno; sin elegir, `claude-opus-5-5` |
+| `max_tokens` | 64000 con streaming (se baja al `max_tokens` del modelo si es menor; el pensamiento cuenta contra él) |
+| `thinking` | `{type: "adaptive", display: "summarized"}` si el modelo lo admite; **nunca** `budget_tokens` ni `disabled` (400 en los modelos actuales). `display: "summarized"` porque el default es `omitted` y el panel de razonamiento quedaría vacío; los `thinking_delta` salen como `KindThinking` |
+| capacidades | Se leen en vivo de `GET /v1/models/{id}` (adaptive, effort, `max_tokens`) y se recuerdan 1 h por URL+modelo. Si el endpoint no contesta (proxy), una familia actual se asume moderna y un modelo desconocido recibe lo mínimo (sin thinking ni effort, 8192 de salida) |
+| `output_config.effort` | Explícito e igual al default documentado del modelo: `medium` en Opus 5.5 / Haiku 5.5, `high` en el resto (solo si el modelo lo admite) |
+| sampling, prefill, `tool_choice` | Sin `temperature`/`top_p`/`top_k` (400), sin prefill (400), `tool_choice: {type: "auto"}` (el forzado `any`/`tool` da 400 en los modelos actuales) |
+| caché de prompt | Los `system` se juntan en un bloque con `cache_control: ephemeral` (las instrucciones del proyecto son un prefijo estable) **más** `cache_control` de nivel superior, que mueve el punto de corte al último bloque cacheable: cada vuelta del bucle de herramientas relee la anterior. Mínimo cacheable del modelo: debajo de él no se cachea, sin error |
+| herramientas | `ToolDef` → `input_schema`, **ordenadas por nombre** (el orden es parte del prefijo de la caché), nombres saneados a `^[a-zA-Z0-9_-]{1,64}$` con vuelta al original, y `eager_input_streaming: true` |
+| mensajes | Imágenes antes del texto; los `tool_result` de una vuelta en **un solo** mensaje de usuario y primero (hay llamadas en paralelo); `is_error` si el resultado empieza con `error:`; mensajes consecutivos del mismo rol se funden |
+| `stop_reason` | `end_turn`/`tool_use`/`stop_sequence`: normal. `pause_turn`: se reenvía lo dicho y se continúa (hasta 5 veces; solo aparece con herramientas del servidor, que no se usan). `max_tokens`/`model_context_window_exceeded`: con una llamada a herramienta a medias es error (`TruncatedError`, no se ejecuta); solo texto, se entrega y se agrega un aviso en cursiva. `refusal`: `RefusalError` con la categoría y la explicación de `stop_details` («Anthropic rechazó este pedido por sus filtros de seguridad (categoría: cyber)…») |
+| `fallbacks` (reintento en otro modelo ante un refusal) | **No se usa.** En este SDK solo existe en el namespace beta (`client.Beta.Messages`, con una cabecera beta que un proxy puede rechazar, y exige mantener una lista de modelos de reemplazo); el modelo de reemplazo además corre sin los bloques de pensamiento. El refusal se informa y la persona decide (reformular o cambiar de modelo) |
+
+**Argumentos de herramientas validados.** Con `eager_input_streaming` la API deja de validar el JSON de los argumentos, y el parser tolerante del SDK reemplaza uno inválido o cortado por `{}` **en silencio**: se ejecutaría la herramienta con argumentos vacíos. Por eso el cliente acumula el `partial_json` crudo por bloque y lo valida (`validToolInput`): objeto JSON completo, propiedades `required` presentes y del tipo declarado. Si falla, la llamada viaja con `Arguments: {"_raw": <lo recibido>}` —el runner ya se lo devuelve al modelo como error— y en el historial reenviado el bloque lleva `{}`. Antes se comprueba el `stop_reason`: un `tool_use` de una respuesta cortada por `max_tokens` o por un refusal **nunca** se ejecuta.
+
+**Pensamiento preservado (preserved thinking) e historial.** Los bloques `thinking` de Claude Opus 5.5 llevan una firma que ata el bloque a la conversación que lo produjo (system, tools y todos los mensajes anteriores). Reenviarlo tras editar ese prefijo es un 400 en las cuentas creadas desde el 2026-08-31. Decisiones:
+
+1. `llm.Message` gana `Raw any`: el contenido original del asistente en el formato del proveedor (`[]anthropic.ContentBlockParamUnion` para Anthropic: thinking, text y tool_use **intactos**). El runner lo lleva de ida y vuelta sin mirarlo; Ollama y OpenAI lo ignoran.
+2. **Dentro del turno abierto** (del último mensaje del usuario en adelante, que es el bucle de herramientas) el asistente se reenvía con su `Raw`: el pensamiento vuelve idéntico, como exige la guía. system, tools y los mensajes anteriores no cambian entre vueltas, así que la firma sigue valiendo.
+3. **Los turnos anteriores se reenvían sin pensamiento** (texto y `tool_use`, reconstruidos de `Content`/`ToolCalls`). La guía admite quitar los bloques de **todos los turnos previos** (un tramo inicial completo) sin invalidar nada, y es lo que hace compatible al runner con cómo trabaja hoy: `trimLLMHistory` **recorta el principio** de la conversación (hasta 60 mensajes / 160 000 caracteres) y `withSystem` **regenera el system y las herramientas en cada turno** según el modo, el proyecto y el cerebro. Ambas cosas editan el prefijo y, si los bloques firmados de turnos anteriores se reenviaran, darían 400. No se cambió `trimLLMHistory` ni se hizo el historial «solo agregar» (rompería los otros proveedores y el recorte que protege el contexto de un modelo chico); en su lugar el cliente de Anthropic nunca depende de ese prefijo. Retomar un chat guardado tras reiniciar la app (que reconstruye el historial sin `Raw`) también queda cubierto.
+4. **Costo asumido**: el razonamiento no cruza turnos. La guía dice que quitar el pensamiento en una frontera tiene poco efecto; si algún día importa, la salida es compactación del lado del servidor (`compact-2026-01-12`) o `context_management`, ambos beta, y no un historial inmutable.
+
+**Reintentos y errores.** El SDK reintenta 408/409/429/5xx y fallos de conexión (2 veces, honrando `retry-after`); por encima, `chatRetry` reintenta una vez un `ConnError` transitorio si todavía no salió nada al usuario. Los errores HTTP se traducen a `*llm.StatusError` con un mensaje claro (así `serverUnreachableError` y el resto los tratan como a los otros tipos): 401 «la clave de API no es válida», 402 facturación, 403 permiso/modelo no habilitado, 404 modelo no encontrado (con el mensaje de la API), 413 pedido demasiado grande, 429 «límite de uso (rate limit); reintentá en N s», 529 «sobrecargada», 5xx. Un evento `error` en pleno stream llega con HTTP 200: se mapea por su `type`. Fallos de red: `ConnError` como en los otros clientes.
+
+**Consumo.** El turno guarda `model` y `durationMs` por la vía de siempre (`usageJSON` + `genTime` del runner). `llm.Usage` gana `CacheRead`, `CacheWrite` y `Thinking`; `Input` **incluye** la caché leída y escrita (la API informa `input_tokens` sin ella), así que `Total = Input + Output` sigue siendo lo que el modelo recibió y generó. `agentchat.Usage` gana `cacheWrite`; `ModelUsageTotals` gana `cacheRead` y `cacheWrite`, que salen de `usage` con `json_extract` (turnos anteriores: 0).
+
+### Adjuntos del chat (fase 8)
+
+Archivos, imágenes pegadas o arrastradas, texto/código y PDF en **todos** los chats, respetando lo que cada modelo admite. Código: `backend/agentchat/attachments.go` (clasificación, límites, formato), `backend/llm/attachcaps.go` (capacidades por proveedor), `app_attachments.go` (bindings), migración 64.
+
+**Guardado.** `SaveChatFile(name, base64)` → ficha `{path, name, kind: image|pdf|text|other, mime, size}`. Misma carpeta de adjuntos de la app que las imágenes (`<datos>/adjuntos/`, nunca dentro del repositorio) y misma limpieza (al guardar, se borran los de más de 24 h). El archivo se llama `adjunto-<aleatorio>_<nombre saneado>`: el nombre original se **recupera del propio nombre del archivo**, sin estado aparte. El tipo se decide por **contenido**: `http.DetectContentType` para PNG/JPG/GIF/WebP y PDF; para texto, UTF-8 válido sin bytes nulos más la extensión (un `.log` con colores ANSI le parece binario al sniffer). Se rechaza con un error que nombra el archivo: binarios desconocidos, imágenes BMP/ICO, texto en UTF-16 o Latin-1, vacíos y lo que supere el tope de su tipo. `SaveChatAttachment` sigue existiendo (solo imágenes, ahora con el mismo tope de 5 MB).
+
+**Límites.** Imagen 5 MB (el de la API de Anthropic; sin redimensionar), PDF 24 MB, texto 512 KB por archivo, 10 adjuntos por mensaje. Viajan en `AgentAttachmentCapabilities` para que la UI los muestre. Se comprueban al guardar **y** al enviar (el archivo pudo cambiar). El PDF queda en 24 MB y no en 32 porque viaja en base64 (+33 %): con 32 MB de archivo el *request* pasaría el tope de 32 MB de Anthropic y la API contestaría 413.
+
+**Qué admite cada destino** (`AgentAttachmentCapabilities(agentID, model)`; `model` vacío = el del proveedor):
+
+| Destino | Imágenes | PDF | Texto | `known` | De dónde sale |
+|---|---|---|---|---|---|
+| Ollama | `capabilities` de `/api/show` contiene `vision` | no | sí | `true` (si `/api/show` falla: imágenes supuestas, `false`) | caché por URL+modelo, 10 min |
+| Anthropic API | `image_input` de la ficha del modelo | `pdf_input` | sí | `true` (sin Models API o ficha recortada: ambos supuestos, `false`) | la misma consulta que ya hace `capsFor` |
+| OpenAI-compatible, `openrouter.ai` | `architecture.input_modalities` contiene `image` (o la forma vieja `text+image->text`) | no | sí | `true` (modelo ausente del listado: supuesto, `false`) | `GET {base}/models` una vez por servidor, caché 10 min |
+| OpenAI-compatible, otro | supuestas | no | sí | `false` + nota | — |
+| Claude Code | sí (por ruta) | sí (por ruta) | sí | `true` | fijo |
+| Codex | sí (`-i`) | no | sí | `true` | fijo |
+| Antigravity | sí (por ruta, no verificado) | no | sí | `false` | fijo |
+
+**Envío.** `SendAgentChat` mantiene su firma; `images []string` lleva **las rutas de todos los adjuntos** (el nombre quedó por compatibilidad). Cada ruta se vuelve a resolver y clasificar en Go, y **tiene que estar dentro de la carpeta de adjuntos** (siguiendo enlaces): el texto de un adjunto viaja al modelo —quizá a un servidor remoto—, y aceptar rutas arbitrarias sería un «leé este archivo y mandalo». Se valida **antes** de tocar el proveedor, con el error nombrando destino y modelo:
+
+- **imagen**: como antes (Ollama `images` en base64, OpenAI `image_url` con data URI, Anthropic bloque `image`; CLIs por ruta o `-i`). Con `known=true` y sin visión → error; con `known=false` se envía igual y contesta el proveedor.
+- **texto**: se **pega en el mensaje** para todos los proveedores, CLIs incluidos (un solo camino, y no depende de que el CLI pueda leer ese directorio): `--- archivo: main.go ---` y un bloque con el lenguaje de la extensión; la cerca es más larga que cualquier racha de acentos graves del contenido. Se pega **después** de expandir las `@referencias`, para que un archivo con `@nota:…` adentro sea contenido y no una orden.
+- **PDF**: Anthropic → bloque `document` base64 **antes** de las imágenes y del texto; Claude Code → la ruta nombrada en el prompt (él lee PDF); **cualquier otro destino → error** («<proveedor · modelo> no puede leer PDF… usá Claude, o pegá el texto»). No hay extracción de texto ni dependencia nueva.
+- Con adjuntos y sin texto, el mensaje es «Revisá los archivos adjuntos.» (el historial guarda vacío).
+
+**Historial.** Migración 64: `agent_chat_messages.meta` y `meta_nonce` (BLOB, nullable). La fila `user` guarda `{"attachments":[{"name","kind","size"}]}` **cifrado** como `content` (un nombre de archivo es contenido) — nunca bytes ni rutas. `AgentChatMessages` devuelve `attachments` (siempre lista) y `PastTurn` (retomar un chat) lo trae en los turnos del usuario. El título de un chat sin texto es el nombre del primer archivo.
+
+**Los adjuntos pasados no se reenvían.** Al terminar un turno, la memoria de la sesión (`forgetAttachments`) suelta las imágenes y PDF de ese mensaje y deja `[Adjuntos de este mensaje, que ya no se reenvían: a.png, b.pdf]`: cuestan tokens en cada turno y a las 24 h el archivo ya no existe. El **texto pegado se conserva** (es parte de lo que se dijo). La siembra desde el vault (`SeedHistory`) usa el mismo texto con los nombres.
+
+**Costo conocido.** Un seguimiento sobre una imagen («¿y el botón de la esquina?») ya no la ve: hay que volver a adjuntarla. Es la contracara de no reenviar megabytes en cada mensaje.
+
 ## Contrato de bindings (Go ↔ TS)
 
 ```go
 type ModelServer struct {
     ID        string `json:"id"`
     Name      string `json:"name"`
-    Kind      string `json:"kind"`    // "ollama" | "openai"
-    BaseURL   string `json:"baseUrl"`
+    Kind      string `json:"kind"`    // "ollama" | "openai" | "anthropic"
+    BaseURL   string `json:"baseUrl"` // Anthropic: vacío al guardar = https://api.anthropic.com
     HasToken  bool   `json:"hasToken"`
     IsLocal   bool   `json:"isLocal"`
     InsecureTLS bool     `json:"insecureTls"`  // migración 60
     ContextTokens int    `json:"contextTokens"` // migración 62; 0 = la ventana del servidor; solo Ollama
+    Enabled      bool   `json:"enabled"`      // migración 63; SaveModelServer lo ignora → SetModelServerEnabled
+    DefaultModel string `json:"defaultModel"` // migración 63; "" = el predeterminado del cliente o el primero listado
+    SortOrder    int    `json:"sortOrder"`    // migración 63; SaveModelServer lo ignora → ReorderModelServers
     HeaderNames []string `json:"headerNames"` // solo nombres; los valores nunca viajan
     CreatedAt int64  `json:"createdAt"`
     UpdatedAt int64  `json:"updatedAt"`
@@ -358,9 +465,12 @@ func (a *App) BrainStatus() (BrainStatus, error)
 func (a *App) GetBrainRoot() (string, error)
 func (a *App) SetBrainRoot(root string) error
 func (a *App) SetAgentChatBrain(chatID string, enabled bool) error // vault.AgentChat gana `brain bool`
+func (a *App) SetAgentChatAgent(chatID, agentID string) error      // cambio de proveedor `llm:`
+func (a *App) SetModelServerEnabled(id string, enabled bool) error // fase 7
+func (a *App) ReorderModelServers(ids []string) error              // fase 7
 ```
 
-`ListAgents`, `AgentModelCatalog`, `AgentChatModes`, `AgentChatSupported`, `SendAgentChat`, `AgentAsk*` y `RespondAgentApproval` no cambian de firma.
+`ListAgents`, `AgentModelCatalog`, `AgentChatModes`, `AgentChatSupported`, `SendAgentChat`, `AgentAsk*` y `RespondAgentApproval` no cambian de firma. Fase 8 (adjuntos): `SaveChatFile(name, dataBase64) (agentchat.Attachment, error)`, `AgentAttachmentCapabilities(agentID, model) (agentchat.AttachmentCaps, error)`, y `attachments` en `AgentChatMessage` / `PastTurn`.
 
 ## Fases y reparto
 
@@ -374,5 +484,7 @@ Dos `fullstack-dev` en paralelo, A y B. Los archivos de choque (`app.go`, `front
 | **4. Herramientas MCP** | Conversión de `mcpTools()`, bucle de tool calls, auditoría, fallback sin herramientas | Eventos `tool` bien rotulados en el chat |
 | **5. Agente de código local** | Herramientas de workspace confinadas, modos → herramientas declaradas, aprobación vía `askApproval`, lista de riesgo, tests | Aviso de servidor remoto, rótulos de archivos y comandos en el chat, ayuda |
 | **6. Cerebro** | Herramientas de notas mejoradas y nuevas con tests, mensaje "Guardar en mi cerebro", carpeta raíz como setting, `vault-notes.md` | Control en el chat, setting en Acceso de IA, notas escritas con enlace, ayuda y `CHANGELOG.md` de todo el conjunto |
+| **7. Proveedores de IA** | `backend/llm/anthropic.go` (+ tests con `httptest` emulando el SSE de la Messages API), `Message.Raw`, migración 63 y repo, `SetModelServerEnabled`/`ReorderModelServers`, catálogo sin proveedores apagados, modelo por defecto, consumo con caché, regla 12 de `technical.md`. Dueño de `migrations.go` y `wailsjs/` | Gestor de proveedores en Utilidades: lista con interruptor y orden, tipo «Anthropic», presets por URL base (OpenRouter, Groq…), modelo por defecto, ayuda y `CHANGELOG.md` |
+| **8. Adjuntos** | `backend/agentchat/attachments.go`, `backend/llm/attachcaps.go` (+ bloque `document` de Anthropic), `app_attachments.go`, migración 64, `attachments` en el historial, tests. Dueño de `migrations.go` y `wailsjs/` | Selector/arrastrar/pegar en `AgentChat`, chips (en el compositor y en los mensajes pasados), avisos según `AgentAttachmentCapabilities`, i18n y ayuda |
 
 Cada fase cierra con `go build ./...`, `go vet ./...`, `go test ./...`, `cd frontend && pnpm build`, `./scripts/i18n-check.sh` y `codegraph sync`, y se prueba contra un Ollama local real (un modelo chico con soporte de herramientas, como `qwen2.5:3b`).

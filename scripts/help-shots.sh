@@ -67,7 +67,19 @@ utilities-ai-chat-usage aichatusage 1300 860
 utilities-models models 1300 560
 utilities-models-pull modelspull 1300 660
 utilities-models-detail modelsdetail 1300 700
-utilities-models-readonly modelsopenai 1100 300
+utilities-models-readonly modelsopenai 1100 420
+utilities-models-servers modelsservers 1300 640
+utilities-models-server-edit modelsserveredit 1300 800
+utilities-models-server-delete modelsserverdelete 1300 640
+utilities-models-servers-empty modelsserversempty 1300 640
+utilities-models-servers-narrow modelsserversnarrow 640 600
+utilities-providers modelsproviders 1300 760
+utilities-providers-off modelsprovidersoff 1300 700
+utilities-providers-usage modelsprovidersusage 1300 560
+utilities-providers-config modelsprovidersconfig 1300 700
+utilities-providers-form modelsprovidersform 1100 1150
+ai-chat-lost aichatlost 1440 800
+ai-chat-switched aichatlostcontinue 1440 800
 model-servers-add-dialog aichataddfail 1300 800
 ai-code-agent-tools toolevents 1440 860
 ai-code-agent-approval approvalrisky 1100 700
@@ -82,6 +94,18 @@ ai-project-folders projectmanage 1300 760
 ai-brain-chat brainon 1440 860
 ai-brain-disabled braindisabled 1440 860
 ai-brain-settings brainsettings 1100 900
+ai-attach-chips attachchips 620 700
+ai-attach-warn attachwarnpdf 620 700
+ai-attach-drop attachdrop 620 700
+ai-attach-sent attachresumed 620 700
+git-sidebar gitsidebar 700 1100
+git-sidebar-filter gitsidebarfilter 700 520
+git-sidebar-menu gitsidebarmenu 700 1100
+git-work-history gitworkhistory 1280 560
+git-work-changes gitworkdiff 1280 540
+git-work-stash gitworkstash 1280 470
+git-work-switcher gitworkswitcher 1100 520
+git-work-narrow gitworknarrow 760 560
 '
 
 mkdir -p docs/screenshots/es

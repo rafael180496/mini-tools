@@ -125,3 +125,46 @@ func TestModelServerUsageEndToEnd(t *testing.T) {
 		t.Fatalf("tras borrar = %+v", rep)
 	}
 }
+
+// Un chat que cambia de proveedor no arrastra su consumo anterior: cada turno
+// queda con el proveedor que lo atendió, y los turnos viejos (sin proveedor
+// en el usage) se quedan con el que tenía el chat al momento del cambio.
+func TestModelServerUsageFollowsProviderSwitch(t *testing.T) {
+	a, events := newChatApp(t)
+	f := &fakeChatLLM{reply: "Hola"}
+	srvA, _ := a.vault.SaveModelServer(vault.ModelServer{Name: "Uno", Kind: "ollama", BaseURL: "http://localhost:11434"}, "", false, nil, false)
+	srvB, _ := a.vault.SaveModelServer(vault.ModelServer{Name: "Dos", Kind: "openai", BaseURL: "https://api.example.com/v1"}, "", false, nil, false)
+	idA, idB := agentchat.LLMPrefix+srvA.ID, agentchat.LLMPrefix+srvB.ID
+	run := func(agent string) {
+		t.Helper()
+		if err := a.sendRecorded("note", "n1", "hola", agentchat.Turn{SessionID: "chat", AgentID: agent, Prompt: "hola", LLM: f}); err != nil {
+			t.Fatal(err)
+		}
+		waitTurnEnd(t, a, events, "chat")
+	}
+	run(idA)
+	run(idA)
+	// Un turno viejo, de antes de que se guardara el proveedor.
+	if err := a.vault.AppendAgentChatMessage("chat", vault.ChatRoleAssistant, "viejo", "", `{"input":100,"output":0,"total":100}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetAgentChatAgent("chat", idB); err != nil {
+		t.Fatal(err)
+	}
+	run(idB)
+
+	rep, err := a.ModelServerUsage(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turns := map[string]int{}
+	totals := map[string]int64{}
+	for _, s := range rep.Servers {
+		turns[s.AgentID] = s.Totals.Turns
+		totals[s.AgentID] = s.Totals.Total
+	}
+	// A: dos turnos de 10 y el viejo de 100. B: uno solo, de 10.
+	if turns[idA] != 3 || totals[idA] != 120 || turns[idB] != 1 || totals[idB] != 10 {
+		t.Fatalf("A=%d/%d B=%d/%d, quería A=3/120 B=1/10", turns[idA], totals[idA], turns[idB], totals[idB])
+	}
+}

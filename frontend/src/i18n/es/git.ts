@@ -17,6 +17,7 @@ import commandLog from './gitparts/commandLog'
 import errorBoundary from './gitparts/errorBoundary'
 import commitMsg from './gitparts/commitMsg'
 import search from './gitparts/search'
+import workbench from './gitparts/workbench'
 
 export default {
     tab,
@@ -36,4 +37,5 @@ export default {
     errorBoundary,
     commitMsg,
     search,
+    workbench,
 }

@@ -232,6 +232,55 @@ func (s *Store) SetAgentChatSettings(id, model, effort, mode string) error {
 	return nil
 }
 
+// AgentChatAgent devuelve el agente con el que está el chat; ok=false si no hay
+// fila.
+func (s *Store) AgentChatAgent(id string) (agentID string, ok bool, err error) {
+	err = s.db.QueryRow(`SELECT agent_id FROM agent_chats WHERE id = ?`, id).Scan(&agentID)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, i18n.Errorf(i18n.Msg{ES: "vault: leyendo el chat: %w", EN: "vault: reading the chat: %w"}, err)
+	}
+	return agentID, true, nil
+}
+
+// SetAgentChatAgent pasa el chat de un proveedor de modelos (`from`) a otro
+// (`to`) y vacía el modelo guardado: el modelo elegido era de `from` y en `to`
+// no existe, así que lo que corresponde es el predeterminado del nuevo
+// proveedor (el frontend puede fijar otro después con SetAgentChatSettings).
+// Esfuerzo y modo se conservan: no dependen del proveedor.
+//
+// **El consumo ya hecho se queda con quien lo produjo.** La atribución del
+// consumo lee `agentId` del usage de cada turno, y los turnos anteriores a esa
+// clave no la traen y caen al agente del chat; si no se les escribe `from`
+// acá, este cambio movería TODO el pasado del chat al proveedor nuevo. Todo en
+// una transacción, y con `WHERE agent_id = from` para que dos cambios
+// simultáneos no se pisen.
+func (s *Store) SetAgentChatAgent(id, from, to string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: cambiando el proveedor del chat: %w", EN: "vault: switching the chat provider: %w"}, err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`UPDATE agent_chat_messages SET usage = json_set(usage, '$.agentId', ?)
+		 WHERE chat_id = ? AND usage <> '' AND json_valid(usage) AND json_extract(usage, '$.agentId') IS NULL`,
+		from, id); err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: cambiando el proveedor del chat: %w", EN: "vault: switching the chat provider: %w"}, err)
+	}
+	res, err := tx.Exec(
+		`UPDATE agent_chats SET agent_id = ?, model = '', updated_at = ? WHERE id = ? AND agent_id = ?`,
+		to, time.Now().Unix(), id, from)
+	if err != nil {
+		return i18n.Errorf(i18n.Msg{ES: "vault: cambiando el proveedor del chat: %w", EN: "vault: switching the chat provider: %w"}, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return i18n.Errorf(i18n.Msg{ES: "vault: el chat cambió mientras se cambiaba su proveedor", EN: "vault: the chat changed while its provider was being switched"})
+	}
+	return tx.Commit()
+}
+
 // DeleteAgentChat borra la entrada y los mensajes que la app guardó de ella.
 // **No borra la conversación del CLI**: esa vive en su propio almacenamiento y
 // esta app no la administra. Lo que se pierde es el atajo para retomarla desde

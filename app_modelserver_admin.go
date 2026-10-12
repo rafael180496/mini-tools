@@ -24,8 +24,8 @@ import (
 // propias y la preferencia de TLS del servidor guardado salen del vault acá y
 // no cruzan hacia el frontend. Todos los métodos pasan por requireUnlocked.
 //
-// Solo Ollama expone estas operaciones. Un servidor compatible con OpenAI
-// permite listar y nada más: el resto responde un *llm.UnsupportedError con
+// Solo Ollama expone estas operaciones. Un servidor compatible con OpenAI y
+// la API de Anthropic permiten listar y nada más: el resto responde un *llm.UnsupportedError con
 // el motivo, y la interfaz ya esconde esas acciones.
 
 // modelPullEventPrefix es el prefijo del evento de Wails de una descarga: el
@@ -196,7 +196,11 @@ func (a *App) ModelServerPull(serverID, model string) (string, error) {
 	// Se rechaza ya y no dentro de la goroutine: un servidor que no sabe
 	// descargar no debería devolver un id de una descarga que nunca existió.
 	if m.Kind != vault.ModelServerOllama {
-		return "", &llm.UnsupportedError{Kind: "OpenAI", Action: i18n.T(i18n.Msg{ES: "descargar modelos", EN: "pulling models"})}
+		kind := "OpenAI"
+		if m.Kind == vault.ModelServerAnthropic {
+			kind = "Anthropic"
+		}
+		return "", &llm.UnsupportedError{Kind: kind, Action: i18n.T(i18n.Msg{ES: "descargar modelos", EN: "pulling models"})}
 	}
 
 	reg := &a.modelPulls

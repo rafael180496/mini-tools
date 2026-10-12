@@ -1445,6 +1445,49 @@ var migrations = []migration{
 			return err
 		},
 	},
+	{
+		version: 63,
+		desc:    "agrega a model_servers enabled, default_model y sort_order (gestor de proveedores de IA); el tipo anthropic no necesita cambio de schema",
+		apply: func(tx *sql.Tx) error {
+			// enabled nace en 1 para que ningún servidor existente desaparezca de los
+			// selectores. default_model es el modelo que se usa cuando un turno no
+			// elige ninguno ('' = el primero que liste el servidor). sort_order nace
+			// en 0 en todos: el desempate por nombre conserva el orden de siempre
+			// hasta que alguien reordene. kind es TEXT sin CHECK, así que sumar
+			// 'anthropic' no toca el schema.
+			for _, stmt := range []string{
+				`ALTER TABLE model_servers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+				`ALTER TABLE model_servers ADD COLUMN default_model TEXT NOT NULL DEFAULT ''`,
+				`ALTER TABLE model_servers ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
+			} {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+	{
+		version: 64,
+		desc:    "agrega agent_chat_messages.meta y meta_nonce (adjuntos de cada mensaje del usuario: nombre, tipo y tamaño, cifrados)",
+		apply: func(tx *sql.Tx) error {
+			// Los adjuntos de un mensaje (imágenes, PDF, archivos de texto) se
+			// muestran como chips al retomar el chat. Se guarda SOLO su ficha
+			// —nombre, tipo, tamaño—, nunca el contenido. Va como JSON cifrado
+			// con el mismo esquema que `content`: un nombre de archivo
+			// («despido-garcia.pdf») es contenido de la conversación. Nacen
+			// vacías: las filas anteriores simplemente no tienen adjuntos.
+			for _, stmt := range []string{
+				`ALTER TABLE agent_chat_messages ADD COLUMN meta BLOB`,
+				`ALTER TABLE agent_chat_messages ADD COLUMN meta_nonce BLOB`,
+			} {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

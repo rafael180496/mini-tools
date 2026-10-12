@@ -13,17 +13,27 @@ import {useT} from '../i18n'
 // vueltas —no se instala nada— y el formulario es el mismo de Configuración
 // (`ModelServerForm`), no una copia reducida.
 //
+// También sirve para EDITAR un servidor guardado (`server`) y para DUPLICARLO
+// (`template`): lo usa la lista de servidores de Utilidades → Modelos. Es el
+// mismo formulario en los tres casos —no una copia reducida—; solo cambian el
+// título y el aviso de arriba.
+//
 // Esc y el clic fuera lo cierran; guardar avisa con `onSaved` para que quien lo
 // abrió elija el servidor nuevo.
 
 interface Props {
+    // Servidor guardado que se edita; sin él es un alta.
+    server?: main.ModelServer
+    // Servidor del que parte un alta nueva (Duplicar).
+    template?: main.ModelServer
     onSaved: (saved: main.ModelServer) => void
     onClose: () => void
 }
 
-export default function ModelServerDialog({onSaved, onClose}: Props) {
+export default function ModelServerDialog({server, template, onSaved, onClose}: Props) {
     const t = useT()
     const m = t.settings.modelServers
+    const d = t.models.servers.dialog
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -52,8 +62,8 @@ export default function ModelServerDialog({onSaved, onClose}: Props) {
             >
                 <div className="flex items-start gap-2">
                     <h2 id="model-server-dialog-title" className="flex min-w-0 flex-1 items-center gap-2 text-base font-semibold">
-                        <Icon name="add_circle" size={18} className="shrink-0 text-primary" />
-                        {m.dialogTitle}
+                        <Icon name={server ? 'edit' : template ? 'content_copy' : 'add_circle'} size={18} className="shrink-0 text-primary" />
+                        {server ? d.editTitle({name: server.name}) : template ? d.duplicateTitle({name: template.name}) : m.dialogTitle}
                     </h2>
                     <button
                         type="button"
@@ -66,10 +76,10 @@ export default function ModelServerDialog({onSaved, onClose}: Props) {
                     </button>
                 </div>
                 <p className="flex items-start gap-1.5 rounded-md bg-primary/10 px-2.5 py-2 text-xs text-on-surface-variant">
-                    <Icon name="cloud_done" size={15} className="mt-px shrink-0 text-primary" />
-                    {m.dialogIntro}
+                    <Icon name={server || template ? 'info' : 'cloud_done'} size={15} className="mt-px shrink-0 text-primary" />
+                    {server ? d.editIntro : template ? d.duplicateIntro : m.dialogIntro}
                 </p>
-                <ModelServerForm server={null} onSaved={onSaved} onCancel={onClose} bare autoFocus />
+                <ModelServerForm server={server ?? null} template={template} onSaved={onSaved} onCancel={onClose} bare autoFocus />
             </div>
         </div>
     )

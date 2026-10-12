@@ -247,3 +247,46 @@ func TestRemoveGitRepoRemovesChatMessages(t *testing.T) {
 		t.Fatalf("c2 no debía tocarse: %+v", m)
 	}
 }
+
+// La ficha de los adjuntos de un mensaje (migración 64) se guarda cifrada y
+// vuelve intacta por las dos lecturas; una fila sin ficha vuelve con Meta "".
+func TestAgentChatMessagesMetaEncryptedAtRest(t *testing.T) {
+	s := newChatStore(t)
+	if err := s.CreateAgentChat("c1", "", "llm:x", "Con adjuntos", "note", "n1"); err != nil {
+		t.Fatal(err)
+	}
+	meta := `{"attachments":[{"name":"despido-garcia.pdf","kind":"pdf","size":1234}]}`
+	if err := s.AppendAgentChatMessages("c1", []NewChatMessage{
+		{Role: ChatRoleUser, Content: "mirá esto", Meta: meta},
+		{Role: ChatRoleAssistant, Content: "ok"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for name, get := range map[string]func() ([]StoredChatMessage, error){
+		"List":   func() ([]StoredChatMessage, error) { return s.ListAgentChatMessages("c1") },
+		"Recent": func() ([]StoredChatMessage, error) { return s.RecentAgentChatMessages("c1", 10) },
+	} {
+		got, err := get()
+		if err != nil || len(got) != 2 {
+			t.Fatalf("%s: %+v, %v", name, got, err)
+		}
+		if got[0].Meta != meta || got[1].Meta != "" {
+			t.Errorf("%s: meta = %q / %q", name, got[0].Meta, got[1].Meta)
+		}
+	}
+	// El nombre de un archivo es contenido: no puede quedar en claro en el archivo.
+	rows, err := s.db.Query(`SELECT meta FROM agent_chat_messages WHERE meta IS NOT NULL`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(raw, []byte("despido")) {
+			t.Error("la ficha de adjuntos quedó en texto plano")
+		}
+	}
+}

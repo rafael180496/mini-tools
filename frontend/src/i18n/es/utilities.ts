@@ -32,8 +32,8 @@ export default {
             hint: 'conversar con Claude, Codex, Antigravity o un modelo local, con historial y buscador',
         },
         modelManager: {
-            name: 'Modelos',
-            hint: 'ver, descargar y borrar los modelos de un servidor Ollama, local o remoto',
+            name: 'Proveedores de IA',
+            hint: 'servidores propios y APIs en la nube en un solo lugar: activarlos, ordenarlos, ver sus modelos y su consumo',
         },
     },
     // Pestaña «Chat de IA»: historial a la izquierda, conversación al centro.
@@ -80,6 +80,27 @@ export default {
         untitled: 'Sin título',
         openTitle: (p: {agent: string; where: string}) =>
             `Retoma esta conversación con ${p.agent}${p.where ? ` · ${p.where}` : ''}. Sus mensajes se vuelven a dibujar al abrirla.`,
+        lost: {
+            disabledName: (p: {name: string}) => `${p.name} (desactivado)`,
+            removedName: 'Proveedor eliminado',
+            openTitle: (p: {agent: string}) =>
+                `Esta conversación era de ${p.agent}, que ya no está disponible. Se abre para leerla y seguir con otro proveedor («Continuar con otro proveedor»).`,
+            title: 'Proveedor no disponible',
+            titleDisabled: (p: {name: string}) => `«${p.name}» está desactivado.`,
+            titleRemoved: 'El proveedor de esta conversación se eliminó.',
+            body: 'Los mensajes se conservan y se ven acá. Para seguir, elegí otro proveedor: recibe lo hablado como contexto.',
+            pickLabel: 'Continuar con',
+            pickTitle: 'Proveedor de modelos con el que seguir esta conversación. Es el mismo hilo: no se abre otra conversación.',
+            continue: 'Continuar con otro proveedor',
+            continueTitle: (p: {agent: string}) => `Sigue esta conversación con ${p.agent}: mismo historial, y lo hablado hasta ahora le llega como contexto. No se envía nada hasta que escribas.`,
+            add: 'Agregar proveedor',
+            addTitle: 'No hay otro proveedor de modelos disponible. Abre el formulario para agregar uno (servidor propio o API en la nube).',
+        },
+        switched: {
+            title: (p: {from: string; to: string}) => `Ahora contesta ${p.to} (antes ${p.from}).`,
+            body: 'Es la misma conversación: el modelo nuevo recibe los mensajes anteriores como contexto, pero no recuerda nada por su cuenta y puede tener una ventana de contexto distinta.',
+            dismissTitle: 'Cierra este aviso',
+        },
         notInstalledTitle: (p: {agent: string}) =>
             `Esta conversación es de ${p.agent}, que ya no está disponible en esta máquina. Se puede renombrar o borrar, pero no retomar.`,
         renameTitle: 'Cambiar el nombre de esta conversación. El título sale de tu primer mensaje, que casi nunca es cómo la vas a buscar.',
@@ -99,7 +120,7 @@ export default {
         header: {
             providerLabel: 'Proveedor',
             providerTitle:
-                'Con quién hablás: un CLI instalado (Claude Code, Codex, Antigravity) o un servidor de modelos. Cambiarlo en una conversación ya empezada abre una nueva: cada proveedor guarda su propio hilo.',
+                'Con quién hablás: un CLI instalado (Claude Code, Codex, Antigravity) o un proveedor de modelos (servidor propio o API en la nube). Entre proveedores de modelos podés cambiar a mitad de conversación: sigue la misma, y el nuevo recibe lo hablado como contexto. Cambiar hacia o desde un CLI abre una conversación nueva, porque el hilo de un CLI es del propio CLI.',
             providerPlaceholder: 'Elegí un proveedor',
             modelLabel: 'Modelo',
             modelTitle: 'Modelo que contesta de acá en adelante. La lista la informa el propio proveedor; «Por defecto» usa el que tenga configurado.',

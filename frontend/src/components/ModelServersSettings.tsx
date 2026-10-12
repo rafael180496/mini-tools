@@ -1,26 +1,29 @@
 import {useCallback, useEffect, useState} from 'react'
-import {DeleteModelServer, DetectLocalOllama, ListModelServers, SaveModelServer, TestModelServer} from '../../wailsjs/go/main/App'
+import {DetectLocalOllama, ListModelServers, SaveModelServer} from '../../wailsjs/go/main/App'
 import {main} from '../../wailsjs/go/models'
-import ConfirmDialog from './ConfirmDialog'
 import Icon from './Icon'
-import ModelServerForm, {LOCAL_OLLAMA_URL, ProbeResult, type Probe} from './ModelServerForm'
+import ModelServerForm, {LOCAL_OLLAMA_URL} from './ModelServerForm'
 import {HealthDot} from './agent/HealthIndicators'
 import {errorText, useT} from '../i18n'
-import {MODEL_SERVER_PREFIX, STORED_HEADERS} from '../lib/modelServers'
-import {recordProbe, useModelServersHealth, type Health} from '../lib/modelServerHealth'
-import {notifyModelServersChanged} from '../lib/appBus'
+import {MODEL_SERVER_PREFIX, providerGroup, providerIcon, providerKind} from '../lib/modelServers'
+import {useModelServersHealth, type Health} from '../lib/modelServerHealth'
+import {notifyModelServersChanged, onModelServersChanged, requestOpenUtility} from '../lib/appBus'
 
-// Sección "Servidores de modelos" de Configuración → IA.
+// Sección "Proveedores de IA" de Configuración → IA: un RESUMEN.
 //
-// Un servidor de modelos (Ollama, o cualquiera que hable la API de OpenAI) es
-// otro PROVEEDOR de IA, igual que Claude Code o Codex pero sin programa de
-// terminal: el backend lo publica en el catálogo de agentes con id `llm:<id>`
-// y por eso entra solo al chat, a los selectores y a los botones de un turno.
-// Esta pantalla solo administra la lista; no hay nada que "abrir".
+// Un proveedor (un servidor propio —Ollama, LM Studio, vLLM…— o una API alojada
+// —OpenRouter, OpenAI, Anthropic…—) es otro agente de IA, igual que Claude Code
+// o Codex pero sin programa de terminal: el backend lo publica en el catálogo de
+// agentes con id `llm:<id>` y por eso entra solo al chat, a los selectores y a
+// los botones de un turno.
 //
-// El formulario de alta y edición es `ModelServerForm`, compartido con el
-// diálogo que abre el selector de proveedor del chat. Las reglas del token y de
-// las cabeceras (nunca vuelven; vacío = conservar) viven ahí.
+// La administración de verdad —activar, ordenar, probar, duplicar, eliminar, ver
+// modelos y consumo— vive en Utilidades → Proveedores de IA; acá queda lo que
+// hace falta para saber qué hay y llegar ahí: los conteos por grupo, una fila
+// compacta por proveedor y el botón de agregar (que sigue siendo el mismo
+// formulario, `ModelServerForm`, compartido con el selector del chat). Las
+// reglas de la API key y de las cabeceras (nunca vuelven; vacío = conservar)
+// viven en ese formulario.
 
 const DISMISS_KEY = 'mini-tools:localOllamaSuggestionDismissed'
 
@@ -40,14 +43,13 @@ function sameUrl(a: string, b: string): boolean {
 export default function ModelServersSettings() {
     const t = useT()
     const m = t.settings.modelServers
+    const P = t.models.providers
     const [servers, setServers] = useState<main.ModelServer[] | null>(null)
     const [error, setError] = useState('')
     const [detected, setDetected] = useState(false)
     const [dismissed, setDismissed] = useState(readDismissed)
-    // Qué se está editando: un servidor existente, o `null` dentro para uno nuevo.
+    // Qué se está editando: un proveedor existente, o `null` dentro para uno nuevo.
     const [editor, setEditor] = useState<{server: main.ModelServer | null} | null>(null)
-    const [probes, setProbes] = useState<Record<string, Probe>>({})
-    const [toDelete, setToDelete] = useState<main.ModelServer | null>(null)
 
     const reload = useCallback(() => {
         ListModelServers()
@@ -70,7 +72,9 @@ export default function ModelServersSettings() {
             .catch(() => setDetected(false))
     }, [reload])
 
-    const kindLabel = (k: string) => (k === 'openai' ? m.kindOpenai : m.kindOllama)
+    // La lista cambia desde Utilidades (activar, ordenar, borrar) con esta
+    // pantalla abierta debajo: se relee.
+    useEffect(() => onModelServersChanged(reload), [reload])
 
     // La sugerencia sobra si ya hay un Ollama apuntando a esa dirección.
     const alreadyLocal = (servers ?? []).some((s) => s.kind === 'ollama' && sameUrl(s.baseUrl, LOCAL_OLLAMA_URL))
@@ -89,7 +93,7 @@ export default function ModelServersSettings() {
         setError('')
         try {
             await SaveModelServer(
-                main.ModelServer.createFrom({id: '', name: m.localName, kind: 'ollama', baseUrl: LOCAL_OLLAMA_URL, hasToken: false, insecureTls: false, headerNames: []}),
+                main.ModelServer.createFrom({id: '', name: m.localName, kind: 'ollama', baseUrl: LOCAL_OLLAMA_URL, hasToken: false, insecureTls: false, enabled: true, defaultModel: '', headerNames: []}),
                 '',
                 false,
                 {},
@@ -101,68 +105,41 @@ export default function ModelServersSettings() {
             setError(errorText(e))
         }
     }
-    function openNew() {
-        setEditor({server: null})
-        setError('')
-    }
 
-    function openEdit(s: main.ModelServer) {
-        setEditor({server: s})
-        setError('')
-    }
-
-    function onSaved(saved: main.ModelServer) {
-        // La prueba anterior hablaba de la configuración vieja.
-        setProbes((p) => {
-            const {[saved.id]: _gone, ...rest} = p
-            return rest
-        })
+    function onSaved() {
         setEditor(null)
         reload()
     }
-    async function testSaved(s: main.ModelServer) {
-        setProbes((p) => ({...p, [s.id]: {state: 'testing'}}))
-        try {
-            // serverId + token vacío: el backend usa el token guardado, que
-            // esta pantalla nunca tiene.
-            // Cabeceras null + serverId: el backend usa las guardadas.
-            const probe = await TestModelServer(s.kind, s.baseUrl, '', s.id, s.insecureTls, STORED_HEADERS)
-            recordProbe(s.id, probe)
-            setProbes((p) => ({...p, [s.id]: {state: 'done', probe}}))
-        } catch (e) {
-            setProbes((p) => ({...p, [s.id]: {state: 'error', error: errorText(e)}}))
-        }
-    }
-    async function remove(s: main.ModelServer) {
-        setError('')
-        try {
-            await DeleteModelServer(s.id)
-            notifyModelServersChanged()
-            reload()
-        } catch (e) {
-            setError(errorText(e))
-        }
-    }
 
-    // Una lectura de salud de cada servidor al abrir la pantalla (sin sondeo).
+    // Una lectura de salud de cada proveedor activo al abrir la pantalla (sin sondeo).
     const health = useModelServersHealth(
-        (servers ?? []).map((s) => MODEL_SERVER_PREFIX + s.id),
+        (servers ?? []).filter((s) => s.enabled).map((s) => MODEL_SERVER_PREFIX + s.id),
         servers !== null,
     )
+
+    const list = servers ?? []
+    const counts = {
+        local: list.filter((s) => providerGroup(s) === 'local').length,
+        remote: list.filter((s) => providerGroup(s) === 'remote').length,
+        cloud: list.filter((s) => providerGroup(s) === 'cloud').length,
+    }
+    const off = list.filter((s) => !s.enabled).length
 
     return (
         <section data-model-servers className="flex flex-col gap-2">
             <h3 className="px-1 text-ui-11 font-semibold uppercase tracking-wider text-on-surface-variant">{m.title}</h3>
             <p className="px-1 text-xs text-on-surface-variant">{m.intro}</p>
 
-            {/* Lo primero que se pregunta quien llega acá con un Ollama en otra
-                máquina es si tiene que instalar algo. */}
-            <p data-no-install className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-on-surface-variant">
-                <Icon name="cloud_done" size={16} className="mt-px shrink-0 text-primary" />
-                <span>
-                    <strong className="font-semibold text-on-surface">{m.noInstallTitle}.</strong> {m.noInstall}
-                </span>
-            </p>
+            <button
+                type="button"
+                data-manage-in-utilities
+                onClick={() => requestOpenUtility('modelManager')}
+                title={t.models.servers.settingsLinkTitle}
+                className="flex items-center gap-1.5 self-start rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+                <Icon name="open_in_new" size={14} />
+                {t.models.servers.settingsLink}
+            </button>
 
             {error && <p className="rounded bg-error-container/40 px-2 py-1 text-ui-11 text-error">{error}</p>}
 
@@ -193,143 +170,77 @@ export default function ModelServersSettings() {
 
             {servers === null && <p className="px-1 text-xs text-on-surface-variant/70">{m.loading}</p>}
 
-            {servers !== null && servers.length === 0 && !editor && (
+            {servers !== null && list.length === 0 && !editor && (
                 <p className="rounded-lg border border-dashed border-outline-variant px-3 py-3 text-xs text-on-surface-variant">{m.empty}</p>
             )}
 
-            {(servers ?? []).map((s) => {
-                const probe = probes[s.id]
-                const editing = editor?.server?.id === s.id
-                if (editing) return null
-                return (
-                    <div key={s.id} className="flex flex-col gap-2 rounded-lg border border-outline-variant bg-surface-container-highest p-3">
-                        <div className="flex items-center gap-3">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                                <Icon name={s.isLocal ? 'computer' : 'cloud'} size={18} />
+            {list.length > 0 && (
+                <>
+                    <p data-providers-summary className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-on-surface-variant">
+                        {(['local', 'remote', 'cloud'] as const).map((g) => (
+                            <span key={g} title={P.groupTitles[g]} className="flex items-center gap-1">
+                                <Icon name={g === 'local' ? 'computer' : g === 'remote' ? 'lan' : 'cloud'} size={13} />
+                                {m.summaryGroup({group: P.groups[g], n: counts[g]})}
                             </span>
-                            <div className="min-w-0 flex-1">
-                                <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-on-surface">
-                                    <span className="truncate">{s.name}</span>
-                                    <span
-                                        title={m.kindBadgeTitle({kind: kindLabel(s.kind)})}
-                                        className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 font-normal text-on-surface-variant"
-                                    >
-                                        {kindLabel(s.kind)}
+                        ))}
+                        {off > 0 && <span title={P.disabledBanner}>{m.summaryOff({n: off})}</span>}
+                    </p>
+                    <ul className="flex flex-col divide-y divide-outline-variant/50 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-highest">
+                        {list.map((s) => {
+                            if (editor?.server?.id === s.id) return null
+                            const group = providerGroup(s)
+                            return (
+                                <li key={s.id} data-provider-summary-row={s.id} className={`flex items-center gap-2.5 px-3 py-2 ${s.enabled ? '' : 'opacity-60'}`}>
+                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary" title={P.kindTitles[providerKind(s.kind)]}>
+                                        <Icon name={providerIcon(s)} size={15} />
                                     </span>
-                                    {!s.isLocal && (
-                                        <span
-                                            data-remote-badge
-                                            title={m.remoteBadgeTitle}
-                                            className="flex shrink-0 items-center gap-1 rounded-full border border-tertiary/40 bg-tertiary/10 px-1.5 text-ui-10 font-normal text-tertiary"
-                                        >
-                                            <Icon name="cloud" size={11} />
-                                            {m.remoteBadge}
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-on-surface">
+                                            <span className="truncate">{s.name}</span>
+                                            <span className={`shrink-0 rounded-full px-1.5 text-ui-10 font-normal ${group === 'local' ? 'bg-secondary/15 text-secondary' : 'bg-tertiary/15 text-tertiary'}`} title={P.groupTitles[group]}>
+                                                {P.groups[group]}
+                                            </span>
+                                            <span className="shrink-0 rounded-full bg-surface-variant px-1.5 text-ui-10 font-normal text-on-surface-variant">{P.kindShort[providerKind(s.kind)]}</span>
+                                            {!s.enabled && <span className="shrink-0 text-ui-10 font-normal text-on-surface-variant">{P.disabled}</span>}
                                         </span>
-                                    )}
-                                    {s.hasToken ? (
-                                        <span
-                                            title={m.tokenBadgeTitle}
-                                            className="flex shrink-0 items-center gap-1 rounded-full bg-secondary/15 px-1.5 text-ui-10 font-normal text-secondary"
-                                        >
-                                            <Icon name="key" size={11} />
-                                            {m.tokenBadge}
-                                        </span>
-                                    ) : (
-                                        <span
-                                            title={m.noTokenTitle}
-                                            className="shrink-0 rounded-full px-1.5 text-ui-10 font-normal text-on-surface-variant/70"
-                                        >
-                                            {m.noToken}
-                                        </span>
-                                    )}
-                                    {(s.headerNames ?? []).length > 0 && (
-                                        <span
-                                            data-headers-badge
-                                            title={m.headersBadgeTitle({names: (s.headerNames ?? []).join(', ')})}
-                                            className="flex shrink-0 items-center gap-1 rounded-full bg-surface-variant px-1.5 text-ui-10 font-normal text-on-surface-variant"
-                                        >
-                                            <Icon name="data_array" size={11} />
-                                            {m.headersBadge({count: (s.headerNames ?? []).length})}
-                                        </span>
-                                    )}
-                                    {s.insecureTls && (
-                                        <span
-                                            data-insecure-tls-badge
-                                            title={m.insecureTlsBadgeTitle}
-                                            className="flex shrink-0 items-center gap-1 rounded-full border border-tertiary/40 bg-tertiary/10 px-1.5 text-ui-10 font-normal text-tertiary"
-                                        >
-                                            <Icon name="lock_open" size={11} />
-                                            {m.insecureTlsBadge}
-                                        </span>
-                                    )}
-                                </span>
-                                <span className="block truncate font-mono text-xs text-on-surface-variant" title={s.baseUrl}>
-                                    {s.baseUrl}
-                                </span>
-                                <HealthLine health={health[MODEL_SERVER_PREFIX + s.id]} name={s.name} />
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                                <button
-                                    type="button"
-                                    data-model-server-test
-                                    onClick={() => void testSaved(s)}
-                                    disabled={probe?.state === 'testing'}
-                                    title={m.testTitle({name: s.name})}
-                                    className="flex items-center gap-1 rounded px-2 py-1 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
-                                >
-                                    <Icon name="network_check" size={14} />
-                                    {probe?.state === 'testing' ? m.testing : m.test}
-                                </button>
-                                <button
-                                    type="button"
-                                    data-model-server-edit={s.id}
-                                    onClick={() => openEdit(s)}
-                                    title={m.editTitle({name: s.name})}
-                                    className="rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
-                                >
-                                    <Icon name="edit" size={16} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setToDelete(s)}
-                                    title={m.deleteTitle({name: s.name})}
-                                    className="rounded p-1 text-on-surface-variant hover:bg-error-container/40 hover:text-error"
-                                >
-                                    <Icon name="delete" size={16} />
-                                </button>
-                            </div>
-                        </div>
-                        {probe && probe.state !== 'testing' && <ProbeResult probe={probe} />}
-                    </div>
-                )
-            })}
-
-            {editor && (
-                <ModelServerForm key={editor.server?.id ?? 'new'} server={editor.server} onSaved={onSaved} onCancel={() => setEditor(null)} />
+                                        {s.enabled && <HealthLine health={health[MODEL_SERVER_PREFIX + s.id]} name={s.name} />}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        data-model-server-edit={s.id}
+                                        onClick={() => {
+                                            setEditor({server: s})
+                                            setError('')
+                                        }}
+                                        title={m.editTitle({name: s.name})}
+                                        aria-label={m.edit}
+                                        className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
+                                    >
+                                        <Icon name="edit" size={15} />
+                                    </button>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                </>
             )}
+
+            {editor && <ModelServerForm key={editor.server?.id ?? 'new'} server={editor.server} onSaved={onSaved} onCancel={() => setEditor(null)} />}
 
             {!editor && (
                 <button
                     type="button"
                     data-model-server-add
-                    onClick={openNew}
+                    onClick={() => {
+                        setEditor({server: null})
+                        setError('')
+                    }}
                     title={m.addTitle}
                     className="flex items-center gap-1.5 self-start rounded-lg border border-outline-variant px-3 py-1.5 text-xs text-primary hover:bg-primary/10"
                 >
                     <Icon name="add" size={14} />
                     {m.add}
                 </button>
-            )}
-
-            {toDelete && (
-                <ConfirmDialog
-                    title={m.deleteConfirmTitle}
-                    description={m.deleteConfirm({name: toDelete.name})}
-                    confirmLabel={m.deleteConfirmLabel}
-                    danger
-                    onConfirm={() => void remove(toDelete)}
-                    onClose={() => setToDelete(null)}
-                />
             )}
         </section>
     )

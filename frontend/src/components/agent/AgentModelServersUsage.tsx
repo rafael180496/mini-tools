@@ -3,6 +3,7 @@ import {ModelServerUsage} from '../../../wailsjs/go/main/App'
 import {main} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import {formatDateTime, formatNumber, useT} from '../../i18n'
+import {MODEL_SERVER_PREFIX, providerGroup, type ProviderGroup} from '../../lib/modelServers'
 
 // Consumo de los servidores de modelos (Ollama, compatibles con OpenAI), dentro
 // del panel de consumo.
@@ -50,7 +51,7 @@ function DailyBars({days, title}: {days: main.ModelUsageDay[]; title: string}) {
     )
 }
 
-function ServerCard({s}: {s: main.ModelServerUsage}) {
+function ServerCard({s, group}: {s: main.ModelServerUsage; group: ProviderGroup}) {
     const t = useT()
     const L = t.agent.usage.servers
     const used = s.totals.turns > 0
@@ -60,7 +61,7 @@ function ServerCard({s}: {s: main.ModelServerUsage}) {
     return (
         <div className="mb-1.5 rounded border border-outline-variant px-2 py-1.5">
             <div className="flex items-center gap-1.5">
-                <Icon name={s.deleted ? 'delete_sweep' : s.isLocal ? 'computer' : 'cloud'} size={12} className="shrink-0 text-on-surface-variant" />
+                <Icon name={s.deleted ? 'delete_sweep' : group === 'local' ? 'computer' : group === 'remote' ? 'lan' : 'cloud'} size={12} className="shrink-0 text-on-surface-variant" />
                 <span className="min-w-0 truncate font-medium text-on-surface" title={s.deleted ? L.deletedTitle : s.name}>
                     {s.name}
                 </span>
@@ -68,12 +69,12 @@ function ServerCard({s}: {s: main.ModelServerUsage}) {
                     el rótulo de local/remoto no aplica y repetirlo sería ruido. */}
                 {!s.deleted && (
                     <span
-                        title={s.isLocal ? L.localTitle : L.remoteTitle}
+                        title={group === 'local' ? L.localTitle : group === 'remote' ? L.remoteTitle : L.cloudTitle}
                         className={`shrink-0 rounded-full px-1.5 text-ui-10 ${
-                            s.isLocal ? 'bg-secondary/15 text-secondary' : 'bg-tertiary/15 text-tertiary'
+                            group === 'local' ? 'bg-secondary/15 text-secondary' : 'bg-tertiary/15 text-tertiary'
                         }`}
                     >
-                        {s.isLocal ? L.local : L.remote}
+                        {group === 'local' ? L.local : group === 'remote' ? L.remote : L.cloud}
                     </span>
                 )}
                 {used && (
@@ -137,31 +138,49 @@ function ServerCard({s}: {s: main.ModelServerUsage}) {
     )
 }
 
-export default function AgentModelServersUsage() {
+interface Props {
+    // Con un proveedor, el informe se reduce a ese (es lo que muestra la pestaña
+    // «Consumo» de Proveedores de IA); sin él, todos (el panel de consumo).
+    server?: main.ModelServer
+}
+
+export default function AgentModelServersUsage({server}: Props) {
     const t = useT()
     const L = t.agent.usage.servers
     const [report, setReport] = useState<main.ModelServerUsageReport | null>(null)
     const [error, setError] = useState('')
+    const agentId = server ? MODEL_SERVER_PREFIX + server.id : ''
 
     useEffect(() => {
+        setReport(null)
+        setError('')
         ModelServerUsage(0)
             .then(setReport)
             .catch((e) => setError(String(e)))
-    }, [])
+    }, [agentId])
+
+    const servers = (report?.servers ?? []).filter((s) => !agentId || s.agentId === agentId)
 
     // Sin servidores ni historial de ninguno, la sección entera sobra: quien no
-    // usa modelos propios no tiene por qué ver un bloque vacío.
-    if (!error && report && report.servers.length === 0) return null
+    // usa modelos propios no tiene por qué ver un bloque vacío. Con un proveedor
+    // elegido, en cambio, se dice que no hay consumo: la pestaña existe y callar
+    // se leería como que no cargó.
+    if (!error && report && servers.length === 0 && !server) return null
     if (!error && !report) return <p className="px-1 text-on-surface-variant">{L.reading}</p>
 
     return (
         <section className="mb-1.5">
-            <h3 className="mb-1 flex items-center gap-1.5 px-1 font-medium text-on-surface-variant">
-                <Icon name="dns" size={12} className="shrink-0" />
-                {L.title}
-            </h3>
+            {!server && (
+                <h3 className="mb-1 flex items-center gap-1.5 px-1 font-medium text-on-surface-variant">
+                    <Icon name="dns" size={12} className="shrink-0" />
+                    {L.title}
+                </h3>
+            )}
             {error && <p className="rounded bg-error-container/40 px-2 py-1 text-error">{error}</p>}
-            {report?.servers.map((s) => <ServerCard key={s.agentId} s={s} />)}
+            {server && report && servers.length === 0 && <p data-usage-empty className="px-1 py-2 text-on-surface-variant">{L.noneForProvider({name: server.name})}</p>}
+            {servers.map((s) => (
+                <ServerCard key={s.agentId} s={s} group={server ? providerGroup(server) : s.kind === 'anthropic' ? 'cloud' : s.isLocal ? 'local' : 'remote'} />
+            ))}
             {report && (
                 <p className="px-1 text-ui-10 leading-4 text-on-surface-variant/70">
                     {L.costNote} {L.tokensNote}

@@ -17,6 +17,7 @@ import commandLog from './gitparts/commandLog'
 import errorBoundary from './gitparts/errorBoundary'
 import commitMsg from './gitparts/commitMsg'
 import search from './gitparts/search'
+import workbench from './gitparts/workbench'
 
 const en: Messages<typeof es> = {
     tab,
@@ -36,5 +37,6 @@ const en: Messages<typeof es> = {
     errorBoundary,
     commitMsg,
     search,
+    workbench,
 }
 export default en

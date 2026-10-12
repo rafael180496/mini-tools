@@ -26,15 +26,20 @@ import (
 // commitear sin querer, y confundirían justamente el panel que sirve para
 // revisar lo que hizo el agente.
 //
+// SaveAttachment guarda solo imágenes y se conserva por compatibilidad; los
+// adjuntos de cualquier tipo (PDF, texto, código) se guardan con SaveFile
+// (attachments.go), que comparte esta carpeta y esta limpieza.
+//
 // Se limpian solos: al guardar uno nuevo se borran los que tienen más de un
 // día. Es lo que evita que una carpeta crezca para siempre con capturas
 // pegadas una sola vez, sin necesidad de un recolector aparte.
 
 const (
-	// maxAttachBytes acota una imagen pegada. Una captura de pantalla ronda
-	// unos pocos MB; 20 es holgado para cualquiera y corta un pegado
-	// accidental de algo que no es una imagen.
-	maxAttachBytes = 20 << 20
+	// maxAttachBytes acota una imagen pegada: el tope de imagen de los
+	// adjuntos (MaxImageBytes, 5 MB, el de la API de Anthropic). Antes era 20 MB,
+	// pero al enviar se vuelve a comprobar el tope, y una imagen de 8 MB
+	// guardada sin queja fallaba recién después de escribir el mensaje.
+	maxAttachBytes = MaxImageBytes
 	// attachTTL es cuánto vive un adjunto. Un día alcanza de sobra para la
 	// conversación en la que se pegó, que es lo único para lo que sirve.
 	attachTTL = 24 * time.Hour

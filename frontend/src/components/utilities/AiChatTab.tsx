@@ -11,6 +11,7 @@ import {
     ListAgentWorkspaces,
     ListAllAgentChats,
     ListConnections,
+    ListModelServers,
     PickAgentWorkspaceFolder,
     RenameAgentChat,
     ResumeAgentChat,
@@ -37,6 +38,8 @@ import {useElementWidth} from '../../hooks/useElementWidth'
 import AiChatHistory from './aichat/AiChatHistory'
 import ProjectContextBar from './aichat/ProjectContextBar'
 import ManageFoldersDialog from './aichat/ManageFoldersDialog'
+import {LostProviderBar, SwitchedBar} from './aichat/ProviderSwitchBars'
+import {persistChatAgent} from '../../lib/chatAgentSwitch'
 import {onModelsChangedFor} from '../../lib/modelsChanged'
 import {
     CHAT_MIN,
@@ -107,6 +110,9 @@ interface Session {
     initialSettings?: {model: string; effort: string; mode: string; brain?: boolean}
     // El modelo vive acá y no dentro de AgentChat: la cabecera lo elige.
     model: string
+    // El proveedor de esta conversación ya no está disponible (apagado o
+    // eliminado): se abre para leerla y seguir con otro proveedor de modelos.
+    lost?: boolean
 }
 
 const newSessionId = () => `agent-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -125,6 +131,12 @@ export default function AiChatTab({visible}: Props) {
     const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
     const [agentsLoaded, setAgentsLoaded] = useState(false)
     const [defaultAgentId, setDefaultAgentId] = useState('')
+    // Proveedores de modelos guardados (aunque estén apagados), por id de agente: el
+    // catálogo de agentes solo trae los activos, y para rotular una conversación de
+    // uno apagado hace falta saber cómo se llama.
+    const [providerInfo, setProviderInfo] = useState<Record<string, {name: string; enabled: boolean}>>({})
+    // Último cambio de proveedor hecho en una conversación abierta.
+    const [switchNote, setSwitchNote] = useState<{sessionId: string; from: string; to: string} | null>(null)
     const [repos, setRepos] = useState<vault.GitRepo[]>([])
     // Carpetas a las que el usuario le dio acceso a la app (no son repos git).
     const [workspaces, setWorkspaces] = useState<main.AgentWorkspace[]>([])
@@ -209,6 +221,9 @@ export default function AiChatTab({visible}: Props) {
     // El catálogo de agentes se relee cuando cambia la lista de servidores de
     // modelos (alta desde acá, desde Configuración o desde el panel lateral).
     const refreshAgents = useCallback(() => {
+        ListModelServers()
+            .then((l) => setProviderInfo(Object.fromEntries((l ?? []).map((x) => [`llm:${x.id}`, {name: x.name, enabled: x.enabled}]))))
+            .catch(() => setProviderInfo({}))
         ListAgents()
             .then((l) => setAgentList(l ?? []))
             .catch(() => setAgentList([]))
@@ -277,6 +292,22 @@ export default function AiChatTab({visible}: Props) {
     }, [drawerOpen, visible])
 
     // --- Sesiones ----------------------------------------------------------
+
+    // Cómo se llama un proveedor de modelos que ya no está entre los disponibles:
+    // por su nombre si sigue guardado pero apagado; sin nombre si se eliminó.
+    const lostLabel = useCallback(
+        (agentId: string) => {
+            const info = providerInfo[agentId]
+            return info ? (info.enabled ? info.name : ta.lost.disabledName({name: info.name})) : ta.lost.removedName
+        },
+        [providerInfo, ta],
+    )
+    // Rótulo de cada proveedor de modelos perdido que aparece en el historial.
+    const lostLabels = useMemo(() => {
+        const out: Record<string, string> = {}
+        for (const c of history) if (isModelServerAgent(c.agentId) && !agentList.some((a) => a.id === c.agentId)) out[c.agentId] = lostLabel(c.agentId)
+        return out
+    }, [history, agentList, lostLabel])
 
     // Nombre del proyecto de trabajo: el de un repositorio o el de una carpeta.
     const projectName = useCallback(
@@ -364,7 +395,10 @@ export default function AiChatTab({visible}: Props) {
                 return
             }
             const agent = agentList.find((a) => a.id === c.agentId)
-            if (!agent) return
+            // Un proveedor de modelos apagado o eliminado no impide abrirla: se la
+            // lee y se sigue con otro. Un CLI que ya no está, sí (su hilo es suyo).
+            const lost = !agent && isModelServerAgent(c.agentId)
+            if (!agent && !lost) return
             const kind = (c.module || 'none') as WorkContextKind
             // Se retoma EN SU contexto: una conversación pertenece al recurso
             // donde nació, aunque se la mire desde acá.
@@ -374,8 +408,9 @@ export default function AiChatTab({visible}: Props) {
                     : {kind, id: kind === 'none' ? '' : c.contextId, label: resourceNames[c.contextId] ?? ''}
             const s: Session = {
                 id: c.id,
-                agentId: agent.id,
-                agentLabel: agent.label,
+                agentId: c.agentId,
+                agentLabel: agent?.label ?? lostLabel(c.agentId),
+                lost,
                 chatId: c.id,
                 context,
                 resumeConversationId: c.conversationId || undefined,
@@ -388,17 +423,41 @@ export default function AiChatTab({visible}: Props) {
             setCurrentId(s.id)
             focusComposer()
         },
-        [agentList, focusComposer, resourceNames, utilitiesContext],
+        [agentList, focusComposer, lostLabel, resourceNames, utilitiesContext],
     )
 
-    // Cambiar de proveedor en una conversación ya empezada abre otra: la
-    // continuidad la guarda cada proveedor en su propio almacenamiento, no hay
-    // forma honesta de seguir con otro lo que venía uno. En un borrador (sin
-    // mensajes) se cambia en el lugar.
+    // Pasar una conversación de un proveedor de modelos a otro SIN abrir otra:
+    // el hilo lo tiene la app (los mensajes guardados en el vault y la memoria de
+    // la sesión), no el proveedor, así que el nuevo recibe lo hablado como
+    // contexto. Se queda el mismo id de conversación, el mismo historial y el
+    // mismo proyecto; el modelo vuelve al predeterminado del proveedor nuevo.
+    const switchProvider = useCallback(
+        (sessionId: string, agentId: string) => {
+            const agent = available.find((a) => a.id === agentId)
+            const s = sessionsRef.current.find((x) => x.id === sessionId)
+            if (!agent || !s || s.agentId === agent.id) return
+            setSwitchNote({sessionId, from: s.agentLabel, to: agent.label})
+            setSessions((prev) => prev.map((x) => (x.id === sessionId ? {...x, agentId: agent.id, agentLabel: agent.label, model: MODEL_DEFAULT, lost: false} : x)))
+            // Que la fila del historial deje de rotularla con el proveedor viejo.
+            if (s.chatId) void persistChatAgent(s.chatId, agent.id).then((saved) => saved && loadHistory())
+            focusComposer()
+        },
+        [available, focusComposer, loadHistory],
+    )
+
+    // Cambiar de proveedor en una conversación ya empezada abre otra, salvo entre
+    // proveedores de modelos (ver switchProvider): la continuidad de un CLI la
+    // guarda el propio CLI en su almacenamiento, no hay forma honesta de seguir
+    // con otro lo que venía uno. En un borrador (sin mensajes) se cambia en el
+    // lugar.
     const changeProvider = useCallback(
         (agentId: string) => {
             const agent = available.find((a) => a.id === agentId)
             if (!agent || !current) return
+            if (current.chatId && isModelServerAgent(agent.id) && (isModelServerAgent(current.agentId) || current.lost)) {
+                switchProvider(current.id, agent.id)
+                return
+            }
             if (!current.chatId) {
                 setSessions((prev) =>
                     prev.map((s) => (s.id === current.id ? {...s, agentId: agent.id, agentLabel: agent.label, model: MODEL_DEFAULT} : s)),
@@ -425,7 +484,7 @@ export default function AiChatTab({visible}: Props) {
             }
             focusComposer()
         },
-        [available, current, focusComposer, utilitiesContext],
+        [available, current, focusComposer, switchProvider, utilitiesContext],
     )
 
     // Tras guardar un servidor desde el selector, se lo elige apenas el catálogo
@@ -695,6 +754,7 @@ export default function AiChatTab({visible}: Props) {
         <AiChatHistory
             chats={history}
             agents={agentList}
+            lostLabels={lostLabels}
             resourceNames={resourceNames}
             activeChatId={activeChatId}
             busyChatIds={busyIds}
@@ -777,7 +837,7 @@ export default function AiChatTab({visible}: Props) {
                     {current && available.length > 0 && (
                         <>
                             <Select
-                                value={current.agentId}
+                                value={current.lost ? '' : current.agentId}
                                 onChange={onProviderChange}
                                 title={ta.header.providerTitle}
                                 ariaLabel={ta.header.providerLabel}
@@ -787,7 +847,7 @@ export default function AiChatTab({visible}: Props) {
                                 menuMinWidth={240}
                                 options={providerOptions}
                             />
-                            {providerHealth && <HealthBadge health={providerHealth.health} server={current.agentLabel} />}
+                            {providerHealth && !current.lost && <HealthBadge health={providerHealth.health} server={current.agentLabel} />}
                             <Select
                                 value={current.model}
                                 onChange={(m) => changeModel(current.id, m)}
@@ -872,6 +932,20 @@ export default function AiChatTab({visible}: Props) {
                     </div>
                 )}
 
+                {body === 'chat' && current?.lost && (
+                    <LostProviderBar
+                        label={providerInfo[current.agentId]?.name ?? current.agentLabel}
+                        disabled={providerInfo[current.agentId] !== undefined}
+                        options={available.filter((a) => isModelServerAgent(a.id))}
+                        onContinue={(id) => switchProvider(current.id, id)}
+                        onAdd={() => setServerDialog(true)}
+                    />
+                )}
+
+                {body === 'chat' && current && switchNote?.sessionId === current.id && !current.lost && (
+                    <SwitchedBar from={switchNote.from} to={switchNote.to} onDismiss={() => setSwitchNote(null)} />
+                )}
+
                 {body === 'chat' && current && !moduleOwned && current.context.id && (
                     <ProjectContextBar
                         contextId={current.context.id}
@@ -925,6 +999,7 @@ export default function AiChatTab({visible}: Props) {
                                         active={isCurrent && visible}
                                         agentId={s.agentId}
                                         agentLabel={s.agentLabel}
+                                        blocked={s.lost}
                                         resumeConversationId={s.resumeConversationId}
                                         resumeChatId={s.resumeChatId}
                                         initialSettings={s.initialSettings}

@@ -59,7 +59,7 @@ export default {
         emptyWithContextMode: (p: {noun: string; label: string; mode: string}) =>
             `Sobre ${p.noun} **«${p.label}»**. Modo **${p.mode}**: el selector de abajo dice qué puede hacer sin preguntar.`,
         emptyMode: (p: {mode: string}) => `Modo **${p.mode}**: el selector de abajo dice qué puede hacer sin preguntar.`,
-        emptyHint: (p: {paste: string}) => `**@** referencia tablas, notas y terminales · ${p.paste} pega una captura`,
+        emptyHint: (p: {paste: string}) => `**@** referencia tablas, notas y terminales · ${p.paste} pega una captura o un archivo`,
         you: 'Vos',
         reuseTitle:
             'Trae este mensaje a la caja para mandarlo otra vez, corregido si hace falta. No borra lo que ya tengas escrito ni deshace la conversación: la respuesta anterior sigue estando.',
@@ -105,8 +105,6 @@ export default {
         effortTitle: 'Esfuerzo de razonamiento para este turno',
         effort: 'Esfuerzo',
         effortDefault: 'El que tenga configurado el CLI',
-        imageTitle: 'Adjunta una imagen desde el equipo. También podés pegarla directamente en la caja de texto.',
-        image: 'Imagen',
         modelTitle: 'Modelo para este turno. La lista la informa el propio CLI.',
         modelDefault: 'Por defecto',
         willEditFiles: 'Va a modificar archivos',
@@ -268,9 +266,60 @@ export default {
         blockChipTitle: (p: {label: string; n: number}) =>
             `${p.label} — ${p.n} líneas. Clic para leer exactamente lo que se va a mandar.`,
         removeBlockTitle: 'Quitar este contexto — no se va a mandar',
-        attachmentTitle: (p: {path: string}) =>
-            `${p.path} — se le pasa al agente por su ruta; el archivo vive en los datos de la app, no en el repositorio`,
-        removeAttachmentTitle: 'Quitar del mensaje',
+        // Adjuntos (spec ia-ollama-chat-utilidades, fase 8): selector, arrastrar,
+        // pegar y las fichas del compositor y de los mensajes.
+        attach: {
+            button: 'Adjuntar',
+            buttonAria: 'Adjuntar archivos',
+            buttonTitle: (p: {paste: string; limits: string}) =>
+                `Adjunta archivos al mensaje: imágenes, PDF y texto o código. También podés arrastrarlos sobre el chat o pegarlos con ${p.paste}. ${p.limits}`,
+            limits: (p: {count: number; image: string; pdf: string; text: string}) =>
+                `Hasta ${p.count} archivos por mensaje; como máximo ${p.image} cada imagen, ${p.pdf} cada PDF y ${p.text} cada archivo de texto.`,
+            listLabel: 'Archivos adjuntos al mensaje',
+            dropTitle: 'Soltá los archivos para adjuntarlos',
+            dropHint: 'Imágenes, PDF y texto o código · Escape cancela',
+            dropAnnounce: 'Zona para soltar archivos activa. Soltalos para adjuntarlos al mensaje; Escape cancela.',
+            dropCancelled: 'Se canceló el arrastre: no se adjuntó nada.',
+            kinds: {image: 'Imagen', pdf: 'PDF', text: 'Texto'},
+            kindPlural: {image: 'las imágenes', pdf: 'los PDF', text: 'los archivos de texto'},
+            uploading: 'Subiendo…',
+            chipTitle: (p: {name: string; kind: string; size: string}) => `${p.name} — ${p.kind}, ${p.size}`,
+            removeTitle: (p: {name: string}) => `Quita «${p.name}» del mensaje: no se va a mandar`,
+            short: {
+                noVision: 'Sin visión',
+                noPdf: 'PDF no soportado',
+                maybe: 'Puede que no lo lea',
+                failed: 'No se pudo adjuntar',
+            },
+            hint: {
+                imageBlocked: 'Elegí un modelo con visión para que pueda ver la imagen, o quitá el archivo.',
+                pdfBlocked: 'Los PDF solo los lee Anthropic o Claude Code. Con otro destino, pegá el texto o quitá el archivo.',
+                maybe: 'No se pudo confirmar que este modelo lo soporte. Se manda igual y contesta el proveedor: si no lo admite, vas a ver su error.',
+            },
+            uploadingReason: 'Esperá a que termine de subirse lo adjuntado para enviar.',
+            blockedReason: (p: {n: number}) =>
+                p.n === 1
+                    ? 'Un archivo adjunto no lo puede leer este modelo: quitalo o cambiá de modelo para poder enviar.'
+                    : `${p.n} archivos adjuntos no los puede leer este modelo: quitalos o cambiá de modelo para poder enviar.`,
+            problems: 'No se pudo adjuntar',
+            errors: {
+                tooBig: (p: {name: string; size: string; kind: string; max: string}) =>
+                    `«${p.name}» pesa ${p.size} y el máximo para ${p.kind} es ${p.max}.`,
+                unknownBig: (p: {name: string; size: string; max: string}) =>
+                    `«${p.name}» pesa ${p.size} y no es de un tipo conocido: solo se aceptan archivos de texto de hasta ${p.max}, imágenes y PDF.`,
+                tooMany: (p: {name: string; max: number}) => `«${p.name}» no entra: el máximo es ${p.max} archivos por mensaje.`,
+                unsupportedImage: (p: {name: string}) => `«${p.name}»: solo se admiten imágenes PNG, JPG, GIF y WebP.`,
+                unsupported: (p: {name: string}) => `«${p.name}» no es un tipo de archivo que se pueda adjuntar (imágenes, PDF y texto o código).`,
+                empty: (p: {name: string}) => `«${p.name}» está vacío.`,
+            },
+            sent: {
+                listLabel: 'Archivos adjuntos de este mensaje',
+                image: 'El modelo la vio en este mensaje. En los turnos siguientes solo recibe el nombre: si necesita volver a verla, adjuntala de nuevo.',
+                pdf: 'El modelo lo leyó en este mensaje. En los turnos siguientes solo recibe el nombre: si necesita volver a leerlo, adjuntalo de nuevo.',
+                text: 'Su texto se pegó en este mensaje y sigue en el contexto de la conversación.',
+            },
+        },
+        blockedPlaceholder: 'Este proveedor ya no está disponible. Elegí otro arriba para seguir con esta conversación.',
         busyPlaceholder: (p: {agent: string}) =>
             `${p.agent} está trabajando — escribí y Enter lo deja en cola para cuando termine`,
         placeholder: (p: {agent: string}) => `Preguntale a ${p.agent}… (Enter manda, Shift+Enter salta de línea)`,
@@ -427,10 +476,13 @@ export default {
         // Servidores de modelos (Ollama, compatibles con OpenAI): su consumo sale
         // del historial de chats de la app, no de archivos de un CLI.
         servers: {
-            title: 'Servidores de modelos',
-            reading: 'Leyendo el historial de los servidores…',
+            title: 'Proveedores de modelos',
+            reading: 'Leyendo el historial de los proveedores…',
+            noneForProvider: (p: {name: string}) => `Todavía no hay conversaciones con «${p.name}» en el historial de la app, así que no hay consumo que mostrar.`,
             local: 'Local',
             remote: 'Remoto',
+            cloud: 'Nube',
+            cloudTitle: 'API alojada: lo que le mandás sale a internet y el proveedor lo factura por uso',
             localTitle: 'Corre en esta máquina: lo que le mandás no sale de ella',
             remoteTitle: 'Corre en otra máquina: lo que le mandás viaja por la red hasta ella',
             deletedTitle: 'Este servidor ya no está en la lista, pero quedan conversaciones suyas dentro de la ventana',
@@ -453,8 +505,8 @@ export default {
             dayBar: (p: {day: string; tokens: string; turns: number}) => `${p.day}: ${p.tokens} tokens · ${p.turns === 1 ? '1 turno' : `${p.turns} turnos`}`,
             lastUsed: (p: {date: string}) => `último uso: ${p.date}`,
             costNote:
-                'No se muestra costo: un servidor propio o compatible con OpenAI no informa precio por token, y calcularlo acá sería inventarlo. Lo que ves son tokens, turnos y velocidad.',
-            tokensNote: 'Los tokens son los que informó cada servidor; uno que no los informa figura con turnos pero sin tokens.',
+                'No se muestra costo: ni un servidor propio ni una API alojada le informan a la app el precio por token, y calcularlo acá sería inventarlo. Lo que ves son tokens, turnos y velocidad; el gasto real está en la consola del proveedor.',
+            tokensNote: 'Los tokens son los que informó cada proveedor; uno que no los informa figura con turnos pero sin tokens.',
         },
     },
     // Salud de un servidor de modelos (punto de estado, aviso del chat).

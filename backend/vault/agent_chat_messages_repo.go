@@ -35,6 +35,10 @@ type StoredChatMessage struct {
 	ToolName string
 	// Usage es el JSON de tokens de agentchat.Usage, o "" si no se conoce.
 	Usage string
+	// Meta es el JSON de la ficha de la fila (hoy: los adjuntos de un mensaje
+	// del usuario, `{"attachments":[{"name","kind","size"}]}`), o "" si no tiene.
+	// El vault no lo interpreta: es opaco para él, igual que Usage.
+	Meta string
 	// CreatedAt son segundos Unix, como el resto de agent_chats.
 	CreatedAt int64
 }
@@ -45,6 +49,8 @@ type NewChatMessage struct {
 	Content  string
 	ToolName string
 	Usage    string
+	// Meta: ver StoredChatMessage.Meta. Se cifra como el contenido.
+	Meta string
 }
 
 func (s *Store) encryptChatContent(v string) (enc, nonce []byte, err error) {
@@ -90,13 +96,17 @@ func (s *Store) AppendAgentChatMessages(chatID string, msgs []NewChatMessage) er
 		if err != nil {
 			return err
 		}
+		menc, mnonce, err := s.encryptChatContent(m.Meta)
+		if err != nil {
+			return err
+		}
 		// El seq se calcula en la misma sentencia que inserta: leer el máximo
 		// y después insertar dejaría una ventana para dos filas con el mismo
 		// orden.
 		if _, err := tx.Exec(
-			`INSERT INTO agent_chat_messages (chat_id, seq, role, content, nonce, tool_name, usage, created_at)
-			 VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM agent_chat_messages WHERE chat_id = ?), ?, ?, ?, ?, ?, ?)`,
-			chatID, chatID, m.Role, enc, nonce, m.ToolName, m.Usage, now,
+			`INSERT INTO agent_chat_messages (chat_id, seq, role, content, nonce, tool_name, usage, created_at, meta, meta_nonce)
+			 VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM agent_chat_messages WHERE chat_id = ?), ?, ?, ?, ?, ?, ?, ?, ?)`,
+			chatID, chatID, m.Role, enc, nonce, m.ToolName, m.Usage, now, menc, mnonce,
 		); err != nil {
 			return i18n.Errorf(i18n.Msg{ES: "vault: guardando los mensajes del chat: %w", EN: "vault: saving the chat messages: %w"}, err)
 		}
@@ -116,7 +126,7 @@ func (s *Store) AppendAgentChatMessage(chatID, role, content, toolName, usage st
 // último. Nunca nil: el frontend la recorre con .map.
 func (s *Store) ListAgentChatMessages(chatID string) ([]StoredChatMessage, error) {
 	rows, err := s.db.Query(
-		`SELECT seq, role, content, nonce, tool_name, usage, created_at
+		`SELECT seq, role, content, nonce, tool_name, usage, created_at, meta, meta_nonce
 		 FROM agent_chat_messages WHERE chat_id = ? ORDER BY seq`, chatID)
 	if err != nil {
 		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo los mensajes del chat: %w", EN: "vault: reading the chat messages: %w"}, err)
@@ -133,7 +143,7 @@ func (s *Store) RecentAgentChatMessages(chatID string, n int) ([]StoredChatMessa
 		return []StoredChatMessage{}, nil
 	}
 	rows, err := s.db.Query(
-		`SELECT seq, role, content, nonce, tool_name, usage, created_at
+		`SELECT seq, role, content, nonce, tool_name, usage, created_at, meta, meta_nonce
 		 FROM agent_chat_messages WHERE chat_id = ? ORDER BY seq DESC LIMIT ?`, chatID, n)
 	if err != nil {
 		return nil, i18n.Errorf(i18n.Msg{ES: "vault: leyendo los mensajes del chat: %w", EN: "vault: reading the chat messages: %w"}, err)
@@ -153,10 +163,11 @@ func (s *Store) scanChatMessages(rows *sql.Rows) ([]StoredChatMessage, error) {
 	out := []StoredChatMessage{}
 	for rows.Next() {
 		var m StoredChatMessage
-		var enc, nonce []byte
-		if err := rows.Scan(&m.Seq, &m.Role, &enc, &nonce, &m.ToolName, &m.Usage, &m.CreatedAt); err != nil {
+		var enc, nonce, menc, mnonce []byte
+		if err := rows.Scan(&m.Seq, &m.Role, &enc, &nonce, &m.ToolName, &m.Usage, &m.CreatedAt, &menc, &mnonce); err != nil {
 			return nil, err
 		}
+		m.Meta = s.decryptOptional(menc, mnonce)
 		// Un mensaje que no se descifra no tira abajo la conversación: se
 		// muestra vacío y el resto se lee igual.
 		m.Content = s.decryptOptional(enc, nonce)

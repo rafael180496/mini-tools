@@ -15,6 +15,7 @@
 #   UISHOT_SCALE=150 ./scripts/uishot.sh settings   # con la letra al 150 %
 #   UISHOT_LANG=es ./scripts/uishot.sh files        # en español (por defecto, inglés)
 #   UISHOT_THEME=light ./scripts/uishot.sh files    # en tema claro (por defecto, oscuro)
+#   UISHOT_BUDGET=8000 ./scripts/uishot.sh gitsidebar  # tiempo virtual (ms) antes de la foto; las vistas gitsidebar* ya usan 9000
 #
 # UISHOT_MODULE elige qué módulo abre el menú master de la barra lateral
 # (connections | ssh | git | notes | http | utilities). Solo lo miran las vistas que montan
@@ -45,6 +46,10 @@ LANG_UI="${UISHOT_LANG:-en}"
 # Tema (dark | light). Sin valor, el oscuro, que es el de la app.
 THEME="${UISHOT_THEME:-}"
 PORT="${UISHOT_PORT:-5199}"
+# Tiempo virtual que Chrome deja correr antes de la foto. Las vistas que encadenan
+# clics (gitsidebar*: abrir carpeta, repositorio, grupos) necesitan más.
+BUDGET="${UISHOT_BUDGET:-4000}"
+case "$VIEW" in gitsidebar*) BUDGET="${UISHOT_BUDGET:-9000}" ;; esac
 
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 [ -x "$CHROME" ] || { echo "No se encontró Google Chrome en $CHROME"; exit 1; }
@@ -69,7 +74,7 @@ done
 # resuelvan antes de disparar: sin eso la foto sale en blanco.
 "$CHROME" --headless --disable-gpu --hide-scrollbars \
     --window-size="$W,$H" \
-    --virtual-time-budget=4000 \
+    --virtual-time-budget="$BUDGET" \
     --screenshot="$OUT" \
     "http://localhost:$PORT/uishot.html?view=$VIEW&module=$MODULE&platform=$PLATFORM&scale=$SCALE&section=$SECTION&lang=$LANG_UI&theme=$THEME" >/dev/null 2>&1
 

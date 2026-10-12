@@ -10,7 +10,6 @@ import {
     GitListWorkTree,
     ListModelServers,
     RespondAgentApproval,
-    SaveChatAttachment,
     AgentResolveRefs,
     SetAgentChatBrain,
     SetAgentChatSettings,
@@ -33,6 +32,10 @@ import {errorText, formatDateTime, formatNumber, useT} from '../../i18n'
 import {isModelServerAgent, MODEL_SERVER_PREFIX} from '../../lib/modelServers'
 import {useModelServerHealth} from '../../lib/modelServerHealth'
 import {HealthBanner} from './HealthIndicators'
+import {ComposerAttachments, DropOverlay, MessageAttachments} from './AttachmentChips'
+import {useChatAttachments} from './useChatAttachments'
+import {formatBytes} from '../../lib/formatBytes'
+import {ATTACH_ACCEPT, type SentAttachment} from '../../lib/chatAttachments'
 import {requestOpenSettings} from '../../lib/appBus'
 import {onModelsChangedFor} from '../../lib/modelsChanged'
 import {ackProjectMode, isProjectModeAcked, readProjectPrefs, writeProjectPrefs} from '../../lib/projectPrefs'
@@ -140,6 +143,8 @@ interface StoredMessage {
     toolName: string
     usage?: Partial<ChatUsage> | null
     createdAt: number
+    // Solo las filas del usuario; nunca trae contenido ni rutas.
+    attachments?: {name: string; kind: string; size: number}[] | null
 }
 
 // Rearma los turnos de la pantalla desde los mensajes que la app guardó. Una
@@ -151,7 +156,7 @@ function turnsFromStored(messages: StoredMessage[]): Turn[] {
     const stamp = (v: number) => (v ? (v > 1e12 ? v : v * 1000) : undefined)
     for (const m of [...messages].sort((a, b) => a.seq - b.seq)) {
         if (m.role === 'user') {
-            out.push({role: 'user', text: m.content, tools: [], at: stamp(m.createdAt)})
+            out.push({role: 'user', text: m.content, tools: [], at: stamp(m.createdAt), attachments: m.attachments?.length ? m.attachments : undefined})
             continue
         }
         let last = out[out.length - 1]
@@ -178,7 +183,7 @@ function turnsFromStored(messages: StoredMessage[]): Turn[] {
             }
         }
     }
-    return out.filter((t) => t.text || t.tools.length > 0)
+    return out.filter((t) => t.text || t.tools.length > 0 || (t.attachments?.length ?? 0) > 0)
 }
 
 // Anillo de foco visible para los controles que son solo un ícono: un control
@@ -238,11 +243,18 @@ interface Turn {
     // sería peor que no tenerla.
     at?: number
     tools: ToolCall[]
+    // Archivos que viajaron con este mensaje (solo turnos del usuario). La
+    // miniatura existe únicamente si se mandó en esta sesión.
+    attachments?: SentAttachment[]
     usage?: ChatUsage
     error?: string
     // Aviso de la propia app (no del modelo) que va al comienzo del turno. Hoy,
     // el de servidor remoto al usar herramientas por primera vez. No se guarda.
     notice?: string
+    // Quién contestó este turno, cuando el proveedor de la conversación cambió a
+    // mitad de camino (Chat de IA): sin esto, todo el hilo pasaría a firmarlo el
+    // proveedor nuevo. Vacío = el vigente.
+    by?: string
 }
 
 interface AgentChatProps {
@@ -322,6 +334,10 @@ interface AgentChatProps {
     // una conversación a la que nunca se le escribió nada no es historial, es
     // una ventana que se abrió.
     onSend?: (text: string) => void
+    // El proveedor de esta conversación ya no está disponible (se apagó o se
+    // borró): se ve lo que se habló, pero la caja no manda nada hasta que el
+    // anfitrión la pase a otro proveedor. Tampoco se sondea su salud.
+    blocked?: boolean
     // Avisa cuando el agente empieza o termina de contestar. Lo usa el Chat de
     // IA para marcar en el historial qué conversaciones están respondiendo y
     // para reordenarlo al terminar.
@@ -405,6 +421,7 @@ export default function AgentChat({
     active = true,
     fluid = false,
     emptyExtra,
+    blocked = false,
 }: AgentChatProps) {
     const t = useT()
     // Etiqueta y explicación de un modo en el idioma activo. Un modo que el
@@ -417,7 +434,7 @@ export default function AgentChat({
     // Salud del servidor mientras este chat está a la vista (a un CLI no se lo
     // sondea). `refresh` salta la caché del backend: se usa tras un fallo de
     // envío para que el aviso refleje lo que acaba de pasar.
-    const serverHealth = useModelServerHealth(agentId, active)
+    const serverHealth = useModelServerHealth(blocked ? '' : agentId, active)
     const refreshHealthRef = useRef<(() => void) | undefined>(undefined)
     refreshHealthRef.current = serverHealth?.refresh
     const modeLabel = (m: string) => {
@@ -427,6 +444,15 @@ export default function AgentChat({
         return {...table[key], danger: (isLLM ? DANGER_MODES_LLM : DANGER_MODES).has(m)}
     }
     const [turns, setTurns] = useState<Turn[]>([])
+    // Si el proveedor cambia con la conversación empezada, lo ya contestado se
+    // queda firmado por quien lo contestó.
+    const lastLabelRef = useRef(agentLabel)
+    useEffect(() => {
+        const before = lastLabelRef.current
+        lastLabelRef.current = agentLabel
+        if (before === agentLabel) return
+        setTurns((prev) => (prev.some((x) => x.role === 'agent' && !x.by) ? prev.map((x) => (x.role === 'agent' && !x.by ? {...x, by: before} : x)) : prev))
+    }, [agentLabel])
     // Hay recurso que nombrar en el encabezado y en el estado vacío.
     const hasContext = context.kind !== 'none' && !!context.label
     // Qué mensaje se acaba de copiar, para confirmarlo en el botón. Sin la
@@ -508,6 +534,14 @@ export default function AgentChat({
     const modelControlled = modelProp !== undefined && !!onModelChange
     const model = modelControlled ? modelProp : modelLocal
     const setModel = (m: string) => (modelControlled ? onModelChange?.(m) : setModelLocal(m))
+    // Archivos adjuntos al próximo mensaje (selector, arrastrar, pegar), con lo
+    // que admite el agente y modelo vigentes. Ver useChatAttachments.
+    const attach = useChatAttachments({agentId, model, enabled: !blocked && active})
+    const {takeReady, removeMany} = attach
+    const attachReady = attach.readyCount
+    const attachBlocked = attach.sendBlocked
+    const pasteKey = navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const [modes, setModes] = useState<string[]>([''])
     // Proyecto para el que se calculó `modes` (la lista cambia al elegir uno).
     const [modesFor, setModesFor] = useState('')
@@ -601,9 +635,6 @@ export default function AgentChat({
     // clic.
     const [attachWorking, setAttachWorking] = useState(true)
     const inputRef = useRef<HTMLTextAreaElement>(null)
-    // Imágenes adjuntas al próximo mensaje: rutas ya escritas en el disco,
-    // porque los tres CLIs las reciben por ruta y no en memoria.
-    const [attachments, setAttachments] = useState<string[]>([])
     // Bloques de contexto que trajo el módulo que abrió el chat. Viajan con el
     // próximo mensaje y se vacían al mandarlo.
     const [contextBlocks, setContextBlocks] = useState<ChatContextBlock[]>([])
@@ -853,6 +884,7 @@ export default function AgentChat({
                               role: t.role === 'user' ? ('user' as const) : ('agent' as const),
                               text: t.text,
                               tools: t.tools ?? [],
+                              attachments: t.attachments?.length ? t.attachments : undefined,
                           })),
                       ),
                   )
@@ -1011,27 +1043,6 @@ export default function AgentChat({
         if (effort && efforts.length > 0 && !efforts.includes(effort)) setEffort('')
     }, [efforts, effort])
 
-    // Adjuntar una imagen pegada. Se extrae acá para poder usarlo desde el
-    // panel entero y no solo desde la caja de texto: quien acaba de sacar una
-    // captura la pega donde tenga el foco, y perderla porque el cursor no
-    // estaba en el lugar exacto es una fricción tonta.
-    const attachFromClipboard = useCallback((data: DataTransfer | null): boolean => {
-        const file = Array.from(data?.items ?? [])
-            .find((i) => i.type.startsWith('image/'))
-            ?.getAsFile()
-        if (!file) return false
-
-        const reader = new FileReader()
-        reader.onload = () => {
-            const name = file.name || `pegado.${file.type.split('/')[1] || 'png'}`
-            void SaveChatAttachment(name, String(reader.result ?? ''))
-                .then((path) => setAttachments((prev) => [...prev, path]))
-                .catch((err) => setTurns((prev) => [...prev, {role: 'agent', text: '', tools: [], error: String(err)}]))
-        }
-        reader.readAsDataURL(file)
-        return true
-    }, [])
-
     // Guarda el interruptor del cerebro de esta conversación. El backend lo
     // acepta aunque la fila del historial todavía no exista (la conversación
     // nace en el primer envío) y lo persiste cuando aparece; solo rechaza
@@ -1075,7 +1086,10 @@ export default function AgentChat({
     const sendText = useCallback(
         async (raw: string) => {
         const text = raw.trim()
-        if (!text) return
+        // Un mensaje puede ser solo archivos: Go lo completa con «Revisá los
+        // archivos adjuntos.».
+        const files = takeReady()
+        if (!text && files.paths.length === 0) return
         // Mandar es pedir ver la respuesta: vuelve a pegarse al final.
         stickRef.current = true
         const blocks = contextBlocks
@@ -1089,7 +1103,14 @@ export default function AgentChat({
         if (remoteNotice) setRemoteAck(true)
         setTurns((prev) => [
             ...prev,
-            {role: 'user', text, tools: [], contexts: blocks.length ? blocks.map((b) => b.label) : undefined, at: Date.now()},
+            {
+                role: 'user',
+                text,
+                tools: [],
+                contexts: blocks.length ? blocks.map((b) => b.label) : undefined,
+                attachments: files.sent.length ? files.sent : undefined,
+                at: Date.now(),
+            },
             ...(remoteNotice ? [{role: 'agent' as const, text: '', tools: [], notice: remoteNotice, at: Date.now()}] : []),
         ])
         setBusy(true)
@@ -1106,7 +1127,7 @@ export default function AgentChat({
         setContextBlocks([])
         // Antes de mandar y no después: si el turno falla, la conversación
         // igual existe y se puede reintentar desde el historial.
-        onSend?.(text)
+        onSend?.(text || files.sent[0]?.name || '')
         // Si el interruptor quedó distinto de lo guardado (p. ej. una
         // conversación retomada con el cerebro encendido cuyo permiso se apagó
         // después), se vuelve a guardar ANTES de mandar: el mensaje que le pide
@@ -1130,8 +1151,9 @@ export default function AgentChat({
             }
         }
         try {
-            await SendAgentChat(sessionId, context.kind, context.id, agentId, outgoing, mode, effort, model.trim(), attachments)
-            setAttachments([])
+            await SendAgentChat(sessionId, context.kind, context.id, agentId, outgoing, mode, effort, model.trim(), files.paths)
+            // Solo los que salieron: lo que se adjuntó mientras tanto sigue ahí.
+            removeMany(files.ids)
         } catch (e) {
             // errorText y no String(e): el rechazo del binding trae el prefijo
             // «Error: » y el código invisible del backend, que no son parte del
@@ -1144,7 +1166,7 @@ export default function AgentChat({
             setQueueHeld(true)
         }
         },
-        [sessionId, context.kind, context.id, agentId, mode, effort, model, attachments, onSend, attachWorking, working, contextBlocks, serverRemote, workRepo, remoteAck, brain, persistBrain, t],
+        [sessionId, context.kind, context.id, agentId, mode, effort, model, takeReady, removeMany, onSend, attachWorking, working, contextBlocks, serverRemote, workRepo, remoteAck, brain, persistBrain, t],
     )
 
     // Los turnos que se muestran. Se conserva el índice REAL de cada uno: los
@@ -1157,6 +1179,7 @@ export default function AgentChat({
         return all.filter(
             ({t}) =>
                 t.text.toLowerCase().includes(q) ||
+                (t.attachments?.some((a) => a.name.toLowerCase().includes(q)) ?? false) ||
                 // También se busca en lo que HIZO el agente: media conversación
                 // son llamadas a herramientas, y "¿en qué archivo era?" se
                 // contesta ahí y no en la prosa.
@@ -1167,14 +1190,20 @@ export default function AgentChat({
     // Enter con el agente ocupado ENCOLA en vez de no hacer nada.
     const send = useCallback(() => {
         const text = input.trim()
-        if (!text) return
+        // Con archivos adjuntos el texto es opcional, pero no se manda mientras
+        // algo se sube ni si el modelo no puede leer alguno: la ficha lo dice y
+        // el motivo se lee junto a la caja.
+        if ((!text && attachReady === 0) || blocked || attachBlocked) return
+        // Con el agente ocupado se encola solo texto: los archivos salen con el
+        // mensaje que se mande cuando termine el turno.
+        if (busy && !text) return
         setInput('')
         if (busy) {
             setQueue((prev) => [...prev, text])
             return
         }
         void sendText(text)
-    }, [input, busy, sendText])
+    }, [input, busy, blocked, sendText, attachReady, attachBlocked])
 
     // Cuando el turno termina sale el siguiente de la cola. Un solo mensaje por
     // vez: el CLI atiende un turno a la vez y encimarlos sería pedirle algo que
@@ -1185,28 +1214,40 @@ export default function AgentChat({
     // sacar uno y que `busy` vuelve a ser true hay un render de por medio.
     const dequeuingRef = useRef(false)
     useEffect(() => {
-        if (busy || queueHeld || queue.length === 0 || dequeuingRef.current) return
+        if (busy || queueHeld || queue.length === 0 || dequeuingRef.current || attachBlocked) return
         dequeuingRef.current = true
         const [next, ...rest] = queue
         setQueue(rest)
         void sendText(next).finally(() => {
             dequeuingRef.current = false
         })
-    }, [busy, queueHeld, queue, sendText])
+    }, [busy, queueHeld, queue, sendText, attachBlocked])
 
     return (
         <div
-            className="flex h-full min-h-0 flex-col"
+            className="relative flex h-full min-h-0 flex-col"
             // Pegar y arrastrar funcionan en TODO el panel, no solo en la caja:
             // quien acaba de sacar una captura la suelta donde esté mirando.
             onPaste={(e) => {
-                if (attachFromClipboard(e.clipboardData)) e.preventDefault()
+                if (attach.addFromTransfer(e.clipboardData, {pasted: true})) e.preventDefault()
             }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-                if (attachFromClipboard(e.dataTransfer)) e.preventDefault()
-            }}
+            {...attach.dragProps}
         >
+            {/* Zona de soltado anunciada a los lectores de pantalla: el velo es
+                solo visual, y esto es lo que dice que arrastrar ahora adjunta. */}
+            <span role="status" aria-live="polite" className="sr-only">
+                {attach.dragging ? t.agent.chat.attach.dropAnnounce : attach.cancelNote ? t.agent.chat.attach.dropCancelled : ''}
+            </span>
+            {attach.dragging && (
+                <DropOverlay
+                    limits={t.agent.chat.attach.limits({
+                        count: attach.limits.maxCount,
+                        image: formatBytes(attach.limits.maxImageBytes),
+                        pdf: formatBytes(attach.limits.maxPdfBytes),
+                        text: formatBytes(attach.limits.maxTextBytes),
+                    })}
+                />
+            )}
             <div className="flex shrink-0 items-center gap-2 border-b border-outline-variant px-2 py-1.5 text-ui-11">
                 {/* El nombre del agente NO se repite acá: ya está en el
                     selector del encabezado del panel, una línea más arriba.
@@ -1273,6 +1314,9 @@ export default function AgentChat({
                 <button
                     onClick={() => {
                         void ResetAgentChat(sessionId)
+                        // Las miniaturas de los adjuntos enviados se sueltan con
+                        // la conversación que las mostraba.
+                        for (const x of turns) if (x.attachments) attach.releaseSent(x.attachments)
                         setTurns([])
                         setInfo(null)
                         // La cola también se va: un mensaje escrito para la
@@ -1349,7 +1393,7 @@ export default function AgentChat({
                                 : rich(mode ? t.agent.chat.emptyMode({mode: modeLabel(mode)?.label ?? mode}) : t.agent.chat.empty)}
                         </p>
                         <p className="opacity-70">
-                            {rich(t.agent.chat.emptyHint({paste: navigator.platform.includes('Mac') ? '⌘V' : 'Ctrl+V'}))}
+                            {rich(t.agent.chat.emptyHint({paste: pasteKey}))}
                         </p>
                         {/* Sugerencias para empezar. Frente a una caja en blanco
                             uno no sabe por dónde arrancar, y tres o cuatro
@@ -1397,7 +1441,7 @@ export default function AgentChat({
                             ) : (
                                 <>
                                     <Icon name="auto_awesome" size={12} className="shrink-0 text-primary" />
-                                    <span className="font-semibold uppercase tracking-wider text-primary">{agentLabel}</span>
+                                    <span className="font-semibold uppercase tracking-wider text-primary">{turn.by ?? agentLabel}</span>
                                 </>
                             )}
                             {turn.at && <span className="shrink-0 tabular-nums opacity-60">· {formatClock(turn.at)}</span>}
@@ -1477,6 +1521,10 @@ export default function AgentChat({
                                 <Icon name="warning" size={13} className="mt-px shrink-0 text-tertiary" />
                                 <span className="min-w-0 flex-1 break-words">{lead.notice}</span>
                             </p>
+                        )}
+
+                        {turn.role === 'user' && turn.attachments && turn.attachments.length > 0 && (
+                            <MessageAttachments attachments={turn.attachments} />
                         )}
 
                         {lead.rest && (
@@ -1904,43 +1952,47 @@ export default function AgentChat({
                     </span>
                 )}
 
-                {/* Subir desde el equipo. Es un input de archivo oculto y no
-                    un diálogo nativo del backend porque el archivo hay que
-                    leerlo igual para escribirlo en el directorio de adjuntos:
-                    pedirle la ruta al sistema no ahorraría ese paso. */}
-                <label
-                    title={t.agent.chat.imageTitle}
-                    className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface-variant hover:border-primary/60 hover:text-on-surface"
+                {/* Adjuntar archivos. Es un botón que abre un input de archivo
+                    oculto, y no un <label>, para que se llegue con Tab y se
+                    active con Enter o Espacio. El archivo hay que leerlo igual
+                    para escribirlo en la carpeta de adjuntos: pedirle la ruta
+                    al sistema no ahorraría ese paso. */}
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={blocked}
+                    data-attach-button
+                    title={t.agent.chat.attach.buttonTitle({
+                        paste: pasteKey,
+                        limits: t.agent.chat.attach.limits({
+                            count: attach.limits.maxCount,
+                            image: formatBytes(attach.limits.maxImageBytes),
+                            pdf: formatBytes(attach.limits.maxPdfBytes),
+                            text: formatBytes(attach.limits.maxTextBytes),
+                        }),
+                    })}
+                    aria-label={t.agent.chat.attach.buttonAria}
+                    className={`flex shrink-0 items-center gap-1 rounded-lg border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface-variant hover:border-primary/60 hover:text-on-surface disabled:opacity-40 ${FOCUS}`}
                 >
-                    <Icon name="image" size={14} />
-                    {t.agent.chat.image}
-                    <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/gif,image/webp"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                            for (const file of Array.from(e.target.files ?? [])) {
-                                const reader = new FileReader()
-                                reader.onload = () => {
-                                    void SaveChatAttachment(file.name, String(reader.result ?? ''))
-                                        .then((path) => setAttachments((prev) => [...prev, path]))
-                                        .catch((err) =>
-                                            setTurns((prev) => [
-                                                ...prev,
-                                                {role: 'agent', text: '', tools: [], error: String(err)},
-                                            ]),
-                                        )
-                                }
-                                reader.readAsDataURL(file)
-                            }
-                            // Se limpia el valor para poder elegir el MISMO
-                            // archivo dos veces seguidas: sin esto el segundo
-                            // change no dispara.
-                            e.target.value = ''
-                        }}
-                    />
-                </label>
+                    <Icon name="attach_file" size={14} />
+                    {t.agent.chat.attach.button}
+                </button>
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ATTACH_ACCEPT}
+                    multiple
+                    className="hidden"
+                    tabIndex={-1}
+                    aria-hidden
+                    onChange={(e) => {
+                        attach.addFiles(Array.from(e.target.files ?? []))
+                        // Se limpia el valor para poder elegir el MISMO archivo
+                        // dos veces seguidas: sin esto el segundo change no
+                        // dispara.
+                        e.target.value = ''
+                    }}
+                />
 
                 {/* Lista y no campo libre: la lista la arma cada CLI (alias
                     en Claude Code, su cache de modelos en Codex, `agy models`
@@ -2088,7 +2140,7 @@ export default function AgentChat({
                 {/* Fichas de lo que viaja con el mensaje, DENTRO de la caja: el
                     contexto adjunto y las imágenes son parte del mensaje, no
                     algo aparte. Clic en una ficha la despliega; la × la quita. */}
-                {(contextBlocks.length > 0 || attachments.length > 0) && (
+                {contextBlocks.length > 0 && (
                     <div className="flex flex-wrap gap-1 px-2 pt-2">
                         {contextBlocks.map((b, bi) => (
                             <span
@@ -2117,24 +2169,17 @@ export default function AgentChat({
                                 </button>
                             </span>
                         ))}
-                        {attachments.map((path) => (
-                            <span
-                                key={path}
-                                title={t.agent.chat.attachmentTitle({path})}
-                                className="flex max-w-full items-center gap-1 rounded-md border border-outline-variant bg-surface-container px-1.5 py-0.5 text-ui-10 text-on-surface-variant"
-                            >
-                                <Icon name="image" size={11} className="shrink-0 text-primary" />
-                                <span className="truncate">{path.split('/').pop()}</span>
-                                <button
-                                    onClick={() => setAttachments((prev) => prev.filter((p) => p !== path))}
-                                    title={t.agent.chat.removeAttachmentTitle}
-                                    className="shrink-0 rounded hover:text-error"
-                                >
-                                    <Icon name="close" size={11} />
-                                </button>
-                            </span>
-                        ))}
                     </div>
+                )}
+                <ComposerAttachments items={attach.items} caps={attach.caps} onRemove={attach.remove} />
+                {/* Por qué Enviar está apagado, escrito junto a la caja: Enter
+                    con un adjunto que el modelo no lee no hace nada, y solo
+                    un tooltip no lo explica con el teclado. */}
+                {attach.reason && (
+                    <p role="status" data-attach-reason className="flex items-start gap-1 px-2.5 pt-1 text-ui-10 text-on-surface-variant">
+                        <Icon name={attach.uploading ? 'upload' : 'info'} size={11} className="mt-px shrink-0" />
+                        <span className="min-w-0 break-words">{attach.reason}</span>
+                    </p>
                 )}
                 <div className="flex items-end gap-1 p-1.5">
                 <textarea
@@ -2154,10 +2199,14 @@ export default function AgentChat({
                         setMention(at >= 0 && (openQuote || (!tail.includes(' ') && !tail.includes('\n'))) ? tail : null)
                     }}
                     onPaste={(e) => {
-                        // Si lo pegado es una imagen se adjunta y se corta el
+                        // Si lo pegado son archivos se adjuntan y se corta el
                         // pegado de texto: si no, quedaría además el nombre del
-                        // archivo escrito en la caja.
-                        if (attachFromClipboard(e.clipboardData)) e.preventDefault()
+                        // archivo escrito en la caja. (El panel entero también
+                        // escucha el pegado; acá se corta antes de que suba.)
+                        if (attach.addFromTransfer(e.clipboardData, {pasted: true})) {
+                            e.preventDefault()
+                            e.stopPropagation()
+                        }
                     }}
                     onKeyDown={(e) => {
                         // Enter que confirma una composición (IME) no es «enviar».
@@ -2186,10 +2235,13 @@ export default function AgentChat({
                     }}
                     rows={2}
                     aria-label={t.agent.chat.a11y.composer}
+                    disabled={blocked}
                     placeholder={
-                        busy
-                            ? t.agent.chat.busyPlaceholder({agent: agentLabel})
-                            : t.agent.chat.placeholder({agent: agentLabel})
+                        blocked
+                            ? t.agent.chat.blockedPlaceholder
+                            : busy
+                              ? t.agent.chat.busyPlaceholder({agent: agentLabel})
+                              : t.agent.chat.placeholder({agent: agentLabel})
                     }
                     className="max-h-40 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/60"
                 />
@@ -2228,8 +2280,8 @@ export default function AgentChat({
                 ) : (
                     <button
                         onClick={send}
-                        disabled={!input.trim()}
-                        title={t.agent.chat.sendTitle}
+                        disabled={(!input.trim() && attachReady === 0) || blocked || attachBlocked}
+                        title={attach.reason || t.agent.chat.sendTitle}
                         aria-label={t.agent.chat.a11y.send}
                         data-chat-send
                         className={`shrink-0 rounded-lg bg-primary p-1.5 text-on-primary disabled:opacity-40 ${FOCUS}`}
