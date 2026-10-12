@@ -1,0 +1,54 @@
+package vault
+
+import "testing"
+
+func TestModelServerUsageRows(t *testing.T) {
+	s := newChatStore(t)
+	for _, c := range []struct{ id, agent string }{{"a", "llm:s1"}, {"b", "llm:s2"}, {"cli", "claude"}} {
+		if err := s.CreateAgentChat(c.id, "", c.agent, "t", "note", "n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add := func(chat, role, usage string) {
+		t.Helper()
+		if err := s.AppendAgentChatMessage(chat, role, "secreto "+chat, "", usage); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("a", ChatRoleUser, "")
+	add("a", ChatRoleAssistant, `{"input":10,"output":5,"total":15,"model":"qwen","durationMs":2500}`)
+	add("a", ChatRoleAssistant, `{"input":1,"output":1,"total":2}`) // anterior a model/durationMs
+	add("a", ChatRoleAssistant, `{no es json`)                      // dañada: no tira el informe
+	add("b", ChatRoleAssistant, `{"input":7,"output":3,"total":10,"model":"llama"}`)
+	add("cli", ChatRoleAssistant, `{"input":99,"output":99,"total":198}`) // un CLI no es un servidor de modelos
+
+	rows, err := s.ModelServerUsageRows(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("rows = %+v", rows)
+	}
+	by := map[string][]ChatUsageRow{}
+	for _, r := range rows {
+		by[r.AgentID] = append(by[r.AgentID], r)
+	}
+	if len(by["claude"]) != 0 || len(by["llm:s1"]) != 2 || len(by["llm:s2"]) != 1 {
+		t.Fatalf("agrupado = %+v", by)
+	}
+	var withModel ChatUsageRow
+	for _, r := range by["llm:s1"] {
+		if r.Model == "qwen" {
+			withModel = r
+		}
+	}
+	if withModel.Input != 10 || withModel.Output != 5 || withModel.Total != 15 || withModel.DurationMs != 2500 || withModel.ChatID != "a" || withModel.CreatedAt == 0 {
+		t.Fatalf("fila con modelo = %+v", withModel)
+	}
+
+	// La ventana: nada anterior a `since`.
+	future, err := s.ModelServerUsageRows(withModel.CreatedAt + 3600)
+	if err != nil || len(future) != 0 {
+		t.Fatalf("future = %+v, %v", future, err)
+	}
+}

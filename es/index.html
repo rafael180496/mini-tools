@@ -1662,9 +1662,37 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
     <figcaption>Una conversación vacía: cuatro sugerencias y la caja, con el historial a un clic.</figcaption>
   </figure>
 
+  <h2 id="utilidades-chat-ia--ancho">Ancho, historial ajustable y paneles angostos</h2>
+  <p>El chat <strong>ocupa todo el ancho de la pestaña</strong>: mensajes y caja de texto llegan de borde a borde, sin una columna angosta
+  con márgenes vacíos. Para que se siga leyendo bien en una ventana grande, solo el <em>texto corrido</em> de una respuesta (párrafos, listas,
+  citas) se topa en unos <strong>100 caracteres por línea</strong>; los <strong>bloques de código y las tablas</strong> usan el ancho entero, y una
+  respuesta corta ocupa lo que mide en vez de estirarse.</p>
+  <ul>
+    <li><strong>Historial ajustable</strong> — arrastrá el borde derecho de la lista para ensancharla (aparece el ancho en píxeles mientras arrastrás).
+    Con el foco en el borde, las flechas <kbd>←</kbd> <kbd>→</kbd> lo mueven (con <kbd>Shift</kbd>, más rápido; <kbd>Inicio</kbd> y <kbd>Fin</kbd> van al mínimo y al máximo) y
+    un <strong>doble clic</strong> vuelve al ancho original. El tamaño y si el historial está abierto se recuerdan en este equipo. Nunca le quita al chat menos de unos 420 px.</li>
+    <li><strong>Pestaña angosta</strong> — el ancho que cuenta es el de la <em>pestaña</em>, no el de la ventana: con la barra lateral abierta o el panel del agente
+    acoplado, la pestaña puede quedar chica aunque la ventana sea enorme. Por debajo de unos 760 px el historial deja de ser una columna y el botón de la
+    cabecera lo abre como un <strong>cajón sobre el chat</strong> (elegir una conversación o <kbd>Esc</kbd> lo cierra), y la cabecera se compacta: los selectores se reparten el renglón y
+    <em>Nuevo chat</em> queda solo con su icono. Al ensanchar de nuevo, el historial vuelve solo.</li>
+    <li><strong>Consumo</strong> — el botón del gráfico de la cabecera cambia el cuerpo al panel de <a href="#ia-modelos--consumo">consumo de tokens</a> por agente y servidor de modelos; el chat sigue corriendo detrás.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-ai-chat-wide.png" alt="Chat de IA en una ventana ancha: la respuesta con una tabla y un bloque de SQL usa todo el ancho disponible, con el texto corrido limitado a una línea legible"></div>
+    <figcaption>En una ventana ancha: el texto se mantiene legible; la tabla y el código usan el ancho que hay.</figcaption>
+  </figure>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-ai-chat-narrow.png" alt="Chat de IA en una pestaña de 700 píxeles: el historial plegado al botón de la cabecera y el chat ocupando todo el ancho"></div>
+    <figcaption>En una pestaña angosta el historial se pliega al botón de la cabecera.</figcaption>
+  </figure>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/utilities-ai-chat-resize.png" alt="Chat de IA con el borde del historial siendo arrastrado: el borde resaltado y un cartel con el ancho en píxeles"></div>
+    <figcaption>Arrastrando el borde del historial: el ancho se ve mientras se mueve y queda guardado.</figcaption>
+  </figure>
+
   <h2 id="utilidades-chat-ia--cabecera">Proveedor, modelo y repositorio</h2>
   <ul>
-    <li><strong>Proveedor</strong> — los CLIs instalados y los servidores de modelos que agregaste en <em>Configuración → IA</em>. Cambiarlo en una conversación ya empezada abre una <em>nueva</em>: cada proveedor guarda su propio hilo, y no hay forma honesta de que uno continúe lo que venía haciendo otro.</li>
+    <li><strong>Proveedor</strong> — los CLIs instalados y los servidores de modelos que agregaste en <em>Configuración → IA</em>. La última opción del menú, <em>Agregar servidor de modelos (Ollama / OpenAI)…</em>, abre el alta ahí mismo y, al guardar, elige el servidor nuevo: <a href="#ia-modelos--desde-el-chat">no hace falta instalar nada</a>. Cambiarlo en una conversación ya empezada abre una <em>nueva</em>: cada proveedor guarda su propio hilo, y no hay forma honesta de que uno continúe lo que venía haciendo otro.</li>
     <li><strong>Modelo</strong> — la lista la informa el propio proveedor, y <em>Por defecto</em> usa el que tenga configurado. Rige desde el mensaje siguiente.</li>
     <li><strong>Repositorio</strong> — uno de los que agregaste en el módulo Git, o ninguno. La conversación lo registra, y su nombre y ubicación viajan como una ficha junto a tus mensajes para que el agente sepa de cuál hablás; la ficha se puede quitar del mensaje. Una conversación que nació en otro módulo (una conexión, una nota) muestra acá su origen y no puede cambiar de repositorio. Con un <a href="#ia-modelos">servidor de modelos</a>, es además el <strong>repositorio de trabajo</strong> de sus <a href="#ia-agente-local">herramientas de archivos y comandos</a>; sin uno, el chat avisa que solo están las herramientas MCP.</li>
   </ul>
@@ -1779,7 +1807,8 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
 
   <h2 id="ia-modelos--agregar">Agregar un servidor</h2>
   <ol class="steps">
-    <li>Abrí <strong>Configuración → IA</strong> y, en <strong>Servidores de modelos</strong>, tocá <strong>Agregar servidor</strong>.</li>
+    <li>Abrí <strong>Configuración → IA</strong> y, en <strong>Servidores de modelos</strong>, tocá <strong>Agregar servidor</strong> (o, desde el chat, elegí <em>Agregar servidor de modelos…</em> en el selector de proveedor: <a href="#ia-modelos--desde-el-chat">mismo formulario, en un diálogo</a>).</li>
+    <li>Elegí un <a href="#ia-modelos--atajos">atajo</a> arriba del formulario (<em>Ollama en esta máquina</em>, <em>LM Studio</em>…) y completa nombre, tipo y dirección. O completalos vos:</li>
     <li>Elegí el <strong>tipo</strong>: <em>Ollama</em> para la API propia de Ollama, o <em>Compatible con OpenAI</em> para LM Studio, vLLM, el servidor de llama.cpp y cualquier otro que hable <code>/v1/chat/completions</code>.</li>
     <li>Escribí la <strong>dirección</strong>: <code>http://localhost:11434</code> para el Ollama local, <code>http://localhost:1234/v1</code> para LM Studio, o la URL de otra máquina, como <code>https://gpu.miempresa.com/v1</code>.</li>
     <li>Tocá <strong>Probar conexión</strong>: muestra la versión del servidor y cuántos modelos lista, o el error exacto. Después <strong>Guardar</strong>.</li>
@@ -1787,6 +1816,73 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <div class="note tip"><span class="lbl">Un clic para Ollama</span>
   Si hay un Ollama respondiendo en <code>localhost:11434</code>, Configuración ofrece <strong>Ollama local detectado — Agregar</strong>
   y lo guarda por vos. La sugerencia desaparece cuando lo agregás o la descartás.</div>
+
+
+  <h2 id="ia-modelos--atajos">Atajos: empezar desde un modelo</h2>
+  <p>Al agregar un servidor, arriba del formulario hay seis tarjetas. Elegir una completa <strong>nombre, tipo y dirección</strong>; después podés editar todo.
+  El formulario no recuerda nada entre aperturas: cada vez arranca sin ninguna tarjeta elegida.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Tarjeta</th><th>Tipo</th><th>Dirección</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Ollama en esta máquina</strong></td><td>Ollama</td><td><code>http://localhost:11434</code></td></tr>
+      <tr><td><strong>Ollama en otra máquina</strong></td><td>Ollama</td><td><code>http://&lt;IP&gt;:&lt;puerto&gt;</code> — pide la IP o el nombre y el puerto (11434 por defecto) y abre <a href="#ia-modelos--exponer-ollama">la guía para exponerlo</a></td></tr>
+      <tr><td><strong>LM Studio</strong></td><td>Compatible con OpenAI</td><td><code>http://localhost:1234/v1</code></td></tr>
+      <tr><td><strong>vLLM</strong></td><td>Compatible con OpenAI</td><td><code>http://&lt;IP&gt;:&lt;puerto&gt;/v1</code> — IP o nombre y puerto (8000 por defecto)</td></tr>
+      <tr><td><strong>llama.cpp server</strong></td><td>Compatible con OpenAI</td><td><code>http://localhost:8080/v1</code></td></tr>
+      <tr><td><strong>Otro compatible con OpenAI</strong></td><td>Compatible con OpenAI</td><td>vacía: la escribís vos</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li><strong>El puerto lo cambiás vos.</strong> Las dos tarjetas que piden una IP toman el puerto en su propio campo (1–65535); la dirección se arma como <code>http://IP:puerto</code>.</li>
+    <li><strong>La IP o el nombre es solo eso</strong>: sin <code>http://</code>, sin barras y sin puerto. El formulario lo marca en rojo si no es así.</li>
+    <li><strong>El campo Dirección sigue a la vista</strong> y acompaña a la IP y el puerto mientras conserve esa forma. Si lo editás a otra cosa, la tarjeta se suelta y el formulario pasa a ser solo tuyo.</li>
+    <li>El <strong>nombre</strong> se completa solo (<em>Ollama · 192.168.1.50</em>) hasta que escribas el tuyo.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/model-servers-presets.png" alt="El formulario de Agregar servidor con las seis tarjetas de atajo arriba: Ollama en esta máquina, Ollama en otra máquina, LM Studio, vLLM, llama.cpp server y Otro compatible con OpenAI"></div>
+    <figcaption>Las tarjetas de atajo, arriba del formulario de alta.</figcaption>
+  </figure>
+
+  <h2 id="ia-modelos--exponer-ollama">Cómo exponer Ollama en la otra máquina</h2>
+  <p>Con la tarjeta <em>Ollama en otra máquina</em> el formulario muestra esta guía <strong>ya abierta</strong>; con cualquier otro Ollama cuya dirección no sea local aparece plegada, a un clic.
+  Cada comando tiene su botón de copiar y usa <strong>el puerto que escribiste</strong>. Los pasos se hacen en la otra máquina:</p>
+  <ol class="steps">
+    <li><strong>Comprobá cómo escucha.</strong> <code>lsof -i :11434</code>. Si muestra <code>localhost:11434</code>, Ollama solo acepta conexiones locales; tiene que mostrar <code>*:11434</code>.</li>
+    <li><strong>Hacelo escuchar en la red</strong>, según cómo corra ahí:
+      <ul>
+        <li><em>macOS (app de Ollama):</em> <code>launchctl setenv OLLAMA_HOST "0.0.0.0:11434"</code>, después salí de Ollama desde el ícono de la barra de menú y volvé a abrirlo. No sobrevive a un reinicio.</li>
+        <li><em>Terminal:</em> <code>OLLAMA_HOST=0.0.0.0:11434 ollama serve</code></li>
+        <li><em>Linux (systemd):</em> <code>sudo systemctl edit ollama.service</code>, agregá <code>[Service]</code> y <code>Environment="OLLAMA_HOST=0.0.0.0:11434"</code>, y después <code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart ollama</code>.</li>
+        <li><em>Windows:</em> <code>setx OLLAMA_HOST "0.0.0.0:11434"</code>, después salí de Ollama desde el ícono de la bandeja y volvé a abrirlo.</li>
+      </ul></li>
+    <li><strong>Averiguá su IP:</strong> <code>ipconfig getifaddr en0</code> en macOS, <code>hostname -I</code> en Linux, <code>ipconfig</code> en Windows (buscá la Dirección IPv4).</li>
+    <li><strong>Firewall:</strong> permití las conexiones entrantes para Ollama o para ese puerto.</li>
+    <li><strong>Verificá desde esta máquina:</strong> <code>curl http://&lt;IP&gt;:11434/api/version</code> tiene que devolver la versión en JSON.</li>
+  </ol>
+  <div class="note warn"><span class="lbl">Seguridad</span>
+  <code>0.0.0.0</code> expone Ollama <strong>sin autenticación</strong> a toda la red. En una red compartida ponelo detrás de un
+  <a href="#ia-modelos--acceso-remoto">proxy inverso HTTPS con token</a>: el formulario ya admite <a href="#ia-modelos--token">token</a> y <a href="#ia-modelos--cabeceras">cabeceras adicionales</a>.</div>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/model-servers-remote-guide.png" alt="La tarjeta Ollama en otra máquina elegida, con IP 192.168.1.50 y puerto 11435, la dirección armada con ellos y la guía abierta: lsof -i :11435, el comando launchctl de macOS con su botón de copiar y los comandos para averiguar la IP"></div>
+    <figcaption>«Ollama en otra máquina» con el puerto 11435: los comandos de la guía ya llevan ese puerto.</figcaption>
+  </figure>
+
+  <h2 id="ia-modelos--desde-el-chat">Desde el chat, sin instalar nada</h2>
+  <p>Un Ollama <strong>no se instala como un CLI</strong>: se usa por su dirección, esté en tu máquina o en otra de tu red. Por eso el selector de proveedor del
+  <a href="#utilidades-chat-ia">Chat de IA</a> (y el del panel lateral) termina con <strong>Agregar servidor de modelos (Ollama / OpenAI)…</strong>: abre el mismo
+  formulario de Configuración en un diálogo y, al guardar, deja elegido el servidor nuevo. Si todavía no hay ningún servidor, el chat vacío lo propone con un botón
+  («¿Tenés Ollama en otra máquina? Agregalo como servidor»), y en Configuración → IA la lista de <em>Agentes de código</em> te remite a esta sección.</p>
+  <figure>
+    <div class="shot"><img src="../docs/screenshots/es/model-servers-add-dialog.png" alt="Diálogo Agregar servidor de modelos sobre el Chat de IA, con un Ollama en 192.168.1.50 cuya prueba falló: el consejo sobre OLLAMA_HOST y el botón Guardar igual"></div>
+    <figcaption>El alta desde el chat. Si la prueba falla, el botón pasa a decir <em>Guardar igual</em>.</figcaption>
+  </figure>
+
+  <h2 id="ia-modelos--ollama-remoto">Un Ollama en otra máquina no responde</h2>
+  <p>Si <strong>Probar conexión</strong> falla con <em>conexión rechazada</em> o <em>tiempo agotado</em> contra una dirección que no es local, el formulario muestra un consejo con un botón <strong>Ver la guía</strong>. La causa
+  habitual: <strong>Ollama escucha por defecto solo en <code>localhost</code> de su propia máquina</strong>, así que desde otra la conexión se rechaza aunque esté en marcha.
+  El botón abre <a href="#ia-modelos--exponer-ollama">la guía para exponer Ollama</a> dentro del formulario y te lleva hasta ella: diagnóstico, comandos por sistema, IP, firewall y verificación.</p>
+  <div class="note tip"><span class="lbl">Podés guardar igual</span>
+  Guardar nunca exige que la prueba salga bien: si el servidor está apagado o todavía no lo abriste a la red, el botón dice <strong>Guardar igual</strong> y lo registrás para probarlo después desde la lista.</div>
 
   <h2 id="ia-modelos--token">El token</h2>
   <p>Es opcional, para servidores detrás de un proxy o que piden una API key. Se guarda <strong>cifrado bajo tu clave
@@ -1799,7 +1895,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   commit, explicar un error de SSH) y en el selector que le hace la misma pregunta a otro modelo. En el chat elegís el
   <strong>modelo</strong> entre los que lista el servidor; si no elegís ninguno, se usa el primero que devuelve.</p>
   <div class="note"><span class="lbl">Lo que un servidor no tiene</span><p>No es un programa: no hay comando para abrir
-  en una terminal, ni API key por variable de entorno, ni barras de consumo. Todo lo que puede hacer además de contestar
+  en una terminal, ni API key por variable de entorno, ni barras de límite del plan (su <a href="#ia-modelos--consumo">consumo</a> sí se muestra, pero no un límite). Todo lo que puede hacer además de contestar
   —leer y editar archivos, correr comandos, usar tus notas— lo hacen herramientas que <strong>esta app</strong> ejecuta por él: mirá más abajo.</p></div>
 
   <h2 id="ia-modelos--herramientas">Herramientas</h2>
@@ -1808,6 +1904,19 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   se lo permitís, editarlos y correr comandos: es el <a href="#ia-agente-local">agente de código local</a>, gobernado por los mismos
   modos de permisos del resto del chat. Hasta puede escribir notas solo si encendés el
   <a href="#ia-cerebro">cerebro</a>. Un modelo que no admite herramientas sigue funcionando como chat simple, y el chat te lo avisa.</p>
+
+  <h2 id="ia-modelos--consumo">Consumo</h2>
+  <p>El panel de consumo (el <strong>botón del gráfico</strong> en la cabecera del chat) tiene una sección <strong>Servidores de modelos</strong>
+  debajo de los CLIs: una tarjeta por servidor con su insignia <em>local</em> o <em>remoto</em>, los tokens de entrada y de salida, los turnos,
+  las conversaciones, una fila por <strong>modelo</strong> con su parte del total, una <strong>barra por día</strong> de la ventana (pasá el
+  mouse por una barra para ver los tokens y turnos de ese día), la <strong>velocidad media en tokens por segundo</strong> y cuándo se usó por
+  última vez. Un servidor que eliminaste sigue apareciendo, como <em>Servidor eliminado</em>, mientras tenga conversaciones dentro de la ventana.</p>
+  <p>A diferencia de un CLI, un servidor no deja nada en el disco: estos números salen del <strong>historial de chats de esta app</strong>, que
+  guarda los tokens de cada turno junto con el modelo que contestó y cuánto tardó el servidor en generar. Los turnos guardados antes de esa
+  versión no tienen modelo (figuran como <em>modelo sin registrar</em>) ni velocidad. La velocidad no cuenta la espera de aprobaciones ni lo que
+  tardan las herramientas. Un servidor que no informa el conteo de tokens figura con turnos pero sin tokens.</p>
+  <div class="note"><span class="lbl">Sin costo</span><p>Un servidor propio o compatible con OpenAI no informa precio por token, así que el panel
+  <strong>no muestra ningún monto</strong>: sería inventado. Solo tokens, turnos y velocidad.</p></div>
 
   <h2 id="ia-modelos--remoto">Local o remoto</h2>
   <div class="note warn"><span class="lbl">Servidores remotos</span>
@@ -1821,7 +1930,7 @@ Si aparece una sesión de más de una hora, avisar en [[Guardia · a quién llam
   <p>Ollama escucha solo en <code>localhost</code> por defecto, así que otra máquina no lo alcanza hasta que lo abras.
   Hay dos caminos, y el segundo es el que conviene:</p>
   <ol class="steps">
-    <li><strong>Escuchar en la red.</strong> En la máquina que corre Ollama, arrancalo con <code>OLLAMA_HOST=0.0.0.0</code>
+    <li><strong>Escuchar en la red</strong> (los comandos por sistema, con botón de copiar, están en <a href="#ia-modelos--exponer-ollama">la guía del formulario</a>). En la máquina que corre Ollama, arrancalo con <code>OLLAMA_HOST=0.0.0.0</code>
     y permití el puerto (11434) en su firewall. En Linux con systemd, ejecutá <code>systemctl edit ollama</code> y agregá
     <code>Environment="OLLAMA_HOST=0.0.0.0"</code> bajo <code>[Service]</code>; en macOS, <code>launchctl setenv OLLAMA_HOST "0.0.0.0"</code> y reiniciá Ollama.
     El tráfico es <code>http</code> plano y sin autenticación: hacelo solo en una red de confianza.</li>

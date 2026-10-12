@@ -131,6 +131,11 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 	}
 
 	var total llm.Usage
+	// genTime acumula lo que el servidor tardó en contestar (una o más
+	// llamadas por turno, según las vueltas de herramientas). No incluye lo
+	// que tardó una herramienta ni la espera de una aprobación: dividir los
+	// tokens por el turno entero daría una velocidad que no es del modelo.
+	var genTime time.Duration
 	var sawText, sawTool bool
 	for round := 1; ; round++ {
 		// Entre dos vueltas el texto del modelo se separa con un párrafo: sin
@@ -152,6 +157,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 			}
 		}
 
+		callStart := time.Now()
 		res, err := chatRetry(ctx, t.LLM, llm.ChatRequest{Model: model, Messages: msgs, Tools: tools}, onDelta)
 		if err != nil && len(tools) > 0 && ctx.Err() == nil && llm.IsToolsUnsupported(err) {
 			// El modelo (o el servidor) no soporta herramientas: se sigue sin
@@ -162,6 +168,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 			tools, allowed = nil, map[string]bool{}
 			res, err = chatRetry(ctx, t.LLM, llm.ChatRequest{Model: model, Messages: msgs}, onDelta)
 		}
+		genTime += time.Since(callStart)
 		if err != nil {
 			m.emitLLMError(ctx, t.SessionID, err)
 			return
@@ -188,7 +195,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 				msgs = append(msgs, toolMessage(c, "error: "+i18n.T(msgToolRoundsNotRun)))
 			}
 			m.saveLLMHistory(ctx, t.SessionID, msgs)
-			m.emit(t.SessionID, Event{Kind: KindError, Error: i18n.T(msgToolRoundsLimit, maxRounds), Usage: usageOf(total)})
+			m.emit(t.SessionID, Event{Kind: KindError, Error: i18n.T(msgToolRoundsLimit, maxRounds), Usage: usageOf(total, genTime)})
 			return
 		}
 
@@ -214,7 +221,7 @@ func (m *Manager) runLLM(ctx context.Context, t Turn, history []llm.Message) {
 	// ni reinició la sesión mientras tanto (Reset cancela antes de borrar, así
 	// que ctx.Err() bajo el candado es la comprobación completa).
 	m.saveLLMHistory(ctx, t.SessionID, msgs)
-	m.emit(t.SessionID, Event{Kind: KindDone, ConversationID: t.SessionID, Usage: usageOf(total)})
+	m.emit(t.SessionID, Event{Kind: KindDone, ConversationID: t.SessionID, Usage: usageOf(total, genTime)})
 }
 
 var (
@@ -257,8 +264,8 @@ func chatRetry(ctx context.Context, c llm.Client, req llm.ChatRequest, onDelta f
 	return c.Chat(ctx, req, onDelta)
 }
 
-func usageOf(u llm.Usage) *Usage {
-	return &Usage{Input: u.Input, Output: u.Output, Total: u.Input + u.Output}
+func usageOf(u llm.Usage, gen time.Duration) *Usage {
+	return &Usage{Input: u.Input, Output: u.Output, Total: u.Input + u.Output, DurationMs: gen.Milliseconds()}
 }
 
 func (m *Manager) saveLLMHistory(ctx context.Context, sessionID string, msgs []llm.Message) {

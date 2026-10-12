@@ -41,3 +41,21 @@ export function onOpenNoteRequest(handler: (req: OpenNoteRequest) => void): () =
     window.addEventListener(OPEN_NOTE, listener)
     return () => window.removeEventListener(OPEN_NOTE, listener)
 }
+
+// La lista de servidores de modelos cambió (alta, edición o baja).
+//
+// Un servidor se puede agregar desde tres lugares —Configuración, el selector del
+// Chat de IA y el del panel lateral— y los dos selectores leen `ListAgents` una
+// sola vez al montarse. Sin este aviso, el servidor recién guardado no aparecería
+// en el selector de al lado hasta reabrir la pestaña, que es justo el momento en
+// que uno se pregunta si se guardó.
+const MODEL_SERVERS_CHANGED = 'mini-tools:model-servers-changed'
+
+export function notifyModelServersChanged(): void {
+    window.dispatchEvent(new Event(MODEL_SERVERS_CHANGED))
+}
+
+export function onModelServersChanged(handler: () => void): () => void {
+    window.addEventListener(MODEL_SERVERS_CHANGED, handler)
+    return () => window.removeEventListener(MODEL_SERVERS_CHANGED, handler)
+}

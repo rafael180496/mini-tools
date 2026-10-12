@@ -21,6 +21,7 @@ type fakeLLM struct {
 	usage    llm.Usage
 	err      error
 	block    chan struct{} // si no es nil, Chat espera a que se cancele
+	delay    time.Duration // cuánto tarda en contestar
 }
 
 func (f *fakeLLM) Version(context.Context) (string, error) { return "test", nil }
@@ -35,6 +36,9 @@ func (f *fakeLLM) Chat(ctx context.Context, req llm.ChatRequest, onDelta func(ll
 	if f.block != nil {
 		<-ctx.Done()
 		return llm.ChatResult{}, ctx.Err()
+	}
+	if f.delay > 0 {
+		time.Sleep(f.delay)
 	}
 	if f.err != nil {
 		return llm.ChatResult{}, f.err
@@ -406,4 +410,19 @@ func TestChatDoesNotRetry(t *testing.T) {
 	if _, err := (&Manager{}).askLLM(ctx, Turn{AgentID: "llm:x", Prompt: "x", LLM: s}); err == nil || s.count() != 1 {
 		t.Fatalf("err = %v, llamadas %d", err, s.count())
 	}
+}
+
+func TestLLMDoneReportsGenerationTime(t *testing.T) {
+	f := &fakeLLM{models: []string{"m"}, reply: "hola", usage: llm.Usage{Input: 3, Output: 2}, delay: 30 * time.Millisecond}
+	col := newCollector()
+	m := NewManager(col.emit)
+	if err := m.Send(Turn{SessionID: "s1", AgentID: "llm:abc", Prompt: "hola", LLM: f}); err != nil {
+		t.Fatal(err)
+	}
+	evs := col.wait(t)
+	last := evs[len(evs)-1]
+	if last.Kind != KindDone || last.Usage == nil || last.Usage.DurationMs < 25 || last.Usage.DurationMs > 2000 {
+		t.Fatalf("done = %+v (usage %+v)", last, last.Usage)
+	}
+	waitIdle(t, m, "s1")
 }

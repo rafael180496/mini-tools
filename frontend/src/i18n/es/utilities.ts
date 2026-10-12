@@ -39,6 +39,20 @@ export default {
         showHistory: 'Mostrar historial',
         hideHistoryTitle: 'Esconde la lista de conversaciones para darle todo el ancho al chat',
         showHistoryTitle: 'Muestra la lista de conversaciones de todos los módulos',
+        historyDrawerTitle: 'Abre la lista de conversaciones sobre el chat. La pestaña es angosta: al elegir una se cierra sola',
+        usage: 'Consumo',
+        usageTitle: 'Ver consumo de tokens por agente y servidor de modelos',
+        closeHistory: 'Cerrar el historial',
+        closeHistoryTitle: 'Cierra la lista de conversaciones y vuelve al chat (Esc)',
+        historyResizeLabel: 'Ancho del historial',
+        historyResizeTitle:
+            'Arrastrá para cambiar el ancho del historial. Con el foco, las flechas ← → lo ajustan (Mayús: más rápido; Inicio y Fin: mínimo y máximo). Doble clic vuelve al ancho original. Queda guardado.',
+        historyResizeValue: (p: {px: number}) => `${p.px} píxeles`,
+        noServer: {
+            text: '¿Tenés Ollama en otra máquina? Agregalo como servidor — no hace falta instalar nada acá.',
+            button: 'Agregar servidor',
+            buttonTitle: 'Registra un servidor de modelos (Ollama u OpenAI-compatible) por su dirección. No instala nada en esta máquina.',
+        },
         newChat: 'Nuevo chat',
         newChatTitle: (p: {shortcut: string}) =>
             `Empieza una conversación nueva con el proveedor y el modelo elegidos (${p.shortcut}). La actual no se pierde: sigue en el historial, y si estaba respondiendo, termina detrás.`,

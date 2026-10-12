@@ -25,6 +25,7 @@ import {
 import {agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import Select from '../Select'
+import ModelServerDialog from '../ModelServerDialog'
 import AgentChat, {type ChatContextBlock} from './AgentChat'
 import AgentUsagePanel from './AgentUsagePanel'
 import {isModelServerAgent} from '../../lib/modelServers'
@@ -34,6 +35,7 @@ import {ProviderIconWithHealth} from './HealthIndicators'
 import AgentHistoryPanel from './AgentHistoryPanel'
 import PromptDialog from '../git/PromptDialog'
 import {useT} from '../../i18n'
+import {onModelServersChanged} from '../../lib/appBus'
 import {CONTEXT_ICONS, contextKey, ownsChat, repoIdOf, type WorkContext, type WorkContextKind} from './workContext'
 
 // Anfitrión del chat de nivel APLICACIÓN: una conversación que acompaña al
@@ -185,6 +187,10 @@ interface Session {
     resumeChatId?: string
 }
 
+// Valor de la última opción del selector de agente: no es un agente, abre el
+// diálogo de alta de un servidor de modelos.
+const ADD_SERVER = '__add_model_server__'
+
 export default function AgentChatHost({
     context,
     working,
@@ -232,14 +238,27 @@ export default function AgentChatHost({
     const key = contextKey(effective)
     const session = sessions[key] ?? null
 
-    useEffect(() => {
+    const refreshAgents = useCallback(() => {
         ListAgents()
             .then((list) => setAgentList(list ?? []))
             .catch(() => setAgentList([]))
+    }, [])
+
+    useEffect(() => {
+        refreshAgents()
         AgentActive()
             .then(setActive)
             .catch(() => setActive(null))
-    }, [])
+    }, [refreshAgents])
+
+    // Un servidor de modelos agregado, editado o borrado en otro lugar
+    // (Configuración, el Chat de IA) tiene que verse acá sin reabrir el panel.
+    useEffect(() => onModelServersChanged(refreshAgents), [refreshAgents])
+
+    // Diálogo «Agregar servidor de modelos» del selector, y el servidor recién
+    // guardado, que se elige apenas el catálogo lo trae.
+    const [serverDialog, setServerDialog] = useState(false)
+    const [pendingAgent, setPendingAgent] = useState('')
 
     // El contexto fijado se suelta al cambiar de pestaña: quedó fijado para
     // una acción puntual ("analizá este plan"), no para siempre.
@@ -431,6 +450,13 @@ export default function AgentChatHost({
         [available, startSession, effective],
     )
 
+    useEffect(() => {
+        if (pendingAgent && available.some((a) => a.id === pendingAgent)) {
+            chooseAgent(pendingAgent)
+            setPendingAgent('')
+        }
+    }, [pendingAgent, available, chooseAgent])
+
     const panel = (
         <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
             <div className="flex shrink-0 items-center gap-1.5 border-b border-outline-variant bg-surface-container px-2 py-1.5 text-ui-11">
@@ -445,28 +471,33 @@ export default function AgentChatHost({
                     lugar natural es la barra del chat. */}
 <Select
                     value={active?.id ?? ''}
-                    onChange={chooseAgent}
+                    onChange={(v) => (v === ADD_SERVER ? setServerDialog(true) : chooseAgent(v))}
                     title={
                         available.length === 0
                             ? t.agent.host.noneInstalledTitle
                             : t.agent.host.pickerTitle
                     }
-                    disabled={available.length === 0}
                     size="sm"
                     variant="ghost"
                     placeholder={available.length === 0 ? t.agent.host.noneInstalled : t.agent.host.pickAgent}
                     className="max-w-48 min-w-0 font-medium"
-                    menuMinWidth={220}
-                    options={available.map((a) => ({
-                        value: a.id,
-                        label: a.label,
-                        hint: isModelServerAgent(a.id) ? a.vendor : undefined,
-                        icon: isModelServerAgent(a.id) ? (
-                            <ProviderIconWithHealth icon={agentIconName(a.id)} health={optionsHealth[a.id] ?? null} server={a.label} />
-                        ) : (
-                            <Icon name={agentIconName(a.id)} size={14} />
-                        ),
-                    }))}
+                    menuMinWidth={240}
+                    options={[
+                        ...available.map((a, i) => ({
+                            value: a.id,
+                            label: a.label,
+                            hint: isModelServerAgent(a.id) ? a.vendor : undefined,
+                            separatorAfter: i === available.length - 1,
+                            icon: isModelServerAgent(a.id) ? (
+                                <ProviderIconWithHealth icon={agentIconName(a.id)} health={optionsHealth[a.id] ?? null} server={a.label} />
+                            ) : (
+                                <Icon name={agentIconName(a.id)} size={14} />
+                            ),
+                        })),
+                        // Sin ningún agente instalado el selector antes quedaba
+                        // deshabilitado y sin salida; ahora ofrece agregar un servidor.
+                        {value: ADD_SERVER, label: t.settings.modelServers.addFromPicker, tone: 'text-primary', icon: <Icon name="add_circle" size={14} className="text-primary" />},
+                    ]}
                 />
 
                 <button
@@ -751,6 +782,18 @@ export default function AgentChatHost({
                     </>
                 )}
             </div>
+
+            {serverDialog && (
+                <ModelServerDialog
+                    onSaved={(saved) => {
+                        setServerDialog(false)
+                        setPendingAgent(`llm:${saved.id}`)
+                        window.setTimeout(() => setPendingAgent(''), 5000)
+                        refreshAgents()
+                    }}
+                    onClose={() => setServerDialog(false)}
+                />
+            )}
 
             {renaming && (
                 <PromptDialog

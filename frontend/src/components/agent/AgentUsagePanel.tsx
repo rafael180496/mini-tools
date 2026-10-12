@@ -3,6 +3,7 @@ import {AgentPlans, AgentQueryLimits, AgentUsageAll, AgentUsageLimits} from '../
 import {agentlimits, agentplan, agentusage} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import AgentLimitBars from './AgentLimitBars'
+import AgentModelServersUsage from './AgentModelServersUsage'
 import {isModelServerAgent} from '../../lib/modelServers'
 import {rich} from './rich'
 import {formatNumber, useT} from '../../i18n'
@@ -108,9 +109,10 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
 
                 {!usage && !error && <p className="px-1 text-on-surface-variant">{t.agent.usage.reading}</p>}
 
-                {/* Consumo y límites se leen de lo que un CLI deja en disco: un
-                    servidor de modelos no tiene ni lo uno ni lo otro. Lo que sí
-                    cuenta de él es la tarjeta de "esta conversación", arriba. */}
+                {/* Consumo y límites de CLIs: se leen de lo que cada CLI deja en
+                    disco. Un servidor de modelos no tiene ni lo uno ni lo otro;
+                    su consumo (del historial de la app) va en su propia sección,
+                    más abajo, y su conversación actual en la tarjeta de arriba. */}
                 {usage?.agents.filter((a) => !isModelServerAgent(a.agent)).map((a) => {
                     const plan = plans.find((p) => p.agent === a.agent)
                     const limit = limits.find((l) => l.agent === a.agent)
@@ -219,6 +221,12 @@ export default function AgentUsagePanel({agentLabel, onClose, session}: Props) {
                         </div>
                     )
                 })}
+
+                {/* Los servidores de modelos no dejan nada en disco: su consumo
+                    sale del historial de la app y se lee aparte (ver el
+                    componente). Va DESPUÉS de los CLIs, que siguen siendo lo
+                    que se abre este panel a mirar. */}
+                <AgentModelServersUsage />
 
                 <p className="px-1 text-ui-10 leading-4 text-on-surface-variant/70">
                     {rich(t.agent.usage.footer)}

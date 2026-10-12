@@ -40,6 +40,20 @@ const en: Messages<typeof es> = {
         showHistory: 'Show history',
         hideHistoryTitle: 'Hides the conversation list to give the chat the full width',
         showHistoryTitle: 'Shows the conversation list from every module',
+        historyDrawerTitle: 'Opens the conversation list over the chat. This tab is narrow: picking one closes it by itself',
+        usage: 'Usage',
+        usageTitle: 'See token usage by agent and model server',
+        closeHistory: 'Close history',
+        closeHistoryTitle: 'Closes the conversation list and goes back to the chat (Esc)',
+        historyResizeLabel: 'History width',
+        historyResizeTitle:
+            'Drag to change the history width. With focus, the ← → arrow keys adjust it (Shift: faster; Home and End: minimum and maximum). Double-click goes back to the original width. It is remembered.',
+        historyResizeValue: (p) => `${p.px} pixels`,
+        noServer: {
+            text: 'Is Ollama on another machine? Add it as a server — nothing needs installing here.',
+            button: 'Add server',
+            buttonTitle: 'Registers a model server (Ollama or OpenAI-compatible) by its address. It installs nothing on this machine.',
+        },
         newChat: 'New chat',
         newChatTitle: (p) =>
             `Starts a new conversation with the provider and model picked (${p.shortcut}). The current one is not lost: it stays in the history, and if it was replying it finishes in the background.`,

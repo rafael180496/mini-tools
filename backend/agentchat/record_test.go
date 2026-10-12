@@ -155,3 +155,32 @@ func TestPastTurnsFromStored(t *testing.T) {
 		t.Fatalf("3: %+v", got[3])
 	}
 }
+
+func TestTurnRecorderCarriesModelToTheClosingRow(t *testing.T) {
+	var r TurnRecorder
+	u := &Usage{Input: 4, Output: 2, Total: 6}
+	msgs, _ := feedAll(&r,
+		Event{Kind: KindStart, Model: "llama3"},
+		Event{Kind: KindTool, Tool: &ToolCall{Name: "Read", Summary: "a"}},
+		Event{Kind: KindText, Text: "listo"},
+		Event{Kind: KindDone, Usage: u},
+	)
+	// El modelo viaja en la fila que lleva el uso, no en la herramienta.
+	if len(msgs) != 2 || msgs[0].Model != "" || msgs[1].Model != "llama3" {
+		t.Fatalf("msgs: %+v", msgs)
+	}
+	// Solo-herramientas: el uso (y el modelo) van en la última.
+	msgs, _ = feedAll(&r, Event{Kind: KindStart, Model: "qwen"}, Event{Kind: KindTool, Tool: &ToolCall{Name: "A", Summary: "a"}}, Event{Kind: KindDone, Usage: u})
+	if len(msgs) != 1 || msgs[0].Model != "qwen" {
+		t.Fatalf("solo herramientas: %+v", msgs)
+	}
+	// Un error también conserva el modelo, y el recorder no lo arrastra al turno siguiente.
+	msgs, _ = feedAll(&r, Event{Kind: KindStart, Model: "m1"}, Event{Kind: KindError, Error: "boom", Usage: u})
+	if msgs[len(msgs)-1].Model != "m1" {
+		t.Fatalf("error: %+v", msgs)
+	}
+	msgs, _ = feedAll(&r, Event{Kind: KindText, Text: "x"}, Event{Kind: KindDone, Usage: u})
+	if msgs[0].Model != "" {
+		t.Fatalf("el modelo del turno anterior se arrastró: %+v", msgs)
+	}
+}

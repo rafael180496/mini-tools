@@ -88,6 +88,23 @@ export default function AgentSettings() {
                 {g.introAfter}
             </p>
 
+            {/* Quien busca acá su Ollama se encuentra con una lista de CLIs y
+                concluye que hay que instalarlo. No: es otra sección. */}
+            <p data-model-servers-hint className="flex items-start gap-2 rounded-lg bg-surface-container-highest px-3 py-2 text-xs text-on-surface-variant">
+                <Icon name="info" size={15} className="mt-px shrink-0 text-primary" />
+                <span className="min-w-0 flex-1">
+                    {g.modelServersHint}{' '}
+                    <button
+                        type="button"
+                        onClick={() => document.querySelector('[data-model-servers]')?.scrollIntoView({block: 'start', behavior: 'smooth'})}
+                        title={g.modelServersGoTitle}
+                        className="font-medium text-primary underline decoration-dotted underline-offset-2 hover:opacity-80"
+                    >
+                        {g.modelServersGo}
+                    </button>
+                </span>
+            </p>
+
             {error && <p className="px-1 text-xs text-error">{error}</p>}
 
             {list.length === 0 && !error && (

@@ -31,12 +31,16 @@ type RecordedMessage struct {
 	ToolName string
 	// Usage son los tokens del turno, en la última fila que lo cierra.
 	Usage *Usage
+	// Model es el modelo que anunció el evento start del turno; solo viaja
+	// junto con Usage (la fila que cierra el turno), que es donde se guarda.
+	Model string
 }
 
 // TurnRecorder acumula los eventos de UN turno.
 type TurnRecorder struct {
 	text  strings.Builder
 	tools []ToolCall
+	model string
 }
 
 // Feed consume un evento. Cuando el evento cierra el turno (done o error)
@@ -58,6 +62,13 @@ type TurnRecorder struct {
 // lo que se le dijo a la persona.
 func (r *TurnRecorder) Feed(ev Event) ([]RecordedMessage, bool) {
 	switch ev.Kind {
+	case KindStart:
+		// El modelo que de verdad contestó (un servidor de modelos resuelve
+		// uno por su cuenta cuando el turno no trae ninguno).
+		if ev.Model != "" {
+			r.model = ev.Model
+		}
+		return nil, false
 	case KindText:
 		r.text.WriteString(ev.Text)
 		return nil, false
@@ -89,14 +100,16 @@ func (r *TurnRecorder) close(usage *Usage, errMsg string) []RecordedMessage {
 		if text != "" {
 			out = append(out, RecordedMessage{Role: "assistant", Content: text})
 		}
-		out = append(out, RecordedMessage{Role: "assistant", Content: ErrorRowPrefix + errMsg, Usage: usage})
+		out = append(out, RecordedMessage{Role: "assistant", Content: ErrorRowPrefix + errMsg, Usage: usage, Model: r.model})
 	case text != "" || len(out) == 0:
-		out = append(out, RecordedMessage{Role: "assistant", Content: text, Usage: usage})
+		out = append(out, RecordedMessage{Role: "assistant", Content: text, Usage: usage, Model: r.model})
 	default:
 		out[len(out)-1].Usage = usage
+		out[len(out)-1].Model = r.model
 	}
 	r.text.Reset()
 	r.tools = nil
+	r.model = ""
 	return out
 }
 

@@ -142,7 +142,7 @@ func (a *App) persistTurnLocked(sessionID string, rt *recordedTurn, msgs []agent
 		rt.userWritten = true
 	}
 	for _, m := range msgs {
-		rows = append(rows, vault.NewChatMessage{Role: m.Role, Content: m.Content, ToolName: m.ToolName, Usage: usageJSON(m.Usage)})
+		rows = append(rows, vault.NewChatMessage{Role: m.Role, Content: m.Content, ToolName: m.ToolName, Usage: usageJSON(m.Usage, m.Model)})
 	}
 	if len(rows) == 0 || a.vault == nil {
 		return
@@ -154,11 +154,19 @@ func (a *App) persistTurnLocked(sessionID string, rt *recordedTurn, msgs []agent
 	}
 }
 
-func usageJSON(u *agentchat.Usage) string {
+// usageJSON serializa el uso de un turno para agent_chat_messages.usage. Le
+// agrega el modelo que contestó (si el evento start lo dijo): es lo que
+// permite medir el consumo por modelo sin una migración — la columna ya era
+// un JSON abierto y los lectores viejos ignoran claves que no conocen.
+func usageJSON(u *agentchat.Usage, model string) string {
 	if u == nil {
 		return ""
 	}
-	b, err := json.Marshal(u)
+	c := *u
+	if c.Model == "" {
+		c.Model = model
+	}
+	b, err := json.Marshal(c)
 	if err != nil {
 		return ""
 	}

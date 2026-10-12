@@ -27,3 +27,18 @@ export function isLoopbackUrl(url: string): boolean {
 // `Record<string, string>` sin admitir null, así que el null se declara acá,
 // una vez, en vez de repartir casts por las pantallas.
 export const STORED_HEADERS = null as unknown as Record<string, string>
+
+// ¿El fallo de una prueba es de los que explica un Ollama que no escucha en la
+// red? Conexión rechazada, tiempo agotado o red/host inalcanzable.
+//
+// Es una heurística sobre el texto y se dice: el backend devuelve el error ya
+// traducido y sin un código aparte (`ModelServerProbe.error` es un string), así
+// que no hay otra señal. Reconoce solo las dos frases de `llm.ConnError` (en los
+// dos idiomas) y los mensajes del sistema que cuelgan de ellas. Un error de
+// certificado, de nombre o un 401 no entra: el consejo no les sirve.
+const UNREACHABLE_RE =
+    /rechazad|refused|agot[oó] el tiempo|timed out|timeout|no route to host|network is unreachable|host is unreachable|inalcanzable/i
+
+export function looksUnreachable(error: string): boolean {
+    return UNREACHABLE_RE.test(error)
+}

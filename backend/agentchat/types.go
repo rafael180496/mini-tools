@@ -77,6 +77,15 @@ type Usage struct {
 	// CostUSD solo lo informa Claude Code; 0 significa "no lo dice", no
 	// "gratis", y la UI tiene que distinguirlo.
 	CostUSD float64 `json:"costUsd"`
+	// Model y DurationMs NO los informa el proveedor: los agrega el historial
+	// al guardar el turno (ver App.usageJSON) para poder medir el consumo por
+	// modelo y la velocidad de un servidor de modelos. Model es el que
+	// anunció el evento start; DurationMs, el tiempo que el servidor tardó en
+	// generar (suma de sus llamadas, sin la espera de aprobaciones ni la
+	// ejecución de herramientas), y solo lo mide el runner de `llm:`. 0 =
+	// no se sabe; en filas anteriores a este campo no existen.
+	Model      string `json:"model,omitempty"`
+	DurationMs int64  `json:"durationMs,omitempty"`
 }
 
 // ToolCall es una llamada a herramienta ya normalizada.

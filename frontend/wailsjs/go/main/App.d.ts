@@ -664,6 +664,8 @@ export function MergeNotes(arg1:string,arg2:string):Promise<void>;
 
 export function ModelServerHealth(arg1:string):Promise<main.ModelServerProbe>;
 
+export function ModelServerUsage(arg1:number):Promise<main.ModelServerUsageReport>;
+
 export function MoveConnectionToFolder(arg1:string,arg2:string):Promise<void>;
 
 export function MoveFolder(arg1:string,arg2:string):Promise<void>;

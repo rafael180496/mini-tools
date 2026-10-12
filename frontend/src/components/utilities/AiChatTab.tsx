@@ -17,23 +17,51 @@ import {
 import {agentmodels, agents as agentsModel, vault} from '../../../wailsjs/go/models'
 import Icon from '../Icon'
 import Select from '../Select'
+import ResizeHandle from '../ResizeHandle'
+import ModelServerDialog from '../ModelServerDialog'
 import ConfirmDialog from '../ConfirmDialog'
 import PromptDialog from '../git/PromptDialog'
 import AgentChat from '../agent/AgentChat'
+import AgentUsagePanel from '../agent/AgentUsagePanel'
 import {agentIconName} from '../agent/agentIcon'
 import {HealthBadge, ProviderIconWithHealth} from '../agent/HealthIndicators'
 import {isModelServerAgent} from '../../lib/modelServers'
 import {useModelServerHealth, useModelServersHealth} from '../../lib/modelServerHealth'
 import {CONTEXT_ICONS, describeContext, repoIdOf, type WorkContext, type WorkContextKind} from '../agent/workContext'
 import {useT} from '../../i18n'
+import {onModelServersChanged} from '../../lib/appBus'
+import {useElementWidth} from '../../hooks/useElementWidth'
 import AiChatHistory from './aichat/AiChatHistory'
+import {
+    CHAT_MIN,
+    COMPACT_BELOW,
+    HISTORY_WIDTH_DEFAULT,
+    HISTORY_WIDTH_MAX,
+    HISTORY_WIDTH_MIN,
+    NARROW_BELOW,
+    readHistoryOpen,
+    readHistoryWidth,
+    writeHistoryOpen,
+    writeHistoryWidth,
+} from './aichat/layoutPrefs'
 
 // Chat de IA: una pestaña de Utilidades con el chat a pantalla completa.
 //
 //   izquierda   historial de TODAS las conversaciones (de cualquier módulo y
-//               proveedor), con buscador, filtro por proveedor y fechas
-//   centro      el mismo `AgentChat` de los demás módulos (módulo «utilities»)
+//               proveedor), con buscador, filtro por proveedor y fechas.
+//               Su ancho se arrastra (como la barra lateral) y se recuerda
+//   centro      el mismo `AgentChat` de los demás módulos (módulo «utilities»),
+//               a TODO el ancho que le quede a la pestaña
 //   cabecera    proveedor + modelo + repositorio de trabajo
+//
+// **Se adapta al ancho de la pestaña, no al de la ventana.** La pestaña puede
+// quedar angosta con la ventana enorme (barra lateral abierta, panel del agente
+// acoplado al costado), así que se mide el propio contenedor con un
+// ResizeObserver. Por debajo de NARROW_BELOW el historial deja de ocupar una
+// columna y pasa a un cajón que se abre sobre el chat; por debajo de
+// COMPACT_BELOW la cabecera se compacta. Ambas cosas se DERIVAN del ancho
+// medido: la preferencia del usuario (historial abierto o cerrado) no se pisa,
+// de modo que al volver a ensanchar la pestaña el historial reaparece solo.
 //
 // **No es un chat nuevo.** La conversación es el componente de siempre, así que
 // cualquier mejora del chat (Detener, copiar, uso por turno, bloques de código)
@@ -46,6 +74,9 @@ import AiChatHistory from './aichat/AiChatHistory'
 // el primer mensaje (una ventana que nunca recibió texto no es historial).
 
 const MODEL_DEFAULT = ''
+// Valor de la opción de cierre del selector de proveedor. No es un agente: al
+// elegirla se abre el diálogo de alta y el proveedor elegido no cambia.
+const ADD_SERVER = '__add_model_server__'
 
 interface Session {
     id: string
@@ -82,7 +113,27 @@ export default function AiChatTab({visible}: Props) {
     const [resourceNames, setResourceNames] = useState<Record<string, string>>({})
     const [sessions, setSessions] = useState<Session[]>([])
     const [currentId, setCurrentId] = useState('')
-    const [historyOpen, setHistoryOpen] = useState(true)
+    // Preferencia del usuario (columna abierta o cerrada) y ancho arrastrado.
+    const [historyOpen, setHistoryOpen] = useState(readHistoryOpen)
+    const [historyWidth, setHistoryWidth] = useState(readHistoryWidth)
+    // Cajón del historial, solo en una pestaña angosta.
+    const [drawerOpen, setDrawerOpen] = useState(false)
+    const [serverDialog, setServerDialog] = useState(false)
+    // Qué ocupa el cuerpo: el chat o el panel de consumo. Las conversaciones se
+    // ESCONDEN, no se desmontan: tienen adentro turnos en curso y lo que se
+    // esté escribiendo (mismo criterio que AgentChatHost).
+    const [body, setBody] = useState<'chat' | 'usage'>('chat')
+    const [sessionUsage, setSessionUsage] = useState({total: 0, output: 0, cost: 0})
+    // Servidor recién guardado, a elegir apenas aparezca en el catálogo.
+    const [pendingProvider, setPendingProvider] = useState('')
+    const rootWidth = useElementWidth(rootRef)
+    // 0 = todavía sin medir: no se asume angosto.
+    const narrow = rootWidth > 0 && rootWidth < NARROW_BELOW
+    const compact = rootWidth > 0 && rootWidth < COMPACT_BELOW
+    const inlineHistory = historyOpen && !narrow
+    // El historial nunca le deja al chat menos de CHAT_MIN.
+    const historyMax = rootWidth > 0 ? Math.max(HISTORY_WIDTH_MIN, Math.min(HISTORY_WIDTH_MAX, rootWidth - CHAT_MIN)) : HISTORY_WIDTH_MAX
+    const historyShown = Math.min(historyMax, Math.max(HISTORY_WIDTH_MIN, historyWidth))
     const [renaming, setRenaming] = useState<vault.AgentChat | null>(null)
     const [deleting, setDeleting] = useState<vault.AgentChat | null>(null)
     const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
@@ -125,17 +176,25 @@ export default function AiChatTab({visible}: Props) {
             .catch(() => {})
     }, [])
 
-    useEffect(() => {
+    // El catálogo de agentes se relee cuando cambia la lista de servidores de
+    // modelos (alta desde acá, desde Configuración o desde el panel lateral).
+    const refreshAgents = useCallback(() => {
         ListAgents()
             .then((l) => setAgentList(l ?? []))
             .catch(() => setAgentList([]))
             .finally(() => setAgentsLoaded(true))
+    }, [])
+
+    useEffect(() => onModelServersChanged(refreshAgents), [refreshAgents])
+
+    useEffect(() => {
+        refreshAgents()
         AgentActive()
             .then((a) => setDefaultAgentId(a?.id ?? ''))
             .catch(() => {})
         loadHistory()
         loadNames()
-    }, [loadHistory, loadNames])
+    }, [refreshAgents, loadHistory, loadNames])
 
     // Al volver a la pestaña se relee el historial: otro módulo (el chat lateral)
     // pudo haber agregado o borrado conversaciones mientras estaba oculta.
@@ -161,6 +220,19 @@ export default function AiChatTab({visible}: Props) {
             cancelled = true
         }
     }, [currentAgentId])
+
+    // El cajón solo existe en una pestaña angosta; Esc lo cierra.
+    useEffect(() => {
+        if (!narrow) setDrawerOpen(false)
+    }, [narrow])
+    useEffect(() => {
+        if (!drawerOpen || !visible) return
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setDrawerOpen(false)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [drawerOpen, visible])
 
     // --- Sesiones ----------------------------------------------------------
 
@@ -306,6 +378,26 @@ export default function AiChatTab({visible}: Props) {
         [available, current, focusComposer, utilitiesContext],
     )
 
+    // Tras guardar un servidor desde el selector, se lo elige apenas el catálogo
+    // lo trae. Si el catálogo no lo trae disponible no se queda esperando.
+    useEffect(() => {
+        if (!pendingProvider || !current) return
+        if (available.some((a) => a.id === pendingProvider)) {
+            changeProvider(pendingProvider)
+            setPendingProvider('')
+        }
+    }, [pendingProvider, available, current, changeProvider])
+
+    const onServerSaved = useCallback(
+        (saved: {id: string}) => {
+            setServerDialog(false)
+            setPendingProvider(`llm:${saved.id}`)
+            window.setTimeout(() => setPendingProvider(''), 5000)
+            refreshAgents()
+        },
+        [refreshAgents],
+    )
+
     const changeModel = useCallback((sessionId: string, model: string) => {
         setSessions((prev) => (prev.some((s) => s.id === sessionId && s.model !== model) ? prev.map((s) => (s.id === sessionId ? {...s, model} : s)) : prev))
     }, [])
@@ -433,59 +525,157 @@ export default function AiChatTab({visible}: Props) {
 
     const shortcut = navigator.platform.includes('Mac') ? '⌘N' : 'Ctrl+N'
     const activeChatId = current?.chatId || null
+    const hasModelServer = available.some((a) => isModelServerAgent(a.id))
+    const ms = t.settings.modelServers
+    // Selectores de la cabecera: con espacio de sobra miden lo que su contenido
+    // y topan a 14 rem; en una pestaña compacta se reparten el renglón.
+    const fieldCls = compact ? 'min-w-0 flex-1 basis-32' : 'max-w-56 min-w-0'
+
+    // Opción de cierre del selector de proveedor: no es un proveedor más, es el
+    // camino a agregar uno. Si no estuviera, quien tiene un Ollama en otra
+    // máquina vería solo los CLIs instalados y concluiría que hay que instalarlo.
+    const providerOptions = [
+        ...available.map((a, i) => ({
+            value: a.id,
+            label: a.label,
+            hint: a.vendor || undefined,
+            separatorAfter: i === available.length - 1,
+            icon: isModelServerAgent(a.id) ? (
+                <ProviderIconWithHealth icon={agentIconName(a.id)} health={optionsHealth[a.id] ?? null} server={a.label} />
+            ) : (
+                <Icon name={agentIconName(a.id)} size={14} />
+            ),
+        })),
+        {value: ADD_SERVER, label: ms.addFromPicker, tone: 'text-primary', icon: <Icon name="add_circle" size={14} className="text-primary" />},
+    ]
+    const onProviderChange = (v: string) => (v === ADD_SERVER ? setServerDialog(true) : changeProvider(v))
+
+    // Aviso del estado vacío cuando no hay ningún servidor de modelos.
+    const noServerHint = !hasModelServer ? (
+        <div data-no-server-hint className="mt-2 flex max-w-md flex-col items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2.5 text-ui-11 text-on-surface-variant">
+            <p className="flex items-start gap-1.5 text-left">
+                <Icon name="cloud" size={14} className="mt-px shrink-0 text-primary" />
+                {ta.noServer.text}
+            </p>
+            <button
+                type="button"
+                data-add-server
+                onClick={() => setServerDialog(true)}
+                title={ta.noServer.buttonTitle}
+                className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1 text-xs font-medium text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+                <Icon name="add" size={14} />
+                {ta.noServer.button}
+            </button>
+        </div>
+    ) : null
+
+    const toggleHistory = () => {
+        if (narrow) setDrawerOpen((v) => !v)
+        else {
+            const next = !historyOpen
+            setHistoryOpen(next)
+            writeHistoryOpen(next)
+        }
+    }
+    const historyShownNow = narrow ? drawerOpen : historyOpen
+
+    // El historial, igual en la columna y en el cajón.
+    const historyPane = (
+        <AiChatHistory
+            chats={history}
+            agents={agentList}
+            resourceNames={resourceNames}
+            activeChatId={activeChatId}
+            busyChatIds={busyIds}
+            onOpen={(c) => {
+                openChat(c)
+                // En el cajón, elegir una conversación es lo que se vino a hacer:
+                // se cierra para dejar ver el chat.
+                if (narrow) setDrawerOpen(false)
+            }}
+            onRename={setRenaming}
+            onDelete={setDeleting}
+        />
+    )
+    const historyHandle = (
+        <ResizeHandle
+            value={historyShown}
+            min={HISTORY_WIDTH_MIN}
+            max={historyMax}
+            defaultValue={HISTORY_WIDTH_DEFAULT}
+            onChange={setHistoryWidth}
+            onCommit={writeHistoryWidth}
+            label={ta.historyResizeLabel}
+            title={ta.historyResizeTitle}
+            valueText={(px) => ta.historyResizeValue({px})}
+        />
+    )
 
     return (
-        <div ref={rootRef} className="flex h-full w-full min-w-0 overflow-hidden bg-surface-container-lowest" role="region" aria-label={t.utilities.tools.aiChat.name}>
-            {historyOpen && (
-                <aside className="flex w-72 shrink-0 flex-col border-r border-outline-variant">
-                    <AiChatHistory
-                        chats={history}
-                        agents={agentList}
-                        resourceNames={resourceNames}
-                        activeChatId={activeChatId}
-                        busyChatIds={busyIds}
-                        onOpen={openChat}
-                        onRename={setRenaming}
-                        onDelete={setDeleting}
-                    />
+        <div
+            ref={rootRef}
+            data-aichat-root
+            data-layout={narrow ? 'narrow' : 'wide'}
+            className="relative flex h-full w-full min-w-0 overflow-hidden bg-surface-container-lowest"
+            role="region"
+            aria-label={t.utilities.tools.aiChat.name}
+        >
+            {inlineHistory && (
+                <aside data-aichat-history className="relative flex shrink-0 flex-col border-r border-outline-variant" style={{width: historyShown}}>
+                    {historyPane}
+                    {historyHandle}
                 </aside>
+            )}
+
+            {/* Cajón: en una pestaña angosta el historial se abre SOBRE el chat,
+                con un velo que lo cierra al tocarlo. */}
+            {narrow && drawerOpen && (
+                <div data-aichat-drawer className="absolute inset-0 z-30 flex">
+                    <aside
+                        className="relative flex h-full shrink-0 flex-col border-r border-outline-variant bg-surface-container-low shadow-xl"
+                        style={{width: Math.min(historyShown, Math.max(HISTORY_WIDTH_MIN, rootWidth - 48))}}
+                    >
+                        {historyPane}
+                        {historyHandle}
+                    </aside>
+                    <button
+                        type="button"
+                        onClick={() => setDrawerOpen(false)}
+                        title={ta.closeHistoryTitle}
+                        aria-label={ta.closeHistory}
+                        className="min-w-0 flex-1 cursor-default bg-black/40"
+                    />
+                </div>
             )}
 
             <section className="flex min-w-0 flex-1 flex-col">
                 <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-outline-variant bg-surface-container px-3 py-2">
                     <button
-                        onClick={() => setHistoryOpen((v) => !v)}
-                        title={historyOpen ? ta.hideHistoryTitle : ta.showHistoryTitle}
-                        aria-label={historyOpen ? ta.hideHistory : ta.showHistory}
-                        aria-pressed={historyOpen}
+                        data-history-toggle
+                        onClick={toggleHistory}
+                        title={narrow ? ta.historyDrawerTitle : historyOpen ? ta.hideHistoryTitle : ta.showHistoryTitle}
+                        aria-label={historyShownNow ? ta.hideHistory : ta.showHistory}
+                        aria-pressed={historyShownNow}
                         className={`shrink-0 rounded-md p-1.5 hover:bg-surface-variant focus-visible:outline-2 focus-visible:outline-primary ${
-                            historyOpen ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+                            historyShownNow ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
                         }`}
                     >
-                        <Icon name="view_sidebar" size={16} filled={historyOpen} />
+                        <Icon name="view_sidebar" size={16} filled={historyShownNow} />
                     </button>
 
                     {current && available.length > 0 && (
                         <>
                             <Select
                                 value={current.agentId}
-                                onChange={changeProvider}
+                                onChange={onProviderChange}
                                 title={ta.header.providerTitle}
                                 ariaLabel={ta.header.providerLabel}
                                 size="sm"
                                 placeholder={ta.header.providerPlaceholder}
-                                className="max-w-56 min-w-0 rounded-lg"
-                                menuMinWidth={220}
-                                options={available.map((a) => ({
-                                    value: a.id,
-                                    label: a.label,
-                                    hint: a.vendor || undefined,
-                                    icon: isModelServerAgent(a.id) ? (
-                                        <ProviderIconWithHealth icon={agentIconName(a.id)} health={optionsHealth[a.id] ?? null} server={a.label} />
-                                    ) : (
-                                        <Icon name={agentIconName(a.id)} size={14} />
-                                    ),
-                                }))}
+                                className={`${fieldCls} rounded-lg`}
+                                menuMinWidth={240}
+                                options={providerOptions}
                             />
                             {providerHealth && <HealthBadge health={providerHealth.health} server={current.agentLabel} />}
                             <Select
@@ -496,13 +686,15 @@ export default function AiChatTab({visible}: Props) {
                                 size="sm"
                                 leadingIcon="memory"
                                 menuMinWidth={260}
-                                className="max-w-56 min-w-0 rounded-lg"
+                                className={`${fieldCls} rounded-lg`}
                                 options={modelOptions}
                             />
                             {moduleOwned ? (
                                 <span
                                     title={ta.header.repoModuleTitle({where: t.agent.historyPanel.groups[current.context.kind]?.toLowerCase() ?? ''})}
-                                    className="flex min-w-0 max-w-64 items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-2 py-1 text-xs text-on-surface-variant"
+                                    className={`flex min-w-0 items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-2 py-1 text-xs text-on-surface-variant ${
+                                        compact ? 'flex-1 basis-32' : 'max-w-64'
+                                    }`}
                                 >
                                     <Icon name={CONTEXT_ICONS[current.context.kind]} size={13} className="shrink-0" />
                                     <span className="truncate">{describeContext(current.context) || t.agent.historyPanel.groups[current.context.kind]}</span>
@@ -516,7 +708,7 @@ export default function AiChatTab({visible}: Props) {
                                     size="sm"
                                     leadingIcon="account_tree"
                                     menuMinWidth={280}
-                                    className="max-w-56 min-w-0 rounded-lg"
+                                    className={`${fieldCls} rounded-lg`}
                                     options={repoOptions}
                                 />
                             )}
@@ -524,23 +716,52 @@ export default function AiChatTab({visible}: Props) {
                     )}
 
                     <button
+                        type="button"
+                        data-usage-toggle
+                        onClick={() => setBody((b) => (b === 'usage' ? 'chat' : 'usage'))}
+                        title={body === 'usage' ? t.agent.host.backToChat : ta.usageTitle}
+                        aria-label={ta.usage}
+                        aria-pressed={body === 'usage'}
+                        className={`ml-auto shrink-0 rounded-md p-1.5 hover:bg-surface-variant focus-visible:outline-2 focus-visible:outline-primary ${
+                            body === 'usage' ? 'bg-surface-variant text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                    >
+                        <Icon name="monitoring" size={16} filled={body === 'usage'} />
+                    </button>
+                    <button
                         onClick={newChat}
                         disabled={available.length === 0}
                         title={ta.newChatTitle({shortcut})}
-                        className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-40"
+                        aria-label={ta.newChat}
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-40"
                     >
                         <Icon name="add" size={15} />
-                        {ta.newChat}
-                        <kbd className="rounded bg-on-primary/20 px-1 font-sans text-ui-10">{shortcut}</kbd>
+                        {!compact && ta.newChat}
+                        {!compact && <kbd className="rounded bg-on-primary/20 px-1 font-sans text-ui-10">{shortcut}</kbd>}
                     </button>
                 </header>
 
-                <div className="min-h-0 flex-1">
+                {body === 'usage' && (
+                    <div data-aichat-usage className="min-h-0 flex-1 overflow-y-auto bg-surface-container-low">
+                        {/* El panel nació para un costado angosto; a todo el ancho
+                            se centra en una columna legible. */}
+                        <div className="mx-auto h-full w-full max-w-4xl">
+                            <AgentUsagePanel
+                                agentLabel={(id) => agentList.find((a) => a.id === id)?.label ?? id}
+                                session={sessionUsage}
+                                onClose={() => setBody('chat')}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                <div className={`min-h-0 flex-1 ${body === 'usage' ? 'hidden' : ''}`}>
                     {agentsLoaded && available.length === 0 && (
                         <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-on-surface-variant">
                             <Icon name="smart_toy" size={32} className="opacity-40" />
                             <p className="text-sm text-on-surface">{t.agent.host.emptyNoAgent}</p>
                             <p className="max-w-md">{t.agent.host.emptyNoAgentHint}</p>
+                            {noServerHint}
                         </div>
                     )}
 
@@ -552,9 +773,11 @@ export default function AiChatTab({visible}: Props) {
                                 data-aichat-current={isCurrent ? '' : undefined}
                                 className={`h-full min-h-0 ${isCurrent && visible ? '' : 'hidden'}`}
                             >
-                                {/* Una columna de lectura y no el ancho entero de la
-                                    pestaña: líneas de 1.500 px no se leen. */}
-                                <div className="mx-auto h-full w-full max-w-3xl border-x border-outline-variant bg-surface">
+                                {/* A todo el ancho de la pestaña: el texto corrido de la
+                                    respuesta se topa a ~100 caracteres (AgentChat,
+                                    `fluid`), pero los bloques de código y las tablas
+                                    usan el ancho entero. */}
+                                <div className="h-full w-full bg-surface">
                                     <AgentChat
                                         sessionId={s.id}
                                         context={s.context}
@@ -570,6 +793,9 @@ export default function AiChatTab({visible}: Props) {
                                         onSend={(text) => onFirstSend(s.id, text)}
                                         onConversation={(cid) => onConversation(s.id, cid)}
                                         onBusyChange={(b) => onBusyChange(s.id, b)}
+                                        fluid
+                                        onSessionUsage={isCurrent && visible ? setSessionUsage : undefined}
+                                        emptyExtra={noServerHint}
                                     />
                                 </div>
                             </div>
@@ -577,6 +803,8 @@ export default function AiChatTab({visible}: Props) {
                     })}
                 </div>
             </section>
+
+            {serverDialog && <ModelServerDialog onSaved={onServerSaved} onClose={() => setServerDialog(false)} />}
 
             {renaming && (
                 <PromptDialog

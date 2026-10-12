@@ -78,6 +78,8 @@ export namespace agentchat {
 	    thinking: number;
 	    total: number;
 	    costUsd: number;
+	    model?: string;
+	    durationMs?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Usage(source);
@@ -91,6 +93,8 @@ export namespace agentchat {
 	        this.thinking = source["thinking"];
 	        this.total = source["total"];
 	        this.costUsd = source["costUsd"];
+	        this.model = source["model"];
+	        this.durationMs = source["durationMs"];
 	    }
 	}
 
@@ -3414,6 +3418,165 @@ export namespace main {
 	        this.checkedAt = source["checkedAt"];
 	    }
 	}
+	export class ModelUsageDay {
+	    day: string;
+	    total: number;
+	    turns: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelUsageDay(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.day = source["day"];
+	        this.total = source["total"];
+	        this.turns = source["turns"];
+	    }
+	}
+	export class ModelUsageModel {
+	    model: string;
+	    totals: ModelUsageTotals;
+	    percent: number;
+	    tokensPerSec: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelUsageModel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.model = source["model"];
+	        this.totals = this.convertValues(source["totals"], ModelUsageTotals);
+	        this.percent = source["percent"];
+	        this.tokensPerSec = source["tokensPerSec"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ModelUsageTotals {
+	    input: number;
+	    output: number;
+	    total: number;
+	    turns: number;
+	    conversations: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelUsageTotals(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.output = source["output"];
+	        this.total = source["total"];
+	        this.turns = source["turns"];
+	        this.conversations = source["conversations"];
+	    }
+	}
+	export class ModelServerUsage {
+	    agentId: string;
+	    name: string;
+	    kind: string;
+	    isLocal: boolean;
+	    deleted: boolean;
+	    totals: ModelUsageTotals;
+	    byModel: ModelUsageModel[];
+	    byDay: ModelUsageDay[];
+	    tokensPerSec: number;
+	    lastUsedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelServerUsage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agentId = source["agentId"];
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.isLocal = source["isLocal"];
+	        this.deleted = source["deleted"];
+	        this.totals = this.convertValues(source["totals"], ModelUsageTotals);
+	        this.byModel = this.convertValues(source["byModel"], ModelUsageModel);
+	        this.byDay = this.convertValues(source["byDay"], ModelUsageDay);
+	        this.tokensPerSec = source["tokensPerSec"];
+	        this.lastUsedAt = source["lastUsedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ModelServerUsageReport {
+	    days: number;
+	    firstDay: string;
+	    lastDay: string;
+	    servers: ModelServerUsage[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelServerUsageReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.days = source["days"];
+	        this.firstDay = source["firstDay"];
+	        this.lastDay = source["lastDay"];
+	        this.servers = this.convertValues(source["servers"], ModelServerUsage);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
 	export class NoteStats {
 	    backlinks: number;
 	    words: number;

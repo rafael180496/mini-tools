@@ -105,6 +105,16 @@ Tabla `agent_chat_messages` (migración 58):
 - **Contexto de un servidor de modelos**: los últimos mensajes guardados, recortados para que entren en el contexto.
 - **Búsqueda**: `SearchAgentChats(query)` descifra y filtra en Go, porque el contenido cifrado no admite `LIKE`.
 
+### Consumo de los servidores de modelos (panel de consumo)
+
+Un servidor no deja transcripts en disco como un CLI, así que `AgentUsageAll` (que lee `backend/agentusage`) no lo cubre. Su consumo sale de `agent_chat_messages.usage`, **sin migración y sin descifrar contenido**:
+
+- **Qué se guarda**: el JSON de `agentchat.Usage` de la fila que cierra cada turno gana `model` (el del evento `start`, que el recorder `TurnRecorder` retiene y entrega en `RecordedMessage.Model`; `App.usageJSON(u, model)` lo mezcla) y `durationMs` (solo el runner `llm:`: suma del tiempo de las llamadas `Chat`, **sin** la espera de aprobaciones ni la ejecución de herramientas, para que tokens/s sea del modelo). Un CLI guarda el modelo pero no la duración. Las filas anteriores no traen ninguna de las dos claves: cuentan en los totales con modelo `""` y sin velocidad.
+- **Lectura**: `Store.ModelServerUsageRows(since)` — un `SELECT` sobre `agent_chats` (`agent_id LIKE 'llm:%'`) unido a los mensajes por `idx_agent_chat_messages_chat`, con `usage <> ''` y `json_valid(usage)` y `json_extract` de las claves; no selecciona `content`/`nonce`.
+- **Binding**: `App.ModelServerUsage(days int) (ModelServerUsageReport, error)`; `days <= 0` = `agentusage.DefaultDays` (30), igual que `AgentUsageAll`. La ventana son `days` días locales contando hoy. Arma el informe `buildModelServerUsage` (pura, probada). Un servidor existente sin turnos aparece con ceros; uno **eliminado** solo si dejó turnos en la ventana, agrupado por su id (`deleted: true`).
+- **Sin costo**: un servidor propio u OpenAI-compatible no informa precio; el panel lo dice y no inventa un monto.
+- **UI**: `components/agent/AgentModelServersUsage.tsx`, dentro de `AgentUsagePanel` (los CLIs no cambian).
+
 ### Herramientas MCP
 
 Si el servidor MCP está habilitado, el runner recibe `a.mcpTools()` convertidas al formato de herramientas del servidor (es el mismo `{type: "function", function: {…}}` en Ollama y en OpenAI). El bucle es este:

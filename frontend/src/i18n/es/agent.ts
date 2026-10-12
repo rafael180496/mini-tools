@@ -273,7 +273,7 @@ export default {
         pickAgent: 'Elegí un agente',
         backToChat: 'Vuelve a la conversación, que siguió corriendo detrás',
         usageTitle:
-            'Cuánta cuota llevás usada y cuántos tokens gastaste con cada CLI, con tu plan al lado. Ocupa el panel como una solapa: el chat sigue donde estaba.',
+            'Cuánta cuota llevás usada y cuántos tokens gastaste con cada CLI y con cada servidor de modelos (Ollama, OpenAI-compatible), con tu plan al lado. Ocupa el panel como una solapa: el chat sigue donde estaba.',
         historyTitle:
             'Conversaciones anteriores de TODOS los módulos, no solo de este. Retomar una la continúa donde había quedado. Ocupa el panel como una solapa.',
         dockFloat: 'Ventana flotante: el chat queda por encima del contenido, sin quitarle ancho',
@@ -410,6 +410,38 @@ export default {
         outputLabel: 'Salida:',
         footer:
             'Las **barras de límite** son el porcentaje que calculó el servidor de cada proveedor y que su CLI dejó cacheado en esta máquina: se leen tal cual, con la hora en que se midieron — no son en vivo. Los porcentajes de **consumo** (modelo, caché) son proporciones de lo gastado, no de un tope. Para el dato del momento, cada CLI lo contesta con su propio comando (`/status`, `/usage`).',
+        // Servidores de modelos (Ollama, compatibles con OpenAI): su consumo sale
+        // del historial de chats de la app, no de archivos de un CLI.
+        servers: {
+            title: 'Servidores de modelos',
+            reading: 'Leyendo el historial de los servidores…',
+            local: 'Local',
+            remote: 'Remoto',
+            localTitle: 'Corre en esta máquina: lo que le mandás no sale de ella',
+            remoteTitle: 'Corre en otra máquina: lo que le mandás viaja por la red hasta ella',
+            deletedTitle: 'Este servidor ya no está en la lista, pero quedan conversaciones suyas dentro de la ventana',
+            unused: 'Sin uso en estos días',
+            tokens: (p: {n: string}) => `${p.n} tokens`,
+            tokensTitle: (p: {total: string; input: string; output: string}) => `${p.total} tokens en total: ${p.input} de entrada y ${p.output} de salida`,
+            inOut: (p: {input: string; output: string}) => `${p.input} entrada · ${p.output} salida`,
+            turns: (p: {n: number}) => (p.n === 1 ? '1 turno' : `${p.n} turnos`),
+            turnsTitle: 'Respuestas del modelo guardadas en el historial (un turno es un mensaje tuyo con todo lo que el modelo hizo para contestarlo)',
+            conversations: (p: {n: number}) => (p.n === 1 ? '1 conversación' : `${p.n} conversaciones`),
+            conversationsTitle: 'Conversaciones distintas con este servidor dentro de la ventana',
+            speed: (p: {n: string}) => `${p.n} tok/s`,
+            speedTitle: 'Velocidad media de salida: tokens generados por segundo de generación del servidor. No cuenta la espera de aprobaciones ni lo que tardan las herramientas.',
+            speedUnknown: 'velocidad sin medir',
+            speedUnknownTitle: 'Todavía no hay turnos con el tiempo de generación registrado. Los de antes de esta versión no lo tienen.',
+            modelTokensTitle: (p: {total: string; turns: number}) => `${p.total} tokens en ${p.turns} turnos`,
+            unknownModel: 'modelo sin registrar',
+            unknownModelTitle: 'Turnos guardados antes de que la app registrara con qué modelo se hizo cada uno',
+            dailyTitle: (p: {first: string; last: string; max: string}) => `Tokens por día, del ${p.first} al ${p.last}. El día más alto: ${p.max}.`,
+            dayBar: (p: {day: string; tokens: string; turns: number}) => `${p.day}: ${p.tokens} tokens · ${p.turns === 1 ? '1 turno' : `${p.turns} turnos`}`,
+            lastUsed: (p: {date: string}) => `último uso: ${p.date}`,
+            costNote:
+                'No se muestra costo: un servidor propio o compatible con OpenAI no informa precio por token, y calcularlo acá sería inventarlo. Lo que ves son tokens, turnos y velocidad.',
+            tokensNote: 'Los tokens son los que informó cada servidor; uno que no los informa figura con turnos pero sin tokens.',
+        },
     },
     // Salud de un servidor de modelos (punto de estado, aviso del chat).
     health: {

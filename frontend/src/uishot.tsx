@@ -147,10 +147,42 @@ const aiChats = [
     {id: 'ac-8', repoId: '', agentId: 'llm:ms1', title: 'El test de paginación falla en CI', conversationId: '', createdAt: aiNow - 2400, updatedAt: aiNow - 600, model: 'qwen2.5:3b', effort: '', mode: 'approve', module: 'utilities', contextId: 'r4', brain: true},
     // Servidor REMOTO con un repositorio de trabajo: la captura del aviso.
     {id: 'ac-9', repoId: '', agentId: 'llm:ms2', title: 'Preparar el release 1.4', conversationId: '', createdAt: aiNow - 7200, updatedAt: aiNow - 3000, model: 'llama3.2:3b', effort: '', mode: '', module: 'utilities', contextId: 'r4', brain: false},
+    // Respuesta larga con prosa, tabla y una línea de código muy ancha: la que se usa
+    // para mirar cómo aprovecha el ancho el chat de ancho completo.
+    {id: 'ac-10', repoId: '', agentId: 'claude', title: 'B-tree o BRIN para una tabla de eventos', conversationId: 'conv-ac-10', createdAt: aiNow - 900, updatedAt: aiNow - 300, model: 'sonnet', effort: '', mode: '', module: 'utilities', contextId: '', brain: false},
 ]
 // Mensajes guardados de la primera conversación (AgentChatMessages): lo que se
 // dibuja al retomarla, con el consumo de cada turno.
 const aiChatMessages: Record<string, unknown[]> = {
+    'ac-10': [
+        {seq: 1, role: 'user', content: '¿Conviene un índice B-tree o BRIN para la tabla de eventos, que crece unos 40 millones de filas por mes y se consulta casi siempre por rango de fecha?', toolName: '', createdAt: aiNow - 880},
+        {
+            seq: 2,
+            role: 'assistant',
+            content: [
+                'Para una tabla de eventos que solo crece al final y se consulta por rango de fecha, un índice **BRIN** suele ganar por mucho en tamaño y en costo de escritura, a cambio de ser menos preciso: no te dice qué fila cumple, te dice en qué bloques de páginas vale la pena mirar. Mientras la columna esté correlacionada con el orden físico de la tabla —y en una tabla append-only con una marca de tiempo lo está—, esa imprecisión casi no se paga.',
+                '',
+                '| Criterio | B-tree | BRIN |',
+                '| --- | --- | --- |',
+                '| Tamaño con 400 millones de filas | 8 a 12 GB | 20 a 60 MB |',
+                '| Costo de insertar | Alto: actualiza el árbol en cada fila | Casi nulo: resume por bloques |',
+                '| Rango de fecha reciente | Muy rápido | Rápido si hay correlación física |',
+                '| Búsqueda de una fila puntual | Ideal | Mala: recorre muchos bloques |',
+                '| Mantenimiento | REINDEX ocasional | Se resume solo con autosummarize |',
+                '',
+                'Si además necesitás buscar eventos puntuales por id, no los mezcles: dejá el BRIN para el rango de fechas y un B-tree chico y parcial para lo que busca de a una fila.',
+                '',
+                '```sql',
+                'CREATE INDEX CONCURRENTLY eventos_fecha_brin ON eventos USING brin (creado_en) WITH (pages_per_range = 32, autosummarize = on);',
+                '```',
+                '',
+                'Antes de decidir, comprobá la correlación física con `SELECT correlation FROM pg_stats WHERE tablename = \'eventos\' AND attname = \'creado_en\'`: por encima de 0,9 el BRIN rinde; por debajo, no.',
+            ].join('\n'),
+            toolName: '',
+            usage: {input: 612, output: 538, cacheRead: 0, thinking: 0, total: 1150, costUsd: 0.0092},
+            createdAt: aiNow - 860,
+        },
+    ],
     // Una fila `tool` guarda «resumen\ndetalle» (backend/agentchat/record.go).
     'ac-8': [
         {seq: 1, role: 'user', content: 'El test TestCursorPage falla en CI pero no en mi máquina. Fijate qué pasa y arreglalo.', toolName: '', createdAt: aiNow - 2300},
@@ -977,6 +1009,53 @@ const fixtures: Record<string, unknown> = {
             {agent: 'antigravity', available: false, note: 'El CLI no deja los tokens en disco: se muestra la actividad registrada.', source: '~/.gemini', all: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, repo: {input: 0, output: 0, cacheWrite: 0, cacheRead: 0, total: 0, messages: 0}, firstDay: '', lastDay: '', byModel: [], byDay: [], cacheHitPercent: 0, activity: {conversations: 34, steps: 291, repoConversations: 0, repoSteps: 0, lastUsed: 'hace 2 h'}},
         ],
     },
+
+    // --- Consumo de los servidores de modelos (panel de consumo) -----------
+    // La serie trae TODOS los días de la ventana, con ceros, como el backend.
+    ModelServerUsage: (() => {
+        const days = 30
+        const series = (totals: number[]) =>
+            totals.map((total, i) => {
+                const d = new Date(Date.UTC(2026, 7, 15 - (days - 1 - i)))
+                return {day: d.toISOString().slice(0, 10), total, turns: total > 0 ? Math.max(1, Math.round(total / 5200)) : 0}
+            })
+        const local = [0, 0, 0, 0, 12400, 38200, 21000, 0, 0, 0, 45100, 80400, 61000, 22300, 0, 0, 0, 0, 30800, 52100, 91700, 120300, 64000, 0, 0, 38900, 70200, 85100, 143000, 96500]
+        const remote = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14200, 9800, 0, 31000]
+        return {
+            days,
+            firstDay: '2026-07-17',
+            lastDay: '2026-08-15',
+            servers: [
+                {
+                    agentId: 'llm:ms1', name: 'Ollama local', kind: 'ollama', isLocal: true, deleted: false,
+                    totals: {input: 812340, output: 163920, total: 976260, turns: 214, conversations: 31},
+                    byModel: [
+                        {model: 'qwen2.5-coder:14b', totals: {input: 602100, output: 118200, total: 720300, turns: 150, conversations: 22}, percent: 73.8, tokensPerSec: 38.4},
+                        {model: 'llama3.1:8b', totals: {input: 190240, output: 40120, total: 230360, turns: 58, conversations: 11}, percent: 23.6, tokensPerSec: 61.2},
+                        {model: '', totals: {input: 20000, output: 5600, total: 25600, turns: 6, conversations: 3}, percent: 2.6, tokensPerSec: 0},
+                    ],
+                    byDay: series(local), tokensPerSec: 43.7, lastUsedAt: 1786798800,
+                },
+                {
+                    agentId: 'llm:ms2', name: 'vLLM en el servidor GPU', kind: 'openai', isLocal: false, deleted: false,
+                    totals: {input: 41200, output: 13800, total: 55000, turns: 9, conversations: 3},
+                    byModel: [{model: 'Qwen/Qwen2.5-72B-Instruct', totals: {input: 41200, output: 13800, total: 55000, turns: 9, conversations: 3}, percent: 100, tokensPerSec: 22.1}],
+                    byDay: series(remote), tokensPerSec: 22.1, lastUsedAt: 1786780800,
+                },
+                {
+                    agentId: 'llm:viejo', name: 'Servidor eliminado (viejo)', kind: '', isLocal: false, deleted: true,
+                    totals: {input: 3100, output: 900, total: 4000, turns: 2, conversations: 1},
+                    byModel: [{model: 'mistral', totals: {input: 3100, output: 900, total: 4000, turns: 2, conversations: 1}, percent: 100, tokensPerSec: 0}],
+                    byDay: series(Array.from({length: days}, (_, i) => (i === 3 ? 4000 : 0))), tokensPerSec: 0, lastUsedAt: 1785000000,
+                },
+                {
+                    agentId: 'llm:ms3', name: 'LM Studio del laboratorio', kind: 'openai', isLocal: false, deleted: false,
+                    totals: {input: 0, output: 0, total: 0, turns: 0, conversations: 0},
+                    byModel: [], byDay: series(Array.from({length: days}, () => 0)), tokensPerSec: 0, lastUsedAt: 0,
+                },
+            ],
+        }
+    })(),
 
     // --- Servidor MCP ------------------------------------------------------
     MCPServerStatus: {
@@ -1894,6 +1973,10 @@ views.modelservertest = settingsInSection('ai')
 // cabeceras (solo sus nombres, con «Reemplazar cabeceras»).
 views.modelserverheaders = settingsInSection('ai')
 views.modelserveredit = settingsInSection('ai')
+// Atajos del alta: la cuadrícula sola, y «Ollama en otra máquina» ya elegido, con
+// la IP y un puerto distinto del habitual (11435) y la guía de exposición abierta.
+views.modelserverpresets = settingsInSection('ai')
+views.modelserverremote = settingsInSection('ai')
 
 // Agente de código local y cerebro (spec ia-ollama-chat-utilidades, fases 4-6).
 // Todas montan el Chat de IA y retoman una conversación del historial, que es el
@@ -1919,6 +2002,42 @@ views.brainsettings = settingsInSection('ai')
 // la caja con el error y «Reintentar». Reutiliza la conversación ac-8 (Ollama
 // local); solo cambia lo que contesta la comprobación de salud.
 views.healthred = views.aichat
+// Chat de IA y su disposición (spec: ancho completo, panel angosto, historial
+// redimensionable, alta de servidor desde el selector).
+//   aichatwide       ventana ancha (usar con 1600 de ancho): el chat ocupa todo
+//   aichatnarrow     pestaña angosta (700): el historial se pliega al botón
+//   aichatdrawer     lo mismo con el historial abierto como cajón
+//   aichatresize     arrastre del borde del historial, a mitad de camino
+//   aichatadd        «Agregar servidor» abierto desde el selector de proveedor
+//   aichataddfail    la prueba falla contra un Ollama remoto: consejo + «Guardar igual»
+//   aichatusage      el panel de consumo ocupando el cuerpo de la pestaña
+//   aichatnoserver   sin servidor de modelos: el aviso del estado vacío
+views.aichatwide = views.aichat
+views.aichatnarrow = views.aichat
+views.aichatdrawer = views.aichat
+views.aichatresize = views.aichat
+views.aichatadd = views.aichat
+views.aichataddfail = views.aichat
+views.aichatnoserver = views.aichat
+views.aichatusage = views.aichat
+if (view === 'aichatnoserver') {
+    fixtures.ListAgents = (fixtures.ListAgents as {id: string}[]).filter((a) => !a.id.startsWith('llm:'))
+    fixtures.ListModelServers = []
+    fixtures.ListAllAgentChats = aiChats.filter((c) => !c.agentId.startsWith('llm:'))
+}
+if (view === 'aichataddfail') {
+    fixtures.TestModelServer = {
+        ok: false,
+        version: '',
+        models: [],
+        error:
+            uiLang === 'es'
+                ? 'no se pudo conectar a http://192.168.1.50:11434: la conexión fue rechazada (¿está el servidor en marcha?)'
+                : 'could not connect to http://192.168.1.50:11434: connection refused (is the server running?)',
+        latencyMs: 0,
+        checkedAt: Date.now(),
+    }
+}
 if (view === 'healthred') {
     fixtures.ModelServerHealth = (id: string) => ({
         ok: id !== 'ms1',
@@ -1981,6 +2100,69 @@ if (view === 'newmenu') {
     setTimeout(() => {
         autoClick(() => [...document.querySelectorAll('button')].find((b) => b.title === t().git.tab.panel.newChatTitle))
     }, 400)
+}
+// Escribir en un campo controlado de React: setter nativo + evento `input`.
+const typeInto = (el: HTMLInputElement | null | undefined, value: string) => {
+    if (!el) return
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, value)
+    el.dispatchEvent(new Event('input', {bubbles: true}))
+}
+const clickChat = (id: string) => document.querySelector<HTMLButtonElement>(`[data-chat-id="${id}"]`)?.click()
+if (view === 'aichatusage') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-10"]') ?? undefined)
+    setTimeout(() => document.querySelector<HTMLButtonElement>('[data-usage-toggle]')?.click(), 1400)
+}
+if (view === 'aichatwide') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-10"]') ?? undefined)
+}
+if (view === 'aichatnarrow' || view === 'aichatdrawer') {
+    // Pestaña angosta: el historial no es una columna, así que se abre el cajón,
+    // se elige la conversación (que lo cierra) y, para el cajón, se reabre.
+    const toggle = () => document.querySelector<HTMLButtonElement>('[data-history-toggle]')?.click()
+    setTimeout(toggle, 1000)
+    setTimeout(() => clickChat('ac-10'), 1400)
+    if (view === 'aichatdrawer') setTimeout(toggle, 1900)
+}
+if (view === 'aichatresize') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-10"]') ?? undefined)
+    // Arrastre sin soltar: agarra el borde y lo corre 170 px a la derecha.
+    setTimeout(() => {
+        const handle = document.querySelector<HTMLElement>('[data-resize-handle]')
+        if (!handle) return
+        const r = handle.getBoundingClientRect()
+        const x = r.left + r.width / 2
+        handle.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0, clientX: x, clientY: r.top + 200}))
+        window.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: x + 170, clientY: r.top + 200}))
+    }, 1600)
+}
+if (view === 'aichatadd' || view === 'aichataddfail') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-10"]') ?? undefined)
+    // Como lo haría una persona: abre el selector de proveedor y elige la
+    // última opción.
+    setTimeout(() => {
+        const providerLabel = t().utilities.aiChat.header.providerLabel
+        document.querySelector<HTMLButtonElement>(`button[aria-label="${providerLabel}"]`)?.click()
+    }, 1300)
+    setTimeout(() => {
+        const add = t().settings.modelServers.addFromPicker
+        ;[...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent?.includes(add))?.click()
+    }, 1600)
+    setTimeout(() => {
+        const m = t().settings.modelServers
+        typeInto(document.querySelector<HTMLInputElement>(`[data-model-server-dialog] input[placeholder="${m.namePlaceholder}"]`), 'Ollama del servidor GPU')
+        typeInto(document.querySelector<HTMLInputElement>('[data-model-server-dialog] input[placeholder="http://localhost:11434"]'), 'http://192.168.1.50:11434')
+    }, 1900)
+    if (view === 'aichataddfail') {
+        setTimeout(() => {
+            const m = t().settings.modelServers
+            ;[...document.querySelectorAll<HTMLButtonElement>('[data-model-server-dialog] button')].find((b) => b.title === m.formTestTitle)?.click()
+        }, 2300)
+        // El resultado y el aviso quedan bajo el pliegue del diálogo: se baja hasta ellos.
+        setTimeout(() => {
+            const dlg = document.querySelector<HTMLElement>('[data-model-server-dialog]')
+            if (dlg) dlg.scrollTop = dlg.scrollHeight
+        }, 2900)
+    }
 }
 if (view === 'aichatchat') {
     // Abre desde el historial la conversación con mensajes guardados, como lo
@@ -2141,6 +2323,9 @@ if (view === 'modelserverheaders' || view === 'modelserveredit') {
         // Cada paso en su propio tick: los manejadores del formulario leen el
         // estado del render anterior, y dos cambios en el mismo tick se pisan.
         const steps: (() => void)[] = [
+            // El atajo de LM Studio fija el tipo «Compatible con OpenAI»; la dirección
+            // se reescribe después, y con eso el atajo se suelta.
+            () => document.querySelector<HTMLButtonElement>('[data-model-preset="lmstudio"]')?.click(),
             () => {
                 const [name] = [...document.querySelectorAll<HTMLInputElement>('[data-model-servers] input')]
                 if (name) fillInput(name, 'LM Studio del laboratorio')
@@ -2175,6 +2360,27 @@ if (view === 'modelserverheaders' || view === 'modelserveredit') {
         steps.forEach((fn, i) => setTimeout(fn, 2400 + i * 90))
     } else {
         setTimeout(() => document.querySelector('[data-headers-editor]')?.scrollIntoView({block: 'center'}), 2500)
+    }
+}
+if (view === 'modelserverpresets' || view === 'modelserverremote') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('button[role="tab"][data-section="ai"]') ?? undefined)
+    setTimeout(() => autoClick(() => document.querySelector<HTMLButtonElement>('[data-model-server-add]') ?? undefined), 1200)
+    if (view === 'modelserverremote') {
+        const steps: (() => void)[] = [
+            () => document.querySelector<HTMLButtonElement>('[data-model-preset="ollamaRemote"]')?.click(),
+            () => {
+                const host = document.querySelector<HTMLInputElement>('[data-preset-host]')
+                if (host) fillInput(host, '192.168.1.50')
+            },
+            () => {
+                const port = document.querySelector<HTMLInputElement>('[data-preset-port]')
+                if (port) fillInput(port, '11435')
+            },
+            () => document.querySelector('[data-model-presets]')?.scrollIntoView({block: 'start'}),
+        ]
+        steps.forEach((fn, i) => setTimeout(fn, 2400 + i * 120))
+    } else {
+        setTimeout(() => document.querySelector('[data-model-presets]')?.scrollIntoView({block: 'start'}), 2400)
     }
 }
 if (view === 'sidebarsearch') {

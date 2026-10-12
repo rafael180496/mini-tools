@@ -1651,9 +1651,35 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <figcaption>An empty conversation: four suggestions and the box, with the history one click away.</figcaption>
   </figure>
 
+  <h2 id="utilidades-chat-ia--ancho">Width, adjustable history and narrow panes</h2>
+  <p>The chat <strong>fills the full width of the tab</strong>: messages and the message box go edge to edge, with no narrow column and empty margins. To keep it
+  readable in a big window, only the <em>running text</em> of a reply (paragraphs, lists, quotes) is capped at about <strong>100 characters per line</strong>;
+  <strong>code blocks and tables</strong> use the whole width, and a short reply takes the room it needs instead of stretching.</p>
+  <ul>
+    <li><strong>Adjustable history</strong> — drag the list's right edge to widen it (the width in pixels shows while you drag). With focus on the edge, the
+    <kbd>←</kbd> <kbd>→</kbd> arrows move it (<kbd>Shift</kbd> for bigger steps; <kbd>Home</kbd> and <kbd>End</kbd> jump to the minimum and maximum) and a
+    <strong>double-click</strong> restores the original width. The size and whether the history is open are remembered on this computer. It never leaves the chat with less than about 420 px.</li>
+    <li><strong>Narrow tab</strong> — what counts is the width of the <em>tab</em>, not the window: with the sidebar open or the agent panel docked, the tab can get small
+    even in a huge window. Below about 760 px the history stops being a column and the header button opens it as a <strong>drawer over the chat</strong> (picking a
+    conversation or <kbd>Esc</kbd> closes it), and the header compacts: the selectors share the row and <em>New chat</em> keeps only its icon. When the tab widens again, the history comes back by itself.</li>
+    <li><strong>Usage</strong> — the chart button in the header swaps the body for the <a href="#ia-modelos--consumo">token usage</a> panel by agent and model server; the chat keeps running behind.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-ai-chat-wide.png" alt="AI Chat in a wide window: the reply with a table and a SQL block uses all the available width, with the running text limited to a readable line"></div>
+    <figcaption>In a wide window: the text stays readable; the table and the code use the width there is.</figcaption>
+  </figure>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-ai-chat-narrow.png" alt="AI Chat in a 700 pixel tab: the history folded into the header button and the chat using the full width"></div>
+    <figcaption>In a narrow tab the history folds into the header button.</figcaption>
+  </figure>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/utilities-ai-chat-resize.png" alt="AI Chat with the history edge being dragged: the highlighted edge and a badge with the width in pixels"></div>
+    <figcaption>Dragging the history edge: the width shows while it moves and is remembered.</figcaption>
+  </figure>
+
   <h2 id="utilidades-chat-ia--cabecera">Provider, model and repository</h2>
   <ul>
-    <li><strong>Provider</strong> — the installed CLIs and the model servers you added in <em>Settings → AI</em>. Switching it in a conversation that already started opens a <em>new</em> one: each provider keeps its own thread, and there's no honest way to continue with another what one was doing.</li>
+    <li><strong>Provider</strong> — the installed CLIs and the model servers you added in <em>Settings → AI</em>. The last menu option, <em>Add model server (Ollama / OpenAI)…</em>, opens the form right there and, on save, picks the new server: <a href="#ia-modelos--desde-el-chat">nothing needs installing</a>. Switching it in a conversation that already started opens a <em>new</em> one: each provider keeps its own thread, and there's no honest way to continue with another what one was doing.</li>
     <li><strong>Model</strong> — the list is reported by the provider itself, and <em>Default</em> uses whichever it has configured. It applies from the next message on.</li>
     <li><strong>Repository</strong> — one of the repositories you added in the Git module, or none. The conversation records it, and its name and location travel as a chip with your messages so the agent knows which one you mean; the chip can be dropped from the message. A conversation that started in another module (a connection, a note) shows its origin here and can't change repositories. With a <a href="#ia-modelos">model server</a>, it is also the <strong>working repository</strong> of its <a href="#ia-agente-local">file and command tools</a>; without one, the chat says that only the MCP tools are available.</li>
   </ul>
@@ -1765,7 +1791,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 
   <h2 id="ia-modelos--agregar">Add a server</h2>
   <ol class="steps">
-    <li>Open <strong>Settings → AI</strong> and, under <strong>Model servers</strong>, click <strong>Add server</strong>.</li>
+    <li>Open <strong>Settings → AI</strong> and, under <strong>Model servers</strong>, click <strong>Add server</strong> (or, from the chat, pick <em>Add model server…</em> in the provider selector: <a href="#ia-modelos--desde-el-chat">the same form, in a dialog</a>).</li>
+    <li>Pick a <a href="#ia-modelos--atajos">shortcut</a> at the top of the form (<em>Ollama on this machine</em>, <em>LM Studio</em>…) and it fills in name, type and address. Or fill them in yourself:</li>
     <li>Pick the <strong>type</strong>: <em>Ollama</em> for Ollama's own API, or <em>OpenAI-compatible</em> for LM Studio, vLLM, the llama.cpp server and anything else that speaks <code>/v1/chat/completions</code>.</li>
     <li>Type the <strong>address</strong>: <code>http://localhost:11434</code> for the local Ollama, <code>http://localhost:1234/v1</code> for LM Studio, or the URL of a remote machine such as <code>https://gpu.mycompany.com/v1</code>.</li>
     <li>Click <strong>Test connection</strong>: it shows the server version and how many models it lists, or the exact error. Then <strong>Save</strong>.</li>
@@ -1773,6 +1800,73 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <div class="note tip"><span class="lbl">One click for Ollama</span>
   When there is an Ollama answering on <code>localhost:11434</code>, Settings offers <strong>Local Ollama detected — Add</strong>
   and saves it for you. The suggestion goes away once you add it or dismiss it.</div>
+
+
+  <h2 id="ia-modelos--atajos">Shortcuts: start from a model</h2>
+  <p>When you add a server, the top of the form offers six cards. Picking one fills in <strong>name, type and address</strong>; you can still edit everything afterwards.
+  The form remembers nothing between openings: each time it starts with no card picked.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Card</th><th>Type</th><th>Address</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Ollama on this machine</strong></td><td>Ollama</td><td><code>http://localhost:11434</code></td></tr>
+      <tr><td><strong>Ollama on another machine</strong></td><td>Ollama</td><td><code>http://&lt;IP&gt;:&lt;port&gt;</code> — asks for the IP or name and the port (11434 by default) and opens <a href="#ia-modelos--exponer-ollama">the guide to expose it</a></td></tr>
+      <tr><td><strong>LM Studio</strong></td><td>OpenAI-compatible</td><td><code>http://localhost:1234/v1</code></td></tr>
+      <tr><td><strong>vLLM</strong></td><td>OpenAI-compatible</td><td><code>http://&lt;IP&gt;:&lt;port&gt;/v1</code> — IP or name and port (8000 by default)</td></tr>
+      <tr><td><strong>llama.cpp server</strong></td><td>OpenAI-compatible</td><td><code>http://localhost:8080/v1</code></td></tr>
+      <tr><td><strong>Other OpenAI-compatible</strong></td><td>OpenAI-compatible</td><td>empty: you type it</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li><strong>The port is yours to change.</strong> The two cards that ask for an IP take the port in its own field (1–65535); the address is built as <code>http://IP:port</code>.</li>
+    <li><strong>The IP or name is just that</strong>: no <code>http://</code>, no slashes and no port. The form flags it in red if it isn't.</li>
+    <li><strong>The Address field stays visible</strong> and follows the IP and port while it keeps that shape. If you edit it into something else, the card lets go and the form is just yours.</li>
+    <li>The <strong>name</strong> is filled in for you (<em>Ollama · 192.168.1.50</em>) until you type your own.</li>
+  </ul>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/model-servers-presets.png" alt="The Add server form with the six shortcut cards at the top: Ollama on this machine, Ollama on another machine, LM Studio, vLLM, llama.cpp server and Other OpenAI-compatible"></div>
+    <figcaption>The shortcut cards at the top of the add form.</figcaption>
+  </figure>
+
+  <h2 id="ia-modelos--exponer-ollama">How to expose Ollama on the other machine</h2>
+  <p>With the <em>Ollama on another machine</em> card the form shows this guide <strong>already open</strong>; with any other Ollama whose address isn't local it appears folded, one click away.
+  Every command has a copy button and uses <strong>the port you typed</strong>. The steps are done on the other machine:</p>
+  <ol class="steps">
+    <li><strong>Check how it listens.</strong> <code>lsof -i :11434</code>. If it shows <code>localhost:11434</code>, Ollama only accepts local connections; it has to show <code>*:11434</code>.</li>
+    <li><strong>Make it listen on the network</strong>, depending on how it runs there:
+      <ul>
+        <li><em>macOS (Ollama app):</em> <code>launchctl setenv OLLAMA_HOST "0.0.0.0:11434"</code>, then quit Ollama from the menu bar icon and open it again. It doesn't survive a reboot.</li>
+        <li><em>Terminal:</em> <code>OLLAMA_HOST=0.0.0.0:11434 ollama serve</code></li>
+        <li><em>Linux (systemd):</em> <code>sudo systemctl edit ollama.service</code>, add <code>[Service]</code> and <code>Environment="OLLAMA_HOST=0.0.0.0:11434"</code>, then <code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart ollama</code>.</li>
+        <li><em>Windows:</em> <code>setx OLLAMA_HOST "0.0.0.0:11434"</code>, then quit Ollama from the tray icon and open it again.</li>
+      </ul></li>
+    <li><strong>Find its IP:</strong> <code>ipconfig getifaddr en0</code> on macOS, <code>hostname -I</code> on Linux, <code>ipconfig</code> on Windows (look for the IPv4 Address).</li>
+    <li><strong>Firewall:</strong> allow incoming connections for Ollama or for that port.</li>
+    <li><strong>Verify from this machine:</strong> <code>curl http://&lt;IP&gt;:11434/api/version</code> must return the version as JSON.</li>
+  </ol>
+  <div class="note warn"><span class="lbl">Security</span>
+  <code>0.0.0.0</code> exposes Ollama <strong>with no authentication</strong> to the whole network. On a shared network put it behind an
+  <a href="#ia-modelos--acceso-remoto">HTTPS reverse proxy with a token</a>: the form already supports a <a href="#ia-modelos--token">token</a> and <a href="#ia-modelos--cabeceras">additional headers</a>.</div>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/model-servers-remote-guide.png" alt="The Ollama on another machine card picked, with IP 192.168.1.50 and port 11435, the address built from them and the open guide: lsof -i :11435, the macOS launchctl command with a copy button, and the commands to find the IP"></div>
+    <figcaption>“Ollama on another machine” with port 11435: the guide's commands already carry that port.</figcaption>
+  </figure>
+
+  <h2 id="ia-modelos--desde-el-chat">From the chat, nothing to install</h2>
+  <p>Ollama is <strong>not installed like a CLI</strong>: it is used through its address, whether it runs on your machine or another one of your network. That is why the provider
+  selector of the <a href="#utilidades-chat-ia">AI Chat</a> (and the side panel's) ends with <strong>Add model server (Ollama / OpenAI)…</strong>: it opens the same form
+  as Settings in a dialog and, on save, leaves the new server picked. If there is no server yet, the empty chat suggests it with a button
+  (“Is Ollama on another machine? Add it as a server”), and in Settings → AI the <em>Coding agents</em> list points you to this section.</p>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/model-servers-add-dialog.png" alt="Add model server dialog over the AI Chat, with an Ollama at 192.168.1.50 whose test failed: the OLLAMA_HOST advice and the Save anyway button"></div>
+    <figcaption>Adding from the chat. If the test fails, the button changes to <em>Save anyway</em>.</figcaption>
+  </figure>
+
+  <h2 id="ia-modelos--ollama-remoto">An Ollama on another machine does not answer</h2>
+  <p>If <strong>Test connection</strong> fails with <em>connection refused</em> or <em>timed out</em> against a non-local address, the form shows advice with a <strong>See the guide</strong> button. The usual cause:
+  <strong>Ollama listens by default only on its own machine's <code>localhost</code></strong>, so from another one the connection is refused even though it is running.
+  The button opens <a href="#ia-modelos--exponer-ollama">the guide to expose Ollama</a> inside the form and scrolls to it: diagnosis, commands per system, IP, firewall and verification.</p>
+  <div class="note tip"><span class="lbl">You can save anyway</span>
+  Saving never requires the test to pass: if the server is off or you have not opened it to the network yet, the button says <strong>Save anyway</strong> and you register it to test later from the list.</div>
 
   <h2 id="ia-modelos--token">The token</h2>
   <p>It's optional, for servers behind a proxy or that require an API key. It's stored <strong>encrypted under your
@@ -1786,7 +1880,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   an SSH error) and in the picker that asks the same question to another model. In the chat you choose the
   <strong>model</strong> from the ones the server lists; if you don't pick one, the first it returns is used.</p>
   <div class="note"><span class="lbl">What a server doesn't have</span><p>It isn't a program: there's no command to open
-  in a terminal, no API key per environment variable and no usage bars. Whatever it can do besides answering
+  in a terminal, no API key per environment variable and no plan-limit bars (its <a href="#ia-modelos--consumo">usage</a> is shown, just not a limit). Whatever it can do besides answering
   —read and edit files, run commands, use your notes— is done by tools that <strong>this app</strong> runs for it: see below.</p></div>
 
   <h2 id="ia-modelos--herramientas">Tools</h2>
@@ -1795,6 +1889,19 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   allow it, edit them and run commands: that is the <a href="#ia-agente-local">local code agent</a>, governed by the same
   permission modes as the rest of the chat. It can even write notes by itself if you turn on the
   <a href="#ia-cerebro">brain</a>. A model that doesn't support tools keeps working as plain chat, and the chat tells you so.</p>
+
+  <h2 id="ia-modelos--consumo">Usage</h2>
+  <p>The usage panel (the <strong>chart button</strong> in the chat's header) has a <strong>Model servers</strong> section below the
+  CLIs: one card per server with its <em>local</em> or <em>remote</em> badge, the tokens in and out, the turns, the conversations,
+  one row per <strong>model</strong> with its share, a <strong>bar per day</strong> of the window (hover a bar for that day's tokens and turns),
+  the average <strong>speed in tokens per second</strong> and when it was last used. A server you deleted still shows up, as <em>Deleted server</em>,
+  while it has conversations inside the window.</p>
+  <p>Unlike a CLI, a server leaves nothing on disk: these numbers come from <strong>this app's chat history</strong>, which saves each
+  turn's tokens together with the model that answered and how long the server took to generate. Turns saved before that
+  version have no model (they show as <em>model not recorded</em>) and no speed. The speed leaves out waiting for approvals and the
+  time tools take. A server that doesn't report token counts shows turns but no tokens.</p>
+  <div class="note"><span class="lbl">No cost</span><p>A self-hosted or OpenAI-compatible server does not report a price per token,
+  so the panel shows <strong>no money amount</strong>: it would be made up. Only tokens, turns and speed.</p></div>
 
   <h2 id="ia-modelos--remoto">Local or remote</h2>
   <div class="note warn"><span class="lbl">Remote servers</span>
@@ -1808,7 +1915,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <p>Ollama listens only on <code>localhost</code> by default, so another machine can't reach it until you open it up.
   There are two ways, and the second is the one to prefer:</p>
   <ol class="steps">
-    <li><strong>Listen on the network.</strong> On the machine that runs Ollama, start it with <code>OLLAMA_HOST=0.0.0.0</code>
+    <li><strong>Listen on the network</strong> (the commands per system, with copy buttons, are in <a href="#ia-modelos--exponer-ollama">the form's guide</a>). On the machine that runs Ollama, start it with <code>OLLAMA_HOST=0.0.0.0</code>
     and allow the port (11434) in its firewall. On Linux with systemd, run <code>systemctl edit ollama</code> and add
     <code>Environment="OLLAMA_HOST=0.0.0.0"</code> under <code>[Service]</code>; on macOS, <code>launchctl setenv OLLAMA_HOST "0.0.0.0"</code> and restart Ollama.
     The traffic is plain <code>http</code> with no authentication: do it only on a network you trust.</li>

@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
+import type {ReactNode} from 'react'
 import {
     AgentChatHistory,
     AgentChatMessages,
@@ -340,7 +341,25 @@ interface AgentChatProps {
     // atendieran todas aparecerían tres diálogos para un solo permiso. La
     // atiende la visible, que es la que el usuario puede contestar.
     active?: boolean
+    // Ocupar TODO el ancho del contenedor. Pensado para el Chat de IA, que es una
+    // pestaña entera: la respuesta del agente deja de ser una tarjeta que se
+    // estira de borde a borde y pasa a medir lo que mide su contenido, con el
+    // tope de lectura del texto corrido (ver PROSE_CAP). Los bloques de código,
+    // las tablas y las tarjetas de herramientas siguen pudiendo usar todo el
+    // ancho. El panel lateral no lo pide: ahí el ancho ya es escaso.
+    fluid?: boolean
+    // Contenido extra bajo las sugerencias del estado vacío (el aviso de «agregá
+    // un servidor» del Chat de IA).
+    emptyExtra?: ReactNode
 }
+
+// Tope de lectura del texto corrido de una respuesta cuando el chat es fluido:
+// ~100 caracteres por línea, que es donde la vista empieza a perder el renglón.
+// Solo toca párrafos, títulos, listas y citas; un bloque de código o una tabla no
+// se parte por leerse mal, y obligarlos a la columna angosta los haría scrollear
+// de lado en una pantalla que sobra de ancho.
+const PROSE_CAP =
+    '[&_p]:max-w-[100ch] [&_ul]:max-w-[100ch] [&_ol]:max-w-[100ch] [&_blockquote]:max-w-[100ch] [&_summary]:max-w-[100ch]'
 
 // formatTokens abrevia los totales. Una sesión larga llega a millones, y
 // "1.283.945" en una barra de estado es ruido: lo que importa es el orden de
@@ -382,6 +401,8 @@ export default function AgentChat({
     insertTarget,
     onSessionUsage,
     active = true,
+    fluid = false,
+    emptyExtra,
 }: AgentChatProps) {
     const t = useT()
     // Etiqueta y explicación de un modo en el idioma activo. Un modo que el
@@ -1300,6 +1321,7 @@ export default function AgentChat({
                                 ))}
                             </div>
                         )}
+                        {emptyExtra}
                     </div>
                 )}
 
@@ -1407,7 +1429,9 @@ export default function AgentChat({
                                 className={`break-words ${
                                     turn.role === 'user'
                                         ? 'max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-tr-sm border border-primary/30 bg-primary/15 px-3 py-1.5 text-on-surface'
-                                        : 'rounded-xl rounded-tl-sm border border-outline-variant bg-surface-container px-3 py-2'
+                                        : `rounded-xl rounded-tl-sm border border-outline-variant bg-surface-container px-3 py-2 ${
+                                              fluid ? `w-fit max-w-full ${PROSE_CAP}` : ''
+                                          }`
                                 }`}
                             >
                                 {/* La respuesta del agente viene en Markdown y

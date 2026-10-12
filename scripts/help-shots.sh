@@ -42,6 +42,8 @@ settings-editor settings 1100 820
 settings-ai settings:IA 1100 800
 model-servers modelservertest 1100 760
 model-servers-form modelserverheaders 1100 980
+model-servers-presets modelserverpresets 1100 860
+model-servers-remote-guide modelserverremote 1100 1400
 ai-model-offline healthred 1440 860
 ssh-terminal sshterm 1280 420
 ui-chat chat 900 700
@@ -56,6 +58,12 @@ utilities-docker-builds dockerbuilds 1300 400
 utilities-ai-chat aichat 1440 860
 utilities-ai-chat-conversation aichatchat 1440 860
 utilities-ai-chat-search aichatsearch 1440 860
+utilities-ai-chat-wide aichatwide 1600 860
+utilities-ai-chat-narrow aichatnarrow 700 860
+utilities-ai-chat-resize aichatresize 1400 800
+utilities-ai-chat-no-server aichatnoserver 1300 800
+utilities-ai-chat-usage aichatusage 1300 860
+model-servers-add-dialog aichataddfail 1300 800
 ai-code-agent-tools toolevents 1440 860
 ai-code-agent-approval approvalrisky 1100 700
 ai-code-agent-remote remotewarn 1440 860

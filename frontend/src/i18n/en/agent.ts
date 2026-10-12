@@ -247,7 +247,7 @@ const en: Messages<typeof es> = {
         pickAgent: 'Pick an agent',
         backToChat: 'Back to the conversation, which kept running behind',
         usageTitle:
-            "How much quota you've used and how many tokens you've spent with each CLI, with your plan alongside. It takes over the panel like a tab: the chat stays where it was.",
+            "How much quota you've used and how many tokens you've spent with each CLI and each model server (Ollama, OpenAI-compatible), with your plan alongside. It takes over the panel like a tab: the chat stays where it was.",
         historyTitle:
             'Earlier conversations from ALL modules, not just this one. Resuming one picks it up where it left off. It takes over the panel like a tab.',
         dockFloat: 'Floating window: the chat sits on top of the content, without taking width from it',
@@ -377,6 +377,38 @@ const en: Messages<typeof es> = {
         outputLabel: 'Output:',
         footer:
             "The **limit bars** are the percentage each provider's server calculated and its CLI cached on this machine: they're read as is, with the time they were measured — they aren't live. The **usage** percentages (model, cache) are shares of what was spent, not of a cap. For the current figure, each CLI answers with its own command (`/status`, `/usage`).",
+        // Model servers (Ollama, OpenAI-compatible): their usage comes from the
+        // app's chat history, not from a CLI's files.
+        servers: {
+            title: 'Model servers',
+            reading: 'Reading the servers\' history…',
+            local: 'Local',
+            remote: 'Remote',
+            localTitle: 'Runs on this machine: what you send it never leaves it',
+            remoteTitle: 'Runs on another machine: what you send it travels over the network',
+            deletedTitle: 'This server is no longer in the list, but conversations with it remain inside the window',
+            unused: 'Not used in these days',
+            tokens: (p: {n: string}) => `${p.n} tokens`,
+            tokensTitle: (p: {total: string; input: string; output: string}) => `${p.total} tokens in total: ${p.input} input and ${p.output} output`,
+            inOut: (p: {input: string; output: string}) => `${p.input} in · ${p.output} out`,
+            turns: (p: {n: number}) => (p.n === 1 ? '1 turn' : `${p.n} turns`),
+            turnsTitle: 'Model replies saved in the history (a turn is one message from you with everything the model did to answer it)',
+            conversations: (p: {n: number}) => (p.n === 1 ? '1 conversation' : `${p.n} conversations`),
+            conversationsTitle: 'Distinct conversations with this server inside the window',
+            speed: (p: {n: string}) => `${p.n} tok/s`,
+            speedTitle: 'Average output speed: tokens generated per second of server generation time. It leaves out waiting for approvals and the time tools take.',
+            speedUnknown: 'speed not measured',
+            speedUnknownTitle: 'There are no turns with the generation time recorded yet. Turns from before this version do not have it.',
+            modelTokensTitle: (p: {total: string; turns: number}) => `${p.total} tokens in ${p.turns} turns`,
+            unknownModel: 'model not recorded',
+            unknownModelTitle: 'Turns saved before the app recorded which model each one used',
+            dailyTitle: (p: {first: string; last: string; max: string}) => `Tokens per day, from ${p.first} to ${p.last}. Highest day: ${p.max}.`,
+            dayBar: (p: {day: string; tokens: string; turns: number}) => `${p.day}: ${p.tokens} tokens · ${p.turns === 1 ? '1 turn' : `${p.turns} turns`}`,
+            lastUsed: (p: {date: string}) => `last used: ${p.date}`,
+            costNote:
+                'Cost is not shown: a self-hosted or OpenAI-compatible server does not report a price per token, and computing one here would be making it up. What you see is tokens, turns and speed.',
+            tokensNote: 'Tokens are what each server reported; one that does not report them shows turns but no tokens.',
+        },
     },
     // Health of a model server (status dot, chat banner).
     health: {

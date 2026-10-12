@@ -1278,6 +1278,10 @@ export function ModelServerHealth(arg1) {
   return window['go']['main']['App']['ModelServerHealth'](arg1);
 }
 
+export function ModelServerUsage(arg1) {
+  return window['go']['main']['App']['ModelServerUsage'](arg1);
+}
+
 export function MoveConnectionToFolder(arg1, arg2) {
   return window['go']['main']['App']['MoveConnectionToFolder'](arg1, arg2);
 }
