@@ -5,7 +5,7 @@ import {
     AgentModelCatalog,
     CancelAgentChat,
     CloseAgentSession,
-    CreateAgentChat,
+    CreateAgentChatDraft,
     DeleteAgentChat,
     GitListRepos,
     ListAgents,
@@ -13,9 +13,12 @@ import {
     ListAllAgentChats,
     ListConnections,
     ListModelServers,
+    ListOpenAgentChats,
     PickAgentWorkspaceFolder,
     ResumeAgentChat,
     SetAgentChatContext,
+    SetAgentChatDraftAgent,
+    SetAgentChatOpen,
     TouchAgentChat,
 } from '../../../wailsjs/go/main/App'
 import {agentmodels, agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
@@ -31,13 +34,13 @@ import {agentIconName} from '../agent/agentIcon'
 import {HealthBadge, ProviderIconWithHealth} from '../agent/HealthIndicators'
 import {isModelServerAgent} from '../../lib/modelServers'
 import {useModelServerHealth, useModelServersHealth} from '../../lib/modelServerHealth'
-import {CONTEXT_ICONS, describeContext, repoIdOf, type WorkContext, type WorkContextKind} from '../agent/workContext'
+import {CONTEXT_ICONS, describeContext, type WorkContext, type WorkContextKind} from '../agent/workContext'
 import {errorText, useT} from '../../i18n'
-import {onAgentChatsChanged, onModelServersChanged, onRenameAiChatTabRequest, requestOpenAiChat} from '../../lib/appBus'
+import {notifyAgentChatsChanged, onAgentChatsChanged, onAiChatGone, onModelServersChanged, onRenameAiChatTabRequest, requestOpenAiChat} from '../../lib/appBus'
 import {chatTitleFromMessage, cleanChatTitle, MAX_CHAT_TITLE} from '../../lib/chatTitle'
 import {renameChat} from '../../lib/chatRename'
 import InlineRename from '../InlineRename'
-import {aiChatShortcuts, clearPane, paneOwningChat, setPaneChats} from '../../lib/aiChatTabs'
+import {aiChatShortcuts, claimChat, clearPane, paneOwningChat, setPaneChats} from '../../lib/aiChatTabs'
 import {useTreeMenu} from '../sidebar/TreeMenu'
 import {useElementWidth} from '../../hooks/useElementWidth'
 import AiChatHistory from './aichat/AiChatHistory'
@@ -82,6 +85,14 @@ import {
 // medido: la preferencia del usuario (historial abierto o cerrado) no se pisa,
 // de modo que al volver a ensanchar la pestaña el historial reaparece solo.
 //
+// **Persistente.** Una conversación existe en el vault desde que se la crea (con
+// su proveedor, modelo y proyecto), no desde el primer mensaje: cerrar la
+// pestaña, o la app, no la pierde, y sigue en Chat de IA → Abiertas hasta que se
+// la cierre o se la elimine. Una conversación sin mensajes es un «borrador»
+// (`fresh`); hay a lo sumo uno por panel, y un panel nuevo adopta uno suelto en
+// vez de crear otro, para que abrir y cerrar pestañas no llene la lista de
+// borradores vacíos.
+//
 // **No es un chat nuevo.** La conversación es el componente de siempre, así que
 // cualquier mejora del chat (Detener, copiar, uso por turno, bloques de código)
 // vale acá y en el panel lateral. Lo que esta pestaña aporta es el espacio para
@@ -109,8 +120,11 @@ interface Session {
     id: string
     agentId: string
     agentLabel: string
-    // Entrada del historial en el vault; vacía hasta el primer mensaje.
+    // Entrada del historial en el vault. Existe desde que se crea la
+    // conversación (es el mismo id que `id`), aunque todavía no tenga mensajes.
     chatId: string
+    // Todavía sin mensajes: un borrador.
+    fresh?: boolean
     context: WorkContext
     resumeConversationId?: string
     resumeChatId?: string
@@ -129,6 +143,9 @@ const newSessionId = () => `agent-chat-${Date.now().toString(36)}-${Math.random(
 export interface AiChatOpenRequest {
     chatId: string
     token: number
+    // Además de `chatId` (la que queda a la vista): las otras conversaciones del
+    // panel, al reabrir una pestaña guardada.
+    chatIds?: string[]
 }
 
 interface Props {
@@ -226,28 +243,27 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
     const [openSettled, setOpenSettled] = useState(0)
     const sessionsRef = useRef(sessions)
     sessionsRef.current = sessions
-    // Nombres puestos a una conversación que todavía no tiene fila en el historial
-    // (un borrador): se guardan acá y se aplican cuando el primer mensaje la crea.
-    const [pendingTitles, setPendingTitles] = useState<Record<string, string>>({})
-    const pendingTitlesRef = useRef(pendingTitles)
-    pendingTitlesRef.current = pendingTitles
+    // El alta de cada conversación nueva, por sesión, con su promesa: lo que se
+    // le haga enseguida (renombrarla, cambiar su proveedor, guardar el id de
+    // conversación del CLI) es un UPDATE sobre la fila que ese INSERT está
+    // creando, y sin encadenarlos el UPDATE que gana la carrera no afecta ninguna
+    // fila.
+    const creationsRef = useRef<Map<string, Promise<unknown>>>(new Map())
+    const afterCreation = useCallback((id: string) => creationsRef.current.get(id) ?? Promise.resolve(), [])
     // La cabecera está editando el nombre de la conversación a la vista.
     const [editingTitle, setEditingTitle] = useState(false)
 
     const available = useMemo(() => agentList.filter((a) => a.available), [agentList])
     const current = useMemo(() => sessions.find((s) => s.id === currentId) ?? null, [sessions, currentId])
 
-    // Qué conversaciones tiene abiertas este panel, para que ninguna se abra
-    // también en otro y para que la barra de pestañas y la lateral sepan cuál de
-    // ellas está trabajando. Sólo cuentan las que ya tienen mensajes: un
-    // borrador no es una conversación de nadie.
-    const openIdsKey = sessions
-        .filter((s) => s.chatId)
-        .map((s) => s.id)
-        .join('|')
+    // Qué conversaciones tiene abiertas este panel, y cuál está a la vista, para
+    // que ninguna se abra también en otro, para que la barra de pestañas y la
+    // lateral sepan cuál de ellas está trabajando y para reabrir la pestaña tal
+    // cual estaba. Los borradores cuentan: ya son conversaciones de alguien.
+    const openIdsKey = sessions.map((s) => s.id).join('|')
     useEffect(() => {
-        setPaneChats(paneId, openIdsKey ? openIdsKey.split('|') : [])
-    }, [paneId, openIdsKey])
+        setPaneChats(paneId, openIdsKey ? openIdsKey.split('|') : [], currentId)
+    }, [paneId, openIdsKey, currentId])
     useEffect(() => () => clearPane(paneId), [paneId])
 
     // Salud de los servidores de modelos. El proveedor elegido se sondea cada
@@ -391,7 +407,7 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
     // su conversación (renameSession).
     const onTitleChangeRef = useRef(onTitleChange)
     onTitleChangeRef.current = onTitleChange
-    const convTitle = current ? pendingTitles[current.id] || (current.chatId ? history.find((c) => c.id === current.chatId)?.title : '') || '' : ''
+    const convTitle = current ? history.find((c) => c.id === current.chatId)?.title || '' : ''
     const tabTitle = convTitle || current?.context.label || t.aiSessions.tabs.draftTitle
     useEffect(() => {
         onTitleChangeRef.current?.(tabTitle)
@@ -408,31 +424,60 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
         }, 30)
     }, [])
 
-    // La primera conversación: vacía, con el proveedor activo de la app (o el
-    // primero disponible).
+    // Una conversación nueva: se guarda YA (abierta, sin título, con el proveedor
+    // y el proyecto elegidos) para que no se pierda si se cierra la pestaña o la
+    // app antes del primer mensaje.
+    const makeDraft = useCallback(
+        (agent: agentsModel.Agent, projectId: string): Session => {
+            const id = newSessionId()
+            creationsRef.current.set(
+                id,
+                CreateAgentChatDraft(id, agent.id, MODEL_DEFAULT, 'utilities', projectId)
+                    .catch(() => {})
+                    .then(() => notifyAgentChatsChanged()),
+            )
+            return {id, agentId: agent.id, agentLabel: agent.label, chatId: id, fresh: true, context: utilitiesContext(projectId), model: MODEL_DEFAULT}
+        },
+        [utilitiesContext],
+    )
+
+    // La primera conversación del panel. Antes de crear otra se busca un borrador
+    // suelto (abierto, sin mensajes, que ningún panel tenga): abrir y cerrar la
+    // pestaña de chat no puede dejar un borrador vacío por cada vez. Sin ninguno,
+    // se crea uno con el proveedor activo de la app (o el primero disponible).
+    const initialRef = useRef(false)
     useEffect(() => {
-        if (!agentsLoaded || sessions.length > 0 || available.length === 0) return
+        if (!agentsLoaded || sessions.length > 0 || available.length === 0 || initialRef.current) return
         // Si el panel nació para abrir una conversación, el borrador sobra: se
         // crea recién si esa apertura no llegó a nada.
         if (openRequest && (handledOpenRef.current !== openRequest.token || openingRef.current)) return
-        const agent = available.find((a) => a.id === defaultAgentId) ?? available[0]
-        const s: Session = {
-            id: newSessionId(),
-            agentId: agent.id,
-            agentLabel: agent.label,
-            chatId: '',
-            context: utilitiesContext(''),
-            model: MODEL_DEFAULT,
-        }
-        setSessions([s])
-        setCurrentId(s.id)
+        initialRef.current = true
+        void (async () => {
+            try {
+                const open = await ListOpenAgentChats().catch(() => [] as vault.AgentChat[])
+                if (sessionsRef.current.length > 0) return
+                const loose = open.find(
+                    (c) => c.lastStatus === '' && !c.conversationId && c.module === 'utilities' && available.some((a) => a.id === c.agentId) && claimChat(c.id, paneId),
+                )
+                if (loose) {
+                    openChat(loose, true)
+                    return
+                }
+                const agent = available.find((a) => a.id === defaultAgentId) ?? available[0]
+                const s = makeDraft(agent, '')
+                setSessions([s])
+                setCurrentId(s.id)
+            } finally {
+                initialRef.current = false
+            }
+        })()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [agentsLoaded, sessions.length, available, defaultAgentId, utilitiesContext, openSettled])
+    }, [agentsLoaded, sessions.length, available, defaultAgentId, makeDraft, openSettled])
 
-    // El borrador es la conversación sin entrada en el historial. Hay a lo sumo
-    // una: «Nuevo chat» con un borrador a la vista no abre otro, vuelve a él.
+    // El borrador es la conversación sin mensajes. Hay a lo sumo una por panel:
+    // «Nuevo chat» con un borrador a la vista no abre otro, vuelve a él.
     const newChat = useCallback(() => {
-        const draft = sessionsRef.current.find((s) => !s.chatId)
+        const draft = sessionsRef.current.find((s) => s.fresh)
         if (draft) {
             setCurrentId(draft.id)
             focusComposer()
@@ -441,19 +486,11 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
         const base = sessionsRef.current.find((s) => s.id === currentId)
         const agent = available.find((a) => a.id === base?.agentId) ?? available.find((a) => a.id === defaultAgentId) ?? available[0]
         if (!agent) return
-        const baseRepo = base?.context.kind === 'utilities' ? base.context.id : ''
-        const s: Session = {
-            id: newSessionId(),
-            agentId: agent.id,
-            agentLabel: agent.label,
-            chatId: '',
-            context: utilitiesContext(baseRepo),
-            model: MODEL_DEFAULT,
-        }
+        const s = makeDraft(agent, base?.context.kind === 'utilities' ? base.context.id : '')
         setSessions((prev) => [...prev, s])
         setCurrentId(s.id)
         focusComposer()
-    }, [available, currentId, defaultAgentId, focusComposer, utilitiesContext])
+    }, [available, currentId, defaultAgentId, focusComposer, makeDraft])
 
     // Cmd/Ctrl+N: chat nuevo, solo con esta pestaña a la vista.
     useEffect(() => {
@@ -508,8 +545,14 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
                 resumeChatId: c.id,
                 initialSettings: {model: c.model, effort: c.effort, mode: c.mode, brain: c.brain},
                 model: c.model || MODEL_DEFAULT,
+                // Sin mensajes: una abierta que nunca corrió. Una del historial
+                // (cerrada) nunca cuenta como borrador, aunque no tenga estado.
+                fresh: c.open && c.lastStatus === '' && !c.conversationId,
             }
             if (c.conversationId) void ResumeAgentChat(c.id, c.conversationId).catch(() => {})
+            // Abrirla desde el historial la suma a Abiertas, donde se queda hasta
+            // que alguien la cierre.
+            if (!c.open) void SetAgentChatOpen(c.id, true).then(() => notifyAgentChatsChanged()).catch(() => {})
             setSessions((prev) => [...prev, s])
             setCurrentId(s.id)
             focusComposer()
@@ -530,6 +573,13 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
         ListAllAgentChats()
             .then((h) => {
                 setHistory(h ?? [])
+                // Al reabrir una pestaña guardada vienen todas las conversaciones
+                // del panel: se abren primero las demás y al final la que estaba a
+                // la vista, que queda como actual.
+                for (const id of openRequest.chatIds ?? []) {
+                    const other = (h ?? []).find((x) => x.id === id)
+                    if (other && id !== openRequest.chatId) openChat(other, true)
+                }
                 const c = (h ?? []).find((x) => x.id === openRequest.chatId)
                 if (c) openChat(c, true)
             })
@@ -553,7 +603,7 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
             setSwitchNote({sessionId, from: s.agentLabel, to: agent.label})
             setSessions((prev) => prev.map((x) => (x.id === sessionId ? {...x, agentId: agent.id, agentLabel: agent.label, model: MODEL_DEFAULT, lost: false} : x)))
             // Que la fila del historial deje de rotularla con el proveedor viejo.
-            if (s.chatId) void persistChatAgent(s.chatId, agent.id).then((saved) => saved && loadHistory())
+            if (!s.fresh) void persistChatAgent(s.chatId, agent.id).then((saved) => saved && loadHistory())
             focusComposer()
         },
         [available, focusComposer, loadHistory],
@@ -568,37 +618,34 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
         (agentId: string) => {
             const agent = available.find((a) => a.id === agentId)
             if (!agent || !current) return
-            if (current.chatId && isModelServerAgent(agent.id) && (isModelServerAgent(current.agentId) || current.lost)) {
+            if (!current.fresh && isModelServerAgent(agent.id) && (isModelServerAgent(current.agentId) || current.lost)) {
                 switchProvider(current.id, agent.id)
                 return
             }
-            if (!current.chatId) {
-                setSessions((prev) =>
-                    prev.map((s) => (s.id === current.id ? {...s, agentId: agent.id, agentLabel: agent.label, model: MODEL_DEFAULT} : s)),
-                )
+            // Cambia el proveedor del borrador, en pantalla y en el vault.
+            const retarget = (id: string) => {
+                setSessions((prev) => prev.map((s) => (s.id === id ? {...s, agentId: agent.id, agentLabel: agent.label, model: MODEL_DEFAULT} : s)))
+                void afterCreation(id)
+                    .then(() => SetAgentChatDraftAgent(id, agent.id))
+                    .then(() => notifyAgentChatsChanged())
+                    .catch(() => {})
+            }
+            if (current.fresh) {
+                retarget(current.id)
             } else {
-                const draft = sessionsRef.current.find((s) => !s.chatId)
+                const draft = sessionsRef.current.find((s) => s.fresh)
                 if (draft) {
-                    setSessions((prev) =>
-                        prev.map((s) => (s.id === draft.id ? {...s, agentId: agent.id, agentLabel: agent.label, model: MODEL_DEFAULT} : s)),
-                    )
+                    retarget(draft.id)
                     setCurrentId(draft.id)
                 } else {
-                    const s: Session = {
-                        id: newSessionId(),
-                        agentId: agent.id,
-                        agentLabel: agent.label,
-                        chatId: '',
-                        context: utilitiesContext(current.context.kind === 'utilities' ? current.context.id : ''),
-                        model: MODEL_DEFAULT,
-                    }
+                    const s = makeDraft(agent, current.context.kind === 'utilities' ? current.context.id : '')
                     setSessions((prev) => [...prev, s])
                     setCurrentId(s.id)
                 }
             }
             focusComposer()
         },
-        [available, current, focusComposer, switchProvider, utilitiesContext],
+        [afterCreation, available, current, focusComposer, makeDraft, switchProvider],
     )
 
     // Tras guardar un servidor desde el selector, se lo elige apenas el catálogo
@@ -630,11 +677,14 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
             if (!current) return
             const context = utilitiesContext(projectId)
             setSessions((prev) => prev.map((s) => (s.id === current.id ? {...s, context} : s)))
-            // La conversación ya guardada se reasigna: si no, al retomarla desde
-            // el historial volvería con el proyecto con el que nació.
-            if (current.chatId) void SetAgentChatContext(current.id, 'utilities', projectId).then(loadHistory).catch(() => {})
+            // La conversación se reasigna: si no, al retomarla desde el historial
+            // volvería con el proyecto con el que nació.
+            void afterCreation(current.id)
+                .then(() => SetAgentChatContext(current.id, 'utilities', projectId))
+                .then(loadHistory)
+                .catch(() => {})
         },
-        [current, loadHistory, utilitiesContext],
+        [afterCreation, current, loadHistory, utilitiesContext],
     )
 
     // «Abrir carpeta…»: diálogo nativo → alta (el backend rechaza la raíz del
@@ -685,32 +735,19 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
 
     // --- Historial ---------------------------------------------------------
 
-    // El primer mensaje crea la entrada del historial, con su texto como título.
-    // El alta va indexada POR SESIÓN y guarda su promesa: el id de conversación
-    // del proveedor llega apenas contesta y guardarlo es un UPDATE sobre la fila
-    // que ese INSERT está creando; sin encadenarlos, un UPDATE que gana la carrera
-    // no afecta ninguna fila y la conversación queda sin con qué retomarse.
-    const creationsRef = useRef<Map<string, Promise<unknown>>>(new Map())
+    // El primer mensaje deja de ser borrador a la conversación y, si seguía sin
+    // nombre, le da el suyo (sin referencias @ ni bloques de código). El
+    // backend hace lo mismo al recibirlo (nameUntitledChat); acá se anticipa
+    // para que la pestaña y las listas lo muestren sin esperar la relectura.
+    // Un nombre que el usuario ya eligió no se toca.
     const onFirstSend = useCallback(
         (sessionId: string, text: string) => {
             const s = sessionsRef.current.find((x) => x.id === sessionId)
-            if (!s || s.chatId || creationsRef.current.has(s.id)) return
-            // El nombre que el usuario ya le puso al borrador, o el que sale de su
-            // primer mensaje (sin referencias @ ni bloques de código).
-            const named = pendingTitlesRef.current[s.id]
-            const title = named || chatTitleFromMessage(text)
-            creationsRef.current.set(
-                s.id,
-                CreateAgentChat(s.id, repoIdOf(s.context), s.agentId, title, s.context.kind, s.context.id)
-                    // El backend también crea la fila al recibir el mensaje y puede
-                    // llegar primero: CreateAgentChat no pisa un título ya guardado,
-                    // así que el nombre elegido se reafirma con un renombrado.
-                    .then(() => (named ? renameChat(s.id, named) : undefined))
-                    .catch(() => {})
-                    .then(loadHistory),
-            )
-            if (named) setPendingTitles(({[s.id]: _applied, ...rest}) => rest)
-            setSessions((prev) => prev.map((x) => (x.id === s.id ? {...x, chatId: s.id} : x)))
+            if (!s || !s.fresh) return
+            setSessions((prev) => prev.map((x) => (x.id === s.id ? {...x, fresh: false} : x)))
+            const title = chatTitleFromMessage(text)
+            if (title) setHistory((prev) => prev.map((c) => (c.id === s.id && !c.title ? vault.AgentChat.createFrom({...c, title}) : c)))
+            window.setTimeout(loadHistory, 600)
         },
         [loadHistory],
     )
@@ -718,35 +755,31 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
     const onConversation = useCallback(
         (sessionId: string, conversationId: string) => {
             const s = sessionsRef.current.find((x) => x.id === sessionId)
-            if (!s || (!s.chatId && !creationsRef.current.has(s.id))) return
-            void (creationsRef.current.get(s.id) ?? Promise.resolve())
+            if (!s) return
+            void afterCreation(s.id)
                 .then(() => TouchAgentChat(s.id, conversationId))
                 .then(loadHistory)
                 .catch(() => {})
         },
-        [loadHistory],
+        [afterCreation, loadHistory],
     )
 
-    // Renombra la conversación `sessionId`. Si ya tiene fila (o su alta está en
-    // camino) se guarda en el vault, que también actualiza el título de la sesión
-    // viva; si es un borrador, el nombre espera al primer mensaje.
+    // Renombra la conversación `sessionId`. La fila existe desde que se creó la
+    // conversación, así que el nombre se guarda en el acto (el backend también
+    // actualiza el título de la sesión viva).
     const renameSession = useCallback(
         async (sessionId: string, raw: string) => {
             const title = cleanChatTitle(raw)
             const s = sessionsRef.current.find((x) => x.id === sessionId)
             if (!title || !s) return
-            if (!s.chatId && !creationsRef.current.has(s.id)) {
-                setPendingTitles((prev) => ({...prev, [s.id]: title}))
-                return
-            }
             // Optimista: la pestaña y el historial muestran el nombre ya; si el
             // guardado falla, la relectura lo devuelve a como estaba.
             setHistory((prev) => prev.map((c) => (c.id === s.id ? vault.AgentChat.createFrom({...c, title}) : c)))
-            await (creationsRef.current.get(s.id) ?? Promise.resolve())
+            await afterCreation(s.id)
             await renameChat(s.id, title)
             loadHistory()
         },
-        [loadHistory],
+        [afterCreation, loadHistory],
     )
     const renameSessionRef = useRef(renameSession)
     renameSessionRef.current = renameSession
@@ -804,19 +837,21 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
     const removeChat = useCallback(
         (c: vault.AgentChat) => {
             void CancelAgentChat(c.id).catch(() => {})
-            void DeleteAgentChat(c.id)
+            void afterCreation(c.id)
+                .then(() => DeleteAgentChat(c.id))
                 .then(() => {
                     const rest = sessionsRef.current.filter((s) => s.id !== c.id)
                     setSessions(rest)
                     if (c.id === currentId) {
-                        const draft = rest.find((s) => !s.chatId)
+                        const draft = rest.find((s) => s.fresh)
                         setCurrentId(draft?.id ?? rest[rest.length - 1]?.id ?? '')
                     }
                     loadHistory()
+                    notifyAgentChatsChanged()
                 })
                 .catch(() => {})
         },
-        [currentId, loadHistory],
+        [afterCreation, currentId, loadHistory],
     )
 
     // «Cerrar chat»: la conversación se da por terminada. Corta lo que corra, la
@@ -825,7 +860,12 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
     // detener el turno (el botón Detener, que la deja abierta).
     const closeChat = useCallback(
         (sessionId: string) => {
-            void CloseAgentSession(sessionId).catch(() => {})
+            // Detrás del alta: cerrar una conversación recién creada antes de que
+            // su INSERT termine la dejaría abierta para siempre.
+            void afterCreation(sessionId)
+                .then(() => CloseAgentSession(sessionId))
+                .catch(() => {})
+                .then(() => notifyAgentChatsChanged())
             setBusyIds((prev) => {
                 if (!prev.has(sessionId)) return prev
                 const next = new Set(prev)
@@ -835,12 +875,30 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
             const rest = sessionsRef.current.filter((s) => s.id !== sessionId)
             setSessions(rest)
             if (sessionId === currentId) {
-                const draft = rest.find((s) => !s.chatId)
+                const draft = rest.find((s) => s.fresh)
                 setCurrentId(draft?.id ?? rest[rest.length - 1]?.id ?? '')
             }
             loadHistory()
         },
-        [currentId, loadHistory],
+        [afterCreation, currentId, loadHistory],
+    )
+    // La conversación se cerró o se eliminó desde la barra lateral (Abiertas): si
+    // este panel la tiene a la vista, la suelta sin volver a avisarle al backend.
+    useEffect(
+        () =>
+            onAiChatGone((id) => {
+                const rest = sessionsRef.current.filter((s) => s.id !== id)
+                if (rest.length === sessionsRef.current.length) return
+                setSessions(rest)
+                setBusyIds((prev) => {
+                    if (!prev.has(id)) return prev
+                    const next = new Set(prev)
+                    next.delete(id)
+                    return next
+                })
+                if (id === currentIdRef.current) setCurrentId(rest.find((s) => s.fresh)?.id ?? rest[rest.length - 1]?.id ?? '')
+            }),
+        [],
     )
     const askCloseChat = useCallback(
         (s: Session) => {
@@ -1334,7 +1392,7 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
                                         onModelChange={(m) => changeModel(s.id, m)}
                                         working={isCurrent ? workingOf(s) : null}
                                         onSend={(text) => onFirstSend(s.id, text)}
-                                        onCloseChat={s.chatId ? () => askCloseChat(s) : undefined}
+                                        onCloseChat={() => askCloseChat(s)}
                                         onConversation={(cid) => onConversation(s.id, cid)}
                                         onBusyChange={(b) => onBusyChange(s.id, b)}
                                         fluid

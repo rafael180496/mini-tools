@@ -128,10 +128,11 @@ const en: Messages<typeof es> = {
             noMatch: 'No conversation matches the filters.',
         },
         count: (p) => (p.n === 1 ? '1 conversation' : `${p.n} conversations`),
-        empty: 'There are no conversations yet. The first one shows up here as soon as you send a message.',
+        empty: 'There are no conversations yet. Every new chat shows up here as soon as you create it, even before you write to it.',
         noMatch: (p) => `No conversation matches «${p.query}».`,
         searchFailed: "Couldn't search. Try again.",
         untitled: 'Untitled',
+        draftLabel: 'New chat · draft',
         openTitle: (p) =>
             `Resumes this conversation with ${p.agent}${p.where ? ` · ${p.where}` : ''}. Its messages are redrawn when you open it.`,
         lost: {

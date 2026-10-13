@@ -72,8 +72,17 @@ rm -rf tmp_migrationverify
 > hacía engañosa la sección: leerla daba a entender que agregar una migración
 > era todavía territorio inexplorado.
 
-- **Versión actual: 56.** El slice de `migrations.go` es la lista completa y
+- **Versión actual: 65.** El slice de `migrations.go` es la lista completa y
   autoritativa; cada entrada explica en su comentario por qué existe.
+- **Versión 65** (conversaciones de IA persistentes): `agent_chats.open`,
+  `pinned`, `last_status` y `opened_at`, todas `NOT NULL DEFAULT` (0, 0, `''`, 0):
+  **ninguna fila existente queda abierta**, para no volcar el historial en la
+  barra lateral. Verificada con `TestMigration65AddsOpenColumnsClosedByDefault`
+  (retrocede a 64 quitando las cuatro columnas, reaplica, comprueba defaults y
+  columnas anteriores intactas, e idempotencia); los tests de las migraciones 59–64
+  tuvieron que sumar las cuatro columnas a su lista de `DROP COLUMN` para poder
+  reaplicarse. Ver *Conversaciones persistentes* en
+  [ia-ollama-chat-utilidades.md](ia-ollama-chat-utilidades.md).
 - **Versión 56**: `settings.language` (idioma de la interfaz), `DEFAULT ''` =
   sin elegir, que el frontend lee como inglés. `''` y no `'en'` a propósito:
   quien eligió inglés no debería cambiar si algún día cambia el default.

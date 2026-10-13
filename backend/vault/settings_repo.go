@@ -26,6 +26,17 @@ type OpenTabInfo struct {
 	// which has no file content to restore, only a ConnID to reopen
 	// against.
 	Kind string `json:"kind,omitempty"`
+	// AIPanes solo lo usa Kind "ai-chat" (una pestaña de Chat de IA): las
+	// conversaciones de cada uno de sus paneles (uno, o dos si estaba dividida).
+	// Son ids de conversación, nunca contenido: al reabrir se leen del vault.
+	AIPanes []AIPaneInfo `json:"aiPanes,omitempty"`
+}
+
+// AIPaneInfo son las conversaciones que tenía un panel del Chat de IA, en el
+// orden en que estaban abiertas, y cuál estaba a la vista.
+type AIPaneInfo struct {
+	Chats   []string `json:"chats"`
+	Current string   `json:"current,omitempty"`
 }
 
 // Settings holds non-sensitive app preferences. Unlike connections'

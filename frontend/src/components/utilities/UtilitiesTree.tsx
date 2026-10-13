@@ -78,7 +78,7 @@ export default function UtilitiesTree({openIds, activeId, onOpen, unavailable, d
     // Las sesiones de IA (Activas / Recientes) y el pedido de mostrar una.
     const ai = useAiSessionsData(filter, aiChat.visible)
     const aiAttention = ai.attention.running + ai.attention.approval
-    const aiHits = ai.active.length + ai.recent.length
+    const aiHits = ai.pinned.length + ai.open.length + ai.recent.length
     const [aiReveal, setAiReveal] = useState<AiRevealRequest | null>(null)
     const revealSeq = useRef(0)
     useEffect(

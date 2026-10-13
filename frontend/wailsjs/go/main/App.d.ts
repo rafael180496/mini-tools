@@ -170,6 +170,8 @@ export function CountMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:str
 
 export function CreateAgentChat(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
+export function CreateAgentChatDraft(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
+
 export function CreateFolder(arg1:string,arg2:string,arg3:string):Promise<vault.Folder>;
 
 export function CreateNote(arg1:string,arg2:string):Promise<string>;
@@ -654,6 +656,8 @@ export function ListMongoDocuments(arg1:string,arg2:string,arg3:string,arg4:stri
 
 export function ListNotes():Promise<Array<vault.NoteSummary>>;
 
+export function ListOpenAgentChats():Promise<Array<vault.AgentChat>>;
+
 export function ListPendingApprovals():Promise<Array<agentapprove.Request>>;
 
 export function ListRecentFiles():Promise<Array<vault.RecentFile>>;
@@ -865,6 +869,12 @@ export function SetAgentChatAgent(arg1:string,arg2:string):Promise<void>;
 export function SetAgentChatBrain(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetAgentChatContext(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function SetAgentChatDraftAgent(arg1:string,arg2:string):Promise<void>;
+
+export function SetAgentChatOpen(arg1:string,arg2:boolean):Promise<void>;
+
+export function SetAgentChatPinned(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetAgentChatSettings(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

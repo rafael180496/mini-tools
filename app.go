@@ -290,6 +290,10 @@ func (a *App) startup(ctx context.Context) {
 	a.agentChats.SetSessionsEmitter(func(list []agentchat.AgentSessionInfo) {
 		emit(agentSessionsEvent, list)
 	})
+	// El estado de cada conversación (corriendo / terminó / error / cortada) se
+	// guarda en el vault: el registro vive en memoria y se pierde al cerrar la
+	// app, pero la lista de Abiertas tiene que seguir diciendo cómo quedó.
+	a.wireChatStatus()
 
 	// Canal de aprobación por acción. Que falle NO impide arrancar: en una
 	// máquina sin AF_UNIX el chat sigue funcionando con la aprobación por
@@ -329,9 +333,7 @@ func (a *App) shutdown(ctx context.Context) {
 	// todavía abierto: cada uno emite su error final y recordChatEvent lo
 	// graba en el historial. Cerrar el vault antes los dejaría escribiendo en
 	// una base cerrada, y sin cortarlos los CLIs quedarían como huérfanos.
-	if a.agentChats != nil {
-		a.agentChats.Shutdown(agentShutdownGrace)
-	}
+	a.stopChatsForShutdown(agentShutdownGrace)
 	if a.autoBackup != nil {
 		a.autoBackup.Stop()
 	}

@@ -569,7 +569,7 @@ host:1521/SERVICE          <span class="c"># Oracle Easy Connect</span>
     <tr><td>Git</td><td>Repositories: see changes, branches and work with the agents</td></tr>
     <tr><td>Notes</td><td>Your encrypted knowledge base: runbooks and notes</td></tr>
     <tr><td>HTTP</td><td>Request collections: test and save endpoints</td></tr>
-    <tr><td>Utilities</td><td>System tools, each in its own tab: Port Killer (who holds a port), Activity Monitor (live processes, CPU and memory), Docker (containers, images, volumes, networks, logs and Compose) and the AI Chat (every conversation in one place, with search; the ones working in the background —<a href="#ia-sesiones">Active and Recent</a>— hang from its row)</td></tr>
+    <tr><td>Utilities</td><td>System tools, each in its own tab: Port Killer (who holds a port), Activity Monitor (live processes, CPU and memory), Docker (containers, images, volumes, networks, logs and Compose) and the AI Chat (every conversation in one place, with search; the ones working in the background —<a href="#ia-sesiones">Open and Recent</a>— hang from its row)</td></tr>
   </table></div>
   <p>You see <strong>one at a time</strong>, so the one you're using gets the full height instead of the
   strip the others used to leave it when stacked.</p>
@@ -1852,14 +1852,14 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   </figure>
 
   <h2 id="utilidades-chat-ia--nombres">Name your conversations</h2>
-  <p>The tab label, the row under <em>Utilities → AI Chat</em> and the <em>Active</em> list show the <strong>name of the conversation</strong>; while it has none they show the project, and <em>New chat</em> if there is neither. A new conversation is named after your <strong>first message</strong> — its first line, without <code>@</code> references or code blocks, up to about 60 characters. Conversations that already say “Chat with Claude Code” keep that name until you rename them.</p>
+  <p>The tab label, the row under <em>Utilities → AI Chat</em> and the <em>Open</em> list show the <strong>name of the conversation</strong>; while it has none they show the project, and <em>New chat</em> if there is neither. A new conversation is named after your <strong>first message</strong> — its first line, without <code>@</code> references or code blocks, up to about 60 characters. Conversations that already say “Chat with Claude Code” keep that name until you rename them.</p>
   <ul>
     <li><strong>Tab</strong> — double-click its name, or press <kbd>F2</kbd> with the tab focused; also right-click → <em>Rename…</em>.</li>
     <li><strong>Utilities → AI Chat</strong> — the same on the row of each open tab: double-click, <kbd>F2</kbd> or right-click.</li>
     <li><strong>Chat header</strong> — the name with its pencil next to the history button; click it, or press <kbd>F2</kbd> anywhere in the tab.</li>
-    <li><strong>History, Active and Recent</strong> — the pencil on a history row; in the lists of the sidebar, <em>⋯</em> or right-click → <em>Rename…</em>.</li>
+    <li><strong>History, Open and Recent</strong> — the pencil on a history row; in the lists of the sidebar, <em>⋯</em> or right-click → <em>Rename…</em>.</li>
   </ul>
-  <p><kbd>Enter</kbd> saves and <kbd>Esc</kbd> cancels; a blank name changes nothing and the limit is 120 characters. Renaming does not move the conversation up the history. If the chat has no message yet, the name is kept and applied when you send the first one.</p>
+  <p><kbd>Enter</kbd> saves and <kbd>Esc</kbd> cancels; a blank name changes nothing and the limit is 120 characters. Renaming does not move the conversation up the history. If the chat has no message yet, the name is saved with the draft and the first message does not replace it.</p>
   <figure>
     <div class="shot"><img src="docs/screenshots/ia-sessions-rename-tab.png" alt="Tab strip with the name of an AI Chat tab turned into a text field, selected and ready to be replaced; below, the header shows the same name with its pencil"></div>
     <figcaption>Double-click on the tab: the name becomes a field, and the conversation is renamed everywhere.</figcaption>
@@ -2169,8 +2169,8 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
 
 <article class="topic" id="ia-sesiones" data-title="Background chats and AI sessions">
   <h1>Background chats and AI sessions</h1>
-  <p class="lead">Run several AI conversations at once, close their tabs without stopping them, and follow, stop or
-  reattach every one from <strong>Utilities → AI Chat</strong> in the sidebar.</p>
+  <p class="lead">Run several AI conversations at once. They stay <strong>saved and listed</strong> —closing their tab, or the
+  app, does not remove them— until you close or delete them. Follow, stop, pin or resume every one from <strong>Utilities → AI Chat</strong> in the sidebar.</p>
 
   <p>A conversation is not tied to the tab that shows it: it keeps working in the app while you do something else.
   Closing the tab, going to another module or opening a second chat <strong>never stops a turn that is running</strong>:
@@ -2178,9 +2178,29 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   (see <a href="#ia-sesiones--cerrar">Closing the tab or closing the chat</a>).</p>
 
   <figure>
-    <div class="shot"><img src="docs/screenshots/ia-sessions-sidebar.png" alt="Sidebar in Utilities, under the AI Chat row: under Active, five conversations with their status — one needs approval in amber, two working with a spinner and an elapsed clock, one failed in red and one finished and unread in green — each with its provider, model, project, last text and its Open, Stop, Let it finish and Mark as read actions; under Recent, the latest conversations. The Utilities icon and the AI Chat row carry a badge with a 3"></div>
+    <div class="shot"><img src="docs/screenshots/ia-sessions-sidebar.png" alt="Sidebar in Utilities, under the AI Chat row: under Open, five conversations with their status — one needs approval in amber, two working with a spinner and an elapsed clock, one failed in red and one finished and unread in green — each with its provider, model, project, last text and its Open, Pin, Stop and Mark as read actions; under Recent, the latest conversations. The Utilities icon and the AI Chat row carry a badge with a 3"></div>
     <figcaption>Utilities → AI Chat: what is working, what is waiting for you and what ended without you seeing it.</figcaption>
   </figure>
+
+  <h2 id="ia-sesiones--persistentes">Conversations that stay until you close them</h2>
+  <p>A conversation exists from the moment you create it, not from your first message. A new chat tab saves its conversation right away —with its provider, model, project and name, if you gave it one— and lists it under <em>Utilities → AI Chat → Open</em> as <em>New chat · draft</em> until you write to it (the first message names it, unless you had already named it yourself). It stays there until <strong>you</strong> close or delete it:</p>
+  <div class="tablewrap"><table>
+    <tr><th>What you do</th><th>What happens to the conversation</th></tr>
+    <tr><td>Close its tab</td><td>Nothing: it stays open and listed</td></tr>
+    <tr><td>Quit the app and reopen it</td><td>It stays open and listed. Whatever was working is cut off and shows <em>Interrupted when the app closed</em>; <strong>nothing starts by itself</strong> when you reopen. <em>Open</em> it and keep writing: the saved messages are drawn again</td></tr>
+    <tr><td><strong>Pin</strong> / <strong>Unpin</strong></td><td>Moves it to the <em>Pinned</em> section at the top of the list, or back. It only changes the order</td></tr>
+    <tr><td><strong>Close chat</strong></td><td>It leaves <em>Open</em> (and is unpinned); the saved conversation stays in <em>Recent</em>. A draft that never had a message or a name is discarded</td></tr>
+    <tr><td><strong>Delete</strong></td><td>Erases the conversation and all its messages. It asks for confirmation and cannot be undone</td></tr>
+  </table></div>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ia-sessions-open.png" alt="Utilities → AI Chat → Open: under Pinned, two conversations (one working, one waiting for approval); under Open, one working, one failed, a draft “New chat · draft”, one “Interrupted when the app closed” and one that finished, each with its provider, model, project and its Open and Pin actions"></div>
+    <figcaption>The list of open conversations: pinned ones on top, and the states a restart leaves — a draft and an interrupted chat, both one click from resuming.</figcaption>
+  </figure>
+  <figure>
+    <div class="shot"><img src="docs/screenshots/ia-sessions-open-menu.png" alt="The ⋯ menu of an interrupted conversation: Open, Pin, Rename…, and in red Close chat and Delete"></div>
+    <figcaption>The ⋯ menu (or right-click) of a row: open, pin, rename, close or delete.</figcaption>
+  </figure>
+  <p>The AI Chat tabs that were open when you quit are <strong>reopened</strong> on start, each with its conversations (and its split, if it had one), skipping the ones you closed or deleted in the meantime. Conversations saved before this version are not listed under <em>Open</em> until you open them once; they stay in <em>Recent</em> as always.</p>
 
   <h2 id="ia-sesiones--varias">Several chats at once</h2>
   <ul>
@@ -2195,7 +2215,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <div class="tablewrap"><table>
     <tr><th>Where</th><th>What to do</th></tr>
     <tr><td>AI Chat header</td><td>The <strong>▾</strong> of <em>New chat</em>: <em>New chat in this tab</em> (<kbd>⌘N</kbd>), <em>New chat in a new tab</em> (<kbd>⇧⌘N</kbd>) and <em>Split: two chats side by side</em> (or <em>Remove split</em>). The <em>New tab</em> and <em>Split</em> buttons next to it show their label when the header has room and fall back to icons when it is narrow</td></tr>
-    <tr><td>Utilities</td><td>The <em>AI Chat</em> row has a <strong>+</strong> (and a <strong>⋯</strong> / right-click) with <em>New chat in a new tab</em> and <em>New split chat (new tab)</em>. <strong>Double-clicking</strong> the name opens another chat tab. From the first open tab on, the row shows their count and lists them below, followed by the <em>Active</em> and <em>Recent</em> groups: one click takes you to each. A single click on the name takes you to the one that is already open (or opens the first one)</td></tr>
+    <tr><td>Utilities</td><td>The <em>AI Chat</em> row has a <strong>+</strong> (and a <strong>⋯</strong> / right-click) with <em>New chat in a new tab</em> and <em>New split chat (new tab)</em>. <strong>Double-clicking</strong> the name opens another chat tab. From the first open tab on, the row shows their count and lists them below, followed by the <em>Open</em> and <em>Recent</em> groups: one click takes you to each. A single click on the name takes you to the one that is already open (or opens the first one)</td></tr>
     <tr><td>Tab strip</td><td><em>+ New ▾ → AI Chat</em>. Clicking <em>+ New</em> still opens a SQL query</td></tr>
   </table></div>
   <figure>
@@ -2203,7 +2223,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <figcaption>The ▾ of “New chat” says in words how to have several chats at once.</figcaption>
   </figure>
   <figure>
-    <div class="shot"><img src="docs/screenshots/ia-sessions-utilities.png" alt="Sidebar in Utilities: the AI Chat row with a badge of 3 and, below it, the three open chat tabs, the active one highlighted, and under them the Active group"></div>
+    <div class="shot"><img src="docs/screenshots/ia-sessions-utilities.png" alt="Sidebar in Utilities: the AI Chat row with a badge of 3 and, below it, the three open chat tabs, the active one highlighted, and under them the Open group"></div>
     <figcaption>In Utilities, the open AI Chat tabs hang from the row; one click takes you to each.</figcaption>
   </figure>
 
@@ -2213,7 +2233,7 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   </figure>
 
   <h2 id="ia-sesiones--segundo-plano">Closed tab, running turn</h2>
-  <p>When you open a conversation that is still running —from Utilities → AI Chat → Active, from the history or from a notice— the chat
+  <p>When you open a conversation that is still running —from Utilities → AI Chat → Open, from the history or from a notice— the chat
   <strong>reattaches</strong>: it draws what the answer has said so far (text and tool calls), shows how long the turn has been going, and follows it live.
   If the start of the turn is no longer available because the answer was very long, a note says <em>start trimmed</em>.</p>
   <figure>
@@ -2226,42 +2246,44 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
   <p>They are two different things, and the app never mixes them up:</p>
   <div class="tablewrap"><table>
     <tr><th>Action</th><th>What happens</th></tr>
-    <tr><td><strong>Close the tab</strong> (the <strong>×</strong>, middle-click, or <em>Close tab (the chat keeps running in the background)</em> in the right-click menu)</td><td>Only the tab goes away, <strong>with no confirmation</strong>. The chat stays open in the background: it keeps working if it was in a turn, and it stays listed under <em>Utilities → AI Chat → Active</em> —also after it finishes— until you close it. If something was still working, a notice says so and offers <em>View</em> (opens that list and highlights the conversation) and <em>Stop</em></td></tr>
-    <tr><td><strong>Stop</strong> (red button in the chat, or <em>Stop</em> in <em>Active</em>)</td><td>Cuts the <strong>current turn</strong> and <strong>keeps the chat open</strong>: you can write to it again. What the agent already wrote stays</td></tr>
-    <tr><td><strong>Close chat</strong> (the <em>Close chat</em> button in the chat, the <strong>×</strong> or <strong>⋯</strong> / right-click on its row in <em>Active</em>, or <em>Close and stop the chat</em> in the tab's right-click menu)</td><td>Stops whatever is running, takes the conversation out of <em>Active</em> and frees its memory. It asks for confirmation only if it is working. <strong>The saved conversation stays in the history</strong> (<em>Recent</em>) and can be opened again</td></tr>
+    <tr><td><strong>Close the tab</strong> (the <strong>×</strong>, middle-click, or <em>Close tab (the chat keeps running in the background)</em> in the right-click menu)</td><td>Only the tab goes away, <strong>with no confirmation</strong>. The chat stays open in the background: it keeps working if it was in a turn, and it stays listed under <em>Utilities → AI Chat → Open</em> —also after it finishes, and after you quit the app— until you close it. If something was still working, a notice says so and offers <em>View</em> (opens that list and highlights the conversation) and <em>Stop</em></td></tr>
+    <tr><td><strong>Stop</strong> (red button in the chat, or <em>Stop</em> in <em>Open</em>)</td><td>Cuts the <strong>current turn</strong> and <strong>keeps the chat open</strong>: you can write to it again. What the agent already wrote stays</td></tr>
+    <tr><td><strong>Close chat</strong> (the <em>Close chat</em> button in the chat, the <strong>×</strong> or <strong>⋯</strong> / right-click on its row in <em>Open</em>, or <em>Close and stop the chat</em> in the tab's right-click menu)</td><td>Stops whatever is running, takes the conversation out of <em>Open</em> and frees its memory. It asks for confirmation only if it is working. <strong>The saved conversation stays in the history</strong> (<em>Recent</em>) and can be opened again; an empty draft is discarded</td></tr>
+    <tr><td><strong>Delete</strong> (<em>Delete</em> in the <strong>⋯</strong> menu of a row, or in the right-click of a <em>Recent</em> one)</td><td>Erases the conversation and its saved messages, and stops it if it is working. Always asks for confirmation; <strong>it cannot be undone</strong></td></tr>
   </table></div>
   <figure>
     <div class="shot"><img src="docs/screenshots/ia-sessions-tab-menu.png" alt="Right-click menu on an AI Chat tab with two options: Close tab (the chat keeps running in the background) and, in red, Close and stop the chat"></div>
     <figcaption>Right-click on an AI Chat tab: close only the tab, or close and stop the chat.</figcaption>
   </figure>
   <figure>
-    <div class="shot"><img src="docs/screenshots/ia-sessions-background-toast.png" alt="Notice in the top-right corner after closing the tab of a working conversation: Still working in the background, with the text “Migrate the payments module to PL/SQL” is still working in the background — find it under Utilities → AI Chat → Active, and the View and Stop buttons"></div>
+    <div class="shot"><img src="docs/screenshots/ia-sessions-background-toast.png" alt="Notice in the top-right corner after closing the tab of a working conversation: Still working in the background, with the text “Migrate the payments module to PL/SQL” is still working in the background — find it under Utilities → AI Chat → Open, and the View and Stop buttons"></div>
     <figcaption>Closing the tab of a chat that is working does not ask anything: the notice says where to find it.</figcaption>
   </figure>
   <figure>
-    <div class="shot"><img src="docs/screenshots/ia-sessions-background-list.png" alt="Utilities → AI Chat → Active with a working chat marked “in the background” and a finished chat that was read, also “in the background”, with the actions menu of the second one open: Open and Close chat"></div>
-    <figcaption>Chats whose tab was closed stay under <em>Active</em> marked “in the background”; only <em>Close chat</em> removes them.</figcaption>
+    <div class="shot"><img src="docs/screenshots/ia-sessions-background-list.png" alt="Utilities → AI Chat → Open with a working chat marked “in the background” and a finished chat that was read, also “in the background”, with the actions menu of the second one open: Open and Close chat"></div>
+    <figcaption>Chats whose tab was closed stay under <em>Open</em> marked “in the background”; only <em>Close chat</em> or <em>Delete</em> removes them.</figcaption>
   </figure>
   <div class="note tip"><span class="lbl">Tip</span>
-  If you close a tab by mistake, nothing is lost: the conversation is still under <em>Utilities → AI Chat → Active</em> (or in <em>Recent</em>); one click on <em>Open</em> brings it back to a tab.</div>
+  If you close a tab by mistake, nothing is lost: the conversation is still under <em>Utilities → AI Chat → Open</em> (or in <em>Recent</em>); one click on <em>Open</em> brings it back to a tab.</div>
   <p>Closing the second pane of a split tab works the same way: its chat stays in the background.</p>
   <div class="note"><span class="lbl">Only AI conversations</span>
   This is how <strong>AI conversations</strong> behave. Every other tab (queries, terminals, HTTP requests, Docker…) keeps its usual behavior: closing it stops what it was doing.</div>
 
-  <h2 id="ia-sesiones--modulo">Active and Recent, under AI Chat</h2>
+  <h2 id="ia-sesiones--modulo">Open and Recent, under AI Chat</h2>
   <p>There is no separate module for the AI: everything hangs from the <em>AI Chat</em> row in <strong>Utilities</strong>. Expand it and, after the open chat tabs, you get two collapsible groups (<em>Recent</em> starts collapsed). A badge over the Utilities icon, and another on the row, counts the conversations that are <strong>working or waiting for you</strong> (amber if any needs approval). The <strong>+</strong> of the row opens an empty chat tab.</p>
   <ul>
-    <li><strong>Active</strong> — one entry per conversation that works, waits for permission, failed, finished unread or <strong>was left open in the background</strong> when its tab was closed: status, title, provider, model, project, how long it has been running and the last thing it said. Each row has a <strong>⋯</strong> menu (also on right-click) and an <strong>×</strong> on hover that is <em>Close chat</em>.</li>
-    <li><strong>Open</strong> — goes to the tab that has the conversation (or opens one) and reattaches.</li>
+    <li><strong>Open</strong> — one entry per open conversation, <strong>the pinned ones first</strong> (under <em>Pinned</em>). Each row shows its status —<em>Working</em>, <em>Needs approval</em>, <em>Finished — unread</em>, <em>Finished</em>, <em>Failed</em>, <em>Stopped</em>, <em>Interrupted when the app closed</em> or <em>Draft</em>—, title, provider, model, project, when it last did something, how long it has been running and the last thing it said. The live state wins over the saved one. Each row has a <strong>⋯</strong> menu (also on right-click) and an <strong>×</strong> on hover that is <em>Close chat</em>.</li>
+    <li><strong>Open</strong> (the button) — goes to the tab that has the conversation (or opens one) and resumes it: a running turn reattaches, an interrupted one is drawn from what was saved.</li>
+    <li><strong>Pin</strong> / <strong>Unpin</strong> — moves it to the <em>Pinned</em> section at the top, or back. Pinning only changes the order.</li>
     <li><strong>Rename…</strong> — in the <em>⋯</em> menu (and on <em>Recent</em> rows, with right-click): changes the name of the conversation; it updates in the tabs, the history and these lists. See <a href="#utilidades-chat-ia--nombres">Name your conversations</a>.</li>
     <li><strong>Stop</strong> — cuts the turn after a confirmation and <em>keeps the chat open</em>. What the agent already wrote stays; file changes are not undone on their own.</li>
     <li><strong>Close chat</strong> — stops it (confirming if it is working) and removes it from the list; the conversation stays in <em>Recent</em>.</li>
-    <li><strong>Let it finish</strong> — removes it from the list <em>without</em> stopping it. It shows up again when it finishes, fails or asks for permission.</li>
+    <li><strong>Delete</strong> — erases the conversation and its messages, after a confirmation.</li>
     <li><strong>Approve…</strong> — appears when it waits for a permission and opens that request.</li>
-    <li><strong>Mark as read</strong> — takes a finished or failed conversation out of the list. If its tab was closed, the chat stays listed as open until you close it.</li>
-    <li><strong>Recent</strong> — the last 20 conversations of any module and provider; one click opens it in an AI Chat tab.</li>
+    <li><strong>Mark as read</strong> — clears the <em>unread</em> mark of a finished conversation. It stays listed until you close it.</li>
+    <li><strong>Recent</strong> — the last 20 conversations of any module and provider that are not open; one click opens it in an AI Chat tab and <strong>adds it to <em>Open</em></strong>.</li>
   </ul>
-  <p>The <em>View</em> button of the background notice, from any module, takes you to <em>Utilities → AI Chat → Active</em> and highlights that conversation for a moment. The search box at the top of the sidebar also filters these lists by title, provider and project.</p>
+  <p>The <em>View</em> button of the background notice, from any module, takes you to <em>Utilities → AI Chat → Open</em> and highlights that conversation for a moment. The search box at the top of the sidebar also filters these lists by title, provider and project.</p>
 
   <h2 id="ia-sesiones--permisos">Permissions from other conversations</h2>
   <p>An agent can ask permission to run a command or edit a file while its chat is not in front of you. Those requests are no longer lost:</p>
@@ -2288,11 +2310,11 @@ If a session older than an hour shows up, report it in [[On-call · who to call]
     <li>In <a href="#utilidades-chat-ia">AI Chat</a>, pick a project, ask for the first task and press <kbd>Enter</kbd>.</li>
     <li>Press <kbd>⇧⌘N</kbd> / <kbd>Ctrl+Shift+N</kbd>: a new AI Chat tab opens. Pick another project (or provider) and ask for the second one.</li>
     <li>Go back to your queries. The Utilities icon shows how many are working, and a notice tells you when one finishes.</li>
-    <li>Open Utilities → AI Chat → Active, click <em>Open</em> on the finished one and read the answer; <em>Mark as read</em> clears it.</li>
+    <li>Open Utilities → AI Chat → Open, click <em>Open</em> on the finished one and read the answer; <em>Mark as read</em> clears it. Pin the one you will come back to.</li>
   </ol>
 
   <div class="note warn"><span class="lbl">Quitting the app</span>
-  Turns live while the app is open. If you quit it, the ones still running are cut off, and the ones that were waiting for permission are denied.</div>
+  Turns live while the app is open. If you quit it, the ones still running are cut off and the ones that were waiting for permission are denied — but <strong>the conversations stay</strong>: they are still under <em>Open</em>, marked <em>Interrupted when the app closed</em>, and nothing starts by itself when you reopen. <em>Open</em> one to resume it from what was saved (changes the agent had already made to files are not undone).</div>
 </article>
 
 <article class="topic" id="ia-adjuntos" data-title="Attachments: images, PDFs and files">

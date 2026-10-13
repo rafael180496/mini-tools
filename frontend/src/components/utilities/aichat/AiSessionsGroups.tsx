@@ -1,5 +1,17 @@
 import {useCallback, useEffect, useMemo, useState} from 'react'
-import {CancelAgentChat, CloseAgentSession, GitListRepos, ListAgents, ListAgentWorkspaces, ListAllAgentChats, ListConnections, MarkAgentSessionRead} from '../../../../wailsjs/go/main/App'
+import {
+    CancelAgentChat,
+    CloseAgentSession,
+    DeleteAgentChat,
+    GitListRepos,
+    ListAgents,
+    ListAgentWorkspaces,
+    ListAllAgentChats,
+    ListConnections,
+    ListOpenAgentChats,
+    MarkAgentSessionRead,
+    SetAgentChatPinned,
+} from '../../../../wailsjs/go/main/App'
 import {agents as agentsModel, vault} from '../../../../wailsjs/go/models'
 import Icon from '../../Icon'
 import ConfirmDialog from '../../ConfirmDialog'
@@ -20,41 +32,38 @@ import {
     useHiddenSessions,
     type AgentSessionInfo,
 } from '../../../lib/agentSessions'
-import {requestOpenAiChat} from '../../../lib/appBus'
+import {notifyAgentChatsChanged, notifyAiChatGone, onAgentChatsChanged, requestOpenAiChat} from '../../../lib/appBus'
 import {MAX_CHAT_TITLE} from '../../../lib/chatTitle'
 import {renameChat} from '../../../lib/chatRename'
 import {formatDateTime, formatNumber, useT} from '../../../i18n'
 
-// Las sesiones de IA, colgando de la fila «Chat de IA» de Utilidades.
+// Las conversaciones de IA, colgando de la fila «Chat de IA» de Utilidades.
 //
-// Antes eran un módulo propio de la barra lateral; ahora son los dos grupos que
-// despliega esa fila, después de las pestañas de chat abiertas. Una IA con su
-// propio módulo en la barra de módulos competía con las herramientas que la
-// rodean: todo lo de la IA vive donde ya vivía el Chat.
+// Son los dos grupos que despliega esa fila, después de las pestañas de chat
+// abiertas. Una IA con su propio módulo en la barra de módulos competía con las
+// herramientas que la rodean: todo lo de la IA vive donde ya vivía el Chat.
 //
-// Dos listas con dos preguntas distintas:
+//   Abiertas   «¿qué conversaciones tengo en marcha?». Es una lista PERSISTENTE
+//              (estilo Hermes): una conversación entra cuando se crea —aunque no
+//              se le haya escrito nada— y se queda hasta que la CIERRES o la
+//              ELIMINES. Cerrar su pestaña no la saca; cerrar la app tampoco
+//              (lo que corría figura «interrumpido» y se retoma con un clic).
+//              Las fijadas van arriba. Une dos fuentes: las filas abiertas del
+//              vault (el estado de siempre) y el registro de sesiones vivas (el
+//              estado de ahora, que manda cuando existe).
+//   Recientes  «¿cuál era esa conversación?». Las últimas, de cualquier módulo
+//              y proveedor, que no estén abiertas, para abrirlas en una pestaña.
 //
-//   Activas    «¿qué está haciendo la IA ahora, y qué me espera?». Las sesiones
-//              que trabajan, las que piden permiso, las que fallaron y las que
-//              terminaron sin que las vieras. Es la lista de trabajo de quien
-//              lanza varias conversaciones y se va a otra cosa.
-//   Recientes  «¿cuál era esa conversación?». Las últimas, de cualquier módulo y
-//              proveedor, para abrirlas en una pestaña.
-//
-// Cada sesión activa tiene las salidas que importan: abrirla (retomar el turno
-// donde va), detenerla, dejarla terminar sin verla, contestar su permiso o
-// cerrarla de verdad. Todo lo que se hace acá es sobre la sesión, no sobre la
-// pestaña: la sesión sigue en el backend aunque ninguna pestaña la muestre.
-//
-// **Detener no es Cerrar chat.** «Detener» corta el turno en curso y deja el
-// chat abierto (sigue listado, se le puede escribir de nuevo). «Cerrar chat»
-// corta lo que corra y da la conversación por terminada: sale de «Activas». La
-// conversación guardada queda en «Recientes» en los dos casos. Un chat cuya
-// pestaña se cerró queda acá, «en segundo plano», hasta que se lo cierre.
+// **Detener no es Cerrar chat no es Eliminar.** «Detener» corta el turno en
+// curso y deja el chat abierto (sigue listado, se le puede escribir de nuevo).
+// «Cerrar chat» corta lo que corra y da la conversación por terminada: sale de
+// «Abiertas» y queda en «Recientes». «Eliminar» la borra del todo, mensajes
+// incluidos. Todo lo que se hace acá es sobre la conversación, no sobre la
+// pestaña: sigue existiendo aunque ninguna pestaña la muestre.
 //
 // Está partido en un hook (los datos, que UtilitiesTree necesita ANTES de
 // decidir si muestra la fila: una búsqueda puede coincidir sólo con una
-// sesión) y un componente (los dos grupos).
+// conversación) y un componente (los dos grupos).
 
 const RECENT_LIMIT = 20
 const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary'
@@ -62,6 +71,51 @@ const WORKSPACE_PREFIX = 'ws:'
 const GROUPS_KEY = 'mini-tools:ai-groups-open'
 // Cuánto se resalta la fila a la que lleva un aviso.
 const HIGHLIGHT_MS = 2600
+
+// Cómo está una conversación abierta, mezclando el estado en vivo (si hay
+// sesión) con el que quedó guardado.
+export type OpenState = 'working' | 'approval' | 'unread' | 'idle' | 'error' | 'interrupted' | 'cancelled' | 'draft'
+
+// Una fila de «Abiertas».
+export interface OpenEntry {
+    // Id de la conversación (el de la sesión, si la hay).
+    id: string
+    chat: vault.AgentChat | null
+    session: AgentSessionInfo | null
+    state: OpenState
+    pinned: boolean
+    title: string
+    agentId: string
+    agentLabel: string
+    model: string
+    module: string
+    contextId: string
+    // Última actividad, en segundos Unix (lo que usa formatDateTime).
+    at: number
+}
+
+// El estado de una conversación: la sesión viva manda; sin ella, el guardado.
+export function openStateOf(chat: vault.AgentChat | null, session: AgentSessionInfo | null): OpenState {
+    if (session) {
+        if (session.status === 'running') return 'working'
+        if (session.status === 'awaiting_approval') return 'approval'
+        if (session.status === 'error') return 'error'
+        if (session.status === 'cancelled') return 'cancelled'
+        return session.unread ? 'unread' : 'idle'
+    }
+    switch (chat?.lastStatus) {
+        case 'idle':
+            return 'idle'
+        case 'interrupted':
+            return 'interrupted'
+        case 'error':
+            return 'error'
+        case 'cancelled':
+            return 'cancelled'
+        default:
+            return 'draft'
+    }
+}
 
 // Reloj de un turno en curso. Cada fila viva tiene el suyo: un solo intervalo
 // por fila, que existe sólo mientras la fila está.
@@ -79,22 +133,34 @@ function Elapsed({since}: {since: number}) {
     return <span className="tabular-nums">{h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`}</span>
 }
 
-function StatusIcon({status, read}: {status: AgentSessionInfo['status']; read?: boolean}) {
-    if (status === 'cancelled') return <Icon name="stop_circle" size={16} className="text-on-surface-variant" />
-    if (status === 'idle' && read) return <Icon name="forum" size={16} className="text-on-surface-variant" />
-    if (status === 'running') {
-        return <Icon name="progress_activity" size={16} className="animate-spin text-primary motion-reduce:animate-none" />
+function StateIcon({state}: {state: OpenState}) {
+    switch (state) {
+        case 'working':
+            return <Icon name="progress_activity" size={16} className="animate-spin text-primary motion-reduce:animate-none" />
+        case 'approval':
+            return <Icon name="gpp_maybe" size={16} filled className="text-tertiary" />
+        case 'unread':
+            return <Icon name="check_circle" size={16} filled className="text-secondary" />
+        case 'error':
+            return <Icon name="error" size={16} filled className="text-error" />
+        case 'interrupted':
+            return <Icon name="pause_circle" size={16} filled className="text-tertiary" />
+        case 'cancelled':
+            return <Icon name="stop_circle" size={16} className="text-on-surface-variant" />
+        case 'draft':
+            return <Icon name="edit_note" size={16} className="text-on-surface-variant" />
+        default:
+            return <Icon name="forum" size={16} className="text-on-surface-variant" />
     }
-    if (status === 'awaiting_approval') return <Icon name="gpp_maybe" size={16} filled className="text-tertiary" />
-    if (status === 'error') return <Icon name="error" size={16} filled className="text-error" />
-    return <Icon name="check_circle" size={16} filled className="text-secondary" />
 }
 
 export interface AiSessionsData {
     // Hay una búsqueda activa (y entonces los grupos se muestran abiertos).
     query: string
     rawQuery: string
-    active: AgentSessionInfo[]
+    // Las abiertas, ya ordenadas: primero las fijadas.
+    pinned: OpenEntry[]
+    open: OpenEntry[]
     recent: vault.AgentChat[]
     // Cuántas trabajan y cuántas esperan una decisión: lo que dicen las
     // insignias de la fila y del módulo.
@@ -103,6 +169,10 @@ export interface AiSessionsData {
     projectOf: (module: string, contextId: string) => string
 }
 
+// Qué urge más a la hora de ordenar: lo que espera una decisión, lo que trabaja,
+// lo que falló, lo no leído y, al final, lo quieto.
+const rankOf = (state: OpenState) => (state === 'approval' ? 0 : state === 'working' ? 1 : state === 'error' ? 2 : state === 'unread' ? 3 : 4)
+
 export function useAiSessionsData(filter: string, visible: boolean): AiSessionsData {
     const sessions = useAgentSessions()
     const hidden = useHiddenSessions()
@@ -110,12 +180,16 @@ export function useAiSessionsData(filter: string, visible: boolean): AiSessionsD
 
     const [agentList, setAgentList] = useState<agentsModel.Agent[]>([])
     const [chats, setChats] = useState<vault.AgentChat[]>([])
+    const [openChats, setOpenChats] = useState<vault.AgentChat[]>([])
     const [names, setNames] = useState<Record<string, string>>({})
 
     const loadChats = useCallback(() => {
         ListAllAgentChats()
             .then((h) => setChats(h ?? []))
             .catch(() => setChats([]))
+        ListOpenAgentChats()
+            .then((h) => setOpenChats(h ?? []))
+            .catch(() => setOpenChats([]))
     }, [])
     const loadNames = useCallback(() => {
         Promise.all([ListConnections().catch(() => []), GitListRepos().catch(() => []), ListAgentWorkspaces().catch(() => [])])
@@ -136,12 +210,14 @@ export function useAiSessionsData(filter: string, visible: boolean): AiSessionsD
         loadNames()
     }, [loadNames])
 
-    // «Recientes» se relee cuando la lista de sesiones cambia de forma (empezó
-    // o terminó una: sube en el historial) y al mostrarse el módulo.
+    // La lista se relee cuando la de sesiones cambia de forma (empezó o terminó
+    // una: sube), al mostrarse el módulo y cuando algo cambia una conversación
+    // por fuera (crear un chat, fijarlo, cerrarlo, renombrarlo).
     const shape = sessions.map((s) => `${s.sessionId}:${s.status}`).join('|')
     useEffect(() => {
         loadChats()
     }, [loadChats, shape])
+    useEffect(() => onAgentChatsChanged(loadChats), [loadChats])
     useEffect(() => {
         if (visible) {
             loadChats()
@@ -159,24 +235,68 @@ export function useAiSessionsData(filter: string, visible: boolean): AiSessionsD
         [query, providerLabel],
     )
 
-    const active = useMemo(
-        () => activeEntries(sessions, hidden).filter((s) => matches(s.title, s.agentId, projectOf(s.module, s.contextId))),
-        [sessions, hidden, matches, projectOf],
-    )
+    // Las abiertas: las filas abiertas del vault, con su sesión viva encima, más
+    // las sesiones que piden atención sin ser un chat abierto (la conversación de
+    // un panel de otro módulo que trabaja en segundo plano).
+    const { pinned, open } = useMemo(() => {
+        const byId = new Map(chats.map((c) => [c.id, c]))
+        const live = new Map(sessions.map((s) => [s.chatId || s.sessionId, s]))
+        const entries: OpenEntry[] = openChats.map((c) => {
+            const session = live.get(c.id) ?? null
+            return {
+                id: c.id,
+                chat: c,
+                session,
+                state: openStateOf(c, session),
+                pinned: c.pinned,
+                title: session?.title || c.title,
+                agentId: c.agentId,
+                agentLabel: session?.agentLabel ?? '',
+                model: session?.model || c.model,
+                module: c.module,
+                contextId: c.contextId,
+                at: Math.max(c.updatedAt, Math.floor(toMillis(session?.lastEventAt) / 1000)),
+            }
+        })
+        const have = new Set(entries.map((e) => e.id))
+        for (const s of activeEntries(sessions, hidden)) {
+            const id = s.chatId || s.sessionId
+            if (have.has(id)) continue
+            const chat = byId.get(id) ?? null
+            entries.push({
+                id,
+                chat,
+                session: s,
+                state: openStateOf(chat, s),
+                pinned: false,
+                title: s.title || chat?.title || '',
+                agentId: s.agentId,
+                agentLabel: s.agentLabel,
+                model: s.model,
+                module: s.module,
+                contextId: s.contextId,
+                at: Math.floor(toMillis(s.lastEventAt) / 1000),
+            })
+        }
+        const shown = entries
+            .filter((e) => matches(e.title, e.agentId, projectOf(e.module, e.contextId)))
+            .sort((a, b) => rankOf(a.state) - rankOf(b.state) || b.at - a.at)
+        return {pinned: shown.filter((e) => e.pinned), open: shown.filter((e) => !e.pinned)}
+    }, [openChats, chats, sessions, hidden, matches, projectOf])
 
-    // Una conversación que ya está en «Activas» no se repite en «Recientes».
+    // Una conversación que ya está en «Abiertas» no se repite en «Recientes».
     const recent = useMemo(() => {
-        const inActive = new Set(active.map((s) => s.chatId || s.sessionId))
+        const inOpen = new Set([...pinned, ...open].map((e) => e.id))
         return chats
             .slice()
             .sort((a, b) => b.updatedAt - a.updatedAt)
-            .filter((c) => !inActive.has(c.id) && matches(c.title, c.agentId, projectOf(c.module, c.contextId)))
+            .filter((c) => !c.open && !inOpen.has(c.id) && matches(c.title, c.agentId, projectOf(c.module, c.contextId)))
             .slice(0, RECENT_LIMIT)
-    }, [chats, active, matches, projectOf])
+    }, [chats, pinned, open, matches, projectOf])
 
     const attention = useMemo(() => attentionCount(sessions, hidden), [sessions, hidden])
 
-    return {query, rawQuery: filter.trim(), active, recent, attention, providerLabel, projectOf}
+    return {query, rawQuery: filter.trim(), pinned, open, recent, attention, providerLabel, projectOf}
 }
 
 // Qué grupos están abiertos se recuerda entre sesiones: es una comodidad por
@@ -198,7 +318,7 @@ export interface AiRevealRequest {
 
 interface GroupsProps {
     data: AiSessionsData
-    // Pedido de mostrar una sesión (el aviso «Ver»): abre «Activas», lleva la
+    // Pedido de mostrar una sesión (el aviso «Ver»): abre «Abiertas», lleva la
     // fila a la vista y la resalta un momento.
     reveal: AiRevealRequest | null
     onRevealed: () => void
@@ -208,11 +328,13 @@ export default function AiSessionsGroups({data, reveal, onRevealed}: GroupsProps
     const t = useT()
     const ts = t.aiSessions.sidebar
     const menu = useTreeMenu(288)
-    const {query, rawQuery, active, recent, providerLabel, projectOf} = data
+    const {query, rawQuery, pinned, open: others, recent, providerLabel, projectOf} = data
+    const entries = useMemo(() => [...pinned, ...others], [pinned, others])
 
     const [open, setOpen] = useState(readGroups)
-    const [stopping, setStopping] = useState<AgentSessionInfo | null>(null)
-    const [closing, setClosing] = useState<AgentSessionInfo | null>(null)
+    const [stopping, setStopping] = useState<OpenEntry | null>(null)
+    const [closing, setClosing] = useState<OpenEntry | null>(null)
+    const [deleting, setDeleting] = useState<{id: string; title: string} | null>(null)
     const [highlight, setHighlight] = useState<string | null>(null)
     // Conversación (por id de chat) cuyo nombre se está cambiando.
     const [renaming, setRenaming] = useState<{id: string; title: string} | null>(null)
@@ -229,7 +351,7 @@ export default function AiSessionsGroups({data, reveal, onRevealed}: GroupsProps
         })
 
     // Llevar a la vista la sesión pedida. Va en dos tiempos: primero abrir
-    // «Activas» (la fila todavía no existe en el DOM), después —ya pintada—
+    // «Abiertas» (la fila todavía no existe en el DOM), después —ya pintada—
     // desplazar y resaltar.
     const revealToken = reveal?.token
     useEffect(() => {
@@ -251,51 +373,91 @@ export default function AiSessionsGroups({data, reveal, onRevealed}: GroupsProps
         return () => window.clearTimeout(timer)
     }, [highlight])
 
-    const openChat = (s: AgentSessionInfo) => requestOpenAiChat({chatId: s.chatId || s.sessionId})
+    const openChat = (e: OpenEntry) => requestOpenAiChat({chatId: e.id})
 
-    const stop = (s: AgentSessionInfo) => {
+    const stop = (e: OpenEntry) => {
         setStopping(null)
-        void CancelAgentChat(s.sessionId).catch(() => {})
+        void CancelAgentChat(e.session?.sessionId ?? e.id).catch(() => {})
     }
 
-    // Un chat abierto en segundo plano sigue en la lista aunque se lo marque
-    // leído: lo único que lo saca de «Activas» es cerrarlo.
-    const markRead = (s: AgentSessionInfo) => {
-        if (!s.detached) hideSession(s)
-        void MarkAgentSessionRead(s.sessionId).catch(() => {})
+    const togglePin = (e: OpenEntry) => {
+        void SetAgentChatPinned(e.id, !e.pinned)
+            .catch(() => {})
+            .then(() => notifyAgentChatsChanged())
     }
 
-    const closeChat = (s: AgentSessionInfo) => {
+    // Una conversación leída sigue en la lista: lo único que la saca es cerrarla
+    // o eliminarla. Marcar leído solo apaga el aviso de «sin leer».
+    const markRead = (e: OpenEntry) => {
+        if (!e.session) return
+        if (!e.session.detached) hideSession(e.session)
+        void MarkAgentSessionRead(e.session.sessionId).catch(() => {})
+    }
+
+    const closeChat = (e: OpenEntry) => {
         setClosing(null)
-        void CloseAgentSession(s.sessionId).catch(() => {})
+        void CloseAgentSession(e.session?.sessionId ?? e.id)
+            .catch(() => {})
+            .then(() => {
+                notifyAiChatGone(e.id)
+                notifyAgentChatsChanged()
+            })
     }
     // Cerrar un chat que trabaja corta su turno: se pide confirmación. Uno quieto
     // se cierra en el acto (no pierde nada y se reabre desde «Recientes»).
-    const askClose = (s: AgentSessionInfo) => (isLive(s) ? setClosing(s) : closeChat(s))
+    const askClose = (e: OpenEntry) => (e.state === 'working' || e.state === 'approval' ? setClosing(e) : closeChat(e))
 
-    const rowMenu = (e: React.MouseEvent, s: AgentSessionInfo) => {
-        const live = isLive(s)
+    const deleteChat = (id: string) => {
+        setDeleting(null)
+        void DeleteAgentChat(id)
+            .catch(() => {})
+            .then(() => {
+                notifyAiChatGone(id)
+                notifyAgentChatsChanged()
+            })
+    }
+
+    const rowMenu = (ev: React.MouseEvent, e: OpenEntry) => {
+        const live = e.state === 'working' || e.state === 'approval'
         const items: TreeMenuEntry[] = [
-            {label: ts.open, icon: 'open_in_new', title: ts.openTitle, onSelect: () => openChat(s)},
-            {label: ts.rename, icon: 'edit', title: ts.renameTitle, onSelect: () => setRenaming({id: s.chatId || s.sessionId, title: s.title})},
-            ...(s.status === 'awaiting_approval'
-                ? [{label: ts.approve, icon: 'gpp_maybe', title: ts.approveTitle, onSelect: () => reviewApprovalOf(s.sessionId)}]
+            {label: ts.open, icon: 'open_in_new', title: e.state === 'interrupted' ? ts.openInterruptedTitle : ts.openTitle, onSelect: () => openChat(e)},
+            {label: e.pinned ? ts.unpin : ts.pin, icon: 'push_pin', title: e.pinned ? ts.unpinTitle : ts.pinTitle, onSelect: () => togglePin(e)},
+            {label: ts.rename, icon: 'edit', title: ts.renameTitle, onSelect: () => setRenaming({id: e.id, title: e.title})},
+            ...(e.state === 'approval' && e.session
+                ? [{label: ts.approve, icon: 'gpp_maybe', title: ts.approveTitle, onSelect: () => reviewApprovalOf(e.session!.sessionId)}]
                 : []),
-            ...(live ? [{label: ts.stop, icon: 'stop_circle', title: ts.stopTitle, onSelect: () => setStopping(s)}] : []),
-            ...(s.status === 'running' ? [{label: ts.letFinish, icon: 'visibility_off', title: ts.letFinishTitle, onSelect: () => hideSession(s)}] : []),
-            ...(!live && s.unread ? [{label: ts.markRead, icon: 'done_all', title: ts.markReadTitle, onSelect: () => markRead(s)}] : []),
+            ...(live ? [{label: ts.stop, icon: 'stop_circle', title: ts.stopTitle, onSelect: () => setStopping(e)}] : []),
+            ...(e.state === 'unread' ? [{label: ts.markRead, icon: 'done_all', title: ts.markReadTitle, onSelect: () => markRead(e)}] : []),
             'separator',
-            {label: ts.closeChat, icon: 'cancel_presentation', title: ts.closeChatTitle, danger: true, onSelect: () => askClose(s)},
+            {label: ts.closeChat, icon: 'cancel_presentation', title: ts.closeChatTitle, danger: true, onSelect: () => askClose(e)},
+            {label: ts.delete, icon: 'delete', title: ts.deleteTitle, danger: true, onSelect: () => setDeleting({id: e.id, title: e.title})},
         ]
-        menu.openAt(e, items)
+        menu.openAt(ev, items)
     }
 
     // Con una búsqueda activa los grupos sin coincidencias no se muestran (el
     // «Nada coincide» repetido dos veces sería ruido) y los demás van abiertos.
-    const showActive = !query || active.length > 0
+    const showActive = !query || entries.length > 0
     const showRecent = !query || recent.length > 0
     const activeOpen = open.active || !!query
     const recentOpen = open.recent || !!query
+
+    const renderRow = (e: OpenEntry) => (
+        <OpenRow
+            key={e.id}
+            e={e}
+            highlight={highlight === e.id || (!!e.session && highlight === e.session.sessionId)}
+            provider={providerLabel(e.agentId, e.agentLabel)}
+            project={projectOf(e.module, e.contextId)}
+            onOpen={() => openChat(e)}
+            onStop={() => setStopping(e)}
+            onApprove={() => e.session && reviewApprovalOf(e.session.sessionId)}
+            onMarkRead={() => markRead(e)}
+            onPin={() => togglePin(e)}
+            onClose={() => askClose(e)}
+            onMenu={(ev) => rowMenu(ev, e)}
+        />
+    )
 
     return (
         <>
@@ -305,41 +467,50 @@ export default function AiSessionsGroups({data, reveal, onRevealed}: GroupsProps
                         <TreeRow
                             depth={1}
                             icon="bolt"
-                            iconClass={active.length > 0 ? 'text-primary' : undefined}
+                            iconClass={entries.length > 0 ? 'text-primary' : undefined}
                             label={ts.active}
                             labelClass="font-medium"
                             title={ts.activeHint}
                             expanded={activeOpen}
                             onToggle={() => toggle('active')}
                             onClick={() => toggle('active')}
-                            trailing={<span className="font-mono text-ui-10 tabular-nums text-on-surface-variant/60">{active.length}</span>}
+                            trailing={<span className="font-mono text-ui-10 tabular-nums text-on-surface-variant/60">{entries.length}</span>}
                         />
                     </div>
                     {activeOpen &&
-                        (active.length === 0 ? (
+                        (entries.length === 0 ? (
                             <div className="ml-8 mr-2 pb-1.5 pt-0.5 text-ui-11 text-on-surface-variant">
                                 <p>{ts.emptyActive}</p>
                                 <p className="mt-0.5 opacity-70">{ts.emptyActiveHint}</p>
                             </div>
                         ) : (
-                            <ul data-ai-active className="ml-6 mr-1 flex flex-col">
-                                {active.map((s) => (
-                                    <ActiveRow
-                                        key={s.sessionId}
-                                        s={s}
-                                        highlight={highlight === s.sessionId}
-                                        provider={providerLabel(s.agentId, s.agentLabel)}
-                                        project={projectOf(s.module, s.contextId)}
-                                        onOpen={() => openChat(s)}
-                                        onStop={() => setStopping(s)}
-                                        onLetFinish={() => hideSession(s)}
-                                        onApprove={() => reviewApprovalOf(s.sessionId)}
-                                        onMarkRead={() => markRead(s)}
-                                        onClose={() => askClose(s)}
-                                        onMenu={(e) => rowMenu(e, s)}
-                                    />
-                                ))}
-                            </ul>
+                            <div data-ai-active className="ml-6 mr-1 flex flex-col">
+                                {pinned.length > 0 && (
+                                    <>
+                                        <p data-ai-subgroup="pinned" title={ts.pinnedHint} className="flex items-center gap-1 px-2 pb-0.5 pt-1 text-ui-10 font-medium uppercase tracking-wide text-on-surface-variant">
+                                            <Icon name="push_pin" size={11} filled />
+                                            {ts.pinned}
+                                            <span className="ml-auto font-mono tabular-nums opacity-60">{pinned.length}</span>
+                                        </p>
+                                        <ul data-ai-pinned className="flex flex-col">
+                                            {pinned.map(renderRow)}
+                                        </ul>
+                                    </>
+                                )}
+                                {others.length > 0 && (
+                                    <>
+                                        {pinned.length > 0 && (
+                                            <p data-ai-subgroup="others" className="px-2 pb-0.5 pt-2 text-ui-10 font-medium uppercase tracking-wide text-on-surface-variant">
+                                                {ts.others}
+                                                <span className="float-right font-mono tabular-nums opacity-60">{others.length}</span>
+                                            </p>
+                                        )}
+                                        <ul data-ai-others className="flex flex-col">
+                                            {others.map(renderRow)}
+                                        </ul>
+                                    </>
+                                )}
+                            </div>
                         ))}
                 </>
             )}
@@ -379,6 +550,8 @@ export default function AiSessionsGroups({data, reveal, onRevealed}: GroupsProps
                                                 menu.openAt(e, [
                                                     {label: ts.open, icon: 'open_in_new', title: ts.openTitle, onSelect: () => requestOpenAiChat({chatId: c.id})},
                                                     {label: ts.rename, icon: 'edit', title: ts.renameTitle, onSelect: () => setRenaming({id: c.id, title: c.title})},
+                                                    'separator',
+                                                    {label: ts.delete, icon: 'delete', title: ts.deleteTitle, danger: true, onSelect: () => setDeleting({id: c.id, title: c.title})},
                                                 ])
                                             }
                                             trailing={
@@ -434,6 +607,16 @@ export default function AiSessionsGroups({data, reveal, onRevealed}: GroupsProps
                     onClose={() => setStopping(null)}
                 />
             )}
+            {deleting && (
+                <ConfirmDialog
+                    title={ts.deleteConfirm.title}
+                    description={ts.deleteConfirm.description({title: deleting.title || ts.untitled})}
+                    confirmLabel={ts.deleteConfirm.confirm}
+                    danger
+                    onConfirm={() => deleteChat(deleting.id)}
+                    onClose={() => setDeleting(null)}
+                />
+            )}
         </>
     )
 }
@@ -441,72 +624,74 @@ export default function AiSessionsGroups({data, reveal, onRevealed}: GroupsProps
 const ACTION =
     'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-ui-10 text-on-surface-variant hover:bg-surface-variant hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary'
 
-function ActiveRow({
-    s,
+const TONE: Record<OpenState, {row: string; tint: string}> = {
+    approval: {row: 'border-tertiary bg-tertiary/10', tint: 'text-tertiary'},
+    error: {row: 'border-error bg-error-container/20', tint: 'text-error'},
+    working: {row: 'border-primary bg-primary/5', tint: 'text-primary'},
+    unread: {row: 'border-secondary bg-secondary/10', tint: 'text-secondary'},
+    interrupted: {row: 'border-tertiary/60 bg-tertiary/5', tint: 'text-tertiary'},
+    idle: {row: 'border-outline-variant bg-surface-container/40', tint: 'text-on-surface-variant'},
+    cancelled: {row: 'border-outline-variant bg-surface-container/40', tint: 'text-on-surface-variant'},
+    draft: {row: 'border-outline-variant border-dashed bg-surface-container/30', tint: 'text-on-surface-variant'},
+}
+
+function OpenRow({
+    e,
     highlight,
     provider,
     project,
     onOpen,
     onStop,
-    onLetFinish,
     onApprove,
     onMarkRead,
+    onPin,
     onClose,
     onMenu,
 }: {
-    s: AgentSessionInfo
+    e: OpenEntry
     highlight: boolean
     provider: string
     project: string
     onOpen: () => void
     onStop: () => void
-    onLetFinish: () => void
     onApprove: () => void
     onMarkRead: () => void
+    onPin: () => void
     onClose: () => void
-    onMenu: (e: React.MouseEvent) => void
+    onMenu: (ev: React.MouseEvent) => void
 }) {
     const t = useT()
     const ts = t.aiSessions.sidebar
-    const live = s.status === 'running' || s.status === 'awaiting_approval'
-    const since = toMillis(s.turnStartedAt) || toMillis(s.startedAt)
-    const tokens = sessionTokens(s)
-    // Terminó y ya la viste: solo sigue abierta en segundo plano.
-    const idleRead = s.status === 'idle' && !s.unread
-    const quiet = idleRead || s.status === 'cancelled'
-    const tone =
-        s.status === 'awaiting_approval'
-            ? 'border-tertiary bg-tertiary/10'
-            : s.status === 'error'
-              ? 'border-error bg-error-container/20'
-              : quiet
-                ? 'border-outline-variant bg-surface-container/40'
-                : s.status === 'idle'
-                  ? 'border-secondary bg-secondary/10'
-                  : 'border-primary bg-primary/5'
-    const statusColor =
-        s.status === 'awaiting_approval' ? 'text-tertiary' : s.status === 'error' ? 'text-error' : quiet ? 'text-on-surface-variant' : s.status === 'idle' ? 'text-secondary' : 'text-primary'
-    const statusLabel = idleRead ? ts.idleRead : ts.status[s.status]
-    const title = s.title || ts.untitled
+    const s = e.session
+    const live = e.state === 'working' || e.state === 'approval'
+    const since = s ? toMillis(s.turnStartedAt) || toMillis(s.startedAt) : 0
+    const tokens = s ? sessionTokens(s) : 0
+    const tone = TONE[e.state]
+    const statusLabel = e.state === 'idle' ? ts.idleRead : e.state === 'unread' ? ts.status.idle : e.state === 'working' ? ts.status.running : e.state === 'approval' ? ts.status.awaiting_approval : ts.status[e.state]
+    const title = e.title || (e.state === 'draft' ? ts.draftTitle : ts.untitled)
+    const lastText = s ? (s.status === 'error' ? s.error || s.lastText : s.lastText) : ''
     return (
         <li
-            data-ai-session={s.sessionId}
-            data-status={s.status}
-            data-detached={s.detached ? '' : undefined}
+            data-ai-session={e.id}
+            data-state={e.state}
+            data-status={s?.status}
+            data-pinned={e.pinned ? '' : undefined}
+            data-detached={s?.detached ? '' : undefined}
             onContextMenu={onMenu}
-            className={`group/row relative border-l-2 ${tone} ${highlight ? 'shadow-[inset_0_0_0_2px_var(--color-primary)]' : ''}`}
+            className={`group/row relative border-l-2 ${tone.row} ${highlight ? 'shadow-[inset_0_0_0_2px_var(--color-primary)]' : ''}`}
         >
             <button
                 type="button"
                 onClick={onOpen}
-                title={ts.rowTitle({title})}
+                title={e.state === 'interrupted' ? ts.rowInterruptedTitle({title}) : ts.rowTitle({title})}
                 className={`flex w-full min-w-0 items-start gap-2 px-2 pb-1 pt-2 text-left hover:bg-surface-container-high ${FOCUS}`}
             >
                 <span className="mt-0.5 shrink-0" title={statusLabel}>
-                    <StatusIcon status={s.status} read={idleRead} />
+                    <StateIcon state={e.state} />
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="flex items-baseline gap-2">
+                        {e.pinned && <Icon name="push_pin" size={11} filled className="shrink-0 -rotate-45 self-center text-primary" />}
                         <span className="min-w-0 flex-1 truncate pr-4 text-xs font-medium text-on-surface">{title}</span>
                         {live && since > 0 && (
                             <span title={ts.elapsedTitle} className="shrink-0 font-mono text-ui-10 text-on-surface-variant">
@@ -514,9 +699,15 @@ function ActiveRow({
                             </span>
                         )}
                     </span>
-                    <span className={`truncate text-ui-10 font-medium ${statusColor}`}>
+                    <span className={`truncate text-ui-10 font-medium ${tone.tint}`}>
                         {statusLabel}
-                        {s.detached && (
+                        {!live && e.at > 0 && e.state !== 'draft' && (
+                            <span className="font-normal text-on-surface-variant">
+                                {' · '}
+                                {formatDateTime(e.at, {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}
+                            </span>
+                        )}
+                        {s?.detached && (
                             <span title={ts.backgroundTitle} className="font-normal text-on-surface-variant">
                                 {' · '}
                                 {ts.backgroundTag}
@@ -524,17 +715,15 @@ function ActiveRow({
                         )}
                     </span>
                     <span className="flex min-w-0 items-center gap-1 text-ui-10 text-on-surface-variant">
-                        <Icon name={agentIconName(s.agentId)} size={11} className="shrink-0 opacity-70" />
+                        <Icon name={agentIconName(e.agentId)} size={11} className="shrink-0 opacity-70" />
                         <span className="min-w-0 truncate">
                             {provider}
-                            {s.model ? ` · ${s.model}` : ''}
+                            {e.model ? ` · ${e.model}` : ''}
                             {project ? ` · ${project}` : ''}
                         </span>
                     </span>
-                    {(s.status === 'error' ? s.error || s.lastText : s.lastText) && (
-                        <span className={`line-clamp-2 break-words text-ui-10 ${s.status === 'error' ? 'text-error/90' : 'text-on-surface-variant/80'}`}>
-                            {s.status === 'error' ? s.error || s.lastText : s.lastText}
-                        </span>
+                    {lastText && (
+                        <span className={`line-clamp-2 break-words text-ui-10 ${s?.status === 'error' ? 'text-error/90' : 'text-on-surface-variant/80'}`}>{lastText}</span>
                     )}
                     {tokens > 0 && (
                         <span title={ts.tokensTitle} className="font-mono text-ui-10 tabular-nums text-on-surface-variant/70">
@@ -544,15 +733,19 @@ function ActiveRow({
                 </span>
             </button>
             <div className="flex flex-wrap items-center gap-0.5 pb-1.5 pl-7 pr-2">
-                {s.status === 'awaiting_approval' && (
+                {e.state === 'approval' && (
                     <button type="button" onClick={onApprove} title={ts.approveTitle} className={`${ACTION} font-medium text-tertiary hover:text-tertiary`}>
                         <Icon name="gpp_maybe" size={12} />
                         {ts.approve}
                     </button>
                 )}
-                <button type="button" onClick={onOpen} title={ts.openTitle} className={ACTION}>
+                <button type="button" onClick={onOpen} title={e.state === 'interrupted' ? ts.openInterruptedTitle : ts.openTitle} className={ACTION}>
                     <Icon name="open_in_new" size={12} />
                     {ts.open}
+                </button>
+                <button type="button" data-ai-row-pin onClick={onPin} title={e.pinned ? ts.unpinTitle : ts.pinTitle} aria-pressed={e.pinned} className={ACTION}>
+                    <Icon name="push_pin" size={12} filled={e.pinned} />
+                    {e.pinned ? ts.unpin : ts.pin}
                 </button>
                 {live && (
                     <button type="button" onClick={onStop} title={ts.stopTitle} className={`${ACTION} hover:text-error`}>
@@ -560,13 +753,7 @@ function ActiveRow({
                         {ts.stop}
                     </button>
                 )}
-                {s.status === 'running' && (
-                    <button type="button" onClick={onLetFinish} title={ts.letFinishTitle} className={ACTION}>
-                        <Icon name="visibility_off" size={12} />
-                        {ts.letFinish}
-                    </button>
-                )}
-                {!live && s.unread && (
+                {e.state === 'unread' && (
                     <button type="button" onClick={onMarkRead} title={ts.markReadTitle} className={ACTION}>
                         <Icon name="done_all" size={12} />
                         {ts.markRead}

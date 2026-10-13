@@ -11,8 +11,8 @@ a ningún lado — solo empaqueta el `.dmg` para distribuirlo manualmente
 |---|---|
 | Versión | 2.10.1 |
 | Archivo | `mini-tools-v2.10.1.dmg` |
-| Tamaño | ~27 MB (26,9 MB; 26 886 976 bytes) — el binario suelto dentro del `.dmg` pesa 72,6 MB, bajo el techo de 100 MB |
-| SHA-256 | `2087b7880445c43b61335a2eb2d0dbb1371caba158a931c38177836321937f63` |
+| Tamaño | ~27 MB (26,9 MB; 26 896 149 bytes) — el binario suelto dentro del `.dmg` pesa 72,6 MB, bajo el techo de 100 MB |
+| SHA-256 | `85348831fed68c00d2ccd92f33a8205afc8942232767816bfa640f8c02af0dcc` |
 | Arquitectura | `arm64` (Apple Silicon) — verificado con `file` sobre el binario dentro del `.dmg` |
 | Generado | `wails build -clean` (modo producción, sin devtools) |
 
@@ -33,11 +33,14 @@ shasum -a 256 mini-tools-v2.10.1.dmg
 
 ## Compatibilidad del sistema
 
-- **Esta versión no cambia el schema del vault**: sigue en la misma migración
-  que la 2.10.0 (la 64). Un `vault.db` de la 2.10.0 abre tal cual, sin
-  migrar nada. Para pasar desde la 2.9.0 o anterior, el vault migra solo (las
-  migraciones 57 a 64 son aditivas); si pensás volver a una versión anterior
-  conviene hacer antes un backup (Configuración → Backup del vault).
+- **Esta versión agrega la migración 65 del vault** (conversaciones de IA
+  persistentes y fijadas, y las pestañas de Chat de IA que se reabren al
+  arrancar). Es **aditiva**: un `vault.db` de la 2.10.0 migra solo la primera
+  vez que se abre, sin pasos manuales. **No hay rollback**: una vez migrado, el
+  vault no se puede abrir con la 2.10.0 ni con una anterior; si pensás volver
+  atrás conviene hacer antes un backup (Configuración → Backup del vault). Para
+  pasar desde la 2.9.0 o anterior, el vault migra solo (las migraciones 57 a 65
+  son aditivas).
 - **Solo Apple Silicon (M1/M2/M3/M4 — arquitectura `arm64`).** Este build
   se compiló en un Mac `arm64` con `wails build` sin el flag de binario
   universal, así que **no corre en Mac Intel** (`x86_64`) ni bajo Rosetta —

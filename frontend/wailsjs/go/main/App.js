@@ -286,6 +286,10 @@ export function CreateAgentChat(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['CreateAgentChat'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
+export function CreateAgentChatDraft(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['CreateAgentChatDraft'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function CreateFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateFolder'](arg1, arg2, arg3);
 }
@@ -1254,6 +1258,10 @@ export function ListNotes() {
   return window['go']['main']['App']['ListNotes']();
 }
 
+export function ListOpenAgentChats() {
+  return window['go']['main']['App']['ListOpenAgentChats']();
+}
+
 export function ListPendingApprovals() {
   return window['go']['main']['App']['ListPendingApprovals']();
 }
@@ -1676,6 +1684,18 @@ export function SetAgentChatBrain(arg1, arg2) {
 
 export function SetAgentChatContext(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetAgentChatContext'](arg1, arg2, arg3);
+}
+
+export function SetAgentChatDraftAgent(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentChatDraftAgent'](arg1, arg2);
+}
+
+export function SetAgentChatOpen(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentChatOpen'](arg1, arg2);
+}
+
+export function SetAgentChatPinned(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentChatPinned'](arg1, arg2);
 }
 
 export function SetAgentChatSettings(arg1, arg2, arg3, arg4) {

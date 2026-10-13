@@ -117,6 +117,8 @@ ia-sessions-tab-menu aisessbgtabmenu 1400 560
 ia-sessions-background-toast aisessbgclosetoast 1400 560
 ia-sessions-background-list aisessbgmenu 1400 1040
 ia-sessions-rename-tab aisessrenametab 1400 560
+ia-sessions-open aisessopen 1400 1240
+ia-sessions-open-menu aisessopenmenu 1400 1240
 utilities-ai-chat-filters aichatfiltersopen 1100 740
 utilities-ai-chat-filters-chips aichatfilters 1100 360
 '

@@ -317,7 +317,7 @@ export default function AiChatHistory({paneId, chats, agents, lostLabels, resour
                                                 />
                                             )}
                                             <span className={`min-w-0 flex-1 truncate text-xs ${active ? 'font-medium text-on-surface' : 'text-on-surface'}`}>
-                                                {c.title || ta.untitled}
+                                                {c.title || (c.open && c.lastStatus === '' ? ta.draftLabel : ta.untitled)}
                                             </span>
                                         </span>
                                         <span className="flex min-w-0 items-center gap-1 text-ui-10 text-on-surface-variant">

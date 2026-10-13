@@ -2190,17 +2190,25 @@ if (view.startsWith('aisess')) {
         job: sessEs ? 'Diagnosticar el timeout del job nocturno' : 'Diagnose the nightly job timeout',
         logs: sessEs ? 'Resumir los logs de la semana' : 'Summarize this week logs',
     }
-    const mk = (id: string, agentId: string, title: string, ctx: string, ago: number, model: string) => ({
+    // Las cinco están ABIERTAS (open) —Chat de IA → Abiertas es la lista
+    // persistente—, con el estado en el que quedaron guardadas: la que trabaja
+    // figura «interrumpida» hasta que termina (ver Store.SetAgentChatLastStatus).
+    const mk = (id: string, agentId: string, title: string, ctx: string, ago: number, model: string, lastStatus = 'idle') => ({
         id, repoId: '', agentId, title, conversationId: `conv-${id}`, createdAt: aiNow - ago - 600, updatedAt: aiNow - ago, model, effort: '', mode: '', module: 'utilities', contextId: ctx, brain: false,
+        open: true, pinned: false, lastStatus,
     })
     fixtures.ListAllAgentChats = [
-        mk('as-1', 'claude', T.mig, 'ws:w1', 40, 'sonnet'),
-        mk('as-2', 'llm:ms1', T.plan, '', 120, 'qwen2.5-coder:14b'),
+        mk('as-1', 'claude', T.mig, 'ws:w1', 40, 'sonnet', 'interrupted'),
+        mk('as-2', 'llm:ms1', T.plan, '', 120, 'qwen2.5-coder:14b', 'interrupted'),
         mk('as-3', 'codex', T.tests, 'r4', 700, ''),
-        mk('as-4', 'antigravity', T.job, 'ws:w1', 1500, ''),
-        mk('as-5', 'llm:ms2', T.logs, '', 30, 'llama3.1:70b'),
+        mk('as-4', 'antigravity', T.job, 'ws:w1', 1500, '', 'error'),
+        mk('as-5', 'llm:ms2', T.logs, '', 30, 'llama3.1:70b', 'interrupted'),
         ...aiChats.slice(0, 5),
     ]
+    // La parte persistente de «Abiertas»: las filas abiertas del vault.
+    fixtures.ListOpenAgentChats = () => (fixtures.ListAllAgentChats as {open?: boolean}[]).filter((c) => c.open)
+    fixtures.SetAgentChatPinned = null
+    fixtures.SetAgentChatOpen = null
     const info = (id: string, agentId: string, agentLabel: string, title: string, model: string, ctx: string, status: string, extra: Record<string, unknown>) => ({
         sessionId: id, chatId: id, agentId, agentLabel, model, mode: '', module: 'utilities', contextId: ctx, title, status,
         startedAt: nowMs - 900_000, lastEventAt: nowMs - 2000, turnStartedAt: nowMs - 312_000, lastText: '', pendingApprovalId: '', unread: false, ...extra,
@@ -3611,7 +3619,9 @@ if (view.startsWith('aisessbg')) {
             pendingApprovalId: '', unread: false, attached: false, detached: true,
         })
         const chats = fixtures.ListAllAgentChats as Record<string, unknown>[]
-        chats.push({id: 'as-6', repoId: '', agentId: 'claude', title: title6, conversationId: 'conv-as-6', createdAt: aiNow - 2500, updatedAt: aiNow - 1200, model: 'sonnet', effort: '', mode: '', module: 'utilities', contextId: 'ws:w1', brain: false})
+        // Solo las abiertas que hacen falta: las otras dos salen del listado.
+        for (const c of chats) if (c.id === 'as-2' || c.id === 'as-5') c.open = false
+        chats.push({id: 'as-6', repoId: '', agentId: 'claude', title: title6, conversationId: 'conv-as-6', createdAt: aiNow - 2500, updatedAt: aiNow - 1200, model: 'sonnet', effort: '', mode: '', module: 'utilities', contextId: 'ws:w1', brain: false, open: true, pinned: false, lastStatus: 'idle'})
     }
 }
 const tabContextMenu = () => {
@@ -3676,6 +3686,35 @@ views.aisessrenametree = (
     />
 )
 views.aisessdrafttab = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), () => requestOpenAiChat({newWindow: true}), collapseDocker]} />
+// Conversaciones persistentes (vistas aisessopen*): Chat de IA → Abiertas con dos
+// fijadas arriba (una trabajando, otra esperando un permiso) y debajo una que
+// trabaja, una que falló, una que quedó INTERRUMPIDA al cerrar la app, una que
+// terminó y un BORRADOR sin mensajes. Las tres últimas no tienen sesión viva: su
+// estado sale de lo guardado en el vault.
+//   aisessopen       la lista
+//   aisessopenmenu   el menú ⋯ de la interrumpida: Abrir, Fijar, Renombrar…, Cerrar chat, Eliminar
+if (view.startsWith('aisessopen')) {
+    const chats = fixtures.ListAllAgentChats as Record<string, unknown>[]
+    const byId = (id: string) => chats.find((c) => c.id === id) as Record<string, unknown>
+    Object.assign(byId('as-1'), {pinned: true})
+    Object.assign(byId('as-2'), {pinned: true})
+    // «Generar los tests» sale de la lista (cerrada) para que quepan las demás.
+    Object.assign(byId('as-3'), {open: false})
+    const row = (id: string, agentId: string, title: string, ctx: string, ago: number, model: string, lastStatus: string) => ({
+        id, repoId: '', agentId, title, conversationId: title ? `conv-${id}` : '', createdAt: aiNow - ago - 600, updatedAt: aiNow - ago, model, effort: '', mode: '', module: 'utilities', contextId: ctx, brain: false,
+        open: true, pinned: false, lastStatus,
+    })
+    chats.push(
+        row('as-7', 'claude', sessEs ? 'Auditar los índices de la tabla PAGOS' : 'Audit the indexes of the PAGOS table', 'ws:w1', 3600, 'sonnet', 'interrupted'),
+        row('as-8', 'codex', sessEs ? 'Documentar el esquema de facturación' : 'Document the billing schema', 'r4', 7200, '', 'idle'),
+        row('as-9', 'llm:ms1', '', 'ws:w1', 90, 'qwen2.5-coder:14b', ''),
+    )
+    const sessions = (fixtures.ListAgentSessions as Record<string, unknown>[]).filter((x) => x.sessionId !== 'as-3')
+    fixtures.ListAgentSessions = sessions
+    anyWindow.__sessionNext = sessions
+}
+views.aisessopen = <AiSessHarness noToast steps={[collapseDocker]} />
+views.aisessopenmenu = <AiSessHarness noToast steps={[collapseDocker, () => document.querySelector<HTMLElement>('[data-ai-session="as-7"] [data-ai-row-menu]')?.click()]} />
 // El idioma se fija antes de montar, igual que App.tsx lo carga antes de
 // dibujar: UISHOT_LANG=es|en (por defecto, el de la app).
 setLanguage(normalizeLang(new URLSearchParams(location.search).get('lang')))

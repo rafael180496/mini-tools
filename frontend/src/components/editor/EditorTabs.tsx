@@ -113,6 +113,13 @@ export interface RemoteFileRef {
     modTimeUnix: number
 }
 
+export interface AiPaneOpenRequest {
+    chatId: string
+    token: number
+    pane: 1 | 2
+    chatIds?: string[]
+}
+
 export interface EditorTab {
     id: string
     title: string
@@ -173,8 +180,12 @@ export interface EditorTab {
     //   openRequest  conversación que hay que llevar a la vista en esta pestaña;
     //                `pane` dice en cuál de sus dos paneles (1 o 2). El token
     //                hace que pedir lo mismo dos veces vuelva a llevar a ella.
+    //   openRequest2 lo mismo para el segundo panel, cuando se reabre una pestaña
+    //                dividida que se guardó con una conversación en cada uno
+    //   chatIds      además de `chatId` (la que queda a la vista): las otras
+    //                conversaciones del panel, al reabrir una pestaña guardada
     //   split        la pestaña muestra dos chats lado a lado
-    aiChat?: {openRequest?: {chatId: string; token: number; pane: 1 | 2}; split?: boolean}
+    aiChat?: {openRequest?: AiPaneOpenRequest; openRequest2?: AiPaneOpenRequest; split?: boolean}
 }
 
 interface EditorTabsProps {

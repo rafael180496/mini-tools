@@ -30,17 +30,23 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 desaparece (vuelve a haber seis módulos) y todo lo que mostraba vive en
 **Utilidades → Chat de IA**, junto con tres mejoras al historial.
 
-- **Activas y Recientes bajo la fila Chat de IA.** Las conversaciones que
-  trabajan, piden permiso o quedaron en segundo plano se ven y se manejan desde
-  ahí (abrir, detener, aprobar, cerrar chat), con la insignia de Utilidades.
+- **Abiertas y Recientes bajo la fila Chat de IA.** Todas tus conversaciones
+  abiertas, con su estado (trabajando, pide permiso, terminó, interrumpida…), se
+  ven y se manejan desde ahí (abrir, detener, aprobar, fijar, cerrar chat), con la
+  insignia de Utilidades.
   [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-sesiones)
+- **Conversaciones persistentes y fijadas.** Un chat nuevo se guarda desde que se
+  crea y sigue ahí hasta que lo cierres o lo elimines; podés **fijarlo** arriba de
+  la lista; al cerrar la app las que trabajaban quedan «interrumpidas» (nada
+  arranca solo) y **las pestañas de Chat de IA se reabren al arrancar**.
 - **Filtros del historial en una barra compacta**: proveedor, proyecto u origen,
   fecha, estado y orden, con fichas que se quitan de a una.
 - **Renombrar conversaciones y títulos que dicen algo**: doble clic o F2, y las
   nuevas se nombran con su primer mensaje en vez de «Chat con Claude Code».
   Renombrar ya no las sube al principio del historial.
 
-Sin migraciones del vault: una instalación de la 2.10.0 abre tal cual. La
+Agrega la **migración 65 del vault** (aditiva: una instalación de la 2.10.0 migra
+sola al abrir, sin rollback; conviene un backup antes). La
 **2.10.1 no se verificó todavía en Windows real** (la 2.10.0 sí, en 10 y 11).
 Todo el detalle en el [CHANGELOG](CHANGELOG.md).
 
@@ -942,7 +948,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
 | Archivo | **[⬇ Descargar mini-tools-v2.10.1.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1.dmg)** |
-| SHA-256 | `2087b7880445c43b61335a2eb2d0dbb1371caba158a931c38177836321937f63` |
+| SHA-256 | `85348831fed68c00d2ccd92f33a8205afc8942232767816bfa640f8c02af0dcc` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -954,7 +960,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> **La 2.10.1 no se verificó todavía en una Windows real.** La 2.10.0 se corrió en Windows 10 y Windows 11 reales, y eso no se extrapola: la 2.10.1 solo cambia la interfaz (sesiones de IA dentro de Utilidades, barra de filtros del historial, renombrar chats) y un cambio pequeño en Go (títulos de las conversaciones). Qué mirar primero está listado en [releases/windows/README.md](releases/windows/README.md).
+> **La 2.10.1 no se verificó todavía en una Windows real.** La 2.10.0 se corrió en Windows 10 y Windows 11 reales, y eso no se extrapola: la 2.10.1 solo cambia la interfaz (sesiones de IA dentro de Utilidades, barra de filtros del historial, renombrar chats, conversaciones persistentes y fijadas con pestañas que se reabren al arrancar) y cambios en Go (títulos de las conversaciones, persistencia; migración 65 del vault). Qué mirar primero está listado en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -965,7 +971,7 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 | Versión | 2.10.1 |
 | Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **no verificado todavía en Windows real** (la 2.10.0 sí, en 10 y 11) |
 | Archivo | **[⬇ Descargar mini-tools-v2.10.1-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1-windows-amd64.exe)** |
-| SHA-256 | `062bd177c1095082a025cf1be2c2a4974f9a58c1accc76dc2b2f98f97ea892c5` |
+| SHA-256 | `3f0dd07d121a7a4a17acd08e87615dcb7fb04097889a40525d7f245797963a06` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

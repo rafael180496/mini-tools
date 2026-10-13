@@ -985,8 +985,12 @@ func (a *App) DeleteAgentChat(id string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
 	}
-	// Un turno en vuelo no debe volver a escribir en un chat borrado.
+	// Un turno en vuelo no debe volver a escribir en un chat borrado, y la
+	// sesión viva (si la hay) se corta y sale de la lista de Abiertas.
 	a.discardChatTurn(id)
+	if a.agentChats != nil {
+		a.agentChats.CloseSession(id)
+	}
 	return a.vault.DeleteAgentChat(id)
 }
 

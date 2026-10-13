@@ -161,3 +161,19 @@ export function onAgentChatsChanged(handler: () => void): () => void {
     window.addEventListener(AGENT_CHATS_CHANGED, handler)
     return () => window.removeEventListener(AGENT_CHATS_CHANGED, handler)
 }
+
+// Una conversación se cerró o se eliminó desde la barra lateral (Abiertas): si
+// alguna pestaña de Chat de IA la tiene a la vista, la quita de su panel. Sin
+// esto la pestaña seguiría mostrando —y dejando escribirle a— un chat que ya no
+// figura abierto o que ya no existe.
+const AI_CHAT_GONE = 'mini-tools:ai-chat-gone'
+
+export function notifyAiChatGone(chatId: string): void {
+    window.dispatchEvent(new CustomEvent<string>(AI_CHAT_GONE, {detail: chatId}))
+}
+
+export function onAiChatGone(handler: (chatId: string) => void): () => void {
+    const listener = (e: Event) => handler((e as CustomEvent<string>).detail)
+    window.addEventListener(AI_CHAT_GONE, listener)
+    return () => window.removeEventListener(AI_CHAT_GONE, listener)
+}

@@ -53,7 +53,30 @@ type AgentChat struct {
 	// notas en el cerebro (migración 59). Por conversación, apagado por
 	// defecto: ver SetAgentChatBrain.
 	Brain bool `json:"brain"`
+	// Open es si la conversación figura en Utilidades → Chat de IA → Abiertas
+	// hasta que alguien la cierre o la borre (migración 65). Cerrar una pestaña,
+	// o la app entera, NO la cambia. Pinned la fija arriba de esa lista.
+	Open   bool `json:"open"`
+	Pinned bool `json:"pinned"`
+	// LastStatus es cómo terminó lo último que hizo: idle | interrupted | error
+	// | cancelled, o "" si nunca corrió nada (un borrador). Mientras un turno
+	// corre vale "interrupted" a propósito: si el proceso muere sin pasar por
+	// el cierre ordenado (un kill, un corte de luz) eso es exactamente lo que
+	// le pasó. El estado en vivo, cuando existe, manda sobre este.
+	LastStatus string `json:"lastStatus"`
 }
+
+// Valores de AgentChat.LastStatus.
+const (
+	ChatStatusIdle        = "idle"
+	ChatStatusInterrupted = "interrupted"
+	ChatStatusError       = "error"
+	ChatStatusCancelled   = "cancelled"
+)
+
+// ErrAgentChatNotFound es lo que devuelven las operaciones sobre una
+// conversación que no tiene fila.
+var ErrAgentChatNotFound = i18n.New(i18n.Msg{ES: "vault: el chat no existe", EN: "vault: the chat does not exist"})
 
 // CreateAgentChat registra una conversación nueva.
 //
@@ -90,7 +113,7 @@ func (s *Store) CreateAgentChat(id, repoID, agentID, title, module, contextID st
 // cuando se agregue una columna — que es exactamente lo que pasó al sumar
 // module/context_id.
 const agentChatColumns = `id, repo_id, agent_id, encrypted_title, title_nonce, conversation_id, created_at, updated_at,
-	        COALESCE(model, ''), COALESCE(effort, ''), COALESCE(mode, ''), COALESCE(module, ''), COALESCE(context_id, ''), brain`
+	        COALESCE(model, ''), COALESCE(effort, ''), COALESCE(mode, ''), COALESCE(module, ''), COALESCE(context_id, ''), brain, open, pinned, last_status`
 
 // ListAgentChats devuelve los chats de un repositorio, del más reciente al más
 // viejo — que es el orden en el que se los busca.
@@ -120,9 +143,9 @@ func (s *Store) queryAgentChats(query string, args ...any) ([]AgentChat, error) 
 	for rows.Next() {
 		var c AgentChat
 		var enc, nonce []byte
-		var brain int
+		var brain, open, pinned int
 		if err := rows.Scan(&c.ID, &c.RepoID, &c.AgentID, &enc, &nonce, &c.ConversationID, &c.CreatedAt, &c.UpdatedAt,
-			&c.Model, &c.Effort, &c.Mode, &c.Module, &c.ContextID, &brain); err != nil {
+			&c.Model, &c.Effort, &c.Mode, &c.Module, &c.ContextID, &brain, &open, &pinned, &c.LastStatus); err != nil {
 			return nil, err
 		}
 		// Un título que no se puede descifrar NO tira abajo la lista: se
@@ -130,6 +153,8 @@ func (s *Store) queryAgentChats(query string, args ...any) ([]AgentChat, error) 
 		// Perder el listado entero por una fila sería mucho peor.
 		c.Title = s.decryptOptional(enc, nonce)
 		c.Brain = brain != 0
+		c.Open = open != 0
+		c.Pinned = pinned != 0
 		out = append(out, c)
 	}
 	return out, rows.Err()

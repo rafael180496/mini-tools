@@ -327,6 +327,11 @@ func TestMigration59AddsBrainColumns(t *testing.T) {
 		// Y la 64: sus dos columnas de agent_chat_messages tienen que faltar para reaplicarla.
 		`ALTER TABLE agent_chat_messages DROP COLUMN meta`,
 		`ALTER TABLE agent_chat_messages DROP COLUMN meta_nonce`,
+		// Y la 65: sus cuatro columnas de agent_chats tienen que faltar para reaplicarla.
+		`ALTER TABLE agent_chats DROP COLUMN open`,
+		`ALTER TABLE agent_chats DROP COLUMN pinned`,
+		`ALTER TABLE agent_chats DROP COLUMN last_status`,
+		`ALTER TABLE agent_chats DROP COLUMN opened_at`,
 		`DELETE FROM schema_migrations WHERE version >= 59`,
 	} {
 		if _, err := s.db.Exec(q); err != nil {

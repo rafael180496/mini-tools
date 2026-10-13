@@ -1488,6 +1488,31 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		version: 65,
+		desc:    "agrega agent_chats.open, pinned, last_status y opened_at (conversaciones de IA persistentes: abiertas hasta cerrarlas, fijadas, estado al cerrar la app)",
+		apply: func(tx *sql.Tx) error {
+			// open: la conversación figura en Utilidades → Chat de IA → Abiertas hasta
+			// que alguien la cierre o la borre; sobrevive a cerrar la pestaña y la app.
+			// NACE EN 0 para todas las filas existentes: el historial de antes no se
+			// vuelca de golpe en la barra lateral, y pasa a abierta recién cuando el
+			// usuario la abre. pinned: fijada arriba. last_status: cómo terminó lo
+			// último que hizo (idle | interrupted | error | cancelled; '' = nunca
+			// corrió nada, un borrador). opened_at: instante (Unix) en que pasó a
+			// abierta, para ordenar entre las que nunca tuvieron actividad.
+			for _, stmt := range []string{
+				`ALTER TABLE agent_chats ADD COLUMN open INTEGER NOT NULL DEFAULT 0`,
+				`ALTER TABLE agent_chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
+				`ALTER TABLE agent_chats ADD COLUMN last_status TEXT NOT NULL DEFAULT ''`,
+				`ALTER TABLE agent_chats ADD COLUMN opened_at INTEGER NOT NULL DEFAULT 0`,
+			} {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // applyMigrations runs every migration whose version is newer than the

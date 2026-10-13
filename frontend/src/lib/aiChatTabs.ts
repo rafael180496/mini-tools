@@ -14,11 +14,21 @@ import {AttachAgentSession, DetachAgentSession} from '../../wailsjs/go/main/App'
 // `#b` cuando es el segundo panel de una pestaña dividida.
 
 const panes = new Map<string, string[]>()
+// La conversación a la vista de cada panel: junto con la lista de arriba es lo
+// que hace falta para reabrir la pestaña tal cual estaba al volver a abrir la app.
+const currents = new Map<string, string>()
 const subs = new Set<() => void>()
 let snapshot: Record<string, string[]> = {}
+let layoutSnapshot: Record<string, PaneLayout> = {}
+
+export interface PaneLayout {
+    chats: string[]
+    current: string
+}
 
 function publish() {
     snapshot = Object.fromEntries(panes)
+    layoutSnapshot = Object.fromEntries([...panes].map(([id, chats]) => [id, {chats, current: currents.get(id) ?? ''}]))
     for (const s of subs) s()
     syncAttached()
 }
@@ -61,15 +71,33 @@ export function chatsOfTab(tabId: string, secondOnly = false): string[] {
     return out
 }
 
-export function setPaneChats(paneId: string, chatIds: string[]) {
+// `current` es la conversación que el panel tiene a la vista ('' = ninguna).
+export function setPaneChats(paneId: string, chatIds: string[], current = '') {
     const prev = panes.get(paneId)
-    if (prev && prev.length === chatIds.length && prev.every((id, i) => id === chatIds[i])) return
+    if (prev && prev.length === chatIds.length && prev.every((id, i) => id === chatIds[i]) && (currents.get(paneId) ?? '') === current) return
     panes.set(paneId, chatIds)
+    currents.set(paneId, current)
+    for (const [id, owner] of claims) if (owner === paneId && chatIds.includes(id)) claims.delete(id)
     publish()
 }
 
 export function clearPane(paneId: string) {
+    currents.delete(paneId)
+    for (const [id, owner] of claims) if (owner === paneId) claims.delete(id)
     if (panes.delete(paneId)) publish()
+}
+
+// Reserva una conversación para un panel ANTES de que la declare. Dos paneles
+// que nacen a la vez (una pestaña nueva ya dividida) buscan al mismo tiempo un
+// borrador sin dueño al que adoptar; sin la reserva los dos elegirían el mismo.
+// false = ya la tiene otro panel (o la tiene reservada).
+const claims = new Map<string, string>()
+export function claimChat(chatId: string, paneId: string): boolean {
+    if (paneOwningChat(chatId, paneId)) return false
+    const owner = claims.get(chatId)
+    if (owner && owner !== paneId) return false
+    claims.set(chatId, paneId)
+    return true
 }
 
 // El panel que tiene abierta la conversación, salvo `except`. null = ninguno.
@@ -83,6 +111,19 @@ export function paneOwningChat(chatId: string, except?: string): string | null {
 // La pestaña de un panel: el id sin el sufijo del segundo panel.
 export const tabOfPane = (paneId: string) => paneId.split('#')[0]
 export const secondPaneId = (tabId: string) => `${tabId}#b`
+
+// Las conversaciones y la que está a la vista, por panel.
+export function useAiChatLayout(): Record<string, PaneLayout> {
+    return useSyncExternalStore(
+        (cb) => {
+            subs.add(cb)
+            return () => {
+                subs.delete(cb)
+            }
+        },
+        () => layoutSnapshot,
+    )
+}
 
 export function useAiChatPanes(): Record<string, string[]> {
     return useSyncExternalStore(

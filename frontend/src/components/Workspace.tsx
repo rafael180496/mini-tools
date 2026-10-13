@@ -16,7 +16,7 @@ import ExportMenu from './results/ExportMenu'
 import {useSqlTarget} from './results/useSqlTarget'
 import RedisResultView, {RedisCommandResult} from './results/RedisResultView'
 import MongoResultView, {MongoCommandResult} from './results/MongoResultView'
-import EditorTabs, {EditorTab, TabLanguage, type AgentTabStatus} from './editor/EditorTabs'
+import EditorTabs, {EditorTab, TabLanguage, type AgentTabStatus, type AiPaneOpenRequest} from './editor/EditorTabs'
 import CodeMirrorTabbedEditor from './editor/CodeMirrorTabbedEditor'
 import NlPromptBar from './editor/NlPromptBar'
 import NotesTree from './notes/NotesTree'
@@ -80,6 +80,7 @@ import {
     SetNotesLastOpen,
     HasOpenTransaction,
     ListConnections,
+    ListOpenAgentChats,
     ListFolders,
     GitMoveRepoToFolder,
     MoveConnectionToFolder,
@@ -124,8 +125,8 @@ import {statementAt} from '../lib/sqlStatementAt'
 import {lintSQL} from '../lib/linter'
 import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
-import {requestRenameAiChatTab, onOpenAiChatRequest, onOpenNoteRequest, onOpenSettingsRequest, onOpenUtilityRequest, onShowAiSessionsRequest, type OpenAiChatRequest, type SettingsSectionRequest} from '../lib/appBus'
-import {chatsOfTab, secondPaneId, tabOfPane, paneOwningChat, useAiChatPanes} from '../lib/aiChatTabs'
+import {notifyAgentChatsChanged, requestRenameAiChatTab, onOpenAiChatRequest, onOpenNoteRequest, onOpenSettingsRequest, onOpenUtilityRequest, onShowAiSessionsRequest, type OpenAiChatRequest, type SettingsSectionRequest} from '../lib/appBus'
+import {chatsOfTab, secondPaneId, tabOfPane, paneOwningChat, useAiChatLayout, useAiChatPanes, type PaneLayout} from '../lib/aiChatTabs'
 import {announceBackgroundChats, attentionCount, isLive, sessionsOfChats, useAgentSessions, useHiddenSessions, type AgentSessionInfo} from '../lib/agentSessions'
 import {lintMongoCommands} from '../lib/mongoLinter'
 import {formatElapsed} from '../lib/formatElapsed'
@@ -408,6 +409,49 @@ interface WorkspaceProps {
     onChangeUIFontScale: (pct: number) => void
 }
 
+// Las conversaciones de los paneles de una pestaña de Chat de IA y la que cada
+// uno tiene a la vista. Sale de lo que declaran los paneles montados; mientras
+// uno no se declaró (la pestaña acaba de reabrirse) vale lo que se le pidió
+// abrir, para no guardar la pestaña vacía en ese intervalo.
+function aiPanesInfo(t: EditorTab, layout: Record<string, PaneLayout>): vault.AIPaneInfo[] {
+    if (t.kind !== 'utility' || t.utilityId !== 'aiChat') return []
+    const fromRequest = (r?: AiPaneOpenRequest): PaneLayout | undefined => (r ? {chats: r.chatIds ?? [r.chatId], current: r.chatId} : undefined)
+    const first = layout[t.id] ?? fromRequest(t.aiChat?.openRequest?.pane === 2 ? undefined : t.aiChat?.openRequest)
+    const second = t.aiChat?.split ? (layout[secondPaneId(t.id)] ?? fromRequest(t.aiChat.openRequest2 ?? (t.aiChat.openRequest?.pane === 2 ? t.aiChat.openRequest : undefined))) : undefined
+    return [first, second].filter((p): p is PaneLayout => !!p && p.chats.length > 0).map((p) => new vault.AIPaneInfo({chats: p.chats, current: p.current}))
+}
+
+function tabInfoOf(t: EditorTab, layout: Record<string, PaneLayout>): vault.OpenTabInfo {
+    const aiPanes = aiPanesInfo(t, layout)
+    return new vault.OpenTabInfo({
+        path: t.path ?? '',
+        connId: t.connId ?? '',
+        language: t.language,
+        kind: t.kind === 'redis-browser' ? 'redis-browser' : aiPanes.length > 0 ? 'ai-chat' : '',
+        aiPanes: aiPanes.length > 0 ? aiPanes : undefined,
+    })
+}
+
+let restoredAiToken = 0
+
+// Una pestaña de Chat de IA tal como estaba al cerrar la app: cada panel reabre
+// sus conversaciones y deja a la vista la que tenía.
+function restoredAiChatTab(panes: {chats: string[]; current: string}[]): EditorTab {
+    const request = (p: {chats: string[]; current: string}, pane: 1 | 2): AiPaneOpenRequest => ({chatId: p.current, token: --restoredAiToken, pane, chatIds: p.chats})
+    return {
+        id: newTabId(),
+        title: tr().aiSessions.tabs.draftTitle,
+        path: null,
+        content: '',
+        dirty: false,
+        connId: null,
+        language: 'sql',
+        kind: 'utility',
+        utilityId: 'aiChat',
+        aiChat: {openRequest: request(panes[0], 1), openRequest2: panes[1] ? request(panes[1], 2) : undefined, split: panes.length > 1 || undefined},
+    }
+}
+
 export default function Workspace({
     theme,
     onToggleTheme,
@@ -527,6 +571,9 @@ export default function Workspace({
     // un permiso o terminó sin leer. Se cruza lo que declara cada panel (qué
     // conversaciones tiene) con el estado que informa el backend.
     const aiPanes = useAiChatPanes()
+    // Las conversaciones de cada panel y la que tiene a la vista: es lo que se
+    // guarda para reabrir las pestañas de Chat de IA al volver a abrir la app.
+    const aiLayout = useAiChatLayout()
     const agentTabStatus = useMemo(() => {
         const rank: Record<AgentTabStatus, number> = {approval: 3, running: 2, unread: 1}
         const out: Record<string, AgentTabStatus> = {}
@@ -1376,7 +1423,23 @@ export default function Workspace({
 
                 const restored: EditorTab[] = []
                 const deleted: string[] = []
+                // Las conversaciones que siguen abiertas: una pestaña de Chat de IA
+                // guardada solo reabre las que no se cerraron ni se eliminaron
+                // mientras tanto, y ninguna dos veces.
+                const stillOpen = infos.some((i) => i.kind === 'ai-chat')
+                    ? new Set((await ListOpenAgentChats().catch(() => [])).map((c) => c.id))
+                    : new Set<string>()
                 for (const info of infos) {
+                    if (info.kind === 'ai-chat') {
+                        const panes = (info.aiPanes ?? [])
+                            .map((p) => {
+                                const chats = (p.chats ?? []).filter((id) => stillOpen.delete(id))
+                                return {chats, current: chats.includes(p.current ?? '') ? (p.current as string) : (chats[0] ?? '')}
+                            })
+                            .filter((p) => p.chats.length > 0)
+                        if (panes.length > 0) restored.push(restoredAiChatTab(panes))
+                        continue
+                    }
                     // Redis Browser tabs have no file — nothing to open,
                     // just reopen the tab itself against the same
                     // connection (RedisKeyTree/RedisKeyDetailPanel show
@@ -1424,17 +1487,7 @@ export default function Workspace({
                     setDeletedPaths(deleted)
                     // Persist the cleaned-up list right away so these
                     // don't get flagged again next launch.
-                    void SetOpenTabs(
-                        restored.map(
-                            (t) =>
-                                new vault.OpenTabInfo({
-                                    path: t.path ?? '',
-                                    connId: t.connId ?? '',
-                                    language: t.language,
-                                    kind: t.kind === 'redis-browser' ? 'redis-browser' : '',
-                                }),
-                        ),
-                    )
+                    void SetOpenTabs(restored.map((t) => tabInfoOf(t, {})))
                 }
             })
             .catch(() => {})
@@ -1644,24 +1697,18 @@ export default function Workspace({
     // which would also change `tabs`' reference via updateActiveTabContent.
     // Keying on path+connId+language+kind per tab (not the whole tabs
     // array) keeps this from firing on content-only changes.
-    const openTabsKey = tabs.map((t) => `${t.path ?? ''}|${t.connId ?? ''}|${t.language}|${t.kind}`).join(' ')
+    const openTabsKey = tabs.map((t) => `${t.path ?? ''}|${t.connId ?? ''}|${t.language}|${t.kind}|${JSON.stringify(aiPanesInfo(t, aiLayout))}`).join(' ')
     useEffect(() => {
         if (!hasRestoredRef.current) return
         // A plain editor tab only persists once it has a path (unsaved
         // scratch queries were never restorable); a redis-browser tab has
         // no path at all but is restorable via connId alone, so it
         // qualifies too.
+        // Una pestaña de Chat de IA se guarda con las conversaciones de sus
+        // paneles (ids, nunca contenido), para reabrirla como estaba.
         const infos = tabs
-            .filter((t) => !!t.path || t.kind === 'redis-browser')
-            .map(
-                (t) =>
-                    new vault.OpenTabInfo({
-                        path: t.path ?? '',
-                        connId: t.connId ?? '',
-                        language: t.language,
-                        kind: t.kind === 'redis-browser' ? 'redis-browser' : '',
-                    }),
-            )
+            .filter((t) => !!t.path || t.kind === 'redis-browser' || aiPanesInfo(t, aiLayout).length > 0)
+            .map((t) => tabInfoOf(t, aiLayout))
         void SetOpenTabs(infos)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [openTabsKey])
@@ -3313,6 +3360,9 @@ export default function Workspace({
     const [closeForReal, setCloseForReal] = useState<{tabId: string; chatIds: string[]; running: AgentSessionInfo[]} | null>(null)
     async function finishCloseForReal(tabId: string, chatIds: string[]) {
         await Promise.allSettled(chatIds.map((cid) => CloseAgentSession(cid)))
+        // La lista de «Abiertas» se relee: los borradores vacíos se descartaron y
+        // el resto salió de ella.
+        notifyAgentChatsChanged()
         closeTab(tabId, {silent: true})
     }
     function requestCloseAiTabForReal(tabId: string) {
@@ -4511,7 +4561,7 @@ export default function Workspace({
                                                 <AiChatTab
                                                     visible={activeTabId === t.id}
                                                     paneId={secondPaneId(t.id)}
-                                                    openRequest={t.aiChat?.openRequest?.pane === 2 ? t.aiChat.openRequest : null}
+                                                    openRequest={t.aiChat?.openRequest2 ?? (t.aiChat?.openRequest?.pane === 2 ? t.aiChat.openRequest : null)}
                                                     split
                                                     secondary
                                                     onToggleSplit={() => toggleAiChatSplit(t.id)}

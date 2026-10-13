@@ -241,9 +241,9 @@ func (m *Manager) observe(sessionID string, ev *Event) {
 // settle aplica el estado final de un turno.
 func (m *Manager) settle(sessionID string, ev Event) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	e := m.reg[sessionID]
 	if e == nil || !e.active() {
+		m.mu.Unlock()
 		return
 	}
 	e.pending, e.info.PendingApprovalID = nil, ""
@@ -256,6 +256,9 @@ func (m *Manager) settle(sessionID string, ev Event) {
 	default:
 		e.info.Status, e.info.Unread, e.info.Error = StatusError, true, ev.Error
 	}
+	status := e.info.Status
+	m.mu.Unlock()
+	m.notifyStatus(sessionID, status)
 }
 
 // beginTurn registra (o reabre) la sesión al arrancar un turno. Se llama justo
@@ -299,6 +302,7 @@ func (m *Manager) beginTurn(ctx context.Context, t Turn) {
 	e.pending = nil
 	e.buf, e.bufBytes = nil, 0
 	m.mu.Unlock()
+	m.notifyStatus(t.SessionID, StatusRunning)
 	m.scheduleBroadcast()
 }
 
@@ -317,8 +321,47 @@ func (m *Manager) sessionEnded(sessionID string) {
 	}
 	m.mu.Unlock()
 	if changed {
+		m.notifyStatus(sessionID, StatusIdle)
 		m.scheduleBroadcast()
 	}
+}
+
+// SetStatusHook fija quién se entera de los cambios de estado que importan para
+// persistir: un turno que arranca (StatusRunning) y uno que termina (idle,
+// error o cancelled). App lo cablea a agent_chats.last_status, de modo que el
+// estado sobreviva a un reinicio —el registro no—. Se llama SIN el candado del
+// registro tomado y desde la goroutine que produjo el cambio, así que puede
+// escribir en el vault. nil lo apaga.
+func (m *Manager) SetStatusHook(fn func(sessionID, status string)) {
+	m.mu.Lock()
+	m.statusHook = fn
+	m.mu.Unlock()
+}
+
+func (m *Manager) notifyStatus(sessionID, status string) {
+	m.mu.Lock()
+	fn := m.statusHook
+	m.mu.Unlock()
+	if fn != nil {
+		fn(sessionID, status)
+	}
+}
+
+// ActiveSessionIDs son las sesiones con un turno vivo (corriendo o esperando un
+// permiso). App las anota antes de apagar el Manager para marcarlas
+// «interrumpidas»: Shutdown las pasa a cancelled, y eso no dice que fue la app
+// la que las cortó.
+func (m *Manager) ActiveSessionIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []string{}
+	for id, e := range m.reg {
+		if e.active() {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // markCancel anota que el corte lo pidió una persona.
@@ -701,6 +744,8 @@ func (m *Manager) spawn(fn func()) {
 // Manager para que su declaración se lea de una vez.
 type registryState struct {
 	reg map[string]*sessionEntry
+	// statusHook: ver SetStatusHook.
+	statusHook func(sessionID, status string)
 	// tabShown son las sesiones que alguna pestaña muestra, según el último
 	// aviso de AttachSession/DetachSession. Va aparte del registro porque el
 	// aviso puede llegar antes de que exista la entrada.

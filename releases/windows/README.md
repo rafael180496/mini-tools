@@ -12,8 +12,8 @@ red interna, etc.).
 |---|---|
 | Versión | 2.10.1 |
 | Archivo | `mini-tools-v2.10.1-windows-amd64.exe` |
-| Tamaño | ~78 MB (78,0 MB; 78 033 920 bytes) — es el binario suelto, bajo el techo de 100 MB |
-| SHA-256 | `062bd177c1095082a025cf1be2c2a4974f9a58c1accc76dc2b2f98f97ea892c5` |
+| Tamaño | ~78 MB (78,0 MB; 78 062 592 bytes) — es el binario suelto, bajo el techo de 100 MB |
+| SHA-256 | `3f0dd07d121a7a4a17acd08e87615dcb7fb04097889a40525d7f245797963a06` |
 | Arquitectura | `amd64` (x86-64) — verificado con `file`: `PE32+ executable (GUI) x86-64, for MS Windows` |
 | Generado | `wails build -platform windows/amd64` (modo producción, sin devtools), cross-compilado desde macOS arm64 |
 
@@ -45,15 +45,26 @@ Contexto: **la 2.10.0 sí se corrió en Windows 10 y Windows 11 reales** (confir
 por el usuario antes de publicar). Eso **no se extrapola** a la 2.10.1, aunque
 la diferencia sea chica: la 2.10.1 **solo cambia la interfaz (frontend)** y un
 cambio pequeño en Go —cómo se titulan y renombran las conversaciones del chat de
-IA—. No toca el schema del vault (sigue en la migración 64), ni conectores, ni
-código específico de Windows.
+IA—, más la persistencia de las conversaciones (guardadas desde que se crean,
+fijables, y con las pestañas de Chat de IA reabiertas al arrancar), que agrega la
+**migración 65 del vault** (aditiva; un `vault.db` de la 2.10.0 migra solo y no
+hay rollback). No toca conectores ni código específico de Windows.
 
 Qué conviene mirar primero en una Windows real:
 
 - **Utilidades → Chat de IA**: que la fila se despliegue con las pestañas
-  abiertas y los grupos **Activas** y **Recientes**; que la barra lateral tenga
+  abiertas y los grupos **Abiertas** (con las fijadas arriba) y **Recientes**; que la barra lateral tenga
   seis módulos (ya no existe «IA») y que la insignia de Utilidades cuente los
   chats que trabajan o esperan.
+- **Conversaciones persistentes**: una pestaña de chat nueva figura enseguida en
+  *Abiertas* como borrador; *Fijar* / *Desfijar*; *Cerrar chat* y *Eliminar* (con
+  confirmación). Que un `vault.db` de la 2.10.0 en `%APPDATA%\mini-tools\` migre
+  solo a la 65 al primer arranque.
+- **Reabrir pestañas al arrancar**: cerrar la app con varias pestañas de Chat de
+  IA (alguna dividida, alguna trabajando) y volver a abrirla: las pestañas vuelven
+  con sus paneles, las que trabajaban figuran *Interrumpido al cerrar la app* y
+  nada arranca solo hasta pulsar *Abrir*. Probar también un cierre brusco
+  (terminar el proceso desde el Administrador de tareas).
 - **Renombrar chats**: doble clic o F2 sobre una pestaña o su fila, clic derecho
   → Renombrar…, el lápiz de la cabecera y el menú ⋯; que Enter guarde, Esc cancele
   y que el campo en el lugar no pierda el foco (en Windows el menú contextual y

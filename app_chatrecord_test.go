@@ -60,6 +60,7 @@ func newChatApp(t *testing.T) (*App, chan agentchat.Event) {
 		a.recordChatEvent(sessionID, ev)
 		events <- ev
 	})
+	a.wireChatStatus()
 	return a, events
 }
 

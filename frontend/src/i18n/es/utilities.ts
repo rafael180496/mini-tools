@@ -129,10 +129,11 @@ export default {
             noMatch: 'Ninguna conversación coincide con los filtros.',
         },
         count: (p: {n: number}) => (p.n === 1 ? '1 conversación' : `${p.n} conversaciones`),
-        empty: 'Todavía no hay conversaciones. La primera aparece acá en cuanto mandes un mensaje.',
+        empty: 'Todavía no hay conversaciones. Cada chat nuevo aparece acá desde que lo creás, aunque todavía no le hayas escrito.',
         noMatch: (p: {query: string}) => `Ninguna conversación coincide con «${p.query}».`,
         searchFailed: 'No se pudo buscar. Probá de nuevo.',
         untitled: 'Sin título',
+        draftLabel: 'Nuevo chat · borrador',
         openTitle: (p: {agent: string; where: string}) =>
             `Retoma esta conversación con ${p.agent}${p.where ? ` · ${p.where}` : ''}. Sus mensajes se vuelven a dibujar al abrirla.`,
         lost: {

@@ -588,3 +588,56 @@ func TestAttachBeforeTurnAndReattach(t *testing.T) {
 		t.Fatalf("reabierta: %+v", info)
 	}
 }
+
+// El gancho de estado avisa del arranque de un turno y de cómo termina —bien,
+// con fallo o cortado—, que es lo que App guarda para que el estado sobreviva
+// a un reinicio. ActiveSessionIDs lista las que siguen vivas.
+func TestStatusHookReportsStartAndOutcome(t *testing.T) {
+	col := newCollector()
+	m := NewManager(col.emit)
+	var mu sync.Mutex
+	seen := map[string][]string{}
+	m.SetStatusHook(func(id, status string) {
+		mu.Lock()
+		seen[id] = append(seen[id], status)
+		mu.Unlock()
+	})
+	got := func(id string) string {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Join(seen[id], ",")
+	}
+	waitHook := func(id, want string) {
+		t.Helper()
+		for i := 0; i < 400 && got(id) != want; i++ {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if got(id) != want {
+			t.Fatalf("%s: estados = %q, quería %q", id, got(id), want)
+		}
+	}
+
+	if err := m.Send(Turn{SessionID: "ok", AgentID: "llm:x", Prompt: "x", LLM: &fakeLLM{models: []string{"m"}, reply: "hola"}}); err != nil {
+		t.Fatal(err)
+	}
+	waitHook("ok", "running,idle")
+
+	if err := m.Send(Turn{SessionID: "bad", AgentID: "llm:x", Prompt: "x", LLM: &fakeLLM{models: []string{"m"}, err: errors.New("boom")}}); err != nil {
+		t.Fatal(err)
+	}
+	waitHook("bad", "running,error")
+
+	block := &fakeLLM{models: []string{"m"}, block: make(chan struct{})}
+	if err := m.Send(Turn{SessionID: "cut", AgentID: "llm:x", Prompt: "x", LLM: block}); err != nil {
+		t.Fatal(err)
+	}
+	waitInfo(t, m, "cut", func(i AgentSessionInfo) bool { return i.Status == StatusRunning })
+	if ids := m.ActiveSessionIDs(); len(ids) != 1 || ids[0] != "cut" {
+		t.Fatalf("ActiveSessionIDs = %v", ids)
+	}
+	m.Cancel("cut")
+	waitHook("cut", "running,cancelled")
+	if ids := m.ActiveSessionIDs(); len(ids) != 0 {
+		t.Fatalf("ya no hay activas: %v", ids)
+	}
+}
