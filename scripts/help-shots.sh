@@ -106,7 +106,7 @@ git-work-changes gitworkdiff 1280 540
 git-work-stash gitworkstash 1280 470
 git-work-switcher gitworkswitcher 1100 520
 git-work-narrow gitworknarrow 760 560
-ia-sessions-sidebar aisesssidebar 1400 860
+ia-sessions-sidebar aisesssidebar 1400 1040
 ia-sessions-reattach aisessreattach 1400 860
 ia-sessions-split aisesssplit 1400 860
 ia-sessions-approval aisessapproval 1400 860
@@ -115,7 +115,10 @@ ia-sessions-new-menu aisessnewmenu 1400 800
 ia-sessions-utilities aisessutiltabs 1400 800
 ia-sessions-tab-menu aisessbgtabmenu 1400 560
 ia-sessions-background-toast aisessbgclosetoast 1400 560
-ia-sessions-background-list aisessbgmenu 1400 860
+ia-sessions-background-list aisessbgmenu 1400 1040
+ia-sessions-rename-tab aisessrenametab 1400 560
+utilities-ai-chat-filters aichatfiltersopen 1100 740
+utilities-ai-chat-filters-chips aichatfilters 1100 360
 '
 
 mkdir -p docs/screenshots/es

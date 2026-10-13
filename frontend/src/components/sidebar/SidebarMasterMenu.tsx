@@ -17,7 +17,18 @@ import {useT} from '../../i18n'
 // cada ícono cuando hay una búsqueda activa — buscar sigue siendo global, y
 // el ícono es lo que dice en cuál de los cuatro cayó lo que se busca.
 
-export type SidebarModuleId = 'connections' | 'ssh' | 'git' | 'notes' | 'http' | 'utilities' | 'ai'
+export type SidebarModuleId = 'connections' | 'ssh' | 'git' | 'notes' | 'http' | 'utilities'
+
+const MODULE_IDS: readonly string[] = ['connections', 'ssh', 'git', 'notes', 'http', 'utilities']
+
+// El módulo guardado en los ajustes, saneado. Un id que ya no es un módulo no
+// puede llegar a la barra: ésta busca el activo en la lista y, sin él, se queda
+// sin cuerpo. 'ai' fue un módulo propio durante el desarrollo de 2.10.0; sus
+// sesiones viven ahora en Utilidades → Chat de IA, así que se lo lleva ahí.
+export function sidebarModuleFromSettings(saved: string): SidebarModuleId {
+    if (MODULE_IDS.includes(saved)) return saved as SidebarModuleId
+    return saved === 'ai' ? 'utilities' : 'connections'
+}
 
 export interface SidebarModuleDef {
     id: SidebarModuleId
@@ -34,7 +45,7 @@ export interface SidebarModuleDef {
     // sobre cada ícono sería ruido, no información).
     matchCount: number | null
     // Insignia de actividad sobre el ícono: cuántas cosas del módulo piden
-    // atención o siguen trabajando (hoy, las sesiones de IA). Distinta del
+    // atención o siguen trabajando (hoy, las sesiones de IA, en Utilidades). Distinta del
     // contador de la búsqueda, que es una respuesta a lo que se escribió; ésta
     // es un estado vivo y se muestra siempre que haya algo.
     badge?: {count: number; title: string; tone: 'primary' | 'tertiary'}

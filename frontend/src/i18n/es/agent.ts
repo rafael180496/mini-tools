@@ -333,7 +333,7 @@ export default {
         placeholder: (p: {agent: string}) => `Preguntale a ${p.agent}… (Enter manda, Shift+Enter salta de línea)`,
         enqueueTitle: 'Deja este mensaje en cola: sale solo cuando termine el turno en curso',
         stopTitle: 'Detener: corta el turno en curso y deja el chat abierto. Lo que haya en cola no sale solo: queda esperando con un botón para mandarlo. Para terminar el chat del todo, usá «Cerrar chat».',
-        closeChatTitle: 'Cerrar chat: corta lo que esté corriendo, lo saca de IA → Activas y suelta su memoria. La conversación queda en el historial y se puede abrir de nuevo. Cerrar la pestaña, en cambio, NO cierra el chat.',
+        closeChatTitle: 'Cerrar chat: corta lo que esté corriendo, lo saca de Chat de IA → Activas y suelta su memoria. La conversación queda en el historial y se puede abrir de nuevo. Cerrar la pestaña, en cambio, NO cierra el chat.',
         sendTitle: 'Manda el mensaje (Enter)',
     },
     host: {

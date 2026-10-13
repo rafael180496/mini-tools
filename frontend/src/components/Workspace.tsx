@@ -114,9 +114,8 @@ import {db, explain, updatecheck, vault} from '../../wailsjs/go/models'
 import type {dockerctl, query} from '../../wailsjs/go/models'
 import type {ParamDraftMap} from './editor/QueryParamsDialog'
 import Sidebar from './sidebar/Sidebar'
-import type {SidebarModuleId} from './sidebar/SidebarMasterMenu'
+import {sidebarModuleFromSettings, type SidebarModuleId} from './sidebar/SidebarMasterMenu'
 import UtilitiesTree from './utilities/UtilitiesTree'
-import AiSessionsTree from './sidebar/AiSessionsTree'
 import type {UtilityId} from './utilities/utilities'
 import type {DockerSection} from './utilities/docker/sections'
 import {DEFAULT_EDITOR_APPEARANCE, editorAppearanceFromSettings, type EditorAppearance} from '../codemirror/editorAppearance'
@@ -125,7 +124,7 @@ import {statementAt} from '../lib/sqlStatementAt'
 import {lintSQL} from '../lib/linter'
 import {inspectSQL} from '../lib/sqlProductionGuard'
 import {lintRedisCommands} from '../lib/redisLinter'
-import {onOpenAiChatRequest, onOpenNoteRequest, onOpenSettingsRequest, onOpenUtilityRequest, onShowAiModuleRequest, type OpenAiChatRequest, type SettingsSectionRequest} from '../lib/appBus'
+import {requestRenameAiChatTab, onOpenAiChatRequest, onOpenNoteRequest, onOpenSettingsRequest, onOpenUtilityRequest, onShowAiSessionsRequest, type OpenAiChatRequest, type SettingsSectionRequest} from '../lib/appBus'
 import {chatsOfTab, secondPaneId, tabOfPane, paneOwningChat, useAiChatPanes} from '../lib/aiChatTabs'
 import {announceBackgroundChats, attentionCount, isLive, sessionsOfChats, useAgentSessions, useHiddenSessions, type AgentSessionInfo} from '../lib/agentSessions'
 import {lintMongoCommands} from '../lib/mongoLinter'
@@ -517,10 +516,10 @@ export default function Workspace({
     const [gitMatches, setGitMatches] = useState<number | null>(null)
     const [notesMatches, setNotesMatches] = useState<number | null>(null)
     const [utilitiesMatches, setUtilitiesMatches] = useState<number | null>(null)
-    const [aiMatches, setAiMatches] = useState<number | null>(null)
-    // Las sesiones de IA que siguen vivas. La insignia del módulo «IA» cuenta las
-    // que trabajan y las que esperan un permiso: es lo que dice, desde cualquier
-    // otro módulo, que hay algo que atender.
+    // Las sesiones de IA que siguen vivas. La insignia del módulo Utilidades
+    // (donde viven, en Chat de IA → Activas) cuenta las que trabajan y las que
+    // esperan un permiso: es lo que dice, desde cualquier otro módulo, que hay
+    // algo que atender.
     const agentSessions = useAgentSessions()
     const hiddenAgentSessions = useHiddenSessions()
     const aiAttention = useMemo(() => attentionCount(agentSessions, hiddenAgentSessions), [agentSessions, hiddenAgentSessions])
@@ -603,13 +602,6 @@ export default function Workspace({
                 label: t.workspace.modules.utilities,
                 hint: t.workspace.modules.utilitiesHint,
                 matchCount: utilitiesMatches,
-            },
-            {
-                id: 'ai' as const,
-                icon: 'smart_toy',
-                label: t.aiSessions.module.label,
-                hint: t.aiSessions.module.hint,
-                matchCount: aiMatches,
                 badge: {
                     count: aiAttention.running + aiAttention.approval,
                     title: t.aiSessions.module.badgeTitle(aiAttention),
@@ -619,7 +611,7 @@ export default function Workspace({
                 },
             },
         ],
-        [connectionsMatches, sshMatches, gitMatches, notesMatches, utilitiesMatches, aiMatches, aiAttention, t],
+        [connectionsMatches, sshMatches, gitMatches, notesMatches, utilitiesMatches, aiAttention, t],
     )
 
     // Schema metadata cached per connection id — shared by the sidebar tree
@@ -1168,14 +1160,17 @@ export default function Workspace({
     // Abrir una conversación del Chat de IA, o una ventana nueva (la barra
     // lateral «IA», el historial, Cmd/Ctrl+Mayús+N).
     useEffect(() => onOpenAiChatRequest((req) => openAiChatRef.current(req)), [])
-    // «Ver» del aviso «sigue trabajando en segundo plano»: muestra el módulo «IA»
-    // (con su lista «Activas»), desplegando la barra si estaba plegada.
+    // «Ver» del aviso «sigue trabajando en segundo plano»: muestra el módulo
+    // Utilidades (UtilitiesTree despliega Chat de IA → Activas y resalta la fila),
+    // desplegando la barra si estaba plegada.
     const sidebarCollapsedRef = useRef(false)
     useEffect(
         () =>
-            onShowAiModuleRequest(() => {
-                setActiveModule('ai')
-                void SetSidebarModule('ai')
+            onShowAiSessionsRequest(() => {
+                setActiveModule('utilities')
+                void SetSidebarModule('utilities')
+                // Una búsqueda puede esconder justo la fila que se quiere ver.
+                setSidebarFilter('')
                 if (sidebarCollapsedRef.current) {
                     setSidebarCollapsed(false)
                     void SetSidebarCollapsed(false)
@@ -1330,7 +1325,11 @@ export default function Workspace({
                 if (settings.sidebarWidth) {
                     setSidebarWidth(Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, settings.sidebarWidth)))
                 }
-                if (settings.sidebarModule) setActiveModule(settings.sidebarModule as SidebarModuleId)
+                // 'ai' fue un módulo propio de la barra (2.10.0 en desarrollo): hoy sus
+                // sesiones viven en Utilidades → Chat de IA. Un valor guardado que
+                // ya no es un módulo —ése u otro— cae en Utilidades si era el de IA y
+                // en Conexiones si es desconocido, en vez de dejar la barra sin cuerpo.
+                if (settings.sidebarModule) setActiveModule(sidebarModuleFromSettings(settings.sidebarModule))
                 setEditorAppearanceState(editorAppearanceFromSettings(settings.editorAppearance))
                 setRememberMasterKeyState(!!settings.rememberMasterKey)
                 // 0 es "All", un valor válido — por eso se compara con
@@ -2839,8 +2838,8 @@ export default function Workspace({
     // A diferencia del resto de las utilidades (una sola pestaña por
     // herramienta), el Chat de IA admite varias: cada una con su proyecto,
     // proveedor y sesión, y varias pueden estar trabajando a la vez. Cerrar una
-    // NO corta sus turnos: la sesión vive en el backend y sigue en el módulo «IA»
-    // de la barra lateral, desde donde se retoma.
+    // NO corta sus turnos: la sesión vive en el backend y sigue en Utilidades →
+    // Chat de IA → Activas de la barra lateral, desde donde se retoma.
     //
     // Una conversación no se abre dos veces: si ya está a la vista en algún
     // panel, se lleva al frente ese en lugar de duplicarla.
@@ -2884,7 +2883,7 @@ export default function Workspace({
     function newAiChatTab(openRequest?: {chatId: string; token: number; pane: 1 | 2}, split?: boolean) {
         const tab: EditorTab = {
             id: newTabId(),
-            title: tr().utilities.tools.aiChat.name,
+            title: tr().aiSessions.tabs.draftTitle,
             path: null,
             content: '',
             dirty: false,
@@ -2898,7 +2897,7 @@ export default function Workspace({
         setActiveTabId(tab.id)
     }
     function setAiChatTabTitle(tabId: string, title: string) {
-        const next = title.trim() || tr().utilities.tools.aiChat.name
+        const next = title.trim() || tr().aiSessions.tabs.draftTitle
         setTabs((prev) => (prev.some((t) => t.id === tabId && t.title !== next) ? prev.map((t) => (t.id === tabId ? {...t, title: next} : t)) : prev))
     }
     function toggleAiChatSplit(tabId: string) {
@@ -3325,7 +3324,7 @@ export default function Workspace({
     function closeTab(id: string, opts?: {silent?: boolean}) {
         // Cerrar la pestaña de un Chat de IA NO cierra el chat: sus turnos siguen
         // en el backend y la conversación queda abierta en segundo plano (en
-        // IA → Activas) hasta que alguien la cierre de verdad. Nada se cancela
+        // Utilidades → Chat de IA → Activas) hasta que alguien la cierre de verdad. Nada se cancela
         // acá ni se pide confirmación; si algo seguía trabajando, un aviso dice
         // dónde encontrarlo y ofrece verlo o detenerlo. El aviso de que la
         // pestaña ya no lo muestra (DetachAgentSession) sale solo del registro
@@ -3556,7 +3555,6 @@ export default function Workspace({
                 onToggleTheme={onToggleTheme}
                 onOpenSettings={() => setShowSettingsDialog(true)}
                 bodies={{
-                    ai: <AiSessionsTree filter={sidebarFilter} onMatchCount={setAiMatches} visible={activeModule === 'ai' && !sidebarCollapsed} />,
                     utilities: (
                         <UtilitiesTree
                             openIds={new Set(tabs.filter((t) => t.kind === 'utility' && t.utilityId).map((t) => t.utilityId as UtilityId))}
@@ -3571,6 +3569,8 @@ export default function Workspace({
                                 onFocusTab: setActiveTabId,
                                 onNewTab: () => openAiChat({newWindow: true}),
                                 onNewSplit: () => openAiChat({newWindow: true, split: true}),
+                                onRenameTab: (id, title) => requestRenameAiChatTab({tabId: id, title}),
+                                visible: activeModule === 'utilities' && !sidebarCollapsed,
                             }}
                             filter={sidebarFilter}
                             onMatchCount={setUtilitiesMatches}
@@ -3833,6 +3833,7 @@ export default function Workspace({
                     onSelect={setActiveTabId}
                     onClose={closeTab}
                     onCloseAiChatForReal={requestCloseAiTabForReal}
+                    onRenameAiChatTab={(id, title) => requestRenameAiChatTab({tabId: id, title})}
                     onNew={newTab}
                     onNewAiChat={() => openAiChat({newWindow: true})}
                     onReorder={reorderTabs}

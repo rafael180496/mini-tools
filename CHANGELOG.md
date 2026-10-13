@@ -4,6 +4,23 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Vers
 
 ## [Unreleased]
 
+## [2.10.1] - 2026-10-13
+
+### Cambiado
+
+- **Las sesiones de IA pasan del módulo «IA» a Utilidades → Chat de IA.** La barra lateral vuelve a tener **seis módulos**: el séptimo, «IA», desaparece y todo lo que mostraba vive ahora en la fila **Chat de IA** de Utilidades, que se despliega con las pestañas abiertas y dos grupos plegables. **Activas** lista las conversaciones que trabajan, piden permiso, fallaron, terminaron sin leer o quedaron en segundo plano, con estado, proveedor, modelo, proyecto, reloj en vivo y lo último que dijeron; cada una con **Abrir**, **Detener**, **Dejar terminar**, **Aprobar…** y **Marcar leído** (también con clic derecho o «⋯», y una × al pasar el mouse para **Cerrar chat**). **Recientes** muestra las últimas 20 de cualquier módulo y las abre en una pestaña. El **+** de la fila abre otra conversación en una pestaña nueva, y su menú ofrece también *Nuevo chat dividido*. La búsqueda de la barra filtra también estas conversaciones, y una insignia sobre el ícono de Utilidades y sobre la fila cuenta las que trabajan o esperan (ámbar si alguna te necesita). Los permisos, los avisos de la esquina y el comportamiento en segundo plano no cambian; solo cambia dónde se ven. El aviso de «Cerrar la pestaña no cierra el chat» ahora trae **Ver**, que abre esa lista y resalta la conversación.
+
+### Agregado
+
+- **Filtros del historial del Chat de IA, en una barra compacta.** Las pastillas de proveedor se partían en tres renglones y se comían la columna; ahora hay **una sola fila**: el buscador y un botón **Filtros** con una insignia que cuenta los criterios puestos. El panel se abre sobre la lista (Esc o un clic afuera lo cierran) y filtra por **proveedor** (varios a la vez, con íconos y cuántas conversaciones tiene cada uno), **proyecto u origen** (repositorio, carpeta, conexión de BD, servidor SSH, nota o *Sin módulo*), **fecha** (Todo, Hoy, 7 días, 30 días), **estado** (Trabajando, Sin leer, En segundo plano) y **orden** (Recientes, agrupadas por fecha con su cuenta, o por Nombre). Lo que está activo queda bajo el buscador como **fichas que se quitan de a una**, en una sola línea que se desplaza cuando son muchas, con **Limpiar**. Los filtros se combinan con la búsqueda por texto (que sigue mirando dentro de los mensajes), **se recuerdan por pestaña** —una pestaña nueva arranca con los últimos usados— y se manejan con el teclado.
+- **Renombrar conversaciones.** El rótulo de cada pestaña de Chat de IA **es el nombre de su conversación** (sin nombre, el proyecto; sin proyecto, *Nuevo chat*), en la barra de pestañas, en las filas de Utilidades y en *Activas*. Se renombra con **doble clic o F2** sobre la pestaña o sobre su fila de Utilidades, con **clic derecho → Renombrar…**, con el **lápiz de la cabecera del chat** y desde el menú ⋯ de *Activas* y *Recientes*; el campo se edita en el lugar (Enter guarda, Esc cancela, vacío no cambia nada, máximo 120 caracteres). Un chat que todavía no tiene mensajes guarda el nombre y lo aplica al mandar el primero.
+- **Títulos automáticos a partir del primer mensaje.** Una conversación nueva se nombra con su **primer mensaje** (primera línea, sin referencias `@` ni bloques de código, unos 60 caracteres), también la que se abre desde un repositorio. Las que ya se llaman «Chat con…» se quedan así hasta que las renombres.
+
+### Corregido
+
+- **Toda pestaña y fila del Chat de IA decía «Chat de IA», y muchas conversaciones se llamaban «Chat con Claude Code».** Las pestañas y las filas no distinguían una conversación de otra, y las conversaciones abiertas desde un repositorio de Git quedaban con el título genérico del agente. Ahora llevan su nombre o, al mandar el primer mensaje, lo que se escribió.
+- **Renombrar una conversación ya no la sube al principio del historial.** Cambiarle el nombre se contaba como actividad y la movía a *Hoy*, desordenando la lista agrupada por fecha; ahora conserva su lugar.
+
 ## [2.10.0] - 2026-10-12
 
 ### Agregado

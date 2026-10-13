@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react'
+import {onAgentChatsChanged} from '../../lib/appBus'
 import type {EditorAppearance} from '../../codemirror/editorAppearance'
 import {
     GitAbort,
@@ -740,6 +741,8 @@ export default function GitRepoTab({
             .then((l) => setChatHistory(l ?? []))
             .catch(() => setChatHistory([]))
     }, [repoId])
+    // Un renombrado hecho desde la barra lateral o el Chat de IA.
+    useEffect(() => onAgentChatsChanged(reloadChatHistory), [reloadChatHistory])
 
     // Se piden por agente y en paralelo: cada uno lee un almacenamiento
     // distinto, y que uno no esté instalado no puede dejar sin lista a los
@@ -1109,7 +1112,10 @@ export default function GitRepoTab({
                 persistLayout({tab: 'agents'})
                 enterAgentMode()
                 if (agent) {
-                    void CreateAgentChat(session.id, repoId, agent.id, i18n().git.tab.session.chatWith({agent: agent.label}), 'git', repoId).catch(() => {})
+                    // Sin título a propósito: se nombra con el primer mensaje (backend,
+                    // nameUntitledChat). Un «Chat con <agente>» repetido no distingue una
+                    // conversación de otra en el historial.
+                    void CreateAgentChat(session.id, repoId, agent.id, '', 'git', repoId).catch(() => {})
                 }
                 return
             }

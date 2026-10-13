@@ -105,17 +105,59 @@ export function onOpenAiChatRequest(handler: (req: OpenAiChatRequest) => void): 
     return () => window.removeEventListener(OPEN_AI_CHAT, listener)
 }
 
-// Mostrar el módulo «IA» de la barra lateral (con su lista «Activas»). Lo pide el
-// aviso «sigue trabajando en segundo plano» que sale al cerrar la pestaña de un
-// chat que no terminó; lo atiende Workspace, que es quien sabe qué módulo está a
-// la vista y si la barra está plegada.
-const SHOW_AI_MODULE = 'mini-tools:show-ai-module'
+// Mostrar las sesiones de IA: lleva la barra lateral a Utilidades, despliega
+// «Chat de IA» → «Activas» y, si se da una sesión, la desplaza a la vista y la
+// resalta un momento. Lo pide el aviso «sigue trabajando en segundo plano» que
+// sale al cerrar la pestaña de un chat que no terminó. Lo atienden dos: Workspace
+// (qué módulo está a la vista y si la barra está plegada) y UtilitiesTree (qué
+// está desplegado).
+const SHOW_AI_SESSIONS = 'mini-tools:show-ai-sessions'
 
-export function requestShowAiModule(): void {
-    window.dispatchEvent(new Event(SHOW_AI_MODULE))
+export interface ShowAiSessionsRequest {
+    sessionId?: string
 }
 
-export function onShowAiModuleRequest(handler: () => void): () => void {
-    window.addEventListener(SHOW_AI_MODULE, handler)
-    return () => window.removeEventListener(SHOW_AI_MODULE, handler)
+export function requestShowAiSessions(req: ShowAiSessionsRequest = {}): void {
+    window.dispatchEvent(new CustomEvent<ShowAiSessionsRequest>(SHOW_AI_SESSIONS, {detail: req}))
+}
+
+export function onShowAiSessionsRequest(handler: (req: ShowAiSessionsRequest) => void): () => void {
+    const listener = (e: Event) => handler((e as CustomEvent<ShowAiSessionsRequest>).detail ?? {})
+    window.addEventListener(SHOW_AI_SESSIONS, listener)
+    return () => window.removeEventListener(SHOW_AI_SESSIONS, listener)
+}
+
+// Renombrar la conversación que muestra una pestaña de Chat de IA. Lo piden la
+// barra de pestañas y las filas de la barra lateral (editar el nombre en el
+// lugar); lo atiende el panel principal de esa pestaña (AiChatTab), que es quien
+// sabe cuál es la conversación a la vista y si ya tiene fila en el historial.
+// Una pestaña no tiene nombre propio: su rótulo ES el de su conversación.
+const RENAME_AI_CHAT_TAB = 'mini-tools:rename-ai-chat-tab'
+
+export interface RenameAiChatTabRequest {
+    tabId: string
+    title: string
+}
+
+export function requestRenameAiChatTab(req: RenameAiChatTabRequest): void {
+    window.dispatchEvent(new CustomEvent<RenameAiChatTabRequest>(RENAME_AI_CHAT_TAB, {detail: req}))
+}
+
+export function onRenameAiChatTabRequest(handler: (req: RenameAiChatTabRequest) => void): () => void {
+    const listener = (e: Event) => handler((e as CustomEvent<RenameAiChatTabRequest>).detail)
+    window.addEventListener(RENAME_AI_CHAT_TAB, listener)
+    return () => window.removeEventListener(RENAME_AI_CHAT_TAB, listener)
+}
+
+// El historial de conversaciones cambió por fuera de quien lo mira (un
+// renombrado desde la barra lateral): quien lo tenga cargado lo relee.
+const AGENT_CHATS_CHANGED = 'mini-tools:agent-chats-changed'
+
+export function notifyAgentChatsChanged(): void {
+    window.dispatchEvent(new Event(AGENT_CHATS_CHANGED))
+}
+
+export function onAgentChatsChanged(handler: () => void): () => void {
+    window.addEventListener(AGENT_CHATS_CHANGED, handler)
+    return () => window.removeEventListener(AGENT_CHATS_CHANGED, handler)
 }

@@ -948,10 +948,26 @@ func (a *App) SetAgentChatContext(id, module, contextID string) error {
 	return a.vault.SetAgentChatContext(id, module, contextID)
 }
 
-// RenameAgentChat cambia el nombre visible de una conversación.
+// maxChatTitle es el largo máximo del nombre de una conversación (en
+// caracteres). El frontend aplica el mismo tope (lib/chatTitle.ts).
+const maxChatTitle = 120
+
+var msgChatTitleEmpty = i18n.Msg{ES: "el nombre de la conversación no puede estar vacío", EN: "the conversation name cannot be empty"}
+
+// RenameAgentChat cambia el nombre visible de una conversación: lo recorta, lo
+// limita a maxChatTitle y rechaza uno vacío (la interfaz vuelve al nombre
+// anterior en ese caso). También actualiza el título de la sesión viva, para que
+// «Activas» y las pestañas lo muestren sin esperar a reabrirla.
 func (a *App) RenameAgentChat(id, title string) error {
 	if err := a.requireUnlocked(); err != nil {
 		return err
+	}
+	title = strings.Join(strings.Fields(title), " ")
+	if title == "" {
+		return i18n.New(msgChatTitleEmpty)
+	}
+	if r := []rune(title); len(r) > maxChatTitle {
+		title = strings.TrimSpace(string(r[:maxChatTitle]))
 	}
 	if err := a.vault.RenameAgentChat(id, title); err != nil {
 		return err

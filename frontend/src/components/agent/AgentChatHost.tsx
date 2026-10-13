@@ -16,13 +16,14 @@ import {
     ListAllAgentChats,
     ListConnections,
     GitListRepos,
-    RenameAgentChat,
     ResumeAgentChat,
     SetAgentActive,
     SetAgentLayout,
     TouchAgentChat,
 } from '../../../wailsjs/go/main/App'
 import {agents as agentsModel, main, vault} from '../../../wailsjs/go/models'
+import {chatTitleFromMessage, MAX_CHAT_TITLE} from '../../lib/chatTitle'
+import {renameChat} from '../../lib/chatRename'
 import Icon from '../Icon'
 import Select from '../Select'
 import ModelServerDialog from '../ModelServerDialog'
@@ -35,7 +36,7 @@ import {ProviderIconWithHealth} from './HealthIndicators'
 import AgentHistoryPanel from './AgentHistoryPanel'
 import PromptDialog from '../git/PromptDialog'
 import {useT} from '../../i18n'
-import {onModelServersChanged} from '../../lib/appBus'
+import {onAgentChatsChanged, onModelServersChanged} from '../../lib/appBus'
 import {CONTEXT_ICONS, contextKey, ownsChat, repoIdOf, type WorkContext, type WorkContextKind} from './workContext'
 
 // Anfitrión del chat de nivel APLICACIÓN: una conversación que acompaña al
@@ -387,6 +388,7 @@ export default function AgentChatHost({
             })
             .catch(() => {})
     }, [])
+    useEffect(() => onAgentChatsChanged(loadHistory), [loadHistory])
 
     // El primer mensaje es lo que crea la entrada del historial, con el texto
     // como título — la misma convención que ya usaba la pestaña Git.
@@ -408,7 +410,7 @@ export default function AgentChatHost({
     const onFirstSend = useCallback(
         (s: Session, forKey: string, text: string) => {
             if (s.chatId || chatCreationsRef.current.has(s.id)) return
-            const title = text.trim().split('\n')[0].slice(0, 80)
+            const title = chatTitleFromMessage(text)
             chatCreationsRef.current.set(
                 s.id,
                 CreateAgentChat(s.id, repoIdOf(s.context), s.agentId, title, s.context.kind, s.context.id).catch(
@@ -802,12 +804,11 @@ export default function AgentChatHost({
                     initial={renaming.title}
                     confirmLabel={t.common.save}
                     description={t.agent.host.renameDescription}
+                    maxLength={MAX_CHAT_TITLE}
                     onSubmit={(value) => {
                         const id = renaming.id
                         setRenaming(null)
-                        void RenameAgentChat(id, value.trim())
-                            .then(loadHistory)
-                            .catch(() => {})
+                        void renameChat(id, value).then(loadHistory)
                     }}
                     onClose={() => setRenaming(null)}
                 />

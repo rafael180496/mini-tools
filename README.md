@@ -1,6 +1,6 @@
 # mini-tools
 
-![Versión](https://img.shields.io/badge/versi%C3%B3n-2.10.0-6750A4)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-2.10.1-6750A4)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go](https://img.shields.io/badge/go-1.26-00ADD8)
 ![Wails](https://img.shields.io/badge/wails-v2-DF0000)
@@ -23,6 +23,26 @@ ejemplos de uso y recetas de principio a fin. Es la mejor forma de empezar si nu
 </p>
 
 ---
+
+## Novedades — 2.10.1
+
+**Las sesiones de IA, dentro de Utilidades.** El módulo «IA» de la barra lateral
+desaparece (vuelve a haber seis módulos) y todo lo que mostraba vive en
+**Utilidades → Chat de IA**, junto con tres mejoras al historial.
+
+- **Activas y Recientes bajo la fila Chat de IA.** Las conversaciones que
+  trabajan, piden permiso o quedaron en segundo plano se ven y se manejan desde
+  ahí (abrir, detener, aprobar, cerrar chat), con la insignia de Utilidades.
+  [Ver la documentación →](https://rafael180496.github.io/mini-tools/es/#ia-sesiones)
+- **Filtros del historial en una barra compacta**: proveedor, proyecto u origen,
+  fecha, estado y orden, con fichas que se quitan de a una.
+- **Renombrar conversaciones y títulos que dicen algo**: doble clic o F2, y las
+  nuevas se nombran con su primer mensaje en vez de «Chat con Claude Code».
+  Renombrar ya no las sube al principio del historial.
+
+Sin migraciones del vault: una instalación de la 2.10.0 abre tal cual. La
+**2.10.1 no se verificó todavía en Windows real** (la 2.10.0 sí, en 10 y 11).
+Todo el detalle en el [CHANGELOG](CHANGELOG.md).
 
 ## Novedades — 2.10.0
 
@@ -678,8 +698,8 @@ demora nada.
 
 | Plataforma | Archivo | Notas |
 |---|---|---|
-| macOS (Apple Silicon) | **[⬇ mini-tools-v2.10.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.0/mini-tools-v2.10.0.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
-| Windows (x86-64) | **[⬇ mini-tools-v2.10.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.0/mini-tools-v2.10.0-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). Probada en Windows 10 y 11, ver [detalle](releases/windows/README.md). |
+| macOS (Apple Silicon) | **[⬇ mini-tools-v2.10.1.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1.dmg)** | Sin firmar — Gatekeeper avisa "desarrollador no identificado", ver [workaround](#distribución--empaquetado-macos) |
+| Windows (x86-64) | **[⬇ mini-tools-v2.10.1-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1-windows-amd64.exe)** | Portable, sin instalador, sin firmar — SmartScreen avisa, ver [workaround](#distribución--empaquetado-windows). **No verificada todavía en Windows real** (la 2.10.0 sí se probó en Windows 10 y 11), ver [detalle](releases/windows/README.md). |
 
 Los binarios se publican como assets del [GitHub Release](https://github.com/rafael180496/mini-tools/releases) de cada versión, no dentro del repositorio. Checksums, detalle de compatibilidad e instrucciones paso a paso en [releases/macos/README.md](releases/macos/README.md) y [releases/windows/README.md](releases/windows/README.md).
 
@@ -859,11 +879,11 @@ Actions crea el GitHub Release, le pega las notas de esa versión sacadas del
 ```bash
 ./scripts/bump-version.sh minor      # o patch/major
 ./scripts/package-all.sh             # genera el .dmg y el .exe
-cp build/bin/mini-tools-v2.10.0.dmg releases/macos/
-cp build/bin/mini-tools-v2.10.0-windows-amd64.exe releases/windows/
+cp build/bin/mini-tools-v2.10.1.dmg releases/macos/
+cp build/bin/mini-tools-v2.10.1-windows-amd64.exe releases/windows/
 # … volcar el CHANGELOG, actualizar los README con los checksums e index.html …
-git add -A && git commit -m "release: v2.10.0"
-git tag v2.10.0 && git push origin main --tags
+git add -A && git commit -m "release: v2.10.1"
+git tag v2.10.1 && git push origin main --tags
 #  ↑ el release se crea solo
 ```
 
@@ -918,11 +938,11 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.0 |
+| Versión | 2.10.1 |
 | Plataforma | macOS — **Apple Silicon (`arm64`) únicamente**, no corre en Mac Intel ni vía Rosetta |
 | Compatible desde | macOS 11 (Big Sur) en la práctica — es la primera versión de macOS con hardware Apple Silicon; el `Info.plist` de Wails declara `10.13.0` por plantilla genérica (heredada de cuando también soportaba Intel), no es una garantía real |
-| Archivo | **[⬇ Descargar mini-tools-v2.10.0.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.0/mini-tools-v2.10.0.dmg)** |
-| SHA-256 | `bffed948de2049e07e2c91a0617a4720c9c3f04289723c44a4e25dbdcf1967ef` |
+| Archivo | **[⬇ Descargar mini-tools-v2.10.1.dmg](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1.dmg)** |
+| SHA-256 | `2087b7880445c43b61335a2eb2d0dbb1371caba158a931c38177836321937f63` |
 | Firma | Sin firmar (ver workaround de Gatekeeper arriba) |
 
 ## Distribución / Empaquetado Windows
@@ -934,7 +954,7 @@ El `.dmg` resultante **no está firmado** (sin Apple Developer ID ni notarizaci�
 
 Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — ninguno de los conectores de base de datos usa CGO, así que no hace falta un toolchain de Windows. **Portable, sin instalador** (no arma NSIS) y **sin firma Authenticode** — SmartScreen va a avisar "Windows protegió su PC" al abrirlo; workaround: "Más información" → "Ejecutar de todas formas".
 
-> **La 2.10.0 se corrió en Windows 10 y Windows 11 reales.** Esta versión suma migraciones aditivas del vault (57 a 64) y código que toca el sistema: el selector nativo de carpeta, arrastrar archivos al chat, el `run_command` del agente de código local (cmd/PowerShell y cierre del grupo de procesos) y los servidores de modelos remotos. Lo que conviene mirar primero si algo falla está listado en [releases/windows/README.md](releases/windows/README.md).
+> **La 2.10.1 no se verificó todavía en una Windows real.** La 2.10.0 se corrió en Windows 10 y Windows 11 reales, y eso no se extrapola: la 2.10.1 solo cambia la interfaz (sesiones de IA dentro de Utilidades, barra de filtros del historial, renombrar chats) y un cambio pequeño en Go (títulos de las conversaciones). Qué mirar primero está listado en [releases/windows/README.md](releases/windows/README.md).
 
 `package-windows.sh` solo genera el `.exe` localmente — no crea releases ni sube nada a ningún lado, eso es manual.
 
@@ -942,10 +962,10 @@ Cross-compilado desde macOS/Linux con `wails build -platform windows/amd64` — 
 
 | Campo | Valor |
 |---|---|
-| Versión | 2.10.0 |
-| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **verificado en Windows 10 y 11** |
-| Archivo | **[⬇ Descargar mini-tools-v2.10.0-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.0/mini-tools-v2.10.0-windows-amd64.exe)** |
-| SHA-256 | `792db28b89e185b8c11b4af4de03ee767d37b250c716153713b200865326e17e` |
+| Versión | 2.10.1 |
+| Plataforma | Windows — **`amd64` (x86-64) únicamente**, cross-compilado desde macOS; **no verificado todavía en Windows real** (la 2.10.0 sí, en 10 y 11) |
+| Archivo | **[⬇ Descargar mini-tools-v2.10.1-windows-amd64.exe](https://github.com/rafael180496/mini-tools/releases/download/v2.10.1/mini-tools-v2.10.1-windows-amd64.exe)** |
+| SHA-256 | `062bd177c1095082a025cf1be2c2a4974f9a58c1accc76dc2b2f98f97ea892c5` |
 | Firma | Sin firmar (SmartScreen va a avisar, ver workaround arriba) |
 
 Detalle completo, checksum de verificación e instrucciones de instalación paso a paso en [releases/windows/README.md](releases/windows/README.md).

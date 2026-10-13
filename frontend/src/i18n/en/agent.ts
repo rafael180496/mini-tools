@@ -304,7 +304,7 @@ const en: Messages<typeof es> = {
         placeholder: (p) => `Ask ${p.agent}… (Enter sends, Shift+Enter adds a line)`,
         enqueueTitle: 'Queues this message: it goes out on its own when the current turn ends',
         stopTitle: "Stop: cuts the current turn and keeps the chat open. Anything queued doesn't go out on its own: it waits, with a button to send it. To end the chat for good, use «Close chat».",
-        closeChatTitle: 'Close chat: stops whatever is running, removes it from AI → Active and frees its memory. The conversation stays in the history and can be opened again. Closing the tab, on the other hand, does NOT close the chat.',
+        closeChatTitle: 'Close chat: stops whatever is running, removes it from AI Chat → Active and frees its memory. The conversation stays in the history and can be opened again. Closing the tab, on the other hand, does NOT close the chat.',
         sendTitle: 'Send the message (Enter)',
     },
     host: {

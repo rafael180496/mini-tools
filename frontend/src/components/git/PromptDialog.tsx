@@ -15,6 +15,8 @@ interface PromptDialogProps {
     // Free-form explanation shown above the fields. The tag and branch dialogs
     // use it to say what the operation will and will not touch.
     description?: string
+    // Largo máximo del primer campo (un nombre que se guarda con tope).
+    maxLength?: number
     onSubmit: (value: string, second: string) => void
     onClose: () => void
 }
@@ -35,6 +37,7 @@ export default function PromptDialog({
     secondPlaceholder,
     secondInitial = '',
     description,
+    maxLength,
     onSubmit,
     onClose,
 }: PromptDialogProps) {
@@ -58,6 +61,7 @@ export default function PromptDialog({
                 <label className="mt-3 block text-ui-11 text-on-surface-variant">{label}</label>
                 <input
                     value={value}
+                    maxLength={maxLength}
                     autoFocus
                     placeholder={placeholder}
                     onChange={(e) => setValue(e.target.value)}

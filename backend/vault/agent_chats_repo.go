@@ -192,15 +192,17 @@ func (s *Store) SetAgentChatContext(id, module, contextID string) error {
 	return nil
 }
 
-// RenameAgentChat cambia el nombre visible.
+// RenameAgentChat cambia el nombre visible. No toca updated_at: renombrar no es
+// actividad, y subir la conversación a «Hoy» por haberle cambiado el nombre
+// desordena el historial por fecha.
 func (s *Store) RenameAgentChat(id, title string) error {
 	enc, nonce, err := s.encryptOptional(title)
 	if err != nil {
 		return err
 	}
 	_, err = s.db.Exec(
-		`UPDATE agent_chats SET encrypted_title = ?, title_nonce = ?, updated_at = ? WHERE id = ?`,
-		enc, nonce, time.Now().Unix(), id,
+		`UPDATE agent_chats SET encrypted_title = ?, title_nonce = ? WHERE id = ?`,
+		enc, nonce, id,
 	)
 	if err != nil {
 		return i18n.Errorf(i18n.Msg{ES: "vault: renombrando el chat: %w", EN: "vault: renaming the chat: %w"}, err)

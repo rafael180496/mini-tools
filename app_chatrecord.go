@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"regexp"
 	"strings"
 	"sync"
 
 	"mini-tools/backend/agentchat"
+	"mini-tools/backend/agentctx"
 	"mini-tools/backend/i18n"
 	"mini-tools/backend/vault"
 )
@@ -211,17 +213,66 @@ func (a *App) ensureChatRow(sessionID, module, contextID, agentID, typed string)
 	return true
 }
 
-// chatTitleFrom saca el título de un chat del primer mensaje.
+// chatTitleMax es el largo máximo (en caracteres) del título que se saca del
+// primer mensaje. El frontend (lib/chatTitle.ts) usa el mismo número y las
+// mismas reglas: la fila la puede crear cualquiera de los dos y el título no
+// puede depender de quién llegue primero.
+const chatTitleMax = 60
+
+var fencedBlock = regexp.MustCompile("(?s)```.*?(```|$)")
+
+// firstTitleLine devuelve la primera línea con texto, con los espacios
+// repetidos colapsados.
+func firstTitleLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if f := strings.Join(strings.Fields(line), " "); f != "" {
+			return f
+		}
+	}
+	return ""
+}
+
+// chatTitleFrom saca el título de un chat del primer mensaje: su primera línea
+// con texto, sin las referencias `@tipo:valor` (son contexto que se expande al
+// mandar, no lo que el usuario quiso decir) ni los bloques de código, recortada
+// a chatTitleMax.
 func chatTitleFrom(typed string) string {
-	line, _, _ := strings.Cut(strings.TrimSpace(typed), "\n")
-	line = strings.TrimSpace(line)
-	if r := []rune(line); len(r) > 80 {
-		line = string(r[:80])
+	text := typed
+	for _, r := range agentctx.ParseRefs(text) {
+		text = strings.Replace(text, r.Raw, " ", 1)
+	}
+	text = fencedBlock.ReplaceAllString(text, " ")
+	line := firstTitleLine(text)
+	if line == "" {
+		// Un mensaje que era solo una referencia o un bloque: mejor eso que nada.
+		line = firstTitleLine(typed)
+	}
+	if r := []rune(line); len(r) > chatTitleMax {
+		line = strings.TrimSpace(string(r[:chatTitleMax-1])) + "…"
 	}
 	if line == "" {
 		return i18n.T(i18n.Msg{ES: "Conversación", EN: "Conversation"})
 	}
 	return line
+}
+
+// nameUntitledChat le pone nombre a una conversación que se creó sin uno (el
+// chat de un repositorio se registra al abrirlo, antes del primer mensaje):
+// con el primer mensaje, su título sale de lo que se escribió y no de un
+// «Chat con <agente>» que no distingue una conversación de otra. Una que ya
+// tiene nombre —el del usuario incluido— no se toca.
+func (a *App) nameUntitledChat(sessionID, typed string) {
+	if a.vault == nil || strings.TrimSpace(a.vault.AgentChatTitle(sessionID)) != "" {
+		return
+	}
+	title := chatTitleFrom(typed)
+	if err := a.vault.RenameAgentChat(sessionID, title); err != nil {
+		log.Printf("historial del chat %s: %v", sessionID, err)
+		return
+	}
+	if a.agentChats != nil {
+		a.agentChats.SetTitle(sessionID, title)
+	}
 }
 
 // chatTitleFor es el título con el que se rotula la sesión: el guardado del
@@ -253,6 +304,7 @@ func (a *App) sendRecorded(module, contextID, typed string, t agentchat.Turn) er
 	if a.agentChats.Busy(t.SessionID) || !a.ensureChatRow(t.SessionID, module, contextID, t.AgentID, title) {
 		return a.agentChats.Send(t)
 	}
+	a.nameUntitledChat(t.SessionID, title)
 	rt := a.beginChatTurn(t.SessionID, typed)
 	// Solo la ficha de los adjuntos —nombre, tipo, tamaño—, nunca su contenido.
 	rt.attachments = agentchat.Metas(t.Attachments)

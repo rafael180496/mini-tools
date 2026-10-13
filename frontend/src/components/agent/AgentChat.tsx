@@ -332,7 +332,7 @@ interface AgentChatProps {
     // haciendo. Es el caso de trabajar en paralelo: uno propone, otro valida.
     onValidateWithAnother?: (excludeAgentId: string) => void
     // «Cerrar chat»: da la conversación por terminada (corta lo que corra y la
-    // saca de IA → Activas). Distinto de «Detener» (corta el turno y deja el
+    // saca de Chat de IA → Activas). Distinto de «Detener» (corta el turno y deja el
     // chat abierto) y de cerrar la pestaña (no toca el chat). Solo lo ofrece el
     // anfitrión que sabe cerrar un chat: sin esta prop no hay botón.
     onCloseChat?: () => void

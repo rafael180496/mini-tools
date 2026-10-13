@@ -3,7 +3,7 @@ import {CancelAgentChat, RespondAgentApproval} from '../../../wailsjs/go/main/Ap
 import Icon from '../Icon'
 import AgentApprovalDialog, {isRiskyApproval, type ApprovalRequest} from './AgentApprovalDialog'
 import {canonicalToolName} from './ToolCallCard'
-import {requestOpenAiChat, requestShowAiModule} from '../../lib/appBus'
+import {requestOpenAiChat, requestShowAiSessions} from '../../lib/appBus'
 import {
     dismissToast,
     removeApproval,
@@ -184,7 +184,7 @@ function ToastCard({toast, onOpen}: {toast: SessionToast; onOpen: () => void}) {
                         <button
                             type="button"
                             onClick={() => {
-                                requestShowAiModule()
+                                requestShowAiSessions({sessionId: toast.sessionId})
                                 dismissToast(toast.id)
                             }}
                             title={th.seeTitle}

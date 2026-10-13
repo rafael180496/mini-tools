@@ -261,11 +261,60 @@ func TestChatTitleFrom(t *testing.T) {
 	if got := chatTitleFrom("  hola\nmundo"); got != "hola" {
 		t.Fatalf("%q", got)
 	}
-	if got := chatTitleFrom(strings.Repeat("é", 100)); len([]rune(got)) != 80 {
+	if got := chatTitleFrom(strings.Repeat("é", 100)); len([]rune(got)) != chatTitleMax {
 		t.Fatalf("len=%d", len([]rune(got)))
 	}
 	if got := chatTitleFrom("  \n "); got == "" {
 		t.Fatal("título vacío")
+	}
+	// Las referencias @tipo:valor y los bloques de código no son el título.
+	if got := chatTitleFrom("@file:main.go  revisá   este error"); got != "revisá este error" {
+		t.Fatalf("referencia en el título: %q", got)
+	}
+	if got := chatTitleFrom("```sql\nselect 1\n```\n¿por qué tarda?"); got != "¿por qué tarda?" {
+		t.Fatalf("bloque de código en el título: %q", got)
+	}
+	// Solo una referencia: mejor ella que un título vacío.
+	if got := chatTitleFrom("@db:Prod/clientes"); got != "@db:Prod/clientes" {
+		t.Fatalf("solo referencia: %q", got)
+	}
+}
+
+// El chat que se registró al abrirlo (módulo git) no tiene nombre: con el primer
+// mensaje se nombra solo; uno que ya tiene nombre no se pisa.
+func TestNameUntitledChat(t *testing.T) {
+	a, _ := newChatApp(t)
+	_ = a.vault.CreateAgentChat("s1", "r", "claude", "", "git", "r")
+	a.nameUntitledChat("s1", "  ¿Cómo reviso los locks?\nsegunda línea")
+	if got := a.vault.AgentChatTitle("s1"); got != "¿Cómo reviso los locks?" {
+		t.Fatalf("título: %q", got)
+	}
+	a.nameUntitledChat("s1", "otro mensaje")
+	if got := a.vault.AgentChatTitle("s1"); got != "¿Cómo reviso los locks?" {
+		t.Fatalf("pisó un título existente: %q", got)
+	}
+}
+
+func TestRenameAgentChatValidates(t *testing.T) {
+	a, _ := newChatApp(t)
+	_ = a.vault.CreateAgentChat("s1", "", "claude", "viejo", "utilities", "")
+	if err := a.RenameAgentChat("s1", "   "); err == nil {
+		t.Fatal("un nombre vacío tiene que rechazarse")
+	}
+	if got := a.vault.AgentChatTitle("s1"); got != "viejo" {
+		t.Fatalf("el rechazo cambió el título: %q", got)
+	}
+	if err := a.RenameAgentChat("s1", "  Plan   de   migración  "); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.vault.AgentChatTitle("s1"); got != "Plan de migración" {
+		t.Fatalf("título: %q", got)
+	}
+	if err := a.RenameAgentChat("s1", strings.Repeat("x", 300)); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.vault.AgentChatTitle("s1"); len([]rune(got)) != maxChatTitle {
+		t.Fatalf("largo=%d", len([]rune(got)))
 	}
 }
 

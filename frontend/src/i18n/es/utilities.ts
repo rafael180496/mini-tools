@@ -15,7 +15,8 @@ export default {
             newSplitTitle: 'Abre una pestaña de Chat de IA nueva ya dividida en dos paneles, para tener dos chats lado a lado.',
             open: 'Ir al Chat de IA',
             openTitle: 'Lleva a la pestaña de Chat de IA que ya está abierta, o abre una si no hay ninguna. Doble clic: abre otra pestaña de chat.',
-            tabTitle: (p: {title: string}) => `Ir a la pestaña «${p.title}»`,
+            tabTitle: (p: {title: string}) => `Ir a la pestaña «${p.title}». Doble clic o F2 para renombrar su conversación; clic derecho para más opciones.`,
+            renameField: 'Nombre de la conversación de la pestaña',
         },
         unavailable: 'No disponible',
         recheck: 'Hacé clic para volver a comprobar.',
@@ -78,15 +79,58 @@ export default {
         clearSearch: 'Borra la búsqueda y vuelve a mostrar todas las conversaciones',
         searching: 'Buscando…',
         groups: {today: 'Hoy', yesterday: 'Ayer', last7: 'Últimos 7 días', older: 'Anteriores'},
-        providersLabel: 'Filtrar por proveedor',
-        allProviders: 'Todos',
-        allProvidersTitle: 'Muestra las conversaciones de todos los proveedores',
-        providerChipTitle: (p: {agent: string; n: number}) =>
-            `Muestra solo las conversaciones con ${p.agent} (${p.n}). Hacé clic de nuevo para volver a ver todas.`,
+        // Barra de filtros del historial (HistoryFilterBar).
+        filters: {
+            button: 'Filtros',
+            buttonTitle: 'Abre el panel de filtros del historial: proveedor, proyecto u origen, fecha, estado y orden.',
+            buttonTitleActive: (p: {n: number}) =>
+                `${p.n === 1 ? 'Hay 1 filtro activo' : `Hay ${p.n} filtros activos`}. Abre el panel para cambiarlos o quitarlos.`,
+            activeCount: (p: {n: number}) => (p.n === 1 ? '1 filtro activo' : `${p.n} filtros activos`),
+            panel: 'Filtros del historial',
+            activeLabel: 'Filtros activos',
+            removeChip: (p: {label: string}) => `Quitar el filtro ${p.label}`,
+            removeChipTitle: (p: {label: string}) => `Quita el filtro «${p.label}» y vuelve a mostrar lo que dejaba afuera.`,
+            clear: 'Limpiar',
+            clearTitle: 'Quita todos los filtros y el orden por nombre: vuelve a mostrar todas las conversaciones, de la más reciente a la más vieja.',
+            clearNothingTitle: 'No hay ningún filtro puesto.',
+            done: 'Listo',
+            doneTitle: 'Cierra el panel (Esc). Los filtros ya se aplicaron y quedan recordados para esta pestaña.',
+            providerSection: 'Proveedor',
+            providerTitle: (p: {agent: string; n: number}) => `Muestra las conversaciones con ${p.agent} (${p.n}). Podés marcar varios proveedores a la vez.`,
+            originSection: 'Proyecto u origen',
+            noneMeansAll: 'sin marcar: todos',
+            originTitle: (p: {name: string; n: number}) =>
+                `Muestra las conversaciones de «${p.name}» (${p.n}): un repositorio, una carpeta, una conexión, un servidor o una nota. Podés marcar varios.`,
+            noModule: 'Sin módulo',
+            noProject: 'Sin proyecto',
+            removedProject: 'Proyecto quitado',
+            dateSection: 'Fecha',
+            date: {all: 'Todo', today: 'Hoy', d7: '7 días', d30: '30 días'},
+            dateTitle: {
+                all: 'Sin límite de fecha.',
+                today: 'Solo las conversaciones con actividad hoy.',
+                d7: 'Las que tuvieron actividad en los últimos 7 días.',
+                d30: 'Las que tuvieron actividad en los últimos 30 días.',
+            },
+            stateSection: 'Estado',
+            state: {any: 'Cualquiera', working: 'Trabajando', unread: 'Sin leer', background: 'En segundo plano'},
+            stateTitle: {
+                any: 'No filtra por estado.',
+                working: 'Solo las conversaciones que están respondiendo ahora o esperando un permiso.',
+                unread: 'Solo las que terminaron de responder sin que las hayas visto.',
+                background: 'Solo las que siguen abiertas en segundo plano después de cerrar su pestaña.',
+            },
+            orderSection: 'Orden',
+            order: {recent: 'Recientes', name: 'Nombre'},
+            orderTitle: {
+                recent: 'De la más reciente a la más vieja, agrupadas por fecha (Hoy, Ayer, Últimos 7 días, Anteriores).',
+                name: 'Alfabético por nombre, en una sola lista sin agrupar por fecha.',
+            },
+            noMatch: 'Ninguna conversación coincide con los filtros.',
+        },
         count: (p: {n: number}) => (p.n === 1 ? '1 conversación' : `${p.n} conversaciones`),
         empty: 'Todavía no hay conversaciones. La primera aparece acá en cuanto mandes un mensaje.',
         noMatch: (p: {query: string}) => `Ninguna conversación coincide con «${p.query}».`,
-        noMatchFilter: 'Este proveedor no tiene conversaciones que coincidan.',
         searchFailed: 'No se pudo buscar. Probá de nuevo.',
         untitled: 'Sin título',
         openTitle: (p: {agent: string; where: string}) =>
@@ -114,13 +158,13 @@ export default {
         },
         notInstalledTitle: (p: {agent: string}) =>
             `Esta conversación es de ${p.agent}, que ya no está disponible en esta máquina. Se puede renombrar o borrar, pero no retomar.`,
-        renameTitle: 'Cambiar el nombre de esta conversación. El título sale de tu primer mensaje, que casi nunca es cómo la vas a buscar.',
+        renameTitle: 'Cambiar el nombre de esta conversación. El título sale de tu primer mensaje, que casi nunca es cómo la vas a buscar. Renombrar no la sube en el historial.',
         deleteTitle:
             'Quita la conversación del historial de mini-tools. No toca lo que el proveedor tenga guardado por su cuenta.',
         rename: {
             title: 'Renombrar la conversación',
             label: 'Nombre',
-            description: 'Es solo el nombre con el que la vas a encontrar acá.',
+            description: 'Es solo el nombre con el que la vas a encontrar en el historial, las pestañas y la barra lateral. Máximo 120 caracteres.',
         },
         remove: {
             title: 'Borrar la conversación',
@@ -129,6 +173,10 @@ export default {
             confirm: 'Borrar',
         },
         header: {
+            titleLabel: 'Nombre de la conversación',
+            titleButtonTitle: (p: {title: string}) =>
+                `«${p.title}». Clic o F2 para cambiarle el nombre: es el nombre con el que la vas a encontrar en el historial, en las pestañas y en la barra lateral.`,
+            titleEditTitle: 'Escribí el nombre nuevo. Enter guarda, Esc cancela; si lo dejás vacío no cambia nada (máximo 120 caracteres).',
             providerLabel: 'Proveedor',
             providerTitle:
                 'Con quién hablás: un CLI instalado (Claude Code, Codex, Antigravity) o un proveedor de modelos (servidor propio o API en la nube). Entre proveedores de modelos podés cambiar a mitad de conversación: sigue la misma, y el nuevo recibe lo hablado como contexto. Cambiar hacia o desde un CLI abre una conversación nueva, porque el hilo de un CLI es del propio CLI.',

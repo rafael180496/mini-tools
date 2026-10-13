@@ -1,9 +1,10 @@
-// Sesiones de IA en segundo plano: el módulo «IA» de la barra lateral, los
-// avisos y las pestañas de Chat de IA múltiples. Ver lib/agentSessions.ts.
+// Sesiones de IA en segundo plano: los grupos «Activas» y «Recientes» de Chat de
+// IA (en Utilidades, barra lateral), los avisos y las pestañas de Chat de IA
+// múltiples. Ver lib/agentSessions.ts.
 export default {
+    // Insignia de actividad: va sobre el ícono de Utilidades y sobre la fila
+    // «Chat de IA».
     module: {
-        label: 'IA',
-        hint: 'conversaciones con la IA que siguen abiertas en segundo plano: retomalas, detenelas, dejalas terminar o cerralas',
         badgeTitle: (p: {running: number; approval: number}) =>
             [
                 p.approval > 0 ? (p.approval === 1 ? '1 conversación necesita tu aprobación' : `${p.approval} conversaciones necesitan tu aprobación`) : '',
@@ -13,19 +14,13 @@ export default {
                 .join(' · '),
     },
     sidebar: {
-        title: 'IA',
         active: 'Activas',
         activeHint:
             'Conversaciones que están trabajando, esperan tu permiso, fallaron, terminaron sin que las vieras o quedaron abiertas en segundo plano al cerrar su pestaña. Solo «Cerrar chat» las saca de acá.',
         recent: 'Recientes',
         recentHint: 'Las últimas conversaciones, de cualquier módulo y proveedor.',
-        newChat: 'Nueva conversación (pestaña nueva)',
-        newChatTitle: (p: {shortcut: string}) =>
-            `Abre una pestaña de Chat de IA vacía, con su propio proyecto, proveedor y conversación (${p.shortcut}). Las que ya corren siguen donde están.`,
-        newChatMore: 'Más opciones de conversación nueva',
-        newChatMoreTitle: 'Elegí cómo abrirla: en una pestaña nueva o ya dividida en dos paneles.',
-        emptyActive: 'Ninguna conversación en marcha.',
-        emptyActiveHint: 'Cuando una conversación trabaje en segundo plano, termine sin que la mires o cierres su pestaña sin cerrar el chat, aparece acá.',
+        emptyActive: 'Nada en marcha.',
+        emptyActiveHint: 'Acá aparecen las que trabajan, esperan o quedaron en segundo plano.',
         emptyRecent: 'Todavía no hay conversaciones.',
         noMatches: (p: {query: string}) => `Nada coincide con «${p.query}».`,
         untitled: 'Sin título',
@@ -55,6 +50,8 @@ export default {
         markReadTitle: 'Ya viste cómo terminó. Si su pestaña se cerró, el chat sigue abierto en esta lista hasta que lo cierres.',
         more: 'Más acciones del chat',
         moreTitle: 'Abrir, detener, dejar terminar, marcar leído o cerrar el chat. También con clic derecho sobre la fila.',
+        rename: 'Renombrar…',
+        renameTitle: 'Cambia el nombre de esta conversación. Se actualiza en las pestañas, en el historial y en esta lista.',
         closeChat: 'Cerrar chat',
         closeChatTitle:
             'Cierra el chat: corta lo que esté corriendo, lo saca de «Activas» y suelta su memoria. La conversación queda en «Recientes» y se puede abrir de nuevo. No es lo mismo que «Detener», que corta el turno pero deja el chat abierto.',
@@ -84,11 +81,11 @@ export default {
         openTitle: 'Lleva a la conversación en una pestaña de Chat de IA.',
         close: 'Cerrar aviso',
         backgroundTitle: 'Sigue trabajando en segundo plano',
-        background: (p: {title: string}) => `«${p.title}» sigue trabajando en segundo plano — la encontrás en IA → Activas.`,
+        background: (p: {title: string}) => `«${p.title}» sigue trabajando en segundo plano — la encontrás en Utilidades → Chat de IA → Activas.`,
         see: 'Ver',
-        seeTitle: 'Muestra el módulo «IA» de la barra lateral, donde está la lista «Activas» con este chat.',
+        seeTitle: 'Abre Utilidades → Chat de IA → Activas en la barra lateral y te lleva a este chat.',
         stop: 'Detener',
-        stopTitle: 'Corta el turno en curso. El chat queda abierto en IA → Activas; para cerrarlo del todo usá «Cerrar chat» allí.',
+        stopTitle: 'Corta el turno en curso. El chat queda abierto en Chat de IA → Activas; para cerrarlo del todo usá «Cerrar chat» allí.',
     },
     tabs: {
         newWindow: 'Nueva pestaña de chat',
@@ -111,17 +108,25 @@ export default {
         split: 'Dividir',
         splitTitle: 'Muestra DOS chats lado a lado en esta pestaña, cada uno con su proyecto, proveedor y sesión.',
         unsplit: 'Cerrar panel',
-        unsplitTitle: 'Cierra el segundo panel. Sus turnos en curso no se detienen: siguen en «IA» de la barra lateral.',
+        unsplitTitle: 'Cierra el segundo panel. Sus turnos en curso no se detienen: siguen en Utilidades → Chat de IA → Activas.',
         paneLabel: (p: {n: number}) => `Panel ${p.n}`,
         stateRunning: 'Una conversación de esta pestaña está trabajando',
         stateApproval: 'Una conversación de esta pestaña espera tu aprobación',
         stateUnread: 'Una conversación de esta pestaña terminó sin que la leyeras',
         closeTabTitle:
-            'Cierra la pestaña, no el chat: si una conversación está trabajando, sigue en segundo plano y la encontrás en IA → Activas. Para terminarla del todo: clic derecho → «Cerrar y detener el chat».',
+            'Cierra la pestaña, no el chat: si una conversación está trabajando, sigue en segundo plano y la encontrás en Utilidades → Chat de IA → Activas. Para terminarla del todo: clic derecho → «Cerrar y detener el chat».',
+        draftTitle: 'Nuevo chat',
+        rename: 'Renombrar…',
+        renameHint: 'F2',
+        renameTitle:
+            'Cambia el nombre de la conversación que muestra esta pestaña (también con doble clic o F2). El rótulo de la pestaña es el nombre de su conversación; sin nombre ni proyecto dice «Nuevo chat».',
+        renameField: 'Nombre de la conversación',
+        renameEditTitle: 'Escribí el nombre nuevo. Enter guarda, Esc cancela; si lo dejás vacío no cambia nada (máximo 120 caracteres).',
+        tabHint: (p: {title: string}) => `${p.title} — doble clic o F2 para renombrar la conversación`,
         closeTabKeep: 'Cerrar pestaña (el chat sigue en segundo plano)',
-        closeTabKeepTitle: 'Cierra la pestaña sin cortar nada: las conversaciones que trabajan siguen y quedan en IA → Activas.',
+        closeTabKeepTitle: 'Cierra la pestaña sin cortar nada: las conversaciones que trabajan siguen y quedan en Chat de IA → Activas.',
         closeForReal: 'Cerrar y detener el chat',
-        closeForRealTitle: 'Cierra la pestaña Y las conversaciones que muestra: corta lo que corra, las saca de IA → Activas y suelta su memoria. El historial guardado queda.',
+        closeForRealTitle: 'Cierra la pestaña Y las conversaciones que muestra: corta lo que corra, las saca de Chat de IA → Activas y suelta su memoria. El historial guardado queda.',
         closeForRealConfirm: {
             title: '¿Cerrar y detener el chat?',
             description: (p: {n: number; title: string}) =>

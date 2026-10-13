@@ -199,7 +199,7 @@ function pushToast(kind: SessionToast['kind'], s: AgentSessionInfo) {
 }
 
 // Aviso de que cerrar la pestaña NO detuvo el chat: sigue trabajando y se lo
-// encuentra en IA → Activas. No lleva la vista previa del texto: lo que dice es
+// encuentra en Utilidades → Chat de IA → Activas. No lleva la vista previa del texto: lo que dice es
 // dónde quedó, no qué escribió.
 export function announceBackground(sessionId: string, title: string) {
     const toast: SessionToast = {id: ++toastSeq, kind: 'background', sessionId, title, text: ''}

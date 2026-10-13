@@ -1,12 +1,12 @@
 import type {Messages} from '../types'
 import type es from '../es/aiSessions'
 
-// Background AI sessions: the «AI» sidebar module, the notices and the multiple
-// AI Chat tabs. See lib/agentSessions.ts.
+// Background AI sessions: the «Active» and «Recent» groups of AI Chat (in
+// Utilities, sidebar), the notices and the multiple AI Chat tabs. See
+// lib/agentSessions.ts.
 const en: Messages<typeof es> = {
+    // Activity badge: sits on the Utilities icon and on the «AI Chat» row.
     module: {
-        label: 'AI',
-        hint: 'AI conversations that stay open in the background: reattach, stop them, let them finish or close them',
         badgeTitle: (p) =>
             [
                 p.approval > 0 ? (p.approval === 1 ? '1 conversation needs your approval' : `${p.approval} conversations need your approval`) : '',
@@ -16,19 +16,13 @@ const en: Messages<typeof es> = {
                 .join(' · '),
     },
     sidebar: {
-        title: 'AI',
         active: 'Active',
         activeHint:
             'Conversations that are working, waiting for your permission, failed, finished without you seeing them, or were left open in the background when their tab was closed. Only «Close chat» removes them from here.',
         recent: 'Recent',
         recentHint: 'The latest conversations, from any module and provider.',
-        newChat: 'New conversation (new tab)',
-        newChatMore: 'More new conversation options',
-        newChatMoreTitle: 'Pick how to open it: in a new tab or already split into two panes.',
-        newChatTitle: (p) =>
-            `Opens an empty AI Chat tab, with its own project, provider and conversation (${p.shortcut}). The ones already running stay where they are.`,
-        emptyActive: 'No conversation running.',
-        emptyActiveHint: 'When a conversation works in the background, finishes while you are not looking, or you close its tab without closing the chat, it shows up here.',
+        emptyActive: 'Nothing running.',
+        emptyActiveHint: 'Working, waiting or background chats show up here.',
         emptyRecent: 'No conversations yet.',
         noMatches: (p) => `Nothing matches «${p.query}».`,
         untitled: 'Untitled',
@@ -59,6 +53,8 @@ const en: Messages<typeof es> = {
         markReadTitle: 'You have seen how it ended. If its tab was closed, the chat stays open in this list until you close it.',
         more: 'More chat actions',
         moreTitle: 'Open, stop, let it finish, mark as read or close the chat. Also available with a right-click on the row.',
+        rename: 'Rename…',
+        renameTitle: 'Changes the name of this conversation. It updates in the tabs, the history and this list.',
         closeChat: 'Close chat',
         closeChatTitle:
             'Closes the chat: stops whatever is running, removes it from «Active» and frees its memory. The conversation stays in «Recent» and can be opened again. Not the same as «Stop», which cuts the turn but keeps the chat open.',
@@ -88,11 +84,11 @@ const en: Messages<typeof es> = {
         openTitle: 'Goes to the conversation in an AI Chat tab.',
         close: 'Dismiss notice',
         backgroundTitle: 'Still working in the background',
-        background: (p) => `«${p.title}» is still working in the background — find it under AI → Active.`,
+        background: (p) => `«${p.title}» is still working in the background — find it under Utilities → AI Chat → Active.`,
         see: 'View',
-        seeTitle: 'Shows the «AI» module in the sidebar, where the «Active» list holds this chat.',
+        seeTitle: 'Opens Utilities → AI Chat → Active in the sidebar and takes you to this chat.',
         stop: 'Stop',
-        stopTitle: 'Cuts the turn in progress. The chat stays open under AI → Active; to close it for good use «Close chat» there.',
+        stopTitle: 'Cuts the turn in progress. The chat stays open under AI Chat → Active; to close it for good use «Close chat» there.',
     },
     tabs: {
         newWindow: 'New chat tab',
@@ -114,17 +110,25 @@ const en: Messages<typeof es> = {
         split: 'Split',
         splitTitle: 'Shows TWO chats side by side in this tab, each with its own project, provider and session.',
         unsplit: 'Close pane',
-        unsplitTitle: 'Closes the second pane. Its turns in progress do not stop: they keep going under «AI» in the sidebar.',
+        unsplitTitle: 'Closes the second pane. Its turns in progress do not stop: they keep going under Utilities → AI Chat → Active.',
         paneLabel: (p) => `Pane ${p.n}`,
         stateRunning: 'A conversation in this tab is working',
         stateApproval: 'A conversation in this tab is waiting for your approval',
         stateUnread: 'A conversation in this tab finished and you have not read it',
         closeTabTitle:
-            'Closes the tab, not the chat: if a conversation is working it keeps going in the background and you will find it under AI → Active. To end it for good: right-click → «Close and stop the chat».',
+            'Closes the tab, not the chat: if a conversation is working it keeps going in the background and you will find it under Utilities → AI Chat → Active. To end it for good: right-click → «Close and stop the chat».',
+        draftTitle: 'New chat',
+        rename: 'Rename…',
+        renameHint: 'F2',
+        renameTitle:
+            'Changes the name of the conversation this tab shows (also with a double-click or F2). The tab label is its conversation name; with no name and no project it says «New chat».',
+        renameField: 'Conversation name',
+        renameEditTitle: 'Type the new name. Enter saves, Esc cancels; leaving it empty changes nothing (up to 120 characters).',
+        tabHint: (p) => `${p.title} — double-click or press F2 to rename the conversation`,
         closeTabKeep: 'Close tab (the chat keeps running in the background)',
-        closeTabKeepTitle: 'Closes the tab without cutting anything: conversations that are working keep going and stay under AI → Active.',
+        closeTabKeepTitle: 'Closes the tab without cutting anything: conversations that are working keep going and stay under AI Chat → Active.',
         closeForReal: 'Close and stop the chat',
-        closeForRealTitle: 'Closes the tab AND the conversations it shows: stops whatever is running, removes them from AI → Active and frees their memory. The saved history stays.',
+        closeForRealTitle: 'Closes the tab AND the conversations it shows: stops whatever is running, removes them from AI Chat → Active and frees their memory. The saved history stays.',
         closeForRealConfirm: {
             title: 'Close and stop the chat?',
             description: (p) =>

@@ -14,7 +14,6 @@ import {
     ListConnections,
     ListModelServers,
     PickAgentWorkspaceFolder,
-    RenameAgentChat,
     ResumeAgentChat,
     SetAgentChatContext,
     TouchAgentChat,
@@ -34,7 +33,10 @@ import {isModelServerAgent} from '../../lib/modelServers'
 import {useModelServerHealth, useModelServersHealth} from '../../lib/modelServerHealth'
 import {CONTEXT_ICONS, describeContext, repoIdOf, type WorkContext, type WorkContextKind} from '../agent/workContext'
 import {errorText, useT} from '../../i18n'
-import {onModelServersChanged, requestOpenAiChat} from '../../lib/appBus'
+import {onAgentChatsChanged, onModelServersChanged, onRenameAiChatTabRequest, requestOpenAiChat} from '../../lib/appBus'
+import {chatTitleFromMessage, cleanChatTitle, MAX_CHAT_TITLE} from '../../lib/chatTitle'
+import {renameChat} from '../../lib/chatRename'
+import InlineRename from '../InlineRename'
 import {aiChatShortcuts, clearPane, paneOwningChat, setPaneChats} from '../../lib/aiChatTabs'
 import {useTreeMenu} from '../sidebar/TreeMenu'
 import {useElementWidth} from '../../hooks/useElementWidth'
@@ -224,6 +226,13 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
     const [openSettled, setOpenSettled] = useState(0)
     const sessionsRef = useRef(sessions)
     sessionsRef.current = sessions
+    // Nombres puestos a una conversación que todavía no tiene fila en el historial
+    // (un borrador): se guardan acá y se aplican cuando el primer mensaje la crea.
+    const [pendingTitles, setPendingTitles] = useState<Record<string, string>>({})
+    const pendingTitlesRef = useRef(pendingTitles)
+    pendingTitlesRef.current = pendingTitles
+    // La cabecera está editando el nombre de la conversación a la vista.
+    const [editingTitle, setEditingTitle] = useState(false)
 
     const available = useMemo(() => agentList.filter((a) => a.available), [agentList])
     const current = useMemo(() => sessions.find((s) => s.id === currentId) ?? null, [sessions, currentId])
@@ -376,11 +385,14 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
         [repos, workspaces, resourceNames],
     )
 
-    // Rótulo de la pestaña: el título de la conversación a la vista o, si es un
-    // borrador, el proyecto elegido. Sin ninguno de los dos, el nombre de siempre.
+    // Rótulo de la pestaña: el nombre de la conversación a la vista o, si todavía
+    // no lo tiene (un borrador), el proyecto elegido y, sin ninguno de los dos,
+    // «Nuevo chat». Una pestaña no tiene nombre propio: renombrarla es renombrar
+    // su conversación (renameSession).
     const onTitleChangeRef = useRef(onTitleChange)
     onTitleChangeRef.current = onTitleChange
-    const tabTitle = (current?.chatId ? history.find((c) => c.id === current.chatId)?.title : '') || current?.context.label || ''
+    const convTitle = current ? pendingTitles[current.id] || (current.chatId ? history.find((c) => c.id === current.chatId)?.title : '') || '' : ''
+    const tabTitle = convTitle || current?.context.label || t.aiSessions.tabs.draftTitle
     useEffect(() => {
         onTitleChangeRef.current?.(tabTitle)
     }, [tabTitle])
@@ -683,13 +695,21 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
         (sessionId: string, text: string) => {
             const s = sessionsRef.current.find((x) => x.id === sessionId)
             if (!s || s.chatId || creationsRef.current.has(s.id)) return
-            const title = text.trim().split('\n')[0].slice(0, 80)
+            // El nombre que el usuario ya le puso al borrador, o el que sale de su
+            // primer mensaje (sin referencias @ ni bloques de código).
+            const named = pendingTitlesRef.current[s.id]
+            const title = named || chatTitleFromMessage(text)
             creationsRef.current.set(
                 s.id,
                 CreateAgentChat(s.id, repoIdOf(s.context), s.agentId, title, s.context.kind, s.context.id)
+                    // El backend también crea la fila al recibir el mensaje y puede
+                    // llegar primero: CreateAgentChat no pisa un título ya guardado,
+                    // así que el nombre elegido se reafirma con un renombrado.
+                    .then(() => (named ? renameChat(s.id, named) : undefined))
                     .catch(() => {})
                     .then(loadHistory),
             )
+            if (named) setPendingTitles(({[s.id]: _applied, ...rest}) => rest)
             setSessions((prev) => prev.map((x) => (x.id === s.id ? {...x, chatId: s.id} : x)))
         },
         [loadHistory],
@@ -706,6 +726,61 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
         },
         [loadHistory],
     )
+
+    // Renombra la conversación `sessionId`. Si ya tiene fila (o su alta está en
+    // camino) se guarda en el vault, que también actualiza el título de la sesión
+    // viva; si es un borrador, el nombre espera al primer mensaje.
+    const renameSession = useCallback(
+        async (sessionId: string, raw: string) => {
+            const title = cleanChatTitle(raw)
+            const s = sessionsRef.current.find((x) => x.id === sessionId)
+            if (!title || !s) return
+            if (!s.chatId && !creationsRef.current.has(s.id)) {
+                setPendingTitles((prev) => ({...prev, [s.id]: title}))
+                return
+            }
+            // Optimista: la pestaña y el historial muestran el nombre ya; si el
+            // guardado falla, la relectura lo devuelve a como estaba.
+            setHistory((prev) => prev.map((c) => (c.id === s.id ? vault.AgentChat.createFrom({...c, title}) : c)))
+            await (creationsRef.current.get(s.id) ?? Promise.resolve())
+            await renameChat(s.id, title)
+            loadHistory()
+        },
+        [loadHistory],
+    )
+    const renameSessionRef = useRef(renameSession)
+    renameSessionRef.current = renameSession
+    const currentIdRef = useRef(currentId)
+    currentIdRef.current = currentId
+
+    // Un renombrado hecho desde afuera (barra lateral, «Activas») o el pedido de
+    // una pestaña de la barra: lo primero relee el historial; lo segundo renombra
+    // la conversación que ESTA pestaña tiene a la vista (sólo el panel principal).
+    useEffect(() => onAgentChatsChanged(loadHistory), [loadHistory])
+    useEffect(
+        () =>
+            secondary
+                ? undefined
+                : onRenameAiChatTabRequest((req) => {
+                      if (req.tabId === paneId && currentIdRef.current) void renameSessionRef.current(currentIdRef.current, req.title)
+                  }),
+        [paneId, secondary],
+    )
+
+    // F2 en cualquier parte de esta pestaña renombra la conversación a la vista
+    // (salvo mientras se escribe en un campo: ahí F2 no es de nadie).
+    useEffect(() => {
+        if (!visible || !shortcutsEnabled) return
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'F2' || e.metaKey || e.ctrlKey || e.altKey) return
+            const target = e.target as HTMLElement | null
+            if (!target || !rootRef.current?.contains(target) || target.closest('[data-inline-rename]')) return
+            e.preventDefault()
+            setEditingTitle(true)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [visible, shortcutsEnabled])
 
     const onBusyChange = useCallback(
         (sessionId: string, busy: boolean) => {
@@ -745,7 +820,7 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
     )
 
     // «Cerrar chat»: la conversación se da por terminada. Corta lo que corra, la
-    // saca de IA → Activas y la quita de esta pestaña; la entrada del historial
+    // saca de Chat de IA → Activas y la quita de esta pestaña; la entrada del historial
     // queda y se puede abrir de nuevo. NO es borrarla (eso es `removeChat`) ni
     // detener el turno (el botón Detener, que la deja abierta).
     const closeChat = useCallback(
@@ -894,6 +969,7 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
     // El historial, igual en la columna y en el cajón.
     const historyPane = (
         <AiChatHistory
+            paneId={paneId}
             chats={history}
             agents={agentList}
             lostLabels={lostLabels}
@@ -979,6 +1055,37 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
                     >
                         <Icon name="view_sidebar" size={16} filled={historyShownNow} />
                     </button>
+
+                    {/* El nombre de la conversación, con su lápiz: es el mismo que lleva
+                        la pestaña. Clic, F2 o el lápiz lo editan en el lugar. */}
+                    {current &&
+                        (editingTitle ? (
+                            <InlineRename
+                                value={convTitle}
+                                ariaLabel={t.aiSessions.tabs.renameField}
+                                title={t.aiSessions.tabs.renameEditTitle}
+                                onCommit={(title) => {
+                                    setEditingTitle(false)
+                                    void renameSession(current.id, title)
+                                }}
+                                onCancel={() => setEditingTitle(false)}
+                                className={`py-1 text-xs font-medium ${compact ? 'flex-1 basis-32' : 'w-56'}`}
+                            />
+                        ) : (
+                            <button
+                                type="button"
+                                data-chat-title
+                                onClick={() => setEditingTitle(true)}
+                                title={ta.header.titleButtonTitle({title: tabTitle})}
+                                aria-label={`${ta.header.titleLabel}: ${tabTitle}`}
+                                className={`group/title flex min-w-0 items-center gap-1.5 rounded-lg border border-transparent px-2 py-1 text-xs font-medium text-on-surface hover:border-outline-variant hover:bg-surface-variant focus-visible:outline-2 focus-visible:outline-primary ${
+                                    compact ? 'flex-1 basis-32' : 'max-w-60'
+                                }`}
+                            >
+                                <span className="min-w-0 truncate">{tabTitle}</span>
+                                <Icon name="edit" size={12} className="shrink-0 text-on-surface-variant opacity-60 group-hover/title:opacity-100" />
+                            </button>
+                        ))}
 
                     {current && available.length > 0 && (
                         <>
@@ -1270,12 +1377,11 @@ export default function AiChatTab({visible, paneId, openRequest, onTitleChange, 
                     initial={renaming.title}
                     confirmLabel={t.common.save}
                     description={ta.rename.description}
+                    maxLength={MAX_CHAT_TITLE}
                     onSubmit={(value) => {
                         const id = renaming.id
                         setRenaming(null)
-                        void RenameAgentChat(id, value.trim())
-                            .then(loadHistory)
-                            .catch(() => {})
+                        void renameChat(id, value).then(loadHistory)
                     }}
                     onClose={() => setRenaming(null)}
                 />

@@ -21,7 +21,7 @@ import (
 // Cerrar una pestaña NO es cerrar el chat. La interfaz avisa qué chats muestra
 // alguna pestaña (AttachAgentSession) y cuáles dejó de mostrar (DetachAgentSession,
 // al cerrarse su pestaña o su panel): un chat detached sigue abierto en segundo
-// plano —trabajando si estaba en un turno, y listado en IA → Activas después de
+// plano —trabajando si estaba en un turno, y listado en Utilidades → Chat de IA → Activas después de
 // terminar— hasta que alguien lo cierre de verdad con CloseAgentSession. Los
 // nombres de las acciones del usuario son dos: «Detener» corta el turno en curso
 // y deja el chat abierto (CancelAgentChat); «Cerrar chat» lo corta y lo da por
@@ -108,7 +108,7 @@ func (a *App) DetachAgentSession(sessionID string) error {
 }
 
 // CloseAgentSession cierra el chat de verdad: corta el turno si está
-// corriendo, lo saca del registro (deja de listarse en IA → Activas) y suelta
+// corriendo, lo saca del registro (deja de listarse en Chat de IA → Activas) y suelta
 // la memoria del modelo. La conversación guardada en el historial no se toca,
 // así que se puede volver a abrir y seguir. Es la única acción que termina un
 // chat abierto en segundo plano; cerrar su pestaña nunca lo hace.

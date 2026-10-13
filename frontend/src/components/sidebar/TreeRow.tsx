@@ -1,4 +1,4 @@
-import type {MouseEvent as ReactMouseEvent, ReactNode} from 'react'
+import type {KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode} from 'react'
 import Icon from '../Icon'
 import {useT} from '../../i18n'
 
@@ -44,6 +44,10 @@ export interface TreeRowProps {
     onClick?: (e: ReactMouseEvent) => void
     onDoubleClick?: (e: ReactMouseEvent) => void
     onContextMenu?: (e: ReactMouseEvent) => void
+    onKeyDown?: (e: ReactKeyboardEvent) => void
+    // Reemplaza el botón de la fila (ícono + nombre) por un campo de edición: el
+    // renombrado en el lugar. El resto de la fila —guías, sangría— no cambia.
+    editor?: ReactNode
     active?: boolean
     // A la derecha del nombre, siempre visible (contador, candado, badge).
     trailing?: ReactNode
@@ -73,6 +77,8 @@ export default function TreeRow({
     onClick,
     onDoubleClick,
     onContextMenu,
+    onKeyDown,
+    editor,
     active,
     trailing,
     actions,
@@ -123,26 +129,34 @@ export default function TreeRow({
                 ) : (
                     <span className="shrink-0" style={{width: CHEVRON}} />
                 )}
-                <button
-                    onClick={onClick}
-                    onDoubleClick={onDoubleClick}
-                    title={title}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:underline"
-                >
-                    {typeof icon === 'string' ? (
-                        <Icon
-                            name={icon}
-                            size={16}
-                            filled={iconFilled}
-                            className={`shrink-0 ${iconClass ?? (active ? 'text-primary' : 'text-on-surface-variant')}`}
-                        />
-                    ) : (
-                        <span className={`flex shrink-0 items-center ${iconClass ?? ''}`}>{icon}</span>
-                    )}
-                    <span className={`min-w-0 truncate text-ui-12 ${labelClass ?? (active ? 'text-on-surface' : 'text-on-surface/90')}`}>
-                        {label}
+                {editor ? (
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                        {typeof icon === 'string' ? <Icon name={icon} size={16} className="shrink-0 text-on-surface-variant" /> : icon}
+                        {editor}
                     </span>
-                </button>
+                ) : (
+                    <button
+                        onClick={onClick}
+                        onDoubleClick={onDoubleClick}
+                        onKeyDown={onKeyDown}
+                        title={title}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:underline"
+                    >
+                        {typeof icon === 'string' ? (
+                            <Icon
+                                name={icon}
+                                size={16}
+                                filled={iconFilled}
+                                className={`shrink-0 ${iconClass ?? (active ? 'text-primary' : 'text-on-surface-variant')}`}
+                            />
+                        ) : (
+                            <span className={`flex shrink-0 items-center ${iconClass ?? ''}`}>{icon}</span>
+                        )}
+                        <span className={`min-w-0 truncate text-ui-12 ${labelClass ?? (active ? 'text-on-surface' : 'text-on-surface/90')}`}>
+                            {label}
+                        </span>
+                    </button>
+                )}
                 {trailing && <span className={`flex shrink-0 items-center gap-1 ${actions ? 'group-hover:hidden group-has-[:focus-visible]:hidden' : ''}`}>{trailing}</span>}
                 {actions && <span className="hidden shrink-0 items-center gap-0.5 group-has-[:focus-visible]:flex group-hover:flex">{actions}</span>}
             </div>

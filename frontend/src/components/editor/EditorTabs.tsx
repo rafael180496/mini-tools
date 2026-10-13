@@ -9,6 +9,7 @@ import Icon from '../Icon'
 import Select from '../Select'
 import RecentFilesMenu from './RecentFilesMenu'
 import {useTreeMenu} from '../sidebar/TreeMenu'
+import InlineRename from '../InlineRename'
 import {aiChatShortcuts} from '../../lib/aiChatTabs'
 import {t as tr, useT} from '../../i18n'
 import type {UtilityId} from '../utilities/utilities'
@@ -185,6 +186,10 @@ interface EditorTabsProps {
     // «Cerrar y detener el chat» (clic derecho en una pestaña de Chat de IA):
     // cierra de verdad las conversaciones de la pestaña, no solo la pestaña.
     onCloseAiChatForReal: (id: string) => void
+    // Renombrar la conversación que muestra una pestaña de Chat de IA (doble
+    // clic, F2 o clic derecho → Renombrar…). La pestaña no tiene nombre propio:
+    // su rótulo es el de su conversación.
+    onRenameAiChatTab: (id: string, title: string) => void
     onNew: () => void
     // «+ Nueva ▾» → Chat de IA: una pestaña de chat nueva.
     onNewAiChat: () => void
@@ -216,6 +221,12 @@ interface SortableTabProps {
     // Clic derecho en una pestaña de Chat de IA: abre su menú (lo dibuja
     // EditorTabs, fuera de la pestaña, para que sus eventos no lleguen a dnd-kit).
     onAiChatMenu: (e: React.MouseEvent, tab: EditorTab) => void
+    // Edición del nombre en el lugar (solo Chat de IA). El estado vive en
+    // EditorTabs para que el menú contextual también pueda abrirla.
+    renaming: boolean
+    onStartRename: (id: string) => void
+    onCommitRename: (id: string, title: string) => void
+    onCancelRename: () => void
     onChangeTabConnection: (tabId: string, connId: string | null) => void
     onChangeTabLanguage: (tabId: string, language: TabLanguage) => void
     // Esta pestaña tiene algo ejecutándose AHORA. Desde que dos pestañas pueden
@@ -229,7 +240,7 @@ interface SortableTabProps {
 // en el sensor (ver EditorTabs) evita que un simple click (sin
 // desplazamiento) se interprete como intento de drag — así el botón de
 // cerrar y el click de selección siguen funcionando igual que antes.
-function SortableTab({tab, isActive, connections, onSelect, onClose, onAiChatMenu, onChangeTabConnection, onChangeTabLanguage, isRunning, agentStatus}: SortableTabProps) {
+function SortableTab({tab, isActive, connections, onSelect, onClose, onAiChatMenu, renaming, onStartRename, onCommitRename, onCancelRename, onChangeTabConnection, onChangeTabLanguage, isRunning, agentStatus}: SortableTabProps) {
     const t = useT()
     const {attributes, listeners, setNodeRef, transform, transition, isDragging} = useSortable({id: tab.id})
     const [menuOpen, setMenuOpen] = useState(false)
@@ -280,6 +291,19 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onAiChatMen
             // Clic derecho en un Chat de IA: cerrar la pestaña o cerrar el chat
             // de verdad. En las demás no hay nada que ofrecer.
             onContextMenu={isAiChatTab ? (e) => onAiChatMenu(e, tab) : undefined}
+            // Doble clic o F2 sobre una pestaña de Chat de IA: renombrar su
+            // conversación en el lugar.
+            onDoubleClick={isAiChatTab ? () => onStartRename(tab.id) : undefined}
+            onKeyDown={
+                isAiChatTab
+                    ? (e) => {
+                          if (e.key === 'F2' && e.target === e.currentTarget) {
+                              e.preventDefault()
+                              onStartRename(tab.id)
+                          }
+                      }
+                    : undefined
+            }
             // Clic central = cerrar, como en VS Code. Acá no se puede usar
             // `closeOnMiddleClick` con spread: el `onPointerDown` de dnd-kit
             // viene en `listeners` y sobrescribirlo mataría el arrastre para
@@ -303,7 +327,7 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onAiChatMen
             className={`flex max-w-52 cursor-pointer items-center gap-1.5 rounded-t-xs px-3 py-1 font-mono text-ui-11 ${
                 isActive ? 'bg-surface text-on-surface' : 'text-on-surface-variant hover:text-on-surface'
             }`}
-            title={t.editor.tabs.tabTitle({path: tab.path})}
+            title={isAiChatTab ? t.aiSessions.tabs.tabHint({title: tab.title}) : t.editor.tabs.tabTitle({path: tab.path})}
         >
             {/* El tipo, delante del nombre. Para una pestaña vinculada a
                 una conexión el logo real del motor va antes del rótulo: el
@@ -359,10 +383,21 @@ function SortableTab({tab, isActive, connections, onSelect, onClose, onAiChatMen
                     }
                 />
             )}
-            <span className="min-w-0 shrink truncate">
-                {tab.title}
-                {tab.dirty ? ' •' : ''}
-            </span>
+            {isAiChatTab && renaming ? (
+                <InlineRename
+                    value={tab.title}
+                    ariaLabel={t.aiSessions.tabs.renameField}
+                    title={t.aiSessions.tabs.renameEditTitle}
+                    onCommit={(title) => onCommitRename(tab.id, title)}
+                    onCancel={onCancelRename}
+                    className="w-40 text-ui-11"
+                />
+            ) : (
+                <span className="min-w-0 shrink truncate">
+                    {tab.title}
+                    {tab.dirty ? ' •' : ''}
+                </span>
+            )}
             <button
                 onClick={(e) => {
                     e.stopPropagation()
@@ -475,6 +510,7 @@ export default function EditorTabs({
     onSelect,
     onClose,
     onCloseAiChatForReal,
+    onRenameAiChatTab,
     onNew,
     onNewAiChat,
     onReorder,
@@ -489,6 +525,8 @@ export default function EditorTabs({
     const sensors = useSensors(useSensor(PointerSensor, {activationConstraint: {distance: 5}}))
     const newMenu = useTreeMenu(288)
     const tabMenu = useTreeMenu(372)
+    // Pestaña de Chat de IA cuyo nombre se está editando.
+    const [renamingId, setRenamingId] = useState<string | null>(null)
 
     function handleDragEnd(event: DragEndEvent) {
         const {active, over} = event
@@ -504,6 +542,8 @@ export default function EditorTabs({
     function openAiChatMenu(e: React.MouseEvent, tab: EditorTab) {
         const ts = t.aiSessions.tabs
         tabMenu.openAt(e, [
+            {label: ts.rename, icon: 'edit', hint: ts.renameHint, title: ts.renameTitle, onSelect: () => setRenamingId(tab.id)},
+            'separator',
             {label: ts.closeTabKeep, icon: 'tab_close', title: ts.closeTabKeepTitle, onSelect: () => onClose(tab.id)},
             {label: ts.closeForReal, icon: 'cancel_presentation', title: ts.closeForRealTitle, danger: true, onSelect: () => onCloseAiChatForReal(tab.id)},
         ])
@@ -528,6 +568,13 @@ export default function EditorTabs({
                                 onSelect={onSelect}
                                 onClose={onClose}
                                 onAiChatMenu={openAiChatMenu}
+                                renaming={renamingId === t.id}
+                                onStartRename={setRenamingId}
+                                onCommitRename={(id, title) => {
+                                    setRenamingId(null)
+                                    onRenameAiChatTab(id, title)
+                                }}
+                                onCancelRename={() => setRenamingId(null)}
                                 onChangeTabConnection={onChangeTabConnection}
                                 onChangeTabLanguage={onChangeTabLanguage}
                                 isRunning={runningIds.has(t.id)}

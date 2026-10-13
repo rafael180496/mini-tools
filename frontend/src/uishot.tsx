@@ -852,7 +852,7 @@ const fixtures: Record<string, unknown> = {
         {path: '/consultas/facturacion-pendiente.sql', connId: 'c1', language: 'sql', kind: 'editor'},
         {path: '/consultas/contactos-duplicados.sql', connId: 'c5', language: 'sql', kind: 'editor'},
         {path: '', connId: 'c3', language: 'redis-cli', kind: 'redis-browser'},
-    ], sidebarModule: new URLSearchParams(location.search).get('module') || (gitSidebarShot ? 'git' : (new URLSearchParams(location.search).get('view') ?? '').startsWith('aisessutil') ? 'utilities' : (new URLSearchParams(location.search).get('view') ?? '').startsWith('aisess') ? 'ai' : 'connections'), gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
+    ], sidebarModule: new URLSearchParams(location.search).get('module') || (gitSidebarShot ? 'git' : (new URLSearchParams(location.search).get('view') ?? '') === 'aisessreveal' ? 'connections' : (new URLSearchParams(location.search).get('view') ?? '').startsWith('aisess') ? 'utilities' : 'connections'), gitSideWidth: 260, gitDiffWidth: 420, gitTermDock: 'bottom', gitTermSize: 520, // La vista `panelagents` prueba el botón "Agentes" de la barra de arriba,
     // que solo existe con el panel CERRADO — de ahí que la fixture dependa de
     // la vista.
     gitPanelTab: new URLSearchParams(location.search).get('view') === 'panelagents' || gitWorkShot ? '' : 'agents', gitSideHidden: new URLSearchParams(location.search).get('view') === 'gitworkcollapsed', gitDiffHidden: false, gitPanelSessions: [{id: 'chat-1', kind: 'chat', agentId: 'claude', title: 'Chat · Claude Code'}], gitDiffContext: 3, gitDiffIgnoreWs: false, gitDiffWrap: false},
@@ -2175,6 +2175,13 @@ const view = new URLSearchParams(location.search).get('view') ?? 'files'
 // que el reloj de «trabajando» muestre un tiempo creíble el día que se saque.
 const sessEs = uiLang === 'es'
 if (view.startsWith('aisess')) {
+    // «Recientes» arranca plegado en la app; las capturas lo muestran abierto
+    // (salvo la vista aisesscollapsed, que fotografía el estado de fábrica).
+    try {
+        localStorage.setItem('mini-tools:ai-groups-open', JSON.stringify({active: true, recent: view !== 'aisesscollapsed'}))
+    } catch {
+        // sin almacenamiento: queda el valor por defecto
+    }
     const nowMs = Date.now()
     const T = {
         mig: sessEs ? 'Migrar el módulo de pagos a PL/SQL' : 'Migrate the payments module to PL/SQL',
@@ -2606,6 +2613,51 @@ if (view === 'remotewarn') {
 }
 if (view === 'brainsettings') {
     setTimeout(() => document.querySelector('[data-brain-settings]')?.scrollIntoView({block: 'start'}), 700)
+}
+// Filtros del historial del Chat de IA (vistas aichatfilters*) y renombrar desde
+// la cabecera (aichatrename):
+//   aichatfilters       filtros puestos, panel cerrado: las fichas en una línea
+//   aichatfiltersopen   el panel abierto sobre la lista
+//   aichatfilterscol    la columna del historial en su ancho mínimo, con el panel abierto
+//   aichatfiltersmany   más fichas de las que entran: la línea se desplaza
+//   aichatrename        el nombre de la conversación en la cabecera, editándose
+views.aichatfilters = views.aichat
+views.aichatfiltersopen = views.aichat
+views.aichatfilterscol = views.aichat
+views.aichatfiltersmany = views.aichat
+views.aichatrename = views.aichat
+if (view.startsWith('aichatfilters')) {
+    const extra = (id: string, agentId: string, title: string, module: string, ctx: string, ago: number) => ({
+        id, repoId: '', agentId, title, conversationId: `conv-${id}`, createdAt: aiNow - ago - 600, updatedAt: aiNow - ago, model: '', effort: '', mode: '', module, contextId: ctx, brain: false,
+    })
+    fixtures.ListAllAgentChats = [
+        ...aiChats,
+        extra('ac-12', 'claude', sessEs ? 'Por qué el rebase pide resolver el mismo conflicto' : 'Why the rebase keeps asking to resolve the same conflict', 'git', 'r1', 2000),
+        extra('ac-13', 'codex', sessEs ? 'Limpiar las ramas viejas del release' : 'Clean up the old release branches', 'git', 'r3', 90000),
+        extra('ac-14', 'claude', sessEs ? 'Índice faltante en PAGOS.ESTADO' : 'Missing index on PAGOS.ESTADO', 'db', 'c4', 4000),
+        extra('ac-15', 'antigravity', sessEs ? 'Logs del batch de las 02:00' : 'Logs from the 02:00 batch', 'ssh', 's3', 8 * 86400),
+        extra('ac-16', 'claude', sessEs ? 'Prueba del endpoint de pagos' : 'Payments endpoint test', 'http', 'h1', 700),
+        extra('ac-17', 'claude', sessEs ? 'Chat con Claude Code' : 'Chat with Claude Code', 'utilities', '', 40 * 86400),
+    ]
+    try {
+        localStorage.clear()
+        const base = {providers: [] as string[], origins: [] as string[], date: 'all', state: 'any', order: 'recent'}
+        const seeded =
+            view === 'aichatfiltersmany'
+                ? {...base, providers: ['claude', 'llm:ms1', 'codex'], origins: ['utilities|r4'], date: 'd30', order: 'name'}
+                : {...base, providers: ['claude', 'llm:ms1'], origins: ['utilities|r4'], date: 'd30'}
+        localStorage.setItem('mini-tools:aiChat:historyFilters', JSON.stringify({last: seeded, panes: {}, order: []}))
+        if (view === 'aichatfilterscol') localStorage.setItem('mini-tools:aiChat:historyWidth', '240')
+    } catch {
+        // sin almacenamiento: la vista se ve sin los filtros sembrados
+    }
+    if (view !== 'aichatfilters' && view !== 'aichatfiltersmany') {
+        autoClick(() => document.querySelector<HTMLButtonElement>('[data-filters-toggle]') ?? undefined)
+    }
+}
+if (view === 'aichatrename') {
+    autoClick(() => document.querySelector<HTMLButtonElement>('[data-chat-id="ac-1"]') ?? undefined)
+    setTimeout(() => document.querySelector<HTMLButtonElement>('[data-chat-title]')?.click(), 1700)
 }
 if (view === 'aichatsearch') {
     // Escribe en el buscador del historial (con el setter nativo, para que
@@ -3437,7 +3489,11 @@ function AiSessHarness({steps, noToast = false}: {steps: (() => void)[]; noToast
     return <Workspace theme="dark" onToggleTheme={() => {}} onLocked={() => {}} updateInfo={null} uiFontScale={100} onChangeUIFontScale={() => {}} />
 }
 const clickEl = (sel: string, nth = 0) => () => document.querySelectorAll<HTMLElement>(sel)[nth]?.click()
-views.aisesssidebar = <AiSessHarness steps={[]} />
+// Pliega Docker (que arranca desplegado): deja el alto de la barra para las
+// sesiones, que es lo que estas capturas muestran.
+const collapseDocker = () =>
+    [...document.querySelectorAll<HTMLElement>('[data-tree-row]')].find((r) => r.querySelector('.truncate')?.textContent === 'Docker')?.querySelector<HTMLElement>('[data-tree-toggle]')?.click()
+views.aisesssidebar = <AiSessHarness steps={[collapseDocker]} />
 views.aisessreattach = <AiSessHarness steps={[() => requestOpenAiChat({chatId: 'as-1'})]} />
 views.aisesstabs = <AiSessHarness steps={[() => requestOpenAiChat({chatId: 'as-1'}), () => requestOpenAiChat({chatId: 'as-3', newWindow: true})]} />
 views.aisesssplit = (
@@ -3488,15 +3544,15 @@ views.aisessnavprobe = (
             {label: 'click [data-new-window] (icon next to split)', run: clickEl('[data-new-window]')},
             {label: 'Cmd+Shift+N', run: shiftN},
             {label: 'history "open in new tab" row button', run: () => document.querySelector<HTMLElement>(`button[aria-label="${tr().openInNewTab}"]`)?.click()},
-            {label: 'IA sidebar main button [data-ai-new-chat]', run: clickEl('[data-ai-new-chat]')},
-            {label: 'IA sidebar menu -> split tab', run: () => { clickEl('[data-ai-new-menu]')(); setTimeout(pickMenu(() => tr().newSplitTab), 300) }},
+            {label: 'Utilities > AI Chat row "+" [data-ai-new-tab]', run: clickEl('[data-ai-new-tab]')},
+            {label: 'Utilities > AI Chat row menu -> split tab', run: () => { treeRowMenu(); setTimeout(pickMenu(() => t().utilities.sidebar.aiChat.newSplit), 300) }},
             {label: 'header split-button main (same tab: no new tab)', run: clickEl('[data-new-chat]')},
             {label: 'header menu -> new chat in a new tab', run: () => { clickEl('[data-new-chat-menu]')(); setTimeout(pickMenu(() => tr().newInNewTab), 300) }},
             {label: '+ Nueva menu -> Chat de IA', run: () => { clickEl('[data-new-menu]')(); setTimeout(pickMenu(() => t().editor.tabs.newAiChat), 300) }},
         ]}
     />
 )
-const treeRowMenu = () => {
+function treeRowMenu() {
     const name = t().utilities.tools.aiChat.name
     const row = [...document.querySelectorAll<HTMLElement>('[data-tree-row]')].find((r) => r.textContent?.includes(name))
     row?.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 140, clientY: 190}))
@@ -3512,7 +3568,7 @@ views.aisessutilprobe = (
     />
 )
 views.aisessnewmenu = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), clickEl('[data-new-chat-menu]')]} />
-views.aisesssidemenu = <AiSessHarness noToast steps={[clickEl('[data-ai-new-menu]')]} />
+views.aisesssidemenu = <AiSessHarness noToast steps={[treeRowMenu]} />
 views.aisessplusmenu = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), clickEl('[data-new-menu]')]} />
 views.aisessempty = <AiSessHarness noToast steps={[() => requestOpenAiChat({newWindow: true})]} />
 views.aisessutiltabs = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), () => requestOpenAiChat({newWindow: true}), () => requestOpenAiChat({chatId: 'as-3', newWindow: true})]} />
@@ -3533,7 +3589,7 @@ views.aisesstoast = (
 // Cerrar una pestaña NO cierra el chat (vistas aisessbg*):
 //   aisessbgtabmenu    clic derecho en una pestaña de Chat de IA
 //   aisessbgclosetoast se cierra con la × la pestaña de un chat que trabaja
-//   aisessbglist       IA → Activas con chats abiertos en segundo plano
+//   aisessbglist       Utilidades → Chat de IA → Activas con chats abiertos en segundo plano
 //   aisessbgmenu       el menú ⋯ de la fila de uno de ellos
 if (view.startsWith('aisessbg')) {
     const nowMs = Date.now()
@@ -3570,8 +3626,56 @@ const closeLastAiTab = () => {
 }
 views.aisessbgtabmenu = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), tabContextMenu]} />
 views.aisessbgclosetoast = <AiSessHarness steps={[() => requestOpenAiChat({chatId: 'as-1'}), closeLastAiTab]} />
-views.aisessbglist = <AiSessHarness noToast steps={[]} />
-views.aisessbgmenu = <AiSessHarness noToast steps={[() => document.querySelector<HTMLElement>('[data-ai-session="as-6"] [data-ai-row-menu]')?.click()]} />
+views.aisessbglist = <AiSessHarness noToast steps={[collapseDocker]} />
+// Arranca en otro módulo (Conexiones): cerrar la pestaña de un chat que trabaja
+// deja el aviso, y su «Ver» tiene que llevar a Utilidades → Chat de IA → Activas
+// con esa fila a la vista y resaltada. aisesscollapsed: el estado de fábrica
+// (Recientes plegado).
+views.aisessreveal = (
+    <AiSessHarness
+        steps={[
+            collapseDocker,
+            () => requestOpenAiChat({chatId: 'as-1'}),
+            closeLastAiTab,
+            () => document.querySelector<HTMLElement>('[data-session-toast="background"] button')?.click(),
+        ]}
+    />
+)
+views.aisesscollapsed = <AiSessHarness noToast steps={[collapseDocker]} />
+views.aisessbgmenu = <AiSessHarness noToast steps={[collapseDocker, () => document.querySelector<HTMLElement>('[data-ai-session="as-6"] [data-ai-row-menu]')?.click()]} />
+// Renombrar conversaciones (vistas aisessrename*):
+//   aisessrenametab    doble clic sobre la pestaña: el nombre pasa a ser un campo
+//   aisessrenamemenu   clic derecho en la pestaña: «Renombrar…» arriba del menú
+//   aisessrenametree   doble clic sobre la fila de la pestaña en Utilidades → Chat de IA
+//   aisessdrafttab     un chat nuevo sin nombre ni proyecto: la pestaña dice «Nuevo chat»
+const dblclickEl = (sel: string, nth = 0) => () =>
+    document.querySelectorAll<HTMLElement>(sel)[nth]?.dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true}))
+const aiTabs = () => [...document.querySelectorAll<HTMLElement>('[data-tab-kind="utility"]')]
+const twoChats = [() => requestOpenAiChat({chatId: 'as-1'}), () => requestOpenAiChat({chatId: 'as-3', newWindow: true}), collapseDocker]
+views.aisessrenametab = <AiSessHarness noToast steps={[...twoChats, () => aiTabs()[1]?.dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true}))]} />
+views.aisessrenamemenu = (
+    <AiSessHarness
+        noToast
+        steps={[
+            ...twoChats,
+            () => {
+                const tab = aiTabs()[1]
+                const r = tab?.getBoundingClientRect()
+                tab?.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: (r?.left ?? 0) + 40, clientY: (r?.bottom ?? 0) - 4}))
+            },
+        ]}
+    />
+)
+views.aisessrenametree = (
+    <AiSessHarness
+        noToast
+        steps={[
+            ...twoChats,
+            () => dblclickEl('[data-tree-row] button[title^="' + t().utilities.sidebar.aiChat.tabTitle({title: ''}).slice(0, 8) + '"]', 1)(),
+        ]}
+    />
+)
+views.aisessdrafttab = <AiSessHarness noToast steps={[() => requestOpenAiChat({chatId: 'as-1'}), () => requestOpenAiChat({newWindow: true}), collapseDocker]} />
 // El idioma se fija antes de montar, igual que App.tsx lo carga antes de
 // dibujar: UISHOT_LANG=es|en (por defecto, el de la app).
 setLanguage(normalizeLang(new URLSearchParams(location.search).get('lang')))
